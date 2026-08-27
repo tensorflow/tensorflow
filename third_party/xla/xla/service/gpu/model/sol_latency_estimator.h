@@ -46,8 +46,8 @@ namespace gpu {
 // therefore in the case of algorithmic improvements at lower levels of
 // abstractions performance tables need to be updated.
 //
-// The estimator is enabled for Hopper, Blackwell, and ROCm gfx950 when a module
-// contains only supported collective operations.
+// The estimator is enabled for Hopper, Blackwell, and ROCm gfx942/gfx950 when a
+// module contains only supported collective operations.
 class SolLatencyEstimator : public LatencyEstimator {
  public:
   TimeCost GetLatencyBetween(const HloGraphNode& from,
