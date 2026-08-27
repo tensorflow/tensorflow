@@ -93,6 +93,7 @@ objc_library(
         "metal_conv_ops.mm",
         "metal_reduction_ops.mm",
         "metal_elementwise_ops.mm",
+        "metal_fill_ops.mm",
         "metal_identity_op.mm",
         "metal_kernels.mm",
         "metal_matmul_op.mm",

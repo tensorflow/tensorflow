@@ -43,6 +43,10 @@ void RegisterMetalPoolingKernels();
 // registrations for these cover int32 in host memory only.
 void RegisterMetalReductionKernels();
 
+// Fill, ZerosLike and OnesLike over float tensors, which TensorFlow also
+// registers generically for int32 in host memory only.
+void RegisterMetalFillKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
