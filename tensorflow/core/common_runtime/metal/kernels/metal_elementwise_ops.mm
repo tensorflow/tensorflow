@@ -361,9 +361,10 @@ void CastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
 
 /*** REGISTRATION ***/
 
-void RegisterBinary(const char* op_name, void* (*create)(
-                                            TF_OpKernelConstruction*),
-                    TF_DataType dtype, const std::string& kernel_name) {
+using CreateFn = void* (*)(TF_OpKernelConstruction*);
+
+void RegisterBinary(const char* op_name, CreateFn create, TF_DataType dtype,
+                    const std::string& kernel_name) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
       op_name, kMetalDeviceType, create, &BinaryOp_Compute, &BinaryOp_Delete);
