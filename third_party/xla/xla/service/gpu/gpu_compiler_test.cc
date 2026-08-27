@@ -224,7 +224,7 @@ ENTRY test_computation {
 )";
   AssertionResult run_result =
       Run(std::move(ValueOrDie(ParseAndReturnVerifiedModule(kHloText))),
-          /*run_hlo_passes=*/true);
+          /*run_hlo_passes=*/false);
   EXPECT_THAT(run_result.failure_message(),
               HasSubstr("Expected send and recv instructions to have "
                         "non-cyclical source-target pairs"));

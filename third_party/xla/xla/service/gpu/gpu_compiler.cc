@@ -679,8 +679,10 @@ void LogDebugOptions(HloModule* hlo_module) {
   }
 }
 
-absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module,
-                                         CompilationStats* compilation_stats) {
+absl::Status RunPreSPMDPartitionerPasses(
+    HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
+    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
+    CompilationStats* compilation_stats) {
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner", compilation_stats);
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
@@ -693,7 +695,18 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module,
   pre_spmd_pipeline.AddPass<CallInliner>(
       /*single_call_site=*/false, /*update_domain=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>());
-  pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+
+  // Remove zero-sized HLO from the input so that other passes don't have to
+  // handle it.
+  {
+    // ZeroSizedHloElimination and GpuAlgebraicSimplifier need to be run
+    // together. ZeroSizedHloElimination replaces zero-sized ops with constants
+    // and GpuAlgebraicSimplifier folds those constants into users.
+    pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+    pre_spmd_pipeline.AddPass<GpuAlgebraicSimplifier>(
+        layout_insensitive_algsimp_opts, gpu_version);
+  }
+
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
   // The TopkDecomposer generates a compare op with type=TOTALORDER and must
@@ -848,10 +861,6 @@ absl::Status RunOptimizationPasses(
     comparison_expander_upcasts.push_back({F4E2M1FN, F16});
   }
   pipeline.AddPass<ComparisonExpander>(comparison_expander_upcasts);
-
-  // Remove zero-sized HLO from the input so that other passes don't have to
-  // handle it.
-  pipeline.AddPass<ZeroSizedHloElimination>();
 
   // Rewrite select-and-scatter as a scatter and a reduce-window.
   pipeline.AddPass<SelectAndScatterExpander>();
@@ -1866,7 +1875,10 @@ absl::Status GpuCompiler::OptimizeHloModule(
     ABSL_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
-  ABSL_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(hlo_module, compilation_stats));
+  ABSL_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(
+      hlo_module, device_description.gpu_compute_capability(),
+      layout_insensitive_algsimp_opts, compilation_stats));
+
   // Set max_windowed_einsum_iteration to slice_size, as there will be
   // significant overhead when scaled beyond the maximum size of the
   // fast-interconnect domain.
