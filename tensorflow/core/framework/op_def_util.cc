@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -265,6 +266,64 @@ bool IsValidOpName(absl::string_view sp) {
         .One(Scanner::UPPERLETTER)
         .Any(Scanner::LETTER_DIGIT_UNDERSCORE);
   }
+}
+
+// Attribute and argument names are not restricted to CamelCase like op
+// names. Some code generators, such as cc_op_gen.cc and python_op_gen.cc,
+// splice a name verbatim (unescaped) into generated C++ or Python wrapper
+// source as a raw identifier; this function tells such a call site whether
+// a given name is safe to use that way as-is. It is not, and must not be
+// used as, a runtime validity check on OpDef registration: legitimate,
+// already-registered ops can and do use argument names outside this safe
+// set for reasons unrelated to code generation (see SanitizeToIdentifier's
+// comment below for a concrete example), and rejecting them at
+// registration time breaks that legitimate usage.
+bool IsValidAttrOrArgName(absl::string_view sp) {
+  if (sp.empty()) return false;
+  if (sp[0] != '_' && !absl::ascii_isalpha(sp[0])) {
+    return false;
+  }
+  for (size_t i = 1; i < sp.size(); ++i) {
+    char c = sp[i];
+    if (c != '_' && !absl::ascii_isalnum(c)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Converts `sp` into a safe identifier by replacing any character outside
+// IsValidAttrOrArgName's safe set with an underscore, and prefixing with an
+// underscore if the result would otherwise start with a digit or be empty.
+//
+// Some legitimate, already-registered OpDefs use argument names outside
+// that safe set for reasons unrelated to code generation -- for example
+// TFLite_Detection_PostProcess registers inputs like
+// "raw_outputs/box_encodings" and outputs like
+// "TFLite_Detection_PostProcess:1". Rejecting such an OpDef at
+// registration/validation time (as ValidateOpDef/ValidateArg once did)
+// breaks that legitimate usage; the actual splice-into-generated-source
+// risk IsValidAttrOrArgName exists for only applies where a name is used
+// as a raw identifier by a code generator such as cc_op_gen.cc or
+// python_op_gen.cc. This function gives those call sites a fallback that
+// is always a syntactically safe identifier, so they can sanitize instead
+// of rejecting -- callers should first check IsValidAttrOrArgName and use
+// the name as-is when it already passes, calling this only for a name
+// that doesn't.
+std::string SanitizeToIdentifier(absl::string_view sp) {
+  std::string result;
+  result.reserve(sp.size() + 1);
+  for (char c : sp) {
+    if (c == '_' || absl::ascii_isalnum(c)) {
+      result.push_back(c);
+    } else {
+      result.push_back('_');
+    }
+  }
+  if (result.empty() || (!absl::ascii_isalpha(result[0]) && result[0] != '_')) {
+    result.insert(result.begin(), '_');
+  }
+  return result;
 }
 
 absl::Status ValidateOpDef(const OpDef& op_def) {

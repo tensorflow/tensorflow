@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -60,6 +60,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+using ::xla::xtile::BlockLevelParameters;
+
 namespace cost_model_config_optimization_detail {
 
 // Helper struct for fields always used together.
@@ -450,10 +453,12 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
                        : absl::Span<const TritonGemmConfig>());
 }
 
-absl::StatusOr<std::vector<TritonGemmConfig>> SortConfigsWithCostModel(
-    const HloDotInstruction* dot, absl::Span<const TritonGemmConfig> configs,
-    const se::DeviceDescription& device_description,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+absl::StatusOr<absl::flat_hash_map<TritonGemmConfig, absl::Duration>>
+EstimateConfigsWithCostModel(const HloDotInstruction* dot,
+                             absl::Span<const TritonGemmConfig> configs,
+                             const se::DeviceDescription& device_description,
+                             const DebugOptions& debug_options,
+                             mlir::MLIRContext* mlir_context) {
   namespace detail = cost_model_config_optimization_detail;
 
   detail::ExtractedModuleAndContext extracted =
@@ -467,7 +472,12 @@ absl::StatusOr<std::vector<TritonGemmConfig>> SortConfigsWithCostModel(
           debug_options
               .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
 
-  return detail::FillConfigListFromEstimates(estimated_configs, configs);
+  absl::flat_hash_map<TritonGemmConfig, absl::Duration> estimates_map;
+  estimates_map.reserve(estimated_configs.size());
+  for (const auto& [duration, config] : estimated_configs) {
+    estimates_map.try_emplace(config, duration);
+  }
+  return estimates_map;
 }
 
 }  // namespace xla::gpu

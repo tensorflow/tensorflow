@@ -1676,10 +1676,26 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
         }
 
         if (!window_util::IsTrivialWindowDimension(window_dim)) {
+          // Explicit window padding extends the input; add it to the dynamic
+          // size. Base dilation is still ignored.
+          const int64_t total_padding =
+              window_dim.padding_low() + window_dim.padding_high();
+          if (total_padding != 0) {
+            dynamic_size = hlo->AddInstruction(HloInstruction::CreateBinary(
+                dynamic_size->shape(), HloOpcode::kAdd, dynamic_size,
+                hlo->AddInstruction(HloInstruction::CreateConstant(
+                    LiteralUtil::CreateR0<int32_t>(
+                        static_cast<int32_t>(total_padding))))));
+          }
           DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
               dynamic_size, window_dim.size(), window_dim.window_dilation(),
               window_dim.stride(), PaddingType::PADDING_VALID);
           dynamic_size = dynamic_window_dims.output_size;
+          // Clamp at zero, as static shape inference does.
+          dynamic_size = hlo->AddInstruction(HloInstruction::CreateBinary(
+              dynamic_size->shape(), HloOpcode::kMaximum, dynamic_size,
+              hlo->AddInstruction(
+                  HloInstruction::CreateConstant(LiteralUtil::Zero(S32)))));
         }
 
         // The dimensions of all data operands of a variadic reduce window have

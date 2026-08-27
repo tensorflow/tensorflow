@@ -380,6 +380,20 @@ class ArrayCreationTest(test.TestCase):
           np_array_ops.ascontiguousarray(a, dtype=dtype),
           np.ascontiguousarray(a, dtype=dtype))
 
+  def testARangeFloatStep(self):
+    for args, kwargs in [
+        ((0.0, 1.0), dict(step=0.3)),
+        ((0.0, 5.0), dict(step=1.5)),
+        ((2.0, -3.0), dict(step=-0.75)),
+    ]:
+      self.assertAllEqual(
+          np_array_ops.arange(*args, **kwargs), np.arange(*args, **kwargs)
+      )
+    self.assertAllEqual(
+        np_array_ops.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
+        np.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
+    )
+
   def testARange(self):
     int_values = np.arange(-3, 3).tolist()
     float_values = np.arange(-3.5, 3.5).tolist()
@@ -856,6 +870,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
     run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test([1.0, 2.0, 3.0], ddof=1)
+    run_test([1.0, 2.0, 3.0], ddof=1, dtype=np.float64)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=1, keepdims=True)
+    run_test([1.0j, 2.0, 3.0j], ddof=1)
+    run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)

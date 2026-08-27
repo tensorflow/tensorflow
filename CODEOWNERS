@@ -2,7 +2,7 @@
 
 /tensorflow/c/eager @qqfish
 /tensorflow/core/common_runtime/eager @qqfish
-/tenosrflow/core/debug @caisq
+/tensorflow/core/debug @caisq
 /tensorflow/core/kernels/mkl/ @penpornk
 /tensorflow/core/kernels/sparse/ @penpornk
 /tensorflow/core/nccl/ @azaks2 @chsigg

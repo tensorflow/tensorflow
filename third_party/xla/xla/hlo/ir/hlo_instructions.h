@@ -282,20 +282,19 @@ class HloAsyncInstruction : public HloInstruction {
 
   // Returns async-start instruction of the async chain.
   HloAsyncInstruction* async_chain_start() const;
-  // Returns the next async instruction in the async chain.
-  HloAsyncInstruction* async_chain_next() const { return async_chain_next_; }
   // Returns async-done instruction of the async chain.
   HloAsyncInstruction* async_chain_done() const;
+  // Returns the next async instruction in the async chain, or nullptr if this
+  // is async-done.
+  HloAsyncInstruction* async_chain_next() const;
   // Returns the chain of async op referencing this computation,
-  // where *begin(GetAsyncChain()) is the async-start op and
-  // *end(GetAsyncChain()) is the async-done op.
+  // where GetAsyncChain().front() is the async-start op and
+  // GetAsyncChain().back() is the async-done op.
   std::vector<HloAsyncInstruction*> GetAsyncChain() const;
 
   bool HasSideEffect() const override {
     return async_wrapped_instruction()->HasSideEffect();
   }
-
-  void UpdateAsyncChain();
 
   // Updates all future instructions in the async chain to match the shape of
   // the current instruction.
@@ -1102,9 +1101,51 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
   const std::vector<std::vector<int64_t>> slice_sizes_;
 };
 
+class HloCollectiveReduceInstruction : public HloAllReduceInstructionBase {
+ public:
+  explicit HloCollectiveReduceInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids, bool has_dynamic_root);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  explicit HloCollectiveReduceInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+      bool has_dynamic_root);
+
+  bool has_dynamic_root() const { return has_dynamic_root_; }
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kCollectiveReduce;
+  }
+
+ protected:
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+  void ToProto(HloInstructionProto* proto) const override;
+
+ private:
+  bool IdenticalSlowPathIgnoringChannelIdValues(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool has_dynamic_root_;
+};
+
 inline bool HloAllReduceInstructionBase::ClassOf(const HloInstruction* hlo) {
   return HloAllReduceInstruction::ClassOf(hlo) ||
-         hlo->opcode() == HloOpcode::kReduceScatter;
+         hlo->opcode() == HloOpcode::kReduceScatter ||
+         HloCollectiveReduceInstruction::ClassOf(hlo);
 }
 
 inline bool HloCollectiveInstruction::ClassOf(const HloInstruction* hlo) {
@@ -2021,7 +2062,7 @@ class HloOutfeedInstruction : public HloInstruction {
 class HloConvolutionInstruction : public HloInstruction {
  public:
   explicit HloConvolutionInstruction(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
@@ -2101,6 +2142,7 @@ class HloConvolutionInstruction : public HloInstruction {
   PrecisionConfig precision_config_;
   // The sparsity configuration used for the convolution.
   SparsityConfig sparsity_config_;
+  // Convolution block scaling config.
   // Conv type (fprop, dgrad, wgrad)
   ConvolutionKind convolution_kind_ = CONVOLUTION_KIND_UNSET;
 };

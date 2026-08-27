@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2501,6 +2502,64 @@ ENTRY CollectiveBroadcast {
 )",
 /*replica_count=*/4,
 },
+// collective-reduce
+{
+"CollectiveReduce",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), replica_groups={{0,1},{2,3}}, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
+// collective-reduce with channel_id and use_global_device_ids
+{
+"CollectiveReduceWithChannelId",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=2
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/2,
+},
+// collective-reduce with has_dynamic_root (single data operand)
+{
+"CollectiveReduceDynamicRoot",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0}, s32[1]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  root = s32[1]{0} parameter(1)
+  ROOT cr = f32[8]{0} collective-reduce(input, root), replica_groups={{0,1},{2,3}}, has_dynamic_root=true, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
 // collective-permute
 {
 "CollectivePermute",
@@ -4684,7 +4743,7 @@ TEST_F(HloParserTest, ParseNamedShardingScalarUnreducedMax) {
   const std::string original = "{mesh['x'=2,'y'=2], unreduced=max{'x', 'y'}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_TRUE(sharding.UseNamedShardingLeaf());
-  EXPECT_EQ(sharding.ToString(), "{unreduced=max}");
+  EXPECT_EQ(sharding.ToString(), "{mesh['x'=2,'y'=2], unreduced=max}");
 }
 
 TEST_F(HloParserTest, ParseShardingPartialReplication) {
@@ -4773,13 +4832,13 @@ TEST_F(HloParserTest, ParseNamedShardingNonIotaMeshDeviceList) {
 TEST_F(HloParserTest, ParseNamedShardingEmptyMeshReplicated) {
   const std::string original = "{mesh[], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{replicated}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingFullyReplicated) {
   const std::string original = "{mesh['a'=2,'b'=4], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{replicated}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingReplicatedAxes) {
@@ -4805,7 +4864,7 @@ TEST_F(HloParserTest, ParseNamedShardingWithSpecialCharacters) {
 TEST_F(HloParserTest, ParseNamedShardingFullyUnreduced) {
   const std::string original = "{mesh['a'=2,'b'=4], unreduced}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{unreduced}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingUnreducedAxes) {
@@ -4842,8 +4901,7 @@ TEST_F(HloParserTest, ParseNamedShardingFullyReplicatedWithMetadata) {
   const std::string original =
       "{mesh['a'=2,'b'=4], replicated, metadata={{op_name=\"foo\"}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true),
-            "{replicated, metadata={{op_name=\"foo\"}}}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingTuple) {
@@ -4855,14 +4913,7 @@ TEST_F(HloParserTest, ParseNamedShardingTuple) {
       "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}], "
       "metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  const std::string expected =
-      "{{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}]}, "
-      "{replicated}, "
-      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], "
-      "[{'d':(2)2, 'b'}, {'a', ?}], unreduced={'c'}}, "
-      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}], "
-      "metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}}";
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), expected);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseMixedShardingTuple1) {
@@ -4871,10 +4922,7 @@ TEST_F(HloParserTest, ParseMixedShardingTuple1) {
       "{maximal_mesh[device_id=5]}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
 
-  const std::string expected =
-      "{{replicated}, {replicated}, {maximal device=5}, "
-      "{maximal_mesh[device_id=5]}}";
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), expected);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
   EXPECT_TRUE(sharding.IsTuple());
   EXPECT_EQ(sharding.tuple_elements().size(), 4);
   EXPECT_FALSE(sharding.tuple_elements()[0].UseNamedShardingLeaf());
@@ -6592,6 +6640,84 @@ ENTRY AsyncDoneZeroOperandsRejected {
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("No operand found for AsyncUpdate and "
                                        "AsyncDone")));
+}
+
+TEST_F(HloParserTest, AsyncDoneAsOperandToAsyncUpdateRejected) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneAsOperandToAsyncUpdateRejected {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-done = f32[3,2] async-done(async-start)
+  ROOT async-update = ((f32[2,3]), f32[3,2], s32[]) async-update(async-done)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.")));
+}
+
+TEST_F(HloParserTest, AsyncDoneAsOperandToAsyncDoneRejected) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneAsOperandToAsyncDoneRejected {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-done.0 = f32[3,2] async-done(async-start)
+  ROOT async-done.1 = f32[3,2] async-done(async-done.0)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWithTransparentIntermediaries) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneWithTransparentIntermediaries {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  barrier = ((f32[2,3]), f32[3,2], s32[]) opt-barrier(async-start)
+  tup = (((f32[2,3]), f32[3,2], s32[])) tuple(barrier)
+  gte = ((f32[2,3]), f32[3,2], s32[]) get-tuple-element(tup), index=0
+  copy = ((f32[2,3]), f32[3,2], s32[]) copy(gte)
+  ROOT async-done = f32[3,2] async-done(copy)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* done = module->entry_computation()->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  const HloInstruction* producer =
+      hlo_instruction_utils::async::FindAsyncProducer(done->operand(0));
+  ASSERT_NE(producer, nullptr);
+  EXPECT_EQ(producer->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(hlo_instruction_utils::async::FindAsyncStart(done), producer);
 }
 
 TEST_F(HloParserTest, AsyncUpdateWithSyntaxSugarWrongOp) {
@@ -8319,6 +8445,16 @@ ENTRY main {
   EXPECT_EQ(aliasing[0].first, ShapeIndex({2}));
   EXPECT_EQ(aliasing[0].second.first, 0);                 // operand 0
   EXPECT_EQ(aliasing[0].second.second, ShapeIndex({2}));  // index 2
+}
+
+TEST_F(HloParserTest, AsyncDoneWithFrontendAttributes) {
+  const char* const hlo_string =
+      R"(%all-to-all-done.3 = bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)S(1)} async-done(((bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)}), bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)S(1)}, u32[]{:S(2)}, u32[]{:S(2)}) %all-to-all-start.3), frontend_attributes={is_spmd_generated="true"})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAsyncDone);
+  EXPECT_EQ(root->frontend_attributes().map_size(), 1);
+  EXPECT_EQ(root->frontend_attributes().map().at("is_spmd_generated"), "true");
 }
 }  // namespace
 }  // namespace xla

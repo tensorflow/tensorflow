@@ -257,7 +257,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:hlo_pjrt_test_base",
@@ -289,7 +289,10 @@ xla_test(
         "gb200": ["broken"],
     },
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "nozapfhahn",
+    ],
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:error_spec",
@@ -455,7 +458,6 @@ xla_test(
         "//xla/backends/gpu:ffi",
         "//xla/backends/gpu/runtime:while_loop",
         "//xla/ffi",
-        "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tests:literal_test_util",
@@ -1161,7 +1163,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_runner_pjrt",
@@ -1236,7 +1238,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:xla_proto_cc",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
@@ -1407,7 +1409,10 @@ xla_test(
 
 xla_test(
     name = "collective_ops_ffi_test",
-    srcs = ["collective_ops_ffi_test.cc"],
+    srcs = ["collective_ops_ffi_test.cc"] + if_cuda_is_configured(
+        ["collective_ops_ffi_communicator_cuda.cc"],
+        ["collective_ops_ffi_communicator_default.cc"],
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -1437,8 +1442,10 @@ xla_test(
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
         "//xla/ffi",
+        "//xla/ffi:collectives_ffi",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
+        "//xla/ffi/api:collectives_api",
         "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:rendezvous",
@@ -1464,6 +1471,9 @@ xla_test(
         "@com_google_absl//absl/types:span",
     ] + if_cuda_is_configured([
         ":collective_ops_ffi_kernels_cuda",
+        "@com_google_absl//absl/base",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_nccl//:nccl",
     ]),
 )
 
@@ -1574,7 +1584,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",

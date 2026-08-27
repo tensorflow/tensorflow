@@ -296,6 +296,16 @@ def arange(start, stop=None, step=1, dtype=None):
     return array([], dtype=dtype)
   # TODO(srbs): There are some bugs when start or stop is float type and dtype
   # is integer type.
+  if dtypes.as_dtype(dtype).is_floating:
+    # Build the range at the resolved precision so the values follow NumPy;
+    # handing the Python scalars to tf.range directly computes them as
+    # float32 even when the output dtype is float64.
+    limit = None if stop is None else ops.convert_to_tensor(stop, dtype=dtype)
+    return math_ops.range(
+        ops.convert_to_tensor(start, dtype=dtype),
+        limit=limit,
+        delta=ops.convert_to_tensor(step, dtype=dtype),
+    )
   return math_ops.cast(
       math_ops.range(start, limit=stop, delta=step), dtype=dtype
   )
@@ -733,10 +743,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
       centered = input_tensor - means
       if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-        centered = math_ops.cast(
-            math_ops.real(centered * math_ops.conj(centered)),
-            input_tensor.dtype,
-        )
+        # The variance of a complex tensor is real; keep the real dtype like
+        # math_ops.reduce_variance and NumPy do.
+        centered = math_ops.real(centered * math_ops.conj(centered))
       else:
         centered = math_ops.square(centered)
       squared_deviations = math_ops.reduce_sum(
@@ -751,9 +760,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
         n = math_ops.reduce_prod(
             array_ops.gather(array_ops.shape(input_tensor), axis)
         )
-      n = math_ops.cast(n - ddof, input_tensor.dtype)
+      n = math_ops.cast(n - ddof, squared_deviations.dtype)
 
-      return math_ops.cast(math_ops.divide(squared_deviations, n), dtype)
+      return math_ops.divide(squared_deviations, n)
 
   else:
     reduce_fn = math_ops.reduce_variance

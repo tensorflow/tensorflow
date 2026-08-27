@@ -36,11 +36,14 @@ cc_library(
         "ffi.cc",
         "//xla/ffi/api:all_headers",
     ],
-    tags = ["no_oss"],
+    visibility = ["//visibility:public"],
     deps = [
-        "//xla/ffi",
-    ] + if_google(["//third_party/py/cutlass:runtime"]),
-    alwayslink = 1,
+        "//xla/ffi/api:ffi",
+    ] + if_google(
+        ["//third_party/py/cutlass:runtime"],
+        ["@cutlass_cutedsl_runtime//:runtime"],
+    ),
+    alwayslink = True,
 )
 
 xla_test(
@@ -48,6 +51,13 @@ xla_test(
     srcs = ["ffi_test.cc"],
     backends = ["b200"],
     data = ["vector_add.hlo"],
+    target_compatible_with = if_google(
+        [],
+        select({
+            "@platforms//os:linux": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+    ),
     deps = [
         ":ffi",
         "//xla:error_spec",

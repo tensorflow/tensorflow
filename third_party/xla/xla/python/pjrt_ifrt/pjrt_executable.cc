@@ -440,8 +440,7 @@ PjRtExecutable::PjRtExecutable(
       common_metadata_(std::move(common_metadata)) {
   pjrt_output_memory_kinds_.emplace_back();
   for (const MemoryKind& memory_kind : common_metadata_.output_memory_kinds) {
-    pjrt_output_memory_kinds_.back().push_back(
-        memory_kind.memory_kind().value_or(""));
+    pjrt_output_memory_kinds_.back().push_back(memory_kind.value());
   }
 }
 
@@ -483,8 +482,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     }
 
     // Memory kind
-    output_spec.set_memory_kind(
-        std::string(output_memory_kinds[i].memory_kind().value_or("")));
+    output_spec.set_memory_kind(std::string(output_memory_kinds[i].value()));
 
     // Shape
     std::optional<Shape> shard_shape;
@@ -568,7 +566,12 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
 
     // Sharding
     if (parameter_shardings.has_value()) {
-      *parameter_spec.mutable_op_sharding() = parameter_shardings->at(i);
+      ABSL_ASSIGN_OR_RETURN(auto hlo_sharding,
+                       xla::HloSharding::FromProto(parameter_shardings->at(i)));
+      if (hlo_sharding.UseNamedShardingLeaf()) {
+        hlo_sharding = xla::HloSharding::V3ToV2Sharding(hlo_sharding);
+      }
+      *parameter_spec.mutable_op_sharding() = hlo_sharding.ToProto();
     }
 
     // Donated input
@@ -824,8 +827,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
       common_metadata_.output_memory_kinds, devices_);
   pjrt_output_memory_kinds_.emplace_back();
   for (const MemoryKind& memory_kind : common_metadata_.output_memory_kinds) {
-    pjrt_output_memory_kinds_.back().push_back(
-        memory_kind.memory_kind().value_or(""));
+    pjrt_output_memory_kinds_.back().push_back(memory_kind.value());
   }
 }
 
@@ -1069,16 +1071,12 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
     const MemoryKind dst_memory_kind = output_shardings_[i]->memory_kind();
-    const MemoryKind canonical_dst_memory_kind = CanonicalizeMemoryKind(
-        dst_memory_kind, output_shardings_[i]->devices()->devices().front());
 
     for (int j = 0; j < num_computations; ++j) {
       if (j > 0) {
         if (auto memory_kind =
                 MakeMemoryKindFromPjRtBuffer(pjrt_outputs[j][i].get());
-            canonical_dst_memory_kind !=
-            CanonicalizeMemoryKindWithPjRtDevice(
-                memory_kind, pjrt_outputs[j][i]->device())) {
+            dst_memory_kind.value() != memory_kind.value()) {
           return FailedPrecondition(
               "Memory kind mismatch. Got sharding with memory kind '%v' and "
               "buffer with memory_kind '%v'",

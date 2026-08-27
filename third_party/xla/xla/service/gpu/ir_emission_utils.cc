@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -84,6 +85,62 @@ bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
     }
   }
   return false;
+}
+
+bool IsTritonSupportedRaggedDot(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kRaggedDot) {
+    return false;
+  }
+
+  const auto* ragged_dot = Cast<HloRaggedDotInstruction>(&instr);
+  const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
+
+  // Exactly one LHS ragged dimension is required: the emitter and autotuner
+  // access lhs_ragged_dimensions(0) unconditionally.
+  if (ragged_dims.lhs_ragged_dimensions().size() != 1) {
+    return false;
+  }
+
+  // Tiling propagation must be enabled.  TritonBackend::IsSupported gates
+  // kRaggedDot fusions on this flag — the xtile pipeline needs
+  // TiledHloComputation::Tile to drive code generation.
+  if (!instr.GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_tiling_propagation()) {
+    return false;
+  }
+
+  // The xtile emitter's PrimitiveTypeToMlirType conversion supports the
+  // following element types for ragged-dot operands and output.
+  // Complex types (C64, C128) fall to the default branch and return
+  // UnimplementedError.  Nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) are
+  // ROCm-only (NaNo format not supported on NVIDIA GPUs).
+  // Triton uses power-of-two block sizes (16..256) internally; problem
+  // dimensions need not be powers of two — masking handles boundary tiles.
+  const bool is_rocm = gpu_compute_capability.IsRocm();
+  auto is_supported_element_type = [&](PrimitiveType type) -> bool {
+    switch (type) {
+      case F16:
+      case BF16:
+      case F32:
+      case F64:
+      case F8E5M2:
+      case F8E4M3FN:
+        return true;
+      case F8E4M3FNUZ:
+      case F8E5M2FNUZ:
+        return is_rocm;
+      default:
+        return false;
+    }
+  };
+
+  return is_supported_element_type(instr.operand(0)->shape().element_type()) &&
+         is_supported_element_type(instr.operand(1)->shape().element_type()) &&
+         is_supported_element_type(instr.shape().element_type());
 }
 
 absl::StatusOr<bool> IsCublasSupportedMatMul(
@@ -163,11 +220,16 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
+bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo) {
+  if (!IsCustomCallToMosaicGpu(hlo)) {
+    return false;
+  }
 
-bool IsMosaicWithMultimem(const HloInstruction& hlo) {
-  return IsCustomCallToMosaicGpu(hlo) &&
-         absl::StrContains(hlo.raw_backend_config_string(),
-                           "multimem_parameters");
+  const std::string& backend_config = hlo.raw_backend_config_string();
+  // TODO(b/546817872): Remove multimem_parameters check once backward
+  // compatibility period is over.
+  return absl::StrContains(backend_config, "symmetric_memory_parameters") ||
+         absl::StrContains(backend_config, "multimem_parameters");
 }
 
 bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
@@ -177,7 +239,7 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
 }
 
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
-  return IsMosaicWithMultimem(hlo);
+  return IsMosaicWithSymmetricParameter(hlo);
 }
 
 static bool IsContiguousSlice(

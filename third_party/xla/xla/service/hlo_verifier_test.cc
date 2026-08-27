@@ -326,10 +326,133 @@ TEST_F(HloVerifierTest, CheckCallOperandOutputAliasing) {
       module->entry_computation()->GetInstructionWithName("mycall"))
       ->set_output_to_operand_aliasing({{{}, {0, {}}}});
 
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CheckCallTupleOperandOutputAliasing) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      p0 = (s32[], f32[4]) parameter(0)
+      p1 = f32[4] parameter(1)
+      p0_0 = s32[] get-tuple-element(p0), index=0
+      ROOT result = (s32[], f32[4]) tuple(p0_0, p1)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      p1 = f32[4] parameter(1)
+      ROOT mycall = (s32[], f32[4]) call(p0, p1), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {0}}}, {{1}, {1, {}}}});
+
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CheckCallOperandOutputAliasingInvalidOperandIndex) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{}, {1, {}}}});
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Invalid aliasing operand index."));
+}
+
+TEST_F(HloVerifierTest,
+       CheckCallOperandOutputAliasingInvalidOperandShapeIndex) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {2}}}});
+
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("may not have an output-to-operand aliasing set."));
+              HasSubstr("Invalid aliasing operand shape index."));
+}
+
+TEST_F(HloVerifierTest, CheckCallOperandOutputAliasingInvalidOutputShapeIndex) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{2}, {0, {0}}}});
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Invalid aliasing output shape index."));
+}
+
+TEST_F(HloVerifierTest, CheckCallOperandOutputAliasingShapeMismatch) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {1}}}});
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Different aliasing shapes: f32[4] vs s32[]"));
 }
 
 TEST_F(HloVerifierTest, CheckCustomCallOperandOutputAliasing) {
@@ -1230,6 +1353,33 @@ TEST_F(HloVerifierTestLayoutSensitive,
     ROOT async-done = (f32[32,32]{1,0}) async-done(async-update)
   })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "Different aliasing shapes: f32[32,32]{0,1} vs f32[32,32]{1,0}"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, VerifyCallAliasConfigLayoutMismatch) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  callme {
+    p0 = f32[32,32]{0,1} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    ROOT tuple = (f32[32,32]{1,0}) tuple(p1)
+  }
+
+  ENTRY main {
+    p0 = f32[32,32]{0,1} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    ROOT call = (f32[32,32]{1,0}) call(p0, p1), to_apply=callme
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("call"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {}}}});
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(
@@ -2531,6 +2681,79 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Valid) {
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 2,
                                "channel_id=1, use_global_device_ids=true"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> MakeCollectiveReduceComputation(
+    std::vector<std::vector<int64_t>> replica_groups,
+    std::optional<int64_t> replica_count = std::nullopt,
+    std::optional<int64_t> num_partitions = std::nullopt,
+    absl::string_view other_attributes = "") {
+  const char* kTemplate = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p = f32[128]{0} parameter(0)
+    cr = f32[128]{0} collective-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
+                                           OTHER_ATTRIBUTES
+  })";
+  return MakeCollectiveCommOpComputation(replica_groups, replica_count,
+                                         num_partitions, other_attributes,
+                                         kTemplate);
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_NoReplicaGroupsOK) {
+  ASSERT_OK_AND_ASSIGN(auto module, MakeCollectiveReduceComputation({}));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_EmptyReplicaGroup) {
+  ASSERT_OK_AND_ASSIGN(auto module, MakeCollectiveReduceComputation({{0}, {}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("empty replica group"));
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_RepeatedReplicaId) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, MakeCollectiveReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Replica 0 is repeated"));
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_CrossReplicaAndPartition_Valid) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeCollectiveReduceComputation({{0, 1}, {2, 3}}, 4, 1, "channel_id=1"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_FlattenedID_Valid) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeCollectiveReduceComputation(
+          {{0, 1}, {2, 3}}, 2, 2, "channel_id=1, use_global_device_ids=true"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_DynamicRootValid) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[128]{0} parameter(0)
+    roots = s32[1]{0} parameter(1)
+    ROOT cr = f32[128]{0} collective-reduce(p0, roots), replica_groups={},
+                          has_dynamic_root=true, to_apply=add
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   ASSERT_OK(verifier().Run(module.get()).status());
 }
 

@@ -81,7 +81,7 @@ class NVPTXCompiler : public GpuCompiler {
       CompilationStats* compilation_stats,
       mlir::MLIRContext* mlir_context) override;
 
-  absl::Status AddAutotunerPass(
+  absl::Status AddConfigAssignerPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,

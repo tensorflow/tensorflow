@@ -94,33 +94,67 @@ std::optional<CoreType> getRefCoreType(TypedValue<MemRefType> value) {
 }
 
 template <typename OpTy>
-LogicalResult verifyPackOp(OpTy op, int32_t max_size) {
+LogicalResult verifyPackOp(OpTy op) {
   if (op.getSources().empty()) {
     return op.emitOpError("At least one source is required");
   }
+  const VectorType source_type =
+      cast<VectorType>(op.getSources().front().getType());
+  const VectorType result_type = op.getResult().getType();
   if (!llvm::all_of(op.getSources(), [&](Value source) {
-        return source.getType() == op.getSources().front().getType();
+        return source.getType() == source_type;
       })) {
     return op.emitOpError("All sources must have the same type");
   }
   if (op.getPositions().size() != op.getSources().size()) {
     return op.emitOpError("Size of sources and positions must match");
   }
-  if (op.getSources().size() > max_size) {
-    return op.emitOpError("Number of sources must be less than max_size (")
-           << max_size << "), got " << op.getSources().size();
+  int64_t source_packing;
+  if (source_type.getRank() == result_type.getRank()) {
+    source_packing = source_type.getShape().back();
+  } else if (source_type.getRank() + 1 == result_type.getRank()) {
+    source_packing = 1;
+  } else {
+    return op.emitOpError(
+        "The source rank must be equal to the result rank, or smaller by 1");
   }
-  SmallVector<bool> seen_positions(max_size, false);
+  if (result_type.getShape().drop_back() !=
+      source_type.getShape().take_front(result_type.getRank() - 1)) {
+    return op.emitOpError(
+        "Source and result shapes must match except for packing (result's "
+        "minormost) dimension");
+  }
+  const int64_t result_packing = result_type.getShape().back();
+
+  if (result_packing % source_packing != 0) {
+    return op.emitOpError(
+        "Result packing must be a multiple of source packing");
+  }
+  const int64_t ratio = result_packing / source_packing;
+
+  if constexpr (std::is_same_v<OpTy, tpu::PackSubelementsOp>) {
+    const int source_bitwidth = getElementTypeBitwidth(source_type);
+    const int result_bitwidth = getElementTypeBitwidth(result_type);
+    if (source_bitwidth % result_bitwidth != 0 ||
+        source_bitwidth / result_bitwidth != ratio) {
+      return op.emitOpError(
+          "Ratio of bitwidths must match the ratio of packing dimensions");
+    }
+  }
+
+  SmallVector<bool> seen_positions(ratio, false);
   for (const int32_t position : op.getPositions()) {
-    if (position < 0 || max_size <= position) {
-      return op.emitOpError("Positions must be between 0 and max_size (")
-             << max_size << "), got " << position;
+    if (position < 0 || ratio <= position) {
+      return op.emitOpError(
+                 "Positions must be between 0 and the packing ratio (")
+             << ratio << "), got " << position;
     }
     if (seen_positions[position]) {
       return op.emitOpError("Positions must be unique");
     }
     seen_positions[position] = true;
   }
+  CHECK_LE(op.getSources().size(), ratio);
   return success();
 }
 
@@ -194,10 +228,6 @@ LogicalResult MemRefSliceOp::verify() {
   auto target_memory_space = target_type.getMemorySpace();
   auto indices = getBaseIdx();
   auto slice_shape = getResult().getType().getShape();
-  if (!source_type.hasStaticShape()) {
-    return emitOpError(
-        "Only slicing of memrefs with static shapes is supported.");
-  }
   if (getDynamicSizes().size() != target_type.getNumDynamicDims()) {
     return emitOpError(
         "Number of provided dynamic dimensions sizes must match the number of "
@@ -218,13 +248,8 @@ LogicalResult MemRefSliceOp::verify() {
   }
   // TODO(apaszke): Check that the result has a smaller shape.
   // TODO(apaszke): Check that strides are equivalent.
-  // Source and target memory spaces may be different before propagation is done
-  // by memory space specialization.
-  bool is_target_memory_space_provided = target_memory_space != nullptr;
-  if (is_target_memory_space_provided &&
-      target_memory_space != source_type.getMemorySpace()) {
-    return emitOpError(
-        "Memory spaces must match if the target memory space is provided.");
+  if (target_memory_space != source_type.getMemorySpace()) {
+    return emitOpError("Memory spaces do not match.");
   }
   if (isa<TiledLayoutAttr>(source_layout) !=
       isa<TiledLayoutAttr>(target_layout)) {
@@ -248,6 +273,76 @@ LogicalResult MemRefSliceOp::verify() {
               "as the tiling.";
   }
   return success();
+}
+
+std::optional<bool> MemRefSliceOp::sliceStridesAcrossSourceTiles(
+    const int64_t source_size, const int64_t slice_size,
+    const int64_t source_tile_size, const int64_t result_tile_size,
+    Value offset) {
+  CHECK_EQ(source_tile_size % result_tile_size, 0);
+  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
+  const std::optional<int64_t> maybe_cst_offset =
+      offset ? getConstantIntValue(offset) : std::nullopt;
+  if (maybe_cst_offset && slice_size != ShapedType::kDynamic) {
+    // Fully static slice
+    return (*maybe_cst_offset + slice_size - 1) / source_tile_size !=
+           *maybe_cst_offset / source_tile_size;
+  }
+  if (slice_size != ShapedType::kDynamic && slice_size <= result_tile_size) {
+    // We never stride at all
+    return false;
+  }
+  if (source_size != ShapedType::kDynamic && source_size <= source_tile_size) {
+    // Source has only one tile
+    return false;
+  }
+  if (slice_size != ShapedType::kDynamic && slice_size > source_tile_size) {
+    // Slice is too big to be contained in a single source tile
+    return true;
+  }
+  // TODO(apaszke,tlongeri): Should we relax the requirement for the shape to
+  // be divisible by the slice size? We need to consider if accessing the last
+  // partial tile is allowed or not.
+  if (slice_size != ShapedType::kDynamic &&
+      source_tile_size % slice_size == 0 &&
+      source_size != ShapedType::kDynamic && source_size % slice_size == 0 &&
+      offset != nullptr && isGuaranteedDivisible(offset, slice_size)) {
+    // Slice is guaranteed to fit in a single source tile.
+    return false;
+  }
+  return std::nullopt;
+}
+
+std::optional<bool> MemRefSliceOp::sliceStridesWithinSourceTiles(
+    const int64_t source_size, const int64_t slice_size,
+    const int64_t source_tile_size, const int64_t result_tile_size,
+    Value offset) {
+  CHECK_EQ(source_tile_size % result_tile_size, 0);
+  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
+  if (source_tile_size == result_tile_size) {
+    // The source tile isn't subdivided into result tiles
+    return false;
+  }
+  if (slice_size != ShapedType::kDynamic) {
+    if (slice_size <= result_tile_size) {
+      // We never stride at all
+      return false;
+    }
+    if (slice_size > 2 * result_tile_size) {
+      // We stride more than once. We've checked that the result tile is smaller
+      // than the source tile, so we must stride within source tiles at least
+      // once.
+      return true;
+    }
+    // We stride exactly once. Is it within or across source tiles?
+    if (offset != nullptr) {
+      if (const std::optional<int64_t> rem =
+              getRemainder(offset, source_tile_size)) {
+        return *rem != source_tile_size - result_tile_size;
+      }
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
@@ -389,8 +484,7 @@ LogicalResult MemRefSqueezeOp::verify() {
   MemRefType source_type = getInput().getType();
   MemRefType target_type = getType();
 
-  if (target_type.getMemorySpace() != nullptr &&
-      target_type.getMemorySpace() != source_type.getMemorySpace()) {
+  if (target_type.getMemorySpace() != source_type.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
 
@@ -539,8 +633,7 @@ void MemRefSqueezeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 LogicalResult MemRefReshapeOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != nullptr &&
-      tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
   if (src_ty.getShape().size() < 2 || tgt_ty.getShape().size() < 2) {
@@ -643,10 +736,9 @@ LogicalResult TransposeOp::verify() {
 }
 
 LogicalResult MemRefBitcastOp::verify() {
-  auto src_ty = getMemRefType(getInput());
+  auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != nullptr &&
-      tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
   if (src_ty.getRank() != tgt_ty.getRank()) {
@@ -877,10 +969,6 @@ LogicalResult VectorStoreIdxOp::verify() {
                "memref with dimension: ")
            << ref_ty.getRank() << ". Got: " << llvm::size(getIndices()) << ".";
   }
-  if (value_ty.getRank() != 1) {
-    return emitOpError("Expected value to have rank 1. Got: ")
-           << value_ty.getRank() << ".";
-  }
   for (const auto [i, index] : llvm::enumerate(getIndices())) {
     VectorType index_ty = llvm::cast<VectorType>(index.getType());
     if (index_ty.getShape() != value_ty.getShape()) {
@@ -894,16 +982,19 @@ LogicalResult VectorStoreIdxOp::verify() {
 
 void ReinterpretCastOp::build(OpBuilder& builder, OperationState& state,
                               Type result_type, Value input,
-                              Value dynamic_offset, ValueRange dynamic_sizes) {
+                              Value dynamic_offset, ValueRange dynamic_sizes,
+                              ValueRange dynamic_strides) {
   state.addOperands(input);
   if (dynamic_offset) {
     state.addOperands(dynamic_offset);
   }
   state.addOperands(dynamic_sizes);
+  state.addOperands(dynamic_strides);
   state.addAttribute("operandSegmentSizes",
                      builder.getDenseI32ArrayAttr(
                          {1, dynamic_offset ? 1 : 0,
-                          static_cast<int32_t>(dynamic_sizes.size())}));
+                          static_cast<int32_t>(dynamic_sizes.size()),
+                          static_cast<int32_t>(dynamic_strides.size())}));
   state.addTypes(result_type);
 }
 
@@ -921,6 +1012,15 @@ LogicalResult ReinterpretCastOp::verify() {
            << num_dynamic_dims
            << " dynamic size(s) for the result type, but got "
            << getDynamicSizes().size();
+  }
+  if (auto layout = dyn_cast<TiledLayoutAttr>(target_type.getLayout())) {
+    int64_t num_dynamic_strides = layout.getNumDynamicStrides();
+    if (getDynamicStrides().size() != num_dynamic_strides) {
+      return emitOpError("expected ")
+             << num_dynamic_strides
+             << " dynamic stride(s) for the result type, but got "
+             << getDynamicStrides().size();
+    }
   }
   return success();
 }
@@ -952,6 +1052,19 @@ LogicalResult EraseLayoutOp::verify() {
   }
   if (operand_type.getLayout() == nullptr) {
     return emitOpError("Memref layout must be erased");
+  }
+  return success();
+}
+
+LogicalResult AnnotateOp::verify() {
+  if (getNoStore() + getNoHazard() + getNoHazardNoDeps() > 1) {
+    return emitOpError(
+        "At most one of no_store, no_hazard, or no_hazard_no_deps can be set");
+  }
+  auto memref_ty = cast<MemRefType>(getOperand().getType());
+  if ((getNoHazard() || getNoHazardNoDeps()) &&
+      !HasMemorySpace(memref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Hazard overrides are only valid for VMEM allocations");
   }
   return success();
 }
@@ -1388,13 +1501,13 @@ LogicalResult MaskCastOp::verify() {
 }
 
 LogicalResult ScanOp::verify() {
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  if (issuing_core != CoreType::kScVectorSubcore) {
-    return emitOpError("Scan is supported only on the SC vector subcore");
-  }
-
   VectorType input_ty = getInput().getType();
   VectorType output_ty = getOutput().getType();
+
+  const int64_t dimension = getDimension();
+  if (dimension < 0 || dimension >= input_ty.getRank()) {
+    return emitOpError("Dimension must be in [0, rank).");
+  }
 
   if (input_ty.getElementType().isInteger(1)) {
     if (!output_ty.getElementType().isInteger(32)) {
@@ -1413,10 +1526,6 @@ LogicalResult ScanOp::verify() {
            << output_ty.getShape() << ").";
   }
 
-  if (input_ty.getRank() > 2) {
-    return emitOpError("Input must be a rank 1 or 2 vector.");
-  }
-
   if (input_ty.getElementType().isInteger(1) &&
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
@@ -1433,13 +1542,12 @@ LogicalResult ScanOp::verify() {
   }
 
   VectorType mask_ty = getMask().getType();
-  if (mask_ty.getRank() != 1) {
-    return emitOpError("Mask must be a rank 1 vector.");
-  }
-  if (mask_ty.getShape()[0] != input_ty.getShape()[input_ty.getRank() - 1]) {
+  // Enforced via VectorOfRankAndType in .td declaration:
+  CHECK_EQ(mask_ty.getRank(), 1);
+  if (mask_ty.getDimSize(0) != input_ty.getDimSize(dimension)) {
     return emitOpError("Mask and input mismatch. Expected mask of length: ")
-           << input_ty.getShape()[input_ty.getRank() - 1] << ", but got "
-           << mask_ty.getShape()[0] << ".";
+           << input_ty.getDimSize(dimension) << ", but got "
+           << mask_ty.getDimSize(0) << ".";
   }
 
   return success();
@@ -2067,11 +2175,7 @@ void PackSubelementsOp::build(OpBuilder& builder, OperationState& state,
         /*unsigned_integers=*/false);
 }
 
-LogicalResult PackSubelementsOp::verify() {
-  return verifyPackOp(*this,
-                      getElementTypeBitwidth(getSources().front().getType()) /
-                          getElementTypeBitwidth(getType()));
-}
+LogicalResult PackSubelementsOp::verify() { return verifyPackOp(*this); }
 
 void PackMaskOp::build(OpBuilder& builder, OperationState& state,
                        const VectorType output_type,
@@ -2087,17 +2191,7 @@ void PackMaskOp::build(OpBuilder& builder, OperationState& state,
   build(builder, state, output_type, sources, positions);
 }
 
-LogicalResult PackMaskOp::verify() {
-  auto getMaskPackingFactor = [](VectorType vty) -> int64_t {
-    if (vty.getRank() == 2) {
-      return 1;
-    }
-    return vty.getDimSize(2);
-  };
-  return verifyPackOp(*this, getMaskPackingFactor(getType()) /
-                                 getMaskPackingFactor(cast<VectorType>(
-                                     getSources().front().getType())));
-}
+LogicalResult PackMaskOp::verify() { return verifyPackOp(*this); }
 
 namespace {
 LogicalResult verifyElementwisePacking(Operation* op, Type unpacked_ty,
@@ -2467,6 +2561,17 @@ OpFoldResult ExtFOp::fold(FoldAdaptor adaptor) {
         }
         return *result;
       });
+}
+
+OpFoldResult ReducePrecisionOp::fold(FoldAdaptor adaptor) {
+  auto elem_ty = cast<FloatType>(getElementTypeOrSelf(getType()));
+  int32_t mantissa_bits = elem_ty.getFPMantissaWidth() - 1;
+  int32_t exponent_bits = elem_ty.getWidth() - mantissa_bits - 1;
+  if (getExponentBits() == exponent_bits &&
+      getMantissaBits() >= mantissa_bits) {
+    return getInput();
+  }
+  return nullptr;
 }
 
 LogicalResult ReshapeOp::verify() {

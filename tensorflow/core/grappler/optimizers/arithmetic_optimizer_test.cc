@@ -1483,7 +1483,7 @@ TEST_F(ArithmeticOptimizerTest,
 
   GrapplerItem item;
   item.fetch = {"outputs"};
-  Status s2 = s.ToGraphDef(&item.graph);
+  absl::Status s2 = s.ToGraphDef(&item.graph);
   EXPECT_FALSE(s2.ok());
   EXPECT_EQ(s2.code(), absl::StatusCode::kInvalidArgument);
 }

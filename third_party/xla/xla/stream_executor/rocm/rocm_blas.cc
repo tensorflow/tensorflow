@@ -503,16 +503,6 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float, float)
      *floats.)
      *
      **/
-    using GemmCallTrace = StreamExecutor::GemmCallTrace;
-
-// Log the GEMM operation if the logging mode is enabled.
-void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
-                              blas::CallContext context, uint64_t size1,
-                              uint64_t size2) {
-  auto status =
-      parent_->RecordApiTrace(GemmCallTrace{op, (int)context, size1, size2});
-}
-
 absl::Status ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                                   blas::Transpose transb, uint64_t m,
                                   uint64_t n, uint64_t k, blas::DataType dtype,
@@ -521,9 +511,6 @@ absl::Status ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                                   const void* beta, DeviceAddressBase* c,
                                   int ldc, const EngineOptions& engine_options,
                                   blas::CallContext context) {
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
-                 m * k * DtypeSize(dtype), n * k * DtypeSize(dtype));
-
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS GEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "
@@ -627,8 +614,6 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
                                context));
 
   } else {
-    MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
-                   m * k * DtypeSize(type_a), n * k * DtypeSize(type_a));
     CheckPreconditions(transa, transb, m, n, k, type_a, lda, ldb);
     ABSL_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
     ABSL_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
@@ -689,8 +674,6 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         ldb, stride_b, beta, c, ldc, stride_c, batch_count, engine_options,
         context));
   } else {
-    MaybeLogGemmOp(GemmCallTrace::GemmType::kStridedBatched, context, a.size(),
-                   b.size());
     VLOG(1) << absl::StreamFormat(
         "doing rocBLAS GEMM strided batched with Algorithm: at=%d bt=%d m=%u "
         "n=%u "
@@ -1120,8 +1103,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     DeviceAddressSlice<Eigen::half> c, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a.size(),
-                 b.size());
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
   absl::Status status;
@@ -1156,8 +1137,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     DeviceAddressSlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(),
-                 b_array.size());
   const Eigen::bfloat16 alpha_bf16(alpha);
   const Eigen::bfloat16 beta_bf16(beta);
 
@@ -1179,8 +1158,6 @@ bool ROCMBlas::DoBlasGemmBatched(
       int ldb, T beta, DeviceAddressSlice<T> c_array, int ldc,                 \
       int batch_count, const EngineOptions& engine_options,                    \
       ScratchAllocator* scratch_allocator, blas::CallContext context) {        \
-    MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(), \
-                   b_array.size());                                            \
     absl::Status status = DoBlasGemmBatchedInternal(                           \
         Fun, stream, transa, transb, m, n, k, alpha, a_array, lda, b_array,    \
         ldb, beta, c_array, ldc, batch_count, scratch_allocator);              \
@@ -1248,8 +1225,6 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
       a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc, stride_a,
       stride_b, stride_c, batch_count);
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kStridedBatched, context, a.size(),
-                 b.size());
 
   absl::Status status;
   auto call_gemm = [&](auto func, auto type) {
