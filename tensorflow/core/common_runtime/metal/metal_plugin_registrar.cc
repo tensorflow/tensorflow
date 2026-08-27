@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "tensorflow/core/common_runtime/metal/kernels/metal_kernels.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_plugin_init.h"
 
@@ -48,11 +49,15 @@ absl::Status RegisterMetalPlugin() {
   // core does the identical work: register a PluggableDeviceFactory for the
   // device type and wire up device-to-device tensor copies.
   //
-  // Only the device module is supplied. Kernels are registered separately
-  // through the Kernel C API, and the graph optimizer and profiler modules are
+  // Device and kernel modules. The graph optimizer and profiler modules are
   // not implemented yet, which core treats as absent rather than as an error.
+  //
+  // Kernels go through the api struct rather than through static initialisers
+  // of their own so that core orders kernel registration against device
+  // registration, instead of that order falling out of link order.
   PluggableDeviceInit_Api api;
   api.init_plugin_fn = MetalInitPlugin;
+  api.init_kernel_fn = RegisterAllMetalKernels;
   return RegisterPluggableDevicePlugin(&api);
 }
 

@@ -67,6 +67,7 @@ objc_library(
     name = "metal_kernels",
     srcs = [
         "metal_elementwise_ops.mm",
+        "metal_kernels.mm",
         "metal_matmul_op.mm",
     ],
     hdrs = ["metal_kernels.h"],

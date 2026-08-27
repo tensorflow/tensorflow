@@ -115,6 +115,7 @@ cc_library(
     alwayslink = 1,
     deps = [
         ":metal_platform",
+        "//tensorflow/core/common_runtime/metal/kernels:metal_kernels",
         "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_plugin_init",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
