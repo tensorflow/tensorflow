@@ -28,6 +28,9 @@ void RegisterMetalElementwiseKernels();
 // MatMul for float32 and float16, backed by MPSMatrixMultiplication.
 void RegisterMetalMatMulKernels();
 
+// Identity, which aliases its input when it can and blits when it cannot.
+void RegisterMetalIdentityKernels();
+
 // Registers every Metal kernel. Passed to core as the plugin's kernel module
 // (PluggableDeviceInit_Api::init_kernel_fn), so core decides when kernel
 // registration happens relative to device registration rather than the order
