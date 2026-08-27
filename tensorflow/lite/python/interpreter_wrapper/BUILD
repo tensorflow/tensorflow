@@ -28,6 +28,7 @@ cc_library(
     hdrs = ["numpy.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",

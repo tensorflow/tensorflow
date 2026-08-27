@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <mutex>
+#include "absl/base/call_once.h"
 
 #define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -27,8 +27,8 @@ namespace tflite {
 namespace python {
 
 void ImportNumpy() {
-  static std::once_flag flag;
-  std::call_once(flag, []() {
+  static absl::once_flag flag;
+  absl::call_once(flag, []() {
     import_array1();
   });
 }
