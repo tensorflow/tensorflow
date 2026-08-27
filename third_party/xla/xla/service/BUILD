@@ -7205,6 +7205,7 @@ xla_cc_test(
         ":cpu_plugin",
         ":hlo_cse",
         ":hlo_proto_cc",
+        ":hlo_verifier",
         ":xla_transform",
         "//xla:shape_layout",
         "//xla:shape_util",
