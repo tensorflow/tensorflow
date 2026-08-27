@@ -169,6 +169,7 @@ differently rather than fail.
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
 | `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |
 | `FakeQuantWithMinMaxVars`, `FakeQuantWithMinMaxVarsGradient` | float32 |
+| `FakeQuantWithMinMaxVarsPerChannel`, `FakeQuantWithMinMaxVarsPerChannelGradient` | float32 |
 | `MatrixBandPart`, `MatrixDiag`, `MatrixDiagPart`, `MatrixSetDiag` | float32, float16 |
 | `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
 | `MatrixSetDiagV2`, `MatrixSetDiagV3` | float32, float16; main diagonal only |
