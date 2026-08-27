@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -269,6 +270,243 @@ void FakeQuantGrad_ComputeImpl(QuantOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, @[ g_data, x_data ], @[ o_data ], status);
 }
 
+/*** THE VARS FORMS ***/
+
+// Same arithmetic as the Args forms, but min and max arrive as device
+// tensors. Nudging needs them on the host, so this drains the stream once per
+// call. That cost is real and is why the Args forms exist; quantisation-aware
+// training uses the Vars forms during calibration, where a drain per step is
+// tolerable and silently falling back to the host would be slower still.
+bool ReadRangeOnHost(TF_OpKernelContext* ctx, SP_Stream stream, int min_index,
+                     int max_index, float* min_value, float* max_value,
+                     TF_Status* status) {
+  uint64_t target = 0;
+  {
+    absl::MutexLock lock(&stream->mu);
+    target = stream->last_enqueued;
+  }
+  if (target > 0) {
+    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
+  }
+  ScopedTensor lo, hi;
+  TF_GetInput(ctx, min_index, lo.address(), status);
+  if (TF_GetCode(status) != TF_OK) return false;
+  TF_GetInput(ctx, max_index, hi.address(), status);
+  if (TF_GetCode(status) != TF_OK) return false;
+  const float* lo_p = static_cast<const float*>(TF_TensorData(lo.get()));
+  const float* hi_p = static_cast<const float*>(TF_TensorData(hi.get()));
+  if (lo_p == nullptr || hi_p == nullptr) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: FakeQuant range has no data.");
+    return false;
+  }
+  *min_value = *lo_p;
+  *max_value = *hi_p;
+  return true;
+}
+
+void FakeQuantVars_ComputeImpl(QuantOp* op, TF_OpKernelContext* ctx,
+                               TF_Status* status) {
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> shape = ShapeOf(input.get());
+  const int64_t count = ElementCount(shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, TF_FLOAT, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(TF_FLOAT), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  float min_value = 0.0f, max_value = 0.0f;
+  if (!ReadRangeOnHost(ctx, stream, 1, 2, &min_value, &max_value, status)) {
+    return;
+  }
+  float nudged_min, nudged_max, scale;
+  Nudge(min_value, max_value, op->num_bits, op->narrow_range, &nudged_min,
+        &nudged_max, &scale);
+
+  std::string key = "FakeQuantVars";
+  AppendShapeToKey(shape, &key);
+  key.append("/n").append(std::to_string(nudged_min)).push_back(',');
+  key.append(std::to_string(nudged_max)).push_back(',');
+  key.append(std::to_string(scale));
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(shape)
+                                           dataType:MPSDataTypeFloat32
+                                               name:nil];
+        MPSGraphTensor* lo =
+            [g constantWithScalar:nudged_min dataType:MPSDataTypeFloat32];
+        MPSGraphTensor* hi =
+            [g constantWithScalar:nudged_max dataType:MPSDataTypeFloat32];
+        MPSGraphTensor* inv =
+            [g constantWithScalar:1.0 / scale dataType:MPSDataTypeFloat32];
+        MPSGraphTensor* sc =
+            [g constantWithScalar:scale dataType:MPSDataTypeFloat32];
+        MPSGraphTensor* clamped =
+            [g clampWithTensor:x minValueTensor:lo maxValueTensor:hi name:nil];
+        MPSGraphTensor* shifted =
+            [g subtractionWithPrimaryTensor:clamped secondaryTensor:lo name:nil];
+        MPSGraphTensor* steps = [g
+            roundWithTensor:[g multiplicationWithPrimaryTensor:shifted
+                                              secondaryTensor:inv
+                                                         name:nil]
+                       name:nil];
+        [out->inputs addObject:x];
+        [out->outputs
+            addObject:[g additionWithPrimaryTensor:
+                             [g multiplicationWithPrimaryTensor:steps
+                                                secondaryTensor:sc
+                                                           name:nil]
+                                   secondaryTensor:lo
+                                              name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), TF_FLOAT, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), TF_FLOAT, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
+}
+
+// The Vars gradient produces three outputs: the pass-through gradient and the
+// sums of the gradient below and above the nudged range, which are what the
+// range parameters learn from.
+void FakeQuantVarsGrad_ComputeImpl(QuantOp* op, TF_OpKernelContext* ctx,
+                                   TF_Status* status) {
+  ScopedTensor grad, input;
+  TF_GetInput(ctx, 0, grad.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> shape = ShapeOf(input.get());
+  const int64_t count = ElementCount(shape);
+  ScopedTensor dx, dmin, dmax;
+  dx.reset(TF_AllocateOutput(
+      ctx, 0, TF_FLOAT, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(TF_FLOAT), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  dmin.reset(TF_AllocateOutput(ctx, 1, TF_FLOAT, nullptr, 0,
+                               TF_DataTypeSize(TF_FLOAT), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  dmax.reset(TF_AllocateOutput(ctx, 2, TF_FLOAT, nullptr, 0,
+                               TF_DataTypeSize(TF_FLOAT), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  float min_value = 0.0f, max_value = 0.0f;
+  if (!ReadRangeOnHost(ctx, stream, 2, 3, &min_value, &max_value, status)) {
+    return;
+  }
+  float nudged_min, nudged_max, scale;
+  Nudge(min_value, max_value, op->num_bits, op->narrow_range, &nudged_min,
+        &nudged_max, &scale);
+
+  std::string key = "FakeQuantVarsGrad";
+  AppendShapeToKey(shape, &key);
+  key.append("/n").append(std::to_string(nudged_min)).push_back(',');
+  key.append(std::to_string(nudged_max));
+
+  NSMutableArray<NSNumber*>* all_axes = [NSMutableArray array];
+  for (size_t i = 0; i < shape.size(); ++i) {
+    [all_axes addObject:@(static_cast<NSInteger>(i))];
+  }
+  const std::vector<int64_t> scalar_shape = {};
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* dy = [g placeholderWithShape:MPSShape(shape)
+                                            dataType:MPSDataTypeFloat32
+                                                name:nil];
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(shape)
+                                           dataType:MPSDataTypeFloat32
+                                               name:nil];
+        MPSGraphTensor* lo =
+            [g constantWithScalar:nudged_min dataType:MPSDataTypeFloat32];
+        MPSGraphTensor* hi =
+            [g constantWithScalar:nudged_max dataType:MPSDataTypeFloat32];
+        MPSGraphTensor* zero =
+            [g constantWithScalar:0.0 dataType:MPSDataTypeFloat32];
+        MPSGraphTensor* below =
+            [g lessThanWithPrimaryTensor:x secondaryTensor:lo name:nil];
+        MPSGraphTensor* above =
+            [g greaterThanWithPrimaryTensor:x secondaryTensor:hi name:nil];
+        MPSGraphTensor* inside = [g
+            logicalANDWithPrimaryTensor:[g notWithTensor:below name:nil]
+                        secondaryTensor:[g notWithTensor:above name:nil]
+                                   name:nil];
+        [out->inputs addObject:dy];
+        [out->inputs addObject:x];
+        [out->outputs addObject:[g selectWithPredicateTensor:inside
+                                        truePredicateTensor:dy
+                                       falsePredicateTensor:zero
+                                                       name:nil]];
+        [out->outputs
+            addObject:[g reshapeTensor:
+                             [g reductionSumWithTensor:
+                                    [g selectWithPredicateTensor:below
+                                                truePredicateTensor:dy
+                                               falsePredicateTensor:zero
+                                                               name:nil]
+                                                  axes:all_axes
+                                                  name:nil]
+                             withShape:MPSShape(scalar_shape)
+                                  name:nil]];
+        [out->outputs
+            addObject:[g reshapeTensor:
+                             [g reductionSumWithTensor:
+                                    [g selectWithPredicateTensor:above
+                                                truePredicateTensor:dy
+                                               falsePredicateTensor:zero
+                                                               name:nil]
+                                                  axes:all_axes
+                                                  name:nil]
+                             withShape:MPSShape(scalar_shape)
+                                  name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* g_data =
+      TensorDataForTensor(grad.get(), TF_FLOAT, device, status);
+  if (g_data == nil) return;
+  MPSGraphTensorData* x_data =
+      TensorDataForTensor(input.get(), TF_FLOAT, device, status);
+  if (x_data == nil) return;
+  MPSGraphTensorData* dx_data =
+      TensorDataForTensor(dx.get(), TF_FLOAT, device, status);
+  if (dx_data == nil) return;
+  MPSGraphTensorData* dmin_data =
+      TensorDataForTensor(dmin.get(), TF_FLOAT, device, status);
+  if (dmin_data == nil) return;
+  MPSGraphTensorData* dmax_data =
+      TensorDataForTensor(dmax.get(), TF_FLOAT, device, status);
+  if (dmax_data == nil) return;
+  RunGraph(stream, *cached, @[ g_data, x_data ],
+           @[ dx_data, dmin_data, dmax_data ], status);
+}
+
 #define METAL_COMPUTE(NAME, IMPL)                                             \
   void NAME(void* kernel, TF_OpKernelContext* ctx) {                          \
     ScopedAutoreleasePool pool;                                               \
@@ -285,6 +523,8 @@ void FakeQuantGrad_ComputeImpl(QuantOp* op, TF_OpKernelContext* ctx,
 
 METAL_COMPUTE(FakeQuant_Compute, FakeQuant_ComputeImpl)
 METAL_COMPUTE(FakeQuantGrad_Compute, FakeQuantGrad_ComputeImpl)
+METAL_COMPUTE(FakeQuantVars_Compute, FakeQuantVars_ComputeImpl)
+METAL_COMPUTE(FakeQuantVarsGrad_Compute, FakeQuantVarsGrad_ComputeImpl)
 
 #undef METAL_COMPUTE
 
@@ -305,13 +545,16 @@ void Register(const char* op_name,
 }  // namespace
 
 void RegisterMetalQuantKernels() {
-  // Only the Args forms, whose bounds are attributes. The Vars forms take the
-  // range as device tensors, which would mean nudging on the host and draining
-  // the stream on every call.
+  // The Args forms take their bounds as attributes; the Vars forms take them
+  // as device tensors and pay a stream drain per call to nudge on the host.
   Register("FakeQuantWithMinMaxArgs", &FakeQuant_Compute,
            "MetalFakeQuantWithMinMaxArgs");
   Register("FakeQuantWithMinMaxArgsGradient", &FakeQuantGrad_Compute,
            "MetalFakeQuantWithMinMaxArgsGradient");
+  Register("FakeQuantWithMinMaxVars", &FakeQuantVars_Compute,
+           "MetalFakeQuantWithMinMaxVars");
+  Register("FakeQuantWithMinMaxVarsGradient", &FakeQuantVarsGrad_Compute,
+           "MetalFakeQuantWithMinMaxVarsGradient");
 }
 
 }  // namespace metal
