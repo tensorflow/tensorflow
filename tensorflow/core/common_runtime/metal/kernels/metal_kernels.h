@@ -55,6 +55,10 @@ void RegisterMetalRandomKernels();
 // closes a training step.
 void RegisterMetalTrainingKernels();
 
+// Transpose, AddN and AvgPool over float tensors. TensorFlow registers the
+// first two generically for int32 in host memory only.
+void RegisterMetalArrayKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
