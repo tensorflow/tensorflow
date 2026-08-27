@@ -144,6 +144,10 @@ differently rather than fail.
 | `Exp`, `Log`, `Tanh`, `Sigmoid` | float32, float16 |
 | `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
 | `AddN`, `Transpose` | float32, float16 |
+| `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
+| `LogicalAnd`, `LogicalOr`, `LogicalNot` | bool |
+| `Select`, `SelectV2` | float32, float16, int32, int64 |
+| `ArgMax`, `ArgMin` | float32, float16; int32 or int64 output |
 | `Sum`, `Mean` | float32, float16 |
 | `Fill`, `ZerosLike`, `OnesLike` | float32, float16 |
 | `RandomUniform`, `RandomStandardNormal`, `TruncatedNormal` | float32 |

@@ -63,6 +63,10 @@ void RegisterMetalArrayKernels();
 // inference mode.
 void RegisterMetalBatchNormKernels();
 
+// Comparisons, the logical operators, Select and ArgMax/ArgMin, which is what
+// an accuracy metric is built from.
+void RegisterMetalCompareKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

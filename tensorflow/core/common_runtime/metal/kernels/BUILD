@@ -94,6 +94,7 @@ objc_library(
         "metal_array_ops.mm",
         "metal_batch_norm_ops.mm",
         "metal_conv_ops.mm",
+        "metal_compare_ops.mm",
         "metal_reduction_ops.mm",
         "metal_elementwise_ops.mm",
         "metal_fill_ops.mm",
