@@ -121,6 +121,9 @@ void RegisterMetalExtraKernels();
 // ResourceGather and ResourceScatterUpdate.
 void RegisterMetalResourceKernels();
 
+// Max pooling with indices, and the second-order pooling gradients.
+void RegisterMetalMaxPoolArgmaxKernels();
+
 // Dilation2D, grayscale morphological dilation.
 void RegisterMetalDilationKernels();
 

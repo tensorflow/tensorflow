@@ -133,6 +133,8 @@ differently rather than fail.
 | `Conv3DBackpropInput`, `Conv3DBackpropFilter` | float32, float16 |
 | `MaxPool`, `MaxPoolGrad`, `AvgPool`, `AvgPoolGrad` | float32, float16 |
 | `MaxPoolV2`, `MaxPoolGradV2` | float32, float16 |
+| `MaxPoolWithArgmax`, `MaxPoolGradWithArgmax`, `MaxPoolGradGradWithArgmax` | float32 |
+| `MaxPoolGradGrad`, `MaxPoolGradGradV2` | float32 |
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
 | `Dilation2D` | float32, float16 |
 | `Dilation2DBackpropInput`, `Dilation2DBackpropFilter` | float32 |
@@ -222,10 +224,12 @@ inherits when it has no kernel of its own.
   non-finite value on device needs a readback of a reduction on every call,
   which would serialise the stream. The values pass through unchanged; the
   op does not raise.
-* **`MaxPoolWithArgmax` is not implemented.** MPSGraph returns the position
-  within the pooling window rather than the flattened position in the image,
-  and emitting indices in the wrong coordinate system would quietly corrupt
-  any model that unpools with them.
+* **The max pooling ops that carry indices are float32 and NHWC only.**
+  MPSGraph reports the winner's position within the pooling window rather
+  than the flattened position in the image that TensorFlow defines, so these
+  run as shaders that scan the window and emit TensorFlow's index directly.
+  The gradient accumulates with a Metal atomic, which exists for float and
+  not for half.
 * **The resize gradients are not implemented.** Every MPSGraph resize
   gradient entry point aborts the process on the current SDK with a channel
   mismatch assertion, for every shape and layout tried. Registering a kernel

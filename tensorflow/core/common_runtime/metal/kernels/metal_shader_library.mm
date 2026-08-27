@@ -421,6 +421,137 @@ kernel void tf_dilation_backprop_filter_float(
   atomic_fetch_add_explicit(&filter_backprop[index], grad[gid],
                             memory_order_relaxed);
 }
+
+// ---- max pooling with indices ----
+
+struct PoolIndexParams {
+  uint batch;
+  uint in_h;
+  uint in_w;
+  uint channels;
+  uint out_h;
+  uint out_w;
+  uint kh;
+  uint kw;
+  uint stride_h;
+  uint stride_w;
+  int pad_top;
+  int pad_left;
+  uint count;
+  uint include_batch;
+  uint pad0;
+  uint pad1;
+};
+
+// The whole argmax family shares one window scan. It is written here rather
+// than taken from MPSGraph because MPSGraph reports the winner's position
+// inside the pooling window, while TensorFlow defines the index as a position
+// in the flattened image; emitting the former under the latter's name would
+// quietly corrupt every model that unpools with these indices.
+//
+// `offset` is the winner's linear position in the input including the batch;
+// `flat` is the same in TensorFlow's convention, which drops the batch unless
+// include_batch_in_index is set. Ties go to the earliest position in row-major
+// scan order, matching the CPU and CUDA kernels.
+#define TF_METAL_POOL_ARGMAX(SRC)                                             \
+  const uint c = gid % params.channels;                                       \
+  const uint ox = (gid / params.channels) % params.out_w;                     \
+  const uint oy = (gid / (params.channels * params.out_w)) % params.out_h;    \
+  const uint b = gid / (params.channels * params.out_w * params.out_h);       \
+  const int h_beg = int(oy * params.stride_h) - params.pad_top;               \
+  const int w_beg = int(ox * params.stride_w) - params.pad_left;              \
+  float best = -INFINITY;                                                     \
+  uint best_y = uint(max(h_beg, 0));                                          \
+  uint best_x = uint(max(w_beg, 0));                                          \
+  for (uint ky = 0; ky < params.kh; ++ky) {                                   \
+    const int iy = h_beg + int(ky);                                           \
+    if (iy < 0 || iy >= int(params.in_h)) continue;                           \
+    for (uint kx = 0; kx < params.kw; ++kx) {                                 \
+      const int ix = w_beg + int(kx);                                         \
+      if (ix < 0 || ix >= int(params.in_w)) continue;                         \
+      const float v =                                                         \
+          SRC[((b * params.in_h + uint(iy)) * params.in_w + uint(ix)) *       \
+                  params.channels + c];                                       \
+      if (v > best) { best = v; best_y = uint(iy); best_x = uint(ix); }       \
+    }                                                                         \
+  }                                                                           \
+  const uint offset =                                                         \
+      ((b * params.in_h + best_y) * params.in_w + best_x) * params.channels + \
+      c;                                                                      \
+  const uint flat =                                                           \
+      params.include_batch != 0                                               \
+          ? offset                                                            \
+          : ((best_y * params.in_w + best_x) * params.channels + c);
+
+#define TF_METAL_POOL_ARGMAX_FWD(NAME, IDX)                                   \
+  kernel void NAME(device const float* in [[buffer(0)]],                      \
+                   device float* out [[buffer(1)]],                           \
+                   device IDX* argmax [[buffer(2)]],                          \
+                   constant PoolIndexParams& params [[buffer(3)]],            \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    TF_METAL_POOL_ARGMAX(in)                                                  \
+    out[gid] = best;                                                          \
+    argmax[gid] = IDX(flat);                                                  \
+  }
+
+TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_float_i32, int)
+TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_float_i64, long)
+
+// Scatters one pooled gradient back to the input element that won its window.
+// Overlapping windows share winners, so the accumulation is atomic. The index
+// is turned back into a full offset here, since TensorFlow's default form
+// drops the batch.
+#define TF_METAL_POOL_GRAD_ARGMAX(NAME, IDX)                                  \
+  kernel void NAME(device const float* grad [[buffer(0)]],                    \
+                   device const IDX* argmax [[buffer(1)]],                    \
+                   device atomic_float* out [[buffer(2)]],                    \
+                   constant PoolIndexParams& params [[buffer(3)]],            \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const uint per_image = params.in_h * params.in_w * params.channels;       \
+    const uint b = gid / (params.channels * params.out_w * params.out_h);     \
+    uint index = uint(argmax[gid]);                                           \
+    if (params.include_batch == 0) index += b * per_image;                    \
+    if (index >= params.batch * per_image) return;                            \
+    atomic_fetch_add_explicit(&out[index], grad[gid], memory_order_relaxed);  \
+  }
+
+TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_float_i32, int)
+TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_float_i64, long)
+
+// The second-order gradient is the gather that mirrors that scatter: each
+// pooled position reads the input-shaped gradient at the element it selected.
+// No atomics, since every pooled position writes its own slot.
+#define TF_METAL_POOL_GRADGRAD_ARGMAX(NAME, IDX)                              \
+  kernel void NAME(device const float* grad [[buffer(0)]],                    \
+                   device const IDX* argmax [[buffer(1)]],                    \
+                   device float* out [[buffer(2)]],                           \
+                   constant PoolIndexParams& params [[buffer(3)]],            \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const uint per_image = params.in_h * params.in_w * params.channels;       \
+    const uint b = gid / (params.channels * params.out_w * params.out_h);     \
+    uint index = uint(argmax[gid]);                                           \
+    if (params.include_batch == 0) index += b * per_image;                    \
+    out[gid] = index < params.batch * per_image ? grad[index] : 0.0f;         \
+  }
+
+TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_float_i32, int)
+TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_float_i64, long)
+
+// MaxPoolGradGrad without stored indices: the winner is recomputed from the
+// original input, then the input-shaped gradient is read there.
+kernel void tf_maxpool_gradgrad_float(device const float* in [[buffer(0)]],
+                                      device const float* grad [[buffer(1)]],
+                                      device float* out [[buffer(2)]],
+                                      constant PoolIndexParams& params
+                                          [[buffer(3)]],
+                                      uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  TF_METAL_POOL_ARGMAX(in)
+  out[gid] = grad[offset];
+}
 )METAL";
 
 class ShaderLibrary {
