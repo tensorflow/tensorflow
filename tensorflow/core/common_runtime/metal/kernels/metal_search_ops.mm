@@ -57,6 +57,8 @@ struct SearchOp {
   TF_DataType out_dtype = TF_INT32;
   int64_t k = 1;
   bool sorted = true;
+  // ApproxTopK can be asked for the smallest rather than the largest.
+  bool is_max_k = true;
 };
 
 void* SearchOp_Create(TF_OpKernelConstruction* ctx) {
@@ -80,6 +82,21 @@ void* SearchOp_Create(TF_OpKernelConstruction* ctx) {
   TF_OpKernelConstruction_GetAttrBool(ctx, "sorted", &sorted, status);
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
   op->sorted = sorted != 0;
+  TF_Bool is_max = 1;
+  TF_OpKernelConstruction_GetAttrBool(ctx, "is_max_k", &is_max, status);
+  if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
+  op->is_max_k = is_max != 0;
+  int32_t reduction_dimension = -1;
+  TF_OpKernelConstruction_GetAttrInt32(ctx, "reduction_dimension",
+                                       &reduction_dimension, status);
+  if (TF_GetCode(status) == TF_OK && reduction_dimension >= 0) {
+    // The op allows any axis; only the last one is handled here, which is the
+    // axis every caller of ApproxTopK actually uses. Rejecting the rest is
+    // better than transposing behind the caller's back and calling it
+    // approximate.
+    op->k = -1;
+  }
+  TF_SetStatus(status, TF_OK, "");
   TF_DeleteStatus(status);
   return op;
 }
@@ -380,6 +397,96 @@ void TopK_ComputeImpl(SearchOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, @[ in_data ], @[ v_data, i_data ], status);
 }
 
+/*** APPROXIMATE TOP K ***/
+
+// ApproxTopK is allowed to trade recall for speed, and returning the exact
+// answer satisfies any recall target it is given. That is what this does: the
+// same sort the exact op uses, which on this hardware is fast enough that an
+// approximation would buy little and cost a guarantee.
+//
+// The smallest-k form negates the input, takes the largest, and negates the
+// values back, which leaves the indices already correct.
+void ApproxTopK_ComputeImpl(SearchOp* op, TF_OpKernelContext* ctx,
+                            TF_Status* status) {
+  if (op->k < 0) {
+    TF_SetStatus(status, TF_UNIMPLEMENTED,
+                 "Metal: ApproxTopK reduces over the last dimension only.");
+    return;
+  }
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> in_shape = ShapeOf(input.get());
+  if (in_shape.empty() || op->k > in_shape.back()) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: ApproxTopK k is out of range.");
+    return;
+  }
+  std::vector<int64_t> out_shape = in_shape;
+  out_shape.back() = op->k;
+  const int64_t count = ElementCount(out_shape);
+
+  ScopedTensor values, indices;
+  values.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), static_cast<int>(out_shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  indices.reset(TF_AllocateOutput(
+      ctx, 1, TF_INT32, out_shape.data(), static_cast<int>(out_shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(TF_INT32), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = "ApproxTopK";
+  AppendShapeToKey(in_shape, &key);
+  key.append("/k").append(std::to_string(op->k));
+  key.append(op->is_max_k ? "/max" : "/min");
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  const NSUInteger k = static_cast<NSUInteger>(op->k);
+  const bool is_max_k = op->is_max_k;
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(in_shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* source =
+            is_max_k ? x : [g negativeWithTensor:x name:nil];
+        NSArray<MPSGraphTensor*>* r = [g topKWithSourceTensor:source
+                                                            k:k
+                                                         name:nil];
+        MPSGraphTensor* v =
+            is_max_k ? r[0] : [g negativeWithTensor:r[0] name:nil];
+        [out->inputs addObject:x];
+        [out->outputs addObject:v];
+        [out->outputs addObject:[g castTensor:r[1]
+                                       toType:MPSDataTypeInt32
+                                         name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), op->dtype, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* v_data =
+      TensorDataForTensor(values.get(), op->dtype, device, status);
+  if (v_data == nil) return;
+  MPSGraphTensorData* i_data =
+      TensorDataForTensor(indices.get(), TF_INT32, device, status);
+  if (i_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ v_data, i_data ], status);
+}
+
 /*** WRAPPERS AND REGISTRATION ***/
 
 #define METAL_COMPUTE(NAME, IMPL)                                             \
@@ -400,6 +507,7 @@ METAL_COMPUTE(LowerBound_Compute, Bound_ComputeImpl<false>)
 METAL_COMPUTE(UpperBound_Compute, Bound_ComputeImpl<true>)
 METAL_COMPUTE(Histogram_Compute, Histogram_ComputeImpl)
 METAL_COMPUTE(TopK_Compute, TopK_ComputeImpl)
+METAL_COMPUTE(ApproxTopK_Compute, ApproxTopK_ComputeImpl)
 
 #undef METAL_COMPUTE
 
@@ -439,6 +547,8 @@ void RegisterMetalSearchKernels() {
     const TF_DataType t = kDTypes[i];
     const std::string s = kSuffixes[i];
     Register("TopK", &TopK_Compute, t, "MetalTopK" + s, {});
+    Register("ApproxTopK", &ApproxTopK_Compute, t,
+             "MetalApproxTopK" + s, {});
     for (int j = 0; j < 2; ++j) {
       Register("LowerBound", &LowerBound_Compute, t,
                "MetalLowerBound" + s + kOutSuffixes[j], {}, "out_type",

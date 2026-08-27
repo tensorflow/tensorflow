@@ -142,6 +142,9 @@ void RegisterMetalRnnKernels();
 // The ops whose output shape depends on their input values.
 void RegisterMetalDynamicKernels();
 
+// The two ops a parallel stack decomposes into.
+void RegisterMetalInplaceKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 

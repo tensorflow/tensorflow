@@ -176,6 +176,8 @@ differently rather than fail.
 | `ResourceGather`, `ResourceScatterUpdate` | float32, float16 |
 | `GatherNd`, `ResourceGatherNd` | float32, float16 |
 | `TopK`, `LowerBound`, `UpperBound`, `HistogramFixedWidth` | float32, float16 |
+| `ApproxTopK` | float32, float16 |
+| `_ParallelConcatStart`, `_ParallelConcatUpdate` | float32, float16, int32, int64 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
 | `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |
 | `FakeQuantWithMinMaxVars`, `FakeQuantWithMinMaxVarsGradient` | float32 |
