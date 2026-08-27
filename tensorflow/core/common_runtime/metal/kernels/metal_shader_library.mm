@@ -1443,6 +1443,156 @@ kernel void tf_selfadjoint_eig_float(device const float* input [[buffer(0)]],
     for (uint i = 0; i < n * n; ++i) vd[i] = vec[i];
   }
 }
+
+// ---- connectionist temporal classification ----
+
+struct CtcParams {
+  uint batch;
+  uint max_time;
+  uint num_classes;
+  uint blank;
+  uint max_labels;
+  uint pad0;
+  uint pad1;
+  uint pad2;
+};
+
+static inline float tf_logaddexp(float a, float b) {
+  if (a == -INFINITY) return b;
+  if (b == -INFINITY) return a;
+  const float m = max(a, b);
+  return m + log(exp(a - m) + exp(b - m));
+}
+
+// The forward-backward algorithm, one thread per sequence.
+//
+// Both passes are recurrences over time, so within a sequence there is nothing
+// to run in parallel; the batch is the width, exactly as in the factorisations.
+// Everything is in log space: the alignment probabilities underflow float long
+// before a sequence of any interesting length is over.
+//
+// The extended label sequence interleaves blanks, so position s holds a blank
+// when s is even and label s/2 otherwise, and a transition may skip two
+// positions only when that would not merge two identical labels.
+kernel void tf_ctc_loss_float(device const float* logits [[buffer(0)]],
+                              device const int* labels [[buffer(1)]],
+                              device const int* label_lengths [[buffer(2)]],
+                              device const int* seq_lengths [[buffer(3)]],
+                              device float* loss [[buffer(4)]],
+                              device float* grad [[buffer(5)]],
+                              device float* scratch [[buffer(6)]],
+                              constant CtcParams& params [[buffer(7)]],
+                              uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.batch) return;
+  const uint classes = params.num_classes;
+  const uint blank = params.blank;
+  const uint smax = 2u * params.max_labels + 1u;
+  const uint time_steps = min(uint(max(seq_lengths[gid], 0)), params.max_time);
+  const uint label_count = uint(max(label_lengths[gid], 0));
+  const uint states = 2u * label_count + 1u;
+
+  device const int* label = labels + gid * params.max_labels;
+  device float* alpha = scratch + gid * 2u * params.max_time * smax;
+  device float* beta = alpha + params.max_time * smax;
+
+  loss[gid] = 0.0f;
+  if (time_steps == 0u) return;
+
+  // The class at extended position s.
+  #define TF_CTC_LABEL(S) (((S) & 1u) == 0u ? blank : uint(label[(S) >> 1]))
+
+  // log softmax at one time step, computed on demand rather than stored: the
+  // table would be larger than the recurrences it feeds.
+  #define TF_CTC_LOGY(T, K, LSE) \
+      (logits[((T) * params.batch + gid) * classes + (K)] - (LSE))
+
+  for (uint t = 0u; t < time_steps; ++t) {
+    device const float* row = logits + (t * params.batch + gid) * classes;
+    float m = -INFINITY;
+    for (uint k = 0u; k < classes; ++k) m = max(m, row[k]);
+    float sum = 0.0f;
+    for (uint k = 0u; k < classes; ++k) sum += exp(row[k] - m);
+    const float lse = m + log(sum);
+    // The normaliser is stashed in the gradient's own slot, which is about to
+    // be overwritten anyway, so no extra scratch is needed for it.
+    grad[(t * params.batch + gid) * classes] = lse;
+  }
+
+  for (uint s = 0u; s < states; ++s) alpha[s] = -INFINITY;
+  {
+    const float lse = grad[(0u * params.batch + gid) * classes];
+    alpha[0] = TF_CTC_LOGY(0u, blank, lse);
+    if (states > 1u) alpha[1] = TF_CTC_LOGY(0u, uint(label[0]), lse);
+  }
+  for (uint t = 1u; t < time_steps; ++t) {
+    const float lse = grad[(t * params.batch + gid) * classes];
+    for (uint s = 0u; s < states; ++s) {
+      const uint lab = TF_CTC_LABEL(s);
+      float v = alpha[(t - 1u) * smax + s];
+      if (s >= 1u) v = tf_logaddexp(v, alpha[(t - 1u) * smax + s - 1u]);
+      if (s >= 2u && lab != blank && lab != TF_CTC_LABEL(s - 2u)) {
+        v = tf_logaddexp(v, alpha[(t - 1u) * smax + s - 2u]);
+      }
+      alpha[t * smax + s] =
+          v == -INFINITY ? -INFINITY : v + TF_CTC_LOGY(t, lab, lse);
+    }
+  }
+
+  const uint last = time_steps - 1u;
+  for (uint s = 0u; s < states; ++s) beta[last * smax + s] = -INFINITY;
+  {
+    const float lse = grad[(last * params.batch + gid) * classes];
+    beta[last * smax + states - 1u] = TF_CTC_LOGY(last, blank, lse);
+    if (states > 1u) {
+      beta[last * smax + states - 2u] =
+          TF_CTC_LOGY(last, uint(label[label_count - 1u]), lse);
+    }
+  }
+  for (uint t = last; t > 0u; --t) {
+    const uint prev = t - 1u;
+    const float lse = grad[(prev * params.batch + gid) * classes];
+    for (uint s = 0u; s < states; ++s) {
+      const uint lab = TF_CTC_LABEL(s);
+      float v = beta[t * smax + s];
+      if (s + 1u < states) v = tf_logaddexp(v, beta[t * smax + s + 1u]);
+      if (s + 2u < states && lab != blank && lab != TF_CTC_LABEL(s + 2u)) {
+        v = tf_logaddexp(v, beta[t * smax + s + 2u]);
+      }
+      beta[prev * smax + s] =
+          v == -INFINITY ? -INFINITY : v + TF_CTC_LOGY(prev, lab, lse);
+    }
+  }
+
+  float loglike = alpha[last * smax + states - 1u];
+  if (states > 1u) {
+    loglike = tf_logaddexp(loglike, alpha[last * smax + states - 2u]);
+  }
+  loss[gid] = -loglike;
+
+  for (uint t = 0u; t < time_steps; ++t) {
+    const float lse = grad[(t * params.batch + gid) * classes];
+    device float* row = grad + (t * params.batch + gid) * classes;
+    for (uint k = 0u; k < classes; ++k) {
+      row[k] = exp(logits[(t * params.batch + gid) * classes + k] - lse);
+    }
+    // No alignment reaches the end: the label cannot be produced in this many
+    // steps. The loss is infinite and the gradient is left at the prediction,
+    // rather than made into a not-a-number by subtracting one infinity from
+    // another.
+    if (loglike == -INFINITY) continue;
+    for (uint s = 0u; s < states; ++s) {
+      const uint lab = TF_CTC_LABEL(s);
+      const float ab = alpha[t * smax + s] + beta[t * smax + s];
+      if (ab == -INFINITY) continue;
+      // alpha and beta each carry this step's own emission, so one copy is
+      // divided back out before the posterior is formed.
+      row[lab] -= exp(ab - TF_CTC_LOGY(t, lab, lse) - loglike);
+    }
+  }
+
+  #undef TF_CTC_LABEL
+  #undef TF_CTC_LOGY
+}
 )METAL";
 
 class ShaderLibrary {

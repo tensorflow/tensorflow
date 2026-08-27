@@ -154,6 +154,9 @@ void RegisterMetalNmsKernels();
 // Conv, the rank-agnostic convolution.
 void RegisterMetalGenericConvKernels();
 
+// CTCLoss and CTCLossV2.
+void RegisterMetalCtcKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 

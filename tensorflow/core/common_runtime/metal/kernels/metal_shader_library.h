@@ -271,6 +271,20 @@ struct FactorParams {
   uint32_t padding1;
 };
 
+// Parameters for the connectionist temporal classification loss. Layout must
+// match the Metal struct. `blank` is the class index the alignment treats as
+// the blank, which differs between the two versions of the op.
+struct CtcParams {
+  uint32_t batch;
+  uint32_t max_time;
+  uint32_t num_classes;
+  uint32_t blank;
+  uint32_t max_labels;
+  uint32_t padding0;
+  uint32_t padding1;
+  uint32_t padding2;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
