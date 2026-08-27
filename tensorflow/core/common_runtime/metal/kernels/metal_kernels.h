@@ -39,6 +39,10 @@ void RegisterMetalNnKernels();
 // MaxPool and its gradient, on MPSGraph.
 void RegisterMetalPoolingKernels();
 
+// Sum and Mean over float tensors, on MPSGraph. TensorFlow's DEVICE_DEFAULT
+// registrations for these cover int32 in host memory only.
+void RegisterMetalReductionKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
