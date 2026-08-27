@@ -149,6 +149,9 @@ differently rather than fail.
 | `Log1p`, `Expm1` | float32, float16 |
 | `FloorDiv`, `FloorMod`, `Mod` | float32, float16 |
 | `Exp`, `Log`, `Tanh`, `Sigmoid` | float32, float16 |
+| `Sin`, `Cos`, `Tan`, `Asin`, `Acos`, `Atan` | float32, float16 |
+| `Sinh`, `Cosh`, `Asinh`, `Acosh`, `Atanh`, `Atan2` | float32, float16 |
+| `Xdivy`, `Xlogy` | float32, float16 |
 | `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
 | `AddN`, `Transpose`, `Concat`, `ConcatV2`, `Tile` | float32, float16 |
 | `Slice`, `Pad`, `PadV2`, `MirrorPad` | float32, float16 |

@@ -86,7 +86,7 @@ int64_t ElementCount(const std::vector<int64_t>& shape) {
 
 enum class BinaryKind {
   kAdd, kSub, kMul, kDiv, kMaximum, kMinimum, kPow, kSquaredDifference,
-  kFloorDiv, kFloorMod, kMod,
+  kFloorDiv, kFloorMod, kMod, kAtan2, kXdivy, kXlogy,
 };
 
 const char* NameOf(BinaryKind k) {
@@ -102,12 +102,15 @@ const char* NameOf(BinaryKind k) {
     case BinaryKind::kFloorDiv: return "FloorDiv";
     case BinaryKind::kFloorMod: return "FloorMod";
     case BinaryKind::kMod: return "Mod";
+    case BinaryKind::kAtan2: return "Atan2";
+    case BinaryKind::kXdivy: return "Xdivy";
+    case BinaryKind::kXlogy: return "Xlogy";
   }
   return "?";
 }
 
 MPSGraphTensor* ApplyBinary(MPSGraph* g, BinaryKind k, MPSGraphTensor* a,
-                            MPSGraphTensor* b) {
+                            MPSGraphTensor* b, MPSDataType t) {
   switch (k) {
     case BinaryKind::kAdd:
       return [g additionWithPrimaryTensor:a secondaryTensor:b name:nil];
@@ -139,6 +142,35 @@ MPSGraphTensor* ApplyBinary(MPSGraph* g, BinaryKind k, MPSGraphTensor* a,
       return [g floorModuloWithPrimaryTensor:a secondaryTensor:b name:nil];
     case BinaryKind::kMod:
       return [g moduloWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kAtan2:
+      return [g atan2WithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kXdivy: {
+      // x/y, but 0 wherever x is 0, even where y is 0 too.
+      MPSGraphTensor* zero = [g constantWithScalar:0.0 dataType:t];
+      MPSGraphTensor* is_zero =
+          [g equalWithPrimaryTensor:a secondaryTensor:zero name:nil];
+      return [g selectWithPredicateTensor:is_zero
+                      truePredicateTensor:zero
+                     falsePredicateTensor:
+                         [g divisionWithPrimaryTensor:a
+                                      secondaryTensor:b
+                                                 name:nil]
+                                     name:nil];
+    }
+    case BinaryKind::kXlogy: {
+      // x*log(y), but 0 wherever x is 0, even where log(y) is -inf.
+      MPSGraphTensor* zero = [g constantWithScalar:0.0 dataType:t];
+      MPSGraphTensor* is_zero =
+          [g equalWithPrimaryTensor:a secondaryTensor:zero name:nil];
+      MPSGraphTensor* prod =
+          [g multiplicationWithPrimaryTensor:a
+                             secondaryTensor:[g logarithmWithTensor:b name:nil]
+                                        name:nil];
+      return [g selectWithPredicateTensor:is_zero
+                      truePredicateTensor:zero
+                     falsePredicateTensor:prod
+                                     name:nil];
+    }
   }
   return nil;
 }
@@ -209,7 +241,7 @@ void Binary_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
                                                         name:nil];
         [out->inputs addObject:a];
         [out->inputs addObject:b];
-        [out->outputs addObject:ApplyBinary(out->graph, kKind, a, b)];
+        [out->outputs addObject:ApplyBinary(out->graph, kKind, a, b, mps_dtype)];
       },
       status);
   if (cached == nullptr) return;
@@ -232,6 +264,7 @@ enum class UnaryKind {
   kNeg, kSqrt, kRsqrt, kExp, kLog, kSquare, kTanh, kSigmoid, kAbs, kReciprocal,
   kFloor, kCeil, kRound, kRint, kSign, kErf, kSoftplus, kElu, kSelu, kLog1p,
   kExpm1,
+  kSin, kCos, kTan, kAsin, kAcos, kAtan, kSinh, kCosh, kAsinh, kAcosh, kAtanh,
 };
 
 const char* NameOf(UnaryKind k) {
@@ -257,6 +290,17 @@ const char* NameOf(UnaryKind k) {
     case UnaryKind::kSelu: return "Selu";
     case UnaryKind::kLog1p: return "Log1p";
     case UnaryKind::kExpm1: return "Expm1";
+    case UnaryKind::kSin: return "Sin";
+    case UnaryKind::kCos: return "Cos";
+    case UnaryKind::kTan: return "Tan";
+    case UnaryKind::kAsin: return "Asin";
+    case UnaryKind::kAcos: return "Acos";
+    case UnaryKind::kAtan: return "Atan";
+    case UnaryKind::kSinh: return "Sinh";
+    case UnaryKind::kCosh: return "Cosh";
+    case UnaryKind::kAsinh: return "Asinh";
+    case UnaryKind::kAcosh: return "Acosh";
+    case UnaryKind::kAtanh: return "Atanh";
   }
   return "?";
 }
@@ -357,6 +401,17 @@ MPSGraphTensor* ApplyUnary(MPSGraph* g, UnaryKind k, MPSGraphTensor* x,
                              secondaryTensor:one
                                         name:nil];
     }
+    case UnaryKind::kSin: return [g sinWithTensor:x name:nil];
+    case UnaryKind::kCos: return [g cosWithTensor:x name:nil];
+    case UnaryKind::kTan: return [g tanWithTensor:x name:nil];
+    case UnaryKind::kAsin: return [g asinWithTensor:x name:nil];
+    case UnaryKind::kAcos: return [g acosWithTensor:x name:nil];
+    case UnaryKind::kAtan: return [g atanWithTensor:x name:nil];
+    case UnaryKind::kSinh: return [g sinhWithTensor:x name:nil];
+    case UnaryKind::kCosh: return [g coshWithTensor:x name:nil];
+    case UnaryKind::kAsinh: return [g asinhWithTensor:x name:nil];
+    case UnaryKind::kAcosh: return [g acoshWithTensor:x name:nil];
+    case UnaryKind::kAtanh: return [g atanhWithTensor:x name:nil];
   }
   return nil;
 }
@@ -652,13 +707,23 @@ METAL_COMPUTE(Round_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kRound>)
 METAL_COMPUTE(Rint_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kRint>)
 METAL_COMPUTE(Sign_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSign>)
 METAL_COMPUTE(Erf_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kErf>)
+METAL_COMPUTE(Expm1_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kExpm1>)
+METAL_COMPUTE(Log1p_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kLog1p>)
+METAL_COMPUTE(Sin_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSin>)
+METAL_COMPUTE(Cos_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kCos>)
+METAL_COMPUTE(Tan_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kTan>)
+METAL_COMPUTE(Asin_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAsin>)
+METAL_COMPUTE(Acos_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAcos>)
+METAL_COMPUTE(Atan_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAtan>)
+METAL_COMPUTE(Sinh_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSinh>)
+METAL_COMPUTE(Cosh_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kCosh>)
+METAL_COMPUTE(Asinh_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAsinh>)
+METAL_COMPUTE(Acosh_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAcosh>)
+METAL_COMPUTE(Atanh_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAtanh>)
 METAL_COMPUTE(Softplus_Compute, DTypeOp,
               Unary_ComputeImpl<UnaryKind::kSoftplus>)
 METAL_COMPUTE(Elu_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kElu>)
 METAL_COMPUTE(Selu_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSelu>)
-METAL_COMPUTE(Log1p_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kLog1p>)
-METAL_COMPUTE(Expm1_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kExpm1>)
-
 METAL_COMPUTE(TanhGrad_Compute, DTypeOp,
               UnaryGrad_ComputeImpl<UnaryGradKind::kTanh>)
 METAL_COMPUTE(SigmoidGrad_Compute, DTypeOp,
@@ -667,6 +732,9 @@ METAL_COMPUTE(SqrtGrad_Compute, DTypeOp,
               UnaryGrad_ComputeImpl<UnaryGradKind::kSqrt>)
 METAL_COMPUTE(RsqrtGrad_Compute, DTypeOp,
               UnaryGrad_ComputeImpl<UnaryGradKind::kRsqrt>)
+METAL_COMPUTE(Atan2_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kAtan2>)
+METAL_COMPUTE(Xdivy_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kXdivy>)
+METAL_COMPUTE(Xlogy_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kXlogy>)
 
 METAL_COMPUTE(Cast_Compute, CastOp, Cast_ComputeImpl)
 
@@ -715,6 +783,9 @@ void RegisterMetalElementwiseKernels() {
       {"Mod", &Mod_Compute},
       {"Maximum", &Max_Compute}, {"Minimum", &Min_Compute},
       {"Pow", &Pow_Compute},     {"SquaredDifference", &SqDiff_Compute},
+      {"FloorDiv", &FloorDiv_Compute}, {"FloorMod", &FloorMod_Compute},
+      {"Mod", &Mod_Compute},           {"Atan2", &Atan2_Compute},
+      {"Xdivy", &Xdivy_Compute},       {"Xlogy", &Xlogy_Compute},
   };
 
   struct UnaryEntry {
@@ -737,6 +808,16 @@ void RegisterMetalElementwiseKernels() {
       {"SigmoidGrad", &SigmoidGrad_Compute},
       {"SqrtGrad", &SqrtGrad_Compute},
       {"RsqrtGrad", &RsqrtGrad_Compute},
+      {"Floor", &Floor_Compute},   {"Ceil", &Ceil_Compute},
+      {"Round", &Round_Compute},   {"Rint", &Rint_Compute},
+      {"Sign", &Sign_Compute},     {"Erf", &Erf_Compute},
+      {"Expm1", &Expm1_Compute},   {"Log1p", &Log1p_Compute},
+      {"Sin", &Sin_Compute},       {"Cos", &Cos_Compute},
+      {"Tan", &Tan_Compute},       {"Asin", &Asin_Compute},
+      {"Acos", &Acos_Compute},     {"Atan", &Atan_Compute},
+      {"Sinh", &Sinh_Compute},     {"Cosh", &Cosh_Compute},
+      {"Asinh", &Asinh_Compute},   {"Acosh", &Acosh_Compute},
+      {"Atanh", &Atanh_Compute},
   };
 
   for (int i = 0; i < 2; ++i) {
