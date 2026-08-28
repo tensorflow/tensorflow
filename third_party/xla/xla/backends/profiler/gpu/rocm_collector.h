@@ -50,8 +50,16 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
            grid_z = kernel_info.workgroup_z != 0
                         ? kernel_info.grid_z / kernel_info.workgroup_z
                         : 0;
+  const uint32_t dynamic_group_segment_size =
+      kernel_info.group_segment_size > kernel_info.static_group_segment_size
+          ? kernel_info.group_segment_size -
+                kernel_info.static_group_segment_size
+          : 0;
 
-  return absl::StrCat(" grid:", grid_x, ",", grid_y, ",", grid_z,
+  return absl::StrCat("regs:", kernel_info.registers_per_work_item,
+                      " static_shared:", kernel_info.static_group_segment_size,
+                      " dynamic_shared:", dynamic_group_segment_size,
+                      " grid:", grid_x, ",", grid_y, ",", grid_z,
                       " block:", kernel_info.workgroup_x, ",",
                       kernel_info.workgroup_y, ",", kernel_info.workgroup_z,
                       " private_mem:", kernel_info.private_segment_size,

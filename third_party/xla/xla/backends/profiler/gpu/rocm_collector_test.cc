@@ -36,6 +36,21 @@ namespace test {
 using tsl::profiler::FindOrAddMutablePlaneWithName;
 using tsl::profiler::XSpace;
 
+TEST(RocmCollectorTest, ToXStatDecomposesDispatchGroupMemory) {
+  KernelDetails kernel_info{};
+  kernel_info.group_segment_size = 1536;
+  kernel_info.static_group_segment_size = 1024;
+
+  EXPECT_NE(ToXStat(kernel_info, /*occupancy_pct=*/0)
+                .find("static_shared:1024 dynamic_shared:512"),
+            std::string::npos);
+
+  kernel_info.group_segment_size = 512;
+  EXPECT_NE(ToXStat(kernel_info, /*occupancy_pct=*/0)
+                .find("static_shared:1024 dynamic_shared:0"),
+            std::string::npos);
+}
+
 TEST(RocmCollectorTest, TestAddKernelEventAndExport) {
   RocmTraceCollectorOptions options;
   options.max_callback_api_events = 100;

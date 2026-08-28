@@ -361,7 +361,13 @@ void RocmTracer::KernelEvent(const rocprofiler_record_header_t* hdr,
   };
 
   auto it = kernel_info_.find(kinfo.kernel_id);
-  if (it != kernel_info_.end()) trace_event->name = it->second.name;
+  if (it != kernel_info_.end()) {
+    trace_event->name = it->second.name;
+    const auto& sym = it->second.data;
+    trace_event->kernel_info.registers_per_work_item =
+        sym.arch_vgpr_count + sym.accum_vgpr_count;
+    trace_event->kernel_info.static_group_segment_size = sym.group_segment_size;
+  }
 }
 
 void RocmTracer::EmitMarkerEvent(std::string label, uint64_t start_ns,

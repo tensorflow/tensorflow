@@ -59,11 +59,15 @@ struct MemsetDetails {
 };
 
 struct KernelDetails {
-  // The amount of private memory used by kernel,
-  // number of register per thread (register spillage if > 0)
+  // Total dispatch-time private-segment (scratch) bytes per work-item.
   uint32_t private_segment_size;
-  // The amount of shared memory (SMEM)
+  // Total dispatch-time group-segment (LDS) bytes per workgroup. Includes
+  // static and dynamic LDS allocation.
   uint32_t group_segment_size;
+  // Architecture and accumulator VGPRs allocated per work-item.
+  uint32_t registers_per_work_item;
+  // Static group-segment (LDS) bytes per workgroup from the kernel symbol.
+  uint32_t static_group_segment_size;
   // X-dimension of a workgroup (grid.x*block.x)
   uint32_t workgroup_x;
   // Y-dimension of a workgroup (grid.x*block.x)
