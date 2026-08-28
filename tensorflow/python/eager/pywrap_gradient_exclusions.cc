@@ -429,7 +429,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 488> a = {{
+  static std::array<OpIndexInfo, 489> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -773,6 +773,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Softplus"},
       {"SoftplusGrad"},
       {"Softsign"},
+      {"SoftsignGrad"},
       {"SpaceToBatch"},
       {"SpaceToBatchND"},
       {"SpaceToDepth"},
