@@ -492,7 +492,6 @@ void RegisterMetalAliasKernels() {
   static constexpr TF_DataType kDTypes[] = {TF_FLOAT, TF_HALF};
   static constexpr const char* kSuffixes[] = {"Float", "Half"};
   static constexpr TF_DataType kIndexTypes[] = {TF_INT32, TF_INT64};
-  static constexpr const char* kIndexSuffixes[] = {"Int32", "Int64"};
 
   for (int i = 0; i < 2; ++i) {
     const TF_DataType t = kDTypes[i];
@@ -501,10 +500,14 @@ void RegisterMetalAliasKernels() {
     Register("Bucketize", &Bucketize_Compute, t, "MetalBucketize" + s, {});
     Register("Conj", &Conj_Compute, t, "MetalConj" + s, {});
     Register("Cross", &Cross_Compute, t, "MetalCross" + s, {});
-    for (int j = 0; j < 2; ++j) {
-      Register("ConjugateTranspose", &ConjugateTranspose_Compute, t,
-               "MetalConjugateTranspose" + s + kIndexSuffixes[j], {"perm"});
-    }
+    // Once per element type, not once per index type. The kernel reads the
+    // permutation as either int32 or int64 from the tensor it is given, so
+    // there is nothing for a Tperm constraint to select between; registering
+    // twice produced two registrations identical in everything but their
+    // name, and TensorFlow refuses to dispatch an op whose registrations tie:
+    // "Multiple OpKernel registrations match NodeDef at the same priority".
+    Register("ConjugateTranspose", &ConjugateTranspose_Compute, t,
+             "MetalConjugateTranspose" + s, {"perm"});
   }
 }
 
