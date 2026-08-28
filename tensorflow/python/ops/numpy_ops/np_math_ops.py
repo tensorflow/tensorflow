@@ -402,7 +402,7 @@ def vdot(a, b):  # pylint: disable=missing-docstring
   a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
   a = np_array_ops.reshape(a, [-1])
   b = np_array_ops.reshape(b, [-1])
-  if a.dtype == np_dtypes.complex128 or a.dtype == np_dtypes.complex64:
+  if np.issubdtype(a.dtype.as_numpy_dtype, np.complexfloating):
     a = conj(a)
   return dot(a, b)
 
