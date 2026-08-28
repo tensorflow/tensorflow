@@ -180,13 +180,53 @@ TEST_F(TensorResponseTest, InitPartialOverflow) {
   EXPECT_TRUE(absl::IsInvalidArgument(s));
 }
 
-TEST_F(TensorResponseTest, NonEmptyTensorMissingContentRejected) {
+TEST_F(TensorResponseTest, ZeroLengthTensorMissingContentAccepted) {
+  RecvTensorResponse proto;
+  proto.set_is_dead(false);
+  proto.set_send_start_micros(123456);
+  TensorProto* tensor_proto = proto.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+  tensor_proto->mutable_tensor_shape()->add_dim()->set_size(0);
+
+  std::string encoded;
+  proto.AppendToString(&encoded);
+  StringSource source(&encoded, 1024);
+  TensorResponse response;
+  DummyDevice cpu_device(Env::Default());
+  response.InitAlloc(&cpu_device, AllocatorAttributes());
+  EXPECT_TRUE(response.ParseFrom(&source).ok());
+  EXPECT_EQ(response.tensor().NumElements(), 0);
+}
+
+TEST_F(TensorResponseTest, NonEmptyTensorMissingContentZeroInitializedViaSlowPath) {
   RecvTensorResponse proto;
   proto.set_is_dead(false);
   proto.set_send_start_micros(123456);
   TensorProto* tensor_proto = proto.mutable_tensor();
   tensor_proto->set_dtype(DT_FLOAT);
   tensor_proto->mutable_tensor_shape()->add_dim()->set_size(10);
+
+  std::string encoded;
+  proto.AppendToString(&encoded);
+  StringSource source(&encoded, 1024);
+  TensorResponse response;
+  DummyDevice cpu_device(Env::Default());
+  response.InitAlloc(&cpu_device, AllocatorAttributes());
+  EXPECT_TRUE(response.ParseFrom(&source).ok());
+  EXPECT_EQ(response.tensor().NumElements(), 10);
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(response.tensor().flat<float>()(i), 0.0f);
+  }
+}
+
+TEST_F(TensorResponseTest, AmplificationProtoWithoutContentRejected) {
+  RecvTensorResponse proto;
+  proto.set_is_dead(false);
+  proto.set_send_start_micros(123456);
+  TensorProto* tensor_proto = proto.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+  // 1 billion floats = 4GB (> 2GB safe limit) with no tensor_content
+  tensor_proto->mutable_tensor_shape()->add_dim()->set_size(1000000000);
 
   std::string encoded;
   proto.AppendToString(&encoded);
