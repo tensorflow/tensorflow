@@ -409,7 +409,7 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
 }
 
 TEST_P(SliceOpTest, RejectAsymmetricRank) {
-  EXPECT_DEATH(
+  EXPECT_DEATH_IF_SUPPORTED(
       (SliceOpModel<float, int32_t>({4, 1, 1, 1}, {1}, {1}, {1}, {1},
                                     TensorType_INT32, TensorType_FLOAT32,
                                     GetParam())),
