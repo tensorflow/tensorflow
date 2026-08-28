@@ -21,6 +21,17 @@ limitations under the License.
 namespace tensorflow {
 namespace metal {
 
+// A note on kernel builders, because every file below repeats the same five
+// lines and they have been read as a leak more than once.
+//
+// TF_RegisterKernelBuilder passes the builder to an OpKernelRegistrar, which
+// owns it from then on, and with no serialized KernelDef it sets the status to
+// OK unconditionally, so it has nothing to fail on. After that call the
+// builder is never ours again. The only way to still hold it is for a type
+// constraint to have failed before the call, which is the branch that deletes
+// it. Deleting it after a call that succeeded would be a double free.
+
+
 // Elementwise arithmetic (Add, AddV2, Sub, Mul) and Cast, for float32 and
 // float16, implemented as Metal compute shaders.
 void RegisterMetalElementwiseKernels();
