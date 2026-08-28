@@ -272,6 +272,18 @@ def if_macos(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_metal(a, otherwise = []):
+    """Selects `a` when the Metal PluggableDevice backend is enabled.
+
+    Gated on --define=with_metal_support=true (set by --config=metal), so that
+    no Objective-C++ source is compiled and no dependency is added on any
+    platform unless the backend is explicitly requested.
+    """
+    return select({
+        clean_dep("//tensorflow:with_metal_support"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_ios(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:ios"): a,

@@ -58,6 +58,10 @@ Windows)*:
 Other devices (DirectX and MacOS-metal) are supported using
 [Device Plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
 
+Experimental GPU support on Apple silicon is also built into TensorFlow and is
+enabled by building from source with `--config=metal`; see
+[tensorflow/core/common_runtime/metal](tensorflow/core/common_runtime/metal/README.md).
+
 A smaller CPU-only TensorFlow package is also available:
 
 ```

@@ -248,6 +248,10 @@ common:macos_arm64 --macos_minimum_os=11.0
 common:macos_arm64 --config=clang_local
 common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
+# Metal PluggableDevice backend for Apple Silicon GPUs. Implies macos_arm64.
+build:metal --config=macos_arm64
+build:metal --define=with_metal_support=true
+
 # iOS configs for each architecture and the fat binary builds.
 common:ios --apple_platform_type=ios
 common:ios --copt=-fembed-bitcode

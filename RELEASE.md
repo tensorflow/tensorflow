@@ -18,6 +18,12 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 
 ### Major Features and Improvements
 
+* Experimental Metal GPU support on Apple silicon, built into TensorFlow
+  and enabled with `--config=metal`. This first change is the device and
+  memory foundation plus a small set of kernels; see
+  `tensorflow/core/common_runtime/metal/README.md`. Builds without
+  `--config=metal` are unchanged on every platform.
+
 * `tf.lite`
     * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
     * Adds support for FP16 and BF16 in Unpack operator.
