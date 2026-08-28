@@ -390,4 +390,24 @@ StreamExecutorGpuTopologyDescription::FromProto(
       attributes, std::move(target_config));
 }
 
+absl::StatusOr<int>
+StreamExecutorGpuTopologyDescription::GetMemorySpaceKindForShape(
+    const xla::Shape& shape) const {
+  int kind = GetMemorySpaceKindIds()[0];
+  if (shape.has_layout()) {
+    switch (shape.layout().memory_space()) {
+      case Layout::kHostMemorySpace:
+        return GetMemorySpaceKindIds()[1];
+        break;
+      case Layout::kGenericFastMemorySpace:
+      case Layout::kDefaultMemorySpace:
+        break;
+      default:
+        return InvalidArgument("Unexpected memory space %d in output layout",
+                               shape.layout().memory_space());
+    }
+  }
+  return kind;
+}
+
 }  // namespace xla

@@ -231,6 +231,7 @@ cc_library(
         "//xla/pjrt:dynamic_shapes",
         "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:infer_dispatch_info",
         "//xla/pjrt:layout_mode",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:metrics",

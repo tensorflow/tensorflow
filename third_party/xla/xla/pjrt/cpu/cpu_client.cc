@@ -697,6 +697,12 @@ PjRtCpuClient::LoadInternal(
       std::move(load_state));
 }
 
+tsl::AsyncValueRef<PjRtExecutable> PjRtCpuRawClient::ToAsyncExecutable(
+    std::shared_ptr<PjRtExecutable> executable) const {
+  return tsl::MakeAvailableAsyncValueRef(
+      std::static_pointer_cast<PjRtCpuExecutable>(executable));
+}
+
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
     std::unique_ptr<HloModule> hlo_module,
     const ExecutableBuildOptions& build_options,
@@ -1137,29 +1143,6 @@ PjRtCpuRawClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
   };
 
   return std::make_pair(std::move(raw_buffer), std::move(buffer_promise_cb));
-}
-
-absl::StatusOr<int> PjRtCpuClient::GetMemorySpaceKindForShape(
-    const Shape& shape) const {
-  return topology().GetMemorySpaceKindForShape(shape);
-}
-
-static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
-  // For now, TPU programs compiled with multiple arguments cannot use tuples
-  // for any of their arguments, so we can assume that a tuple can only arise
-  // when there is a single argument.
-  std::vector<Shape> shapes;
-  if (layout.parameter_count() == 1 && layout.parameter_shape(0).IsTuple()) {
-    shapes.reserve(layout.parameter_shape(0).tuple_shapes().size());
-    absl::c_copy(layout.parameter_shape(0).tuple_shapes(),
-                 std::back_inserter(shapes));
-  } else {
-    shapes.reserve(layout.parameter_count());
-    for (const ShapeLayout& sl : layout.parameter_layouts()) {
-      shapes.push_back(sl.shape());
-    }
-  }
-  return shapes;
 }
 
 PjRtCpuExecutable::PjRtCpuExecutable(

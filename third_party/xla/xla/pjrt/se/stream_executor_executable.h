@@ -110,6 +110,10 @@ class StreamExecutorExecutable : public PjRtExecutable {
     return unoptimized_hlo_module_proto_;
   }
 
+  std::optional<HloModuleProto> GetUnoptimizedHloModule() const override {
+    return unoptimized_hlo_module_proto_;
+  }
+
   absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
       const override;
 

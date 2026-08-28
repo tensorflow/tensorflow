@@ -376,6 +376,11 @@ class PjRtExecutable {
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const;
 
+  // Unoptimized hlo module.
+  virtual std::optional<HloModuleProto> GetUnoptimizedHloModule() const {
+    return std::nullopt;
+  }
+
   // Returns an output Shape per program, the size should be equal to
   // `GetHloModules()`.
   virtual absl::StatusOr<std::vector<Shape>> GetOutputShapes() const;

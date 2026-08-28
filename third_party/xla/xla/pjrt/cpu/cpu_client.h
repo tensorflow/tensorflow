@@ -179,6 +179,9 @@ class PjRtCpuRawClient : public PjRtRawClient {
       MaybeOwningMlirModule module, const CpuTopologyDescription& topology,
       int process_index, CompileOptions&& options);
 
+  tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
+      std::shared_ptr<PjRtExecutable> executable) const override;
+
  private:
   friend class PjRtCpuClient;
   friend class CpuExecutableLoadState;
@@ -273,9 +276,6 @@ class PjRtCpuClient final : public CommonPjRtClientImpl {
     return *absl::down_cast<const CpuTopologyDescription*>(
         &CommonPjRtClientImpl::topology());
   }
-
-  absl::StatusOr<int> GetMemorySpaceKindForShape(
-      const Shape& shape) const override;
 
   bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,

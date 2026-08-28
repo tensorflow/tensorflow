@@ -454,6 +454,13 @@ class PjRtTopologyDescription {
         "GetDefaultDeviceAssignment is not supported.");
   }
 
+  // Gets the memory_space_kind for a particular XLA layout.
+  virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
+      const xla::Shape& shape) const {
+    return absl::UnimplementedError(
+        "GetMemorySpaceKindForShape is not supported.");
+  }
+
   // A list of all memory spaces kind_ids supported by this topology.
   virtual absl::Span<const int> GetMemorySpaceKindIds() const;
 

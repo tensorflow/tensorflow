@@ -143,6 +143,9 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       std::optional<int> num_replicas_per_slice, int num_partitions,
       const MultiSliceConfig* multi_slice_config) const override;
 
+  absl::StatusOr<int> GetMemorySpaceKindForShape(
+      const xla::Shape& shape) const override;
+
  private:
   std::unique_ptr<PjRtStreamExecutorDeviceDescription> CreateDeviceDescription(
       int device_id) const;
