@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_AUTOTUNER_LLVM_KERNEL_AUTOTUNER_H_
-#define XLA_BACKENDS_CPU_AUTOTUNER_LLVM_KERNEL_AUTOTUNER_H_
+#ifndef XLA_BACKENDS_CPU_AUTOTUNER_CPU_AUTOTUNER_H_
+#define XLA_BACKENDS_CPU_AUTOTUNER_CPU_AUTOTUNER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -29,16 +29,14 @@ limitations under the License.
 
 namespace xla::cpu {
 
-inline constexpr absl::string_view kLlvmKernelAutotunerName =
-    "llvm_kernel_autotuner";
+inline constexpr absl::string_view kCpuAutotunerName = "cpu_autotuner";
 
-// Llvm kernel autotuning pass. It tries to autotune the llvm kernel compilation
-// provided by the LlvmKernelBackend.
-class LlvmKernelAutotuner : public HloModulePass {
+// CPU autotuning pass.
+class CpuAutotuner : public HloModulePass {
  public:
-  LlvmKernelAutotuner() = default;
+  CpuAutotuner() = default;
 
-  absl::string_view name() const override { return kLlvmKernelAutotunerName; }
+  absl::string_view name() const override { return kCpuAutotunerName; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -48,4 +46,4 @@ class LlvmKernelAutotuner : public HloModulePass {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_AUTOTUNER_LLVM_KERNEL_AUTOTUNER_H_
+#endif  // XLA_BACKENDS_CPU_AUTOTUNER_CPU_AUTOTUNER_H_

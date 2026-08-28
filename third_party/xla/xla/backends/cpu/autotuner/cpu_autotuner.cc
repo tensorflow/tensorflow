@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/autotuner/llvm_kernel_autotuner.h"
+#include "xla/backends/cpu/autotuner/cpu_autotuner.h"
 
 #include <memory>
 #include <utility>
@@ -42,15 +42,16 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<bool> LlvmKernelAutotuner::RunImpl(
+absl::StatusOr<bool> CpuAutotuner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   ABSL_ASSIGN_OR_RETURN(auto compiler, CpuCodegenBackend::CreateBackendCompiler());
-  ABSL_ASSIGN_OR_RETURN(auto backend, LlvmKernelBackend::Create(compiler.get()));
+  ABSL_ASSIGN_OR_RETURN(auto llvm_kernel_backend,
+                   LlvmKernelBackend::Create(compiler.get()));
   std::unique_ptr<Profiler> profiler = CpuProfiler::Create(ProfileOptions());
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends;
-  codegen_backends.push_back(std::move(backend));
+  codegen_backends.push_back(std::move(llvm_kernel_backend));
 
   ABSL_ASSIGN_OR_RETURN(auto orchestrator,
                    CodegenOrchestrator::Create(std::move(codegen_backends),

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/autotuner/llvm_kernel_autotuner.h"
+#include "xla/backends/cpu/autotuner/cpu_autotuner.h"
 
 #include <memory>
 
@@ -36,10 +36,10 @@ constexpr absl::string_view kLlvmKernelConcatenateHlo = R"(
     }
 )";
 
-class LlvmKernelAutotunerTest : public HloHardwareIndependentTestBase {};
+class CpuAutotunerTest : public HloHardwareIndependentTestBase {};
 
-TEST_F(LlvmKernelAutotunerTest, GetBestConfig) {
-  LlvmKernelAutotuner autotuner;
+TEST_F(CpuAutotunerTest, GetBestConfig) {
+  CpuAutotuner autotuner;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
