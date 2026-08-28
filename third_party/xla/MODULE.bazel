@@ -190,6 +190,13 @@ pip.parse(
     hub_name = "xla_pypi",
     python_version = "3.11",
     requirements_lock = "//:requirements_lock_3_11.txt",
+    target_platforms = [
+        "linux_x86_64",
+        "linux_aarch64",
+        "osx_x86_64",
+        "osx_aarch64",
+        "windows_x86_64",
+    ],
     whl_modifications = {
         "@pypi_mods//:numpy.json": "numpy",
     },
