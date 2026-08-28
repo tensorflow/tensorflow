@@ -900,25 +900,27 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
 
 /*** GRADIENT ***/
 
+// `lengths_index` is where the sequence lengths sit, or -1 when the op has
+// none. V3 puts them fourth, which pushes everything after the parameters
+// along by one: reading the later inputs at their V1 positions took the
+// forward outputs for the incoming gradients.
 void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
                           int lengths_index, TF_Status* status) {
-  ScopedTensor in[11];
-  for (int i = 0; i < 11; ++i) {
+  const int shift = lengths_index >= 0 ? 1 : 0;
+  ScopedTensor in[13];
+  const int count = 11 + shift;
+  for (int i = 0; i < count; ++i) {
     TF_GetInput(ctx, i, in[i].address(), status);
     if (TF_GetCode(status) != TF_OK) return;
   }
-  ScopedTensor lengths;
-  if (lengths_index >= 0) {
-    TF_GetInput(ctx, lengths_index, lengths.address(), status);
-    if (TF_GetCode(status) != TF_OK) return;
-  }
+  ScopedTensor& lengths = in[lengths_index >= 0 ? lengths_index : 0];
   ScopedTensor& input = in[0];
   ScopedTensor& input_h = in[1];
   ScopedTensor& input_c = in[2];
   ScopedTensor& params = in[3];
-  ScopedTensor& output_backprop = in[7];
-  ScopedTensor& output_h_backprop = in[8];
-  ScopedTensor& output_c_backprop = in[9];
+  ScopedTensor& output_backprop = in[7 + shift];
+  ScopedTensor& output_h_backprop = in[8 + shift];
+  ScopedTensor& output_c_backprop = in[9 + shift];
 
   RnnSpec spec = op->spec;
   const std::vector<int64_t> in_shape = ShapeOf(input.get());
@@ -1134,7 +1136,7 @@ METAL_RNN_COMPUTE(ToCanonical_Compute,
 METAL_RNN_COMPUTE(Forward_Compute, Forward_ComputeImpl(op, ctx, -1, status))
 METAL_RNN_COMPUTE(ForwardV3_Compute, Forward_ComputeImpl(op, ctx, 4, status))
 METAL_RNN_COMPUTE(Backward_Compute, Backward_ComputeImpl(op, ctx, -1, status))
-METAL_RNN_COMPUTE(BackwardV3_Compute, Backward_ComputeImpl(op, ctx, 12, status))
+METAL_RNN_COMPUTE(BackwardV3_Compute, Backward_ComputeImpl(op, ctx, 4, status))
 
 #undef METAL_RNN_COMPUTE
 

@@ -16,10 +16,20 @@ either by a `DEVICE_DEFAULT` registration or by an unguarded `DEVICE_GPU` one.
 A few are registered with their data pinned to host memory, which is correct
 but not fast; those are called out under [Limitations](#limitations).
 
-Registering an op is not the same as running it well. What has been measured
-end to end is a convolutional classifier: convolutions and their gradients,
-pooling, activations, softmax cross entropy, reductions, weight initialisation
-and the Adam and SGD updates.
+Registering an op is not the same as running it. Every registration has now
+been called through TensorFlow's own dispatch on an Apple M4 Max, once on the
+GPU and once on the CPU with identical inputs and soft placement off, so that
+an op with no kernel raises rather than answering from the host. Of the 356
+registrations: 323 agree with the CPU kernel, or with a property where
+TensorFlow has no CPU kernel to compare against; 19 are ops TensorFlow has
+removed, which no device can run; and 14 need kernel C API entry points that
+a released TensorFlow declares but does not export, which an in-tree build
+links directly. None is unaccounted for.
+
+Each op is also run twice and required to give the same answer, and every
+registration TensorFlow holds for these ops is checked for being duplicated
+or for constraining an attribute the op does not have, either of which makes
+an op unusable while leaving it looking registered.
 
 ## Building
 
