@@ -476,12 +476,17 @@ class TensorListSetItem : public OpKernel {
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     int32_t index = c->input(1).scalar<int32_t>()();
+    OP_REQUIRES(
+        c, index >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected a non-negative index for TensorListSetItem, got: ",
+            index)));
     if (!resize_if_index_out_of_bounds_) {
-      OP_REQUIRES(c, index < l->tensors().size(),
+      OP_REQUIRES(c, static_cast<size_t>(index) < l->tensors().size(),
                   absl::InvalidArgumentError(absl::StrCat(
                       "Trying to modify element ", index, " in a list with ",
                       l->tensors().size(), " elements.")));
-    } else if (index >= l->tensors().size()) {
+    } else if (static_cast<size_t>(index) >= l->tensors().size()) {
       output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
     }
     output_list->tensors()[index] = value;
