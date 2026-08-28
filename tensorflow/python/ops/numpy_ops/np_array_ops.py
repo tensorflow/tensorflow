@@ -368,6 +368,9 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
             f'Argument `{name}` (received {name}={axis}) is out of bounds '
             f'for input {a} of rank {maybe_rank}.'
         )
+  if maybe_rank is not None and axis1 == axis2:
+    raise ValueError('axis1 and axis2 cannot be the same axis')
+
   if (
       maybe_rank is not None
       and offset == 0
@@ -825,7 +828,7 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   if axis is not None and maybe_rank is not None:
     # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
     # 1-D of size 1), so validate against max(rank, 1).
-    validation_rank = max(maybe_rank, 1)
+    validation_rank = 1 if maybe_rank < 1 else maybe_rank
     normalized = axis + validation_rank if axis < 0 else axis
     if normalized < 0 or normalized >= validation_rank:
       raise ValueError(

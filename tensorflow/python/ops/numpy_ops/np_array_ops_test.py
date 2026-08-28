@@ -503,6 +503,12 @@ class ArrayCreationTest(test.TestCase):
     # NumPy raises for 0-d/1-d inputs too.
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.diagonal(np.array([1, 2, 3]))
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_array_ops.diagonal(a, axis1=0, axis2=0)
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_array_ops.trace(a, axis1=1, axis2=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.trace(np.array([1, 2, 3]))
 
   def testDiagFlat(self):
     array_transforms = [
