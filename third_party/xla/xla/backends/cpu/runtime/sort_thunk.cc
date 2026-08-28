@@ -30,7 +30,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
@@ -211,7 +210,6 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
       less_than_ = [comparator](const void** data) {
         bool result;
         (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
-        ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
         return result;
       };
     } else {

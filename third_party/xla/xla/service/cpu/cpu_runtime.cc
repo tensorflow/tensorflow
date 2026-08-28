@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"

@@ -27,7 +27,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -187,11 +186,6 @@ static absl::StatusOr<MaybeOwningDeviceAddress> MemoryForAllocation(
   VLOG(3) << "buffer allocated " << buffer_size << " bytes [" << out->opaque()
           << "]";
 
-  // Since the output buffer and all the temporary buffers were written into
-  // by the JITed code, memory sanitizer has no way of knowing their memory was
-  // initialized. Mark them initialized so that memory sanitizer doesn't flag
-  // loads from these buffers.
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->opaque(), buffer_size);
   return MaybeOwningDeviceAddress{std::move(out)};
 }
 
