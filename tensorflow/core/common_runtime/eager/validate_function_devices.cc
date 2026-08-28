@@ -61,7 +61,7 @@ absl::Status ValidateFunctionDeviceConstraints(
     // Check if the requested device type is available.
     bool device_type_available = false;
     for (const DeviceType& avail_type : supported_device_types) {
-      if (absl::StrEqualsIgnoreCase(parsed_device.type, avail_type.type_string())) {
+      if (absl::EqualsIgnoreCase(parsed_device.type, avail_type.type_string())) {
         device_type_available = true;
         break;
       }
