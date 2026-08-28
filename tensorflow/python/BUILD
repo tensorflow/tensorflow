@@ -1645,6 +1645,17 @@ pywrap_library(
             ],
         }),
     },
+    # The kernel C API for resource variables has no caller inside TensorFlow:
+    # it exists so that a PluggableDevice can implement the ops that read and
+    # write variables. Nothing therefore pulls kernels_experimental.cc into the
+    # link, and the fourteen entry points it defines have been absent from
+    # every shipped binary since 2.20.0, while the headers still declare them.
+    # Naming it here puts it in the common library, which is where the rest of
+    # the C API already lives. See #126374.
+    extra_deps = [
+        "@pybind11//:pybind11",
+        "//tensorflow/c:kernels_experimental",
+    ],
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_version_scripts = {
