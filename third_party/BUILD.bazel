@@ -5,4 +5,5 @@ exports_files([
     "cppitertools.BUILD",
     "curl.patch",
     "grpc.patch",
+    "rules_ml_toolchain.patch",
 ])

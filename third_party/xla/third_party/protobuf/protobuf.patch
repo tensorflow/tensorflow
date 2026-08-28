@@ -214,3 +214,15 @@ diff --git a/src/google/protobuf/thread_safe_arena.h b/src/google/protobuf/threa
    // Thread local variables cannot be exposed through MSVC DLL interface but we
    // can wrap them in static functions.
    static ThreadCache& thread_cache();
+diff --git a/python/build_targets.bzl b/python/build_targets.bzl
+--- a/python/build_targets.bzl
++++ b/python/build_targets.bzl
+@@ -460,7 +460,7 @@ def build_targets(name):
+             "//src/google/protobuf/io",
+             "@abseil-cpp//absl/log:absl_check",
+             "@abseil-cpp//absl/status",
+-            "@system_python//:python_headers",
++            "@rules_python//python/cc:current_py_cc_headers",
+         ],
+     )
+
