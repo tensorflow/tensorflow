@@ -1,0 +1,9 @@
+# The wheel is built from source at install time, against whichever
+# TensorFlow the installing interpreter has, so the sdist has to carry
+# everything the build needs.
+include Makefile
+include LICENSE
+include README.md
+recursive-include src *.cc *.h *.mm
+recursive-include tools *.sh *.py
+recursive-include tensorflow-plugins *.py
