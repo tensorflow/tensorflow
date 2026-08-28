@@ -295,7 +295,6 @@ use_repo(local_clang_configure, "local_config_clang")
 cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(
     cuda_redist_init_ext,
-    "cuda_cccl",
     "cuda_cublas",
     "cuda_cudart",
     "cuda_cudnn",
@@ -306,6 +305,7 @@ use_repo(
     "cuda_cusparse",
     "cuda_driver",
     "cuda_nvcc",
+    "cuda_nvdisasm",
     "cuda_nvjitlink",
     "cuda_nvml",
     "cuda_nvrtc",
