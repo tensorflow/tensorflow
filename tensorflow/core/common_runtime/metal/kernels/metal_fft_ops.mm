@@ -386,7 +386,13 @@ void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
     std::vector<int64_t> staged_shape = mirror_in;
     ScopedTensor staged;
     BufferSlice staged_slice = in_slice;
-    if (staged_shape != in_shape) {
+    // A copy is made whenever the outer axes are going to be transformed,
+    // even when no cropping or padding is needed. That transform writes in
+    // place, and writing in place over `in_slice` would rewrite the caller's
+    // input tensor: the first call returned the right answer and every later
+    // call on the same tensor saw data that had already been transformed
+    // once.
+    if (staged_shape != in_shape || op->axes > 1) {
       const std::vector<int64_t> staged_bytes = {ElementCount(staged_shape) *
                                                  2};
       staged.reset(TF_AllocateTemp(ctx, TF_FLOAT, staged_bytes.data(), 1,
@@ -450,6 +456,13 @@ void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
   // On the way out, keep half the innermost axis, or its real part.
   ResizeInto(stream, work_slice, work_shape, out_slice, out_shape,
              op->inverse ? 2 : 0, status);
+
+  // The working buffers are temporaries, and a temporary goes back to the
+  // allocator as soon as this function returns. Waiting here keeps the next
+  // kernel from being handed a block this one has not finished reading: two
+  // inverse real transforms in a row were enough to show it, whichever ran
+  // first coming out right and the other wrong.
+  WaitForStream(stream);
 }
 
 // The ND forms take the axes to transform and their lengths as inputs. Both

@@ -58,18 +58,6 @@ int64_t ElementCount(const std::vector<int64_t>& s) {
   return n;
 }
 
-// Waits for everything already enqueued, so the host can read what it wrote.
-void WaitForStream(SP_Stream stream) {
-  uint64_t target = 0;
-  {
-    absl::MutexLock lock(&stream->mu);
-    target = stream->last_enqueued;
-  }
-  if (target > 0) {
-    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
-  }
-}
-
 // A row's width in 32-bit words, which is the unit the movement shaders copy.
 bool WordsPerRow(TF_DataType dtype, int64_t elements, uint32_t* words,
                  TF_Status* status) {

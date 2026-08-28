@@ -163,18 +163,6 @@ void ComputeQuantizationRange(bool signed_input, int num_bits,
   }
 }
 
-// Waits for everything already enqueued on the stream.
-void WaitForStream(SP_Stream stream) {
-  uint64_t target = 0;
-  {
-    absl::MutexLock lock(&stream->mu);
-    target = stream->last_enqueued;
-  }
-  if (target > 0) {
-    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
-  }
-}
-
 // Puts a host-computed per-channel vector where the graph can read it. Unified
 // memory means the CPU can write device storage directly, with no staging
 // buffer and no blit.

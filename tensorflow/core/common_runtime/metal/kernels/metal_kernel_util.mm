@@ -179,6 +179,17 @@ int64_t NumElements(TF_Tensor* tensor) {
   return count;
 }
 
+void WaitForStream(SP_Stream stream) {
+  uint64_t target = 0;
+  {
+    absl::MutexLock lock(&stream->mu);
+    target = stream->last_enqueued;
+  }
+  if (target > 0) {
+    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
+  }
+}
+
 std::vector<int64_t> ShapeOf(TF_Tensor* tensor) {
   const int rank = TF_NumDims(tensor);
   std::vector<int64_t> shape;

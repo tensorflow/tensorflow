@@ -131,6 +131,16 @@ int64_t NumElements(TF_Tensor* tensor);
 // Shape as a plain vector, for shape checks and for building descriptors.
 std::vector<int64_t> ShapeOf(TF_Tensor* tensor);
 
+// Waits for everything already enqueued on `stream`.
+//
+// A kernel that gives the GPU a temporary buffer must call this before it
+// returns. TF_AllocateTemp memory goes back to the allocator the moment the
+// tensor is destroyed, and the next kernel is handed the same block, so work
+// still in flight reads what that next kernel has since written. Two inverse
+// real transforms in a row were enough: whichever ran first was right and the
+// other was not, in either order.
+void WaitForStream(SP_Stream stream);
+
 }  // namespace metal
 }  // namespace tensorflow
 
