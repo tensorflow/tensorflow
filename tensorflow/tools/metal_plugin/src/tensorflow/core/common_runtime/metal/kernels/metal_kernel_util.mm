@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <dlfcn.h>
+#include <cstdlib>
+#include "absl/log/log.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
 
 #include <algorithm>
@@ -177,6 +180,44 @@ int64_t NumElements(TF_Tensor* tensor) {
   const int rank = TF_NumDims(tensor);
   for (int i = 0; i < rank; ++i) count *= TF_Dim(tensor, i);
   return count;
+}
+
+bool ResourceVariableApiAvailable() {
+  static const bool available = [] {
+    static constexpr const char* kRequired[] = {
+        "TF_AssignRefVariable",
+        "TF_GetInputTensorFromVariable",
+        "TF_MaybeLockVariableInputMutexesInOrder",
+        "TF_ReleaseVariableInputLockHolder",
+        "TF_OpKernelConstruction_GetAttrTensorShape",
+        "TF_OpKernelContext_ForwardRefInputToRefOutput",
+    };
+    for (const char* name : kRequired) {
+      if (dlsym(RTLD_DEFAULT, name) == nullptr) return false;
+    }
+    return true;
+  }();
+  return available;
+}
+
+bool SynchronousMode() {
+  static const bool value = [] {
+    const char* forced = std::getenv("TF_METAL_SYNCHRONOUS");
+    if (forced != nullptr && forced[0] != '\0') {
+      return std::strcmp(forced, "0") != 0;
+    }
+    if (!ResourceVariableApiAvailable()) {
+      LOG(WARNING) << "Metal: this TensorFlow does not export the kernel C API "
+                      "for resource variables, so its own kernels update "
+                      "variables from the host. Every Metal kernel now waits "
+                      "for the GPU before returning, which is slower and is "
+                      "the only way those updates cannot race. See "
+                      "https://github.com/tensorflow/tensorflow/issues/126374.";
+      return true;
+    }
+    return false;
+  }();
+  return value;
 }
 
 void WaitForStream(SP_Stream stream) {

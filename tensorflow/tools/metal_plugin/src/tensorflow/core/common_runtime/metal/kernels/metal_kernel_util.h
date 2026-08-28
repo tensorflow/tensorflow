@@ -131,6 +131,25 @@ int64_t NumElements(TF_Tensor* tensor);
 // Shape as a plain vector, for shape checks and for building descriptors.
 std::vector<int64_t> ShapeOf(TF_Tensor* tensor);
 
+// Whether this TensorFlow exports the kernel C API entry points a plugin needs
+// to reach a resource variable.
+//
+// They are declared by tensorflow/c/kernels_experimental.h and, since 2.20.0,
+// defined by no binary a release ships. Without them a plugin cannot implement
+// the ops that read and write variables, so those fall back to TensorFlow's
+// own kernels, which reach the tensor through its data pointer. On a unified
+// memory device that pointer is host-addressable, so they read and write
+// device memory from the host with no idea that GPU work is in flight against
+// it.
+bool ResourceVariableApiAvailable();
+
+// Whether a kernel waits for the GPU before returning.
+//
+// True when the entry points above are missing, because then the host-side
+// fallbacks race with anything still running. It costs the asynchrony and buys
+// correctness; TF_METAL_SYNCHRONOUS forces it either way.
+bool SynchronousMode();
+
 // Waits for everything already enqueued on `stream`.
 //
 // A kernel that gives the GPU a temporary buffer must call this before it
