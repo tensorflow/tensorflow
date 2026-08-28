@@ -419,11 +419,6 @@ if(TFLITE_ENABLE_GPU)
     "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
     "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/task/tflite_serialization_base_generated.h"
   )
-  include_directories(
-    AFTER
-    ${TFLITE_SOURCE_DIR}/delegates/gpu/common
-    ${TFLITE_SOURCE_DIR}/delegates/gpu/common/task
-  )
 
   # Generate the flatbuffer schema headers for the GPU delegate
   add_custom_command(
