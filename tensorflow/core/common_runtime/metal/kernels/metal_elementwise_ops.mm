@@ -786,8 +786,7 @@ void RegisterMetalElementwiseKernels() {
       {"Mod", &Mod_Compute},
       {"Maximum", &Max_Compute}, {"Minimum", &Min_Compute},
       {"Pow", &Pow_Compute},     {"SquaredDifference", &SqDiff_Compute},
-      {"FloorDiv", &FloorDiv_Compute}, {"FloorMod", &FloorMod_Compute},
-      {"Mod", &Mod_Compute},           {"Atan2", &Atan2_Compute},
+      {"Atan2", &Atan2_Compute},
       {"Xdivy", &Xdivy_Compute},       {"Xlogy", &Xlogy_Compute},
   };
 
@@ -811,10 +810,6 @@ void RegisterMetalElementwiseKernels() {
       {"SigmoidGrad", &SigmoidGrad_Compute},
       {"SqrtGrad", &SqrtGrad_Compute},
       {"RsqrtGrad", &RsqrtGrad_Compute},
-      {"Floor", &Floor_Compute},   {"Ceil", &Ceil_Compute},
-      {"Round", &Round_Compute},   {"Rint", &Rint_Compute},
-      {"Sign", &Sign_Compute},     {"Erf", &Erf_Compute},
-      {"Expm1", &Expm1_Compute},   {"Log1p", &Log1p_Compute},
       {"Sin", &Sin_Compute},       {"Cos", &Cos_Compute},
       {"Tan", &Tan_Compute},       {"Asin", &Asin_Compute},
       {"Acos", &Acos_Compute},     {"Atan", &Atan_Compute},

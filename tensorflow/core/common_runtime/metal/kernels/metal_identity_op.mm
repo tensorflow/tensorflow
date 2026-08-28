@@ -125,12 +125,21 @@ void RegisterMetalIdentityKernels() {
     TF_DataType dtype;
     const char* suffix;
   };
+  // int32 only, and that is the whole list on purpose.
+  //
+  // TensorFlow registers Identity for DEVICE_GPU itself, outside any CUDA
+  // guard, for every number type except int32 plus bool, so those apply to
+  // this device already. Registering them again produced two registrations
+  // TensorFlow cannot choose between, and it refuses to run an op whose
+  // registrations tie: Identity, which is in nearly every graph, could not
+  // execute on the GPU at all.
+  //
+  // int32 is the exception in both directions. TensorFlow's number-type lists
+  // leave it out, and its host-memory int32 kernel sits behind
+  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM, so in this build nothing else
+  // registers it.
   static constexpr DTypeEntry kDTypes[] = {
-      {TF_FLOAT, "Float"},
-      {TF_HALF, "Half"},
       {TF_INT32, "Int32"},
-      {TF_INT64, "Int64"},
-      {TF_BOOL, "Bool"},
   };
   for (const DTypeEntry& entry : kDTypes) {
     RegisterIdentity("Identity", entry.dtype,
