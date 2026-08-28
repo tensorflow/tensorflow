@@ -301,7 +301,12 @@ struct BatchMatMulOp {
 void* BatchMatMulOp_Create(TF_OpKernelConstruction* ctx) {
   TF_Status* status = TF_NewStatus();
   auto* op = new BatchMatMulOp();
+  // V3 names the element types Ta, Tb and Tout rather than T.
   TF_OpKernelConstruction_GetAttrType(ctx, "T", &op->dtype, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+    TF_OpKernelConstruction_GetAttrType(ctx, "Ta", &op->dtype, status);
+  }
   if (TF_GetCode(status) != TF_OK) {
     TF_OpKernelConstruction_Failure(ctx, status);
     TF_DeleteStatus(status);
@@ -475,13 +480,21 @@ METAL_COMPUTE(BatchMatMul_Compute, BatchMatMulOp, BatchMatMul_ComputeImpl)
 
 #undef METAL_COMPUTE
 
+// `type_attrs` are the names the op gives its element types. Almost every op
+// has a single T; BatchMatMulV3 has Ta, Tb and Tout instead, and constraining
+// T there registers a kernel that can never match, which TensorFlow reports
+// as "OpKernel 'BatchMatMulV3' has constraint on attr 'T' not in NodeDef".
 void Register(const char* op_name, void* (*create)(TF_OpKernelConstruction*),
               void (*compute)(void*, TF_OpKernelContext*), void (*destroy)(void*),
-              TF_DataType dtype, const std::string& name) {
+              TF_DataType dtype, const std::string& name,
+              std::vector<const char*> type_attrs = {"T"}) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder =
       TF_NewKernelBuilder(op_name, kMetalDeviceType, create, compute, destroy);
-  TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
+  for (const char* attr : type_attrs) {
+    if (TF_GetCode(status) != TF_OK) break;
+    TF_KernelBuilder_TypeConstraint(builder, attr, dtype, status);
+  }
   if (TF_GetCode(status) == TF_OK) {
     TF_RegisterKernelBuilder(name.c_str(), builder, status);
   } else {
@@ -532,7 +545,8 @@ void RegisterMetalActivationKernels() {
              std::string("MetalBatchMatMulV2") + kSuffixes[i]);
     Register("BatchMatMulV3", &BatchMatMulOp_Create, &BatchMatMul_Compute,
              &BatchMatMulOp_Delete, kDTypes[i],
-             std::string("MetalBatchMatMulV3") + kSuffixes[i]);
+             std::string("MetalBatchMatMulV3") + kSuffixes[i],
+             {"Ta", "Tb", "Tout"});
   }
 }
 

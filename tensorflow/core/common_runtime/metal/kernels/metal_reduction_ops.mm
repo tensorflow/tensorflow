@@ -98,7 +98,14 @@ struct ReductionOp {
 void* ReductionOp_Create(TF_OpKernelConstruction* ctx) {
   TF_Status* status = TF_NewStatus();
   auto* op = new ReductionOp();
+  // All and Any reduce bool and have no T attribute; every other reduction
+  // has one. Insisting on it made those two fail construction with "No attr
+  // named 'T' in NodeDef".
   TF_OpKernelConstruction_GetAttrType(ctx, "T", &op->dtype, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+    op->dtype = TF_BOOL;
+  }
   if (TF_GetCode(status) == TF_OK) {
     TF_Bool keep_dims = 0;
     TF_OpKernelConstruction_GetAttrBool(ctx, "keep_dims", &keep_dims, status);
@@ -269,15 +276,21 @@ void Reduction_Compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_DeleteStatus(status);
 }
 
+// `constrain_type` is false for All and Any: they reduce bool and have no T
+// attribute at all, so constraining one describes an op that does not exist
+// and TensorFlow reports "OpKernel has constraint on attr 'T' not in NodeDef".
 void RegisterReduction(const char* op_name,
                        void (*compute)(void*, TF_OpKernelContext*),
                        TF_DataType dtype, TF_DataType index_dtype,
-                       const std::string& kernel_name) {
+                       const std::string& kernel_name,
+                       bool constrain_type = true) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
       op_name, kMetalDeviceType, &ReductionOp_Create, compute,
       &ReductionOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
+  if (constrain_type) {
+    TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
+  }
   if (TF_GetCode(status) == TF_OK) {
     TF_KernelBuilder_TypeConstraint(builder, "Tidx", index_dtype, status);
   }
@@ -332,10 +345,12 @@ void RegisterMetalReductionKernels() {
   for (int j = 0; j < 2; ++j) {
     RegisterReduction("Any", &Reduction_Compute<ReductionKind::kAny>, TF_BOOL,
                       kIndexTypes[j],
-                      std::string("MetalAny") + kIndexSuffixes[j]);
+                      std::string("MetalAny") + kIndexSuffixes[j],
+                      /*constrain_type=*/false);
     RegisterReduction("All", &Reduction_Compute<ReductionKind::kAll>, TF_BOOL,
                       kIndexTypes[j],
-                      std::string("MetalAll") + kIndexSuffixes[j]);
+                      std::string("MetalAll") + kIndexSuffixes[j],
+                      /*constrain_type=*/false);
   }
 }
 

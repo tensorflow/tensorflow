@@ -623,9 +623,12 @@ void RegisterMetalStridedKernels() {
       Register("StridedSliceGrad", &StridedSliceGrad_Compute, kDTypes[i],
                "MetalStridedSliceGrad" + s + is,
                {"shape", "begin", "end", "strides"}, "Index", kIndexTypes[j]);
-      Register("TileGrad", &TileGrad_Compute, kDTypes[i],
-               "MetalTileGrad" + s + is, {"multiples"}, "Tmultiples",
-               kIndexTypes[j]);
+      // TileGrad has T and nothing else: no Tmultiples to constrain, and
+      // constraining one registered a kernel that could never match.
+      if (j == 0) {
+        Register("TileGrad", &TileGrad_Compute, kDTypes[i],
+                 "MetalTileGrad" + s, {"multiples"});
+      }
       Register("Roll", &Roll_Compute, kDTypes[i], "MetalRoll" + s + is,
                {"shift", "axis"}, "Tshift", kIndexTypes[j]);
     }

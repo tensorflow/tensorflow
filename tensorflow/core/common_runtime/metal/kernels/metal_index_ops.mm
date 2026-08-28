@@ -84,7 +84,12 @@ struct IndexOp {
 void* IndexOp_Create(TF_OpKernelConstruction* ctx) {
   TF_Status* status = TF_NewStatus();
   auto* op = new IndexOp();
+  // GatherV2 names its element type Tparams; the other ops here call it T.
   TF_OpKernelConstruction_GetAttrType(ctx, "T", &op->dtype, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+    TF_OpKernelConstruction_GetAttrType(ctx, "Tparams", &op->dtype, status);
+  }
   if (TF_GetCode(status) != TF_OK) {
     TF_OpKernelConstruction_Failure(ctx, status);
     TF_DeleteStatus(status);
@@ -617,14 +622,19 @@ METAL_COMPUTE(ClipByValue_Compute, ClipByValue_ComputeImpl)
 
 #undef METAL_COMPUTE
 
+// `type_attr` is the name the op gives its element type. Most call it T;
+// GatherV2 calls it Tparams, and constraining T there is a registration that
+// can never match, which TensorFlow reports as "OpKernel 'GatherV2' has
+// constraint on attr 'T' not in NodeDef".
 void Register(const char* op_name,
               void (*compute)(void*, TF_OpKernelContext*), TF_DataType dtype,
               const std::string& name, std::vector<const char*> host_args,
-              const char* attr2 = nullptr, TF_DataType dtype2 = TF_INT32) {
+              const char* attr2 = nullptr, TF_DataType dtype2 = TF_INT32,
+              const char* type_attr = "T") {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
       op_name, kMetalDeviceType, &IndexOp_Create, compute, &IndexOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
+  TF_KernelBuilder_TypeConstraint(builder, type_attr, dtype, status);
   if (TF_GetCode(status) == TF_OK && attr2 != nullptr) {
     TF_KernelBuilder_TypeConstraint(builder, attr2, dtype2, status);
   }
@@ -659,7 +669,7 @@ void RegisterMetalIndexKernels() {
       // on the host to size the output.
       Register("GatherV2", &GatherV2_Compute, kDTypes[i],
                "MetalGatherV2" + suffix + isuffix, {"axis"}, "Tindices",
-               kIndexTypes[j]);
+               kIndexTypes[j], "Tparams");
       Register("OneHot", &OneHot_Compute, kDTypes[i],
                "MetalOneHot" + suffix + isuffix, {"depth"}, "TI",
                kIndexTypes[j]);
