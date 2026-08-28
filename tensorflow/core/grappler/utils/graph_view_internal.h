@@ -867,7 +867,7 @@ template <typename GraphViewT>
 inline void AddOrUpdateAttribute(NewNode<GraphViewT>* new_node,
                                  absl::string_view attr_name,
                                  const AttrValue& attr_value) {
-  gtl::InsertOrUpdate(new_node->node.mutable_attr(), string(attr_name),
+  gtl::InsertOrUpdate(new_node->node.mutable_attr(), std::string(attr_name),
                       attr_value);
 }
 
