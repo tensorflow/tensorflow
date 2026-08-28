@@ -433,6 +433,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([5]))
 
+  def testAverageZeroWeights(self):
+    # NumPy raises ZeroDivisionError when weights sum to zero.
+    x = np_array_ops.array([1, 2, 3])
+    with self.assertRaises(errors.InvalidArgumentError):
+      np_math_ops.average(x, weights=np_array_ops.array([0, 0, 0]))
+
   def testClip(self):
 
     def run_test(arr, *args, **kwargs):
