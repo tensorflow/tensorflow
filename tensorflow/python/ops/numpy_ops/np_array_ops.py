@@ -1528,8 +1528,28 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.rot90', v1=[])
 @np_utils.np_doc('rot90')
 def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
-  m_rank = array_ops.rank(m)
-  ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
+  m = asarray(m)
+  m_rank = m.shape.rank
+  ax1, ax2 = axes[0], axes[1]
+
+  # Validate axes are integers and different (matching NumPy).
+  if isinstance(ax1, (int, np.integer)) and isinstance(ax2, (int, np.integer)):
+    if ax1 == ax2:
+      raise ValueError('Axes must be different.')
+    if m_rank is not None:
+      for name, ax in (('axis1', ax1), ('axis2', ax2)):
+        norm = int(ax) + m_rank if int(ax) < 0 else int(ax)
+        if norm < 0 or norm >= m_rank:
+          raise ValueError(
+              f'{name} axis is out of bounds for array of dimension {m_rank}.'
+          )
+  else:
+    control_flow_assert.Assert(
+        math_ops.not_equal(ax1, ax2),
+        ['Axes must be different.'],
+    )
+
+  ax1, ax2 = np_utils._canonicalize_axes(axes, array_ops.rank(m))  # pylint: disable=protected-access
 
   k = k % 4
   if k == 0:

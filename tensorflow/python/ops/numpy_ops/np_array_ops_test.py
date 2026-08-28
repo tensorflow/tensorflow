@@ -1398,6 +1398,13 @@ class ArrayManipulationTest(test.TestCase):
         np_array_ops.array,
     ]
 
+  def testRot90SameAxes(self):
+    x = np_array_ops.array(np.arange(6).reshape(2, 3))
+    with self.assertRaisesRegex(ValueError, 'Axes must be different'):
+      np_array_ops.rot90(x, k=1, axes=(0, 0))
+    with self.assertRaisesRegex(ValueError, 'Axes must be different'):
+      np_array_ops.rot90(x, k=2, axes=(1, 1))
+
   def testBroadcastTo(self):
 
     def run_test(arr, shape):
