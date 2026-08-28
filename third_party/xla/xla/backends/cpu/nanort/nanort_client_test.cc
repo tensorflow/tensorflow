@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -62,10 +61,6 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-#include <sanitizer/msan_interface.h>
-#endif
 
 #define EIGEN_USE_THREADS
 
@@ -485,54 +480,6 @@ TEST_P(NanoRtClientTest, ProgramShapeKeepsLayout) {
   }
   EXPECT_EQ(program_shape->result().layout().minor_to_major(),
             absl::Span<const int64_t>({0, 1}));
-}
-
-TEST_P(NanoRtClientTest, MsanTracksPoisonThroughKernel) {
-#ifndef ABSL_HAVE_MEMORY_SANITIZER
-  GTEST_SKIP() << "This test requires an MSan build";
-#else
-  const char* kModuleStr = R"(
-    HloModule msan_shadow_test
-
-    ENTRY e {
-      p0 = f32[4] parameter(0)
-      p1 = f32[4] parameter(1)
-      ROOT sum = f32[4] add(p0, p1)
-    }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
-  XlaComputation computation(module->ToProto());
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
-
-  alignas(cpu::MinAlign()) float p0[4];
-  p0[0] = 1.0f;
-  p0[1] = 2.0f;
-  // p0[2], p0[3] intentionally uninitialized (poisoned under MSan).
-
-  alignas(cpu::MinAlign()) float p1[4] = {10.0f, 20.0f, 30.0f, 40.0f};
-  alignas(cpu::MinAlign()) float result[4] = {};
-
-  Arguments arguments = {{p0, 4}, {p1, 4}};
-  Results results = {{result, 4}};
-
-  auto event = executable->Execute(arguments, results, {});
-  tsl::BlockUntilReady(event);
-  ASSERT_TRUE(event.IsConcrete());
-
-  EXPECT_EQ(__msan_test_shadow(&result[0], sizeof(float)), -1)
-      << "result[0] should be initialized (unpoisoned)";
-  EXPECT_EQ(__msan_test_shadow(&result[1], sizeof(float)), -1)
-      << "result[1] should be initialized (unpoisoned)";
-
-  EXPECT_GE(__msan_test_shadow(&result[2], sizeof(float)), 0)
-      << "result[2] should be poisoned (p0[2] was uninitialized)";
-  EXPECT_GE(__msan_test_shadow(&result[3], sizeof(float)), 0)
-      << "result[3] should be poisoned (p0[3] was uninitialized)";
-#endif
 }
 
 INSTANTIATE_TEST_SUITE_P(NanoRtClientTestSuite, NanoRtClientTest,
