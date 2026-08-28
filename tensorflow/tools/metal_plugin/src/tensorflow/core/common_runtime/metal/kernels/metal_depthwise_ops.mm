@@ -328,7 +328,16 @@ void DepthwiseGrad_ComputeImpl(DepthwiseOp* op, TF_OpKernelContext* ctx,
             [out->graph gradientForPrimaryTensor:loss
                                      withTensors:@[ wanted ]
                                             name:nil];
-        [out->outputs addObject:grads[wanted]];
+        // Adding nil to an NSMutableArray raises, which would take the process
+        // down rather than fail the op. A tensor the loss does not depend on
+        // has a zero gradient, which is also the right answer.
+        MPSGraphTensor* gradient = grads[wanted];
+        if (gradient == nil) {
+          gradient = [out->graph constantWithScalar:0.0
+                                              shape:MPSShape(target_shape)
+                                           dataType:mps_dtype];
+        }
+        [out->outputs addObject:gradient];
       },
       status);
   if (cached == nullptr) return;

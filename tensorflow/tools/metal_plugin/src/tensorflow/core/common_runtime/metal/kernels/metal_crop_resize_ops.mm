@@ -156,6 +156,13 @@ void CropAndResize_ComputeImpl(CropOp* op, TF_OpKernelContext* ctx,
     return;
   }
   const int64_t num_boxes = boxes_shape[0];
+  // The shader reads one image index per box, so a shorter box_ind is read
+  // past its end.
+  if (NumElements(box_index.get()) != num_boxes) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: box_ind must hold one image index per box.");
+    return;
+  }
   const std::vector<int64_t> crop_shape = {num_boxes, crop_h, crop_w,
                                            image_shape.size() == 4
                                                ? image_shape[3]
@@ -232,6 +239,12 @@ void CropAndResizeGradImage_ComputeImpl(CropOp* op, TF_OpKernelContext* ctx,
   if (boxes_shape.size() != 2 || boxes_shape[1] != 4) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "Metal: boxes must have shape [num_boxes, 4].");
+    return;
+  }
+  // One image index per box, as in the forward pass.
+  if (NumElements(box_index.get()) != boxes_shape[0]) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: box_ind must hold one image index per box.");
     return;
   }
 

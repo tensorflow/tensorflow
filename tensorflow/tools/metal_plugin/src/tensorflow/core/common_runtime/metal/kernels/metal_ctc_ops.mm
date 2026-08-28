@@ -151,6 +151,12 @@ void Ctc_ComputeImpl(CtcOp* op, TF_OpKernelContext* ctx, TF_Status* status) {
                  "Metal: the CTC labels have no data.");
     return;
   }
+  if (NumElements(seq_len.get()) < batch) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: sequence_length must hold one length per batch "
+                 "entry.");
+    return;
+  }
   if (NumElements(values.get()) != entries) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "Metal: labels_values does not match labels_indices.");
