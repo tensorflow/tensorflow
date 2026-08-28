@@ -1,0 +1,10 @@
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -340,7 +340,6 @@
+                 "-lpthread",
+             ],
+         }),
+-        linkstatic = True,
+         local_defines = select({
+             "@platforms//os:macos": [
+                 'CURL_CA_BUNDLE=\\"/etc/ssl/cert.pem\\"',

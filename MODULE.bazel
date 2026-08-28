@@ -43,6 +43,12 @@ bazel_dep(name = "crc32c", version = "1.1.0", repo_name = "com_github_google_crc
 bazel_dep(name = "brotli", version = "1.1.0", repo_name = "org_brotli")
 bazel_dep(name = "rules_cc", version = "0.2.18")
 bazel_dep(name = "curl", version = "8.12.0.bcr.1")
+single_version_override(
+    module_name = "curl",
+    patch_strip = 1,
+    patches = ["//third_party:curl.patch"],
+    version = "8.12.0.bcr.1",
+)
 bazel_dep(name = "rules_webtesting", version = "0.4.1", repo_name = "io_bazel_rules_webtesting")
 bazel_dep(name = "rules_closure", version = "0.15.0", repo_name = "io_bazel_rules_closure")
 bazel_dep(name = "grpc", version = "1.81.0")
@@ -61,11 +67,27 @@ bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "zstd", version = "1.5.7", repo_name = "net_zstd")
 bazel_dep(name = "pybind11_bazel", version = "3.0.0")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
+single_version_override(
+    module_name = "pybind11_protobuf",
+    patch_strip = 1,
+    patches = [
+        "//third_party/pybind11_protobuf:python_toolchain.patch",
+    ],
+    version = "0.0.0-20250210-f02a2b7",
+)
 
 # NOTE: This is a newer version compared to what was used in WORKSPACE
 # and it breaks wheel tests.
 # TODO: Fix the incompatibility with wheel tests.
 bazel_dep(name = "pybind11_abseil", version = "202402.0")
+single_version_override(
+    module_name = "pybind11_abseil",
+    patch_strip = 1,
+    patches = [
+        "//third_party/xla/third_party/pybind11_abseil:python_toolchain.patch",
+    ],
+    version = "202402.0",
+)
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "re2", version = "2025-11-05.bcr.1", repo_name = "com_googlesource_code_re2")
 bazel_dep(name = "rules_android", version = "0.6.6", repo_name = "build_bazel_rules_android")
