@@ -78,17 +78,6 @@ void ProposalOp_Delete(void* kernel) {
   delete static_cast<ProposalOp*>(kernel);
 }
 
-void WaitForStream(SP_Stream stream) {
-  uint64_t target = 0;
-  {
-    absl::MutexLock lock(&stream->mu);
-    target = stream->last_enqueued;
-  }
-  if (target > 0) {
-    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
-  }
-}
-
 float Iou(const float* box, int i, int j) {
   const float* a = box + 4 * i;
   const float* b = box + 4 * j;
@@ -156,6 +145,30 @@ void Proposals_ComputeImpl(ProposalOp* op, TF_OpKernelContext* ctx,
   const int64_t width = score_shape[2];
   const int64_t num_anchors = score_shape[3];
   const int64_t per_image = height * width * num_anchors;
+
+  // The shader indexes all four inputs from the score shape, so a smaller one
+  // is read past its end. A kernel is reachable from a graph a user wrote, so
+  // the shapes are checked rather than assumed.
+  const std::vector<int64_t> delta_shape = ShapeOf(deltas.get());
+  if (delta_shape.size() != 4 || delta_shape[0] != batch ||
+      delta_shape[1] != height || delta_shape[2] != width ||
+      delta_shape[3] != num_anchors * 4) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: bbox_deltas must have shape [batch, height, width, "
+                 "anchors * 4] and match scores.");
+    return;
+  }
+  if (NumElements(anchors.get()) < per_image * 4) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: anchors must hold four values for every anchor "
+                 "position in scores.");
+    return;
+  }
+  if (NumElements(image_info.get()) < batch * 5) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: image_info must hold five values per image.");
+    return;
+  }
 
   double nms_threshold = 0.0, pre_nms_topn = 0.0, min_size = 0.0;
   if (!ReadHostScalar(ctx, 4, &nms_threshold, status)) return;

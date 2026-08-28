@@ -377,8 +377,7 @@ def _more():
   f = lambda *s: tf.constant(RNG.standard_normal(s, dtype=np.float32))
   u = lambda *s: tf.constant(RNG.random(s).astype(np.float32) * 0.9 + 0.05)
   small = u(6, 5)
-  square = tf.constant(RNG.random((5, 5)).astype(np.float32)
-                       + np.eye(5, dtype=np.float32) * 4)
+  square = tf.constant(RNG.random((5, 5)).astype(np.float32) + np.eye(5, dtype=np.float32) * 4)
   symmetric = tf.constant(((square + tf.transpose(square)) / 2).numpy())
   complex_1d = tf.complex(f(2, 8), f(2, 8))
   complex_2d = tf.complex(f(2, 4, 8), f(2, 4, 8))
@@ -763,9 +762,8 @@ def cudnn_rnn_checks():
     sequence = f(steps, batch, inputs)
     state = f(layers, batch, units)
   size = 4 * units * inputs * 4 + 4 * units * units * 4 + 8 * units
-  size = (len(weights[0].numpy().ravel()) * 4
-          + len(weights[4].numpy().ravel()) * 4
-          + sum(len(b.numpy()) for b in biases))
+  size = len(weights[0].numpy().ravel()) * 4 + len(weights[4].numpy().ravel()) * 4 \
+      + sum(len(b.numpy()) for b in biases)
   with tf.device("/GPU:0"):
     params = tf.raw_ops.CudnnRNNCanonicalToParams(
         num_layers=layers, num_units=units, input_size=inputs,
@@ -910,7 +908,8 @@ def last_few():
       "GenerateBoundingBoxProposals": (
           {"scores": tf.reshape(scores, [1, 1, 1, 4]),
            "bbox_deltas": tf.zeros([1, 1, 1, 16], dtype=tf.float32),
-           "image_info": tf.constant([[1.0, 1.0, 1.0]], dtype=tf.float32),
+           "image_info": tf.constant([[1.0, 1.0, 1.0, 1.0, 1.0]],
+                                     dtype=tf.float32),
            "anchors": anchors, "nms_threshold": 0.7, "pre_nms_topn": 4,
            "min_size": 0.0},
           "finite, and no more boxes than were offered"),

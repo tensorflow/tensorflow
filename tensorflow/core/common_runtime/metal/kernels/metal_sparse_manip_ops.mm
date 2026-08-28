@@ -52,17 +52,6 @@ namespace {
 // output length on the host first, so it would pay the same wait and then add
 // a dispatch to it.
 
-void WaitForStream(SP_Stream stream) {
-  uint64_t target = 0;
-  {
-    absl::MutexLock lock(&stream->mu);
-    target = stream->last_enqueued;
-  }
-  if (target > 0) {
-    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
-  }
-}
-
 struct ManipOp {
   int32_t num_split = 1;
   int32_t concat_dim = 0;
