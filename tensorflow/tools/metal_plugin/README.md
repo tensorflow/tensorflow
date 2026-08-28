@@ -75,6 +75,29 @@ has to be loaded by hand:
 Verified on a clean environment with `tensorflow==2.21.0`, Python 3.12, macOS
 26.6 on an M4 Max.
 
+## Training works, and what it costs today
+
+`model.fit(optimizer="adam")` trains and the loss goes down. Getting there
+needed a correction worth stating plainly, because it changes the speed.
+
+TensorFlow's own kernels for resource variables reach a tensor through its
+data pointer. On a unified memory device that pointer is host-addressable, so
+those kernels read and write device memory from the host with no idea that GPU
+work is in flight against it. A plugin is supposed to implement those ops
+itself, through `tensorflow/c/kernels_experimental.h`, and order them on its
+own stream. Since 2.20.0 no shipped binary defines those entry points
+([#126374](https://github.com/tensorflow/tensorflow/issues/126374)), so the
+ops fall back to the host and race.
+
+The symptom was the worst kind: an optimiser read a slot variable mid-write,
+took the square root of whatever was there, and produced `nan` weights with no
+error raised. `model.fit` reported `[nan, nan, nan]` and carried on.
+
+While those entry points are missing, every Metal kernel waits for the GPU
+before returning, which closes the window. It is announced in a warning at
+load, and `TF_METAL_SYNCHRONOUS` forces it either way. When the entry points
+come back the plugin returns to running asynchronously with no change here.
+
 ## Is it faster than the CPU
 
 Sometimes, and by how much depends entirely on the shape of the work. Measured
@@ -82,16 +105,21 @@ on an M4 Max against TensorFlow 2.21.0, median of ten runs each, both devices
 in the same process on the same data, waiting for the device before stopping
 the clock:
 
-| | GPU | CPU | |
-| --- | ---: | ---: | ---: |
-| MatMul 2048x2048 | 1.83 ms | 11.93 ms | **6.5x** |
-| Conv2D, batch 64, 64x64x32 to 64 | 3.04 ms | 9.02 ms | **3.0x** |
-| CNN training step, SGD, batch 128 | 10.53 ms | 18.30 ms | **1.7x** |
-| CNN forward, batch 128 | 3.50 ms | 5.27 ms | 1.5x |
-| MatMul 1024x1024 | 1.24 ms | 1.86 ms | 1.5x |
-| MatMul 512x512 | 0.39 ms | 0.34 ms | 0.9x |
-| ReduceSum 4096x4096 | 0.43 ms | 0.33 ms | 0.8x |
-| Elementwise 4096x4096 | 3.08 ms | 1.43 ms | 0.5x |
+Two columns of speedup, because the wait above costs most of it. "Today" is
+what you get from a released TensorFlow; "async" is the same machine with
+`TF_METAL_SYNCHRONOUS=0`, which is what the plugin does once
+[#126374](https://github.com/tensorflow/tensorflow/issues/126374) is fixed.
+
+| | GPU today | CPU | today | async |
+| --- | ---: | ---: | ---: | ---: |
+| MatMul 2048x2048 | 3.80 ms | 14.42 ms | **3.8x** | 6.5x |
+| Conv2D, batch 64, 64x64x32 to 64 | 4.58 ms | 10.91 ms | **2.4x** | 3.0x |
+| MatMul 1024x1024 | 1.12 ms | 2.17 ms | 1.9x | 1.5x |
+| CNN training step, SGD, batch 128 | 19.46 ms | 20.61 ms | 1.1x | 1.7x |
+| CNN forward, batch 128 | 5.53 ms | 6.00 ms | 1.1x | 1.5x |
+| MatMul 512x512 | 0.44 ms | 0.36 ms | 0.8x | 0.9x |
+| ReduceSum 4096x4096 | 0.44 ms | 0.34 ms | 0.8x | 0.8x |
+| Elementwise 4096x4096 | 2.88 ms | 1.54 ms | 0.5x | 0.5x |
 
 The pattern is the ordinary one and worth stating plainly: the GPU wins where
 there is arithmetic to do per byte moved, and loses where there is not. A
@@ -100,9 +128,9 @@ operations per element, so it is bound by memory on a machine whose CPU shares
 that same memory. Small matrices lose to the cost of getting work to the
 device at all.
 
-What matters for the original question is the third row: a real training step
-is faster on the GPU, which is the case the CPU is supposed to win when a
-model is small.
+A training step is 1.7x the CPU when the plugin can run asynchronously, and
+barely ahead of it while it cannot. That gap is the cost of the missing entry
+points, not of the backend.
 
 `benchmarks/benchmark.py` reproduces the table.
 

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/metal/kernels/metal_mps_graph.h"
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -285,6 +287,7 @@ bool RunGraph(SP_Stream stream, const CachedGraph& cached,
   id<MTLCommandBuffer> live = mps_buffer.rootCommandBuffer;
   [live encodeSignalEvent:commit.stream->order_event value:commit.signal_value];
   [mps_buffer commit];
+  if (SynchronousMode()) WaitForStream(stream);
   return true;
 }
 
