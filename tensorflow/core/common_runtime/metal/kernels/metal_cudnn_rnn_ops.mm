@@ -237,8 +237,17 @@ void* RnnOp_Create(TF_OpKernelConstruction* ctx) {
     TF_SetStatus(status, TF_OK, "");
     op->size_dtype = TF_INT32;
   }
+  // The first generation counts weights and biases together in num_params;
+  // the second splits them into num_params_weights and num_params_biases, and
+  // reading only the first name left the count at zero, so every V2
+  // conversion refused with "num_params does not match this configuration".
   int32_t num_params = 0;
   TF_OpKernelConstruction_GetAttrInt32(ctx, "num_params", &num_params, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+    TF_OpKernelConstruction_GetAttrInt32(ctx, "num_params_weights",
+                                         &num_params, status);
+  }
   if (TF_GetCode(status) == TF_OK) op->num_params = num_params;
   TF_SetStatus(status, TF_OK, "");
   if (!ReadMode(ctx, &op->spec, status)) {
@@ -1177,14 +1186,18 @@ void RegisterMetalCudnnRnnKernels() {
              "MetalCudnnRNN" + suffix, {});
     Register("CudnnRNNV2", &Forward_Compute, kDTypes[i],
              "MetalCudnnRNNV2" + suffix, {});
+    // sequence_lengths stays on the device: the graph compares it against a
+    // time index to build the mask, so it is read as a tensor rather than as
+    // a shape. Marking it host memory made every V3 call fail with "tensor is
+    // not backed by a Metal allocation".
     Register("CudnnRNNV3", &ForwardV3_Compute, kDTypes[i],
-             "MetalCudnnRNNV3" + suffix, {"sequence_lengths"});
+             "MetalCudnnRNNV3" + suffix, {});
     Register("CudnnRNNBackprop", &Backward_Compute, kDTypes[i],
              "MetalCudnnRNNBackprop" + suffix, {});
     Register("CudnnRNNBackpropV2", &Backward_Compute, kDTypes[i],
              "MetalCudnnRNNBackpropV2" + suffix, {});
     Register("CudnnRNNBackpropV3", &BackwardV3_Compute, kDTypes[i],
-             "MetalCudnnRNNBackpropV3" + suffix, {"sequence_lengths"});
+             "MetalCudnnRNNBackpropV3" + suffix, {});
   }
 }
 

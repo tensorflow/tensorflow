@@ -151,10 +151,15 @@ void* BatchNormOp_Create(TF_OpKernelConstruction* ctx) {
 // changes with what ran before it. The slot is given its element and that
 // element is set to zero, which is what TensorFlow's own kernels leave there.
 bool AllocateEmptyScalar(TF_OpKernelContext* ctx, int index, TF_DataType dtype,
-                         TF_Status* status) {
+                         TF_Status* status, bool vector = false) {
+  // The forward pass's reserve_space_3 is a scalar; the gradient's
+  // reserve_space_4 and _5 are empty vectors, which is what TensorFlow's own
+  // kernels produce and what a caller comparing shapes will expect.
+  const int64_t zero = 0;
   ScopedTensor scalar;
-  scalar.reset(TF_AllocateOutput(ctx, index, dtype, nullptr, 0,
-                                 TF_DataTypeSize(dtype), status));
+  scalar.reset(TF_AllocateOutput(ctx, index, dtype, vector ? &zero : nullptr,
+                                 vector ? 1 : 0,
+                                 vector ? 0 : TF_DataTypeSize(dtype), status));
   if (TF_GetCode(status) != TF_OK) return false;
   void* data = TF_TensorData(scalar.get());
   if (data != nullptr) {
@@ -524,7 +529,10 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
       if (TF_GetCode(status) != TF_OK) return;
       continue;
     }
-    if (!AllocateEmptyScalar(ctx, i, op->param_dtype, status)) return;
+    if (!AllocateEmptyScalar(ctx, i, op->param_dtype, status,
+                            /*vector=*/true)) {
+      return;
+    }
   }
   if (ElementCount(x_shape) == 0) return;
 
