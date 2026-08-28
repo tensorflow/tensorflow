@@ -59,6 +59,25 @@ class GraphCache {
     built->outputs = [[NSMutableArray alloc] init];
     builder(built);
 
+    // Every result goes through an identity before it is published.
+    //
+    // MPSGraph can answer for a tensor that is a pure view of an input, a
+    // transpose or a reshape among them, without doing any work: the value is
+    // already in memory, just read differently. encodeToCommandBuffer is then
+    // asked to deliver that view into a caller-supplied MPSGraphTensorData and
+    // encodes nothing at all, so the output tensor keeps whatever it was
+    // allocated with, which is zeros. Transpose returned zeros for every
+    // permutation but the identity, and the identity was right for exactly the
+    // reason the others were wrong.
+    //
+    // An identity gives the result a producing operation, so there is
+    // something to encode into the destination. When the result already had
+    // one, this is folded away and costs nothing.
+    for (NSUInteger i = 0; i < [built->outputs count]; ++i) {
+      built->outputs[i] = [built->graph identityWithTensor:built->outputs[i]
+                                                      name:nil];
+    }
+
     if (built->graph == nil || [built->inputs count] == 0 ||
         [built->outputs count] == 0) {
       TF_SetStatus(status, TF_INTERNAL,
