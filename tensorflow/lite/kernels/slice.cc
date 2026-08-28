@@ -145,16 +145,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
   // If the shape of output is fully specified then resize even if
   // the input shape is not staticly defined.
-  //
-  // A fully specified output shape does not imply the slice is in bounds when
-  // the input extent is only known at run time. Taking this path leaves the
-  // output static, so Eval() -- which only re-runs ResizeOutputShape() for a
-  // dynamic output -- never reaches CalculateOutputShapeVector(), the one place
-  // `begin` and `size` are checked against the input. Fall through when the
-  // input has an unspecified dimension so the output is marked dynamic and the
-  // bounds are validated against the actual extent on every invocation.
-  if (ShapeHasRank(output->dims) && !HasUnspecifiedDimension(output) &&
-      ShapeHasRank(input->dims) && !HasUnspecifiedDimension(input)) {
+  if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
     return kTfLiteOk;
   }
   // Postpone allocation of output if any of the indexing tensors is not
