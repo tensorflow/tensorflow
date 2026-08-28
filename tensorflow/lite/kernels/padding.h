@@ -33,6 +33,20 @@ inline TfLiteStatus CheckedNarrowPaddingValue(int64_t value, int* result) {
   return kTfLiteOk;
 }
 
+inline TfLiteStatus ValidatePaddingValuesForInt16(
+    const TfLitePaddingValues& padding_values) {
+  const int min = std::numeric_limits<int16_t>::min();
+  const int max = std::numeric_limits<int16_t>::max();
+  if (padding_values.width < min || padding_values.width > max ||
+      padding_values.height < min || padding_values.height > max ||
+      padding_values.width_offset < min || padding_values.width_offset > max ||
+      padding_values.height_offset < min ||
+      padding_values.height_offset > max) {
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 inline int64_t ComputeEffectiveFilterSize(int filter_size, int dilation_rate) {
   return (static_cast<int64_t>(filter_size) - 1) * dilation_rate + 1;
 }

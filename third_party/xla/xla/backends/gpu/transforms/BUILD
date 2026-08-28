@@ -106,7 +106,9 @@ cc_library(
     hdrs = ["conv_canonicalizer.h"],
     deps = [
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -179,45 +181,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "alias_in_place_outputs",
-    srcs = ["alias_in_place_outputs.cc"],
-    hdrs = ["alias_in_place_outputs.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/hlo/analysis:hlo_reachability",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_map",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:cublas_cudnn",
-        "//xla/service/gpu:ir_emission_utils",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_cc_test(
-    name = "alias_in_place_outputs_test",
-    srcs = ["alias_in_place_outputs_test.cc"],
-    deps = [
-        ":alias_in_place_outputs",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1771,10 +1734,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_slice_fusion_rewriter_v2_test",
     srcs = ["dynamic_slice_fusion_rewriter_v2_test.cc"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
+    tags = ["gpu"],
     deps = [
         ":dynamic_slice_annotator",
         ":dynamic_slice_fusion",
@@ -2019,6 +1979,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -2633,6 +2594,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -3871,7 +3833,6 @@ cc_library(
 
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
-    timeout = "short",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
     backends = [
         "a100",

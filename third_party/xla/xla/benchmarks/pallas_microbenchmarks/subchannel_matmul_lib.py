@@ -23,11 +23,11 @@ from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.core import flag_utils  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.core import platform_info  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import memory_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import flag_utils
+from xla.benchmarks.core import platform_info
+from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
+from xla.benchmarks.pallas_microbenchmarks import memory_utils
 
 InputSpec = benchmark.InputSpec
 

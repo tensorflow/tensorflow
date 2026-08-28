@@ -20,8 +20,8 @@ from absl import logging
 import immutabledict
 from jax.experimental.pallas import tpu as pltpu
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import subchannel_matmul_lib  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
+from xla.benchmarks.pallas_microbenchmarks import subchannel_matmul_lib
 
 immutabledict = immutabledict.immutabledict
 

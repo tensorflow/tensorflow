@@ -92,6 +92,10 @@ class PjRtExecutableLoadState
   virtual void Delete() = 0;
   virtual bool IsDeleted() const = 0;
 
+  virtual absl::Status Preload(PjRtExecutable* executable) {
+    return absl::OkStatus();
+  }
+
   virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
   LoadRawExecutable(tsl::AsyncValueRef<PjRtExecutable> executable,
                     const ExecuteOptions& options, size_t host_callback_idx,
@@ -192,6 +196,13 @@ class PjRtRawClient {
   virtual absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
   RuntimeAbiVersion() const {
     return absl::UnimplementedError("RuntimeAbiVersion is not supported.");
+  }
+
+  virtual tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
+      std::shared_ptr<PjRtExecutable> executable) const = 0;
+
+  virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
+    LOG(FATAL) << "Implement MakeLoadState()";
   }
 
   virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,

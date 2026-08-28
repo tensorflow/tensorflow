@@ -25,12 +25,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/reduction_kind.h"
-#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -293,88 +290,6 @@ void CopyCollectiveGroupKey(const HloInstruction& source,
 
 // Removes the collective_group_key attribute.
 void ClearCollectiveGroupKey(HloInstruction& instruction);
-
-//===----------------------------------------------------------------------===//
-// Collective rendezvous.
-//===----------------------------------------------------------------------===//
-
-// Key that identifies a particular Rendezvous object in our global hashtable.
-// This determines which calls to ExecuteOnStream communicate with each other.
-// The rules are as follows.
-//
-// * Only ops with the same RunId can communicate with each other. (This is the
-//   whole purpose of RunId).
-//
-// * Only ops with the same set of participating replicas can communicate with
-//   each other.  This is how we separate out different replica groups (e.g. a
-//   single AllReduce HLO might do two reductions, between say GPUs {0,2} and
-//   {1,3}).
-//
-// * Only ops with the same opcode can communicate with each other.  At the
-//   moment we only support kAllReduce, so we don't check for this explicitly.
-//
-// * For cross-module all-reduces (i.e. instr->channel_id().has_value()),
-//   only ops with the same value for channel_id() can communicate with each
-//   other.
-//
-// * For cross-replica (i.e. same-module) all-reduces (i.e.
-//   !channel_id().has_value()), only ops from the same module (as
-//   identified by its unique_id()) can communicate with each other.
-//
-struct RendezvousKey {
-  enum CollectiveOpKind {
-    kCrossModule,
-    kCrossReplica,
-  };
-
-  explicit RendezvousKey(const RunId& run_id,
-                         std::vector<GlobalDeviceId> global_devices,
-                         int num_local_participants,
-                         CollectiveOpKind collective_op_kind, int64_t op_id)
-      : run_id(run_id),
-        global_devices(std::move(global_devices)),
-        num_local_participants(num_local_participants),
-        collective_op_kind(collective_op_kind),
-        op_id(op_id) {}
-
-  template <typename H>
-  friend H AbslHashValue(H h, const RendezvousKey& k) {
-    return H::combine(std::move(h), k.run_id, k.global_devices,
-                      k.num_local_participants, k.collective_op_kind, k.op_id);
-  }
-  friend bool operator==(const RendezvousKey& a, const RendezvousKey& b) {
-    return a.run_id == b.run_id && a.global_devices == b.global_devices &&
-           a.num_local_participants == b.num_local_participants &&
-           a.collective_op_kind == b.collective_op_kind &&  //
-           a.op_id == b.op_id;
-  }
-  friend bool operator!=(const RendezvousKey& a, const RendezvousKey& b) {
-    return !(a == b);
-  }
-
-  absl::string_view CollectiveOpKindString() const {
-    switch (collective_op_kind) {
-      case kCrossModule:
-        return "cross_module";
-      case kCrossReplica:
-        return "cross_replica";
-    }
-  }
-
-  std::string ToString() const {
-    return absl::StrFormat(
-        "RendezvousKey{run_id=%s, global_devices=[%s], "
-        "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
-        run_id.ToString(), absl::StrJoin(global_devices, ", "),
-        num_local_participants, CollectiveOpKindString(), op_id);
-  }
-
-  RunId run_id;
-  std::vector<GlobalDeviceId> global_devices;
-  int num_local_participants;
-  CollectiveOpKind collective_op_kind;
-  int64_t op_id;
-};
 
 //===----------------------------------------------------------------------===//
 // Collective execution utilities.

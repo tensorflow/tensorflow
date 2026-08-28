@@ -22,7 +22,7 @@ from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 import numpy as np
 
-from xla.benchmarks.core import platform_info  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import platform_info
 
 
 def _vmem_usage_bytes(

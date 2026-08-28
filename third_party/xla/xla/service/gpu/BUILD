@@ -1743,7 +1743,6 @@ cc_library(
     deps = [
         ":alias_info",
         "//xla:xla_proto_cc",
-        "//xla/backends/gpu/transforms:alias_in_place_outputs",
         "//xla/backends/gpu/transforms:alias_passthrough_params",
         "//xla/backends/gpu/transforms:copy_fusion",
         "//xla/backends/gpu/transforms:sanitize_constant_names",
@@ -1877,7 +1876,6 @@ cc_library(
         "//xla/backends/gpu/transforms:sanitize_constant_names",
         "//xla/backends/gpu/transforms:scalar_constant_sinker",
         "//xla/backends/gpu/transforms:scaled_dot_rewriter",
-        "//xla/backends/gpu/transforms:scan_rewriter",
         "//xla/backends/gpu/transforms:scatter_determinism_expander",
         "//xla/backends/gpu/transforms:scatter_expander",
         "//xla/backends/gpu/transforms:scatter_slice_simplifier",
@@ -2655,16 +2653,14 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_aot_compilation_test",
     srcs = [
         "gpu_aot_compilation_test.cc",
     ],
+    backends = ["gpu"],
     tags = [
-        "gpu",
-        "no_oss",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-        "requires-gpu-nvidia",
     ],
     deps = if_cuda_is_configured([
         ":nvptx_compiler_impl",
@@ -2678,26 +2674,24 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/service:gpu_plugin",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_runner_interface",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:statusor",
+        "//xla/util/split_proto:split_executable_and_options_writer",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/bytes:string_writer",
         "@tsl//tsl/platform:statusor",
     ],
 )
@@ -3425,27 +3419,6 @@ cc_library(
         "//xla/tsl/lib/monitoring:counter",
         "//xla/tsl/lib/monitoring:gauge",
         "//xla/tsl/lib/monitoring:sampler",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform",
-        "@tsl//tsl/platform:stacktrace",
-    ],
-)
-
-xla_cc_test(
-    name = "metrics_test",
-    srcs = ["metrics_test.cc"],
-    tags = [
-        # Streamz recording doesn't work in OSS.
-        "no_oss",
-    ],
-    deps = [
-        ":metrics",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/monitoring:collected_metrics",
-        "//xla/tsl/lib/monitoring:collection_registry",
-        "@com_google_googletest//:gtest",
-        "@tsl//tsl/platform:test",
     ],
 )
 

@@ -2199,7 +2199,6 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   };
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/false,
       /*is_aot_compilation=*/options.is_aot_compile};
 
   auto ir_compiler = IrCompiler::Create(CompilerTargetOptions(module->config()),
@@ -2317,7 +2316,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
                    target_machine_builder());
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
       /*is_aot_compilation=*/true};
 
   TargetMachineOptions target_machine_options(

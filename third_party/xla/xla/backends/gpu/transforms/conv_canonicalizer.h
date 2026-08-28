@@ -38,6 +38,10 @@ namespace gpu {
 // 3. Transforms SpatialOp(s32 convert(s8)) -> s32 convert(SpatialOp(s8)).
 // Commutes convert op over spatial operations (e.g. Reshape, Transpose,
 // Broadcast, Pad, Slice) and moves the convert to the convolution operand.
+//
+// 4. Pads odd channel dimensions to multiples of 2 for 16-bit float (BF16/F16)
+// convolutions so that they satisfy 32-bit alignment requirements for cuDNN
+// runtime epilogue fusion.
 
 class ConvCanonicalizer : public HloModulePass {
  public:

@@ -43,10 +43,9 @@ class ComputationPlacer {
   static void RegisterComputationPlacer(se::PlatformId platform_id,
                                         CreationFunction creation_function);
 
-  // Returns the computation placer singleton pointer if it is available for the
-  // given platform, or an error status if it is not.
-  static absl::StatusOr<ComputationPlacer*> GetForPlatform(
-      se::PlatformId platform_id);
+  // Returns the computation placer singleton pointer registered for the given
+  // platform, or the default computation placer if none is registered.
+  static ComputationPlacer* GetForPlatform(se::PlatformId platform_id);
 
  private:
   ComputationPlacer(const ComputationPlacer&) = delete;

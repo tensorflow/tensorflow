@@ -70,3 +70,16 @@ index a7e652c..5b8ac5e 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -110,6 +110,7 @@
+     # LLVM features
+     r'LTDL_SHLIB_EXT=\".dll\"',
+     r'LLVM_PLUGIN_EXT=\".dll\"',
++    "LLVM_ENABLE_THREADS=1",
+ ] + fenv_defines
+ 
+ # TODO: We should switch to platforms-based config settings to make this easier
+
