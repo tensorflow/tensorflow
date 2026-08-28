@@ -16,16 +16,33 @@ limitations under the License.
 #include "xla/tests/constraint_propagator.h"
 
 #include <cmath>
+#include <cstdint>
 
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/constraint_state.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
-namespace {
+class ConstraintPropagatorTest : public HloTestBase {
+ protected:
+  ConstraintPropagator CreatePropagator() {
+    return ConstraintPropagator(nullptr);
+  }
 
-class ConstraintPropagatorTest : public HloTestBase {};
+  void ComputeMaxAddReductionElementsPerExp(ConstraintPropagator& propagator,
+                                            const HloComputation* comp) {
+    propagator.ComputeMaxAddReductionElementsPerExp(comp);
+  }
+
+  int64_t GetMaxAddReductionElementsForExp(
+      const ConstraintPropagator& propagator, const HloInstruction* exp) {
+    return propagator.GetMaxAddReductionElementsForExp(exp);
+  }
+};
+
+namespace {
 
 TEST_F(ConstraintPropagatorTest, EmptyInterval) {
   ConstraintInterval a{0.0, 10.0, false};
@@ -1175,5 +1192,50 @@ ENTRY main {
   EXPECT_LE(p0_int.max, 150.0);
 }
 
+TEST_F(ConstraintPropagatorTest,
+       MaxAddReductionElementsPerExpTracksDownstreamReductions) {
+  const char* hlo = R"(
+HloModule TestReductionExpModule
+
+%add_reducer (a: f32[], b: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %sum = f32[] add(%a, %b)
+}
+
+ENTRY %main {
+  %p0 = f32[2,256] parameter(0)
+  %exp_reduced = f32[2,256] exponential(%p0)
+  %mul = f32[2,256] multiply(%exp_reduced, %p0)
+  %c_zero = f32[] constant(0.0)
+  %reduce = f32[2] reduce(%mul, %c_zero), dimensions={1}, to_apply=%add_reducer
+
+  %p1 = f32[2,256] parameter(1)
+  %exp_unreduced = f32[2,256] exponential(%p1)
+
+  ROOT %tuple = (f32[2], f32[2,256]) tuple(%reduce, %exp_unreduced)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* entry = module->entry_computation();
+
+  ConstraintPropagator propagator = CreatePropagator();
+  ComputeMaxAddReductionElementsPerExp(propagator, entry);
+
+  const HloInstruction* exp_reduced = nullptr;
+  const HloInstruction* exp_unreduced = nullptr;
+  for (const HloInstruction* inst : entry->instructions()) {
+    if (inst->name() == "exp_reduced") {
+      exp_reduced = inst;
+    } else if (inst->name() == "exp_unreduced") {
+      exp_unreduced = inst;
+    }
+  }
+
+  ASSERT_NE(exp_reduced, nullptr);
+  ASSERT_NE(exp_unreduced, nullptr);
+  EXPECT_EQ(GetMaxAddReductionElementsForExp(propagator, exp_reduced), 256);
+  EXPECT_EQ(GetMaxAddReductionElementsForExp(propagator, exp_unreduced), 1);
+}
 }  // namespace
 }  // namespace xla

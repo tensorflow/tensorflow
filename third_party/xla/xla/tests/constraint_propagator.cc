@@ -142,9 +142,9 @@ void SeedConstantInstruction(
 // the maximum finite representable value of that type.
 //
 // For any base b > 0 and exponent x:
-//   b^x = exp(x * ln(b)) <= max_val <=> x * ln(b) <= ln(max_val).
-// Therefore, x <= ln(max_val) / ln(b).
-double GetMaxLogForType(PrimitiveType type) {
+// Returns the theoretical maximum log (ln(max_val)) for a given type,
+// representing the limit of a single isolated exp(x) <= max_val.
+double GetTheoreticalMaxLogForType(PrimitiveType type) {
   switch (type) {
     // 64-bit IEEE 754 Floating Point (F64):
     //   max_val = 2^1024 * (1 - 2^-53) ≈ 1.7977e+308
@@ -209,6 +209,57 @@ double GetMaxLogForType(PrimitiveType type) {
     default:
       return 11.0;
   }
+}
+
+// Returns the safe base max log for exp(x), providing headroom against
+// post-multiplication (x * exp(x)) and operand differences (p0 - p1).
+double GetBaseMaxLogForType(PrimitiveType type) {
+  switch (type) {
+    case F64:
+      // exp(20) ≈ 4.85e8; leaves ample headroom for large products and sums.
+      return 20.0;
+    case F32:
+      // exp(4) ≈ 54.6; prevents x * exp(x) and multi-operand overflow.
+      return 4.0;
+    case F16:
+    case BF16:
+      // exp(2.5) ≈ 12.2; safely accommodates accumulation while preserving
+      // positive range.
+      return 2.5;
+    case S64:
+    case U64:
+      return 10.0;
+    case S32:
+    case U32:
+      return 5.0;
+    case S16:
+    case U16:
+      return 3.0;
+    case S8:
+    case U8:
+      return 1.5;
+    default:
+      return 2.5;
+  }
+}
+
+// Computes the safe max log bound for exp(x), dynamically scaling down
+// when x contributes to a downstream addition reduction of N elements.
+double GetMaxLogForType(PrimitiveType type, int64_t reduction_elements = 1) {
+  double base_max_log = GetBaseMaxLogForType(type);
+  if (reduction_elements <= 1) {
+    return base_max_log;
+  }
+
+  // Ensure N * exp(x) <= max_val with a safety margin of 2.0.
+  double theoretical_max = GetTheoreticalMaxLogForType(type);
+  double reduction_budget =
+      theoretical_max - std::log(static_cast<double>(reduction_elements)) - 2.0;
+
+  // A small positive floor ensures bounds never turn negative, guaranteeing
+  // test coverage for positive values and zero across all types.
+  constexpr double kMinPositiveFloor = 0.1;
+  return std::max(kMinPositiveFloor, std::min(base_max_log, reduction_budget));
 }
 
 // Seeds root constraints exclusively for 16-bit floating-point types (F16 and
@@ -329,8 +380,77 @@ absl::Status ConstraintPropagator::Propagate(
   return absl::OkStatus();
 }
 
+void ConstraintPropagator::ComputeMaxAddReductionElementsPerExp(
+    const HloComputation* computation) {
+  // Tracks how many elements each instruction's output will be summed into
+  // across all downstream addition-reduction consumer paths.
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      add_reduced_elements_downstream;
+
+  auto instructions = computation->MakeInstructionPostOrder();
+  for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
+    const HloInstruction* instruction = *it;
+
+    // How many elements this instruction's output contributes to downstream
+    // sums.
+    int64_t consumer_add_reduction_elements = 1;
+    if (auto it = add_reduced_elements_downstream.find(instruction);
+        it != add_reduced_elements_downstream.end()) {
+      consumer_add_reduction_elements = it->second;
+    }
+
+    if (instruction->opcode() == HloOpcode::kExp) {
+      max_add_reduction_elements_per_exp_[instruction] =
+          consumer_add_reduction_elements;
+    }
+
+    if (instruction->opcode() == HloOpcode::kReduce &&
+        GetCanonicalReductionOpcode(*instruction->to_apply()) ==
+            HloOpcode::kAdd) {
+      int64_t elements_in_add_reduction = 1;
+      for (int64_t dim : instruction->dimensions()) {
+        elements_in_add_reduction *=
+            instruction->operand(0)->shape().dimensions(dim);
+      }
+
+      int64_t total_elements =
+          elements_in_add_reduction * consumer_add_reduction_elements;
+
+      // Only data operands feed the sum (init values do not).
+      int64_t num_data_operands = instruction->operand_count() / 2;
+      for (int64_t i = 0; i < num_data_operands; ++i) {
+        const HloInstruction* operand = instruction->operand(i);
+        int64_t& downstream_elements = add_reduced_elements_downstream[operand];
+        downstream_elements = std::max(downstream_elements, total_elements);
+      }
+    } else if (instruction->IsElementwise() ||
+               instruction->opcode() == HloOpcode::kCopy ||
+               instruction->opcode() == HloOpcode::kBitcast ||
+               instruction->opcode() == HloOpcode::kReshape) {
+      // Elementwise and shape-preserving ops maintain 1-to-1 correspondence
+      // between input and output elements; forward the downstream count.
+      for (const HloInstruction* operand : instruction->operands()) {
+        int64_t& downstream_elements = add_reduced_elements_downstream[operand];
+        downstream_elements =
+            std::max(downstream_elements, consumer_add_reduction_elements);
+      }
+    }
+  }
+}
+
+int64_t ConstraintPropagator::GetMaxAddReductionElementsForExp(
+    const HloInstruction* exp_instruction) const {
+  if (auto it = max_add_reduction_elements_per_exp_.find(exp_instruction);
+      it != max_add_reduction_elements_per_exp_.end()) {
+    return it->second;
+  }
+  return 1;
+}
+
 absl::Status ConstraintPropagator::SeedConstraints(
     const HloComputation* computation) {
+  ComputeMaxAddReductionElementsPerExp(computation);
+
   auto instructions = computation->MakeInstructionPostOrder();
 
   // First pass: Seed all constants so they are available in states_ when
@@ -365,7 +485,9 @@ absl::Status ConstraintPropagator::SeedConstraints(
         break;
       case HloOpcode::kExp: {
         // Safe domain [-max_log, max_log] prevents floating point overflow.
-        double max_log = GetMaxLogForType(inst->shape().element_type());
+        int64_t reduction_elements = GetMaxAddReductionElementsForExp(inst);
+        double max_log =
+            GetMaxLogForType(inst->shape().element_type(), reduction_elements);
         states_[inst->operand(0)].AddConstraint(
             ConstraintInterval{-max_log, max_log, false});
         break;
@@ -570,7 +692,7 @@ absl::Status ConstraintPropagator::SeedConstraints(
 //
 // ML Patterns Handled:
 // 1. Guarded Division / Gradient & Activation Threshold Clipping:
-//    In deep learning models (e.g. GemFuse, diffusion models, transformers),
+//    In deep learning models (e.g. diffusion models, transformers),
 //    gradients or activations are scaled down by a threshold tau > 0 when their
 //    norm/magnitude exceeds tau:
 //      scale(x) = where(x > tau, tau / x, 1.0)
