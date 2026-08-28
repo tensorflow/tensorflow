@@ -284,30 +284,51 @@ void DepthwiseGrad_ComputeImpl(DepthwiseOp* op, TF_OpKernelContext* ctx,
                                         name:nil];
         [out->inputs addObject:dy];
         [out->inputs addObject:other];
-        [out->outputs
-            addObject:(kWeights
-                           ? [out->graph
-                                 depthwiseConvolution2DWeightsGradientWithIncomingGradientTensor:
-                                     dy
-                                                                              sourceTensor:other
-                                                                               outputShape:
-                                                                                   MPSShape(
-                                                                                       target_shape)
-                                                                                descriptor:
-                                                                                    DepthwiseDescriptor(
-                                                                                        captured)
-                                                                                      name:nil]
-                           : [out->graph
-                                 depthwiseConvolution2DDataGradientWithIncomingGradientTensor:
-                                     dy
-                                                                           weightsTensor:other
-                                                                             outputShape:
-                                                                                 MPSShape(
-                                                                                     target_shape)
-                                                                              descriptor:
-                                                                                  DepthwiseDescriptor(
-                                                                                      captured)
-                                                                                    name:nil])];
+        // The gradients are the derivative of the forward convolution rather
+        // than MPSGraph's own gradient entry points.
+        //
+        // depthwiseConvolution2DDataGradient... and its weights counterpart
+        // are correct only when the channel multiplier is one. With a filter
+        // of [3, 3, 3, 4] both were wrong by more than an order of magnitude,
+        // while the forward convolution with that same filter matches the CPU
+        // exactly. Differentiating the forward pass therefore gives the right
+        // answer for every multiplier and cannot disagree with the forward
+        // this backend actually computes.
+        //
+        // A convolution is bilinear, so the derivative with respect to one
+        // operand does not depend on the value of that operand. The operand
+        // this kernel was not given is a zero constant of the right shape,
+        // which is enough to build the graph and contributes nothing to the
+        // result.
+        MPSGraphTensor* x =
+            kWeights ? other
+                     : [out->graph constantWithScalar:0.0
+                                                shape:MPSShape(target_shape)
+                                             dataType:mps_dtype];
+        MPSGraphTensor* w =
+            kWeights ? [out->graph constantWithScalar:0.0
+                                                shape:MPSShape(target_shape)
+                                             dataType:mps_dtype]
+                     : other;
+        MPSGraphTensor* forward = [out->graph
+            depthwiseConvolution2DWithSourceTensor:x
+                                     weightsTensor:w
+                                        descriptor:DepthwiseDescriptor(
+                                                       captured)
+                                              name:nil];
+        MPSGraphTensor* loss = [out->graph
+            reductionSumWithTensor:[out->graph
+                                       multiplicationWithPrimaryTensor:forward
+                                                       secondaryTensor:dy
+                                                                  name:nil]
+                              axes:nil
+                              name:nil];
+        MPSGraphTensor* wanted = kWeights ? w : x;
+        NSDictionary<MPSGraphTensor*, MPSGraphTensor*>* grads =
+            [out->graph gradientForPrimaryTensor:loss
+                                     withTensors:@[ wanted ]
+                                            name:nil];
+        [out->outputs addObject:grads[wanted]];
       },
       status);
   if (cached == nullptr) return;

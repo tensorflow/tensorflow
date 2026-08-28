@@ -120,16 +120,21 @@ bool Dispatch(SP_Stream stream, const char* function,
 // Runs the transform along the last `axes` axes of a tensor whose shape is
 // `shape`. `scale_inverse` divides by each transformed length, which the
 // inverse transform does and the forward one does not.
-bool TransformAxes(TF_OpKernelContext* ctx, SP_Stream stream,
-                   const BufferSlice& data, const std::vector<int64_t>& shape,
-                   int axes, bool inverse, TF_Status* status) {
+// Transforms the axes from `first` to `last` inclusive, leaving the rest
+// alone. The inverse real transforms need this: their outer axes have to be
+// transformed before the innermost one is completed from its half spectrum.
+bool TransformAxisRange(TF_OpKernelContext* ctx, SP_Stream stream,
+                        const BufferSlice& data,
+                        const std::vector<int64_t>& shape, int first, int last,
+                        bool inverse, TF_Status* status) {
   const int rank = static_cast<int>(shape.size());
+  if (first > last) return true;
   int64_t longest = 1;
-  for (int a = rank - axes; a < rank; ++a) {
+  for (int a = first; a <= last; ++a) {
     longest = std::max(longest, shape[a]);
   }
   int64_t widest = 1;
-  for (int a = rank - axes; a < rank; ++a) {
+  for (int a = first; a <= last; ++a) {
     int64_t outer = 1, inner = 1;
     for (int i = 0; i < a; ++i) outer *= shape[i];
     for (int i = a + 1; i < rank; ++i) inner *= shape[i];
@@ -145,7 +150,7 @@ bool TransformAxes(TF_OpKernelContext* ctx, SP_Stream stream,
   if (!SliceForTensor(scratch.get(), &scratch_slice, status)) return false;
 
   // Innermost axis first, which is only a matter of taste: the passes commute.
-  for (int a = rank - 1; a >= rank - axes; --a) {
+  for (int a = last; a >= first; --a) {
     int64_t outer = 1, inner = 1;
     for (int i = 0; i < a; ++i) outer *= shape[i];
     for (int i = a + 1; i < rank; ++i) inner *= shape[i];
@@ -165,6 +170,14 @@ bool TransformAxes(TF_OpKernelContext* ctx, SP_Stream stream,
     }
   }
   return true;
+}
+
+bool TransformAxes(TF_OpKernelContext* ctx, SP_Stream stream,
+                   const BufferSlice& data, const std::vector<int64_t>& shape,
+                   int axes, bool inverse, TF_Status* status) {
+  const int rank = static_cast<int>(shape.size());
+  return TransformAxisRange(ctx, stream, data, shape, rank - axes, rank - 1,
+                            inverse, status);
 }
 
 // The requested transform length, which crops or zero-pads the input.
@@ -385,6 +398,21 @@ void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
         return;
       }
     }
+    // The outer axes are transformed before the innermost one is completed.
+    //
+    // A real spectrum is Hermitian in every axis at once: the value at
+    // (k1, n2 - k2) is the conjugate of the one at (n1 - k1, k2), not of the
+    // one at (k1, k2). Mirroring each row on its own is therefore only right
+    // in one dimension, and IRFFT2D and IRFFT3D returned an answer that did
+    // not round-trip. Transforming the outer axes first leaves rows that are
+    // independent one-dimensional half spectra, and a per-row mirror is
+    // exactly right on those.
+    if (op->axes > 1) {
+      if (!TransformAxisRange(ctx, stream, staged_slice, staged_shape,
+                              rank - op->axes, rank - 2, true, status)) {
+        return;
+      }
+    }
     int64_t rows = 1;
     for (int i = 0; i + 1 < rank; ++i) rows *= staged_shape[i];
     FftParams params;
@@ -408,8 +436,14 @@ void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
     }
   }
 
-  if (!TransformAxes(ctx, stream, work_slice, work_shape, op->axes,
-                     op->inverse, status)) {
+  if (op->inverse) {
+    // The outer axes were transformed above, before the mirror.
+    if (!TransformAxisRange(ctx, stream, work_slice, work_shape, rank - 1,
+                            rank - 1, true, status)) {
+      return;
+    }
+  } else if (!TransformAxes(ctx, stream, work_slice, work_shape, op->axes,
+                            false, status)) {
     return;
   }
 

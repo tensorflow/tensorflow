@@ -342,6 +342,11 @@ void DynamicPartition_ComputeImpl(DynamicOp* op, TF_OpKernelContext* ctx,
   BufferSlice data_slice;
   if (!SliceForTensor(data.get(), &data_slice, status)) return;
 
+  // Every staged index vector stays alive until all the gathers are encoded.
+  // A gather is committed but not waited on, so a staging buffer freed at the
+  // end of one iteration came straight back from the allocator on the next
+  // and was overwritten on the host before the previous gather had read it.
+  std::vector<ScopedTensor> staged(num);
   for (int p = 0; p < num; ++p) {
     std::vector<int64_t> out_shape = data_shape;
     out_shape[0] = static_cast<int64_t>(members[p].size());
@@ -352,10 +357,9 @@ void DynamicPartition_ComputeImpl(DynamicOp* op, TF_OpKernelContext* ctx,
         status));
     if (TF_GetCode(status) != TF_OK) return;
     if (members[p].empty()) continue;
-    ScopedTensor staged;
-    if (!StageIndices(ctx, members[p], &staged, status)) return;
+    if (!StageIndices(ctx, members[p], &staged[p], status)) return;
     BufferSlice index_slice, out_slice;
-    if (!SliceForTensor(staged.get(), &index_slice, status)) return;
+    if (!SliceForTensor(staged[p].get(), &index_slice, status)) return;
     if (!SliceForTensor(out.get(), &out_slice, status)) return;
     if (!MoveRows(stream, /*scatter=*/false, data_slice, index_slice,
                   out_slice, static_cast<uint32_t>(members[p].size()), words,
@@ -444,13 +448,19 @@ void DynamicStitch_ComputeImpl(DynamicOp* op, TF_OpKernelContext* ctx,
 
   // Later lists win where they overlap, which is what TensorFlow specifies,
   // so the scatters run in order and the stream keeps them in order.
+  //
+  // The staged index vectors live until every scatter has been encoded. A
+  // scatter is committed but not waited on, so a staging buffer freed at the
+  // end of one iteration was handed straight back by the allocator on the
+  // next and overwritten on the host while the previous scatter had still not
+  // read it. The first list's rows came out as zeros.
+  std::vector<ScopedTensor> staged(n);
   for (int k = 0; k < n; ++k) {
     if (index_values[k].empty()) continue;
-    ScopedTensor staged;
-    if (!StageIndices(ctx, index_values[k], &staged, status)) return;
+    if (!StageIndices(ctx, index_values[k], &staged[k], status)) return;
     BufferSlice data_slice, index_slice;
     if (!SliceForTensor(data[k].get(), &data_slice, status)) return;
-    if (!SliceForTensor(staged.get(), &index_slice, status)) return;
+    if (!SliceForTensor(staged[k].get(), &index_slice, status)) return;
     if (!MoveRows(stream, /*scatter=*/true, data_slice, index_slice, out_slice,
                   static_cast<uint32_t>(index_values[k].size()), words,
                   static_cast<uint32_t>(out_shape[0]), status)) {
