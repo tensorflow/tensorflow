@@ -154,21 +154,26 @@ const HloInstructionSequence& HloSchedule::sequence(
   return sequences_.at(computation->unique_id());
 }
 
-absl::Status HloSchedule::UpdateComputationSchedule(
+namespace {
+
+// Maps unique ID to HloInstruction pointer for all instructions in the
+// computation.
+absl::flat_hash_map<int64_t, HloInstruction*> BuildIdToInstructionMap(
     const HloComputation* computation) {
-  // Map from unique ID to HloInstruction pointer for instructions in the
-  // computation.
   absl::flat_hash_map<int64_t, HloInstruction*> id_to_instruction;
   for (HloInstruction* instruction : computation->instructions()) {
     InsertOrDie(&id_to_instruction, instruction->unique_id(), instruction);
   }
+  return id_to_instruction;
+}
 
-  // Invalidate the schedule of instructions that conflict with control
-  // dependencies.
-  auto sched_sequence = sequence(computation).instructions();
+// Identifies instructions in the sequence whose schedule order is inconsistent
+// with control dependencies, and removes them from the sequence.
+absl::Status InvalidateConflictingControlDependencies(
+    const HloComputation* computation, HloInstructionSequence& sequence) {
   absl::flat_hash_set<HloInstruction*> invalid_instructions;
   absl::flat_hash_set<HloInstruction*> seen_instructions;
-  for (HloInstruction* inst : sched_sequence) {
+  for (HloInstruction* inst : sequence.instructions()) {
     for (HloInstruction* pred : inst->control_predecessors()) {
       // Found a pair of instructions whose schedule order is inconsistent with
       // their control dependencies.
@@ -183,105 +188,134 @@ absl::Status HloSchedule::UpdateComputationSchedule(
     seen_instructions.insert(inst);
   }
   for (HloInstruction* inst : invalid_instructions) {
-    sequences_.at(computation->unique_id()).remove_instruction(inst);
+    sequence.remove_instruction(inst);
   }
+  return absl::OkStatus();
+}
 
-  // Set of all HloInstructions in the schedule.
-  absl::flat_hash_set<int64_t> ids_in_schedule;
-  for (int64_t id : sequence(computation).ids()) {
-    InsertOrDie(&ids_in_schedule, id);
-  }
-
-  // Map from HloInstruction X to newly added instructions (instruction is in
-  // computation, but not in schedule) which depend on X. If an instruction is
-  // not in the map, then it has no users or control successors which are newly
-  // added instructions.
+// Tracks dependency metadata and ready worklist for unscheduled instructions.
+struct UnscheduledDependencies {
+  // Map from HloInstruction X to newly added/unscheduled instructions which
+  // depend on X.
   absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
       new_instruction_successors;
 
-  // For each newly added instruction, this is the count of the instruction's
-  // operands and control predecessors that have not yet been scheduled. When
-  // this value reaches zero, then the instruction may be placed in the
-  // schedule.
+  // For each unscheduled instruction, the count of operands and control
+  // predecessors that have not yet been placed in the schedule.
   absl::flat_hash_map<const HloInstruction*, int> unscheduled_predecessor_count;
 
-  // Create a worklist of newly added instructions which are ready to be added
-  // to the schedule. Initialize worklist with those that have zero operands.
+  // Worklist of unscheduled instructions that are ready to be placed in the
+  // schedule (predecessor count reaches zero).
   std::queue<HloInstruction*> worklist;
+};
 
+// Builds dependency tracking and initializes the ready worklist for all
+// instructions not currently present in `ids_in_schedule`.
+UnscheduledDependencies CollectUnscheduledDependencies(
+    const HloComputation* computation,
+    const absl::flat_hash_set<int64_t>& ids_in_schedule) {
+  UnscheduledDependencies deps;
   for (HloInstruction* instruction : computation->instructions()) {
-    if (!ids_in_schedule.contains(instruction->unique_id())) {
-      // `instruction` is a newly added instruction which is not in the
-      // schedule.
-      if (instruction->operands().empty() &&
-          instruction->control_predecessors().empty()) {
-        // `instruction` has no operands or control dependencies. It may be
-        // added to the schedule immediately (once the worklist is processed).
-        worklist.push(instruction);
-      } else {
-        absl::flat_hash_set<const HloInstruction*> predecessors;
-        auto add_predecessor = [&](const HloInstruction* predecessor) {
-          std::vector<HloInstruction*>& successors =
-              new_instruction_successors[predecessor];
-          if (!absl::c_linear_search(successors, instruction)) {
-            // Only add an instruction once.
-            successors.push_back(instruction);
-          }
-          predecessors.insert(predecessor);
-        };
-        for (const HloInstruction* operand : instruction->operands()) {
-          add_predecessor(operand);
+    if (ids_in_schedule.contains(instruction->unique_id())) {
+      continue;
+    }
+    if (instruction->operands().empty() &&
+        instruction->control_predecessors().empty()) {
+      // Instruction has no operands or control dependencies; ready immediately.
+      deps.worklist.push(instruction);
+    } else {
+      absl::flat_hash_set<const HloInstruction*> predecessors;
+      auto add_predecessor = [&](const HloInstruction* predecessor) {
+        std::vector<HloInstruction*>& successors =
+            deps.new_instruction_successors[predecessor];
+        if (!absl::c_linear_search(successors, instruction)) {
+          successors.push_back(instruction);
         }
-        for (const HloInstruction* control_predecessor :
-             instruction->control_predecessors()) {
-          add_predecessor(control_predecessor);
-        }
-        unscheduled_predecessor_count[instruction] = predecessors.size();
+        predecessors.insert(predecessor);
+      };
+      for (const HloInstruction* operand : instruction->operands()) {
+        add_predecessor(operand);
       }
+      for (const HloInstruction* control_predecessor :
+           instruction->control_predecessors()) {
+        add_predecessor(control_predecessor);
+      }
+      deps.unscheduled_predecessor_count[instruction] = predecessors.size();
     }
   }
+  return deps;
+}
 
-  // Update the schedule with the newly added instructions, and remove any
-  // instructions no longer in the graph.
+// Constructs the final schedule by interleaving the existing sequence with
+// newly ready instructions in topological order.
+HloInstructionSequence BuildUpdatedSequence(
+    const HloInstructionSequence& existing_sequence,
+    const absl::flat_hash_map<int64_t, HloInstruction*>& id_to_instruction,
+    UnscheduledDependencies& deps) {
   HloInstructionSequence new_sequence;
 
-  // Lambda which schedules all instructions on the worklist.
-  auto schedule_worklist = [&]() {
-    while (!worklist.empty()) {
-      HloInstruction* instruction = worklist.front();
-      worklist.pop();
+  auto drain_worklist = [&]() {
+    while (!deps.worklist.empty()) {
+      HloInstruction* instruction = deps.worklist.front();
+      deps.worklist.pop();
       new_sequence.push_back(instruction);
-      std::vector<HloInstruction*>* new_successors =
-          tsl::gtl::FindOrNull(new_instruction_successors, instruction);
+      auto* new_successors =
+          tsl::gtl::FindOrNull(deps.new_instruction_successors, instruction);
       if (new_successors != nullptr) {
-        // This just-scheduled instruction has users which are newly added to
-        // the module. Update the number of unscheduled operands and push the
-        // newly added instruction to the worklist if it is ready to
-        // schedule.
         for (HloInstruction* new_successor : *new_successors) {
-          unscheduled_predecessor_count.at(new_successor)--;
-          CHECK_GE(unscheduled_predecessor_count.at(new_successor), 0);
-          if (unscheduled_predecessor_count.at(new_successor) == 0) {
-            worklist.push(new_successor);
+          deps.unscheduled_predecessor_count.at(new_successor)--;
+          CHECK_GE(deps.unscheduled_predecessor_count.at(new_successor), 0);
+          if (deps.unscheduled_predecessor_count.at(new_successor) == 0) {
+            deps.worklist.push(new_successor);
           }
         }
       }
     }
   };
 
-  schedule_worklist();
-  for (int64_t id : sequences_.at(computation->unique_id()).ids()) {
+  // Schedule any 0-predecessor instructions first.
+  drain_worklist();
+
+  // Iterate over remaining existing sequence and schedule ready instructions.
+  for (int64_t id : existing_sequence.ids()) {
     auto it = id_to_instruction.find(id);
     if (it == id_to_instruction.end()) {
-      // This instruction in the schedule is no longer in the module. Do not add
-      // it to the new schedule.
+      // Instruction is no longer in computation; skip.
       continue;
     }
-    worklist.push(it->second);
-    schedule_worklist();
+    deps.worklist.push(it->second);
+    drain_worklist();
   }
 
-  set_sequence(computation, std::move(new_sequence));
+  return new_sequence;
+}
+
+}  // namespace
+
+absl::Status HloSchedule::UpdateComputationSchedule(
+    const HloComputation* computation) {
+  // 1. Build lookup map from instruction ID to instruction pointer.
+  absl::flat_hash_map<int64_t, HloInstruction*> id_to_instruction =
+      BuildIdToInstructionMap(computation);
+
+  // 2. Invalidate instructions that conflict with control dependencies.
+  HloInstructionSequence& current_sequence =
+      sequences_.at(computation->unique_id());
+  ABSL_RETURN_IF_ERROR(
+      InvalidateConflictingControlDependencies(computation, current_sequence));
+  absl::flat_hash_set<int64_t> ids_in_schedule;
+  for (int64_t id : current_sequence.ids()) {
+    InsertOrDie(&ids_in_schedule, id);
+  }
+
+  // 3. Build dependency tracking for newly added instructions.
+  UnscheduledDependencies unscheduled_deps =
+      CollectUnscheduledDependencies(computation, ids_in_schedule);
+
+  // 4. Reconstruct schedule with newly added instructions in topological order.
+  set_sequence(computation,
+               BuildUpdatedSequence(current_sequence, id_to_instruction,
+                                    unscheduled_deps));
   return absl::OkStatus();
 }
 
