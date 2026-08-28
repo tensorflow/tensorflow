@@ -38,6 +38,7 @@ load(
     "tf_monitoring_python_deps",
     "tf_pybind_cc_library_wrapper",
     "tf_python_pybind_extension",
+    "tf_system_libs_linkopts",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -50,7 +51,6 @@ load(
     "if_static",
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
-    "tf_system_libs_linkopts",
 )
 
 # TODO(mdan): Break into per-directory files.
