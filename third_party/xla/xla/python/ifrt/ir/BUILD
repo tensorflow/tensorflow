@@ -757,6 +757,7 @@ cc_library(
         ":ir",
         "//xla:status_macros",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:pjrt_compiler",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:remap_plan_proto_cc",
