@@ -1,3 +1,41 @@
+diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+--- stablehlo/docs/spec.md
++++ stablehlo/docs/spec.md
+@@ -2493,7 +2493,9 @@
+     * `num_windows = is_empty_window[lhs_dim] ? 0 : floor((padded_input_shape[lhs_dim] - dilated_window_shape[lhs_dim]) / window_strides[spatial_dim]) + 1`.
+ * (C26) `rank(result) = N`.
+ * If the operation uses non-quantized tensors:
+-  * (C27) `element_type(lhs) = element_type(rhs) = element_type(result)`.
++  * (C27) `element_type(lhs) = element_type(rhs) = element_type(result)` or
++    (`is_fp8(element_type(lhs))` and `is_fp8(element_type(rhs))` and
++    `element_type(result) = element_type(lhs)`).
+ * If the operation uses quantized tensors:
+   * (C28) `is_quantized(lhs) = is_quantized(result) and is_quantized(rhs)`.
+   * (C29) If `is_per_axis_quantized(rhs)`,
+@@ -3163,7 +3165,9 @@
+     * `num_windows = is_empty_window[lhs_dim] ? 0 : floor((padded_input_shape[lhs_dim] - dilated_window_shape[lhs_dim]) / window_strides[spatial_dim]) + 1`.
+ * (C26) `rank(result) = N`.
+ * If the operation uses non-quantized tensors:
+-  * (C27) `element_type(lhs) = element_type(rhs) = element_type(result)`.
++  * (C27) `element_type(lhs) = element_type(rhs) = element_type(result)` or
++    (`is_fp8(element_type(lhs))` and `is_fp8(element_type(rhs))` and
++    `element_type(result) = element_type(lhs)`).
+ * If the operation uses quantized tensors:
+   * (C28) `is_quantized(lhs) = is_quantized(result) and is_quantized(rhs)`.
+   * (C29) If `is_per_axis_quantized(rhs)`,
+@@ -7654,6 +7658,12 @@
+ * `is_quantized(x: Value | Placeholder | Type) -> Value` is a shortcut for
+ `is_quantized_tensor_element_type(x)`.
+ 
++* `is_fp8(x: Value | Placeholder | Type) -> Value` returns `true` if `x` is one
++of `Float8E4M3Type`, `Float8E4M3FNType`, `Float8E4M3B11FNUZType`,
++`Float8E4M3FNUZType`, `Float8E5M2Type`, `Float8E5M2FNUZType`, `Float8E3M4Type`,
++or `Float8E8M0FNUType`. If `x` is a value or placeholder, this function is a
++shortcut for `is_fp8(type(x))`.
++
+ * `is_type_name(x: Value | Placeholder | Type) -> Value`. Available for all
+ types. For example, `is_float(x)` returns `true` if `x` is a `FloatType`.
+ If `x` is a value or placeholder, this function is a shortcut for
 diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
 --- stablehlo/stablehlo/dialect/Serialization.cpp
 +++ stablehlo/stablehlo/dialect/Serialization.cpp
@@ -67,6 +105,144 @@ diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo
      return nullptr;
    }
  
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -86,6 +86,13 @@
+ // Utils for quantization specific verifications
+ //===----------------------------------------------------------------------===//
+ 
++bool isFp8Type(mlir::Type type) {
++  return llvm::isa<mlir::Float8E3M4Type, mlir::Float8E4M3Type,
++                   mlir::Float8E4M3FNType, mlir::Float8E5M2Type,
++                   mlir::Float8E4M3FNUZType, mlir::Float8E4M3B11FNUZType,
++                   mlir::Float8E5M2FNUZType, mlir::Float8E8M0FNUType>(type);
++}
++
+ template <typename T>
+ bool allQuantized(ArrayRef<Type> typeRange) {
+   return llvm::all_of(
+@@ -2221,11 +2228,14 @@
+   // convolution_c27
+   if (!anyQuantized<quant::QuantizedType>({rankedLhsType, rankedRhsType}) &&
+       !isCompatibleForHloTypeInference(rankedLhsType.getElementType(),
+-                                       rankedRhsType.getElementType()))
++                                       rankedRhsType.getElementType()) &&
++      !(isFp8Type(rankedLhsType.getElementType()) &&
++        isFp8Type(rankedRhsType.getElementType()))) {
+     return emitOptionalError(
+         location, "expects lhs and rhs to have compatible element type. Got: ",
+         rankedLhsType.getElementType(), " and ",
+         rankedRhsType.getElementType());
++  }
+ 
+   if (failed(verifyConvolutionAttributes(
+           location, lhsType, rhsType, inputBatchDimension,
+@@ -2548,7 +2558,9 @@
+   // dynamic_conv_c27
+   if (!anyQuantized<quant::QuantizedType>({rankedLhsType, rankedRhsType}) &&
+       !isCompatibleForHloTypeInference(rankedLhsType.getElementType(),
+-                                       rankedRhsType.getElementType()))
++                                       rankedRhsType.getElementType()) &&
++      !(isFp8Type(rankedLhsType.getElementType()) &&
++        isFp8Type(rankedRhsType.getElementType())))
+     return emitOptionalError(
+         location, "expects lhs and rhs to have compatible element type. Got: ",
+         rankedLhsType.getElementType(), " and ",
+diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
+--- stablehlo/stablehlo/dialect/Version.h
++++ stablehlo/stablehlo/dialect/Version.h
+@@ -38,7 +38,7 @@
+   static FailureOr<Version> fromString(llvm::StringRef versionRef);
+ 
+   /// Return a Version representing the current VHLO dialect version.
+-  static Version getCurrentVersion() { return Version(1, 19, 0); }
++  static Version getCurrentVersion() { return Version(1, 20, 0); }
+ 
+   /// Return a Version representing the minimum supported VHLO dialect version.
+   static Version getMinimumVersion() { return Version(0, 9, 0); }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -58,6 +58,7 @@
+       1.17.0: Add `future` type support to `custom_call` op.
+       1.18.0: Add `result_tilings` attribute to `custom_call` op.
+       1.19.0: Add CollectiveReduceOp.
++      1.20.0: Allow mixed fp8 operands in `convolution` and `dynamic_conv` ops.
+   }];
+ 
+   let useDefaultAttributePrinterParser = 0;
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
+--- stablehlo/stablehlo/dialect/VhloOps.cpp
++++ stablehlo/stablehlo/dialect/VhloOps.cpp
+@@ -359,11 +359,44 @@
+   return success();
+ }
+ 
++bool isVhloFp8Type(Type type) {
++  return isa<vhlo::FloatF8E3M4V1Type, vhlo::FloatF8E4M3V1Type,
++             vhlo::FloatF8E4M3FNV1Type, vhlo::FloatF8E5M2V1Type,
++             vhlo::FloatF8E4M3FNUZV1Type, vhlo::FloatF8E4M3B11FNUZV1Type,
++             vhlo::FloatF8E5M2FNUZV1Type, vhlo::FloatF8E8M0FNUV1Type>(type);
++}
++
++LogicalResult verifyConstraint_1_20_0(mlir::Operation* op,
++                                      Version targetVersion) {
++  if (targetVersion < Version(1, 20, 0)) {
++    if (op->getNumOperands() < 2) {
++      return failure();
++    }
++    Type lhsElementType = getVhloElementType(op->getOperand(0).getType());
++    Type rhsElementType = getVhloElementType(op->getOperand(1).getType());
++    if (lhsElementType != rhsElementType && isVhloFp8Type(lhsElementType) &&
++        isVhloFp8Type(rhsElementType)) {
++      return failure();
++    }
++  }
++  return success();
++}
++
+ }  // namespace
+ 
+ LogicalResult AllReduceOpV1::validateConstraint(mlir::Operation* op,
+                                                 Version targetVersion) {
+   return verifyConstraint_0_17_0(op, targetVersion);
++}
++
++LogicalResult ConvolutionOpV1::validateConstraint(mlir::Operation* op,
++                                                  Version targetVersion) {
++  return verifyConstraint_1_20_0(op, targetVersion);
++}
++
++LogicalResult DynamicConvOpV2::validateConstraint(mlir::Operation* op,
++                                                  Version targetVersion) {
++  return verifyConstraint_1_20_0(op, targetVersion);
+ }
+ 
+ LogicalResult ReduceOpV1::validateConstraint(mlir::Operation* op,
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -390,7 +390,8 @@
+   let results = (outs VHLO_AnyType:$result);
+ }
+ 
+-def VHLO_ConvolutionOpV1 : VHLO_Op<"convolution_v1", "0.9.0", "current"> {
++def VHLO_ConvolutionOpV1 : VHLO_Op<"convolution_v1", "0.9.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins
+     VHLO_AnyType:$lhs,
+     VHLO_AnyType:$rhs,
+@@ -572,7 +573,8 @@
+ 
+ // Padding should be specified as an operand only, not an attribute.
+ // Remove `d_padding` and convert `padding` to an operand.
+-def VHLO_DynamicConvOpV2 : VHLO_Op<"dynamic_conv_v2", "0.20.0", "current"> {
++def VHLO_DynamicConvOpV2 : VHLO_Op<"dynamic_conv_v2", "0.20.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins
+     VHLO_AnyType:$lhs,
+     VHLO_AnyType:$rhs,
 diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
 --- stablehlo/stablehlo/tests/TestUtils.cpp
 +++ stablehlo/stablehlo/tests/TestUtils.cpp
@@ -312,6 +488,170 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_broadcasting.mlir b/stablehlo/stableh
 +  return %0 : tensor<3x4x5xf64>
 +}
 +
+diff --ruN a/stablehlo/stablehlo/tests/verify_convolution.mlir b/stablehlo/stablehlo/tests/verify_convolution.mlir
+--- stablehlo/stablehlo/tests/verify_convolution.mlir
++++ stablehlo/stablehlo/tests/verify_convolution.mlir
+@@ -78,6 +78,60 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @convolution_mixed_fp8
++func.func @convolution_mixed_fp8(%arg0 : tensor<100x26x26x32xf8E5M2>,
++    %arg1 : tensor<3x3x1x32xf8E4M3FN>) -> tensor<100x28x28x1xf8E5M2> {
++  %result = "stablehlo.convolution"(%arg0, %arg1) {
++    batch_group_count = 1 : i64,
++    dimension_numbers = #stablehlo.conv<raw
++      input_batch_dimension = 0,
++      input_feature_dimension = 3,
++      input_spatial_dimensions = [1, 2],
++      kernel_input_feature_dimension = 3,
++      kernel_output_feature_dimension = 2,
++      kernel_spatial_dimensions = [0, 1],
++      output_batch_dimension = 0,
++      output_feature_dimension = 3,
++      output_spatial_dimensions = [1, 2]
++    >,
++    feature_group_count = 1 : i64,
++    lhs_dilation = array<i64: 1, 1>,
++    padding = dense<2> : tensor<2x2xi64>,
++    rhs_dilation = array<i64: 1, 1>,
++    window_strides = array<i64: 1, 1>
++  } : (tensor<100x26x26x32xf8E5M2>, tensor<3x3x1x32xf8E4M3FN>) ->
++    tensor<100x28x28x1xf8E5M2>
++  func.return %result : tensor<100x28x28x1xf8E5M2>
++}
++
++// -----
++
++func.func @convolution_mismatched_element_types(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf16>) -> tensor<100x28x28x1xf32> {
++  // expected-error@+1{{expects lhs and rhs to have compatible element type. Got: 'f32' and 'f16'}}
++  %result = "stablehlo.convolution"(%arg0, %arg1) {
++    batch_group_count = 1 : i64,
++    dimension_numbers = #stablehlo.conv<raw
++      input_batch_dimension = 0,
++      input_feature_dimension = 3,
++      input_spatial_dimensions = [1, 2],
++      kernel_input_feature_dimension = 3,
++      kernel_output_feature_dimension = 2,
++      kernel_spatial_dimensions = [0, 1],
++      output_batch_dimension = 0,
++      output_feature_dimension = 3,
++      output_spatial_dimensions = [1, 2]
++    >,
++    feature_group_count = 1 : i64,
++    lhs_dilation = array<i64: 1, 1>,
++    padding = dense<2> : tensor<2x2xi64>,
++    rhs_dilation = array<i64: 1, 1>,
++    window_strides = array<i64: 1, 1>
++  } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf16>) -> tensor<100x28x28x1xf32>
++  func.return %result : tensor<100x28x28x1xf32>
++}
++
++// -----
++
+ func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+   // expected-error@+3{{Unexpected keyword stide}}
+   %0 = stablehlo.convolution(%arg0, %arg1)
+diff --ruN a/stablehlo/stablehlo/tests/verify_dynamic_conv.mlir b/stablehlo/stablehlo/tests/verify_dynamic_conv.mlir
+--- stablehlo/stablehlo/tests/verify_dynamic_conv.mlir
++++ stablehlo/stablehlo/tests/verify_dynamic_conv.mlir
+@@ -48,6 +48,36 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_conv_mixed_fp8
++func.func @dynamic_conv_mixed_fp8(%arg0 : tensor<100x26x26x32xf8E5M2>,
++    %arg1 : tensor<3x3x1x32xf8E4M3FN>) -> tensor<100x28x28x1xf8E5M2> {
++  %padding = stablehlo.constant dense<2> : tensor<2x2xi64>
++  %result = "stablehlo.dynamic_conv"(%arg0, %arg1, %padding) {
++    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
++    feature_group_count = 1 : i64,
++    batch_group_count = 1 : i64
++  } : (tensor<100x26x26x32xf8E5M2>, tensor<3x3x1x32xf8E4M3FN>, tensor<2x2xi64>) ->
++       tensor<100x28x28x1xf8E5M2>
++  func.return %result : tensor<100x28x28x1xf8E5M2>
++}
++
++// -----
++
++func.func @dynamic_conv_mismatched_element_types(%arg0: tensor<100x26x26x32xf32>,
++    %arg1: tensor<3x3x1x32xf16>) -> tensor<100x28x28x1xf32> {
++  // expected-error@+2 {{expects lhs and rhs to have compatible element type. Got: 'f32' and 'f16'}}
++  %padding = stablehlo.constant dense<2> : tensor<2x2xi64>
++  %result = "stablehlo.dynamic_conv"(%arg0, %arg1, %padding) {
++    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
++    feature_group_count = 1 : i64,
++    batch_group_count = 1 : i64
++  } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf16>, tensor<2x2xi64>) ->
++       tensor<100x28x28x1xf32>
++  func.return %result : tensor<100x28x28x1xf32>
++}
++
++// -----
++
+ func.func @dynamic_conv_c1(%arg0: tensor<1x8x8x207xf32>,
+     %arg1: tensor<3x3x207xf32>) -> tensor<1x8x8x16xf32> {
+   // expected-error@+2 {{expects convolution arguments to have same number of dimensions. Got: 'tensor<1x8x8x207xf32>' and 'tensor<3x3x207xf32>'.}}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_19_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_19_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_19_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_19_0.mlir
+@@ -0,0 +1,56 @@
++// RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.19.0' --verify-diagnostics --split-input-file %s
++
++// expected-error @+1 {{failed to convert VHLO to v1.19.0}}
++module {
++  func.func @convolution_mixed_fp8(%arg0: tensor<100x26x26x32xf8E5M2>, %arg1: tensor<3x3x1x32xf8E4M3FN>) -> tensor<100x28x28x1xf8E5M2> {
++    // expected-error @+1 {{failed to legalize operation 'vhlo.convolution_v1' that was explicitly marked illegal}}
++    %result = "stablehlo.convolution"(%arg0, %arg1) {
++      batch_group_count = 1 : i64,
++      dimension_numbers = #stablehlo.conv<raw
++        input_batch_dimension = 0,
++        input_feature_dimension = 3,
++        input_spatial_dimensions = [1, 2],
++        kernel_input_feature_dimension = 3,
++        kernel_output_feature_dimension = 2,
++        kernel_spatial_dimensions = [0, 1],
++        output_batch_dimension = 0,
++        output_feature_dimension = 3,
++        output_spatial_dimensions = [1, 2]
++      >,
++      feature_group_count = 1 : i64,
++      lhs_dilation = array<i64: 1, 1>,
++      padding = dense<2> : tensor<2x2xi64>,
++      rhs_dilation = array<i64: 1, 1>,
++      window_strides = array<i64: 1, 1>
++    } : (tensor<100x26x26x32xf8E5M2>, tensor<3x3x1x32xf8E4M3FN>) -> tensor<100x28x28x1xf8E5M2>
++    func.return %result : tensor<100x28x28x1xf8E5M2>
++  }
++}
++
++// -----
++
++// expected-error @+1 {{failed to convert VHLO to v1.19.0}}
++module {
++  func.func @dynamic_conv_mixed_fp8(%arg0: tensor<100x26x26x32xf8E5M2>, %arg1: tensor<3x3x1x32xf8E4M3FN>, %arg2: tensor<2x2xi64>) -> tensor<100x28x28x1xf8E5M2> {
++    // expected-error @+1 {{failed to legalize operation 'vhlo.dynamic_conv_v2' that was explicitly marked illegal}}
++    %result = "stablehlo.dynamic_conv"(%arg0, %arg1, %arg2) {
++      batch_group_count = 1 : i64,
++      dimension_numbers = #stablehlo.conv<raw
++        input_batch_dimension = 0,
++        input_feature_dimension = 3,
++        input_spatial_dimensions = [1, 2],
++        kernel_input_feature_dimension = 3,
++        kernel_output_feature_dimension = 2,
++        kernel_spatial_dimensions = [0, 1],
++        output_batch_dimension = 0,
++        output_feature_dimension = 3,
++        output_spatial_dimensions = [1, 2]
++      >,
++      feature_group_count = 1 : i64,
++      lhs_dilation = array<i64: 1, 1>,
++      rhs_dilation = array<i64: 1, 1>,
++      window_strides = array<i64: 1, 1>
++    } : (tensor<100x26x26x32xf8E5M2>, tensor<3x3x1x32xf8E4M3FN>, tensor<2x2xi64>) -> tensor<100x28x28x1xf8E5M2>
++    func.return %result : tensor<100x28x28x1xf8E5M2>
++  }
++}
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
