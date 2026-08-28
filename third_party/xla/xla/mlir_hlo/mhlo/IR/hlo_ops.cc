@@ -748,13 +748,13 @@ void CustomCallOp::build(
     ::mlir::StringAttr backendConfig,
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
-    ::mlir::ArrayAttr resultLayouts) {
+    ::mlir::ArrayAttr resultLayouts, ::mlir::ArrayAttr resultTilings) {
   return CustomCallOp::build(
       odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
       backendConfig, apiVersion, calledComputations,
       CustomCallScheduleAttr::get(odsBuilder.getContext(),
                                   CustomCallSchedule::NONE),
-      operandLayouts, resultLayouts, nullptr);
+      operandLayouts, resultLayouts, nullptr, resultTilings);
 }
 
 LogicalResult CustomCallOp::verify() {
@@ -2541,6 +2541,58 @@ LogicalResult AllReduceOp::inferReturnTypeComponents(
   // Populate inferred return shapes
   return hlo::inferAllReduceOp(location, adaptor.getOperands(),
                                adaptor.getComputation(), inferredReturnShapes);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CollectiveReduceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CollectiveReduceOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, mlir::PropertyRef properties,
+    RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  CollectiveReduceOp::Adaptor adaptor(operands, attributes, properties,
+                                      regions);
+  auto operandValues = adaptor.getOperands();
+  if (operandValues.empty())
+    return emitOptionalError(location,
+                             "CollectiveReduce must have at least one operand");
+
+  // The data operands (all but the trailing dynamic-root operand, if present)
+  // each produce one result; the root operand is not reduced.
+  int64_t numResults = operandValues.size();
+  if (adaptor.getHasDynamicRoot()) {
+    if (operandValues.size() < 2)
+      return emitOptionalError(
+          location,
+          "CollectiveReduce with has_dynamic_root must have at least one data "
+          "operand followed by a root operand");
+    numResults = operandValues.size() - 1;
+    auto rootType = mlir::dyn_cast<RankedTensorType>(
+        operandValues[operandValues.size() - 1].getType());
+    if (!rootType || rootType.getRank() != 1 ||
+        !rootType.getElementType().isSignlessInteger(32) ||
+        rootType.getDimSize(0) != numResults)
+      return emitOptionalError(
+          location,
+          "CollectiveReduce dynamic-root operand must be a 1-D i32 tensor with "
+          "one element per data operand");
+  }
+
+  for (int64_t i = 0; i < numResults; ++i) {
+    auto operandType = mlir::dyn_cast<ShapedType>(operandValues[i].getType());
+    if (!operandType)
+      return emitOptionalError(location,
+                               "CollectiveReduce operand must be a tensor");
+    if (auto rankedType = mlir::dyn_cast<RankedTensorType>(operandType))
+      inferredReturnShapes.emplace_back(rankedType.getShape(),
+                                        rankedType.getElementType(),
+                                        rankedType.getEncoding());
+    else
+      inferredReturnShapes.emplace_back(operandType.getElementType());
+  }
   return success();
 }
 
@@ -6472,8 +6524,8 @@ static llvm::SmallVector<Attribute, 4> evaluateMhloRegion(
     llvm::SmallVector<OpFoldResult, 4> results;
     if (failed(op.fold(inputs, results))) return {};
     for (auto it : llvm::zip(op.getResults(), results)) {
-      if (!std::get<1>(it).is<Attribute>()) return {};
-      values.insert({std::get<0>(it), std::get<1>(it).get<Attribute>()});
+      if (!isa<Attribute>(std::get<1>(it))) return {};
+      values.insert({std::get<0>(it), cast<Attribute>(std::get<1>(it))});
     }
   }
   return {};
@@ -6833,7 +6885,6 @@ using mlir::hlo::printVariadicSameOperandsAndResultType;
 
 using namespace mlir;  // NOLINT
 using mlir::mhlo::AsyncBundleType;
-using mlir::mhlo::TokenType;
 
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
@@ -6870,10 +6921,12 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
   using HloDialectInterface::HloDialectInterface;
 
   Type createTokenType() const override {
-    return TokenType::get(getDialect()->getContext());
+    return mlir::mhlo::TokenType::get(getDialect()->getContext());
   }
 
-  bool isTokenType(Type type) const override { return isa<TokenType>(type); }
+  bool isTokenType(Type type) const override {
+    return isa<mlir::mhlo::TokenType>(type);
+  }
 
   Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
@@ -6894,7 +6947,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
   addInterfaces<MhloHloDialectInterface>();
   addInterfaces<MhloDialectInlinerInterface>();
   addBytecodeInterface(this);
-  addTypes<TokenType, AsyncBundleType>();
+  addTypes<mlir::mhlo::TokenType, AsyncBundleType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "mhlo/IR/hlo_ops_attrs.cc.inc"
@@ -6906,13 +6959,13 @@ Type MhloDialect::parseType(DialectAsmParser& parser) const {
   Type parsedType;
   auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
   if (parseResult.has_value()) return parsedType;
-  if (mnemonic == "token") return TokenType::get(getContext());
+  if (mnemonic == "token") return mlir::mhlo::TokenType::get(getContext());
   parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;
 }
 
 void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
-  if (isa<TokenType>(type)) {
+  if (isa<mlir::mhlo::TokenType>(type)) {
     os << "token";
     return;
   }
@@ -7217,14 +7270,6 @@ enum NonSpatialDim : int64_t {
 };
 
 struct DenseMapInfoNonSpatialDim {
-  static inline NonSpatialDim getEmptyKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
-  }
-
-  static inline NonSpatialDim getTombstoneKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
-  }
-
   static unsigned getHashValue(const NonSpatialDim& key) {
     return DenseMapInfo<int64_t>::getHashValue(key);
   }

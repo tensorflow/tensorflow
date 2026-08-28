@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 
+#include <string>
+
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"

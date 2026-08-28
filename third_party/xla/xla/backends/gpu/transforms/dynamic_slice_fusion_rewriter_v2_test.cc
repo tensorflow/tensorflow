@@ -22,16 +22,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_annotator.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -75,6 +78,14 @@ const HloComputation* FindDsfBody(HloModule* module) {
     }
   }
   return nullptr;
+}
+
+int64_t CountInstructionsWithOpcode(const HloComputation* computation,
+                                    HloOpcode opcode) {
+  return absl::c_count_if(computation->instructions(),
+                          [opcode](const HloInstruction* instr) {
+                            return instr->opcode() == opcode;
+                          });
 }
 
 class DynamicSliceFusionRewriterV2Test : public HloHardwareIndependentTestBase {
@@ -683,6 +694,68 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DUSWithConstantOffset) {
   RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
 }
 
+TEST_F(DynamicSliceFusionRewriterV2Test, DUSWithConstantHeroOperand) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      %p0 = f32[4,8,8]{2,1,0} parameter(0)
+      %input = f32[8,8]{1,0} constant({
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1}})
+      %hero = f32[8,8]{1,0} custom-call(%input),
+        custom_call_target="fake_target"
+      %bitcast = f32[1,8,8]{2,1,0} bitcast(%hero)
+      %c0 = s32[] constant(0)
+      ROOT %dus = f32[4,8,8]{2,1,0} dynamic-update-slice(
+        %p0, %bitcast, %c0, %c0, %c0)
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:       {{.*}} bitcast(
+    ; CHECK:       ROOT {{.*}} dynamic-update-slice(
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %p0),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
+  auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
+
+  auto fusion_checks = [&](HloModule* module) {
+    auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params, ElementsAre(Param{0, f32_88, f32_88, std::nullopt,
+                                          std::nullopt}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    std::vector<Offset> offsets = {{0, Offset::Constant(0)},
+                                   {1, Offset::Constant(0)},
+                                   {2, Offset::Constant(0)}};
+    EXPECT_THAT(results, ElementsAre(Result{1, 0, f32_488, f32_188,
+                                            MakeStaticConfig(0), offsets}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
 TEST_F(DynamicSliceFusionRewriterV2Test, DUSNotRootNotFused) {
   const char* hlo = R"(
     HloModule test
@@ -1032,7 +1105,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test, OffsetAsLinearFunctionOfInductionVar) {
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK:       {{.*}} dynamic-slice(
+    ; CHECK:       [[OFFSET:%[^ ]+]] = s32[] multiply(
+    ; CHECK:       {{.*}} dynamic-slice({{.*}}, [[OFFSET]],
     ; CHECK:       {{.*}} bitcast(
     ; CHECK:       ROOT {{.*}} custom-call(
     ; CHECK:              custom_call_target="fake_target"
@@ -1045,13 +1119,14 @@ TEST_F(DynamicSliceFusionRewriterV2Test, OffsetAsLinearFunctionOfInductionVar) {
   )";
 
   // offset = ivar*2, byte stride dim0 = 256. stride = 2*256 = 512.
-  // Captures: input(p0), offset(p1). Constants sunk into fusion.
+  // Captures: input(p0), ivar(p1). Constants sunk into fusion.
   auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
-                                 {1, Offset::Constant(0)},
-                                 {2, Offset::Constant(0)}};
+  std::vector<Offset> offsets = {
+      {0, Offset::Multiply(Offset::Parameter(1), Offset::Constant(2))},
+      {1, Offset::Constant(0)},
+      {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -1060,6 +1135,431 @@ TEST_F(DynamicSliceFusionRewriterV2Test, OffsetAsLinearFunctionOfInductionVar) {
                          DynamicSliceFusion::ResolveParameters(hero));
     EXPECT_THAT(params, ElementsAre(Param{0, f32_888, f32_188,
                                           MakeConfig(0, 0, 512), offsets}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       DynamicSliceCapturesSelectOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      input = f32[8,8,8] parameter(0)
+      ivar = s32[] parameter(1)
+      c0_s32 = s32[] constant(0)
+      c1_s32 = s32[] constant(1)
+      c2_s32 = s32[] constant(2)
+      c7_s32 = s32[] constant(7)
+      inc = s32[] add(ivar, c1_s32)
+      is_lt = pred[] compare(inc, c2_s32), direction=LT
+      dec = s32[] subtract(c7_s32, ivar)
+      selected = s32[] select(is_lt, inc, dec)
+      ds = f32[1,8,8] dynamic-slice(input, selected, c0_s32, c0_s32),
+          dynamic_slice_sizes={1,8,8},
+          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+      bitcast = f32[8,8] bitcast(ds)
+      ROOT hero = f32[8,8] custom-call(bitcast),
+          custom_call_target="fake_target"
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       [[INC:%[^ ]+]] = s32[] add(
+    ; CHECK:       [[PRED:%[^ ]+]] = pred[] compare([[INC]],
+    ; CHECK-SAME:    direction=LT
+    ; CHECK:       [[DEC:%[^ ]+]] = s32[] subtract(
+    ; CHECK:       [[SELECT:%[^ ]+]] = s32[] select([[PRED]], [[INC]], [[DEC]])
+    ; CHECK:       {{.*}} dynamic-slice({{.*}}, [[SELECT]],
+    ; CHECK:       ROOT {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %ivar),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
+  auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
+  auto inc = [] {
+    return Offset::Add(Offset::Parameter(1), Offset::Constant(1));
+  };
+  std::vector<Offset> offsets = {
+      {0,
+       Offset::Select(
+           Offset::Compare(ComparisonDirection::kLt, inc(),
+                           Offset::Constant(2)),
+           inc(), Offset::Subtract(Offset::Constant(7), Offset::Parameter(1)))},
+      {1, Offset::Constant(0)},
+      {2, Offset::Constant(0)}};
+
+  auto fusion_checks = [&](HloModule* module) {
+    const HloComputation* body = FindDsfBody(module);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kAdd), 1);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kCompare), 1);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kSubtract), 1);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kSelect), 1);
+
+    auto* hero = DynamicSliceFusion::FindHero(body);
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params, ElementsAre(Param{0, f32_888, f32_188,
+                                          MakeStaticConfig(0), offsets}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    EXPECT_THAT(results, ElementsAre(Result{std::nullopt, 0, f32_88, f32_88}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       RepeatedOffsetExpressionOperandClonedOnce) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      input = f32[8,8,8] parameter(0)
+      ivar = s32[] parameter(1)
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      offset_base = s32[] add(ivar, c1)
+      offset = s32[] subtract(offset_base, offset_base)
+      ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
+          dynamic_slice_sizes={1,8,8},
+          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+      bitcast = f32[8,8] bitcast(ds)
+      ROOT hero = f32[8,8] custom-call(bitcast),
+          custom_call_target="fake_target"
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       [[OFFSET_BASE:%[^ ]+]] = s32[] add(
+    ; CHECK:       [[OFFSET:%[^ ]+]] = s32[] subtract([[OFFSET_BASE]], [[OFFSET_BASE]])
+    ; CHECK:       {{.*}} dynamic-slice({{.*}}, [[OFFSET]],
+    ; CHECK:       ROOT {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %ivar),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
+  auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
+  auto offset_base = [] {
+    return Offset::Add(Offset::Parameter(1), Offset::Constant(1));
+  };
+  std::vector<Offset> offsets = {
+      {0, Offset::Subtract(offset_base(), offset_base())},
+      {1, Offset::Constant(0)},
+      {2, Offset::Constant(0)}};
+
+  auto fusion_checks = [&](HloModule* module) {
+    const HloComputation* body = FindDsfBody(module);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kAdd), 1);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kSubtract), 1);
+
+    auto* hero = DynamicSliceFusion::FindHero(body);
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params, ElementsAre(Param{0, f32_888, f32_188,
+                                          MakeStaticConfig(0), offsets}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    EXPECT_THAT(results, ElementsAre(Result{std::nullopt, 0, f32_88, f32_88}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       DynamicUpdateSliceCapturesOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      input = f32[8,8] parameter(0)
+      output = f32[8,8,8] parameter(1)
+      ivar = s32[] parameter(2)
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      hero = f32[8,8] custom-call(input),
+          custom_call_target="fake_target"
+      bitcast = f32[1,8,8] bitcast(hero)
+      offset = s32[] add(ivar, c1)
+      ROOT dus = f32[8,8,8] dynamic-update-slice(
+          output, bitcast, offset, c0, c0),
+          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:       {{.*}} bitcast(
+    ; CHECK:       [[OFFSET:%[^ ]+]] = s32[] add(
+    ; CHECK:       ROOT {{.*}} dynamic-update-slice({{.*}}, {{.*}}, [[OFFSET]],
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %output, %ivar),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
+  auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
+  std::vector<Offset> offsets = {
+      {0, Offset::Add(Offset::Parameter(2), Offset::Constant(1))},
+      {1, Offset::Constant(0)},
+      {2, Offset::Constant(0)}};
+
+  auto fusion_checks = [&](HloModule* module) {
+    const HloComputation* body = FindDsfBody(module);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kAdd), 1);
+
+    auto* hero = DynamicSliceFusion::FindHero(body);
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params, ElementsAre(Param{0, f32_88, f32_88, std::nullopt,
+                                          std::nullopt}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    EXPECT_THAT(results, ElementsAre(Result{1, 0, f32_888, f32_188,
+                                            MakeStaticConfig(0), offsets}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       SharedOffsetExpressionClonedOnceForDSAndDUS) {
+  const char* hlo = R"(
+    HloModule test
+
+    body {
+      p0 = (s32[], f32[8,8,8], f32[8,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = f32[8,8,8] get-tuple-element(p0), index=1
+      output = f32[8,8,8] get-tuple-element(p0), index=2
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      offset = s32[] add(ivar, c1)
+      ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
+          dynamic_slice_sizes={1,8,8}
+      bitcast_in = f32[8,8] bitcast(ds)
+      hero = f32[8,8] custom-call(bitcast_in),
+          custom_call_target="fake_target"
+      bitcast_out = f32[1,8,8] bitcast(hero)
+      dus = f32[8,8,8] dynamic-update-slice(output, bitcast_out, offset, c0, c0)
+      ROOT result = (s32[], f32[8,8,8], f32[8,8,8]) tuple(offset, input, dus)
+    }
+
+    condition {
+      p0 = (s32[], f32[8,8,8], f32[8,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = f32[8,8,8] parameter(0)
+      output = f32[8,8,8] parameter(1)
+      c0 = s32[] constant(0)
+      tuple = (s32[], f32[8,8,8], f32[8,8,8]) tuple(c0, input, output)
+      ROOT while = (s32[], f32[8,8,8], f32[8,8,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       [[OFFSET:%[^ ]+]] = s32[] add(
+    ; CHECK:       {{.*}} dynamic-slice({{.*}}, [[OFFSET]],
+    ; CHECK:       {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:       ROOT {{.*}} dynamic-update-slice({{.*}}, {{.*}}, [[OFFSET]],
+    ; CHECK:     }
+    ; CHECK:     body
+    ; CHECK:       {{.*}} fusion(
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
+  auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  std::vector<Offset> offsets = {
+      {0, Offset::Add(Offset::Parameter(1), Offset::Constant(1))},
+      {1, Offset::Constant(0)},
+      {2, Offset::Constant(0)}};
+
+  auto fusion_checks = [&](HloModule* module) {
+    const HloComputation* body = FindDsfBody(module);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kAdd), 1);
+
+    auto* hero = DynamicSliceFusion::FindHero(body);
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params, ElementsAre(Param{0, f32_888, f32_188,
+                                          MakeConfig(0, 256, 256), offsets}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    EXPECT_THAT(results, ElementsAre(Result{2, 0, f32_888, f32_188,
+                                            MakeConfig(0, 256, 256), offsets}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       OffsetExpressionStopsAtNestedDynamicSlice) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      input = f32[8,8,8] parameter(0)
+      indices = s32[4] parameter(1)
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      index_slice = s32[1] dynamic-slice(indices, c0), dynamic_slice_sizes={1}
+      index_scalar = s32[] reshape(index_slice)
+      offset = s32[] add(index_scalar, c1)
+      ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
+          dynamic_slice_sizes={1,8,8},
+          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+      bitcast = f32[8,8] bitcast(ds)
+      ROOT hero = f32[8,8] custom-call(bitcast),
+          custom_call_target="fake_target"
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       [[OFFSET:%[^ ]+]] = s32[] add(
+    ; CHECK:       {{.*}} dynamic-slice({{.*}}, [[OFFSET]],
+    ; CHECK:       ROOT {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %index_scalar),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
+  auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
+  std::vector<Offset> offsets = {
+      {0, Offset::Add(Offset::Parameter(1), Offset::Constant(1))},
+      {1, Offset::Constant(0)},
+      {2, Offset::Constant(0)}};
+
+  auto fusion_checks = [&](HloModule* module) {
+    const HloComputation* body = FindDsfBody(module);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kDynamicSlice), 1);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kReshape), 0);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kAdd), 1);
+
+    auto* hero = DynamicSliceFusion::FindHero(body);
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params, ElementsAre(Param{0, f32_888, f32_188,
+                                          MakeStaticConfig(0), offsets}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    EXPECT_THAT(results, ElementsAre(Result{std::nullopt, 0, f32_88, f32_88}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       UnsupportedOffsetRootIsCapturedAsParameter) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      input = f32[8,8,8] parameter(0)
+      ivar = s32[] parameter(1)
+      c0 = s32[] constant(0)
+      offset = s32[] maximum(ivar, c0)
+      ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
+          dynamic_slice_sizes={1,8,8},
+          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+      bitcast = f32[8,8] bitcast(ds)
+      ROOT hero = f32[8,8] custom-call(bitcast),
+          custom_call_target="fake_target"
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} dynamic-slice(
+    ; CHECK:       ROOT {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %offset),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
+  auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
+
+  auto fusion_checks = [&](HloModule* module) {
+    const HloComputation* body = FindDsfBody(module);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kMaximum), 0);
+
+    auto* hero = DynamicSliceFusion::FindHero(body);
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params, ElementsAre(Param{0, f32_888, f32_188,
+                                          MakeStaticConfig(0), offsets}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    EXPECT_THAT(results, ElementsAre(Result{std::nullopt, 0, f32_88, f32_88}));
   };
 
   RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
@@ -1616,6 +2116,102 @@ TEST_F(DynamicSliceFusionRewriterV2Test, TupleOutputOneDUSOneDeadOutput) {
                                             MakeConfig(0, 0, 256), offsets},
                                      Result{std::nullopt, 1, f32_88, f32_88,
                                             std::nullopt, std::nullopt}));
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test, ZeroSizedDeadOutput) {
+  // A tuple-producing hero may have a zero-sized leaf that is not used by the
+  // surrounding while body. DSF must still preserve that leaf in the fusion
+  // output tuple, while the nonzero DUS leaf gets normal dynamic-slice offset
+  // metadata.
+  const char* hlo = R"(
+    HloModule zero_sized_tuple_test
+
+    body {
+      loop_tuple = (s32[], f32[16,64], f32[64]) parameter(0)
+      iter = s32[] get-tuple-element(loop_tuple), index=0
+      buffer = f32[16,64] get-tuple-element(loop_tuple), index=1
+      p0 = f32[64] get-tuple-element(loop_tuple), index=2
+      c_f32_0 = f32[0] constant({})
+      custom_call = (f32[0], f32[64]) custom-call(p0, c_f32_0),
+          custom_call_target="fake_target"
+      elem1 = f32[64] get-tuple-element(custom_call), index=1
+      bitcast_res = f32[1,64] bitcast(elem1)
+      c0 = s32[] constant(0)
+      updated_buffer = f32[16,64] dynamic-update-slice(buffer, bitcast_res,
+          iter, c0)
+      c1 = s32[] constant(1)
+      next_iter = s32[] add(iter, c1)
+      ROOT out_tuple = (s32[], f32[16,64], f32[64]) tuple(
+          next_iter, updated_buffer, p0)
+    }
+
+    cond {
+      loop_tuple = (s32[], f32[16,64], f32[64]) parameter(0)
+      iter = s32[] get-tuple-element(loop_tuple), index=0
+      limit = s32[] constant(2)
+      ROOT cond = pred[] compare(iter, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[64] parameter(0)
+      c_init = s32[] constant(0)
+      c_zero = f32[] constant(0)
+      buf_init = f32[16,64] broadcast(c_zero), dimensions={}
+      init_tuple = (s32[], f32[16,64], f32[64]) tuple(c_init, buf_init, p0)
+      while_loop = (s32[], f32[16,64], f32[64]) while(init_tuple),
+          condition=cond, body=body,
+          backend_config={"known_trip_count":{"n":"2"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+      ROOT res = f32[16,64] get-tuple-element(while_loop), index=1
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} = (f32[0]{0}, f32[64]{0}) custom-call(
+    ; CHECK-SAME:         custom_call_target="fake_target"
+    ; CHECK:       {{.*}} = f32[0]{0} get-tuple-element(
+    ; CHECK-SAME:         index=0
+    ; CHECK:       {{.*}} = f32[64]{0} get-tuple-element(
+    ; CHECK-SAME:         index=1
+    ; CHECK:       {{.*}} = f32[1,64]{1,0} bitcast(
+    ; CHECK:       {{.*}} = f32[16,64]{1,0} dynamic-update-slice(
+    ; CHECK:       ROOT {{.*}} = (f32[0]{0}, f32[16,64]{1,0}) tuple(
+    ; CHECK:     }
+    ; CHECK:     body
+    ; CHECK:       {{.*}} fusion(
+    ; CHECK-SAME:         kind=kCustom
+    ; CHECK-SAME:         "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  auto f32_0 = ShapeUtil::MakeShape(F32, {0});
+  auto f32_64 = ShapeUtil::MakeShape(F32, {64});
+  auto f32_164 = ShapeUtil::MakeShape(F32, {1, 64});
+  auto f32_1664 = ShapeUtil::MakeShape(F32, {16, 64});
+  std::vector<Offset> offsets = {{0, Offset::Parameter(3)},
+                                 {1, Offset::Constant(0)}};
+
+  auto fusion_checks = [&](HloModule* module) {
+    auto* body = FindDsfBody(module);
+    ASSERT_NE(body, nullptr);
+    auto* hero = DynamicSliceFusion::FindHero(body);
+    ASSERT_NE(hero, nullptr);
+
+    ASSERT_OK_AND_ASSIGN(auto params,
+                         DynamicSliceFusion::ResolveParameters(hero));
+    EXPECT_THAT(params,
+                ElementsAre(Param{0, f32_64, f32_64}, Param{1, f32_0, f32_0}));
+
+    ASSERT_OK_AND_ASSIGN(auto results,
+                         DynamicSliceFusion::ResolveResults(hero));
+    EXPECT_THAT(results, ElementsAre(Result{std::nullopt, 0, f32_0, f32_0},
+                                     Result{2, 1, f32_1664, f32_164,
+                                            MakeConfig(0, 0, 256), offsets}));
   };
 
   RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);

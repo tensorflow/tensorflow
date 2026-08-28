@@ -174,5 +174,31 @@ TEST_F(MxScaledDotExecutionTest, MxFp4Fp8MixedBatchedCorrectness) {
                        ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
 }
 
+// The scaled-dot operands are reshapes of higher-rank parameters, mimicking the
+// in-graph block-scaled quantization case where the fp8 operand is produced in
+// [batch, M, K/block, block] form and only flattened to [batch, M, K] by a
+// reshape/bitcast that gets absorbed into the gemm fusion. This exercises the
+// path where the fusion's external operands have a different rank than the
+// scaled-dot operands; the MX rewrite must re-bitcast them back so the custom
+// call operands stay consistent with the dot dimension numbers.
+constexpr absl::string_view kMxFp8ReshapedOperandsHlo = R"(
+HloModule mx_fp8_reshaped_operands_test
+ENTRY main {
+  %lhs_blocked = f8e4m3fn[1,32,8,32] parameter(0)
+  %rhs_blocked = f8e4m3fn[1,16,8,32] parameter(1)
+  %lhs_scale = f8e8m0fnu[1,32,8] parameter(2)
+  %rhs_scale = f8e8m0fnu[1,16,8] parameter(3)
+  %lhs = f8e4m3fn[1,32,256] reshape(%lhs_blocked)
+  %rhs = f8e4m3fn[1,16,256] reshape(%rhs_blocked)
+  ROOT %result = f32[1,32,16] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={2}
+})";
+
+TEST_F(MxScaledDotExecutionTest, MxFp8ReshapedOperandsCorrectness) {
+  RunMxCorrectnessTest(kMxFp8ReshapedOperandsHlo,
+                       ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
+}
+
 }  // namespace
 }  // namespace xla::gpu

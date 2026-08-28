@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -50,13 +50,14 @@ namespace gpu {
 
 CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
                        std::vector<ShapedSlice> args,
-                       std::vector<bool> output_args,
+                       std::vector<bool> output_args, bool should_memzero,
                        std::optional<int64_t> sdpa_dropout_seed)
     : TracedCommand(Kind::kCuDnn, std::move(thunk_info)),
       fingerprint_(std::move(fingerprint)),
       graph_(std::make_shared<se::dnn::LazyDnnGraph>(nullptr)),
       args_(std::move(args)),
       output_args_(std::move(output_args)),
+      should_memzero_(should_memzero),
       sdpa_dropout_seed_(sdpa_dropout_seed) {}
 
 absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
@@ -96,12 +97,15 @@ absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
 absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   InitializeParams initialize_params;
   initialize_params.stream = params.stream;
-  RETURN_IF_ERROR(Initialize(initialize_params));
+  ABSL_RETURN_IF_ERROR(Initialize(initialize_params));
   std::vector<se::DeviceAddressBase> buffer_args;
   buffer_args.reserve(args_.size());
   for (const ShapedSlice& arg : args_) {
     auto addr = params.buffer_allocations->GetDeviceAddress(arg.slice);
     if (output_args_[buffer_args.size()]) {
+      if (should_memzero_) {
+        ABSL_RETURN_IF_ERROR(params.stream->MemZero(&addr, addr.size()));
+      }
       tsl::profiler::MarkMemoryInitialized(
           addr.opaque(), addr.size(),
           static_cast<tsl::profiler::StreamHandle>(
@@ -128,7 +132,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
     operands.push_back(buf);
   }
 
-  ASSIGN_OR_RETURN(const bool supports_explicit,
+  ABSL_ASSIGN_OR_RETURN(const bool supports_explicit,
                    graph_->get()->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
     if (auto* create = std::get_if<RecordCreate>(&record_action)) {
@@ -137,7 +141,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
           absl::Span<se::DeviceAddressBase>(operands), create->dependencies);
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-      RETURN_IF_ERROR(command_buffer->UpdateDnnGraphCommand(
+      ABSL_RETURN_IF_ERROR(command_buffer->UpdateDnnGraphCommand(
           update->command, *graph_->get(), *execute_params.stream,
           absl::Span<se::DeviceAddressBase>(operands)));
       return update->command;
@@ -159,11 +163,12 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
   proto.mutable_cudnn_thunk()->set_fingerprint(fingerprint_);
 
   for (const ShapedSlice& arg : args_) {
-    ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(), arg.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(), arg.ToProto());
   }
   for (const bool is_output : output_args_) {
     proto.mutable_cudnn_thunk()->add_output_args(is_output);
   }
+  proto.mutable_cudnn_thunk()->set_should_memzero(should_memzero_);
   if (sdpa_dropout_seed_.has_value()) {
     proto.mutable_cudnn_thunk()->set_sdpa_dropout_seed(
         static_cast<int64_t>(*sdpa_dropout_seed_));
@@ -177,7 +182,7 @@ absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
   std::vector<ShapedSlice> args;
   args.reserve(proto.args_size());
   for (const ShapedSliceProto& arg : proto.args()) {
-    ASSIGN_OR_RETURN(args.emplace_back(),
+    ABSL_ASSIGN_OR_RETURN(args.emplace_back(),
                      ShapedSlice::FromProto(arg, buffer_allocations));
   }
   std::vector<bool> output_args;
@@ -191,7 +196,7 @@ absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
   }
   return std::make_unique<CuDnnThunk>(
       proto.fingerprint(), std::move(thunk_info), std::move(args),
-      std::move(output_args), sdpa_dropout_seed);
+      std::move(output_args), proto.should_memzero(), sdpa_dropout_seed);
 }
 
 }  // namespace gpu

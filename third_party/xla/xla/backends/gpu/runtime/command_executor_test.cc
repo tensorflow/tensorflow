@@ -15,23 +15,36 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/command_executor.h"
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/status/status.h"
+#include <gmock/gmock.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/mock_command_buffer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -39,19 +52,40 @@ namespace {
 // A minimal Command for testing: configurable buffer uses, no-op Record.
 class FakeCmd : public Command {
  public:
-  explicit FakeCmd(Command::BufferUses uses = {})
-      : Command(Thunk::Kind::kCommand), uses_(std::move(uses)) {}
+  explicit FakeCmd(Command::BufferUses uses = {}, int* update_count = nullptr,
+                   bool requires_update_on_initialize = false,
+                   bool requires_update_on_execute = false)
+      : Command(Thunk::Kind::kCommand),
+        uses_(std::move(uses)),
+        update_count_(update_count),
+        requires_update_on_initialize_(requires_update_on_initialize),
+        requires_update_on_execute_(requires_update_on_execute) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
+      const Thunk::ExecuteParams&, const RecordParams&, RecordAction action,
       se::CommandBuffer*) override {
+    if (update_count_ != nullptr &&
+        std::holds_alternative<RecordUpdate>(action)) {
+      ++*update_count_;
+    }
     return nullptr;
   }
 
   BufferUses buffer_uses() const override { return uses_; }
 
+  bool requires_update_on_initialize() const override {
+    return requires_update_on_initialize_;
+  }
+
+  bool requires_update_on_execute() const override {
+    return requires_update_on_execute_;
+  }
+
  private:
   BufferUses uses_;
+  int* update_count_;
+  bool requires_update_on_initialize_;
+  bool requires_update_on_execute_;
 };
 
 // Convenience aliases for synchronization modes.
@@ -73,6 +107,128 @@ TEST(CommandExecutorTest, DuplicateAllocsCollapsedToOne) {
   // Both commands reference the same allocation index — should appear once.
   EXPECT_EQ(executor.allocs_indices().size(), 1);
   EXPECT_EQ(executor.allocs_indices()[0], 0);
+}
+
+class CommandExecutorUpdateTest : public ::testing::Test {
+ protected:
+  void ExpectUpdateCount(
+      std::optional<std::vector<BufferAllocation::Index>> updated_allocs,
+      std::vector<BufferAllocation::Index> persistent_alloc_indices,
+      bool is_initialization, bool requires_update_on_initialize,
+      bool requires_update_on_execute, int expected_update_count) {
+    BufferAllocation allocation(/*index=*/0, /*size=*/1024, /*color=*/0);
+    Shape shape = ShapeUtil::MakeShape(U8, {100});
+    BufferAllocation::Slice slice(&allocation, /*offset=*/0, /*size=*/100);
+
+    int update_count = 0;
+    CommandSequence commands;
+    commands.Emplace<FakeCmd>(
+        Command::BufferUses{BufferUse::Read(slice, shape)}, &update_count,
+        requires_update_on_initialize, requires_update_on_execute);
+    ASSERT_OK_AND_ASSIGN(
+        CommandExecutor executor,
+        CommandExecutor::Create(std::move(commands), kSerialize));
+
+    std::vector<se::DeviceAddressBase> buffers(2);
+    BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                  /*memory_allocator=*/nullptr);
+    ServiceExecutableRunOptions run_options;
+    Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+        run_options, allocations, /*stream=*/nullptr,
+        /*command_buffer_trace_stream=*/nullptr,
+        /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+        /*collective_memory=*/nullptr, /*additional_compute_streams=*/{},
+        /*execution_scoped_state=*/nullptr,
+        absl::MakeConstSpan(persistent_alloc_indices));
+
+    CommandStateManager state_manager;
+    Command::RecordParams create_params{state_manager};
+    ::testing::NiceMock<se::MockCommandBuffer> command_buffer;
+    se::CommandBuffer::State command_buffer_state =
+        se::CommandBuffer::State::kCreate;
+    ON_CALL(command_buffer, state()).WillByDefault([&] {
+      return command_buffer_state;
+    });
+    ON_CALL(command_buffer, mode())
+        .WillByDefault(::testing::Return(se::CommandBuffer::Mode::kPrimary));
+
+    ASSERT_OK(executor
+                  .RecordCreate(execute_params, create_params, &command_buffer,
+                                /*dependencies=*/{})
+                  .status());
+
+    command_buffer_state = se::CommandBuffer::State::kUpdate;
+    Command::RecordParams update_params{
+        state_manager, std::move(updated_allocs), is_initialization};
+    ASSERT_OK(
+        executor.RecordUpdate(execute_params, update_params, &command_buffer));
+    EXPECT_EQ(update_count, expected_update_count);
+  }
+};
+
+TEST_F(CommandExecutorUpdateTest, EmptyUpdatedAllocationsSkipRegularCommand) {
+  ExpectUpdateCount(/*updated_allocs=*/std::vector<BufferAllocation::Index>{},
+                    /*persistent_alloc_indices=*/{1},
+                    /*is_initialization=*/false,
+                    /*requires_update_on_initialize=*/false,
+                    /*requires_update_on_execute=*/false,
+                    /*expected_update_count=*/0);
+}
+
+TEST_F(CommandExecutorUpdateTest,
+       EmptyUpdatedAllocationsDoNotSkipRequiredCommand) {
+  ExpectUpdateCount(/*updated_allocs=*/std::vector<BufferAllocation::Index>{},
+                    /*persistent_alloc_indices=*/{0},
+                    /*is_initialization=*/false,
+                    /*requires_update_on_initialize=*/false,
+                    /*requires_update_on_execute=*/true,
+                    /*expected_update_count=*/1);
+}
+
+TEST_F(CommandExecutorUpdateTest, UnknownUpdatedAllocationsUpdateCommand) {
+  ExpectUpdateCount(/*updated_allocs=*/std::nullopt,
+                    /*persistent_alloc_indices=*/{0},
+                    /*is_initialization=*/false,
+                    /*requires_update_on_initialize=*/false,
+                    /*requires_update_on_execute=*/false,
+                    /*expected_update_count=*/1);
+}
+
+TEST_F(CommandExecutorUpdateTest, UpdatedAllocationIntersectionControlsUpdate) {
+  ExpectUpdateCount(/*updated_allocs=*/std::vector<BufferAllocation::Index>{0},
+                    /*persistent_alloc_indices=*/{1},
+                    /*is_initialization=*/false,
+                    /*requires_update_on_initialize=*/false,
+                    /*requires_update_on_execute=*/false,
+                    /*expected_update_count=*/1);
+  ExpectUpdateCount(/*updated_allocs=*/std::vector<BufferAllocation::Index>{1},
+                    /*persistent_alloc_indices=*/{1},
+                    /*is_initialization=*/false,
+                    /*requires_update_on_initialize=*/false,
+                    /*requires_update_on_execute=*/false,
+                    /*expected_update_count=*/0);
+  ExpectUpdateCount(/*updated_allocs=*/std::vector<BufferAllocation::Index>{0},
+                    /*persistent_alloc_indices=*/{0},
+                    /*is_initialization=*/false,
+                    /*requires_update_on_initialize=*/false,
+                    /*requires_update_on_execute=*/false,
+                    /*expected_update_count=*/0);
+}
+
+TEST_F(CommandExecutorUpdateTest,
+       InitializationUpdatePreservesPersistentException) {
+  ExpectUpdateCount(/*updated_allocs=*/std::vector<BufferAllocation::Index>{},
+                    /*persistent_alloc_indices=*/{1},
+                    /*is_initialization=*/true,
+                    /*requires_update_on_initialize=*/true,
+                    /*requires_update_on_execute=*/false,
+                    /*expected_update_count=*/1);
+  ExpectUpdateCount(/*updated_allocs=*/std::vector<BufferAllocation::Index>{},
+                    /*persistent_alloc_indices=*/{0},
+                    /*is_initialization=*/true,
+                    /*requires_update_on_initialize=*/true,
+                    /*requires_update_on_execute=*/false,
+                    /*expected_update_count=*/0);
 }
 
 //===----------------------------------------------------------------------===//

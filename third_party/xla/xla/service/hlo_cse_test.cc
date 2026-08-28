@@ -54,7 +54,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 namespace m = xla::match;
 
-class HloCseTest : public HloPjRtTestBase {
+class HloCseTest : public HloTestBase {
  protected:
   HloCseTest() {}
 };

@@ -244,7 +244,7 @@ class HashTable : public InitializableLookupTable {
           "Failed to serialize lookup table: no initialization function was "
           "specified. Falling back to serializing a handle to the table.";
       LOG(WARNING) << message;
-      return errors::Unimplemented(message);
+      return absl::UnimplementedError(message);
     }
     Node* initializer;
     TF_RETURN_IF_ERROR(initializer_serializer_->AsGraphDef(
@@ -263,7 +263,7 @@ class HashTable : public InitializableLookupTable {
 
   absl::Status ExportValues(OpKernelContext* context) override {
     if (!is_initialized()) {
-      return errors::Aborted("HashTable is not initialized.");
+      return absl::AbortedError("HashTable is not initialized.");
     }
 
     const int64_t size = table_.size();
@@ -292,7 +292,7 @@ class HashTable : public InitializableLookupTable {
  protected:
   absl::Status DoPrepare(size_t size) override {
     if (is_initialized()) {
-      return errors::Aborted("HashTable already initialized.");
+      return absl::AbortedError("HashTable already initialized.");
     }
     if (size > 0) {
       table_.reserve(size);

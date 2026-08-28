@@ -258,4 +258,48 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToSet) {
                               HasSubstr("topology.textproto")));
 }
 
+class MaybeDumpCompileInputsModuleFilterTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const std::string temp_test_dir = tsl::testing::TmpDir();
+    dump_subdir_ = tsl::io::JoinPath(
+        temp_test_dir, absl::StrCat("compile_maybe_dump_filter_",
+                                    absl::ToUnixMillis(absl::Now())));
+    TF_ASSERT_OK(tsl::Env::Default()->RecursivelyCreateDir(dump_subdir_));
+    module_ = xla::llvm_ir::CreateMlirModuleOp(builder_.getUnknownLoc());
+    module_->setName("foo");
+    topology_ = std::make_unique<TestTopology>();
+    debug_options_ =
+        compile_options_.executable_build_options.mutable_debug_options();
+    debug_options_->set_xla_dump_to(dump_subdir_);
+  }
+
+  bool Run(absl::string_view module_re) {
+    debug_options_->set_xla_dump_hlo_module_re(module_re);
+    EXPECT_OK(pjrt::MaybeDumpCompileInputs(compile_options_, *module_,
+                                           *topology_, 0));
+    std::vector<std::string> files;
+    EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
+        tsl::io::JoinPath(dump_subdir_, "*"), &files));
+    return !files.empty();
+  }
+
+  std::string dump_subdir_;
+  xla::CompileOptions compile_options_;
+  mlir::MLIRContext context_;
+  mlir::OpBuilder builder_{&context_};
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
+  std::unique_ptr<TestTopology> topology_;
+  xla::DebugOptions* debug_options_;
+};
+
+TEST_F(MaybeDumpCompileInputsModuleFilterTest,
+       DisablesDumpWhenFilterDoesNotMatch) {
+  EXPECT_FALSE(Run("bar"));
+}
+
+TEST_F(MaybeDumpCompileInputsModuleFilterTest, EnablesDumpWhenFilterMatches) {
+  EXPECT_TRUE(Run("foo"));
+}
+
 }  // namespace

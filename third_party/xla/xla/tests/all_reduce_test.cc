@@ -29,7 +29,7 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::testing::Eq;
 
-using TrivialAllReduceTest = HloPjRtTestBase;
+using TrivialAllReduceTest = HloTestBase;
 
 // Currently the CPU and GPU backends only support AllReduce with one
 // replica.  But we can at least check this.

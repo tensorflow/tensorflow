@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -32,7 +31,7 @@ namespace {
 // error isn't caught. We expect and CUDA_ERROR_ILLEGAL_ADDRESS to be
 // thrown with the old buggy code.
 class CopyAloneNoOptTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 TEST_F(CopyAloneNoOptTest, CopyTranspose) {
   const char* hlo_text = R"(

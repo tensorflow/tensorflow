@@ -29,9 +29,9 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -92,8 +92,8 @@ class RemoteLoadedHostCallbackQueue {
 // in IFRT has no associated execution semantics. For now, the IFRT proxy
 // focuses on supporting host callbacks on PjRt-like IFRT implementations.
 class RemoteLoadedHostCallback
-    : public llvm::RTTIExtends<RemoteLoadedHostCallback,
-                               PjRtHostSendAndRecvLoadedHostCallback> {
+    : public RTTIExtends<RemoteLoadedHostCallback,
+                         PjRtHostSendAndRecvLoadedHostCallback> {
  public:
   // Creates from a serialized string returned by `Serialize()`.
   static absl::StatusOr<tsl::RCReference<RemoteLoadedHostCallback>>

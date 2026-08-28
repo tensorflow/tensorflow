@@ -50,7 +50,7 @@ absl::Status GraphMemory::InferStatically(
 
 absl::Status GraphMemory::InferDynamically(Cluster* cluster) {
   if (!cluster->DetailedStatsEnabled()) {
-    return errors::Unavailable("Detailed stats collection must be enabled");
+    return absl::UnavailableError("Detailed stats collection must be enabled");
   }
 
   TF_RETURN_IF_ERROR(cluster->Initialize(item_));

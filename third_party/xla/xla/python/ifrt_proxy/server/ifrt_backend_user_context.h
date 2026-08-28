@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/functional/any_invocable.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -28,7 +28,7 @@ namespace ifrt {
 namespace proxy {
 
 class IfrtBackendUserContext
-    : public llvm::RTTIExtends<IfrtBackendUserContext, UserContext> {
+    : public RTTIExtends<IfrtBackendUserContext, UserContext> {
  public:
   // Creates a UserContextRef with the given `original_id` and `on_destroyed`
   // callback called at its destruction. If `original_id` is 0, returns a

@@ -21,14 +21,17 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -51,6 +54,12 @@ class GpuCollectives : public Collectives {
   // Returns the default collectives implementation for the given platform.
   static GpuCollectives* Default(absl::string_view platform_name);
 
+  // Returns the collectives implementation for the given platform  and
+  // implementation name or the default implementation if not specified.
+  static GpuCollectives* Resolve(
+      absl::string_view platform_name,
+      std::optional<std::string> impl = std::nullopt);
+
   // A callback to get a unique clique ids.
   using CliqueIdCallback =  // NOLINT
       std::function<absl::StatusOr<CliqueIds>(const CliqueKey&)>;
@@ -70,7 +79,8 @@ class GpuCollectives : public Collectives {
   // Initializes the collectives backend with the provided topology information
   // and returns a callback that will generate unique ids for the cliques if
   // topology spans multiple processes and clique id generation requires
-  // multi-process coordination. For local toplogies returns a nullptr callback.
+  // multi-process coordination. For local topologies returns a nullptr
+  // callback.
   virtual absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) = 0;
 
@@ -150,8 +160,13 @@ class GpuCollectives : public Collectives {
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 
-  // Returns minimum alignment requirement for symmetric memory.
-  virtual size_t SymmetricMemoryAlignment() const { return 1; }
+  // Executes a group of collective launches. All communicators used by the
+  // `group` must be listed in `comms`, otherwise behavior is undefined.
+  virtual absl::Status GroupLaunch(
+      absl::Span<const GpuCommunicator* const> comms,
+      absl::FunctionRef<absl::Status()> group) {
+    return group();
+  }
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.

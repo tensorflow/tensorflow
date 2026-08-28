@@ -12,21 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
+#include "tensorflow/lite/toco/tensorflow_graph_matching/cluster_utils.h"
+
+#include <cstdint>
+
 namespace toco {
 
-bool StrContains(const std::string& x, const std::string& search_pattern) {
-  return x.find(search_pattern) != std::string::npos;
-}
-
-void Transpose2DTensor(const float* tensor, int row, int col,
+void Transpose2DTensor(const float* tensor, int64_t row, int64_t col,
                        float* transposed_tensor) {
-  float* result = transposed_tensor;
-  for (int r = 0; r < row; ++r) {
-    for (int c = 0; c < col; ++c) {
-      *(result + c * row) = *tensor++;
+  for (int64_t r = 0; r < row; ++r) {
+    for (int64_t c = 0; c < col; ++c) {
+      transposed_tensor[c * row + r] = tensor[r * col + c];
     }
-    ++result;
   }
 }
 

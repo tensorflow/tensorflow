@@ -28,13 +28,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "re2/re2.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -296,13 +296,13 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
             "HloCostAnalysis",
             CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
             /*enable_cache=*/false));
-    ASSIGN_OR_RETURN(alias_analysis_,
+    ABSL_ASSIGN_OR_RETURN(alias_analysis_,
                      HloAliasAnalysis::Run(module, &alias_info_));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         cost_analysis_,
         CostAnalysis::Create(*op_cost_manager_, cost_analysis_options_,
                              &alias_info_, *module, alias_analysis_.get()));
-    ASSIGN_OR_RETURN(live_range_,
+    ABSL_ASSIGN_OR_RETURN(live_range_,
                      HloLiveRange::Run(module->schedule(), *alias_analysis_,
                                        module->entry_computation()));
     return absl::OkStatus();
@@ -313,7 +313,7 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
       uint64_t alternate_memory_size = 256,
       const ReservedScopedMemoryFunction& reserved_scoped_memory_fn =
           ReservedScopedMemoryFn) {
-    RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
+    ABSL_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     MemoryBoundLoopOptimizerOptions optimizer_options;
     optimizer_options.set_enabled(true);
     optimizer_options.set_desired_copy_ratio(0.7);
@@ -326,7 +326,7 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
     options.size_fn = SizeFunction;
     options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
     options.memory_bound_loop_optimizer_options = optimizer_options;
-    ASSIGN_OR_RETURN(optimizer_, MemoryBoundLoopOptimizer::Create(
+    ABSL_ASSIGN_OR_RETURN(optimizer_, MemoryBoundLoopOptimizer::Create(
                                      loop_start, loop_end, *live_range_,
                                      *alias_analysis_, options));
     return optimizer_.get();
@@ -338,12 +338,12 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
       const ReservedScopedMemoryFunction& reserved_scoped_memory_fn =
           ReservedScopedMemoryFn) {
     int loop_end_idx;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::string module_str,
         ParseAndCreateModuleString(hlo_loop_str, loop_start_idx, loop_end_idx));
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(module_str));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         *optimizer,
         CreateOptimizer(loop_start_idx, loop_end_idx, module.get(),
                         alternate_memory_size, reserved_scoped_memory_fn));
@@ -517,7 +517,7 @@ ENTRY Entry {
     options_.alternate_memory_space = kAlternateMemorySpace;
 
     if (!cost_analysis_) {
-      RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
+      ABSL_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     }
     CostAnalysis::Cache cache;
     MemoryBoundednessBufferIntervalComparator comparator(*cost_analysis_,
@@ -597,9 +597,9 @@ ENTRY Entry {
       }
     };
 
-    ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                      HloAliasAnalysis::Run(module, &alias_info_));
-    ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> live_range,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> live_range,
                      HloLiveRange::Run(module->schedule(), *alias_analysis,
                                        module->entry_computation()));
     const auto& flattened_instructions =

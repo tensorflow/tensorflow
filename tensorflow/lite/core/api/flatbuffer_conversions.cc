@@ -1101,6 +1101,12 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_UINT4:
       *type = kTfLiteUInt4;
       return kTfLiteOk;
+    case TensorType_FLOAT8_E4M3FN:
+      *type = kTfLiteFloat8E4M3FN;
+      return kTfLiteOk;
+    case TensorType_FLOAT8_E5M2:
+      *type = kTfLiteFloat8E5M2;
+      return kTfLiteOk;
     default:
       *type = kTfLiteNoType;
       TF_LITE_REPORT_ERROR(error_reporter,
@@ -2324,34 +2330,42 @@ TfLiteStatus ParseStablehloGather(const Operator* op,
       op->builtin_options_2_as_StablehloGatherOptions();
 
   if (schema_params != nullptr) {
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        /*max_size_of_buffer=*/schema_params->offset_dims()->size() *
-            sizeof(int64_t),
-        /*flat_vector=*/schema_params->offset_dims(),
-        /*buffer=*/params->offset_dims, /*error_reporter=*/error_reporter,
-        /*op_name=*/"stablehlo_gather"));
-    params->num_offset_dims = schema_params->offset_dims()->size();
+    if (schema_params->offset_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          /*max_size_of_buffer=*/schema_params->offset_dims()->size() *
+              sizeof(int64_t),
+          /*flat_vector=*/schema_params->offset_dims(),
+          /*buffer=*/params->offset_dims, /*error_reporter=*/error_reporter,
+          /*op_name=*/"stablehlo_gather"));
+      params->num_offset_dims = schema_params->offset_dims()->size();
+    }
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->collapsed_slice_dims()->size() * sizeof(int64_t),
-        schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
-        error_reporter, "stablehlo_gather"));
-    params->num_collapsed_slice_dims =
-        schema_params->collapsed_slice_dims()->size();
+    if (schema_params->collapsed_slice_dims()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->collapsed_slice_dims()->size() * sizeof(int64_t),
+          schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
+          error_reporter, "stablehlo_gather"));
+      params->num_collapsed_slice_dims =
+          schema_params->collapsed_slice_dims()->size();
+    }
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->start_index_map()->size() * sizeof(int64_t),
-        schema_params->start_index_map(), params->start_index_map,
-        error_reporter, "stablehlo_gather"));
-    params->num_start_index_map = schema_params->start_index_map()->size();
+    if (schema_params->start_index_map()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->start_index_map()->size() * sizeof(int64_t),
+          schema_params->start_index_map(), params->start_index_map,
+          error_reporter, "stablehlo_gather"));
+      params->num_start_index_map = schema_params->start_index_map()->size();
+    }
 
     params->index_vector_dim = schema_params->index_vector_dim();
 
-    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->slice_sizes()->size() * sizeof(int64_t),
-        schema_params->slice_sizes(), params->slice_sizes, error_reporter,
-        "stablehlo_gather"));
-    params->num_slice_sizes = schema_params->slice_sizes()->size();
+    if (schema_params->slice_sizes()) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->slice_sizes()->size() * sizeof(int64_t),
+          schema_params->slice_sizes(), params->slice_sizes, error_reporter,
+          "stablehlo_gather"));
+      params->num_slice_sizes = schema_params->slice_sizes()->size();
+    }
 
     params->indices_are_sorted = schema_params->indices_are_sorted();
   } else {

@@ -429,15 +429,11 @@ TEST_F(CollectiveSelectFolderTest,
   const absl::string_view kExpected = R"(
     // CHECK:      ENTRY %computation
     // CHECK:        %[[PARAM:.*]] = (f32[8192]{0}, f32[8192]{0}) parameter(0)
-    // CHECK:        %[[OPERAND_BWD:.*]] = {{.*}} get-tuple-element
-    // CHECK-SAME:       ({{.*}}%[[PARAM]]), index=0
-    // CHECK:        %[[OPERAND_FWD:.*]] = {{.*}} get-tuple-element
-    // CHECK-SAME:       ({{.*}}%[[PARAM]]), index=1
     // CHECK:        %[[CP_BWD:.*]] = {{.*}} collective-permute
-    // CHECK-SAME:       ({{.*}}%[[OPERAND_BWD]]), channel_id=1,
+    // CHECK-SAME:       ({{.*}}%[[PARAM]]#0), channel_id=1,
     // CHECK-SAME:       source_target_pairs={{\{}}{3,0}}
     // CHECK:        %[[CP_FWD:.*]] = {{.*}} collective-permute
-    // CHECK-SAME:       ({{.*}}%[[OPERAND_FWD]]), channel_id=2,
+    // CHECK-SAME:       ({{.*}}%[[PARAM]]#1), channel_id=2,
     // CHECK-SAME:       source_target_pairs={{\{}}{0,1},{1,2},{2,3}}
     // CHECK:        ROOT %{{.*}} =
     // CHECK-SAME:       select({{.*}}, {{.*}}%[[CP_BWD]],
@@ -476,8 +472,7 @@ TEST_F(CollectiveSelectFolderTest, DtypeConvertedPartitionId) {
                                                 /*expect_change=*/true));
   const absl::string_view kExpected = R"(
     // CHECK: %[[PARAM:.*]] = {{.*}} parameter(0)
-    // CHECK: %[[DATA_A:.*]] = {{.*}} get-tuple-element({{.*}}%[[PARAM]]), index=0
-    // CHECK: ROOT %[[DATA_A_:.*]] = {{.*}} collective-permute({{.*}}%[[DATA_A]])
+    // CHECK: ROOT %{{.*}} = {{.*}} collective-permute({{.*}}%[[PARAM]]#0)
   )";
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
                           RunFileCheck(module->ToString(), kExpected));

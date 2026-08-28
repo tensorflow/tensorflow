@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
@@ -51,6 +52,14 @@ using ::testing::HasSubstr;
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
   TiledHloScheduleTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // TODO: b/514293537 - drop the test altogether but consider migrating some
+    // of the test cases to the new tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
   mlir::MLIRContext mlir_context_;
 };
 

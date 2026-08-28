@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/spacetobatch_functor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -95,12 +96,18 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
   // Compute the product of the block_shape values.
   int64_t block_shape_product = 1;
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
-    block_shape_product *= block_shape[block_dim];
+    const int64_t block_shape_val = block_shape[block_dim];
+    OP_REQUIRES(context, block_shape_val >= 1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "All values in block_shape must be positive, got ",
+                    block_shape_val, " at index ", block_dim)));
+    block_shape_product =
+        MultiplyWithoutOverflow(block_shape_product, block_shape_val);
+    OP_REQUIRES(context, block_shape_product > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Product of block sizes must be positive, got ",
+                    block_shape_product)));
   }
-  OP_REQUIRES(context, block_shape_product > 0,
-              absl::InvalidArgumentError(
-                  absl::StrCat("Product of block sizes must be positive, got ",
-                               block_shape_product)));
 
   const int64_t orig_input_batch_size = orig_input_tensor.dim_size(0);
   OP_REQUIRES(context, orig_input_batch_size % block_shape_product == 0,
@@ -155,8 +162,22 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
                 absl::InvalidArgumentError("Crops must be non-negative"));
     const int64_t input_size = orig_input_tensor.dim_size(block_dim + 1);
     const int64_t block_shape_value = block_shape[block_dim];
-    const int64_t cropped_size =
-        input_size * block_shape_value - crop_start - crop_end;
+
+    const int64_t input_size_block =
+        MultiplyWithoutOverflow(input_size, block_shape_value);
+    OP_REQUIRES(
+        context, input_size_block >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Overflow when multiplying input_size and block_shape_value: ",
+            input_size, " * ", block_shape_value)));
+
+    const int64_t crop_sum = AddWithoutOverflow(crop_start, crop_end);
+    OP_REQUIRES(
+        context, crop_sum >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Overflow when adding crops: ", crop_start, " + ", crop_end)));
+
+    const int64_t cropped_size = input_size_block - crop_sum;
     OP_REQUIRES(context, cropped_size >= 0,
                 absl::InvalidArgumentError(
                     absl::StrCat("cropped_shape[", block_dim,

@@ -84,7 +84,7 @@ class TargetAnnotationPass : public TacFunctionPass<TargetAnnotationPass> {
 void SetAnnotation(Operation* op, std::string attribute, std::string annotation,
                    OpBuilder* builder) {
   // TODO(karimnosseir): Maybe set device capabilities to allow us to have
-  // more flexbility when raise the subgraphs.
+  // more flexibility when raise the subgraphs.
   auto default_target = builder->getStringAttr(annotation);
   op->setAttr(attribute, default_target);
 }

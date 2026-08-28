@@ -2,31 +2,31 @@ path: "tensorflow.optimizers.schedules"
 tf_module {
   member {
     name: "CosineDecay"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "CosineDecayRestarts"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "ExponentialDecay"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "InverseTimeDecay"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "LearningRateSchedule"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "PiecewiseConstantDecay"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "PolynomialDecay"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member_method {
     name: "deserialize"

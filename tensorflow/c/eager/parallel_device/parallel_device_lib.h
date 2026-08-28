@@ -235,7 +235,7 @@ class ParallelTensor {
                  std::vector<TensorHandlePtr> tensors, const TF_DataType dtype)
       : device_(device),
         tensors_(std::move(tensors)),
-        shape_(absl::nullopt),
+        shape_(std::nullopt),
         dtype_(dtype) {}
 
   const ParallelDevice& device_;

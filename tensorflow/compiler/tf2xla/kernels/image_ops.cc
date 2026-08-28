@@ -20,7 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -492,6 +494,32 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     const xla::XlaOp score_thresh = context->Input("score_threshold");
     const xla::XlaOp iou_thresh = context->Input("iou_threshold");
     xla::XlaBuilder* const builder = context->builder();
+
+    if (num_boxes == 0) {
+      // Nothing can be selected. The suppression loop below is built from
+      // zero-sized dimensions in this case, which crashes the compiler, so
+      // emit the empty result directly. This matches the non-XLA kernels,
+      // which return an empty selection for empty inputs.
+      const xla::XlaOp num_valid = xla::ConstantR0<int32_t>(builder, 0);
+      xla::XlaOp selected_indices =
+          xla::Broadcast(xla::ConstantR0<int32_t>(builder, 0), {output_size});
+      if (!pad_to_max_output_size) {
+        absl::StatusOr<xla::XlaOp> rebounded_result =
+            xla::SetDimensionSizeWithRebound(&context->value_inference(),
+                                             selected_indices, num_valid, 0);
+        if (rebounded_result.ok()) {
+          selected_indices = *rebounded_result;
+        } else {
+          // TODO(b/207187072): Remove special handling once dynamic reshape
+          // can also be handled.
+          selected_indices =
+              xla::SetDimensionSize(selected_indices, num_valid, 0);
+        }
+      }
+      context->SetOutput(0, selected_indices);
+      if (pad_to_max_output_size) context->SetOutput(1, num_valid);
+      return;
+    }
 
     // Choose a more convenient layout.
     const xla::XlaOp boxes = xla::Transpose(boxes_input, {1, 0});

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/map_util.h"
 #include "xla/service/cost_modelling/op_cost_test_utils.h"
@@ -582,6 +583,89 @@ TEST_F(OpCostTest, CalculatorWithDefaultTotalBytesAccessed) {
                 ->CreateMetricCalculator(*result_)
                 ->Calculate(CostMetricId::TotalBytesAccessed(*result_)),
             CostValue::MakeValue(80.0));
+}
+
+TEST_F(OpCostTest, OpcodeMetricOverrideCalculator) {
+  const HloInstruction* p0 =
+      module_->entry_computation()->parameter_instruction(0);
+  ASSERT_EQ(p0->opcode(), HloOpcode::kParameter);
+
+  std::unique_ptr<OpCostCalculator> base_calculator =
+      CreateOpCostCalculatorFromMap({
+          {CostMetricId::LatencySeconds(*p0), CostValue::MakeValue(100.0)},
+          {CostMetricId::ComputeSeconds(*p0), CostValue::MakeValue(50.0)},
+          {CostMetricId::OperandBytesAccessed(*p0, 0, {}),
+           CostValue::MakeValue(20.0)},
+          {CostMetricId::LatencySeconds(*add0_), CostValue::MakeValue(100.0)},
+          {CostMetricId::ComputeSeconds(*add0_), CostValue::MakeValue(50.0)},
+          {CostMetricId::OperandBytesAccessed(*add0_, 0, {}),
+           CostValue::MakeValue(20.0)},
+      });
+
+  std::vector<OpcodeMetricOverrideRule> rules = {
+      {
+          {HloOpcode::kParameter},
+          {CostMetricId::MetricType::kLatencySeconds,
+           CostMetricId::MetricType::kComputeSeconds,
+           CostMetricId::MetricType::kOperandBytesAccessed},
+          0.0,
+      },
+      {
+          {HloOpcode::kAdd},
+          {CostMetricId::MetricType::kLatencySeconds},
+          5.0,
+      },
+  };
+
+  std::unique_ptr<OpCostCalculator> override_calculator =
+      CreateOpcodeMetricOverrideCalculator(std::move(rules));
+
+  // Assertions for Parameter p0 on the override calculator (returns 0.0)
+  auto p0_calculator = override_calculator->CreateMetricCalculator(*p0);
+  EXPECT_EQ(p0_calculator->Calculate(CostMetricId::LatencySeconds(*p0)),
+            CostValue::MakeValue(0.0));
+  EXPECT_EQ(p0_calculator->Calculate(CostMetricId::ComputeSeconds(*p0)),
+            CostValue::MakeValue(0.0));
+  EXPECT_EQ(
+      p0_calculator->Calculate(CostMetricId::OperandBytesAccessed(*p0, 0, {})),
+      CostValue::MakeValue(0.0));
+
+  // Assertions for Add add0 on the override calculator (latency returns 5.0,
+  // others return NotFound)
+  auto add0_calculator = override_calculator->CreateMetricCalculator(*add0_);
+  EXPECT_EQ(add0_calculator->Calculate(CostMetricId::LatencySeconds(*add0_)),
+            CostValue::MakeValue(5.0));
+  EXPECT_TRUE(add0_calculator->Calculate(CostMetricId::ComputeSeconds(*add0_))
+                  .IsNotFound());
+  EXPECT_TRUE(add0_calculator
+                  ->Calculate(CostMetricId::OperandBytesAccessed(*add0_, 0, {}))
+                  .IsNotFound());
+
+  // Test target delegation using OpCostManager tree
+  std::vector<std::unique_ptr<OpCostManager::CalculationNode>> children;
+  children.push_back(OpCostManager::CalculationNode::CreateLeaf(
+      "Overrides", std::move(override_calculator), /*enable_cache=*/false));
+  children.push_back(OpCostManager::CalculationNode::CreateLeaf(
+      "Base", std::move(base_calculator), /*enable_cache=*/false));
+
+  OpCostManager op_cost_manager(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateDelegationNode(
+          "Delegator", std::move(children)));
+
+  // Parameter p0 (should be overridden to 0.0)
+  EXPECT_EQ(op_cost_manager.LatencySeconds(*p0), 0.0);
+  EXPECT_EQ(op_cost_manager.ComputeSeconds(*p0), 0.0);
+  EXPECT_EQ(op_cost_manager.OperandBytesAccessed(*p0, 0, {}), 0.0);
+
+  // Add add0 (latency overridden to 5.0, compute/bytes fall back to base: 50.0
+  // and 20.0)
+  EXPECT_EQ(op_cost_manager.LatencySeconds(*add0_), 5.0);
+  EXPECT_EQ(op_cost_manager.ComputeSeconds(*add0_), 50.0);
+  EXPECT_EQ(op_cost_manager.OperandBytesAccessed(*add0_, 0, {}), 20.0);
 }
 
 }  // namespace

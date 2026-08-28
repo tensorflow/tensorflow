@@ -115,6 +115,7 @@ bool DecodeVariantImpl(VariantTensorData data,
                        TypeResolver<T, false /* is_pod */, true /* Tensor */,
                                     false /* protobuf */>,
                        T* value) {
+  if (data.tensors_size() == 0) return false;
   *value = data.tensors(0);
   return true;
 }

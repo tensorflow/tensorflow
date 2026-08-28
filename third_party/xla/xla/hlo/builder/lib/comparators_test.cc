@@ -41,7 +41,7 @@ namespace xla {
 namespace {
 
 class ComparatorsTest : public ClientLibraryTestRunnerMixin<
-                            HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                            HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   ComparatorsTest() : builder_(TestName()) {}
   XlaBuilder* builder() { return &builder_; }

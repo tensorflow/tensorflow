@@ -23,9 +23,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
@@ -45,6 +46,7 @@ namespace xla {
 namespace gpu {
 
 using ::tsl::proto_testing::EqualsProto;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 // Checks if any config has is_tma_allowed set to true.
 bool AnyTmaAllowed(const std::vector<std::unique_ptr<BackendConfig>>& configs) {
@@ -65,7 +67,8 @@ class TritonBlockLevelFusionEmitterBackendTest
     : public HloHardwareIndependentTestBase {
  protected:
   TritonBlockLevelFusionEmitterBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+      : debug_options_(GetDebugOptionsFromFlags()),
+        stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
                              .value()),
@@ -282,6 +285,10 @@ ENTRY %main {
       *(module->entry_computation()->root_instruction()), *config);
   // Verify that compilation succeeded and returned a valid executable.
   EXPECT_THAT(executable, absl_testing::IsOk());
+}
+
+TEST_F(TritonBlockLevelFusionEmitterBackendTest, Version) {
+  EXPECT_NE(backend_.version(), "");
 }
 
 }  // namespace gpu

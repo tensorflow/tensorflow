@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
-#include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -53,7 +53,7 @@ TEST_P(PjRtLayoutSerDesTest, PjRtLayoutRoundTrip) {
       auto deserialized,
       Deserialize<PjRtLayout>(serialized, /*options=*/nullptr));
 
-  const auto* out_layout = llvm::dyn_cast<PjRtLayout>(deserialized.get());
+  const auto* out_layout = dyn_cast<PjRtLayout>(deserialized.get());
   ASSERT_NE(out_layout, nullptr);
   EXPECT_EQ(*out_layout->pjrt_layout(), *layout->pjrt_layout());
 }

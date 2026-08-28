@@ -45,7 +45,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using TopkSplitterTest = HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>;
+using TopkSplitterTest = HloInterpreterReferenceMixin<HloPjRtGpuTestBase>;
 using HardwareIndependentTopkSplitterTest = HloHardwareIndependentTestBase;
 
 constexpr absl::string_view kComparator = R"(

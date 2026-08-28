@@ -15,6 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 
+#include <cassert>
+#include <cstdint>
+#include <limits>
+
+#include "absl/types/span.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
+
 namespace tflite {
 namespace gpu {
 uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
@@ -23,16 +35,31 @@ uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
       weight_desc.layout == WeightsLayout::kOSpatialIOGroupO4I4 ||
       weight_desc.layout == WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
       weight_desc.layout == WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
-    uint i_aligned = AlignByN(shape.i, 4);
-    uint o_aligned = AlignByN(shape.o, 4 * weight_desc.output_group_size);
-    return i_aligned * o_aligned * shape.h * shape.w * shape.d;
+    uint i_aligned = static_cast<uint>(AlignByN(shape.i, 4));
+    uint o_aligned =
+        static_cast<uint>(AlignByN(shape.o, 4 * weight_desc.output_group_size));
+    uint64_t total = static_cast<uint64_t>(i_aligned) *
+                     static_cast<uint64_t>(o_aligned) *
+                     static_cast<uint64_t>(static_cast<uint>(shape.h)) *
+                     static_cast<uint64_t>(static_cast<uint>(shape.w)) *
+                     static_cast<uint64_t>(static_cast<uint>(shape.d));
+    if (total > std::numeric_limits<uint>::max()) {
+      return 0;
+    }
+    return static_cast<uint>(total);
   } else if (weight_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
              weight_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
-    uint i_aligned = AlignByN(shape.i, 4);
-    uint o_aligned = AlignByN(shape.o, 4);
-    return i_aligned * o_aligned * weight_desc.spatial_remap.size();
+    uint i_aligned = static_cast<uint>(AlignByN(shape.i, 4));
+    uint o_aligned = static_cast<uint>(AlignByN(shape.o, 4));
+    uint64_t total = static_cast<uint64_t>(i_aligned) *
+                     static_cast<uint64_t>(o_aligned) *
+                     weight_desc.spatial_remap.size();
+    if (total > std::numeric_limits<uint>::max()) {
+      return 0;
+    }
+    return static_cast<uint>(total);
   } else {
-    return -1;
+    return static_cast<uint>(-1);
   }
 }
 
@@ -62,6 +89,7 @@ void RearrangeWeights(
     const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst) {
   const uint flt_count =
       GetTotalElementsCountForLayout(dst_weight_desc, weights.shape);
+  if (flt_count == 0) return;
   if (dst_weight_desc.layout == WeightsLayout::kOSpatialIOGroupI4O4) {
     if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
@@ -150,6 +178,7 @@ void RearrangeWeights(
     const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst) {
   const uint flt_count =
       GetTotalElementsCountForLayout(dst_weight_desc, weights.shape);
+  if (flt_count == 0) return;
   if (dst_weight_desc.layout == WeightsLayout::kOSpatialIOGroupI4O4) {
     if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());

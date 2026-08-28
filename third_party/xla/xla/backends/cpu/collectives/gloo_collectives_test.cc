@@ -24,10 +24,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/gloo_kv_store.h"
@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -78,7 +78,7 @@ absl::StatusOr<std::unique_ptr<Communicator>> GetCommunicator(
   CpuCliqueKey clique_key(global_devices);
   CpuCollectives::DeviceRank device_rank(nullptr, RankId(rank));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto communicators,
       collectives->CreateCommunicators(clique_key, std::nullopt, {device_rank},
                                        CpuCollectives::Config()));
@@ -106,7 +106,7 @@ absl::StatusOr<std::vector<uint8_t>> AllReduce(
     std::vector<GlobalDeviceId> global_devices, int rank) {
   std::vector<uint8_t> output_buffer(kBufferSize);
   RendezvousKey rendezvous_key = MakeRendezvousKey(global_devices);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto communicator,
       GetCommunicator(kNumParticipants, global_devices, kv_store, rank));
 
@@ -115,7 +115,7 @@ absl::StatusOr<std::vector<uint8_t>> AllReduce(
       AsDeviceMemory(input_buffer), AsDeviceMemory(output_buffer),
       xla::PrimitiveType::U8, kBufferSize, xla::ReductionKind::SUM, executor);
 
-  RETURN_IF_ERROR(event.Await());
+  ABSL_RETURN_IF_ERROR(event.Await());
 
   return output_buffer;
 }

@@ -496,6 +496,25 @@ TEST(Tensor_Variant, Marshal) {
   EXPECT_FLOAT_EQ(out->scalar<float>()(), 42.0f);
 }
 
+TEST(Tensor_Variant, VariantRecursionLimit) {
+  // Create a nested chain of Variant tensors
+  Tensor t(DT_VARIANT, TensorShape({}));
+
+  Tensor current = std::move(t);
+  for (int i = 0; i < 110; ++i) {
+    Tensor next(DT_VARIANT, TensorShape({}));
+    next.flat<Variant>()(0) = std::move(current);
+    current = std::move(next);
+  }
+
+  TensorProto proto;
+  current.AsProtoField(&proto);
+
+  Tensor decoded(DT_VARIANT);
+  // The decode logic should hit the recursion limit (100) and fail to parse.
+  EXPECT_FALSE(decoded.FromProto(proto));
+}
+
 TEST(Tensor_Bool, Simple) {
   Tensor t(DT_BOOL, TensorShape({2, 2}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));

@@ -202,8 +202,6 @@ class NVPTXCompilationTests
             ? DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED
             : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
 
-    debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
-        linking_method != PtxLinkingMethod::kNone);
     debug_options->set_xla_gpu_force_compilation_parallelism(12);
 
     if (linking_method == PtxLinkingMethod::kDriver) {
@@ -215,9 +213,6 @@ class NVPTXCompilationTests
     tsl::setenv("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
                 linking_method == PtxLinkingMethod::kNvLink ? "true" : "false",
                 1);
-
-    // We need individual functions to test parallel compilation.
-    debug_options->set_xla_llvm_force_inline_before_split(false);
   }
 
   DebugOptions GetDebugOptionsForTest() const override {

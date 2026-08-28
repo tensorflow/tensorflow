@@ -37,6 +37,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/lru_cache.h"
@@ -91,6 +92,9 @@ class TransposePlan {
     // Convert doubles into the ef57 extended precision pair-of-floats
     // representation used on TPU.
     kF64ToEf57 = 1,
+
+    // Pack 8-bit integers into sub-byte packed representation.
+    kPackSubbyte = 2,
   };
 
   // Requested contiguity of chunks.
@@ -117,6 +121,11 @@ class TransposePlan {
     std::optional<Striding> input_striding = std::nullopt;
     std::optional<Tiling> output_tiling = std::nullopt;
     Transformation transformation = Transformation::kNone;
+    // If set, controls the subbyte packing ratio. Only 1, 2, 4 is supported.
+    // nullopt is equivalent to 8 (no subbyte packing). Packing happens after
+    // transpose is complete and packs 8 / dest_bits_per_element adjacent
+    // values together into a single byte.
+    std::optional<int> dest_bits_per_element = std::nullopt;
 
     // Requested number of chunks (threads). We will attempt to create
     // approximately this many chunks. The actual number of chunks may be
@@ -190,6 +199,8 @@ class TransposePlan {
 
   // Returns the number of items of parallel work in the plan.
   int Parallelism() const { return nodes_.size(); }
+
+  bool inner_kernel_is_memcpy() const { return inner_kernel_is_memcpy_; }
 
   struct Node;
 
@@ -268,8 +279,8 @@ class TransposePlan {
   }
 
  private:
-  // Performs plan initialization that cannot fail.
-  void Initialize();
+  // Performs plan initialization.
+  absl::Status Initialize();
 
   void BuildPlanNodes(int chunk_id, std::vector<Node>& nodes);
 
@@ -296,7 +307,13 @@ class TransposePlan {
   // address calculations with strides in bytes; the strides need not be
   // multiples of the element size.
   template <typename T, Transformation transformation>
-  void ExecuteTyped(const char* a, char* b, absl::Span<Node const> nodes) const;
+  void ExecuteTyped(const char* a, char* b, absl::Span<Node const> nodes,
+                    int bits_per_element) const;
+
+  void ExecuteInternal(
+      const void* a, void* b,
+      std::optional<absl::FunctionRef<void(std::function<void()>)>>
+          schedule_work) const;
 
   // Number of chunks requested.
   int num_chunks_requested_ = 1;
@@ -387,6 +404,11 @@ class TransposePlan {
   //     bound transformation, and
   // (b) it allows us to support non-trivial striding.
   Transformation transformation_ = Transformation::kNone;
+  int bits_per_element_ = 0;
+  // If the inner dim is not divisible by the packing ratio, we cannot
+  // pack into the destination in parallel, so we fallback to transposing
+  // into a temporary buffer and then packing into the destination.
+  bool use_fallback_pack_ = false;
 
   ChunkContiguity chunk_contiguity_ = ChunkContiguity::kNone;
 
@@ -405,6 +427,7 @@ struct TransposePlanCacheKey {
   std::optional<absl::InlinedVector<int64_t, 4>> input_striding;
   std::optional<absl::InlinedVector<int64_t, 4>> output_tiling;
   TransposePlan::Transformation transformation;
+  std::optional<int> dest_bits_per_element;
   int num_threads;
 
   bool operator==(const TransposePlanCacheKey& other) const;

@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -39,20 +40,14 @@ class IntelGpuCompiler : public GpuCompiler {
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) override;
 
-  // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion is
-  // enabled by default.
-  absl::Status AddConvAndGemmAutotuningPass(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
-      const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec,
-      const Compiler::GpuTargetConfig* target_config,
-      const MultiProcessKeyValueStore& key_value_store,
-      const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
-      const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
+  absl::Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      const CompileOptions& options, const GpuTopology& gpu_topology,
+      const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+      CompilationStats* compilation_stats,
+      mlir::MLIRContext* mlir_context) override;
 
-  absl::Status AddAutotunerPass(
+  absl::Status AddConfigAssignerPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,

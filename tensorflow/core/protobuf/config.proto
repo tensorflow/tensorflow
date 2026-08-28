@@ -1,3 +1,18 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto3";
 
 package tensorflow;
@@ -819,6 +834,10 @@ message RunOptions {
   TraceLevel trace_level = 1;
 
   // Time to wait for operation to complete in milliseconds.
+  //
+  // Example usage in Python:
+  //   run_options = tf.compat.v1.RunOptions(timeout_in_ms=5000)
+  //   output = session.run(fetches, options=run_options)
   int64 timeout_in_ms = 2;
 
   // The thread pool to use, if session_inter_op_thread_pool is configured.
@@ -841,6 +860,11 @@ message RunOptions {
   // out of memory (OOM).
   //
   // Enabling this option can slow down the Run() call.
+  //
+  // Example usage in Python:
+  //   run_options = tf.compat.v1.RunOptions(
+  //       report_tensor_allocations_upon_oom=True)
+  //   output = session.run(fetches, options=run_options)
   bool report_tensor_allocations_upon_oom = 7;
 
   // Everything inside Experimental is subject to change and is not subject

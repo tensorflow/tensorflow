@@ -130,15 +130,15 @@ class DeterminantOpGpu : public AsyncOpKernel {
     const int ndims = input.dims();
     const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
-    OP_REQUIRES_ASYNC(
-        context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be square, got",
-                                input.dim_size(ndims - 2), " != ", n),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
+    OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Input matrices must be square, got",
+                                       input.dim_size(ndims - 2), " != ", n)),
+                      done);
 
     // Allocate output.
     TensorShape out_shape;
@@ -245,9 +245,9 @@ class DeterminantOpGpu : public AsyncOpKernel {
           // invalid arguments to Getrf{Batched}.
           OP_REQUIRES_ASYNC(
               context, host_infos[0](i) >= 0,
-              errors::InvalidArgument("Invalid input argument no. ",
-                                      host_infos[0].data()[i],
-                                      " for batch index ", i, "."),
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Invalid input argument no. ", host_infos[0].data()[i],
+                  " for batch index ", i, ".")),
               done);
         }
       }
@@ -269,15 +269,15 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     const int ndims = input.dims();
     const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
-    OP_REQUIRES_ASYNC(
-        context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be square, got",
-                                input.dim_size(ndims - 2), " != ", n),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
+    OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Input matrices must be square, got",
+                                       input.dim_size(ndims - 2), " != ", n)),
+                      done);
 
     // Allocate output.
     TensorShape out_shape;
@@ -391,9 +391,9 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
           // invalid arguments to Getrf{Batched}.
           OP_REQUIRES_ASYNC(
               context, host_infos[0](i) >= 0,
-              errors::InvalidArgument("Invalid input argument no. ",
-                                      host_infos[0].data()[i],
-                                      " for batch index ", i, "."),
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Invalid input argument no. ", host_infos[0].data()[i],
+                  " for batch index ", i, ".")),
               done);
         }
       }

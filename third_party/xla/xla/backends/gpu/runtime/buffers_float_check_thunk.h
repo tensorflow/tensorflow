@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -66,6 +67,7 @@ class BuffersDebugFloatCheckThunk : public Thunk {
   struct Kernels {
     stream_executor::gpu::BufferDebugFloatCheckF32Kernel::KernelType f32;
     stream_executor::gpu::BufferDebugFloatCheckBf16Kernel::KernelType bf16;
+    stream_executor::gpu::BufferDebugFloatCheckF16Kernel::KernelType f16;
     stream_executor::gpu::BufferDebugFloatCheckF64Kernel::KernelType f64;
     stream_executor::gpu::BufferDebugAppendReducedFloatCheckResultsKernel::
         KernelType reduce;

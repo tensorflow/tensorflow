@@ -36,7 +36,7 @@ class StringToKeyedHashBucketOp : public OpKernel {
     std::vector<int64_t> key;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key", &key));
     OP_REQUIRES(ctx, key.size() == 2,
-                errors::InvalidArgument("Key must have 2 elements"));
+                absl::InvalidArgumentError("Key must have 2 elements"));
     std::memcpy(key_, key.data(), sizeof(key_));
   }
 

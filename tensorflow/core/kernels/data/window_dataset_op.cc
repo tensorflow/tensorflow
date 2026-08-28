@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -267,10 +268,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         // from each input element in the window.
         for (size_t i = 0; i < num_window_elements; ++i) {
           if (window_elements[i].size() != num_tuple_components) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "Malformed checkpoint: window elements have inconsistent "
                 "number of components. Expected: ",
-                num_tuple_components, " but got: ", window_elements[i].size());
+                num_tuple_components, " but got: ", window_elements[i].size()));
           }
           std::vector<Tensor> component_element;
           component_element.push_back(std::move(window_elements[i][idx]));
@@ -278,7 +279,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         }
         if (idx >= dataset()->input_->output_dtypes().size() ||
             idx >= dataset()->input_->output_shapes().size()) {
-          return errors::Internal(
+          return absl::InternalError(
               "Malformed checkpoint: window elements do not match the dataset "
               "output types or shapes.");
         }
@@ -437,20 +438,20 @@ void WindowDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSize, &window_size));
   OP_REQUIRES(
       ctx, window_size > 0,
-      errors::InvalidArgument("Window size must be greater than zero."));
+      absl::InvalidArgumentError("Window size must be greater than zero."));
 
   int64_t window_shift = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kShift, &window_shift));
   OP_REQUIRES(
       ctx, window_shift > 0,
-      errors::InvalidArgument("Window shift must be greater than zero."));
+      absl::InvalidArgumentError("Window shift must be greater than zero."));
 
   int64_t window_stride = 0;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kStride, &window_stride));
   OP_REQUIRES(
       ctx, window_stride > 0,
-      errors::InvalidArgument("Window stride must be greater than zero."));
+      absl::InvalidArgumentError("Window stride must be greater than zero."));
 
   bool drop_remainder;
   OP_REQUIRES_OK(

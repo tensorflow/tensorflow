@@ -241,7 +241,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
     const auto* dim_metadata = sparsity.dim_metadata()->Get(i);
     if (dim_metadata->format() == DimensionType_DENSE) {
       if (dim_metadata->dense_size() != dim_sizes[original_dim]) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       // Each index in a dense dimension is stored implicitly.
@@ -249,7 +249,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
     } else {
       if (!CheckArraySegments(dim_metadata) ||
           !CheckArrayIndices(dim_metadata)) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       int array_segments_size = GetSizeOfSegments(dim_metadata);
@@ -260,23 +260,23 @@ absl::optional<uint64_t> VerifyAndCountElements(
             GetValueOfSegmentsAt(dim_metadata, j + 1) < 0 ||
             GetValueOfSegmentsAt(dim_metadata, j) >
                 GetValueOfSegmentsAt(dim_metadata, j + 1)) {
-          return absl::nullopt;
+          return std::nullopt;
         }
       }
 
       if (static_cast<int>(num_elements) != array_segments_size - 1) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       if (array_indices_size !=
           GetValueOfSegmentsAt(dim_metadata, array_segments_size - 1)) {
-        return absl::nullopt;
+        return std::nullopt;
       }
 
       for (int j = 0; j < array_indices_size; j++) {
         if (GetValueOfIndicesAt(dim_metadata, j) < 0 ||
             GetValueOfIndicesAt(dim_metadata, j) >= dim_sizes[original_dim]) {
-          return absl::nullopt;
+          return std::nullopt;
         }
       }
 
@@ -292,24 +292,24 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   const auto* sparsity = tensor.sparsity();
   if (sparsity->traversal_order() == nullptr ||
       sparsity->dim_metadata() == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const int total_dims = sparsity->traversal_order()->size();
   const int original_rank = tensor.shape()->size();
   const int sparsity_dim_metadata_size = sparsity->dim_metadata()->size();
   if (total_dims < original_rank || sparsity_dim_metadata_size != total_dims) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const int block_rank = total_dims - original_rank;
   if (block_rank > 0) {
     if (sparsity->block_map() == nullptr) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     const int sparse_rank = sparsity->block_map()->size();
     if (sparse_rank != block_rank) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -325,14 +325,14 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   std::sort(traversal_order.begin(), traversal_order.begin() + original_rank);
   for (int i = 0; i < original_rank; i++) {
     if (traversal_order[i] != i) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
   std::sort(traversal_order.begin() + original_rank, traversal_order.end());
   for (int i = original_rank; i < total_dims; i++) {
     if (traversal_order[i] != i) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -356,20 +356,20 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
     int original_block_dim =
         sparsity->traversal_order()->Get(i + original_rank);
     if (original_block_dim < 0 || original_block_dim >= total_dims) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     int block_dim_size =
         sparsity->dim_metadata()->Get(i + original_rank)->dense_size();
     // If size is <= 0 we just return as it is invalid.
     if (block_dim_size <= 0) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     expanded_dim_sizes[original_block_dim] = block_dim_size;
 
     int mapped_block_dim = sparsity->block_map()->Get(i);
     if (mapped_block_dim < 0 || mapped_block_dim >= total_dims) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     expanded_dim_sizes[mapped_block_dim] /= block_dim_size;
   }
@@ -440,6 +440,10 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_UINT8:
       bytes_required *= sizeof(uint8_t);
       break;
+    case TensorType_FLOAT8_E4M3FN:
+    case TensorType_FLOAT8_E5M2:
+      bytes_required *= sizeof(uint8_t);
+      break;
     case TensorType_INT8:
       bytes_required *= sizeof(int8_t);
       break;
@@ -491,7 +495,7 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
 using flatbuffers::Offset;
 using flatbuffers::Vector;
 
-bool VerifyOperators(const Vector<Offset<Operator>>& operators,
+bool VerifyOperators(const Vector<Offset<Operator>>& operators, size_t len,
                      ErrorReporter* error_reporter) {
   for (const auto* op : operators) {
     if (!op->inputs()) {
@@ -501,6 +505,21 @@ bool VerifyOperators(const Vector<Offset<Operator>>& operators,
     if (!op->outputs()) {
       ReportError(error_reporter, "Missing 'outputs' for operator.");
       return false;
+    }
+    // When custom_options lives outside the flatbuffer (models > 2GB), the
+    // offset/size pair points into the raw file allocation. Validate against
+    // the total allocation length here, at ingress, using the subtraction
+    // form so the check itself cannot overflow: `size > len` first rules out
+    // a size larger than the whole allocation, so `len - size` below cannot
+    // underflow.
+    if (op->large_custom_options_offset() > 1) {
+      if (op->large_custom_options_size() > len ||
+          op->large_custom_options_offset() >
+              len - op->large_custom_options_size()) {
+        ReportError(error_reporter,
+                    "Operator's large_custom_options is out of bound.");
+        return false;
+      }
     }
   }
   return true;
@@ -602,7 +621,8 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   return true;
 }
 
-bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
+bool VerifySubGraphs(const Model& model, size_t len,
+                     ErrorReporter* error_reporter) {
   if (!model.subgraphs()) {
     ReportError(error_reporter, "Missing 'subgraphs' section.");
     return false;
@@ -613,7 +633,7 @@ bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
       return false;
     }
 
-    if (!VerifyOperators(*subgraph->operators(), error_reporter)) {
+    if (!VerifyOperators(*subgraph->operators(), len, error_reporter)) {
       return false;
     }
 
@@ -625,7 +645,8 @@ bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
 }
 
 // Verifies tensors have valid properties and legit buffer if set.
-bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
+bool VerifyTensors(const Model& model, size_t len,
+                   ErrorReporter* error_reporter) {
   if (!model.subgraphs()) {
     return true;
   }
@@ -639,6 +660,25 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
       continue;
     }
     for (const auto* tensor : *subgraph->tensors()) {
+      if (tensor->shape()) {
+        std::vector<int> positive_dims;
+        positive_dims.reserve(tensor->shape()->size());
+        // Collect fixed dimensions (> 1) to validate that sub-dimension /
+        // spatial element products do not overflow 32-bit int32_t, even when
+        // batch size is 0 or 1.
+        for (int dim : *tensor->shape()) {
+          if (dim > 1) {
+            positive_dims.push_back(dim);
+          }
+        }
+        int num_elements = 0;
+        if (CheckedNumElements(positive_dims, num_elements) != kTfLiteOk) {
+          ReportError(error_reporter, "Tensor %s dimension overflow",
+                      NameOrEmptyString(tensor->name()));
+          return false;
+        }
+      }
+
       if (!tensor->buffer()) {
         continue;
       }
@@ -665,6 +705,19 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
           if (!VerifyNumericTensorBuffer(*tensor, *buffer, error_reporter)) {
             return false;
           }
+        }
+      } else if (buffer->offset() > 1) {
+        // Buffer data lives outside the flatbuffer (models > 2GB), addressed
+        // by offset/size into the raw file allocation. Validate against the
+        // total allocation length here, at ingress, using the subtraction
+        // form so the check itself cannot overflow: `size > len` first rules
+        // out a size larger than the whole allocation, so `len - size` below
+        // cannot underflow.
+        if (buffer->size() > len || buffer->offset() > len - buffer->size()) {
+          ReportError(error_reporter,
+                      "Tensor %s buffer %d specified an out of range offset.",
+                      NameOrEmptyString(tensor->name()), tensor->buffer());
+          return false;
         }
       }
     }
@@ -732,7 +785,8 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
   return true;
 }
 
-bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
+bool VerifyModel(const Model* model, size_t len,
+                 ErrorReporter* error_reporter) {
   if (model == nullptr) {
     ReportError(error_reporter, "Invalid flatbuffer format");
     return false;
@@ -741,10 +795,10 @@ bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
     ReportError(error_reporter, "Invalid model version %d", model->version());
     return false;
   }
-  if (!VerifySubGraphs(*model, error_reporter)) {
+  if (!VerifySubGraphs(*model, len, error_reporter)) {
     return false;
   }
-  if (!VerifyTensors(*model, error_reporter)) {
+  if (!VerifyTensors(*model, len, error_reporter)) {
     return false;
   }
   return true;
@@ -754,14 +808,14 @@ bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
 
 bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter) {
   const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
-  return VerifyModel(model, error_reporter);
+  return VerifyModel(model, len, error_reporter);
 }
 
 // Deprecated: see comments in header.
 bool Verify(const void* buf, size_t len, const OpResolver& resolver,
             ErrorReporter* error_reporter) {
   const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
-  if (!VerifyModel(model, error_reporter)) {
+  if (!VerifyModel(model, len, error_reporter)) {
     return false;
   }
   if (!VerifyOps(*model, resolver, error_reporter)) {

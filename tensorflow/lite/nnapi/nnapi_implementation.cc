@@ -42,9 +42,10 @@ const int kFirstIsolatedUid = 99000;
 const int kLastIsolatedUid = 99999;
 const int kFirstAppZygoteIsolatedUid = 90000;
 const int kLastAppZygoteIsolatedUid = 98999;
+const int kPerUserRange = 100000;
 
 bool IsIsolatedProcess() {
-  int uid = getuid();
+  int uid = getuid() % kPerUserRange;
   return (uid >= kFirstIsolatedUid && uid <= kLastIsolatedUid) ||
          (uid >= kFirstAppZygoteIsolatedUid &&
           uid <= kLastAppZygoteIsolatedUid);

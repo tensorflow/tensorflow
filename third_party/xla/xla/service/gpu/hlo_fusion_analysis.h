@@ -51,7 +51,6 @@ class HloFusionAnalysis {
     kConcatenate,
     kScatter,
     kCuDnn,
-    kDynamicMemcpy,
     kSort,
   };
 

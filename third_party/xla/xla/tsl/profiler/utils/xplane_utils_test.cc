@@ -1042,6 +1042,17 @@ TEST(XplaneUtilsTest, MergeXSpaceTest) {
   EXPECT_EQ(to->planes(0).lines_size(), 2);  // Both lines should be present
 }
 
+TEST(XPlaneUtilsTest, RemoveNonExistentLine) {
+  XPlane plane;
+  const XLine* line1 = plane.add_lines();
+  const XLine* line2 = plane.add_lines();
+  XLine line3;
+  RemoveLine(&plane, &line3);
+  ASSERT_EQ(plane.lines_size(), 2);
+  EXPECT_EQ(&plane.lines(0), line1);
+  EXPECT_EQ(&plane.lines(1), line2);
+}
+
 }  // namespace
 
 }  // namespace profiler

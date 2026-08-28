@@ -1,7 +1,21 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: ifrt-opt %s --ifrt-legalize-to-vifrt --symbol-dce --mlir-print-op-generic -split-input-file | FileCheck %s
 // RUN: ifrt-translate --serialize --ifrt_version=current --atom_program_version=current %s | ifrt-translate --deserialize | ifrt-opt > %t.0
 // RUN: ifrt-opt %s > %t.1
-// RUN: diff %t.0 %t.1
+// RUN: cmp -s %t.0 %t.1
 
 // ============ Types and attributes ============
 
@@ -367,6 +381,31 @@ func.func @token_type(%arg0: !token0) -> !token1 attributes {ifrt.function} {
   // CHECK-SAME: (!vifrt.array_v1<tensor<!vifrt.token_v1>, #vifrt.sharding_param_v2< to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<!vifrt.token_v1>, #vifrt.sharding_param_v2< to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %0, %ctrl = ifrt.CopyArrays(%arg0) : (!token0) -> !token1
   return %0: !token1
+}
+
+!string0 = !ifrt.array<tensor<2x4x!ifrt.string>,
+                       #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+!string1 = !ifrt.array<tensor<2x4x!ifrt.string>,
+                       #ifrt.sharding_param<1x1 to [0] on 2>, [2, 3]>
+// CHECK: "vifrt.FuncV1"()
+// CHECK-SAME: <{
+// CHECK-DAG: arg_attrs = []
+// CHECK-DAG: function_type = #vifrt.type_v1<!vifrt.func_v1<(!vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">>>
+// CHECK-DAG: res_attrs = []
+// CHECK-DAG: sym_name = "string_type"
+// CHECK-DAG: sym_visibility = "vifrt.default"
+// CHECK-SAME: }>
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @string_type(%arg0: !string0) -> !string1 attributes {ifrt.function} {
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!string0) -> !string1
+  return %0: !string1
 }
 
 // Important: The test verifying CallOps must be last. This is necessary because

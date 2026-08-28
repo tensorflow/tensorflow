@@ -39,14 +39,14 @@ absl::Status ReadSavedModel(absl::string_view export_dir,
 // FindMetaGraphDef returns a failure status when no MetaGraphDef matches the
 // provided tags.
 absl::StatusOr<MetaGraphDef*> FindMetaGraphDef(
-    const std::unordered_set<string>& tags, SavedModel* saved_model_proto);
+    const std::unordered_set<std::string>& tags, SavedModel* saved_model_proto);
 
 // Reads the SavedModel proto from saved_model.pb(txt) in the given directory,
 // finds the MetaGraphDef that matches the given set of tags and writes it to
 // the `meta_graph_def` parameter. Returns a failure status when the SavedModel
 // file does not exist or no MetaGraphDef matches the tags.
 absl::Status ReadMetaGraphDefFromSavedModel(
-    absl::string_view export_dir, const std::unordered_set<string>& tags,
+    absl::string_view export_dir, const std::unordered_set<std::string>& tags,
     MetaGraphDef* meta_graph_def);
 
 // Store debug info from the SavedModel export dir.

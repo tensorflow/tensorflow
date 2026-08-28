@@ -57,34 +57,28 @@ def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
 
 def LegalizeDotToDotGeneralPass : Pass<"mhlo-legalize-dot-to-dot-general", "func::FuncOp"> {
   let summary = "Legalizes dot ops to dot_general ops.";
-  let constructor = "createLegalizeDotToDotGeneralPass()";
 }
 
 def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "func::FuncOp"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
-  let constructor = "createLegalizeEinsumToDotGeneralPass()";
 }
 
 def LegalizeTorchIndexSelectToGatherPass : Pass<"mhlo-legalize-torch-index-select-to-gather", "func::FuncOp"> {
   let summary = "Legalizes torch index select to a gather.";
-  let constructor = "createLegalizeTorchIndexSelectToGatherPass()";
 }
 
 
 def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-trigonometric-to-approximation", "func::FuncOp"> {
   let summary = "Legalize trigonometric operations from standard dialect to an approximation.";
-  let constructor = "createLegalizeTrigonometricToApproximationPass()";
 }
 
 def TestMaterializeBroadcastsPass : Pass<"mhlo-test-materialize-broadcasts", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
-  let constructor = "createTestMaterializeBroadcastsPass()";
 }
 
 def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow", "func::FuncOp"> {
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
-  let constructor = "createSinkConstantsToControlFlowPass()";
   let description = [{
     A pass that sinks constants implicitly captured in control flow regions. This
     is necessary to export to XLA, because XLA's representation of control flow
@@ -128,19 +122,16 @@ def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow",
 
 def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods", "func::FuncOp"> {
   let summary = "Uses test ops to invoke InferShapedTypeOpInterface methods.";
-  let constructor = "createTestInferShapedTypeMethodsPass()";
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
-  let constructor = "createTestUnfuseBatchNormPass()";
 
   let dependentDialects = ["arith::ArithDialect", "shape::ShapeDialect", "tensor::TensorDialect"];
 }
 
 def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
   let summary = "Expand HLO tuple for the entry function of the module.";
-  let constructor = "createExpandHloTuplesPass()";
   let options = [
     Option<"entry_function_name_", "entry-function", "std::string",
            /*default=*/"", "the name of entry function of the module">,
@@ -152,13 +143,11 @@ def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
 def FlattenTuplePass : Pass<"mhlo-flatten-tuple", "func::FuncOp"> {
   let summary = "Flatten tuples in operands and results of operators that "
     "support both tuple and variadic type.";
-  let constructor = "createFlattenTuplePass()";
 }
 
 def CollapseElementwiseMapPass
     : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
   let summary = "Collapse the mhlo.map if the map only has elementwise ops.";
-  let constructor = "createCollapseElementwiseMapPass()";
 }
 
 def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/string_util.h"
@@ -53,29 +54,29 @@ inline void ComparisonStringImpl(bool (*F)(const StringRef&, const StringRef&),
   }
 }
 
+struct TfLiteTensorStringPointer {
+  const TfLiteTensor* tensor;
+  int index;
+
+  TfLiteTensorStringPointer operator+(int offset) const {
+    return {tensor, index + offset};
+  }
+  StringRef operator*() const { return GetString(tensor, index); }
+  StringRef operator[](int offset) const {
+    return GetString(tensor, index + offset);
+  }
+};
+
 inline void BroadcastComparison4DSlowStringImpl(
     bool (*F)(const StringRef&, const StringRef&),
     const RuntimeShape& unextended_input1_shape, const TfLiteTensor* input1,
     const RuntimeShape& unextended_input2_shape, const TfLiteTensor* input2,
     const RuntimeShape& unextended_output_shape, bool* output_data) {
-  const BroadcastComparison4DSlowCommon dims =
-      BroadcastComparison4DSlowPreprocess(unextended_input1_shape,
-                                          unextended_input2_shape,
-                                          unextended_output_shape);
-
-  for (int b = 0; b < dims.output_shape.Dims(0); ++b) {
-    for (int y = 0; y < dims.output_shape.Dims(1); ++y) {
-      for (int x = 0; x < dims.output_shape.Dims(2); ++x) {
-        for (int c = 0; c < dims.output_shape.Dims(3); ++c) {
-          const auto lhs =
-              GetString(input1, SubscriptToIndex(dims.desc1, b, y, x, c));
-          const auto rhs =
-              GetString(input2, SubscriptToIndex(dims.desc2, b, y, x, c));
-          output_data[Offset(dims.output_shape, b, y, x, c)] = F(lhs, rhs);
-        }
-      }
-    }
-  }
+  auto op = [F](const StringRef& a, const StringRef& b) { return F(a, b); };
+  BroadcastBinaryOpSimple(
+      unextended_input1_shape, TfLiteTensorStringPointer{input1, 0},
+      unextended_input2_shape, TfLiteTensorStringPointer{input2, 0},
+      unextended_output_shape, output_data, op);
 }
 
 }  // namespace reference_ops

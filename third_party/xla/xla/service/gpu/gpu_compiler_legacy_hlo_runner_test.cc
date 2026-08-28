@@ -226,7 +226,6 @@ class KernelCacheTest : public HloLegacyGpuTestBase {
     DebugOptions debug_options =
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_kernel_cache_file(cache_file_name_);
-    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
     return debug_options;
   }
 
@@ -402,7 +401,6 @@ class NoKernelCacheTest : public KernelCacheTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
     return debug_options;
   }
 };

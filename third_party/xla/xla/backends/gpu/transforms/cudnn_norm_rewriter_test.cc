@@ -28,7 +28,7 @@ namespace xla::gpu {
 namespace {
 
 class CudnnNormRewriterTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
     return device_description().cuda_compute_capability();

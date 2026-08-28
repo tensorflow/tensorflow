@@ -38,8 +38,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TwoPlusTwoSimpleTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using TwoPlusTwoSimpleTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoVector) {
   XlaBuilder builder("two_plus_two");

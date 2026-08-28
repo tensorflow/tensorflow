@@ -11,12 +11,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
@@ -28,7 +34,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-using CpuCompilerTest = HloPjRtTestBase;
+using CpuCompilerTest = HloTestBase;
 
 constexpr absl::string_view kCpuCompilerStacktraceMetricName =
     "/xla/service/cpu/compiler_stacktrace_count";
@@ -78,6 +84,85 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_string));
 
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+}
+
+TEST_F(CpuCompilerTest, NoLibraryCallsInHostOffload) {
+  absl::string_view hlo = R"(
+HloModule module
+ENTRY main {
+  a = f32[128,128]{1,0} parameter(0)
+  b = f32[128,128]{1,0} parameter(1)
+  ROOT dot = f32[128,128]{1,0} dot(a, b), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+}
+)";
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.add_xla_cpu_experimental_ynn_fusion_type(
+      xla::DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  debug_options.mutable_xla_backend_extra_options()->insert(
+      {"xla_is_host_offload", "true"});
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo, config));
+
+  for (auto* computation : optimized_module->computations()) {
+    for (auto* instruction : computation->instructions()) {
+      // A single dot is only in a custom fusion when it is sent to libraries.
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        EXPECT_NE(instruction->fusion_kind(),
+                  HloInstruction::FusionKind::kCustom);
+      }
+    }
+  }
+}
+
+TEST_F(CpuCompilerTest, PermutationSortConvertedToScatter) {
+  absl::string_view hlo = R"(
+    HloModule test
+
+    compare {
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+    }
+
+    compare2 {
+      p.0.lhs = s32[] parameter(0)
+      p.0.rhs = s32[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    ENTRY sort_computation {
+      keys = f32[4,8]{1,0} parameter(0)
+      values = s32[4,8]{1,0} iota(), iota_dimension=1
+      sort = (f32[4,8]{1,0}, s32[4,8]{1,0}) sort(keys, values), dimensions={1}, to_apply=compare
+      gte = s32[4,8]{1,0} get-tuple-element(sort), index=1
+      ROOT sort2 = (s32[4,8]{1,0}, s32[4,8]{1,0}) sort(gte, values), dimensions={1}, to_apply=compare2
+    }
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo, config));
+
+  int64_t sort_count = 0;
+  for (auto* computation : optimized_module->computations()) {
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kSort) {
+        sort_count++;
+      }
+    }
+  }
+  EXPECT_EQ(sort_count, 1);
+
+  EXPECT_TRUE(Run(hlo, /*run_hlo_passes=*/true));
 }
 
 }  // namespace

@@ -21,9 +21,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -50,7 +50,7 @@ class AllGatherDynamicSliceSimplifierTest
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
     AllGatherDynamicSliceSimplifier::Config pass_config;
     pass_config.allow_multiple_users = allow_multiple_users;

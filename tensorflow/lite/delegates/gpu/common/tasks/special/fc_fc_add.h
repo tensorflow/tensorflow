@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -140,7 +141,7 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
-  const int elements_count = src_depth * dst_depth * 4;
+  const size_t elements_count = static_cast<size_t>(src_depth) * dst_depth * 4;
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
 
   const int float4_size = f32_weights ? 16 : 8;

@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 index 9affa75801b7..2f681c82c298 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
@@ -8,32 +22,32 @@ index 9affa75801b7..2f681c82c298 100644
  
 +config_setting(
 +    name = "macos_arm64",
-+    values = {
-+        "apple_platform_type": "macos",
-+        "cpu": "darwin_arm64",
-+    },
++    constraint_values = [
++        "@platforms//os:macos",
++        "@platforms//cpu:aarch64",
++    ],
 +)
 +
 +config_setting(
 +    name = "macos_x86_64_default",
-+    values = {
-+        "apple_platform_type": "macos",
-+        "cpu": "darwin",
-+    },
++    constraint_values = [
++        "@platforms//os:macos",
++        "@platforms//cpu:x86_64",
++    ],
 +)
 +
-+py_library(
++alias(
 +    name = "lit_lib",
++    actual = "//llvm/utils/lit:lit",
 +    testonly = True,
-+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
 +)
 +
 +config_setting(
 +    name = "macos_x86_64",
-+    values = {
-+        "apple_platform_type": "macos",
-+        "cpu": "darwin_x86_64",
-+    },
++    constraint_values = [
++        "@platforms//os:macos",
++        "@platforms//cpu:x86_64",
++    ],
 +)
 +
  config_setting(

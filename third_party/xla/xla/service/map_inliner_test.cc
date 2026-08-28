@@ -38,7 +38,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-using MapInlinerTest = HloPjRtTestBase;
+using MapInlinerTest = HloTestBase;
 
 // Test that `map` with `max` is transformed to `max`
 TEST_F(MapInlinerTest, MapMax) {

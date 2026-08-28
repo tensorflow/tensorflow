@@ -25,10 +25,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -123,7 +125,7 @@ class NoOpCollectiveBroadcastThunk : public CollectiveBroadcastThunk {
     se::DeviceAddressBase dst =
         execute_params.buffer_allocations->GetDeviceAddress(
             buffers()[0].destination_buffer.slice);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<se::CommandBuffer> nested_cmd,
         se::TraceCommandBufferFactory::Create(
             execute_params.stream->parent(),
@@ -135,7 +137,7 @@ class NoOpCollectiveBroadcastThunk : public CollectiveBroadcastThunk {
                                                 create->dependencies);
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           command_buffer->UpdateChildCommand(update->command, *nested_cmd));
       return update->command;
     }
@@ -267,7 +269,7 @@ ENTRY test_computation {
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
@@ -278,7 +280,7 @@ ENTRY test_computation {
   ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
 
   CommandBufferThunk* cmd_buffer_thunk =
-      tensorflow::down_cast<CommandBufferThunk*>(thunk.get());
+      absl::down_cast<CommandBufferThunk*>(thunk.get());
   ASSERT_NE(cmd_buffer_thunk, nullptr);
 
   std::vector<Kind> kinds;

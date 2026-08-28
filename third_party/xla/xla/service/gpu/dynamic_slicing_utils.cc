@@ -229,7 +229,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction& instr,
 
   for (const auto* operand : instr.operands()) {
     // output_to_operand_aliasing means the operand is to be materialized, which
-    // is against the whole idea of address computation fusion. Skip this
+    // is against the whole idea of dynamic slice fusion. Skip this
     // operand.
     if (aliased_operands.contains(instr.operand_index(operand))) {
       continue;

@@ -253,28 +253,31 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("dense_shape", &dense_shape));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(indices->shape()),
-                errors::InvalidArgument("Input indices must be a matrix. Got: ",
-                                        indices->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input indices must be a matrix. Got: ",
+                                 indices->shape().DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(values->shape()),
-                errors::InvalidArgument("Input values must be a vector. Got: ",
-                                        values->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input values must be a vector. Got: ",
+                                 values->shape().DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(dense_shape->shape()),
-                errors::InvalidArgument("Input shape must be a vector. Got: ",
-                                        dense_shape->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input shape must be a vector. Got: ",
+                                 dense_shape->shape().DebugString())));
     OP_REQUIRES(
         ctx, values->shape().dim_size(0) == indices->shape().dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of values must match first dimension of indices. ", "Got ",
             values->shape().dim_size(0),
-            " values, indices shape: ", indices->shape().DebugString()));
+            " values, indices shape: ", indices->shape().DebugString())));
     OP_REQUIRES(
         ctx, dense_shape->shape().dim_size(0) == indices->shape().dim_size(1),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of dimensions must match second dimension of indices. ",
             "Got ", dense_shape->shape().dim_size(0),
-            " dimensions, indices shape: ", indices->shape().DebugString()));
+            " dimensions, indices shape: ", indices->shape().DebugString())));
     OP_REQUIRES(ctx, dense_shape->NumElements() > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "The shape argument requires at least one element."));
 
     // We currently ensure that `sparse_tensor` is ordered in the
@@ -286,11 +289,11 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
     int64_t previous_batch_index = -1;
     for (int64_t i = 0; i < indices->dim_size(0); ++i) {
       int64_t next_batch_index = indices->matrix<int64_t>()(i, 0);
-      OP_REQUIRES(
-          ctx, next_batch_index >= previous_batch_index,
-          errors::Unimplemented("The SparseTensor must be ordered in the batch "
-                                "dimension; handling arbitrarily ordered input "
-                                "is not currently supported."));
+      OP_REQUIRES(ctx, next_batch_index >= previous_batch_index,
+                  absl::UnimplementedError(
+                      "The SparseTensor must be ordered in the batch "
+                      "dimension; handling arbitrarily ordered input "
+                      "is not currently supported."));
       previous_batch_index = next_batch_index;
     }
     absl::InlinedVector<int64_t, 8UL> std_order(dense_shape->NumElements(), 0);

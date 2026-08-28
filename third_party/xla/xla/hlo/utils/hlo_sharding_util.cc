@@ -37,10 +37,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -3077,7 +3077,9 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
     if (element->has_sharding()) {
       sub_shardings.push_back(element->sharding());
     } else {
-      sub_shardings.push_back(HloSharding::Replicate({}, any_named_sharding));
+      sub_shardings.push_back(any_named_sharding
+                                  ? HloSharding(NamedSharding::Replicate())
+                                  : HloSharding::Replicate());
     }
   }
   return std::make_shared<const HloSharding>(
@@ -3286,13 +3288,13 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
     VLOG(4) << "There is no registered layout_canonicalization_callback.";
     return absl::OkStatus();
   }
-  ASSIGN_OR_RETURN(auto shapes_with_layout,
+  ABSL_ASSIGN_OR_RETURN(auto shapes_with_layout,
                    module->layout_canonicalization_callback()(*module));
 
   if (module->entry_computation_layout().result_layout().LayoutIsSet() &&
       absl::c_any_of(update_output_layout, [](bool v) { return v; })) {
     if (absl::c_all_of(update_output_layout, [](bool v) { return v; })) {
-      RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+      ABSL_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
                           ->mutable_result_layout()
                           ->CopyLayoutFromShape(shapes_with_layout.second));
     } else {
@@ -3307,7 +3309,7 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
               shapes_with_layout.second.tuple_shapes(i);
         }
       }
-      RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+      ABSL_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
                           ->mutable_result_layout()
                           ->CopyLayoutFromShape(result_shape));
     }
@@ -3322,7 +3324,7 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
       bool parameter_layout_is_set =
           module->entry_computation_layout().parameter_layout(i).LayoutIsSet();
       if (update_parameter_layout && parameter_layout_is_set) {
-        RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+        ABSL_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
                             ->mutable_parameter_layout(i)
                             ->CopyLayoutFromShape(shapes_with_layout.first[i]));
       }

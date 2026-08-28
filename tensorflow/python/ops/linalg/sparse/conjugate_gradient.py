@@ -74,6 +74,11 @@ def conjugate_gradient(operator,
   if not (operator.is_self_adjoint and operator.is_positive_definite):
     raise ValueError('Expected a self-adjoint, positive definite operator.')
 
+  rhs = ops.convert_to_tensor(rhs, name='rhs')
+  if rhs.shape.rank is not None:
+    if rhs.shape.rank < 1:
+      raise ValueError('rhs must have at least rank 1')
+
   cg_state = collections.namedtuple('CGState', ['i', 'x', 'r', 'p', 'gamma'])
 
   def stopping_criterion(i, state):

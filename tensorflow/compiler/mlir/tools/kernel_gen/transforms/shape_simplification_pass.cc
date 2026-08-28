@@ -16,7 +16,9 @@ limitations under the License.
 // This file contains the patterns to simplify shape ops that were deemed not
 // suitable for shape op canonicalization in MLIR Core.
 
-#include <memory>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project

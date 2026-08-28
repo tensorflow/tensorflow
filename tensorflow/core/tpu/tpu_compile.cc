@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -70,7 +71,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
@@ -98,6 +98,11 @@ std::string CoreDevice(int core) {
 
 static constexpr char kArgOp[] = "_Arg";
 static constexpr char kRetvalOp[] = "_Retval";
+
+absl::Status RunShapeInferenceOnComputation(
+    const tpu::TPUCompileMetadataProto& metadata,
+    const std::vector<PartialTensorShape>& arg_shapes, Graph* graph,
+    FunctionLibraryRuntime* flr, GraphShapeInfo* shape_info);
 
 // Sets arg shape, arg core mapping, and per core arg shapes for a given
 // argument, depending on its sharding.
@@ -257,7 +262,7 @@ absl::Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
     // Infer shapes for each node in the computation. Shape inference can help
     // skip constant folding of large shapes.
     GraphShapeInfo shape_info;
-    TF_RETURN_IF_ERROR(internal::RunShapeInferenceOnComputation(
+    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
         metadata, arg_shapes, graph->get(), flr, &shape_info));
     // Converts the GraphShapeInfo into the form needed by the constant-folding
     // pass of the optimizer.
@@ -270,7 +275,7 @@ absl::Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
   {
     // Infer shapes for each node in the computation.
     GraphShapeInfo shape_info;
-    TF_RETURN_IF_ERROR(internal::RunShapeInferenceOnComputation(
+    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
         metadata, arg_shapes, graph->get(), flr, &shape_info));
     std::unordered_map<std::string, std::vector<PartialTensorShape>> shape_map;
     ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
@@ -530,9 +535,9 @@ absl::Status AnnotateHloWithXlaMetadata(
   *compilation_result->computation->mutable_proto() = hlo_module->ToProto();
   return absl::OkStatus();
 }
-}  // namespace
 
-namespace internal {
+// Performs shape inference on the body of `graph`. Shapes for arguments
+// are taken from `metadata` and `arg_shapes`.
 absl::Status RunShapeInferenceOnComputation(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<PartialTensorShape>& arg_shapes, Graph* graph,
@@ -564,7 +569,8 @@ absl::Status RunShapeInferenceOnComputation(
       flr != nullptr ? flr->GetFunctionLibraryDefinition() : nullptr,
       shape_info);
 }
-}  // namespace internal
+
+}  // namespace
 
 absl::Status CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,

@@ -26,49 +26,50 @@ namespace tensorflow {
 
 // Reads a wav format file into a vector of floating-point values with range
 // -1.0 to 1.0.
-bool ReadWaveFileToVector(const string& file_name, std::vector<double>* data);
+bool ReadWaveFileToVector(const std::string& file_name,
+                          std::vector<double>* data);
 
 // Reads a binary file containing 32-bit floating point values in the
 // form [real_1, imag_1, real_2, imag_2, ...] into a rectangular array
 // of complex values where row_length is the length of each inner vector.
 bool ReadRawFloatFileToComplexVector(
-    const string& file_name, int row_length,
+    const std::string& file_name, int row_length,
     std::vector<std::vector<std::complex<double> > >* data);
 
 // Reads a CSV file of numbers in the format 1.1+2.2i,1.1,2.2i,3.3j into data.
 void ReadCSVFileToComplexVectorOrDie(
-    const string& file_name,
+    const std::string& file_name,
     std::vector<std::vector<std::complex<double> > >* data);
 
 // Reads a 2D array of floats from an ASCII text file, where each line is a row
 // of the array, and elements are separated by commas.
-void ReadCSVFileToArrayOrDie(const string& filename,
+void ReadCSVFileToArrayOrDie(const std::string& filename,
                              std::vector<std::vector<float> >* array);
 
 // Write a binary file containing 64-bit floating-point values for
 // reading by, for example, MATLAB.
-bool WriteDoubleVectorToFile(const string& file_name,
+bool WriteDoubleVectorToFile(const std::string& file_name,
                              const std::vector<double>& data);
 
 // Write a binary file containing 32-bit floating-point values for
 // reading by, for example, MATLAB.
-bool WriteFloatVectorToFile(const string& file_name,
+bool WriteFloatVectorToFile(const std::string& file_name,
                             const std::vector<float>& data);
 
 // Write a binary file containing 64-bit floating-point values for
 // reading by, for example, MATLAB.
-bool WriteDoubleArrayToFile(const string& file_name, int size,
+bool WriteDoubleArrayToFile(const std::string& file_name, int size,
                             const double* data);
 
 // Write a binary file containing 32-bit floating-point values for
 // reading by, for example, MATLAB.
-bool WriteFloatArrayToFile(const string& file_name, int size,
+bool WriteFloatArrayToFile(const std::string& file_name, int size,
                            const float* data);
 
 // Write a binary file in the format read by
 // ReadRawDoubleFileToComplexVector above.
 bool WriteComplexVectorToRawFloatFile(
-    const string& file_name,
+    const std::string& file_name,
     const std::vector<std::vector<std::complex<double> > >& data);
 
 // Generate a sine wave with the provided parameters, and populate

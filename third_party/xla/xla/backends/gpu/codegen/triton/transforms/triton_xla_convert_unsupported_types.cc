@@ -11,7 +11,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/Support/Casting.h"
@@ -90,29 +89,6 @@ struct ConstantOpConversionPattern final
   }
 };
 
-template <>
-LogicalResult
-GenericOpConversionPattern<::xla::xtile::ExtractTileOp>::matchAndRewrite(
-    ::xla::xtile::ExtractTileOp op,
-    ::xla::xtile::ExtractTileOp::Adaptor adaptor,
-    ConversionPatternRewriter& rewriter) const {
-  auto* ctx = op.getContext();
-  ::xla::xtile::ExtractTileOp replacement =
-      mlir::cast<::xla::xtile::ExtractTileOp>(rewriter.clone(*op));
-  if (op.getResult().getType().getElementType() == Float4E2M1FNType::get(ctx)) {
-    auto full_tile_shape = op.getFullTileShape().vec();
-    full_tile_shape[full_tile_shape.size() - 1] = full_tile_shape.back() / 2;
-    replacement.setFullTileShape(full_tile_shape);
-  }
-  replacement->setOperands(adaptor.getOperands());
-  const TypeConverter* converter = this->getTypeConverter();
-  for (auto result : replacement->getResults()) {
-    result.setType(converter->convertType(result.getType()));
-  }
-  rewriter.replaceOp(op, replacement);
-  return success();
-}
-
 class TritonXLAConvertUnsupportedTypesPass
     : public impl::TritonXLAConvertUnsupportedTypesPassBase<
           TritonXLAConvertUnsupportedTypesPass> {
@@ -130,11 +106,6 @@ class TritonXLAConvertUnsupportedTypesPass
       return IntegerType::get(type.getContext(), 8);
     });
     converter.addConversion([&](ShapedType type) {
-      if (llvm::isa<Float4E2M1FNType>(type.getElementType())) {
-        auto shape = type.getShape().vec();
-        shape.back() /= 2;
-        return type.clone(shape, IntegerType::get(type.getContext(), 8));
-      }
       return type.clone(converter.convertType(type.getElementType()));
     });
 
@@ -189,9 +160,5 @@ class TritonXLAConvertUnsupportedTypesPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLAConvertUnsupportedTypesPass() {
-  return std::make_unique<TritonXLAConvertUnsupportedTypesPass>();
-}
 
 }  // namespace mlir::triton::xla

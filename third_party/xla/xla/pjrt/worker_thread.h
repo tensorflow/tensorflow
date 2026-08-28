@@ -43,6 +43,14 @@ class WorkerThread {
   // Adds 'fn' to the queue of closures to be executed by the worker thread.
   void Schedule(absl::AnyInvocable<void() &&> fn);
 
+  // Blocks the calling thread until all closures that were enqueued before this
+  // call have completed. Any closures enqueued concurrently with or after this
+  // call may or may not have run when Drain() returns.
+  //
+  // Implementation: schedules a sentinel no-op closure and waits for it to be
+  // dequeued and executed, which guarantees that all prior closures have run.
+  void Drain();
+
   // Returns true if there is any outstanding work.
   bool HasBacklog() {
     absl::MutexLock lock(mu_);

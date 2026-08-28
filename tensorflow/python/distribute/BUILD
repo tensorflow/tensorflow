@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
@@ -1048,10 +1063,7 @@ py_library(
     name = "tpu_values",
     srcs = ["tpu_values.py"],
     strict_deps = True,
-    visibility = [
-        "//smartass/brain/ops:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":packed_distributed_variable",
         ":tpu_replicated_variable",
@@ -1219,10 +1231,7 @@ py_library(
     name = "multi_worker_test_base",
     srcs = ["multi_worker_test_base.py"],
     strict_deps = True,
-    visibility = [
-        "//smartass/brain/ops:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":distribute_coordinator",
         ":multi_process_runner",
@@ -1491,7 +1500,6 @@ py_library(
         "//tensorflow/python/ops:embedding_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:partitioned_variables",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",
@@ -2277,10 +2285,7 @@ py_library(
     tags = [
         "no_oss",  # b/241013307 disable flaky under docker
     ],
-    visibility = [
-        "//smartass/brain/ops:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":multi_process_lib",
         ":multi_worker_util",
@@ -2510,10 +2515,7 @@ distribute_py_strict_test(
 pytype_strict_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
-    visibility = [
-        "//smartass/brain/ops:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":cross_device_ops",
         ":device_util",

@@ -22,6 +22,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "rocm/include/hipfft/hipfft.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/plugin_registry.h"

@@ -21,12 +21,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -35,8 +37,14 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+
+namespace stream_executor {
+class StreamExecutor;
+}  // namespace stream_executor
 
 namespace xla::gpu {
 
@@ -79,21 +87,52 @@ class GpuDeviceCommunicator {
   struct Requirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Requirements& reqs) {
-      absl::Format(&sink, "{lsa_barrier_count: %d}", reqs.lsa_barrier_count);
+      absl::Format(&sink,
+                   "{barrier_count: %d, lsa_barrier_count: %d, "
+                   "rail_gin_barrier_count: %d, "
+                   "gin_signal_count: %d, gin_connection_full: %d}",
+                   reqs.barrier_count, reqs.lsa_barrier_count,
+                   reqs.rail_gin_barrier_count, reqs.gin_signal_count,
+                   reqs.gin_connection_full);
     }
 
     bool operator==(const Requirements& other) const {
-      return other.lsa_barrier_count == lsa_barrier_count;
+      return other.barrier_count == barrier_count &&
+             other.lsa_barrier_count == lsa_barrier_count &&
+             other.rail_gin_barrier_count == rail_gin_barrier_count &&
+             other.gin_signal_count == gin_signal_count &&
+             other.gin_connection_full == gin_connection_full;
     }
 
     bool operator<(const Requirements& other) const {
-      return other.lsa_barrier_count < lsa_barrier_count;
+      if (barrier_count != other.barrier_count) {
+        return barrier_count < other.barrier_count;
+      }
+      if (lsa_barrier_count != other.lsa_barrier_count) {
+        return lsa_barrier_count < other.lsa_barrier_count;
+      }
+      if (rail_gin_barrier_count != other.rail_gin_barrier_count) {
+        return rail_gin_barrier_count < other.rail_gin_barrier_count;
+      }
+      if (gin_signal_count != other.gin_signal_count) {
+        return gin_signal_count < other.gin_signal_count;
+      }
+      return gin_connection_full < other.gin_connection_full;
     }
 
+    int32_t barrier_count = 0;
     // The number of barriers to allocate for load/store accessible
     // communication.
     int32_t lsa_barrier_count = 0;
+    int32_t rail_gin_barrier_count = 0;
+    int32_t gin_signal_count = 0;
+    bool gin_connection_full = false;
   };
+
+  static bool RequestsGin(const Requirements& reqs) {
+    return reqs.gin_connection_full || reqs.gin_signal_count > 0 ||
+           reqs.rail_gin_barrier_count > 0;
+  }
 
   // Returns a platform-specific handle to the underlying communicator object.
   virtual PlatformCommunicatorHandle platform_comm() const {
@@ -132,6 +171,28 @@ class GpuCommunicator : public Communicator {
   // Returns true iff communicator supports device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
+  // Returns true iff GPU-initiated networking (GIN) is available for this
+  // communicator. GIN enables device-side threads to directly initiate
+  // network transfers to remote (non-LSA) peers.
+  virtual bool SupportsGin() const { return false; }
+
+  // Returns the size of the load/store accessible communication domain (LSA).
+  // If LSA is not supported, returns std::nullopt.
+  virtual std::optional<int> LsaSize() const { return std::nullopt; }
+
+  // Returns the StreamExecutor (and thus the device) this communicator runs on,
+  // or nullptr if not backed by a StreamExecutor.
+  virtual stream_executor::StreamExecutor* stream_executor() const {
+    return nullptr;
+  }
+
+  // Returns GXL communicator if supported.
+  virtual GxlCommunicator* gxl_communicator() const { return nullptr; }
+
+  // Sets GXL communicator.
+  virtual void set_gxl_communicator(
+      std::unique_ptr<GxlCommunicator> gxl_communicator) {}
+
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
@@ -160,10 +221,12 @@ class GpuCommunicator : public Communicator {
   // Host-side collective communication APIs
   //===--------------------------------------------------------------------===//
 
-  // Executes f in a group. f should invoke synchronous collective methods like
-  // LaunchAllReduce and not asynchronous collective methods like AllReduce.
-  virtual Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) = 0;
+  // Executes a group of collective launches on this communicator. All
+  // collective operations in the `group` must use only *this communicator,
+  // otherwise behavior is undefined.
+  virtual Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) {
+    return Future<>(std::move(group)());
+  }
 
   virtual absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
@@ -222,6 +285,28 @@ class GpuCommunicator : public Communicator {
                                         const SignalDesc& signal_desc,
                                         const Executor& executor) {
     return Unimplemented("LaunchWaitSignal is not implemented");
+  }
+
+  virtual absl::Status LaunchWaitSignals(
+      absl::Span<const PeerWaitDesc> peer_wait_descs,
+      const Executor& executor) {
+    return Unimplemented("LaunchWaitSignals is not implemented");
+  }
+
+  virtual absl::Status LaunchMultiGpuBarrier(const Executor& executor) {
+    return Unimplemented("LaunchMultiGpuBarrier is not implemented");
+  }
+
+  virtual void InitializeCrossDeviceBarrier(
+      tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
+      tsl::TiedRef<se::MemoryAllocation> tied_signal,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
+    absl::Format(&sink, "%s", comm.ToString());
   }
 };
 

@@ -19,24 +19,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/backends/autotuner/autotune_fingerprint.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace {
-
-tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
-  auto options = HloPrintOptions::Fingerprint();
-  options.set_print_backend_config(true);
-  options.set_sort_backend_config(true);
-  options.set_print_operand_shape(true);
-
-  return tsl::Fingerprint128(instr->ToString(options));
-}
 
 bool CompareFingerprintPairs(
     const std::pair<tsl::Fprint128, EquivalentInstructions>& a,
@@ -57,7 +48,7 @@ std::vector<EquivalentInstructions> ExtractEquivalentInstructions(
   for (HloComputation* computation : module.MakeNonfusionComputations()) {
     for (HloInstruction* instr : computation->instructions()) {
       if (filter_fn(*instr)) {
-        grouped_instructions[GetFingerprint(instr)].push_back(instr);
+        grouped_instructions[GetHloFingerprint(*instr)].push_back(instr);
       }
     }
   }

@@ -24,11 +24,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider_test.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
@@ -88,9 +88,9 @@ void CompilationProviderTest::SetUp() {
 absl::StatusOr<std::unique_ptr<CompilationProvider>>
 CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   if (name == kSubprocessCompilationProviderName) {
-    ASSIGN_OR_RETURN(auto ptxas,
+    ABSL_ASSIGN_OR_RETURN(auto ptxas,
                      FindCudaExecutable("ptxas", "/does/not/exist"));
-    ASSIGN_OR_RETURN(auto nvlink,
+    ABSL_ASSIGN_OR_RETURN(auto nvlink,
                      FindCudaExecutable("nvlink", "/does/not/exist"));
     return std::make_unique<SubprocessCompilationProvider>(ptxas, nvlink);
   }
@@ -104,9 +104,9 @@ CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   }
 
   if (name == kDriverCompilationProviderName) {
-    ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+    ABSL_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
                      PlatformManager::PlatformWithId(kCudaPlatformId));
-    ASSIGN_OR_RETURN(stream_executor::StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * executor,
                      platform->ExecutorForDevice(0));
     return std::make_unique<DriverCompilationProvider>(executor);
   }
@@ -730,6 +730,21 @@ TEST_P(CompilationProviderTest, CancelsOnRegSpill) {
       compilation_provider()->CompileAndLink(
           kDefaultComputeCapability, {Ptx{kSpillingKernelPrefix}}, options),
       absl_testing::IsOk());
+}
+
+TEST_P(CompilationProviderTest, PropagatesAdditionalPtxasFlags) {
+  if (GetParam() == kDriverCompilationProviderName) {
+    GTEST_SKIP() << "Driver compilation provider does not use ptxas flags";
+  }
+
+  CompilationOptions options;
+  options.additional_ptxas_flags = {"--this-is-an-invalid-ptxas-flag"};
+
+  EXPECT_THAT(
+      compilation_provider()->Compile(kDefaultComputeCapability, kStandalonePtx,
+                                      options),
+      absl_testing::StatusIs(_, HasSubstr("ptxas fatal   : Unknown option "
+                                          "'-this-is-an-invalid-ptxas-flag'")));
 }
 
 TEST_P(CompilationProviderTest,

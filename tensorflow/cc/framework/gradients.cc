@@ -156,7 +156,7 @@ SymbolicGradientBuilder::SymbolicGradientBuilder(
 absl::Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
                                                         const Output& src) {
   if (src.node() == nullptr) {
-    return errors::Internal("Attempted to backprop along an invalid edge.");
+    return absl::InternalError("Attempted to backprop along an invalid edge.");
   }
   auto iter = backprops_.find(src);
   if (iter != backprops_.end()) {
@@ -253,16 +253,16 @@ std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
 
 absl::Status SymbolicGradientBuilder::Initialize() {
   if (outputs_.size() != grad_inputs_.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Must specify a gradient input for each output.");
   }
   std::vector<bool> reachable_nodes = GetReachableNodes();
   for (const Output& input : inputs_) {
     if (!reachable_nodes[input.node()->id()]) {
-      return errors::InvalidArgument(
-          "Cannot compute the partial derivative for node '",
-          input.node()->name(),
-          "' as it's unreachable from the output node(s).");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot compute the partial derivative for node '",
+                       input.node()->name(),
+                       "' as it's unreachable from the output node(s)."));
     }
   }
   grad_outputs_->clear();
@@ -348,8 +348,8 @@ absl::Status SymbolicGradientBuilder::SumGradients(const Output& src,
                                                    Output* grad) {
   auto iter = backprops_.find(src);
   if (iter == backprops_.end()) {
-    return errors::Internal("Unable to find backprop list for node.id ",
-                            src.node()->name());
+    return absl::InternalError(absl::StrCat(
+        "Unable to find backprop list for node.id ", src.node()->name()));
   }
   const auto& grads = iter->second;
   // Filter any backpropped 'NoGradient' Outputs from 'grads' (if needed).
@@ -400,7 +400,7 @@ absl::Status SymbolicGradientBuilder::ProcessWhileLoop(
 
   // TODO(skyewm): handle NoGradient in while loop
   if (summed_grads == NoGradient()) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Missing gradient into while loop not yet implemented");
   }
 
@@ -532,8 +532,8 @@ absl::Status SymbolicGradientBuilder::AddGradients() {
       if (e->IsControlEdge()) continue;
       size_t dx_index = e->dst_input();
       if (dx_index >= dx.size()) {
-        return errors::Internal("Invalid gradient output index: ", dx_index,
-                                " size: ", dx.size());
+        return absl::InternalError(absl::StrCat(
+            "Invalid gradient output index: ", dx_index, " size: ", dx.size()));
       }
       TF_RETURN_IF_ERROR(
           BackpropAlongEdge(dx[dx_index], {e->src(), e->src_output()}));

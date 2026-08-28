@@ -145,7 +145,8 @@ class DeviceAddress final : public DeviceAddressBase {
 
   // Creates and address range slice at the given offset and count. Offset and
   // count are specified in terms of T elements.
-  DeviceAddress<T> GetSlice(uint64_t element_offset, uint64_t element_count) {
+  DeviceAddress<T> GetSlice(uint64_t element_offset,
+                            uint64_t element_count) const {
     return DeviceAddress<T>(
         GetByteSlice(sizeof(T) * element_offset, sizeof(T) * element_count));
   }

@@ -12,17 +12,22 @@ limitations under the License.
 #include "tensorflow/c/eager/gradient_checker.h"
 
 #include <cstdint>
-#include <memory>
+#include <cstring>
+#include <tuple>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/unified_api_testutil.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -70,7 +75,8 @@ absl::Status MatMulModel(AbstractContext* ctx,
                          absl::Span<AbstractTensorHandle*> outputs) {
   return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0],
                      /*transpose_a=*/false,
-                     /*transpose_b=*/false, "MatMul");
+                     /*transpose_b=*/false,
+                     /*grad_a=*/false, /*grad_b=*/false, "MatMul");
 }
 
 absl::Status MulModel(AbstractContext* ctx,

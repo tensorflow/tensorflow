@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
@@ -48,7 +49,7 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloPjRtTestBase {
+class XlaCompileLibTest : public HloTestBase {
  protected:
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
@@ -255,6 +256,25 @@ TEST_F(XlaCompileLibTest,
 
   DebugOptions opts = mod.hlo_module->config().debug_options();
   opts.set_xla_gpu_autotune_level(0);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+TEST_F(XlaCompileLibTest,
+       LoadAutotuneDataGpuDataPresentEmptyAndAutotuningEnabled) {
+  gpu::AutotunerCache::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
+  data->autotune_results.emplace();  // empty results
+  mod.backend_specific_data = std::move(data);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(3);
   mod.hlo_module->mutable_config().set_debug_options(opts);
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),

@@ -53,6 +53,7 @@ class ImagePreprocessingStage : public EvaluationStage {
 
   // Provides preprocessing output.
   void* GetPreprocessedImageData();
+  size_t GetPreprocessedImageBytes();
 
  private:
   std::string* image_path_ = nullptr;

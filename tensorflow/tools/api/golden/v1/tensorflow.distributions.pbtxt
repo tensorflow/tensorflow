@@ -54,11 +54,11 @@ tf_module {
   }
   member {
     name: "RegisterKL"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "ReparameterizationType"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "StudentT"

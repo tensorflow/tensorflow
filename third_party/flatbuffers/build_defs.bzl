@@ -307,6 +307,7 @@ def _gen_flatbuffer_srcs_impl(ctx):
 
     for src in ctx.files.srcs:
         ctx.actions.run(
+            mnemonic = "GenFlatbufferSrcs",
             inputs = deps,
             outputs = outputs,
             executable = ctx.executable._flatc,
@@ -395,6 +396,7 @@ def _concat_flatbuffer_py_srcs_impl(ctx):
     command = "echo 'import flatbuffers\n' > %s; "
     command += "for f in $(find %s -name '*.py' | sort); do cat $f | sed '/import flatbuffers/d' >> %s; done "
     ctx.actions.run_shell(
+        mnemonic = "ConcatFlatbufferPySrcs",
         inputs = ctx.attr.deps[0].files,
         outputs = [ctx.outputs.out],
         command = command % (

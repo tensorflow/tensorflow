@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/xla_compiler.h"
 
 namespace xla {
 namespace ifrt {
@@ -88,9 +89,17 @@ std::string GetPrettyLocation(mlir::Location loc);
 // Returns a fingerprint of the provided module.
 uint64_t MlirModuleFingerprint(mlir::ModuleOp module);
 
-// Extracts the XLA compile options overrides for the given atom program module.
-// Returns std::nullopt if no overrides are found.
-absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
+// Extracts the XlaCompileOptions overrides for the given atom program module.
+// Returns nullptr if no overrides are found.
+absl::StatusOr<XlaCompileOptions*> GetModuleXlaCompileOverrides(
+    mlir::StringAttr compile_options_key,
+    std::shared_ptr<
+        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
+        compile_options_overrides);
+
+// Extracts the xla::CompileOptions for the given atom program module. Returns
+// std::nullopt if no overrides are found.
+absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleCompileOverrides(
     mlir::StringAttr compile_options_key,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>

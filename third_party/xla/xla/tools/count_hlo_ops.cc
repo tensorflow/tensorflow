@@ -25,12 +25,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -67,7 +67,7 @@ namespace {
 
 absl::Status CountOps(const std::string& input, const std::string& format,
                       absl::flat_hash_map<HloOpcode, int>* counts) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    LoadModuleFromFile(input, format, {}));
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* hlo : computation->instructions()) {

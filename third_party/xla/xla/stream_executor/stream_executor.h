@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -148,6 +149,12 @@ class StreamExecutor {
   // Releases any state associated with the previously loaded kernel.
   virtual void UnloadKernel(const Kernel* kernel) {}
 
+  // Updates the dynamic shared memory limit for the given kernel.
+  virtual absl::Status UpdateMaxDynamicSharedMemoryBytes(
+      const Kernel* kernel, int32_t shared_memory_bytes) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
   // Unloads the module with handle `module_handle`.
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
 
@@ -203,10 +210,24 @@ class StreamExecutor {
     return absl::UnimplementedError("Not implemented for this executor.");
   }
 
+  virtual absl::StatusOr<uint64_t> GetCollectiveMemoryGranularity() const {
+    return absl::UnimplementedError("Not implemented for this executor.");
+  }
+
   virtual bool HostMemoryUnregister(void* location) { return false; };
   virtual bool HostMemoryRegister(void* location, uint64_t size) {
     return false;
   };
+  virtual bool IsHostMemoryPinned(const void* ptr, uint64_t size) {
+    if (size == 0) return false;
+    auto start_space = GetPointerMemorySpace(ptr);
+    if (!start_space.ok() || *start_space != MemorySpace::kHost) {
+      return false;
+    }
+    auto end_space =
+        GetPointerMemorySpace(static_cast<const char*>(ptr) + size - 1);
+    return end_space.ok() && *end_space == MemorySpace::kHost;
+  }
 
   // Blocks the caller while "size" bytes are copied to the given location in
   // device memory.
@@ -232,7 +253,7 @@ class StreamExecutor {
   virtual void DeallocateStream(Stream* stream) = 0;
 
   // Enables peer access from this StreamExecutor to memory
-  // allocated by other, such that launched device code, memcpies, etc may
+  // allocated by other, such that launched device code, memcopies, etc may
   // access it directly.
   virtual absl::Status EnablePeerAccessTo(StreamExecutor* other) = 0;
 
@@ -266,6 +287,11 @@ class StreamExecutor {
   // caller.
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
+
+  // Returns the interconnect status of the device.
+  virtual absl::StatusOr<std::string> GetInterconnectStatus() const {
+    return absl::UnimplementedError("Not implemented");
+  }
 
   // Return the platform dependent stream priority value for the given priority.
   virtual int GetGpuStreamPriority(StreamPriority priority) { return 0; }
@@ -321,34 +347,6 @@ class StreamExecutor {
   // The following methods access an internal log of some subset
   // of arguments passed to other class methods.
   // Used for testing/debugging purposes.
-
-  struct GemmCallTrace {
-    enum class GemmType {
-      kPlain = 0,
-      kStridedBatched = 1,
-      kBatched = 2,
-      kBlasLt = 3
-    };
-    GemmType op;
-    int flags;
-    uint64_t size1, size2;
-  };
-  // This may be expanded as necessary to trace other calls
-  using ApiTrace = std::variant<GemmCallTrace>;
-
-  // Retrieves and clears internal argument logs.
-  virtual absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() {
-    return absl::UnimplementedError("Not implemented");
-  }
-  virtual absl::Status RecordApiTrace(ApiTrace call) {
-    return absl::UnimplementedError("Not implemented");
-  }
-
-  static constexpr uint64_t kLogGemm = 1 << 0;
-
-  // Sets the argument logging mode. Returns true if 'mode' is valid.
-  // The mode is a bitmask of the kLog* constants.
-  virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
 
   // Creates, allocates, and copies a CUtensorMap object for the given TMA
   // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
@@ -419,7 +417,20 @@ inline DeviceAddress<T> StreamExecutor::AllocateArray(uint64_t element_count,
                  << "]";
     return DeviceAddress<T>();
   }
-  return DeviceAddress<T>(Allocate(bytes, memory_space));
+
+  DeviceAddressBase raw_allocation = Allocate(bytes, memory_space);
+  if (raw_allocation.is_null()) {
+    return DeviceAddress<T>();
+  }
+
+  // Raw allocations can report a larger backend allocation size (for example,
+  // CUDA VMM granularity padding). AllocateArray exposes only the logical array
+  // byte range because callers requested exactly `element_count` elements and
+  // should not treat allocator padding as additional array elements.
+  DCHECK_GE(raw_allocation.size(), bytes);
+  DeviceAddressBase logical_allocation(raw_allocation.opaque(), bytes);
+  logical_allocation.SetPayload(raw_allocation.payload());
+  return DeviceAddress<T>(logical_allocation);
 }
 
 }  // namespace stream_executor

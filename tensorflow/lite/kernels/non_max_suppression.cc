@@ -63,7 +63,7 @@ TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
                             std::initializer_list<int> values) {
   TfLiteIntArray* size = TfLiteIntArrayCreate(values.size());
   int index = 0;
-  for (const auto& v : values) {
+  for (int v : values) {
     size->data[index++] = v;
   }
   return context->ResizeTensor(context, tensor, size);
@@ -119,7 +119,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputTensorScoreThreshold,
                                  &input_score_threshold));
-  TF_LITE_ENSURE_EQ(context, input_iou_threshold->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, input_score_threshold->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_score_threshold), 0);
 
   if (is_soft_nms) {
@@ -200,7 +200,9 @@ void ResetUnusedElementsToZeroes(const int max_output_size,
                                  float* selected_scores) {
   for (int i = num_selected_indices; i < max_output_size; ++i) {
     selected_indices[i] = 0;
-    if (selected_scores) {
+  }
+  if (selected_scores) {
+    for (int i = num_selected_indices; i < max_output_size; ++i) {
       selected_scores[i] = 0.0;
     }
   }

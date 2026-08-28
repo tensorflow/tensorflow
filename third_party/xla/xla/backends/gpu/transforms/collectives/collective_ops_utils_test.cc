@@ -20,8 +20,10 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -30,6 +32,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::testing::Test;
 
@@ -630,6 +633,75 @@ TEST_F(CommunicationTypeTest, CollectivePermuteEmptyPairs) {
   EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
                                               /*num_devices_per_partition=*/8),
             CollectivePermuteCostModelType::kUnknown);
+}
+
+TEST(IsSpmdGeneratedTest, ReturnsTrueWhenAttributeSet) {
+  absl::string_view kHlo = R"(
+    HloModule m
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY e {
+      p = bf16[8] parameter(0)
+      ROOT ar = bf16[8] all-reduce(p), to_apply=add,
+        frontend_attributes={is_spmd_generated="true"}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* ar = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsSpmdGenerated(*ar));
+}
+
+TEST(IsSpmdGeneratedTest, ReturnsFalseByDefault) {
+  absl::string_view kHlo = R"(
+    HloModule m
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY e {
+      p = bf16[8] parameter(0)
+      ROOT ar = bf16[8] all-reduce(p), to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* ar = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(IsSpmdGenerated(*ar));
+}
+
+TEST(IsSpmdGeneratedTest, ReturnsTrueWhenBackendConfigSet) {
+  absl::string_view kHlo = R"(
+    HloModule m
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY e {
+      p = bf16[8] parameter(0)
+      ROOT ar = bf16[8] all-reduce(p), to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* ar = module->entry_computation()->root_instruction();
+
+  GpuBackendConfig config;
+  config.mutable_collective_backend_config()->set_is_spmd_generated(true);
+  ASSERT_THAT(ar->set_backend_config(config), IsOk());
+
+  EXPECT_TRUE(IsSpmdGenerated(*ar));
 }
 
 }  // namespace xla::gpu

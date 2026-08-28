@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -32,7 +32,7 @@ class Client;
 //
 // TODO(hyeontaek): Unify `HostCallback` with `Executable` once `Executable` is
 // added.
-class HostCallback : public llvm::RTTIExtends<HostCallback, llvm::RTTIRoot> {
+class HostCallback : public RTTIExtends<HostCallback, RTTIRoot> {
  public:
   // Returns a serialized host callback.
   virtual std::string Serialize() const = 0;
@@ -50,9 +50,8 @@ class HostCallback : public llvm::RTTIExtends<HostCallback, llvm::RTTIRoot> {
 // `LoadedExecutable` runs as a top-level standalone runnable, while
 // `LoadedHostCallback` runs as a sub-computation of another `LoadedExecutable`
 // execution.
-class LoadedHostCallback
-    : public tsl::ReferenceCounted<LoadedHostCallback>,
-      public llvm::RTTIExtends<LoadedHostCallback, llvm::RTTIRoot> {
+class LoadedHostCallback : public tsl::ReferenceCounted<LoadedHostCallback>,
+                           public RTTIExtends<LoadedHostCallback, RTTIRoot> {
  public:
   virtual Client* client() const = 0;
 

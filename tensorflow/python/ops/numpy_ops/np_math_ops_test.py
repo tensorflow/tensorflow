@@ -15,12 +15,16 @@
 """Tests for tf numpy mathematical methods."""
 
 import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -157,6 +161,52 @@ class MathTest(test.TestCase, parameterized.TestCase):
   def testSqrt(self):
     self._testUnaryOp(np_math_ops.sqrt, np.sqrt, 'sqrt')
 
+  def testAngle(self):
+    # The result must keep the dtype of the argument. Building the real-input
+    # branch out of Python scalars made it float32 for every real dtype, which
+    # for float64 also cost precision.
+    for dtype in [np.float16, np.float32, np.float64]:
+      arg = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=dtype)
+      self.match(
+          np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
+      )
+      self.match(
+          np_math_ops.angle(arg, deg=True),
+          np.angle(arg, deg=True),
+          msg='angle({}, deg=True)'.format(arg),
+      )
+
+    for dtype in [np.complex64, np.complex128]:
+      arg = np.array([1 + 2j, -1 - 2j, 0j], dtype=dtype)
+      self.match(
+          np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
+      )
+
+    # An integer argument is promoted to the default float type.
+    arg = np.array([-3, 0, 3], dtype=np.int32)
+    self.match(np_math_ops.angle(arg), np.angle(arg), msg='angle(int32)')
+
+  def testHypot(self):
+    self._testBinaryOp(np_math_ops.hypot, np.hypot, 'hypot')
+
+  def testHypotLargeFiniteNoOverflow(self):
+    # Regression for large finite float64 inputs that overflow the naive
+    # sqrt(x*x + y*y) formulation (tensorflow/tensorflow#124774).
+    x = np.array([1e200, 1e300, 1e308, 1e200, 0.0, -1e200], dtype=np.float64)
+    y = np.array([1e200, 1e300, 1e308, 1.0, 1e300, -1e200], dtype=np.float64)
+    actual = np_math_ops.hypot(x, y)
+    expected = np.hypot(x, y)
+    self.assertTrue(np.all(np.isfinite(actual)))
+    self.assertTrue(np.all(np.isfinite(expected)))
+    self.match(actual, expected, msg='hypot large finite')
+
+  def testHypotSpecialCases(self):
+    x = np.array([np.inf, -np.inf, np.nan, np.inf, 0.0, -3.0], dtype=np.float64)
+    y = np.array([np.nan, np.nan, np.inf, 5.0, 0.0, -4.0], dtype=np.float64)
+    actual = np_math_ops.hypot(x, y)
+    expected = np.hypot(x, y)
+    np.testing.assert_equal(actual.tolist(), expected.tolist())
+
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
     if check_dtype:
@@ -227,6 +277,151 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
+
+  @parameterized.parameters([np.int32, np.int64])
+  def testIsCloseIntegerTolerances(self, dtype):
+    # Regression test for GitHub issue 108657: integer inputs used to be
+    # compared with pure equality, ignoring rtol and atol.
+    a = np.array(
+        [[-13, -5, -12], [3, 17, -6], [5, 3, -8], [-18, 19, 10]], dtype
+    )
+    b = np.array([-7], dtype)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=9, atol=0),
+        np.isclose(a, b, rtol=9, atol=0),
+    )
+    self.assertEqual(
+        bool(np_math_ops.allclose(a, b, rtol=9, atol=0)),
+        np.allclose(a, b, rtol=9, atol=0),
+    )
+    c = np.array([100, 200, -300, 0], dtype)
+    d = np.array([105, 900, -300, 4], dtype)
+    self.match(
+        np_math_ops.isclose(c, d, rtol=0, atol=5),
+        np.isclose(c, d, rtol=0, atol=5),
+    )
+
+  def testIsCloseSignedIntegerOverflow(self):
+    # max - min overflows int8 when the true difference exceeds 127; the
+    # wrapped negative difference must not compare as close.
+    a = np.array([127, -128, -128], np.int8)
+    b = np.array([-128, -128, -127], np.int8)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=0, atol=5),
+        np.isclose(a, b, rtol=0, atol=5),
+    )
+
+  def testIsCloseMinIntIdenticalValues(self):
+    # Identical values are always close, even for the most negative value,
+    # where abs(b) overflows and wraps the rtol-scaled tolerance negative.
+    a = np.array([-128], np.int8)
+    b = np.array([-128], np.int8)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=5, atol=0),
+        np.isclose(a, b, rtol=5, atol=0),
+    )
+
+  def testIsCloseMinIntNeighborDivergesFromNumPy(self):
+    # Documented divergence from NumPy: for values close to the most negative
+    # value but not identical, abs(b) overflow makes the wrapped rtol-scaled
+    # tolerance impossible to satisfy in integer arithmetic, so this reports
+    # not close where NumPy, computing in floating point, reports close.
+    # Enabling type promotion with float tolerances gives the NumPy result.
+    a = np.array([-127], np.int8)
+    b = np.array([-128], np.int8)
+    self.assertTrue(np.isclose(a, b, rtol=5, atol=0)[0])
+    self.assertAllEqual([False], np_math_ops.isclose(a, b, rtol=5, atol=0))
+
+  def testIsCloseUnsignedNoWraparound(self):
+    # The difference must be computed as max - min: 1 - 2 wraps around to 255
+    # in uint8 arithmetic and would defeat the tolerance comparison.
+    a = np.array([1, 250, 7], np.uint8)
+    b = np.array([2, 5, 7], np.uint8)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=0, atol=3),
+        np.isclose(a, b, rtol=0, atol=3),
+    )
+
+  def testIsCloseIntegerFloatTolerancePromotes(self):
+    # Integer inputs with floating-point tolerances (including the defaults)
+    # rely on type promotion, which this test environment enables, and the
+    # promoted results match NumPy. Without promotion this combination
+    # raises instead of silently casting.
+    a = np.array([1000000, 1000001, 5], np.int32)
+    b = np.array([1000001, 1000000, 900], np.int32)
+    self.match(np_math_ops.isclose(a, b), np.isclose(a, b))
+    self.match(
+        np_math_ops.isclose(a, b, rtol=1e-6, atol=0.5),
+        np.isclose(a, b, rtol=1e-6, atol=0.5),
+    )
+
+  @parameterized.named_parameters(
+      ('isclose_int32', np_math_ops.isclose, np.int32),
+      ('allclose_int32', np_math_ops.allclose, np.int32),
+      ('isclose_float32', np_math_ops.isclose, np.float32),
+      ('allclose_float32', np_math_ops.allclose, np.float32),
+  )
+  def testCloseNonBroadcastableShapesXla(self, close_fn, dtype):
+    a = ops.convert_to_tensor(np.arange(4, dtype=dtype))
+    b = ops.convert_to_tensor(np.arange(8, dtype=dtype))
+
+    error_types = (ValueError, errors.InvalidArgumentError)
+    error_pattern = r'Incompatible shapes|Dimensions must be equal|broadcast'
+
+    with self.assertRaisesRegex(error_types, error_pattern):
+      close_fn(a, b)
+
+    compiled_close_fn = def_function.function(close_fn, jit_compile=True)
+    with self.assertRaisesRegex(error_types, error_pattern):
+      compiled_close_fn(a, b)
+
+  def testCrossXlaUnknownBatchDim(self):
+    # The batch dimension is unknown at trace time while the last dimension
+    # is statically 3 (or 2). The padding and output selection in cross must
+    # resolve from the static last dimension rather than through tf.cond,
+    # otherwise XLA cannot infer the shape of the Cross operands and fails
+    # to compile even though the input is a valid 3-element vector.
+    if not test_util.is_xla_enabled():
+      self.skipTest('XLA JIT compiler is not enabled in this test environment.')
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
+
+    compiled_cross = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 3], np.float32),
+            tensor.TensorSpec([None, 3], np.float32),
+        ],
+    )
+    self.match(compiled_cross(a, b), np.cross(a, b), check_dtype=False)
+
+    # A statically 2-element last dimension pads to 3 and returns the z
+    # component only.
+    a2 = np.arange(4, dtype=np.float32).reshape(2, 2)
+    b2 = np.arange(4, 8, dtype=np.float32).reshape(2, 2)
+    compiled_cross_2 = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 2], np.float32),
+            tensor.TensorSpec([None, 2], np.float32),
+        ],
+    )
+    self.match(compiled_cross_2(a2, b2), np.cross(a2, b2), check_dtype=False)
+
+  def testCrossDynamicUnknownBatchDim(self):
+    # A fully dynamic shape still works outside of jit compilation.
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
+    dynamic_cross = def_function.function(
+        np_math_ops.cross,
+        input_signature=[
+            tensor.TensorSpec([None, None], np.float32),
+            tensor.TensorSpec([None, None], np.float32),
+        ],
+    )
+    self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
@@ -349,6 +544,66 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(0, -5, endpoint=False)
     run_test(0, -5, base=2.0)
 
+  def testLinSpaceDtype(self):
+    # An explicitly requested `dtype` must be honored, and must not be used as
+    # the type the samples are computed in: numpy computes the samples in a
+    # floating point type derived from `start` and `stop`, and only casts them
+    # to `dtype` as a final step.
+    dtypes = [
+        np.int32,
+        np.int64,
+        np.float16,
+        np.float32,
+        np.float64,
+        np.complex64,
+        np.complex128,
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for dtype in dtypes:
+        self.match(
+            np_math_ops.linspace(start, stop, dtype=dtype, **kwargs),
+            np.linspace(start, stop, dtype=dtype, **kwargs),
+            msg='linspace({}, {}, dtype={})'.format(start, stop, dtype),
+        )
+
+    run_test(0, 10)
+    run_test(0, 10, num=0)
+    run_test(0, 10, num=1)
+    run_test(0, 10, num=5)
+    run_test(0, 10, num=5, endpoint=False)
+    run_test(0, -10, num=5)
+    run_test(0, -10, num=5, endpoint=False)
+    run_test(-5, 5, num=4)
+
+  def testLogSpaceDtype(self):
+    # As for `linspace`, `dtype` only determines the type of the result; the
+    # exponents are computed in a floating point type derived from `start` and
+    # `stop`.
+    dtypes = [
+        np.int32,
+        np.int64,
+        np.float16,
+        np.float32,
+        np.float64,
+        np.complex64,
+        np.complex128,
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for dtype in dtypes:
+        self.match(
+            np_math_ops.logspace(start, stop, dtype=dtype, **kwargs),
+            np.logspace(start, stop, dtype=dtype, **kwargs),
+            msg='logspace({}, {}, dtype={})'.format(start, stop, dtype),
+        )
+
+    run_test(0, 3, num=4)
+    run_test(0, 3, num=4, endpoint=False)
+    run_test(0, 3, num=4, base=2.0)
+    run_test(0, -3, num=4)
+    run_test(1, 3, num=5)
+
   def testGeomSpace(self):
 
     def run_test(start, stop, **kwargs):
@@ -390,6 +645,83 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isposinf(x2))
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
+
+  def testSignBit(self):
+    for transform in self.array_transforms:
+      values = transform([-1.5, -0.0, 0.0, 1.5])
+      self.assertAllEqual(
+          np_math_ops.signbit(values), [True, True, False, False]
+      )
+    # The sign bit is set even when the value compares equal to zero or NaN.
+    self.assertAllEqual(np_math_ops.signbit([np.nan, -np.nan]), [False, True])
+    self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
+    negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
+    self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testIsInfFamilyNonFloatInputs(self):
+    # A non-floating input has no infinities, but the result must still be an
+    # elementwise boolean array shaped like the input, as numpy returns, and
+    # the argument must be converted before its dtype is inspected.
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        [1, 2, 3],
+        np.array([1, 2, 3], dtype=np.int32),
+        np.array([1, 2, 3], dtype=np.int64),
+        np.array([[1, 2], [3, 4]], dtype=np.int32),
+        np.array([True, False]),
+        ops.convert_to_tensor([1, 2, 3]),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg),
+            np_fun(np.asarray(arg)),
+            msg='{}({})'.format(np_fun.__name__, arg),
+        )
+
+  def testIsInfFamilyFloatInputs(self):
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        np.array([1.0, np.inf, -np.inf, np.nan], dtype=np.float64),
+        np.array([1.0, np.inf, -np.inf], dtype=np.float32),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg), np_fun(arg), msg='{}({})'.format(np_fun.__name__, arg)
+        )
+
+  def testFabsAlwaysReturnsFloat(self):
+    # `fabs` differs from `absolute` in that its result is always floating
+    # point, so an integer argument is promoted rather than passed through.
+    int_args = [
+        [1, -2, 3],
+        -5,
+        np.array([1, -2, 3], dtype=np.int32),
+        np.array([1, -2, 3], dtype=np.int64),
+        np.array([], dtype=np.int32),
+        np.array([[1, -2], [3, -4]], dtype=np.int32),
+    ]
+    for arg in int_args:
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
+
+    # A floating point argument keeps its own dtype.
+    for dtype in [np.float16, np.float32, np.float64]:
+      arg = np.array([1.5, -2.5], dtype=dtype)
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
+
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -369,9 +368,5 @@ class TritonXLALowerXTilePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLALowerXTilePass() {
-  return std::make_unique<TritonXLALowerXTilePass>();
-}
 
 }  // namespace mlir::triton::xla

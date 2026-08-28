@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/tensor_map.h"
 #include "tensorflow/core/util/batch_util.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
@@ -117,13 +119,21 @@ class TensorMapLookup : public OpKernel {
     const TensorMap* map = nullptr;
     OP_REQUIRES_OK(ctx, GetInputMap(ctx, 0, &map));
 
-    OP_REQUIRES(ctx, map->tensors().find(key) != map->tensors().end(),
+    const auto it = map->tensors().find(key);
+    OP_REQUIRES(ctx, it != map->tensors().end(),
                 absl::InvalidArgumentError(
-                    "Trying to lookup non-existent key. Could not "
-                    "find key \"" +
-                    key.SummarizeValue(100) + "\"."));
+                    absl::StrCat("Trying to lookup non-existent key. Could not "
+                                 "find key \"",
+                                 key.SummarizeValue(100), "\".")));
 
-    ctx->set_output(0, map->tensors().find(key)->second);
+    const Tensor& value = it->second;
+    OP_REQUIRES(ctx, value.dtype() == ctx->expected_output_dtype(0),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Key does not match requested dtype. Stored: ",
+                    DataTypeString(value.dtype()), ", expected: ",
+                    DataTypeString(ctx->expected_output_dtype(0)))));
+
+    ctx->set_output(0, value);
   }
 };
 
@@ -156,9 +166,9 @@ class TensorMapErase : public OpKernel {
 
     OP_REQUIRES(ctx, map->tensors().find(key) != map->tensors().end(),
                 absl::InvalidArgumentError(
-                    "Trying to erase non-existent item. Could not "
-                    "find key \"" +
-                    key.SummarizeValue(100) + "\"."));
+                    absl::StrCat("Trying to erase non-existent item. Could not "
+                                 "find key \"",
+                                 key.SummarizeValue(100), "\".")));
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(ctx,

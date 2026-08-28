@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -266,6 +267,10 @@ TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
     HardSwishParams* params = &data->params;
     const TfLiteTensor* input;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+    TF_LITE_ENSURE(context, input->params.zero_point >= INT16_MIN);
+    TF_LITE_ENSURE(context, input->params.zero_point <= INT16_MAX);
+    TF_LITE_ENSURE(context, output->params.zero_point >= INT16_MIN);
+    TF_LITE_ENSURE(context, output->params.zero_point <= INT16_MAX);
     params->input_zero_point = input->params.zero_point;
     params->output_zero_point = output->params.zero_point;
     const float input_scale = input->params.scale;
@@ -1170,6 +1175,16 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
   return kTfLiteOk;
 }
 
+TfLiteStatus SoftmaxHalf(TfLiteContext* context, const TfLiteTensor* input,
+                         TfLiteTensor* output, TfLiteSoftmaxParams* params) {
+  SoftmaxParams op_params;
+  op_params.beta = params->beta;
+  reference_ops::Softmax(op_params, GetTensorShape(input),
+                         GetTensorData<half>(input), GetTensorShape(output),
+                         GetTensorData<half>(output));
+  return kTfLiteOk;
+}
+
 template <typename In, typename Out>
 TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
                               TfLiteTensor* output, SoftmaxOpData* data,
@@ -1259,6 +1274,9 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32: {
       return SoftmaxFloat(context, input, output, params, kernel_type);
+    }
+    case kTfLiteFloat16: {
+      return SoftmaxHalf(context, input, output, params);
     }
     case kTfLiteUInt8: {
       switch (output->type) {
@@ -1659,6 +1677,12 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
       reference_ops::Gelu(GetTensorShape(input), GetTensorData<float>(input),
                           params->approximate, GetTensorShape(output),
                           GetTensorData<float>(output));
+      return kTfLiteOk;
+    case kTfLiteFloat16:
+      reference_ops::Gelu(GetTensorShape(input),
+                          GetTensorData<Eigen::half>(input),
+                          params->approximate, GetTensorShape(output),
+                          GetTensorData<Eigen::half>(output));
       return kTfLiteOk;
     case kTfLiteUInt8:
       optimized_integer_ops::LookupTable(

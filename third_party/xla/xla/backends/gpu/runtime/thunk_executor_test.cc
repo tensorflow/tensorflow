@@ -23,10 +23,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+namespace {
 
 static absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
   auto name =
@@ -60,6 +63,99 @@ static Thunk::ThunkInfo ThunkInfo(absl::string_view name) {
   info.profile_annotation = name;
   return info;
 };
+
+TEST(ThunkExecutorDefinitionTrackerTest, InvokesCallbackAfterLastUse) {
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor, GpuExecutor());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                       stream_executor->CreateStream());
+
+  BufferAllocation allocation0(/*index=*/0, /*size=*/4, /*color=*/0);
+  BufferAllocation allocation1(/*index=*/1, /*size=*/4, /*color=*/0);
+  BufferAllocation::Slice slice0(&allocation0, /*offset=*/0, /*size=*/4);
+  BufferAllocation::Slice slice1(&allocation1, /*offset=*/0, /*size=*/4);
+  Shape shape = ShapeUtil::MakeShape(S32, {1});
+
+  ThunkSequence body;
+  body.Emplace<MemzeroThunk>(ThunkInfo("first"), ShapedSlice{slice0, shape});
+  body.Emplace<MemzeroThunk>(ThunkInfo("second"), ShapedSlice{slice1, shape});
+
+  ThunkSequence sequence;
+  const Thunk* while_ptr = sequence.Emplace<WhileThunk>(
+      ThunkInfo("while"), slice0, ThunkSequence(), std::move(body),
+      /*trip_count=*/1);
+
+  ThunkExecutor executor(std::move(sequence));
+  ThunkExecutor::DefinitionPlan plan =
+      ThunkExecutor::BuildDefinitionPlan(executor);
+  ASSERT_EQ(plan.size(), 1);
+  ASSERT_TRUE(plan.contains(while_ptr));
+  EXPECT_THAT(
+      plan.at(while_ptr),
+      testing::UnorderedElementsAre(allocation0.index(), allocation1.index()));
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorAddressAllocator allocator(stream_executor);
+  se::DeviceAddress<int32_t> storage0 =
+      stream_executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceAddress<int32_t> storage1 =
+      stream_executor->AllocateArray<int32_t>(1, 0);
+  BufferAllocations allocations({storage0, storage1}, /*device_ordinal=*/0,
+                                &allocator);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
+
+  int callback_count = 0;
+  auto callback =
+      [&](se::Stream* callback_stream,
+          absl::Span<const BufferAllocation::Index> indices) -> absl::Status {
+    EXPECT_EQ(callback_stream, stream.get());
+    EXPECT_THAT(indices, testing::UnorderedElementsAre(allocation0.index(),
+                                                       allocation1.index()));
+    ++callback_count;
+    return absl::OkStatus();
+  };
+  ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedDefinitionTracker tracker,
+                       InstallDefinitionTracker(plan, callback));
+
+  ASSERT_OK(executor.ExecuteOnStream(params));
+  EXPECT_EQ(callback_count, 1);
+  ASSERT_OK(stream->BlockHostUntilDone());
+}
+
+TEST(ThunkExecutorDefinitionTrackerTest, BuildsDefinitionPlan) {
+  BufferAllocation allocation0(/*index=*/0, /*size=*/4, /*color=*/0);
+  BufferAllocation allocation1(/*index=*/1, /*size=*/4, /*color=*/0);
+  BufferAllocation::Slice slice0(&allocation0, /*offset=*/0, /*size=*/4);
+  BufferAllocation::Slice slice1(&allocation1, /*offset=*/0, /*size=*/4);
+  Shape shape = ShapeUtil::MakeShape(S32, {1});
+
+  ThunkSequence sequence;
+  const Thunk* first_ptr = sequence.Emplace<MemzeroThunk>(
+      ThunkInfo("first"), ShapedSlice{slice0, shape});
+
+  ThunkSequence body;
+  const Thunk* body_ptr =
+      body.Emplace<MemzeroThunk>(ThunkInfo("body"), ShapedSlice{slice1, shape});
+  const Thunk* while_ptr = sequence.Emplace<WhileThunk>(
+      ThunkInfo("while"), slice0, ThunkSequence(), std::move(body),
+      /*trip_count=*/1);
+
+  const Thunk* last_ptr = sequence.Emplace<MemzeroThunk>(
+      ThunkInfo("last"), ShapedSlice{slice0, shape});
+
+  ThunkExecutor executor(std::move(sequence));
+  ThunkExecutor::DefinitionPlan plan =
+      ThunkExecutor::BuildDefinitionPlan(executor);
+
+  ASSERT_EQ(plan.size(), 2);
+  ASSERT_TRUE(plan.contains(last_ptr));
+  EXPECT_THAT(plan.at(last_ptr), testing::ElementsAre(allocation0.index()));
+  ASSERT_TRUE(plan.contains(while_ptr));
+  EXPECT_THAT(plan.at(while_ptr), testing::ElementsAre(allocation1.index()));
+  EXPECT_FALSE(plan.contains(first_ptr));
+  EXPECT_FALSE(plan.contains(body_ptr));
+}
 
 TEST(SequentialThunkProgressTrackerTest, TrackProgress) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor, GpuExecutor());
@@ -105,8 +201,8 @@ TEST(SequentialThunkProgressTrackerTest, TrackProgress) {
   }
 
   // Create a nested sequential thunk in the outer thunk sequence.
-  outer_sequence.push_back(std::make_unique<SequentialThunk>(
-      ThunkInfo("nested"), std::move(nested_sequence)));
+  outer_sequence.Emplace<SequentialThunk>(ThunkInfo("nested"),
+                                          std::move(nested_sequence));
 
   ThunkExecutor executor(std::move(outer_sequence));
   ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,
@@ -189,14 +285,12 @@ TEST(SequentialThunkProgressTrackerTest, TrackWhileLoopNest) {
 
   // Build a while loop with a known trip count containing a single body thunk.
   ThunkSequence condition_thunks;  // empty, not used with trip_count
-  ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<MemzeroThunk>(
-      ThunkInfo("loop_body_memzero"), ShapedSlice{slice, shape}));
+  ThunkSequence body_thunks = ThunkSequence::Of<MemzeroThunk>(
+      ThunkInfo("loop_body_memzero"), ShapedSlice{slice, shape});
 
-  ThunkSequence outer_sequence;
-  outer_sequence.push_back(std::make_unique<WhileThunk>(
+  ThunkSequence outer_sequence = ThunkSequence::Of<WhileThunk>(
       ThunkInfo("while_loop"), slice, std::move(condition_thunks),
-      std::move(body_thunks), /*trip_count=*/kTripCount));
+      std::move(body_thunks), /*trip_count=*/kTripCount);
 
   ThunkExecutor executor(std::move(outer_sequence));
   ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,
@@ -226,4 +320,5 @@ TEST(SequentialThunkProgressTrackerTest, TrackWhileLoopNest) {
   }
 }
 
+}  // namespace
 }  // namespace xla::gpu

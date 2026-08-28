@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -108,9 +107,5 @@ class TritonXLAUnswitchLoopsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateTritonXLAUnswitchLoopsPass() {
-  return std::make_unique<TritonXLAUnswitchLoopsPass>();
-}
 
 }  // namespace mlir::triton::xla

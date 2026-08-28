@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -58,10 +57,6 @@ struct TestMaterializeBroadcastsPass
 };
 
 }  // namespace
-
-std::unique_ptr<::mlir::Pass> createTestMaterializeBroadcastsPass() {
-  return std::make_unique<TestMaterializeBroadcastsPass>();
-}
 
 }  // namespace mhlo
 }  // namespace mlir

@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -538,7 +538,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
           operand->shape().dimensions().size()) {
         continue;
       }
-      RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
+      ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
                                             instruction, operand_no,
                                             /*mandatory=*/true));
     }
@@ -1476,6 +1476,177 @@ ENTRY %MixedHostDeviceResult {
   ExpectTupleLayoutIs(result_shape, {{1, 0}, {0, 1}});
 }
 
+TEST_F(LayoutAssignmentTest, PreservePartiallySetResultLayout) {
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY %PreservePartiallySetResultLayout {
+  %p0 = f32[8] parameter(0)
+  %p1 = f32[8] parameter(1)
+  ROOT %tuple = (f32[8], f32[8]) tuple(%p0, %p1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+
+  // Set the first result layout to be in host memory space.
+  Layout layout = LayoutUtil::MakeLayout({0});
+  layout.set_memory_space(Layout::kHostMemorySpace);
+  computation_layout.mutable_result_layout()->ResetLayout(layout, {0});
+  // Clear layout for the second element of the tuple.
+  computation_layout.mutable_result_layout()->Clear({1});
+
+  EXPECT_FALSE(computation_layout.result_layout().LayoutIsSet());
+  AssignLayouts(m.get(), &computation_layout);
+  // Memory space should be preserved.
+  EXPECT_EQ(computation_layout.result_layout()
+                .shape()
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            Layout::kHostMemorySpace);
+  EXPECT_EQ(computation_layout.result_layout()
+                .shape()
+                .tuple_shapes(1)
+                .layout()
+                .memory_space(),
+            Layout::kDefaultMemorySpace);
+}
+
+TEST_F(LayoutAssignmentTest, PreservePartiallySetParameterLayout) {
+  // Note the two parameters are passed as a single tuple.
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY %PreservePartiallySetParameterLayout {
+  %param0 = (f32[8], f32[8]) parameter(0)
+  %gte0 = f32[8] get-tuple-element(%param0), index=0
+  %gte1 = f32[8] get-tuple-element(%param0), index=1
+  ROOT %add = f32[8] add(%gte0, %gte1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+
+  // Set the first parameter layout to be in host memory space.
+  Layout layout = LayoutUtil::MakeLayout({0});
+  layout.set_memory_space(Layout::kHostMemorySpace);
+  computation_layout.mutable_parameter_layout(0)->ResetLayout(layout, {0});
+  // Clear layout for the second element of the parameter tuple.
+  computation_layout.mutable_parameter_layout(0)->Clear({1});
+
+  EXPECT_FALSE(computation_layout.parameter_layout(0).LayoutIsSet());
+  AssignLayouts(m.get(), &computation_layout);
+  // Memory space should be preserved.
+  EXPECT_EQ(computation_layout.parameter_layout(0)
+                .shape()
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            Layout::kHostMemorySpace);
+  EXPECT_EQ(computation_layout.parameter_layout(0)
+                .shape()
+                .tuple_shapes(1)
+                .layout()
+                .memory_space(),
+            Layout::kDefaultMemorySpace);
+}
+
+TEST_F(LayoutAssignmentTest, PreserveMemorySpaceOnConflict) {
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY %PreserveMemorySpaceOnConflict {
+  %param0 = (f32[2,3], f32[2,3]) parameter(0)
+  %gte0 = f32[2,3] get-tuple-element(%param0), index=0
+  %gte1 = f32[2,3] get-tuple-element(%param0), index=1
+  ROOT %tuple = (f32[2,3], f32[2,3]) tuple(%gte0, %gte1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+
+  // Parameter Element 0: layout {0,1}, host memory space. Element 1: AUTO.
+  Layout param_layout0 = LayoutUtil::MakeLayout({0, 1});
+  param_layout0.set_memory_space(Layout::kHostMemorySpace);
+  computation_layout.mutable_parameter_layout(0)->ResetLayout(param_layout0,
+                                                              {0});
+  computation_layout.mutable_parameter_layout(0)->Clear({1});
+
+  // Result Element 0: layout {1,0}, host memory space. Element 1: AUTO.
+  Layout result_layout0 = LayoutUtil::MakeLayout({1, 0});
+  result_layout0.set_memory_space(Layout::kHostMemorySpace);
+  computation_layout.mutable_result_layout()->ResetLayout(result_layout0, {0});
+  computation_layout.mutable_result_layout()->Clear({1});
+
+  EXPECT_FALSE(computation_layout.parameter_layout(0).LayoutIsSet());
+  EXPECT_FALSE(computation_layout.result_layout().LayoutIsSet());
+
+  // This should compile successfully despite the conflict on Element 0.
+  AssignLayouts(m.get(), &computation_layout);
+
+  // Memory space should be preserved for both parameter and result.
+  EXPECT_EQ(computation_layout.parameter_layout(0)
+                .shape()
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            Layout::kHostMemorySpace);
+  EXPECT_EQ(computation_layout.parameter_layout(0)
+                .shape()
+                .tuple_shapes(1)
+                .layout()
+                .memory_space(),
+            Layout::kDefaultMemorySpace);
+  EXPECT_EQ(computation_layout.result_layout()
+                .shape()
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            Layout::kHostMemorySpace);
+  EXPECT_EQ(computation_layout.result_layout()
+                .shape()
+                .tuple_shapes(1)
+                .layout()
+                .memory_space(),
+            Layout::kDefaultMemorySpace);
+
+  // Parameter layouts are mandatory. Thus the first parameter's layout is
+  // different from the second.
+  EXPECT_THAT(computation_layout.parameter_layout(0)
+                  .shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(0, 1));
+  EXPECT_THAT(computation_layout.parameter_layout(0)
+                  .shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 0));
+  // Result layouts are not mandatory. Thus the first parameter's layout is not
+  // the same as the original layout.
+  EXPECT_THAT(computation_layout.result_layout()
+                  .shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(0, 1));
+  EXPECT_THAT(computation_layout.result_layout()
+                  .shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 0));
+}
+
 TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {
   // Check that we handle a diamond-shaped graph correctly.
   //      transpose
@@ -2062,6 +2233,84 @@ ENTRY main {
   EXPECT_OK(RunLayoutAssignmentPass(m.get()));
 }
 
+TEST_F(LayoutAssignmentTest, RespectsDisableWhileLoopCopies) {
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (f32[5,16]{1,0}, u32[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = (f32[5,16]{1,0}, u32[]) parameter(0)
+  input = f32[5,16]{0,1} get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  ROOT tuple1 = (f32[5,16]{0,1}, u32[]) tuple(input, i_)
+}
+
+ENTRY main {
+  input = f32[5,16]{1,0} parameter(0)
+  c0 = u32[] constant(0)
+  tuple = (f32[5,16]{1,0}, u32[]) tuple(input, c0)
+  tuple_ = (f32[5,16]{1,0}, u32[]) while(tuple), condition=while_condition, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT output_ = f32[5,16]{1,0} get-tuple-element(tuple_), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloComputation* body = m->GetComputationWithName("while_body");
+  ASSERT_NE(body, nullptr);
+  EXPECT_NE(body->root_instruction()->opcode(), HloOpcode::kCopy);
+}
+
+TEST_F(LayoutAssignmentTest, RespectsDisableWhileLoopCopiesOperandConstraint) {
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (s32[2,8]{1,0}, u32[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = (s32[2,8]{1,0}, u32[]) parameter(0)
+  input = s32[2,8]{1,0} get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  custom = s32[2,8]{0,1} custom-call(input), custom_call_target="baz",
+    operand_layout_constraints={s32[2,8]{0,1}}
+  ROOT tuple1 = (s32[2,8]{0,1}, u32[]) tuple(custom, i_)
+}
+
+ENTRY main {
+  input = s32[2,8]{1,0} parameter(0)
+  c0 = u32[] constant(0)
+  tuple = (s32[2,8]{1,0}, u32[]) tuple(input, c0)
+  tuple_ = (s32[2,8]{1,0}, u32[]) while(tuple), condition=while_condition, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT output_ = s32[2,8]{1,0} get-tuple-element(tuple_), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloComputation* body = m->GetComputationWithName("while_body");
+  ASSERT_NE(body, nullptr);
+  for (HloInstruction* inst : body->instructions()) {
+    EXPECT_NE(inst->opcode(), HloOpcode::kCopy);
+  }
+  const Shape& body_param_shape = body->parameter_instruction(0)->shape();
+  ExpectLayoutIs(ShapeUtil::GetSubshape(body_param_shape, {0}), {0, 1});
+}
+
 TEST_F(LayoutAssignmentTest, HloBufferLayoutUnconstrained) {
   const char* module_str = R"(
   HloModule test
@@ -2474,10 +2723,10 @@ TEST_F(LayoutAssignmentTest, CloneConditionalComputationWithMultipleCallsites) {
   ENTRY %main (param0: f32[2,8], pred_: pred[]) -> f32[2,8] {
     %param0 = f32[2,8] parameter(0)
     %pred_ = pred[] parameter(1)
-    
+
     // Call the shared computation once directly
     %call = f32[2,8] call(%param0), to_apply=%branch_comp
-    
+
     // Call it from a conditional
     %conditional = f32[2,8] conditional(%pred_, %param0, %param0), true_computation=%branch_comp, false_computation=%branch_comp
     ROOT %add = f32[2,8] add(%call, %conditional)
@@ -2499,6 +2748,132 @@ TEST_F(LayoutAssignmentTest, CloneConditionalComputationWithMultipleCallsites) {
 
   // Verify that the cloned branch computation is present.
   ASSERT_NE(branch_comp_clone, nullptr);
+}
+
+TEST_F(LayoutAssignmentTest, SharedBranchComputationMismatch) {
+  // LayoutAssignment forces all conditional branches to match the expected
+  // layout from the largest branch (the branch computation with the highest
+  // number of instructions). Here, %comp_large ({0,1}) has more instructions
+  // than %comp_small_shared ({1,0}), so {0,1} is the expected layout for all
+  // branches.
+  const char* module_str = R"hlo(
+  HloModule test
+
+  %comp_large (param: f32[8,8]) -> f32[8,8] {
+    %param = f32[8,8] parameter(0)
+    %c1 = f32[8,8] constant(1)
+    %add1 = f32[8,8] add(%param, %c1)
+    %add2 = f32[8,8] add(%add1, %c1)
+    ROOT %cc = f32[8,8]{0,1} custom-call(%add2), custom_call_target="LayoutConstraint", operand_layout_constraints={f32[8,8]{0,1}}
+  }
+
+  %comp_small_shared (param2: f32[8,8]) -> f32[8,8] {
+    %param2 = f32[8,8] parameter(0)
+    %c2 = f32[8,8] constant(1)
+    %add = f32[8,8] add(%param2, %c2)
+    ROOT %cc2 = f32[8,8]{1,0} custom-call(%add), custom_call_target="LayoutConstraint", operand_layout_constraints={f32[8,8]{1,0}}
+  }
+
+  ENTRY %main (param0: f32[8,8]{1,0}, pred_index: s32[]) -> f32[8,8]{1,0} {
+    %param0 = f32[8,8]{1,0} parameter(0)
+    %pred_index = s32[] parameter(1)
+    ROOT %conditional = f32[8,8]{1,0} conditional(%pred_index, %param0, %param0, %param0), branch_computations={%comp_large, %comp_small_shared, %comp_small_shared}
+  }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  // Because %comp_small_shared ({1,0}) mismatches the expected layout from the
+  // largest branch (%comp_large with {0,1}) and is shared across branches,
+  // LayoutAssignment tries to record a mismatch for it multiple times.
+  // This should not crash with a duplicate key error in InsertOrDie.
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, AsyncStartDoneMandatoryConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncStartDoneMandatoryConstraints, entry_computation_layout={(f32[4,8]{0,1})->f32[4,8]{0,1}}
+
+%async_comp (param: f32[4,8]) -> f32[4,8] {
+  %param = f32[4,8]{0,1} parameter(0)
+  ROOT %copy = f32[4,8]{0,1} copy(%param)
+}
+
+ENTRY %main (param: f32[4,8]) -> f32[4,8] {
+  %param = f32[4,8]{0,1} parameter(0)
+  %async_start = ((f32[4,8]{0,1}), f32[4,8]{0,1}, s32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = f32[4,8]{0,1} async-done(%async_start)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_start =
+      FindInstruction(m.get(), HloOpcode::kAsyncStart);
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_start->operand(0)->shape().layout(),
+                                LayoutUtil::MakeLayout({0, 1})));
+
+  const HloInstruction* async_done =
+      FindInstruction(m.get(), HloOpcode::kAsyncDone);
+  ASSERT_NE(async_done, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_done->shape().layout(),
+                                LayoutUtil::MakeLayout({0, 1})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncStartDoneTupleMandatoryConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncStartDoneTupleMandatoryConstraints, entry_computation_layout={( (f32[4,8]{0,1}, f32[8,16]{1,0}) )->(f32[4,8]{0,1}, f32[8,16]{1,0})}
+
+%async_comp (param: (f32[4,8], f32[8,16])) -> (f32[4,8], f32[8,16]) {
+  %param = (f32[4,8]{0,1}, f32[8,16]{1,0}) parameter(0)
+  ROOT %copy = (f32[4,8]{0,1}, f32[8,16]{1,0}) copy(%param)
+}
+
+ENTRY %main (param: (f32[4,8], f32[8,16])) -> (f32[4,8], f32[8,16]) {
+  %param = (f32[4,8]{0,1}, f32[8,16]{1,0}) parameter(0)
+  %async_start = (( (f32[4,8]{0,1}, f32[8,16]{1,0}) ), (f32[4,8]{0,1}, f32[8,16]{1,0}), s32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = (f32[4,8]{0,1}, f32[8,16]{1,0}) async-done(%async_start)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_start =
+      FindInstruction(m.get(), HloOpcode::kAsyncStart);
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_start->operand(0)->shape(), {0}).layout(),
+      LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_start->operand(0)->shape(), {1}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_start->shape(), {1, 0}).layout(),
+      LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_start->shape(), {1, 1}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
+
+  const HloInstruction* async_done =
+      FindInstruction(m.get(), HloOpcode::kAsyncDone);
+  ASSERT_NE(async_done, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_done->shape(), {0}).layout(),
+      LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_done->shape(), {1}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
 }
 
 }  // namespace

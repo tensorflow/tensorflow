@@ -50,7 +50,6 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
-  const int run_depth = depth;
   for (int i = start_row; i < outer_rows; ++i) {
     int left_index = i * rows_left * lhs_layout_cols / 2;
     const uint8_t* lhs_ptr_data = lhs + left_index;
@@ -58,8 +57,8 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
       const uint8_t* lhs_ptr = lhs_ptr_data;
       int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
-      asm volatile(
-          R"asm(
+      int run_depth = depth;
+      asm(R"asm(
           movi v24.16b, #15
           ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
@@ -79,8 +78,7 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           ld1 {v1.16b}, [%[rhs_ptr]], #16
           ushr v14.16b, v6.16b, #4
           ushr v15.16b, v7.16b, #4
-          mov w3, %w[run_depth]
-          subs w3, w3, #1
+          subs %w[run_depth], %w[run_depth], #1
           b.ls 1f /* skip loop */
             0: /* loop start */
             ld1 {v4.16b}, [%[lhs_ptr]], #16
@@ -117,7 +115,7 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
             and v11.16b, v7.16b, v24.16b
             ushr v14.16b, v6.16b, #4
             ushr v15.16b, v7.16b, #4
-            subs w3, w3, #1
+            subs %w[run_depth], %w[run_depth], #1
             b.hi 0b /* loop branch */
           1: /* loop end */
           smull v20.8h, v12.8b, v0.8b
@@ -145,10 +143,11 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v6.4s, v4.4s, v5.4s
           st1 {v6.4s}, [%[dst]], #16
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
-          : [run_depth] "r"(run_depth)
-          : "cc", "memory", "w3", "v0", "v1", "v4", "v5", "v6", "v7", "v8",
-            "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst),
+            [run_depth] "+r"(run_depth)
+          :
+          : "cc", "memory", "v0", "v1", "v4", "v5", "v6", "v7", "v8", "v9",
+            "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
             "v19", "v20", "v21", "v22", "v23", "v24");
     }
   }
@@ -172,7 +171,6 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
-  const int run_depth = depth;
   for (int i = start_row; i < outer_rows; ++i) {
     int left_index = i * rows_left * lhs_layout_cols / 2;
     const uint8_t* lhs_ptr_data = lhs + left_index;
@@ -180,8 +178,8 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
       const uint8_t* lhs_ptr = lhs_ptr_data;
       int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
-      asm volatile(
-          R"asm(
+      int run_depth = depth;
+      asm(R"asm(
           ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v31.16b, #15
           movi v16.4s, #0
@@ -207,8 +205,7 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
           ushr v14.16b, v6.16b, #4
           ld1 {v3.16b}, [%[rhs_ptr]], #16
           ushr v15.16b, v7.16b, #4
-          mov w3, %w[run_depth]
-          subs w3, w3, #1
+          subs %w[run_depth], %w[run_depth], #1
           b.ls 1f /* skip loop */
             0: /* loop start */
             smull v20.8h, v12.8b, v0.8b
@@ -263,11 +260,11 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
             and v9.16b, v5.16b, v31.16b
             ushr v12.16b, v4.16b, #4
             ushr v13.16b, v5.16b, #4
-            subs w3, w3, #1
             and v10.16b, v6.16b, v31.16b
             and v11.16b, v7.16b, v31.16b
             ushr v14.16b, v6.16b, #4
             ushr v15.16b, v7.16b, #4
+            subs %w[run_depth], %w[run_depth], #1
             b.hi 0b /* loop branch */
           1: /* loop end */
           smull v20.8h, v12.8b, v0.8b
@@ -318,12 +315,13 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v7.4s, v8.4s, v9.4s
           st1 {v6.4s, v7.4s}, [%[dst]], #32
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
-          : [run_depth] "r"(run_depth)
-          : "cc", "memory", "w3", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
-            "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
-            "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25",
-            "v26", "v27", "v28", "v29", "v30", "v31");
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst),
+            [run_depth] "+r"(run_depth)
+          :
+          : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
+            "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17",
+            "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26",
+            "v27", "v28", "v29", "v30", "v31");
     }
   }
 }
@@ -346,7 +344,6 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
-  const int run_depth = depth;
   for (int i = start_row; i < outer_rows; ++i) {
     int left_index = i * rows_left * lhs_layout_cols / 2;
     const uint8_t* lhs_ptr_data = lhs + left_index;
@@ -354,8 +351,8 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
       const uint8_t* lhs_ptr = lhs_ptr_data;
       int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
-      asm volatile(
-          R"asm(
+      int run_depth = depth;
+      asm(R"asm(
           movi v3.16b, #15
           ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
@@ -378,7 +375,6 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           ld1 {v0.16b}, [%[rhs_ptr]], #16
           movi v30.4s, #0
           movi v31.4s, #0
-          mov w3, %w[run_depth]
           ld1 {v1.16b}, [%[rhs_ptr]], #16
           and v8.16b, v4.16b, v3.16b
           and v9.16b, v5.16b, v3.16b
@@ -388,7 +384,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           ushr v13.16b, v5.16b, #4
           ushr v14.16b, v6.16b, #4
           ushr v15.16b, v7.16b, #4
-          subs w3, w3, #1
+          subs %w[run_depth], %w[run_depth], #1
           b.ls 1f /* skip loop */
             0: /* loop start */
             smull v4.8h, v12.8b, v0.8b
@@ -491,7 +487,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             ld1 {v1.16b}, [%[rhs_ptr]], #16
             ushr v14.16b, v14.16b, #4
             ushr v15.16b, v15.16b, #4
-            subs w3, w3, #1
+            subs %w[run_depth], %w[run_depth], #1
             b.hi 0b /* loop branch */
           1: /* loop end */
           smull v4.8h, v12.8b, v0.8b
@@ -594,12 +590,13 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v7.4s, v8.4s, v9.4s
           st1 {v4.4s, v5.4s, v6.4s, v7.4s}, [%[dst]], #64
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
-          : [run_depth] "r"(run_depth)
-          : "cc", "memory", "w3", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
-            "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
-            "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25",
-            "v26", "v27", "v28", "v29", "v30", "v31");
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst),
+            [run_depth] "+r"(run_depth)
+          :
+          : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
+            "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17",
+            "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26",
+            "v27", "v28", "v29", "v30", "v31");
     }
   }
 }

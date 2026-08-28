@@ -52,11 +52,12 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_LOWERXLATOSCFPASS
 #define GEN_PASS_DEF_LOWERXLALOOPSTOSCFPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::ImplicitLocOpBuilder;
 using mlir::Location;
@@ -322,6 +323,8 @@ struct RewriteInsert : mlir::OpRewritePattern<gpu::InsertOp> {
 class LowerXlaToScfPass
     : public impl::LowerXlaToScfPassBase<LowerXlaToScfPass> {
  public:
+  LowerXlaToScfPass() : options_() {}
+
   explicit LowerXlaToScfPass(const LowerXlaToScfPassOptions& options)
       : options_(options) {}
 
@@ -355,16 +358,6 @@ class LowerXlaLoopsToScfPass
 };
 
 }  // namespace
-
-std::unique_ptr<::mlir::Pass> CreateLowerXlaToScfPass(const int64_t warp_size) {
-  LowerXlaToScfPassOptions options;
-  options.warp_size = warp_size;
-  return std::make_unique<LowerXlaToScfPass>(options);
-}
-
-std::unique_ptr<::mlir::Pass> CreateLowerXlaLoopsToScfPass() {
-  return std::make_unique<LowerXlaLoopsToScfPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

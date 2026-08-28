@@ -15,6 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <array>
+#include <cstdint>
+#include <vector>
+
+#include "absl/container/inlined_vector.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/conv_ops_impl.h"
 
 namespace tensorflow {

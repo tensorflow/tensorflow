@@ -30,8 +30,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-inline constexpr absl::string_view kYnnFusionKind = "__ynn_fusion";
-
 // Returns the mappings from HLO opcodes to YNNPACK unary operators.
 const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap();
 
@@ -102,11 +100,12 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo);
 // Returns true if the reduce or reduce window op is supported by YNNPACK.
 bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo);
 
-// Returns true if the reduce or reduce window op will be offloaded to YNNPACK.
-bool IsReduceLikeOpOffloadedToYnn(const HloInstruction* hlo);
-
 // Returns true if the convolution op is supported by YNNPACK.
 bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr);
+
+// Returns true if we want to handle the instruction in YNNPACK. Does not imply
+// the instruction is supported.
+bool IsInstructionPreferredByYnn(const HloInstruction* instr);
 
 // Convert XLA options to YNNPACK flags.
 uint32_t YnnFlags(const DebugOptions& debug_options);

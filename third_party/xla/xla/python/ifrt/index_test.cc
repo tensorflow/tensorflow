@@ -21,6 +21,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "xla/python/ifrt/index.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -71,6 +74,34 @@ TEST(IndexTest, Hash) {
       Index({1, 2, 4}),
   }));
 }
+class IndexSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  IndexSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(IndexSerDesTest, ToFromProto) {
+  {
+    Index index({});
+    IndexProto proto = index.ToProto(version());
+    ASSERT_OK_AND_ASSIGN(Index index_copy, Index::FromProto(proto));
+    EXPECT_EQ(index_copy, index);
+  }
+  {
+    Index index({1, 2});
+    IndexProto proto = index.ToProto(version());
+    ASSERT_OK_AND_ASSIGN(Index index_copy, Index::FromProto(proto));
+    EXPECT_EQ(index_copy, index);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, IndexSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
 
 }  // namespace
 }  // namespace ifrt

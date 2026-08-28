@@ -68,6 +68,9 @@ Future<> JoinFutures(absl::Span<const Future<>> futures) {
       std::make_shared<JoinStateless>(futures.size(), std::move(promise));
 
   for (const Future<>& future : futures) {
+    if (!future.IsValid()) [[unlikely]] {
+      return {};
+    }
     future.OnReady(
         [join](const absl::Status& status) { join->OnReady(status); });
   }

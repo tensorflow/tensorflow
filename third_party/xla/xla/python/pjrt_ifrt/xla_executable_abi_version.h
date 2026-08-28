@@ -21,15 +21,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {
 namespace ifrt {
 
 class XlaExecutableAbiVersion
-    : public llvm::RTTIExtends<XlaExecutableAbiVersion, Serializable> {
+    : public RTTIExtends<XlaExecutableAbiVersion, Serializable> {
  public:
   XlaExecutableAbiVersion() = default;
   explicit XlaExecutableAbiVersion(

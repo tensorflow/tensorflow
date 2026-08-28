@@ -77,9 +77,5 @@ class EraseDeadFunctionsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass() {
-  return std::make_unique<EraseDeadFunctionsPass>();
-}
-
 }  // namespace emitters
 }  // namespace xla

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "third_party/nccl/nccl.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/stream_executor/device_address.h"
 
@@ -40,17 +41,18 @@ class NcclRegisteredMemory final : public RegisteredMemory {
   ~NcclRegisteredMemory() final;
 
   static absl::StatusOr<std::unique_ptr<NcclRegisteredMemory>> Create(
-      ncclComm_t comm, stream_executor::DeviceAddressBase addr);
+      std::shared_ptr<NcclCommState> comm_state,
+      stream_executor::DeviceAddressBase addr);
 
   stream_executor::DeviceAddressBase addr() const final;
 
   std::string ToString() const final;
 
  private:
-  NcclRegisteredMemory(ncclComm_t comm, void* handle,
+  NcclRegisteredMemory(std::shared_ptr<NcclCommState> comm, void* handle,
                        stream_executor::DeviceAddressBase addr);
 
-  ncclComm_t comm_;
+  std::shared_ptr<NcclCommState> comm_;
   void* handle_;
   stream_executor::DeviceAddressBase addr_;
 };

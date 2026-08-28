@@ -16,9 +16,22 @@
 name: CI ROCm
 permissions:
   contents: read
+  packages: read
 on:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      rocm_xla_branch:
+        description: 'Branch name to fetch ROCm XLA scripts from'
+        required: false
+        default: 'rocm-dev-infra'
+        type: string
+      runner_label:
+        description: 'Runner label for GPU jobs'
+        required: false
+        default: 'amd-do-linux-xla-gpu-gfx950-1'
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -29,108 +42,220 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docker-image: ${{ steps.out.outputs.docker-image }}
+      rocm-distro-url: ${{ steps.out.outputs.rocm-distro-url }}
+      rocm-distro-hash: ${{ steps.out.outputs.rocm-distro-hash }}
     steps:
       - id: out
         shell: bash
         run: |
-          # rocm/tensorflow-build:2.22-jammy-pythonall-rocm7.2.3-ci_official
-          echo "docker-image=rocm/tensorflow-build@sha256:5261e6df4fe13264a0e4443d36a620e3b1304b89bd45853ad342fb391c3c935f" >> "$GITHUB_OUTPUT"
+          {
+            echo "docker-image=ghcr.io/rocm/jax-build-ubu24.rocmless@sha256:68854ed30b800d3e8c390f6e651721e2bead58830da1c59e1b828354eb8f077f"
+            echo "rocm-distro-url=https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz"
+            echo "rocm-distro-hash=1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6"
+          } >> "$GITHUB_OUTPUT"
 
   jax:
     needs: rocm-config
     if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
-    runs-on: linux-x86-64-1gpu-amd
+    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
     timeout-minutes: 80
+    # Remove this once the JAX CI is stable.
+    continue-on-error: true
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
-    container: &rocm_container
-      image: ${{ needs.rocm-config.outputs.docker-image }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
-      volumes:
-        - /data/ci-cert.crt:/data/ci-cert.crt
-        - /data/ci-cert.key:/data/ci-cert.key
-        - /data:/data
-      options: >-
-        --device=/dev/dri
-        --device=/dev/kfd
-        --ipc=host
-        --shm-size=64G
-        --cap-add=SYS_PTRACE
-        --security-opt=seccomp=unconfined
-        --tmpfs /root/.cache/bazel:rw,exec,size=80g
-        --group-add video
+      ROCM_DISTRO_URL: ${{ needs.rocm-config.outputs.rocm-distro-url }}
+      ROCM_DISTRO_HASH: ${{ needs.rocm-config.outputs.rocm-distro-hash }}
+      # Unique per run so a crashed run cannot collide with this one on a pooled node.
+      CONTAINER_NAME: jax-${{ github.run_id }}-${{ github.run_attempt }}
+      # Stable label so leftover containers from crashed runs can be swept on a pooled node.
+      CONTAINER_LABEL: ci-rocm-jax
     defaults:
       run:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: openxla/xla
           persist-credentials: false
 
       - name: Checkout JAX
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jax-ml/jax
           path: jax
           persist-credentials: false
 
+      - &start_container
+        name: Start container
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          DOCKER_CONFIG="${RUNNER_TEMP}/.docker-${CONTAINER_NAME}"
+          export DOCKER_CONFIG
+          mkdir -p "${DOCKER_CONFIG}"
+
+          echo "::group::Log in to ghcr.io" >&2
+          # Authenticate to ghcr.io so the image pull below is authorized.
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+          echo "::endgroup::" >&2
+
+          echo "::group::Cleanup leftover containers" >&2
+          # Sweep any leftover containers from crashed runs of this job on this pooled node.
+          docker ps -aq --filter "label=${CONTAINER_LABEL}" | xargs -r docker rm -f || true
+          echo "::endgroup::" >&2
+
+          echo "::group::Start container" >&2
+          # Limit render devices depending on the runner.
+          if [ -f "/etc/podinfo/gha-render-devices" ]; then
+            DEVICE_FLAG=$(cat /etc/podinfo/gha-render-devices)
+          else
+            DEVICE_FLAG="--device /dev/dri --group-add video"
+          fi
+          echo "Using device flags: ${DEVICE_FLAG}" >&2
+
+          GITHUB_HOME="${RUNNER_TEMP}/_github_home_${CONTAINER_NAME}"
+          mkdir -p "${GITHUB_HOME}"
+
+          # DEVICE_FLAG is intentionally unquoted so multiple flags word-split.
+          # shellcheck disable=SC2086
+          docker run -d --name "${CONTAINER_NAME}" \
+            --label "${CONTAINER_LABEL}" \
+            ${DEVICE_FLAG} \
+            --device=/dev/kfd \
+            --ipc=host \
+            --shm-size=64G \
+            --cap-add=SYS_PTRACE \
+            --security-opt=seccomp=unconfined \
+            -e HOME=/github/home \
+            -v "${GITHUB_HOME}":/github/home \
+            -v /data/ci-cert.crt:/data/ci-cert.crt \
+            -v /data/ci-cert.key:/data/ci-cert.key \
+            -v "${GITHUB_WORKSPACE}":/work \
+            -w /work \
+            "${DOCKER_IMAGE}" sleep infinity
+          echo "::endgroup::" >&2
+
       - name: CPU Info
         run: lscpu
 
-      - name: ROCm info
-        run: /opt/rocm/bin/rocminfo
-
       - name: Run JAX Unit Tests
         timeout-minutes: 60
-        working-directory: jax
         run: |
-          ./ci/run_bazel_test_rocm_rbe.sh \
-            --override_repository=xla="${GITHUB_WORKSPACE}" \
-            --override_module=xla="${GITHUB_WORKSPACE}" \
+          docker exec -w /work/jax "${CONTAINER_NAME}" ./ci/run_bazel_test_rocm_rbe.sh \
+            --override_repository=xla="/work" \
+            --override_module=xla="/work" \
             --config=single_gpu \
             --//jax:build_jaxlib=wheel \
             --//jax:build_jax=true \
             --local_test_jobs=1 \
             --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --jobs=20 \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            --repo_env=SYSROOT_DIST=linux_glibc_2_31 \
+            --bes_keywords=jax \
+            --bes_keywords=upstream \
+            --bes_keywords=gpu \
+            --bes_keywords=pull_request
 
+      - &cleanup_container
+        name: Cleanup container
+        if: always()
+        run: docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
   xla:
     needs: rocm-config
     name: XLA Linux x86 AMD Instinct GPU
-    runs-on: linux-x86-64-1gpu-amd
-    timeout-minutes: 80
+    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
+    timeout-minutes: 220
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
-      EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/rocm-dev-infra/build_tools/rocm/execute_ci_build_upstream.sh
-    container: *rocm_container
+      ROCM_DISTRO_URL: ${{ needs.rocm-config.outputs.rocm-distro-url }}
+      ROCM_DISTRO_HASH: ${{ needs.rocm-config.outputs.rocm-distro-hash }}
+      EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/execute_ci_build_upstream.sh
+      GLOBAL_SYMBOL_VERSION_LDS_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/global_symbol_version.lds
+      # Unique per run so a crashed run cannot collide with this one on a pooled node.
+      CONTAINER_NAME: xla-${{ github.run_id }}-${{ github.run_attempt }}
+      # Stable label so leftover containers from crashed runs can be swept on a pooled node.
+      CONTAINER_LABEL: ci-rocm-xla
     defaults:
       run:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: openxla/xla
           persist-credentials: false
 
-      - name: Fetch ROCm XLA Upstream Script from ROCm/xla
+      - name: Fetch ROCm XLA Upstream Scripts from ROCm/xla
         run: |
           wget -O build_tools/rocm/execute_ci_build_upstream.sh "${EXECUTE_CI_BUILD_URL}"
           chmod +x build_tools/rocm/execute_ci_build_upstream.sh
+          wget -O build_tools/rocm/global_symbol_version.lds "${GLOBAL_SYMBOL_VERSION_LDS_URL}"
+          LDS_SHA=$(sha256sum build_tools/rocm/global_symbol_version.lds | cut -d' ' -f1)
+          # Workaround for the symbol clash with ROCm's libLLVM.so
+          {
+            echo "LLVM_SYMBOL_CLASH_WAR<<EOF"
+            echo "--dynamic_mode=default"
+            echo "--linkopt=-Wl,--version-script,/work/build_tools/rocm/global_symbol_version.lds"
+            echo "--sandbox_add_mount_pair=/work/build_tools/rocm/global_symbol_version.lds"
+            echo "--action_env=global_symbol_version_lds_CACHEBUSTER=${LDS_SHA}"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - *start_container
 
       - name: CPU Info
         run: lscpu
 
-      - name: ROCm info
-        run: /opt/rocm/bin/rocminfo
-
       - name: Test XLA [single_gpu]
-        timeout-minutes: 60
+        timeout-minutes: 120
         run: |
-          build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
+          # LLVM_SYMBOL_CLASH_WAR is intentionally unquoted so it splits into one flag per line.
+          # shellcheck disable=SC2086
+          docker exec "${CONTAINER_NAME}" build_tools/rocm/execute_ci_build_upstream.sh \
+            --config=rocm_ci_hermetic \
             --config=rocm_rbe \
             --config=ci_single_gpu \
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
             --local_test_jobs=1 \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
+            --internal_spawn_scheduler \
+            --strategy=TestRunner=dynamic \
+            ${LLVM_SYMBOL_CLASH_WAR} \
+            --bes_keywords=xla \
+            --bes_keywords=upstream \
+            --bes_keywords=gpu \
+            --bes_keywords=pull_request \
+
+      - name: Test XLA [rocm_cpu]
+        timeout-minutes: 80
+        run: |
+          # LLVM_SYMBOL_CLASH_WAR is intentionally unquoted so it splits into one flag per line.
+          # shellcheck disable=SC2086
+          docker exec "${CONTAINER_NAME}" build_tools/rocm/execute_ci_build_upstream.sh \
+            --config=rocm_ci_hermetic \
+            --config=rocm_rbe \
+            --config=ci_rocm_cpu \
+            --local_test_jobs=200 \
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            ${LLVM_SYMBOL_CLASH_WAR} \
+            --bes_keywords=xla \
+            --bes_keywords=upstream \
+            --bes_keywords=cpu \
+            --bes_keywords=pull_request
+
+      - *cleanup_container

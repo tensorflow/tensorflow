@@ -1,13 +1,14 @@
 path: "tensorflow.distribute.experimental.rpc.Server"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.experimental.rpc.rpc_ops.Server\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }
   member_method {
     name: "create"
     argspec: "args=[\'rpc_layer\', \'address\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "register"

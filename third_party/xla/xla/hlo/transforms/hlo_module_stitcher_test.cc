@@ -473,7 +473,8 @@ ENTRY shared_entry {
   optimized_modules["shared_sub"] = shared_sub_module.get();
 
   HloModuleStitcher stitcher(optimized_modules);
-  EXPECT_THAT(stitcher.Run(main_module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(stitcher.Run(main_module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   // Verify it is fully stitched (no custom calls left)
   for (const auto* comp : main_module->computations()) {

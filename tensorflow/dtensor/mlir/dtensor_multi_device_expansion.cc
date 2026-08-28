@@ -621,7 +621,7 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
         mlir::TensorType tensor_type =
             mlir::dyn_cast_or_null<mlir::TensorType>(arg.getType());
         if (!tensor_type) {
-          return errors::InvalidArgument("Could not determine tensor type.");
+          return absl::InvalidArgumentError("Could not determine tensor type.");
         }
         for (int i = 0; i < num_devices; ++i) {
           replications.emplace_back(InsertArgumentForDevice(

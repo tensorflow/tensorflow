@@ -74,7 +74,7 @@ using FuncGeneratorForType = XlaComputation (*)(PrimitiveType, XlaBuilder*);
 using FuncGenerator = XlaComputation (*)(XlaBuilder*);
 
 class ReduceTest : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                       HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   ReduceTest() {
     // Implementation note: laid out z >> y >> x by default.
@@ -977,8 +977,7 @@ TEST_F(ReduceTest, R0ReduceInDisguise) {
                              ErrorSpec(0.001));
 }
 
-class ReduceHloTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
-};
+class ReduceHloTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
   absl::string_view hlo_string = R"(
@@ -1055,8 +1054,7 @@ TEST_F(ReduceHloTest, ReduceWithEpilogueMultiOutputFusion) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-class VariadicReduceTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+class VariadicReduceTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(VariadicReduceTest, Reduce_R3x2_to_R2x2_simple) {
   absl::string_view hlo_string = R"(

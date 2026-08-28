@@ -41,13 +41,9 @@ class GpuExecutorTest : public testing::Test {
   }
 };
 
-// TODO(intel-tf): Support GetPointerMemorySpace for host memory.
 using GetPointerMemorySpaceTest = GpuExecutorTest;
 
 TEST_F(GetPointerMemorySpaceTest, Host) {
-  if (GetPlatform()->Name() == "SYCL") {
-    GTEST_SKIP() << "SYCL does not support GetPointerMemorySpace";
-  }
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto host_ptr, executor->HostMemoryAllocate(64));
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space, executor->GetPointerMemorySpace(
@@ -56,9 +52,6 @@ TEST_F(GetPointerMemorySpaceTest, Host) {
 }
 
 TEST_F(GetPointerMemorySpaceTest, HostAllocatedWithMemoryKind) {
-  if (GetPlatform()->Name() == "SYCL") {
-    GTEST_SKIP() << "SYCL does not support GetPointerMemorySpace";
-  }
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   DeviceAddressBase host_ptr = executor->Allocate(
       64, static_cast<int64_t>(stream_executor::MemorySpace::kHost));
@@ -70,9 +63,6 @@ TEST_F(GetPointerMemorySpaceTest, HostAllocatedWithMemoryKind) {
 }
 
 TEST_F(GetPointerMemorySpaceTest, Device) {
-  if (GetPlatform()->Name() == "SYCL") {
-    GTEST_SKIP() << "SYCL does not support GetPointerMemorySpace";
-  }
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   auto mem = executor->Allocate(64);
   ASSERT_NE(mem, nullptr);
@@ -86,9 +76,9 @@ using HostMemoryAllocateTest = GpuExecutorTest;
 
 TEST_F(HostMemoryAllocateTest, Numa) {
   Platform* platform = GetPlatform();
-  if (platform->Name() == "SYCL") {
+  if (platform->Name() != "CUDA") {
     // TODO(intel-tf): Support NUMA for host memory.
-    GTEST_SKIP() << "SYCL does not support NUMA for host memory";
+    GTEST_SKIP() << "NUMA support for host memory in only available on CUDA";
   }
   constexpr uint64_t kSize = 1024;
   const int num_devices = platform->VisibleDeviceCount();

@@ -46,13 +46,13 @@ namespace {
 absl::StatusOr<NameAttrList> GetAssertions(const tstring& transformation) {
   NameAttrList assertions;
   if (!std::is_base_of<protobuf::Message, NameAttrList>()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Portable proto implementations are not supported.");
   }
   if (!protobuf::TextFormat::ParseFromString(
           transformation, reinterpret_cast<protobuf::Message*>(&assertions))) {
-    return errors::InvalidArgument("Couldn't parse transformation '",
-                                   transformation, "'.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't parse transformation '", transformation, "'."));
   }
   return assertions;
 }
@@ -63,7 +63,7 @@ absl::StatusOr<const DatasetBase*> GetPreviousDataset(
   std::vector<const DatasetBase*> inputs;
   TF_RETURN_IF_ERROR(dataset.InputDatasets(&inputs));
   if (inputs.empty()) {
-    return errors::InvalidArgument("No previous transformation found.");
+    return absl::InvalidArgumentError("No previous transformation found.");
   }
   return inputs.back();
 }
@@ -72,9 +72,9 @@ absl::StatusOr<const DatasetBase*> GetPreviousDataset(
 absl::Status CheckOpName(const DatasetBase& dataset,
                          const NameAttrList& assertions) {
   if (!MatchesAnyVersion(assertions.name(), dataset.type_string())) {
-    return errors::InvalidArgument("Asserted transformation matching '",
-                                   assertions.name(), "', but found '",
-                                   dataset.type_string(), "'.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Asserted transformation matching '", assertions.name(),
+                     "', but found '", dataset.type_string(), "'."));
   }
   return absl::OkStatus();
 }
@@ -101,21 +101,22 @@ absl::Status CheckAttributes(const DatasetBase& dataset,
     auto it = node.attr().find(attr.first);
     if (it != node.attr().end()) {
       if (!std::is_base_of<protobuf::Message, AttrValue>()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Portable proto implementations are not supported.");
       }
       if (!protobuf::util::MessageDifferencer::Equivalent(
               *reinterpret_cast<const protobuf::Message*>(&it->second),
               *reinterpret_cast<const protobuf::Message*>(&attr.second))) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Asserted attribute '", attr.first, "' having a value of '",
             attr.second.DebugString(), "', but found value of '",
-            it->second.DebugString(), "'.");
+            it->second.DebugString(), "'."));
       }
     } else {
-      return errors::InvalidArgument(
-          "Asserted attribute '", attr.first, "' having a value of '",
-          attr.second.DebugString(), "', but found no such attribute defined.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Asserted attribute '", attr.first,
+                       "' having a value of '", attr.second.DebugString(),
+                       "', but found no such attribute defined."));
     }
   }
   return absl::OkStatus();
@@ -202,17 +203,17 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
         absl::StatusOr<const DatasetBase*> previous_dataset =
             GetPreviousDataset(*current_dataset);
         if (!previous_dataset.ok()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Asserted previous ", dataset()->transformations_.size(),
-              " transformations but encountered only ", i, ".");
+              " transformations but encountered only ", i, "."));
         }
 
         absl::Status s = CheckTransformation(**previous_dataset,
                                              dataset()->transformations_[i]);
         if (!s.ok()) {
-          return errors::InvalidArgument(
-              "Failure checking transformations at offset ", i, ": ",
-              s.message());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Failure checking transformations at offset ", i,
+                           ": ", s.message()));
         }
 
         current_dataset = *previous_dataset;

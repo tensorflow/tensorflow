@@ -24,6 +24,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 
@@ -72,10 +75,24 @@ std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
 
 // Helper functions to make methods more readable.
 inline int64_t GetDim(absl::Span<const int64_t> data, DimIndex dim) {
+  if (static_cast<size_t>(dim) >= data.size()) {
+    std::fprintf(stderr,
+                 "Check failed: static_cast<size_t>(dim) < data.size() (%zu "
+                 "vs. %zu)\n",
+                 static_cast<size_t>(dim), data.size());
+    std::abort();
+  }
   return data.rbegin()[static_cast<int64_t>(dim)];
 }
 
 inline void SetDim(absl::Span<int64_t> data, DimIndex dim, int64_t value) {
+  if (static_cast<size_t>(dim) >= data.size()) {
+    std::fprintf(stderr,
+                 "Check failed: static_cast<size_t>(dim) < data.size() (%zu "
+                 "vs. %zu)\n",
+                 static_cast<size_t>(dim), data.size());
+    std::abort();
+  }
   data.rbegin()[static_cast<int64_t>(dim)] = value;
 }
 
@@ -1035,21 +1052,18 @@ enum class ElementwiseOperation { kAdd, kMultiply };
 
 // A simple class representing the version of the backing library, to
 // workaround the "too perfect forwarding" issue in gcc6+ compilers.
-// See PR#16309 and issue #18402 for links discussing the issue.
+// See https://github.com/tensorflow/tensorflow/pull/16309 and
+// https://github.com/tensorflow/tensorflow/issues/18402 for links discussing
+// the issue.
+// TODO(b/539485392): Replace with SemanticVersion.
 class VersionInfo {
  public:
   explicit VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
-  explicit VersionInfo(DnnVersionInfoProto proto)
-      : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
-
-  DnnVersionInfoProto ToProto() const {
-    DnnVersionInfoProto proto;
-    proto.set_major(major_);
-    proto.set_minor(minor_);
-    proto.set_patch(patch_);
-    return proto;
-  }
+  explicit VersionInfo(SemanticVersion version)
+      : major_(version.major_version()),
+        minor_(version.minor_version()),
+        patch_(version.patch_version()) {}
 
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
@@ -1095,8 +1109,10 @@ class DnnGraph {
   DnnGraph() = default;
   virtual ~DnnGraph() = default;
 
-  virtual absl::Status Prepare(DnnSupport&, const EngineOptions&) = 0;
-  virtual absl::Status Build(DnnSupport&, std::optional<int64_t> plan_id) = 0;
+  virtual absl::Status Prepare(DnnSupport*, const DeviceDescription&,
+                               const EngineOptions&) = 0;
+  virtual absl::Status Build(DnnSupport*, const DeviceDescription&,
+                             std::optional<int64_t> plan_id) = 0;
   virtual absl::Status Execute(Stream& stream,
                                absl::Span<DeviceAddressBase> operands,
                                int64_t local_device_ordinal) const = 0;

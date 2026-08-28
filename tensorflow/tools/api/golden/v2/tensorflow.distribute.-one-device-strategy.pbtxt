@@ -3,18 +3,18 @@ tf_class {
   is_instance: "<class \'tensorflow.python.distribute.one_device_strategy.OneDeviceStrategy\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.Strategy\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "cluster_resolver"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "extended"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "num_replicas_in_sync"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

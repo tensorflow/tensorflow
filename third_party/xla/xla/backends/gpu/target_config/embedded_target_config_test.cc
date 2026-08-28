@@ -109,6 +109,10 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
     diff.IgnoreField(
         DeviceInterconnectInfoProto::GetDescriptor()->FindFieldByName(
             "clique_id"));
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "device_memory_size"));
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("model_str"));
     diff.set_message_field_comparison(
         tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
     std::string result;

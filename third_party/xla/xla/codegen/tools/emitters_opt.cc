@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
+
+#include "absl/log/check.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -42,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
+#include "google/protobuf/text_format.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
@@ -57,6 +63,7 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 struct EmittersOptOptions
     : public mlir::PassPipelineOptions<EmittersOptOptions> {
@@ -106,6 +113,7 @@ int main(int argc, char** argv) {
   mlir::bufferization::registerBufferizationPasses();
 
   mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::bufferization::registerBufferizableOpInterfaceExternalModels(registry);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       registry);
   mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);

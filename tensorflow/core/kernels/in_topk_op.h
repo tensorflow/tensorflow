@@ -68,17 +68,19 @@ struct InTopKFunctor<CPUDevice, T, TargetT> {
       }
     }
 
-    for (int batch_idx = 0; batch_idx < num_targets; batch_idx++) {
+    for (Eigen::Index batch_idx = 0; batch_idx < num_targets; batch_idx++) {
       auto target = internal::SubtleMustCopy(targets(batch_idx));
 
       bool cannot_say = !FastBoundsCheck(target, num_classes) ||
-                        !std::isfinite(predictions(batch_idx, target));
+                        !std::isfinite(predictions(
+                            batch_idx, static_cast<Eigen::Index>(target)));
 
-      int more_probable_classes = 0;
+      int64_t more_probable_classes = 0;
       if (!cannot_say) {
-        const T target_prediction = predictions(batch_idx, target);
+        const T target_prediction =
+            predictions(batch_idx, static_cast<Eigen::Index>(target));
 
-        for (int class_idx = 0; class_idx < num_classes; ++class_idx) {
+        for (Eigen::Index class_idx = 0; class_idx < num_classes; ++class_idx) {
           T pred = predictions(batch_idx, class_idx);
           if (!std::isfinite(pred)) {
             cannot_say = true;

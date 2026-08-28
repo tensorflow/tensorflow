@@ -2,11 +2,11 @@ path: "tensorflow.nn"
 tf_module {
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member {
     name: "rnn_cell"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "all_candidate_sampler"

@@ -387,6 +387,81 @@ ENTRY main {
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
+       UpdatesDynamicSliceConfigInsideClonedAsyncComputation) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule m
+
+condition {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  limit = s32[] constant(4)
+  ROOT done = pred[] compare(ivar, limit), direction=LT
+}
+
+async_dus {
+  buffer = f32[8,4] parameter(0)
+  update = f32[1,4] parameter(1)
+  ivar = s32[] parameter(2)
+  c0 = s32[] parameter(3)
+  ROOT updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
+      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+}
+
+body {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  buffer = f32[8,4] get-tuple-element(input_tuple), index=1
+  update = f32[1,4] get-tuple-element(input_tuple), index=2
+  c0 = s32[] constant(0)
+  updated_start = ((f32[8,4], f32[1,4], s32[], s32[]), f32[8,4], u32[])
+      async-start(buffer, update, ivar, c0), calls=async_dus
+  updated = f32[8,4] async-done(updated_start), calls=async_dus
+  one = s32[] constant(1)
+  ivar_plus_1 = s32[] add(ivar, one)
+  ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
+      tuple(ivar_plus_1, updated, update)
+}
+
+ENTRY main {
+  buffer = f32[8,4] parameter(0)
+  update = f32[1,4] parameter(1)
+  init = s32[] constant(0)
+  tuple = (s32[], f32[8,4], f32[1,4]) tuple(init, buffer, update)
+  ROOT while = (s32[], f32[8,4], f32[1,4]) while(tuple),
+      condition=condition, body=body,
+      backend_config={"known_trip_count":{"n":"4"},
+                      "known_init_step":{"init":"0","step":"1"},
+                      "known_induction_variable":{"tuple_index":"0"}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling unroller(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloComputation* body = module->GetComputationWithName("body");
+  HloInstruction* original_start =
+      body->GetInstructionWithName("updated_start");
+  HloInstruction* cloned_start =
+      body->GetInstructionWithName("updated_start.double_buffer_clone");
+  ASSERT_NE(original_start, nullptr);
+  ASSERT_NE(cloned_start, nullptr);
+
+  ExpectDynamicSliceConfig(hlo_query::GetFirstInstructionWithOpcode(
+                               *original_start->async_wrapped_computation(),
+                               HloOpcode::kDynamicUpdateSlice),
+                           /*loop_index=*/0, /*byte_offset=*/16,
+                           /*byte_stride=*/64);
+  ExpectDynamicSliceConfig(hlo_query::GetFirstInstructionWithOpcode(
+                               *cloned_start->async_wrapped_computation(),
+                               HloOpcode::kDynamicUpdateSlice),
+                           /*loop_index=*/0, /*byte_offset=*/48,
+                           /*byte_stride=*/64);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
        UpdatesDynamicSliceConfigForPeeledOddDoubleBuffering) {
   constexpr absl::string_view kModuleString = R"(
 HloModule m
@@ -1382,8 +1457,7 @@ ENTRY main {
     // CHECK: %body {{.+}} {
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main {{.+}} {
@@ -1435,8 +1509,7 @@ ENTRY main {
     // CHECK: %body
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]])
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main {{.+}} {
     // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
@@ -1487,10 +1560,10 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(%param_0), {{.+}}
+    // CHECK:   %[[PARAM:.+]] = {{.+}} parameter(0)
+    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(%[[PARAM]]#0), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main
     // CHECK-NOT: collective-permute
@@ -1541,8 +1614,7 @@ ENTRY main {
     // CHECK: %body
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main
@@ -1598,8 +1670,7 @@ ENTRY main {
     // CHECK:   %[[cp_start1:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start1]])
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.*}}), {{.+}}
+    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start2]])
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
@@ -2070,7 +2141,7 @@ ENTRY main {
                   1);
         ++num_inner_whiles;
       });
-  // Outter loop should not be unrolled, the inner while count should be still
+  // Outer loop should not be unrolled, the inner while count should be still
   // be 1.
   EXPECT_EQ(num_inner_whiles, 1);
 }
@@ -2131,7 +2202,7 @@ ENTRY main {
                   5);
         ++num_inner_whiles;
       });
-  // Outter loop should not be unrolled, the inner while count should be still
+  // Outer loop should not be unrolled, the inner while count should be still
   // be 1.
   EXPECT_EQ(num_inner_whiles, 1);
 }

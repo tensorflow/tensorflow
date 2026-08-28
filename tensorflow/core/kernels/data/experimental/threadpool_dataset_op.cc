@@ -56,10 +56,11 @@ constexpr int kThreadLimit = 65536;
 
 absl::Status ValidateNumThreads(int32_t num_threads) {
   if (num_threads < 0) {
-    return errors::InvalidArgument("`num_threads` must be >= 0");
+    return absl::InvalidArgumentError("`num_threads` must be >= 0");
   }
   if (num_threads >= kThreadLimit) {
-    return errors::InvalidArgument("`num_threads` must be < ", kThreadLimit);
+    return absl::InvalidArgumentError(
+        absl::StrCat("`num_threads` must be < ", kThreadLimit));
   }
   return absl::OkStatus();
 }
@@ -422,7 +423,7 @@ void MaxIntraOpParallelismDatasetOp::MakeDatasetFromOptions(
     DatasetBase** output) {
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
-      errors::InvalidArgument("`max_intra_op_parallelism` must be >= 0"));
+      absl::InvalidArgumentError("`max_intra_op_parallelism` must be >= 0"));
   *output = new Dataset(DatasetContext(DatasetContext::Params(
                             {MaxIntraOpParallelismDatasetOp::kDatasetType,
                              MaxIntraOpParallelismDatasetOp::kDatasetOp})),
@@ -438,7 +439,7 @@ void MaxIntraOpParallelismDatasetOp::MakeDataset(OpKernelContext* ctx,
                                               &max_intra_op_parallelism));
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
-      errors::InvalidArgument("`max_intra_op_parallelism` must be >= 0"));
+      absl::InvalidArgumentError("`max_intra_op_parallelism` must be >= 0"));
   *output = new Dataset(ctx, input, max_intra_op_parallelism);
 }
 

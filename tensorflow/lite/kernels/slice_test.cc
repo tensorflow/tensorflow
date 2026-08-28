@@ -142,6 +142,16 @@ TEST_P(SliceOpTest, In5D) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
 }
 
+TEST_P(SliceOpTest, In6D) {
+  SliceOpModel<float, int32_t> m({2, 1, 1, 1, 1, 3}, {6}, {1, 0, 0, 0, 0, 1},
+                                 {6}, {1, 1, 1, 1, 1, 2}, TensorType_INT32,
+                                 TensorType_FLOAT32, GetParam());
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 1, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 6}));
+}
+
 TEST_P(SliceOpTest, InputFloat) {
   SliceOpModel<float, int32_t> m({4, 1, 1, 1}, {4}, {1, 0, 0, 0}, {4},
                                  {3, 1, 1, 1}, TensorType_INT32,

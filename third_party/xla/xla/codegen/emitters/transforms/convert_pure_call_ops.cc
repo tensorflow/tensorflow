@@ -21,10 +21,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_CONVERTPURECALLOPSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 struct RewriteCall : mlir::OpRewritePattern<PureCallOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -52,10 +53,6 @@ class ConvertPureCallOpsPass
 };
 
 }  // namespace
-
-std::unique_ptr<::mlir::Pass> CreateConvertPureCallOpsPass() {
-  return std::make_unique<ConvertPureCallOpsPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
@@ -82,12 +83,7 @@ class CustomCallThunk : public TracedCommand {
     std::unique_ptr<xla::ffi::Ffi> instantiate;
     std::unique_ptr<xla::ffi::Ffi> prepare;
     std::unique_ptr<xla::ffi::Ffi> execute;
-  };
-
-  // A per-execution state that holds state for prepare and initialize stages.
-  struct PrepareAndInitState {
-    ffi::ExecutionState prepare;
-    ffi::ExecutionState init;
+    std::unique_ptr<xla::ffi::Ffi> record;
   };
 
   // Creates a serializable custom call thunk. The callback is resolved using
@@ -101,7 +97,8 @@ class CustomCallThunk : public TracedCommand {
       const se::GpuComputeCapability& gpu_compute_capability,
       std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
-          std::nullopt);
+          std::nullopt,
+      bool use_pdl = false);
 
   // Creates a serializable custom call thunk from the given XLA FFI handler
   // bundle. Note that `target_name` needs to refer to a registered XLA FFI
@@ -115,7 +112,8 @@ class CustomCallThunk : public TracedCommand {
       const se::GpuComputeCapability& gpu_compute_capability,
       std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
-          std::nullopt);
+          std::nullopt,
+      bool use_pdl = false);
 
   // Creates a custom call thunk from a bundle of handlers created with
   // xla::ffi::Bind(). Any pointer or reference lambda captures must be valid
@@ -134,7 +132,16 @@ class CustomCallThunk : public TracedCommand {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  bool requires_warmup() const override { return true; }
+
   const std::string& target_name() const { return target_name_; }
+
+  bool use_pdl() const { return use_pdl_; }
 
   std::optional<XLA_FFI_Handler_Bundle> bundle() const {
     const XLA_FFI_Handler_Bundle* c_bundle =
@@ -190,7 +197,8 @@ class CustomCallThunk : public TracedCommand {
       xla::ffi::AttributesMap attributes,
       std::unique_ptr<ffi::ExecutionState> execution_state,
       const HloComputation* called_computation,
-      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
+      bool use_pdl = false);
 
   absl::StatusOr<ObjectPool<xla::ffi::CallFrame>::BorrowedObject>
   BuildCallFrame(const BufferAllocations* absl_nullable buffer_allocations);
@@ -217,7 +225,8 @@ class CustomCallThunk : public TracedCommand {
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
       const CollectiveMemory* absl_nullable collective_memory,
-      absl::Span<se::Stream* const> computation_streams);
+      absl::Span<se::Stream* const> computation_streams,
+      const XLA_FFI_Extension* extension_start = nullptr);
 
   absl::Status ExecuteFfiHandler(
       RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
@@ -229,7 +238,8 @@ class CustomCallThunk : public TracedCommand {
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
       const CollectiveMemory* absl_nullable collective_memory,
-      absl::Span<se::Stream* const> computation_streams);
+      absl::Span<se::Stream* const> computation_streams,
+      const XLA_FFI_Extension* extension_start = nullptr);
 
   std::string target_name_;
 
@@ -237,9 +247,9 @@ class CustomCallThunk : public TracedCommand {
   std::vector<NullableShapedSlice> operands_;
   std::vector<NullableShapedSlice> results_;
 
-  // XLA FFI handler bundle: either a C API bundle (from the global FFI
   // registry) or an owned bundle (from xla::ffi::Bind()).
   std::variant<XLA_FFI_Handler_Bundle, OwnedHandlerBundle> bundle_;
+  bool use_pdl_ = false;
   std::optional<xla::ffi::AttributesMap> attributes_;
 
   // Reference call frame pre-initialized at construction time.

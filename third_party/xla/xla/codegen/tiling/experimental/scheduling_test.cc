@@ -22,10 +22,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
@@ -41,7 +41,6 @@ namespace xla::gpu::experimental {
 namespace {
 
 using absl_testing::IsOkAndHolds;
-using absl_testing::StatusIs;
 using mlir::MLIRContext;
 
 }  // namespace
@@ -68,16 +67,64 @@ class SchedulingTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes = {}) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ABSL_ASSIGN_OR_RETURN(auto tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     if (!tile_sizes.empty()) {
-      RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
+      ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     }
-    return TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
+    ABSL_ASSIGN_OR_RETURN(
+        TiledHloComputation tiled_computation,
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+    tiled_computation.Simplify();
+    tiled_computation.SortInstructionsPostOrder();
+    return tiled_computation;
   }
 
   mlir::MLIRContext mlir_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
+
+TEST_F(SchedulingTest, OnlyParallelDimensionsTwoTilesPerProgramId) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    fusion {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT subtract = f32[2,97]{1,0} subtract(p0, p1)
+    }
+    ENTRY main {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT fusion = f32[2,97]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+    })",
+                                    {1, 32}));
+  auto scheduling = GetSchedule(tiled_computation, 2);
+  EXPECT_THAT(scheduling,
+              IsOkAndHolds(MatchSchedule("d0 -> (pid * 2 + tid) / 4, "
+                                         "d1 -> (pid * 2 + tid) mod 4, "
+                                         "num_pids=4, num_tiles=8")));
+}
+
+TEST_F(SchedulingTest, OnlyParallelDimensionsThreeTilesPerProgramId) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    fusion {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT subtract = f32[2,97]{1,0} subtract(p0, p1)
+    }
+    ENTRY main {
+      p0 = f32[2,97]{1,0} parameter(0)
+      p1 = f32[2,97]{1,0} parameter(1)
+      ROOT fusion = f32[2,97]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+    })",
+                                    {1, 32}));
+  auto scheduling = GetSchedule(tiled_computation, 3);
+  EXPECT_THAT(scheduling,
+              IsOkAndHolds(MatchSchedule("d0 -> (pid * 3 + tid) / 4, "
+                                         "d1 -> (pid * 3 + tid) mod 4, "
+                                         "num_pids=3, num_tiles=8")));
+}
 
 TEST_F(SchedulingTest, OnlyParallelDimensions) {
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
@@ -95,8 +142,8 @@ TEST_F(SchedulingTest, OnlyParallelDimensions) {
                                     {1, 32}));
   auto scheduling = GetSchedule(tiled_computation);
   EXPECT_THAT(scheduling,
-              IsOkAndHolds(MatchSchedule(
-                  "d0 -> pid / 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 4, d1 -> pid mod 4, "
+                                         "num_pids=8, num_tiles=8")));
 }
 
 TEST_F(SchedulingTest, ReductionsAndContractionsAreNotSupported) {
@@ -120,8 +167,8 @@ TEST_F(SchedulingTest, ReductionsAndContractionsAreNotSupported) {
     })",
                                     {1, 32, /*reduction_tile_size=*/8}));
   EXPECT_THAT(GetSchedule(tiled_computation),
-              IsOkAndHolds(MatchSchedule(
-                  "d0 -> pid / 4, d1 -> pid mod 4, pid_bounds=[0, 7]")));
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 4, d1 -> pid mod 4, "
+                                         "num_pids=8, num_tiles=8")));
 }
 
 TEST_F(SchedulingTest, GetDotPermutationMultipleBatchDims) {
@@ -146,7 +193,82 @@ TEST_F(SchedulingTest, GetDotPermutationMultipleBatchDims) {
       IsOkAndHolds(MatchSchedule("d0 -> pid / 384, d1 -> (pid mod 384) / 128, "
                                  "d2 -> pid mod 384 mod 128 mod 2, "
                                  "d3 -> (pid mod 384 mod 128) / 2, "
-                                 "pid_bounds=[0, 767]")));
+                                 "num_pids=768, num_tiles=768")));
+}
+
+// kRaggedNonContracting M/N swap heuristic:
+// When M_avg = M_total/G < N, the scheduler traverses N more slowly
+// so that LHS activation tiles (size M_avg) stay in L2 cache.
+//
+// Shapes: LHS f32[64,256] (M=64,K=256), RHS f32[8,256,128] (G=8,K=256,N=128)
+//   group_sizes s32[8], output f32[64,128]
+//   M_avg = 64/8 = 8 < N = 128  →  swap M and N traversal order.
+//
+// TilingSpace:
+//   dim 0: M=64   kParallel
+//   dim 1: N=128  kParallel
+//   dim 2: G=8    kSequential  (G outer loop, tile_size=1)
+//   dim 3: K=256  kSequential  (K inner loop, tile_size=32)
+//
+// Tile sizes: [BLOCK_M=8, BLOCK_N=16, tile_G=1, BLOCK_K=32]
+//   M blocks = 64/8 = 8, N blocks = 128/16 = 8, total = 64 tiles.
+//
+// Without swap: d0(M) is outer (slower), d1(N) is inner (faster).
+// With swap:    d1(N) is outer (slower), d0(M) is inner (faster).
+//   → d0 → pid % 8, d1 → pid / 8.
+TEST_F(SchedulingTest, GetRaggedDotNonContractingPermutationSwapsMN) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    fusion {
+      lhs = f32[64,256] parameter(0)
+      rhs = f32[8,256,128] parameter(1)
+      gs  = s32[8] parameter(2)
+      ROOT rd = f32[64,128] ragged-dot(lhs, rhs, gs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1},
+          lhs_ragged_dims={0}, rhs_group_dims={0}
+    }
+    ENTRY main {
+      p0 = f32[64,256] parameter(0)
+      p1 = f32[8,256,128] parameter(1)
+      p2 = s32[8] parameter(2)
+      ROOT fusion = f32[64,128] fusion(p0, p1, p2), kind=kLoop, calls=fusion
+    })",
+                                    {8, 16, 1, 32}));
+  // M_avg = 8 < N = 128 → swap: N outer (slower), M inner (faster).
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule(
+          "d0 -> pid mod 8, d1 -> pid / 8, num_pids=64, num_tiles=64")));
+}
+
+// When M_avg >= N, no swap is beneficial (LHS is the larger operand).
+// Shapes: LHS f32[512,256] (M=512,K=256), RHS f32[8,256,64] (G=8,K=256,N=64)
+//   M_avg = 512/8 = 64 >= N = 64  →  no swap (condition is M_avg < N).
+// Tile sizes: [BLOCK_M=32, BLOCK_N=32, tile_G=1, BLOCK_K=32]
+//   M blocks = 512/32 = 16, N blocks = 64/32 = 2, total = 32 tiles.
+TEST_F(SchedulingTest, GetRaggedDotNonContractingPermutationNoSwapWhenMGeN) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    fusion {
+      lhs = f32[512,256] parameter(0)
+      rhs = f32[8,256,64] parameter(1)
+      gs  = s32[8] parameter(2)
+      ROOT rd = f32[512,64] ragged-dot(lhs, rhs, gs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1},
+          lhs_ragged_dims={0}, rhs_group_dims={0}
+    }
+    ENTRY main {
+      p0 = f32[512,256] parameter(0)
+      p1 = f32[8,256,64] parameter(1)
+      p2 = s32[8] parameter(2)
+      ROOT fusion = f32[512,64] fusion(p0, p1, p2), kind=kLoop, calls=fusion
+    })",
+                                    {32, 32, 1, 32}));
+  // M_avg = 64 >= N = 64 → no swap: d0(M) outer (slower), d1(N) inner (faster).
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule(
+          "d0 -> pid / 2, d1 -> pid mod 2, num_pids=32, num_tiles=32")));
 }
 
 }  // namespace xla::gpu::experimental

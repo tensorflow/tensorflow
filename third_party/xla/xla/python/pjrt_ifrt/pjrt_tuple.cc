@@ -23,15 +23,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/future.h"
@@ -50,7 +50,7 @@ namespace ifrt {
 absl::StatusOr<std::optional<int64_t>> PjRtTuple::ByteSize() const {
   int64_t byte_size = 0;
   for (const auto& value : values_) {
-    ASSIGN_OR_RETURN(std::optional<int64_t> element_byte_size,
+    ABSL_ASSIGN_OR_RETURN(std::optional<int64_t> element_byte_size,
                      value->ByteSize());
     if (!element_byte_size.has_value()) {
       return std::nullopt;
@@ -76,12 +76,7 @@ tsl::Future<> PjRtTuple::Delete() {
       is_deleted_.Notify();
     }
   }
-  std::vector<tsl::Future<>> futures;
-  futures.reserve(values_.size());
-  for (const auto& value : values_) {
-    futures.push_back(value->Delete());
-  }
-  return JoinFutures(absl::MakeSpan(futures));
+  return client_->DeleteValues(absl::MakeSpan(values_));
 }
 
 bool PjRtTuple::IsDeleted() const {

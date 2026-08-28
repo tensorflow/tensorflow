@@ -18,6 +18,9 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 
+// WARNING: this header file is DEPRECATED.
+// See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus

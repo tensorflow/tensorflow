@@ -51,6 +51,64 @@ TEST(AllocationTrackerTest, TrackAndFree) {
   EXPECT_FALSE(tracker.IsTracked(addr));
 }
 
+TEST(AllocationTrackerTest, FreeAllowsBaseAddressWithSmallerSize) {
+  MemoryAllocator::AllocationTracker tracker;
+
+  void* ptr0 = reinterpret_cast<void*>(0x1234);
+  auto alloc0 = std::make_unique<DummyMemoryAllocation>(ptr0);
+  ASSERT_OK_AND_ASSIGN(DeviceAddressBase addr0,
+                       tracker.Track(std::move(alloc0)));
+  EXPECT_OK(tracker.Free(DeviceAddressBase(addr0.opaque(), 8)));
+  EXPECT_FALSE(tracker.IsTracked(addr0));
+
+  void* ptr1 = reinterpret_cast<void*>(0x5678);
+  auto alloc1 = std::make_unique<DummyMemoryAllocation>(ptr1);
+  ASSERT_OK_AND_ASSIGN(DeviceAddressBase addr1,
+                       tracker.Track(std::move(alloc1)));
+  EXPECT_OK(tracker.Free(DeviceAddressBase(addr1.opaque(), 0)));
+  EXPECT_FALSE(tracker.IsTracked(addr1));
+}
+
+TEST(AllocationTrackerTest, FreeAllowsPayloadHandleWithSmallerSize) {
+  MemoryAllocator::AllocationTracker tracker;
+  void* ptr = reinterpret_cast<void*>(0x1234);
+  auto alloc = std::make_unique<DummyMemoryAllocation>(ptr);
+
+  ASSERT_OK_AND_ASSIGN(DeviceAddressBase addr, tracker.Track(std::move(alloc)));
+  DeviceAddressBase mismatched_size(addr.opaque(), 8);
+  mismatched_size.SetPayload(addr.payload());
+
+  EXPECT_OK(tracker.Free(mismatched_size));
+  EXPECT_FALSE(tracker.IsTracked(addr));
+}
+
+TEST(AllocationTrackerTest, FreeRejectsPayloadHandleWithOversizedRange) {
+  MemoryAllocator::AllocationTracker tracker;
+  void* ptr = reinterpret_cast<void*>(0x1234);
+  auto alloc = std::make_unique<DummyMemoryAllocation>(ptr);
+
+  ASSERT_OK_AND_ASSIGN(DeviceAddressBase addr, tracker.Track(std::move(alloc)));
+  DeviceAddressBase oversized(addr.opaque(), 101);
+  oversized.SetPayload(addr.payload());
+
+  EXPECT_FALSE(tracker.Free(oversized).ok());
+  EXPECT_TRUE(tracker.IsTracked(addr));
+
+  EXPECT_OK(tracker.Free(addr));
+}
+
+TEST(AllocationTrackerTest, FreeRejectsBaseAddressWithOversizedRange) {
+  MemoryAllocator::AllocationTracker tracker;
+  void* ptr = reinterpret_cast<void*>(0x1234);
+  auto alloc = std::make_unique<DummyMemoryAllocation>(ptr);
+
+  ASSERT_OK_AND_ASSIGN(DeviceAddressBase addr, tracker.Track(std::move(alloc)));
+  EXPECT_FALSE(tracker.Free(DeviceAddressBase(addr.opaque(), 101)).ok());
+  EXPECT_TRUE(tracker.IsTracked(addr));
+
+  EXPECT_OK(tracker.Free(addr));
+}
+
 // A MemoryAllocation that interacts with the AllocationTracker in its
 // destructor. This is used to test that the tracker does not hold its lock when
 // destroying the allocation, which would otherwise cause a deadlock.

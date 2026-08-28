@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s -split-input-file \
 // RUN: -triton-xla-extract-insert-to-triton \
 // RUN: | FileCheck %s
@@ -5,6 +19,10 @@
 // RUN: xla-opt %s -split-input-file \
 // RUN: -triton-xla-extract-insert-to-triton="allow_tma=1 num_stages=3" \
 // RUN: | FileCheck %s --check-prefix=CHECK-TMA
+
+// RUN: xla-opt %s -split-input-file \
+// RUN: -triton-xla-extract-insert-to-triton="allow_tma=1 num_stages=1" \
+// RUN: | FileCheck %s --check-prefix=CHECK-TMA-1STAGE
 
 // RUN: xla-opt %s -split-input-file \
 // RUN: -triton-xla-extract-insert-to-triton="allow_tdm=1" \
@@ -34,15 +52,110 @@ func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}],
 // CHECK-TMA:         tt.return
 
-// Middle singleton dim is TDM-incompatible, so fall back to pointer loads.
 // CHECK-TDM-LABEL: tt.func @lower_extract_insert(
 // CHECK-TDM-SAME:      %arg0: !tt.ptr<bf16> {tt.divisibility = 16 : i32},
 // CHECK-TDM-SAME:      %arg1: !tt.ptr<bf16> {tt.divisibility = 16 : i32}) {
+// CHECK-TDM:         %[[PTR0:.*]] = tt.addptr %arg0, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %[[PTR0]]
+// CHECK-TDM-SAME:       <bf16>, <16x64xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[PTR1:.*]] = tt.addptr %arg1, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %[[PTR1]]
+// CHECK-TDM-SAME:       <bf16>, <16x64xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]{{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_batch_major_dim(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<4x32x256xbf16, #xtile.layout<[2, 1, 0]>>
+      [2, 0, 0] [1, 32, 256] [1, 1, 1] : tensor<32x256xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<4x32x256xbf16, #xtile.layout<[2, 1, 0]>>
+      [1, 0, 0] [1, 32, 256] [1, 1, 1] : tensor<32x256xbf16>
+  func.return
+}
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_batch_major_dim(
+// CHECK-TDM:         %[[PTR0:.*]] = tt.addptr %arg0, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %[[PTR0]]
+// CHECK-TDM-SAME:       <bf16>, <32x256xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[PTR1:.*]] = tt.addptr %arg1, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %[[PTR1]]
+// CHECK-TDM-SAME:       <bf16>, <32x256xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]{{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_small_minor_dim(
+    %arg0: !tt.ptr<f8E4M3FN>, %arg1: !tt.ptr<f8E4M3FN>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<4x128x4xf8E4M3FN, #xtile.layout<[2, 1, 0]>>
+      [2, 0, 0] [1, 128, 4] [1, 1, 1] : tensor<128x4xf8E4M3FN>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<4x128x4xf8E4M3FN, #xtile.layout<[2, 1, 0]>>
+      [1, 0, 0] [1, 128, 4] [1, 1, 1] : tensor<128x4xf8E4M3FN>
+  func.return
+}
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_small_minor_dim(
 // CHECK-TDM-NOT:     tt.make_tensor_descriptor
 // CHECK-TDM-NOT:     tt.descriptor_load
 // CHECK-TDM-NOT:     tt.descriptor_store
 // CHECK-TDM:         %[[LOAD:.*]] = tt.load
 // CHECK-TDM:         tt.store {{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_trivial_batch_dim(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<32x256x4xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 2] [32, 256, 1] [1, 1, 1] : tensor<32x256xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<32x256x4xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 1] [32, 256, 1] [1, 1, 1] : tensor<32x256xbf16>
+  func.return
+}
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_trivial_batch_dim(
+// CHECK-TDM-NOT:     tt.make_tensor_descriptor
+// CHECK-TDM-NOT:     tt.descriptor_load
+// CHECK-TDM-NOT:     tt.descriptor_store
+// CHECK-TDM:         %[[LOAD:.*]] = tt.load
+// CHECK-TDM:         tt.store {{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_nontrivial_batch_dim(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<32x256x8xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 0] [32, 256, 8] [1, 1, 1] : tensor<32x256x8xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<32x256x8xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 0] [32, 256, 8] [1, 1, 1] : tensor<32x256x8xbf16>
+  func.return
+}
+
+// CHECK-LABEL: tt.func @lower_extract_insert_nontrivial_batch_dim
+// CHECK:         %[[LOAD:.*]] = tt.load
+// CHECK:         tt.store {{.*}}, %[[LOAD]]
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_nontrivial_batch_dim(
+// CHECK-TDM-NOT:     tt.addptr
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %arg0
+// CHECK-TDM-SAME:       <bf16>, <32x256x8xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %arg1
+// CHECK-TDM-SAME:       <bf16>, <32x256x8xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]{{.*}}, %[[LOAD]]
 // CHECK-TDM:         tt.return
 
 // -----
@@ -286,8 +399,10 @@ func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(
 // CHECK-TMA:         tt.descriptor_store
 
 // CHECK-TDM-LABEL: tt.func @incompatible_tma_const_offset_not_divisible_by_16_bytes
-// CHECK-TDM-NOT:     tt.make_tensor_descriptor
-// CHECK-TDM:         tt.load
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %arg0
+// CHECK-TDM-SAME:       <bf16>, <64xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM-NOT:     tt.descriptor_store
 // CHECK-TDM:         tt.store
 
 // -----
@@ -321,11 +436,55 @@ module {
 
 // CHECK-TDM-LABEL: tt.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes
 // CHECK-TDM:         tt.descriptor_load
-// CHECK-TDM:         tt.store
+// CHECK-TDM:         %[[PTR1:.*]] = tt.addptr %arg1, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %[[PTR1]]
+// CHECK-TDM-SAME:       <bf16>, <16x16xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]
+
+// =============================================================================
+// Tests for TMA condition: (num_stages > 1 && HasBroadcast && (tile_bytes % 128 != 0))
+// =============================================================================
+
+// Case 1: Broadcast + Unaligned tile (64B) + Pipelined (num_stages=3) -> SKIPS TMA
+// Case 3: Broadcast + Unaligned tile (64B) + Unpipelined (num_stages=1) -> USES TMA
+func.func @broadcast_unaligned_tile_pipelining_tma_test(
+          %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
+  %cst = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
+  %extracted_tile = triton_xla.extract from %arg0 as
+      memref<16xf32, #xtile.layout<[0]>> [0] [16] [1] : tensor<16xf32>
+  %0 = tt.expand_dims %extracted_tile {axis = 1 : i32}
+      : tensor<16xf32> -> tensor<16x1xf32>
+  %1 = tt.broadcast %0 : tensor<16x1xf32> -> tensor<16x64xf32>
+  %extracted_tile_0 = triton_xla.extract from %arg1 as
+      memref<64x64xf32, #xtile.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      : tensor<64x64xf32>
+  %2 = tt.dot %1, %extracted_tile_0, %cst, inputPrecision = tf32
+      : tensor<16x64xf32> * tensor<64x64xf32> -> tensor<16x64xf32>
+  triton_xla.insert %2 into %arg2 as
+      memref<16x64xf32, #xtile.layout<[1, 0]>> [0, 0] [16, 64] [1, 1]
+      : tensor<16x64xf32>
+  return
+}
+
+// Case 1 (num_stages=3): Skips TMA for unaligned broadcast operand (%arg0), but keeps TMA for %arg1.
+// CHECK-TMA-LABEL: tt.func @broadcast_unaligned_tile_pipelining_tma_test
+// CHECK-TMA-NOT:         tt.descriptor_load %arg0
+// CHECK-TMA:             tt.descriptor_load %arg1
+
+// Case 3 (num_stages=1): Uses TMA for unaligned broadcast operand (%arg0) when unpipelined.
+// CHECK-TMA-1STAGE-LABEL: tt.func @broadcast_unaligned_tile_pipelining_tma_test
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg0
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg1
+
+// CHECK-TDM-LABEL: tt.func @broadcast_unaligned_tile_pipelining_tma_test
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_store
 
 // -----
 
-func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
+// Case 2: Broadcast + Aligned tile (256B) + Pipelined (num_stages=3) -> USES TMA
+func.func @broadcast_aligned_tile_pipelined_uses_tma(
           %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
   %cst = arith.constant dense<0.000000e+00> : tensor<64x64xf32>
   %extracted_tile = triton_xla.extract from %arg0 as
@@ -344,14 +503,13 @@ func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
   return
 }
 
-// CHECK-TMA-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
-// CHECK-TMA-NOT:         tt.descriptor_load %arg0
-// CHECK-TMA:             tt.descriptor_load %arg1
+// CHECK-TMA-LABEL: tt.func @broadcast_aligned_tile_pipelined_uses_tma
+// CHECK-TMA:         tt.descriptor_load %arg0
+// CHECK-TMA:         tt.descriptor_load %arg1
 
-// CHECK-TDM-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
-// CHECK-TDM:         tt.descriptor_load
-// CHECK-TDM:         tt.descriptor_load
-// CHECK-TDM:         tt.descriptor_store
+// CHECK-TMA-1STAGE-LABEL: tt.func @broadcast_aligned_tile_pipelined_uses_tma
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg0
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg1
 
 // -----
 
@@ -375,7 +533,9 @@ module {
 }
 
 // CHECK-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
-// CHECK: %[[MASK:.*]] = arith.cmpi slt
+// CHECK: %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK: %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK: %[[MASK:.*]] = arith.andi %[[LEFT_MASK]], %[[RIGHT_MASK]]
 // CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}
 
 // CHECK-TDM-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
@@ -407,7 +567,9 @@ module {
 }
 
 // CHECK-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end
-// CHECK: %[[MASK:.*]] = arith.cmpi slt
+// CHECK: %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK: %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK: %[[MASK:.*]] = arith.andi %[[LEFT_MASK]], %[[RIGHT_MASK]]
 // CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}
 
 // CHECK-TDM-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 
+#include <limits>
 #include <utility>
 
 #ifndef CL_DELEGATE_NO_GL
@@ -188,7 +189,8 @@ class DefaultTensorTie : public TensorTie {
     }
     switch (d.object_def.object_type) {
       case ObjectType::CPU_MEMORY: {
-        size_t bytes_size = NumElements(d) * SizeOf(d.object_def.data_type);
+        size_t bytes_size = static_cast<size_t>(NumElements(d)) *
+                            SizeOf(d.object_def.data_type);
         cpu_memory_.resize(bytes_size);
         external_obj_ = CpuMemory{cpu_memory_.data(), cpu_memory_.size()};
         break;
@@ -812,6 +814,20 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   absl::Status Build(std::unique_ptr<InferenceRunner>* runner) override {
+    for (const auto& input : inputs_) {
+      if (NumElements(input.external_def) >
+          std::numeric_limits<int32_t>::max()) {
+        return absl::InvalidArgumentError(
+            "Input tensor size exceeds 32-bit indexing limits.");
+      }
+    }
+    for (const auto& output : outputs_) {
+      if (NumElements(output.external_def) >
+          std::numeric_limits<int32_t>::max()) {
+        return absl::InvalidArgumentError(
+            "Output tensor size exceeds 32-bit indexing limits.");
+      }
+    }
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_ && !HasGlObjects()) {
       // destroy interop layer when there are no GL objects to avoid

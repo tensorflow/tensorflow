@@ -49,6 +49,15 @@ struct StablehloExportPipelineOptions
                      "stablehlo.reduce_scatter. If false, only ops with "
                      "unreduced axes are exported this way."),
       llvm::cl::init(false)};
+  Option<bool> simplifyReplicatedShardings{
+      *this, "simplify-replicated-shardings",
+      llvm::cl::desc("Whether to simplify replicated shardings during export "
+                     "to make final sharding strings shorter."),
+      llvm::cl::init(false)};
+  Option<bool> clearReverseOpSharding{
+      *this, "clear-reverse-op-sharding",
+      llvm::cl::desc("Whether to clear reverse op result sharding on export."),
+      llvm::cl::init(false)};
 };
 
 // Register the xla-sdy-stablehlo-export-pipeline.

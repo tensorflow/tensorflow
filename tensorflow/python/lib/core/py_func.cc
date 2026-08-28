@@ -204,8 +204,10 @@ absl::Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   EagerExecutor* old_executor = nullptr;
   if (call->eager) {
     // See FuncRegistry._ctx.
-    TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
-        PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
+    PyObject* ctx_handle = PyObject_GetAttrString(trampoline, "_ctx");
+    TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
+        PyCapsule_GetPointer(ctx_handle, "TFE_Context"));
+    Py_XDECREF(ctx_handle);
     CHECK_NE(ctx, nullptr);
     TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx, &args));
     new_executor.reset(new EagerExecutor(call->eager_async));
@@ -243,8 +245,10 @@ absl::Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     }
   }
 
-  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
-      PyObject_GetAttrString(trampoline, "_ctx"), /*name=*/nullptr));
+  PyObject* ctx_handle = PyObject_GetAttrString(trampoline, "_ctx");
+  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
+      PyCapsule_GetPointer(ctx_handle, "TFE_Context"));
+  Py_XDECREF(ctx_handle);
   if (new_executor != nullptr) {
     s.Update(new_executor->WaitForAllPendingNodes());
     tensorflow::unwrap(ctx)->SetExecutorForThread(old_executor);

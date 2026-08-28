@@ -57,9 +57,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class DotOperationTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class DotOperationTest : public ClientLibraryTestRunnerMixin<
+                             HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   ErrorSpec error_spec_{0.0001, 1e-5};
 };
@@ -1722,8 +1721,8 @@ std::vector<BatchDotParamType> GetBatchDotTestCases() {
 INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
                          ::testing::ValuesIn(GetBatchDotTestCases()));
 
-class DotOperationTextTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+class DotOperationTextTest : public HloInterpreterReferenceMixin<HloTestBase> {
+};
 
 TEST_F(DotOperationTextTest, DotReorderedDotDims) {
   absl::string_view hlo_string =

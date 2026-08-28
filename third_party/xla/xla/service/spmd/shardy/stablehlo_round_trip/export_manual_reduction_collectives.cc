@@ -156,9 +156,23 @@ void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
             /*use_global_device_ids=*/true);
         // No need to add a sharding to the all-reduce, since it's inside a
         // fully manual computation.
-        stablehlo::buildReduceBody<stablehlo::AddOp>(
-            mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
-            newAllReduce.getComputation(), blockBuilder);
+        switch (op.getReductionOp()) {
+          case sdy::ReductionOp::SUM:
+            stablehlo::buildReduceBody<stablehlo::AddOp>(
+                mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                newAllReduce.getComputation(), blockBuilder);
+            break;
+          case sdy::ReductionOp::MAX:
+            stablehlo::buildReduceBody<stablehlo::MaxOp>(
+                mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                newAllReduce.getComputation(), blockBuilder);
+            break;
+          case sdy::ReductionOp::MIN:
+            stablehlo::buildReduceBody<stablehlo::MinOp>(
+                mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                newAllReduce.getComputation(), blockBuilder);
+            break;
+        }
         return newAllReduce.getResult(0);
       });
   rewriter.replaceOp(op, manualComputation);
@@ -203,9 +217,23 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
               /*use_global_device_ids=*/true);
           // No need to add a sharding to the reduce-scatter, since it's inside
           // a fully manual computation.
-          stablehlo::buildReduceBody<stablehlo::AddOp>(
-              mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
-              newReduceScatter.getComputation(), blockBuilder);
+          switch (op.getReductionOp()) {
+            case sdy::ReductionOp::SUM:
+              stablehlo::buildReduceBody<stablehlo::AddOp>(
+                  mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                  newReduceScatter.getComputation(), blockBuilder);
+              break;
+            case sdy::ReductionOp::MAX:
+              stablehlo::buildReduceBody<stablehlo::MaxOp>(
+                  mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                  newReduceScatter.getComputation(), blockBuilder);
+              break;
+            case sdy::ReductionOp::MIN:
+              stablehlo::buildReduceBody<stablehlo::MinOp>(
+                  mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+                  newReduceScatter.getComputation(), blockBuilder);
+              break;
+          }
           curInput = newReduceScatter.getResult();
         }
         return curInput;
@@ -236,6 +264,7 @@ getAxesCoordinateAndSize(OpBuilder& builder, mlir::Location loc,
 void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
                                mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
+  CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
   // If the mesh does not have iota device ids, we need an extra step to convert
   // partition id to logical device id. We do not support this case for now.
@@ -311,6 +340,7 @@ void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
 void convertReplicatedToUnreduced(sdy::ReplicatedToUnreducedOp op,
                                   mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
+  CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
 
   mlir::Location loc = op.getLoc();

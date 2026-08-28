@@ -29,11 +29,12 @@ namespace {
 void Get4DShape(const TfLiteTensor* tensor, std::vector<int>* shape) {
   const int rank = tensor->dims->size;
   shape->resize(4);
-  for (int i = 0; i < 4 - rank; i++) {
-    (*shape)[i] = 1;
-  }
-  for (int i = 4 - rank; i < 4; ++i) {
-    (*shape)[i] = tensor->dims->data[i - (4 - rank)];
+  for (int i = 0; i < 4; ++i) {
+    if (i < 4 - rank) {
+      (*shape)[i] = 1;
+    } else {
+      (*shape)[i] = tensor->dims->data[i - (4 - rank)];
+    }
   }
 }
 }  // namespace
@@ -41,6 +42,9 @@ void Get4DShape(const TfLiteTensor* tensor, std::vector<int>* shape) {
 // Determines if two tensor shapes are broadcastable. See comment of
 // IsBinaryOpSupported for more info.
 bool IsBroadcastable(const TfLiteTensor* input_0, const TfLiteTensor* input_1) {
+  if (input_0->dims->size > 4 || input_1->dims->size > 4) {
+    return false;
+  }
   std::vector<int> shape_0;
   std::vector<int> shape_1;
   Get4DShape(input_0, &shape_0);

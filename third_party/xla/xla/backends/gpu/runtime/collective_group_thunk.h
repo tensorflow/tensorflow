@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -42,7 +41,9 @@ class CollectiveGroupThunk : public Thunk {
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
-  absl::Status WalkNested(Walker callback) override;
+  BufferUses buffer_uses() const override { return {}; }
+
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;
 
   static absl::StatusOr<std::unique_ptr<CollectiveGroupThunk>> FromProto(
@@ -55,10 +56,6 @@ class CollectiveGroupThunk : public Thunk {
   std::string ToString(int indent) const override;
 
  private:
-  // Returns the single clique key used by all nested collective thunks.
-  static absl::StatusOr<GpuCliqueKey> GetCliqueKey(
-      const Thunk& thunk, const Thunk::ExecuteParams& params);
-
   ThunkExecutor executor_;
 };
 

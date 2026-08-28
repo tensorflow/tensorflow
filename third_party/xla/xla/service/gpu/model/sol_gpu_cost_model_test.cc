@@ -159,5 +159,86 @@ TEST(SolGPUCostModelGetConfigTest, ConfigForDefaultGPU) {
   EXPECT_EQ(static_cast<int>(config.nic_speed_gbps), 50);
 }
 
+// ---- IntraNodeAllReduceLatency tests -------------------------------------
+// Covers both the Triton codegen kernel and the built-in custom C++ kernel,
+// which share the same NVLink P2P one-shot / two-shot formula.
+
+class IntraNodeAllReduceLatencyTest : public ::testing::Test {
+ protected:
+  // H100-like parameters: 20 GB/s per NVLink lane, 1.5 µs barrier.
+  // All GPUs in a single node: 8 GPUs, 18 active NVLink links.
+  IntraNodeAllReduceLatencyTest()
+      : model_({
+            /*nccl_op_launch_time=*/absl::Microseconds(100),
+            /*nic_speed_gbps=*/50.0,
+            /*chunk_prep_time=*/absl::Microseconds(10),
+            /*rtt=*/absl::Microseconds(30),
+            /*gpus_per_node=*/8,
+            /*chunk_size_bytes=*/4 * 1024 * 1024,
+            /*partition_size=*/0,
+            /*nvlink_bw_per_lane_gbps=*/20.0,
+            /*nvlink_barrier_latency=*/absl::Microseconds(1.5),
+        }) {}
+
+  SolGPUCostModel model_;
+
+  static constexpr int kNumGpus = 8;
+  static constexpr int kActiveLinks = 18;
+};
+
+// 128 KB ≤ 256 KB threshold → kOneShot.
+// Expected: launch(1µs) + transfer(7×128KB / (18×20GB/s)) + barrier(1.5µs)
+//   transfer = 7 × 131072 / (360e9) ≈ 2.549 µs
+//   total ≈ 5.049 µs → truncated to 5 µs
+TEST_F(IntraNodeAllReduceLatencyTest, OneShotSmallBuffer) {
+  constexpr int64_t kSizeBytes = 128 * 1024;  // 128 KB
+  auto result =
+      model_.IntraNodeAllReduceLatency(kSizeBytes, kNumGpus, kActiveLinks);
+  ASSERT_OK(result.status());
+  // Truncate to microseconds for stable comparison.
+  EXPECT_EQ(absl::Trunc(*result, absl::Microseconds(1)), absl::Microseconds(5));
+}
+
+// 1 MB (256 KB < 1 MB ≤ 4 MB) → kTwoShot.
+// Expected: launch(1µs) + 2×(transfer + barrier)
+//   per_phase = 7×1MB/8 = 917504 bytes
+//   phase_transfer = 917504 / 360e9 ≈ 2.549 µs
+//   total ≈ 1 + 2×(2.549 + 1.5) = 9.098 µs → truncated to 9 µs
+TEST_F(IntraNodeAllReduceLatencyTest, TwoShotMediumBuffer) {
+  constexpr int64_t kSizeBytes = 1024 * 1024;  // 1 MB
+  auto result =
+      model_.IntraNodeAllReduceLatency(kSizeBytes, kNumGpus, kActiveLinks);
+  ASSERT_OK(result.status());
+  EXPECT_EQ(absl::Trunc(*result, absl::Microseconds(1)), absl::Microseconds(9));
+}
+
+// active_links = 0 → should return InvalidArgument.
+TEST_F(IntraNodeAllReduceLatencyTest, ZeroLinksReturnsError) {
+  constexpr int64_t kSizeBytes = 128 * 1024;
+  EXPECT_FALSE(model_
+                   .IntraNodeAllReduceLatency(kSizeBytes, kNumGpus,
+                                              /*active_nvlink_links=*/0)
+                   .ok());
+}
+
+// nvlink_bw_per_lane_gbps = 0 → should return InvalidArgument.
+TEST(IntraNodeAllReduceLatencyZeroBwTest, ZeroBandwidthReturnsError) {
+  SolGPUCostModel zero_bw_model({
+      /*nccl_op_launch_time=*/absl::Microseconds(100),
+      /*nic_speed_gbps=*/50.0,
+      /*chunk_prep_time=*/absl::Microseconds(10),
+      /*rtt=*/absl::Microseconds(30),
+      /*gpus_per_node=*/8,
+      /*chunk_size_bytes=*/4 * 1024 * 1024,
+      /*partition_size=*/0,
+      /*nvlink_bw_per_lane_gbps=*/0.0,  // zero → invalid
+      /*nvlink_barrier_latency=*/absl::Microseconds(1.5),
+  });
+  EXPECT_FALSE(zero_bw_model
+                   .IntraNodeAllReduceLatency(128 * 1024, /*num_gpus=*/8,
+                                              /*active_nvlink_links=*/18)
+                   .ok());
+}
+
 }  // namespace
 }  // namespace xla::gpu

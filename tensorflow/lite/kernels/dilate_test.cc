@@ -40,70 +40,42 @@ std::vector<T> DilateReference(const std::vector<T>& input,
                                const std::vector<int32_t>& shape,
                                const std::vector<int32_t>& dilations,
                                const T padding_value) {
-  constexpr int kMaxDilateDims = 6;
-
   // Compute the output shape.
-  std::vector<int> output_shape(kMaxDilateDims, 0);
+  std::vector<int> output_shape(shape.size(), 0);
   for (size_t i = 0; i < shape.size(); ++i) {
     output_shape[i] = (shape[i] - 1) * dilations[i] + 1;
   }
 
   // Compute the input strides.
-  std::vector<int> strides(kMaxDilateDims, 0);
+  std::vector<int> strides(shape.size(), 0);
   strides[shape.size() - 1] = 1;
   for (size_t i = shape.size() - 1; i > 0; --i) {
     strides[i - 1] = shape[i] * strides[i];
   }
 
   // Compute the output strides.
-  std::vector<int> output_strides(kMaxDilateDims, 0);
+  std::vector<int> output_strides(shape.size(), 0);
   output_strides[shape.size() - 1] = 1;
   for (size_t i = shape.size() - 1; i > 0; --i) {
     output_strides[i - 1] = output_shape[i] * output_strides[i];
   }
 
-  // Copy the dilations to a buffer that can hold the maximum ranks.
-  std::vector<int> safe_dilations(kMaxDilateDims, 0);
-  absl::c_copy(dilations, safe_dilations.begin());
-
-  // Copy the input shape to a buffer that can hold the maximum ranks.
-  std::vector<int> safe_input_shape(kMaxDilateDims, 0);
-  absl::c_copy(shape, safe_input_shape.begin());
-
   // Create a buffer that can hold the output data filled with 0.
   std::vector<T> output(
-      std::accumulate(output_shape.begin(), output_shape.begin() + shape.size(),
-                      1, std::multiplies<>()),
+      std::accumulate(output_shape.begin(), output_shape.end(), 1,
+                      std::multiplies<>()),
       padding_value);
 
-  int a = 0;
-  do {
-    int b = 0;
-    do {
-      int c = 0;
-      do {
-        int d = 0;
-        do {
-          int e = 0;
-          do {
-            int f = 0;
-            do {
-              const int i_idx = a * strides[0] + b * strides[1] +
-                                c * strides[2] + d * strides[3] +
-                                e * strides[4] + f * strides[5];
-              const int o_idx = a * safe_dilations[0] * output_strides[0] +
-                                b * safe_dilations[1] * output_strides[1] +
-                                c * safe_dilations[2] * output_strides[2] +
-                                d * safe_dilations[3] * output_strides[3] +
-                                e * safe_dilations[4] * output_strides[4] +
-                                f * safe_dilations[5] * output_strides[5];
-              output[o_idx] = input[i_idx];
-            } while (++f < safe_input_shape[5]);
-          } while (++e < safe_input_shape[4]);
-        } while (++d < safe_input_shape[3]);
-      } while (++c < safe_input_shape[2]);
-    } while (++b < safe_input_shape[1]);
-  } while (++a < safe_input_shape[0]);
+  for (int input_index = 0; input_index < input.size(); ++input_index) {
+    int remaining_index = input_index;
+    int output_index = 0;
+    for (int dim = 0; dim < shape.size(); ++dim) {
+      const int coordinate = remaining_index / strides[dim];
+      remaining_index %= strides[dim];
+      output_index += coordinate * dilations[dim] * output_strides[dim];
+    }
+    output[output_index] = input[input_index];
+  }
 
   return output;
 }
@@ -367,6 +339,20 @@ TYPED_TEST(DilateTest, CheckAgainstReferenceImplementation) {
       DilateReference(model.GetInput(), model.GetInputShape(),
                       model.GetDilations(), model.GetPaddingValue());
   EXPECT_EQ(model.BuildAndInvoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputData(), ElementsAreArray(expected));
+}
+
+TYPED_TEST(DilateTest, RankSeven) {
+  auto& model = this->model_;
+  model.SetInput(/*shape=*/{2, 1, 2, 1, 2, 1, 2});
+  model.SetDilations(/*dilations=*/{2, 1, 2, 1, 1, 1, 2});
+  model.SetPaddingValue(-1);
+
+  const auto expected =
+      DilateReference(model.GetInput(), model.GetInputShape(),
+                      model.GetDilations(), model.GetPaddingValue());
+  EXPECT_EQ(model.BuildAndInvoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 1, 3, 1, 2, 1, 3}));
   EXPECT_THAT(model.GetOutputData(), ElementsAreArray(expected));
 }
 

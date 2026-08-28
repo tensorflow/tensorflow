@@ -36,6 +36,10 @@ void LogString(absl::string_view fname, int line, absl::LogSeverity severity,
 
 void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
               int lineno) {
+  if (sev != absl::LogSeverity::kFatal && sev < absl::MinLogLevel()) {
+    // Avoid acquiring the mutex if we're not going to log anyway.
+    return;
+  }
   const absl::LogSeverity orig_sev = sev;
   if (sev == absl::LogSeverity::kFatal) {
     sev = absl::LogSeverity::kError;

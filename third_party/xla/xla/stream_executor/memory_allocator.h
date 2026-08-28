@@ -55,8 +55,10 @@ class MemoryAllocator {
   //
   // Thread-safe: all methods are synchronized internally.
   //
-  // Only complete address ranges returned by Track() may be freed; passing a
-  // sub-range or an untracked address to Free() is an error.
+  // Free() must receive the base address returned by Track(). Handles with a
+  // payload or handles reconstructed from a base pointer may report zero or any
+  // size no larger than the tracked allocation size. Passing a different base
+  // address, an oversized range, or an untracked address is an error.
   class AllocationTracker {
    public:
     // Takes ownership of `allocation` and returns its address as a

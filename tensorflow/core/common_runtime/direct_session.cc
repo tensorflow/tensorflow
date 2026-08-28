@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/errors.h"
@@ -89,8 +90,18 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tsl/platform/thread_annotations.h"
-
 namespace tensorflow {
+
+struct DirectSession::RunScope {
+  explicit RunScope(std::atomic<int>* active_runs) : active_runs(active_runs) {
+    active_runs->fetch_add(1, std::memory_order_relaxed);
+  }
+  ~RunScope() { active_runs->fetch_sub(1, std::memory_order_acq_rel); }
+  RunScope(const RunScope&) = delete;
+  RunScope& operator=(const RunScope&) = delete;
+
+  std::atomic<int>* const active_runs;
+};
 
 namespace {
 
@@ -418,8 +429,35 @@ DirectSession::DirectSession(const SessionOptions& options,
   }
 }
 
+// Calling Run() concurrently with destruction is a caller bug; this wait is a
+// bounded mitigation for runs in flight when destruction begins, relying on
+// Close()'s cancellation to unwind them.
 DirectSession::~DirectSession() {
   if (!closed_) Close().IgnoreError();
+  // Undocumented API surface: TF_SESSION_DESTRUCTOR_WAIT_SECONDS overrides
+  // the default 60s wait duration.
+  int64_t wait_seconds = 60;
+  int64_t env_wait_seconds = 60;
+  if (ReadInt64FromEnvVar("TF_SESSION_DESTRUCTOR_WAIT_SECONDS", 60,
+                          &env_wait_seconds)
+          .ok()) {
+    wait_seconds = std::max<int64_t>(0, env_wait_seconds);
+  }
+  const absl::Time deadline = absl::Now() + absl::Seconds(wait_seconds);
+  while (active_runs_.load(std::memory_order_acquire) > 0) {
+    const absl::Duration remaining = deadline - absl::Now();
+    if (remaining <= absl::ZeroDuration()) {
+      LOG(ERROR)
+          << "DirectSession destructor timed out waiting for "
+          << active_runs_.load() << " active Run() call(s) to finish after "
+          << wait_seconds
+          << "s (configurable via TF_SESSION_DESTRUCTOR_WAIT_SECONDS). "
+          << "Proceeding with destruction; use-after-free or crash possible.";
+      break;
+    }
+    const absl::Duration wait_dur = std::min(remaining, absl::Milliseconds(50));
+    absl::SleepFor(wait_dur);
+  }
   for (auto& it : partial_runs_) {
     it.second.reset(nullptr);
   }
@@ -888,6 +926,7 @@ absl::Status DirectSession::Run(
     const std::vector<std::string>& target_nodes, std::vector<Tensor>* outputs,
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
+  RunScope run_scope(&active_runs_);
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("Run()"));
   direct_session_runs->GetCell()->IncrementBy(1);
@@ -996,6 +1035,7 @@ absl::Status DirectSession::PRunSetup(
     const std::vector<std::string>& input_names,
     const std::vector<std::string>& output_names,
     const std::vector<std::string>& target_nodes, std::string* handle) {
+  RunScope run_scope(&active_runs_);
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("PRunSetup()"));
 
@@ -1078,6 +1118,7 @@ absl::Status DirectSession::PRun(const std::string& handle,
                                  const NamedTensorList& inputs,
                                  const std::vector<std::string>& output_names,
                                  std::vector<Tensor>* outputs) {
+  RunScope run_scope(&active_runs_);
   TF_RETURN_IF_ERROR(CheckNotClosed());
   std::vector<std::string> parts = str_util::Split(handle, ';');
   const std::string& key = parts[0];
@@ -1903,6 +1944,7 @@ absl::Status DirectSession::WaitForNotification(
 
 absl::Status DirectSession::MakeCallable(
     const CallableOptions& callable_options, CallableHandle* out_handle) {
+  RunScope run_scope(&active_runs_);
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("MakeCallable()"));
 
@@ -1975,6 +2017,7 @@ absl::Status DirectSession::RunCallable(
     CallableHandle handle, const std::vector<Tensor>& feed_tensors,
     std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
+  RunScope run_scope(&active_runs_);
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("RunCallable()"));
   direct_session_runs->GetCell()->IncrementBy(1);

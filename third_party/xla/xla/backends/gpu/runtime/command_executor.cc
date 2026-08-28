@@ -31,13 +31,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
@@ -265,10 +267,10 @@ absl::StatusOr<CommandExecutor> CommandExecutor::Create(
   // sequence of commands and derive the structure of command dependencies
   // from the buffer use conflicts.
   if (synchronization_mode != SynchronizationMode::kSerialize) {
-    ASSIGN_OR_RETURN(auto operations,
+    ABSL_ASSIGN_OR_RETURN(auto operations,
                      CreateCommandOperations(commands, synchronization_mode,
                                              extra_resources));
-    ASSIGN_OR_RETURN(execution_graph,
+    ABSL_ASSIGN_OR_RETURN(execution_graph,
                      ExecutionGraph::Create<CommandOperation>(operations));
     VLOG(3) << "Execution graph: " << execution_graph->ToString();
   }
@@ -290,6 +292,8 @@ CommandExecutor::CommandExecutor(
   commands_.Walk([&](const Command* command) {
     Command::BufferUses buffer_uses = command->buffer_uses();
     buffer_uses_.insert(buffer_uses.begin(), buffer_uses.end());
+    requires_update_on_initialize_ |= command->requires_update_on_initialize();
+    requires_update_on_execute_ |= command->requires_update_on_execute();
   });
 
   // Buffer allocations referenced by all buffer uses.
@@ -317,7 +321,7 @@ CommandExecutor::CommandExecutor(
 
 absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
   for (auto& command : commands_) {
-    RETURN_IF_ERROR(command->Prepare(params));
+    ABSL_RETURN_IF_ERROR(command->Prepare(params));
   }
   return absl::OkStatus();
 }
@@ -325,7 +329,7 @@ absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
 absl::Status CommandExecutor::Initialize(
     const Thunk::InitializeParams& params) {
   for (auto& command : commands_) {
-    RETURN_IF_ERROR(command->Initialize(params));
+    ABSL_RETURN_IF_ERROR(command->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -435,14 +439,14 @@ absl::Status CommandExecutor::Record(const Thunk::ExecuteParams& execute_params,
                                      se::CommandBuffer* command_buffer,
                                      RecordId record_id) {
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-    RETURN_IF_ERROR(command_buffer->Update());
+    ABSL_RETURN_IF_ERROR(command_buffer->Update());
   }
 
   if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         RecordUpdate(execute_params, record_params, command_buffer, record_id));
   } else {
-    RETURN_IF_ERROR(RecordCreate(execute_params, record_params, command_buffer,
+    ABSL_RETURN_IF_ERROR(RecordCreate(execute_params, record_params, command_buffer,
                                  /*dependencies=*/{}, record_id)
                         .status());
   }
@@ -458,7 +462,7 @@ CommandExecutor::RecordCreate(
     absl::Span<const se::CommandBuffer::Command* const> dependencies,
     RecordId record_id) const {
   // Command buffer must be in create state.
-  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+  ABSL_RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
                                           se::CommandBuffer::State::kCreate));
 
   VLOG(1) << absl::StreamFormat(
@@ -509,7 +513,7 @@ CommandExecutor::RecordCreate(
                              ? Command::RecordCreate{dependencies}
                              : Command::RecordCreate{command_dependencies};
 
-    ASSIGN_OR_RETURN(const se::CommandBuffer::Command* recorded_command,
+    ABSL_ASSIGN_OR_RETURN(const se::CommandBuffer::Command* recorded_command,
                      command->Record(execute_params, record_params,
                                      std::move(record_action), command_buffer));
 
@@ -545,12 +549,22 @@ absl::Status CommandExecutor::RecordUpdate(
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Command buffer must be already prepared for recording updates.
-  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+  ABSL_RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
                                           se::CommandBuffer::State::kUpdate));
 
   // Short-circuit if there are no commands to update.
   if (commands_.empty()) {
     return absl::OkStatus();
+  }
+
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
+  CommandExecutorsState::Key key = std::make_pair(this, record_id);
+  RecordedCommands& recorded_commands = state->recorded_commands[key];
+
+  if (execute_params.persistent_alloc_indices.has_value()) {
+    DCHECK(absl::c_is_sorted(*execute_params.persistent_alloc_indices))
+        << "Persistent allocs must be sorted: "
+        << absl::StrJoin(*execute_params.persistent_alloc_indices, ", ");
   }
 
   // Check if command `id` has to be updated based on the buffer allocations
@@ -566,49 +580,56 @@ absl::Status CommandExecutor::RecordUpdate(
 
     Command* command = commands_[id];
 
-    // For CAPTURE_CMD_NEVER_UPDATE mode, always skip updates for commands
-    // implemented via tracing. This includes CollectiveThunk command/thunk
-    // hybrids: their buffer allocations are VA-remapped to fixed offsets within
-    // the reserved VA range, so their recorded addresses remain valid across
-    // executions and no update is needed.
-    //
-    // Note: CollectiveThunk satisfies both IsTracedCommand() and
-    // requires_initialization(), but the requires_initialization() check below
-    // is intentionally unreachable for traced commands in this mode. Because
-    // their buffer addresses are stable (VA-mapped), re-initialization is
-    // unnecessary.
-    if (record_params.command_buffer_update_mode ==
-            DebugOptions::CAPTURE_CMD_NEVER_UPDATE &&
-        command->IsTracedCommand()) {
-      VLOG(3) << "Skipping update for traced command " << id
-              << " (CAPTURE_CMD_NEVER_UPDATE mode)";
-      return true;
-    }
-
-    // We always update commands that require initialization, even if buffer
-    // allocations didn't change.
-    if (command->requires_initialization() && record_params.is_initialization) {
+    if (command->requires_update_on_execute()) {
       return false;
     }
 
-    DCHECK(absl::c_is_sorted(*record_params.updated_allocs))
-        << "Updated allocs must be sorted: "
-        << absl::StrJoin(*record_params.updated_allocs, ", ");
+    const bool requires_initialization_update =
+        record_params.is_initialization &&
+        command->requires_update_on_initialize();
 
-    DCHECK(absl::c_is_sorted(cmd_allocs_indices_[id]))
-        << "Command allocs must be sorted: "
-        << absl::StrJoin(cmd_allocs_indices_[id], ", ");
+    // Check updated allocations before scanning persistent allocations. In the
+    // common steady-state case the updated allocation set is empty, so we can
+    // skip the command without traversing the persistent allocation set.
+    if (!requires_initialization_update) {
+      if (record_params.updated_allocs->empty()) {
+        return true;
+      }
 
-    alloc_intersection.clear();
-    absl::c_set_intersection(cmd_allocs_indices_[id],
-                             *record_params.updated_allocs,
-                             std::back_inserter(alloc_intersection));
-    return alloc_intersection.empty();
+      DCHECK(absl::c_is_sorted(*record_params.updated_allocs))
+          << "Updated allocs must be sorted: "
+          << absl::StrJoin(*record_params.updated_allocs, ", ");
+
+      DCHECK(absl::c_is_sorted(cmd_allocs_indices_[id]))
+          << "Command allocs must be sorted: "
+          << absl::StrJoin(cmd_allocs_indices_[id], ", ");
+
+      alloc_intersection.clear();
+      absl::c_set_intersection(cmd_allocs_indices_[id],
+                               *record_params.updated_allocs,
+                               std::back_inserter(alloc_intersection));
+      if (alloc_intersection.empty()) {
+        return true;
+      }
+    }
+
+    // Persistent allocations keep stable command-buffer-visible addresses. If
+    // every allocation referenced by this command is persistent, the command
+    // does not need an update, including traced collective commands that also
+    // require initialization.
+    if (execute_params.persistent_alloc_indices.has_value()) {
+      DCHECK(absl::c_is_sorted(cmd_allocs_indices_[id]))
+          << "Command allocs must be sorted: "
+          << absl::StrJoin(cmd_allocs_indices_[id], ", ");
+    }
+    if (execute_params.persistent_alloc_indices.has_value() &&
+        absl::c_includes(*execute_params.persistent_alloc_indices,
+                         cmd_allocs_indices_[id])) {
+      return true;
+    }
+
+    return false;
   };
-
-  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
-  RecordedCommands& recorded_commands =
-      state->recorded_commands[std::make_pair(this, record_id)];
 
   // Check this this executor was correctly recorded into the command buffer.
   if (recorded_commands.size() != commands_.size()) {
@@ -623,9 +644,6 @@ absl::Status CommandExecutor::RecordUpdate(
   for (CommandId id = 0; id < commands_.size(); ++id) {
     Command* command = commands_[id];
 
-    std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
-
     // Skip updating collective commands if mock collectives are enabled.
     if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
@@ -638,8 +656,11 @@ absl::Status CommandExecutor::RecordUpdate(
       continue;
     }
 
+    std::optional<tsl::profiler::ScopedAnnotation> annotation =
+        GetKernelAnnotation(command->profile_annotation());
+
     Command::RecordUpdate record_action{recorded_commands[id]};
-    ASSIGN_OR_RETURN(recorded_commands[id],
+    ABSL_ASSIGN_OR_RETURN(recorded_commands[id],
                      command->Record(execute_params, record_params,
                                      std::move(record_action), command_buffer));
   }
@@ -738,7 +759,7 @@ absl::StatusOr<std::string> CommandExecutor::RenderExecutionGraph() const {
         "concurrent/LHS synchronization mode");
   }
 
-  ASSIGN_OR_RETURN(auto operations,
+  ABSL_ASSIGN_OR_RETURN(auto operations,
                    CreateCommandOperations(commands_, synchronization_mode_,
                                            extra_resources_));
   absl::InlinedVector<const ExecutionGraph::Operation*, 32> operations_ptrs;

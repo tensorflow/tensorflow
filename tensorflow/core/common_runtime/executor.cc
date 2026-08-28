@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
@@ -86,6 +88,36 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+#if defined(__aarch64__) && defined(__linux__)
+// Returns a fixed-point scale factor to convert CNTVCT_EL0 virtual timer
+// cycles to x86-TSC-equivalent cycles.  The factor has 16 fractional bits,
+// so the hot-path update uses (elapsed * factor) >> 16.
+// Computed once per process and cached in a static local.
+inline uint64_t GetAarch64CycleScaleFixed() {
+  static const uint64_t scale_fixed = []() -> uint64_t {
+    uint64_t cntfrq;
+    asm volatile("mrs %0, cntfrq_el0" : "=r"(cntfrq));
+    if (cntfrq == 0) return 1 << 16;
+    std::string freq_str;
+    if (!tensorflow::ReadFileToString(
+             Env::Default(),
+             "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", &freq_str)
+             .ok()) {
+      return 1 << 16;
+    }
+    int64_t cpu_freq_khz;
+    if (!absl::SimpleAtoi(absl::StripTrailingAsciiWhitespace(freq_str),
+                          &cpu_freq_khz) ||
+        cpu_freq_khz <= 0) {
+      return 1 << 16;
+    }
+    uint64_t sf = (static_cast<uint64_t>(cpu_freq_khz) * 1000 << 16) / cntfrq;
+    return sf > 0 ? sf : (1 << 16);
+  }();
+  return scale_fixed;
+}
+#endif  // defined(__aarch64__) && defined(__linux__)
 
 // 1-D, 0 element tensor.
 static const Tensor* const kEmptyTensor = new Tensor;
@@ -203,9 +235,15 @@ class ExecutorImpl : public Executor {
       // affect correctness but may slow down the update frequency.
       std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
       auto prev_estimate = cost_estimate.load(std::memory_order_relaxed);
-
+#if defined(__aarch64__) && defined(__linux__)
+      uint64_t new_estimate =
+          ((kCostDecay - 1) * prev_estimate +
+           ((elapsed_cycles * GetAarch64CycleScaleFixed()) >> 16)) /
+          kCostDecay;
+#else
       uint64_t new_estimate =
           ((kCostDecay - 1) * prev_estimate + elapsed_cycles) / kCostDecay;
+#endif
 
       cost_estimate.store(new_estimate, std::memory_order_relaxed);
     }
@@ -217,7 +255,6 @@ class ExecutorImpl : public Executor {
     static constexpr uint64_t kInitialCostEstimateCycles = 100 * 1000 * 1000;
     static constexpr uint64_t kOpIsExpensiveThresholdCycles = 8000;
     static constexpr uint64_t kCostDecay = 10;
-
     std::vector<bool> is_expensive_;
     // std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
@@ -393,7 +430,7 @@ class ExecutorState {
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
   tsl::CoordinationServiceAgent* coordination_service_agent_;
-  absl::optional<ManagedStackTrace> stack_trace_ = absl::nullopt;
+  absl::optional<ManagedStackTrace> stack_trace_ = std::nullopt;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;

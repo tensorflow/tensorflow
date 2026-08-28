@@ -69,7 +69,7 @@ absl::StatusOr<MetaGraphDef*> FindMetaGraphDef(
   }
   return Status(
       absl::StatusCode::kNotFound,
-      strings::StrCat(
+      absl::StrCat(
           "Could not find meta graph def matching supplied tags: { ",
           absl::StrJoin(tags, " "),
           " }. To inspect available tag-sets in the SavedModel, please "
@@ -122,12 +122,12 @@ Status ReadSavedModel(absl::string_view export_dir,
 
   return absl::Status(
       absl::StatusCode::kNotFound,
-      strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
-                      "export directory path: ",
-                      export_dir,
-                      ". Check that "
-                      "the directory exists and that you have the right "
-                      "permissions for accessing it."));
+      absl::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
+                   "export directory path: ",
+                   export_dir,
+                   ". Check that "
+                   "the directory exists and that you have the right "
+                   "permissions for accessing it."));
 }
 
 Status ReadMetaGraphDefFromSavedModel(absl::string_view export_dir,

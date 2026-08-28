@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -29,11 +44,11 @@ cc_library(
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
     ],
@@ -54,11 +69,11 @@ cc_library(
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
     ],
@@ -79,11 +94,11 @@ cc_library(
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
     ],
@@ -110,12 +125,12 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:casts",
@@ -144,11 +159,11 @@ cc_library(
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:casts",
@@ -161,6 +176,7 @@ cc_library(
     srcs = ["custom_call_thunk_serdes.cc"],
     hdrs = ["custom_call_thunk_serdes.h"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime:custom_call_thunk",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc",
@@ -170,11 +186,11 @@ cc_library(
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
     ],
@@ -195,11 +211,11 @@ cc_library(
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
     ],

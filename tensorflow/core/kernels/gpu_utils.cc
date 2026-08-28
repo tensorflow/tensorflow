@@ -385,21 +385,21 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
                                    : std::move(runners[idx_no_scratch]));
 }
 
-template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::ConvOp>>
 BestCudnnConvAlgorithm<se::dnn::ConvOp>(
     absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::ConvSignature>>>
         runners);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
 BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
     absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
         runners);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedMatmulOp>>
 BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(
     absl::Span<const xla::AutotuneResult> results,
     std::vector<

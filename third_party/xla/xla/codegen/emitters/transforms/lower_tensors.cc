@@ -78,10 +78,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_LOWERTENSORSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using llvm::dyn_cast_or_null;
 using mlir::failure;
@@ -940,14 +941,17 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       }
       case ml::AtomicBinOp::fadd: {
         // TODO(b/336367154): Introduce an atomic_rmw op with the binOp attr.
-        return device_spec_.IsAmdGpu()
-                   ? emitAMDAtomicFAdd(
-                         loc, modifier_arg, addr,
-                         device_spec_.gpu().rocm_compute_capability(), rewriter)
-                   : emitNVidiaAtomicFAdd(
-                         loc, modifier_arg, addr,
-                         device_spec_.gpu().cuda_compute_capability(), rewriter,
-                         op);
+        if (device_spec_.IsAmdGpu()) {
+          return emitAMDAtomicFAdd(loc, modifier_arg, addr,
+                                   device_spec_.gpu().rocm_compute_capability(),
+                                   rewriter);
+        }
+        if (device_spec_.IsIntelGpu()) {
+          return emitSPIRVAtomicFAdd(loc, modifier_arg, addr, rewriter);
+        }
+        return emitNVidiaAtomicFAdd(
+            loc, modifier_arg, addr,
+            device_spec_.gpu().cuda_compute_capability(), rewriter, op);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
@@ -1105,6 +1109,23 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     noFineMemHelper.setAttr(op, unitAttr);
     ignoreDenormalModeHelper.setAttr(op, unitAttr);
 
+    return success();
+  }
+
+  LogicalResult emitSPIRVAtomicFAdd(Location loc, Value modifier_arg,
+                                    Value addr, OpBuilder& b) const {
+    Type element_type = modifier_arg.getType();
+    if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
+      return failure();
+    }
+    // TODO(intel-tf): Expand support to 16 bit floating precisions on supported
+    // platforms.
+    if (!element_type.isF32() && !element_type.isF64()) {
+      return failure();
+    }
+
+    ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
+                            ml::AtomicOrdering::monotonic);
     return success();
   }
 
@@ -1389,6 +1410,8 @@ class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
 
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
+  LowerTensorsPass() = default;
+
   explicit LowerTensorsPass(const LowerTensorsPassOptions& options)
       : LowerTensorsPassBase(options) {}
 
@@ -1470,15 +1493,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
-    const std::string& target_type, const std::string& gpu_device_info) {
-  LowerTensorsPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  options.target_type_ = target_type;
-  return std::make_unique<LowerTensorsPass>(options);
-}
-
-std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
+std::unique_ptr<::mlir::Pass> createLowerTensorsPass(
     const se::DeviceDescription& device_description) {
   return std::make_unique<LowerTensorsPass>(device_description);
 }

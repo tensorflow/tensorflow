@@ -57,7 +57,7 @@ absl::Status ExecuteNodeArgs::InitPackedHandle(const int index,
       }
 #endif  // IS_MOBILE_PLATFORM
       if (h->Type() == TensorHandle::PACKED) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Nested packed handles are not supported");
       }
       return status;
@@ -139,8 +139,9 @@ absl::Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
       *val = *arg;
       return absl::OkStatus();
     } else {
-      return errors::NotFound("Argument (", index.index, ",", index.sub_index,
-                              ") has no local tensor.");
+      return absl::NotFoundError(absl::StrCat("Argument (", index.index, ",",
+                                              index.sub_index,
+                                              ") has no local tensor."));
     }
   } else {
     return s;

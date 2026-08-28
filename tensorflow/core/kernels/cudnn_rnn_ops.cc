@@ -1761,7 +1761,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
     if (is_debug_mode_) {
       AlgorithmDesc algo_desc(debug_cudnn_rnn_algo_, debug_use_tensor_ops_,
-                              absl::nullopt);
+                              std::nullopt);
       output_algo_config->set_algorithm(algo_desc);
     } else {
       OP_REQUIRES_OK(context,
@@ -2318,7 +2318,7 @@ class CudnnRNNBackwardOpV2<GPUDevice, T>
 
     auto host_reserved_int8 = host_reserved->vec<int8_t>();
     const AlgorithmDesc algo_desc(host_reserved_int8(0), host_reserved_int8(1),
-                                  absl::nullopt);
+                                  std::nullopt);
     algo_config->set_algorithm(algo_desc);
     return absl::OkStatus();
   }

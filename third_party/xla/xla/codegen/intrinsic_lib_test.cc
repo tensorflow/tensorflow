@@ -23,6 +23,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Support/raw_ostream.h"
+#include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 
 namespace xla::codegen::intrinsics {
@@ -54,6 +58,45 @@ TEST(IntrinsicLibTest, ExpVectorizations) {
                                  "xla.exp.f64:xla.exp.v4f64:4:_ZGV_LLVM_N4v",
                                  "xla.exp.f64:xla.exp.v8f64:8:_ZGV_LLVM_N8v"));
 }
+
+TEST(IntrinsicLibTest, AtanVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.atan")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(
+      vec_descs_str,
+      UnorderedElementsAre("xla.atan.f32:xla.atan.v4f32:4:_ZGV_LLVM_N4v",
+                           "xla.atan.f32:xla.atan.v8f32:8:_ZGV_LLVM_N8v",
+                           "xla.atan.f32:xla.atan.v16f32:16:_ZGV_LLVM_N16v",
+                           "xla.atan.f64:xla.atan.v4f64:4:_ZGV_LLVM_N4v",
+                           "xla.atan.f64:xla.atan.v8f64:8:_ZGV_LLVM_N8v"));
+}
+
+TEST(IntrinsicLibTest, CppGenIntrinsicLibraryPreservesNoInline) {
+  llvm::LLVMContext context;
+  llvm::Module dst_module("dst_module", context);
+
+  std::string gcov_ir = R"(
+    define void @__llvm_gcov_init() noinline {
+      ret void
+    }
+  )";
+
+  CppGenIntrinsicLibrary lib(gcov_ir, "gcov_test");
+  lib.LinkIntoModule(dst_module);
+
+  // A linked module containing noinline functions must remain valid after
+  // LinkIntoModule and not have alwaysinline attached to them.
+  EXPECT_FALSE(llvm::verifyModule(dst_module, &llvm::errs()));
+}
+
 }  // namespace
 
 }  // namespace xla::codegen::intrinsics

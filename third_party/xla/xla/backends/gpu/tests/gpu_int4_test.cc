@@ -23,13 +23,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
 
-class GpuInt4Test
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+class GpuInt4Test : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 TEST_F(GpuInt4Test, TestInt4ParameterSize) {
   const std::string hlo_text = R"(

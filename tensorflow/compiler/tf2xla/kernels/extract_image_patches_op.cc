@@ -17,6 +17,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -84,10 +86,10 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
       OP_REQUIRES(
-          ctx, ksizes_[input_dim] >= 0,
-          absl::UnimplementedError(absl::StrCat(
-              "Kernel size values must be non-negative; ", i,
-              "th spatial dimension had dilation ", dilations_[input_dim])));
+          ctx, ksizes_[input_dim] >= 1,
+          absl::OutOfRangeError(absl::StrCat(
+              "Kernel size values must be positive; ", i,
+              "th spatial dimension had kernel size ", ksizes_[input_dim])));
       OP_REQUIRES(
           ctx, strides_[input_dim] >= 1,
           absl::UnimplementedError(absl::StrCat(

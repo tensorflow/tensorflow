@@ -93,7 +93,7 @@ class Mutex : public ResourceBase {
           });
       if (already_cancelled) {
         delete cancelled;
-        fn(errors::Cancelled("Lock acquisition cancelled."),
+        fn(absl::CancelledError("Lock acquisition cancelled."),
            SharedLockReleaser{nullptr});
         return;
       }
@@ -119,7 +119,7 @@ class Mutex : public ResourceBase {
             fn_(absl::OkStatus(),
                 SharedLockReleaser{std::make_shared<LockReleaser>(this)});
           } else {
-            fn_(errors::Cancelled("Lock acquisition cancelled."),
+            fn_(absl::CancelledError("Lock acquisition cancelled."),
                 SharedLockReleaser{nullptr});
           }
         },
@@ -187,26 +187,26 @@ class ConsumeMutexLockOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     VLOG(2) << "Executing ConsumeMutexLockOp";
     const Tensor& lock_t = c->input(0);
-    OP_REQUIRES(
-        c, lock_t.dims() == 0,
-        errors::InvalidArgument("Expected input to be a scalar, saw shape: ",
-                                lock_t.shape().DebugString()));
-    OP_REQUIRES(
-        c, lock_t.dtype() == DT_VARIANT,
-        errors::InvalidArgument("Expected input to be a variant, saw type: ",
-                                DataTypeString(lock_t.dtype())));
+    OP_REQUIRES(c, lock_t.dims() == 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected input to be a scalar, saw shape: ",
+                                 lock_t.shape().DebugString())));
+    OP_REQUIRES(c, lock_t.dtype() == DT_VARIANT,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected input to be a variant, saw type: ",
+                                 DataTypeString(lock_t.dtype()))));
     const auto* lock =
         lock_t.scalar<Variant>()().get<Mutex::SharedLockReleaser>();
     OP_REQUIRES(c, lock,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Expected input to contain a SharedLockReleaser "
                     "object, but saw variant: '",
-                    lock_t.scalar<Variant>()().DebugString(), "'"));
+                    lock_t.scalar<Variant>()().DebugString(), "'")));
     const int use_count = lock->shared_ptr.use_count();
     OP_REQUIRES(
         c, use_count == 1,
-        errors::InvalidArgument("Expected use count of lock to be 1, but saw: ",
-                                use_count));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected use count of lock to be 1, but saw: ", use_count)));
   }
 
   bool IsExpensive() override { return false; }

@@ -30,10 +30,10 @@ namespace xla::gpu {
 namespace {
 
 class EstimateCubSortScratchSizeTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
+    HloInterpreterReferenceMixin<HloTestBase>::SetUp();
     ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
   }
 

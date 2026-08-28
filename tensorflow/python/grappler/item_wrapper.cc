@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/framework/graph.pb.h"
@@ -37,9 +41,15 @@ limitations under the License.
 
 namespace py = pybind11;
 
+// Manages disjoint sets of colocation groups using a union-find data structure
+// with path compression and union by rank.
 class ColocationGroups {
  public:
-  void Group(const std::string& x, const std::string& y) {
+  // Ensures a node is tracked in the disjoint-set structure.
+  void RegisterNode(absl::string_view node_name) { Find(node_name); }
+
+  // Unions the colocation sets containing nodes x and y.
+  void Group(absl::string_view x, absl::string_view y) {
     Rep* x_root = Find(x);
     Rep* y_root = Find(y);
 
@@ -57,28 +67,31 @@ class ColocationGroups {
     } else {
       // Arbitrarily make one root the new parent
       y_root->parent = x_root;
-      x_root->rank = x_root->rank + 1;
+      ++x_root->rank;
     }
   }
 
-  void ExtractGroups(std::vector<std::vector<std::string>>* groups) {
-    groups->reserve(nodes_.size());
-    std::unordered_map<const Rep*, int> group_ids;
-    for (const auto& rep : nodes_) {
-      Rep* r = Find(rep.first);
-      auto it = group_ids.find(r);
-      std::vector<std::string>* g;
-      if (it == group_ids.end()) {
-        int id = group_ids.size();
-        group_ids[r] = id;
-        groups->resize(id + 1);
-        g = &groups->back();
-      } else {
-        int id = it->second;
-        g = &((*groups)[id]);
+  // Extracts all disjoint colocation groups as a list of node name lists.
+  std::vector<std::vector<std::string>> ExtractGroups() {
+    std::vector<std::vector<std::string>> groups;
+    groups.reserve(nodes_.size());
+    absl::flat_hash_map<const Rep*, int> group_ids;
+    for (const auto& [node_name, rep_ptr] : nodes_) {
+      Rep* r = Find(rep_ptr.get());
+      auto [it, inserted] = group_ids.try_emplace(r, groups.size());
+      int id = it->second;
+      if (inserted) {
+        // If inserted, this is a new group. The value stored (groups.size())
+        // is the index where the new group should be added.
+        groups.emplace_back();
       }
-      g->push_back(rep.first);
+      groups[id].push_back(node_name);
     }
+    for (auto& g : groups) {
+      std::sort(g.begin(), g.end());
+    }
+    std::sort(groups.begin(), groups.end());
+    return groups;
   }
 
  private:
@@ -88,24 +101,24 @@ class ColocationGroups {
     // Rank in the tree, used to figure out how to compress the path to the root
     // of the tree.
     int rank;
-    // The node.
-    std::string value;
   };
 
-  Rep* Find(const std::string& n) {
-    auto it = nodes_.find(n);
-    if (it == nodes_.end()) {
-      // This is the first time we process this handle, create an entry for it.
-      Rep* node = new Rep;
-      node->parent = node;
-      node->rank = 0;
-      node->value = n;
-      nodes_[n] = node;
-      return node;
+  Rep* Find(absl::string_view n) {
+    // Try to emplace a new Rep. If the key already exists, try_emplace does
+    // nothing and returns an iterator to the existing element. Otherwise,
+    // it inserts a new unique_ptr<Rep> and returns an iterator to it.
+    auto [it, inserted] = nodes_.try_emplace(n, std::make_unique<Rep>());
+    if (inserted) {
+      // First time processing this handle, initialize the new entry.
+      Rep* raw_node = it->second.get();
+      raw_node->parent = raw_node;
+      raw_node->rank = 0;
+      return raw_node;
     }
-    // Return the representative for the set, which is the root of the tree.
-    // Apply path compression to speedup future queries.
-    Rep* node = it->second;
+    return Find(it->second.get());
+  }
+
+  Rep* Find(Rep* node) {
     Rep* root = node->parent;
     while (root != root->parent) {
       root = root->parent;
@@ -118,7 +131,7 @@ class ColocationGroups {
     return root;
   }
 
-  std::unordered_map<std::string, Rep*> nodes_;
+  absl::flat_hash_map<std::string, std::unique_ptr<Rep>> nodes_;
 };
 
 PYBIND11_MAKE_OPAQUE(tensorflow::grappler::GrapplerItem);
@@ -129,9 +142,11 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
 
   m.def("TF_NewItem",
         [](const py::bytes& serialized_metagraph, bool ignore_colocation,
-           bool ignore_user_placement) -> tensorflow::grappler::GrapplerItem* {
+           bool ignore_user_placement)
+            -> std::unique_ptr<tensorflow::grappler::GrapplerItem> {
           tensorflow::MetaGraphDef metagraph;
-          if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
+          py::buffer_info info = py::buffer(serialized_metagraph).request();
+          if (!metagraph.ParseFromArray(info.ptr, info.size)) {
             throw std::invalid_argument(
                 "The MetaGraphDef could not be parsed as a valid protocol "
                 "buffer");
@@ -151,7 +166,7 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
             tsl::MaybeRaiseRegisteredFromStatus(
                 absl::InvalidArgumentError("Invalid metagraph"));
           }
-          return item.release();
+          return item;
         });
 
   m.def("TF_IdentifyImportantOps",
@@ -161,11 +176,11 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
               item->MainOpsFanin();
           std::vector<const tensorflow::NodeDef*> enqueue_ops =
               item->EnqueueOpsFanin();
-          std::unordered_set<std::string> op_names;
-          for (auto op : main_ops) {
+          absl::flat_hash_set<std::string> op_names;
+          for (const tensorflow::NodeDef* op : main_ops) {
             op_names.insert(op->name());
           }
-          for (auto op : enqueue_ops) {
+          for (const tensorflow::NodeDef* op : enqueue_ops) {
             op_names.insert(op->name());
           }
 
@@ -177,15 +192,17 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
                 *subgraph.add_node() = node;
               }
             }
-            tensorflow::MaybeRaiseFromStatus(
+            tsl::MaybeRaiseRegisteredFromStatus(
                 tensorflow::grappler::TopologicalSort(&subgraph));
             for (const tensorflow::NodeDef& node : subgraph.node()) {
               ops.push_back(node.name());
             }
           } else {
+            ops.reserve(op_names.size());
             for (const auto& op_name : op_names) {
               ops.push_back(op_name);
             }
+            std::sort(ops.begin(), ops.end());
           }
           return ops;
         });
@@ -194,20 +211,22 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
         [](tensorflow::grappler::GrapplerItem* item)
             -> std::unordered_map<std::string, std::vector<py::bytes>> {
           tensorflow::grappler::GraphProperties properties(*item);
-          tensorflow::MaybeRaiseFromStatus(properties.InferStatically(false));
+          tsl::MaybeRaiseRegisteredFromStatus(
+              properties.InferStatically(false));
 
           std::unordered_map<std::string, std::vector<py::bytes>> props;
-          for (const auto& node : item->graph.node()) {
+          for (const tensorflow::NodeDef& node : item->graph.node()) {
             const std::string& node_name = node.name();
             const std::vector<tensorflow::OpInfo::TensorProperties>&
                 output_props = properties.GetOutputProperties(node_name);
 
             std::vector<py::bytes> prop;
             prop.reserve(output_props.size());
-            for (const auto& output_prop : output_props) {
+            for (const tensorflow::OpInfo::TensorProperties& output_prop :
+                 output_props) {
               prop.push_back(output_prop.SerializeAsString());
             }
-            props[node_name] = prop;
+            props[node_name] = std::move(prop);
           }
           return props;
         });
@@ -217,31 +236,29 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
             -> std::vector<std::vector<std::string>> {
           ColocationGroups groupings;
           tensorflow::OpRegistry* registry = tensorflow::OpRegistry::Global();
-          for (const auto& node : item->graph.node()) {
+          for (const tensorflow::NodeDef& node : item->graph.node()) {
             const tensorflow::OpDef* op_def;
             if (!registry->LookUpOpDef(node.op(), &op_def).ok()) {
               continue;
             }
             tensorflow::NameRangeMap inputs;
-            tensorflow::NameRangeMap outputs;
-            if (!tensorflow::NameRangesForNode(node, *op_def, &inputs, &outputs)
+            if (!tensorflow::NameRangesForNode(node, *op_def, &inputs, nullptr)
                      .ok()) {
               continue;
             }
-            for (const auto& arg : op_def->input_arg()) {
+            for (const tensorflow::OpDef::ArgDef& arg : op_def->input_arg()) {
               if (!arg.is_ref()) {
                 continue;
               }
               const auto& range = inputs[arg.name()];
-              for (int i = range.first; i < range.second; ++i) {
+              for (int i = range.first;
+                   i < range.second && i < node.input_size(); ++i) {
                 groupings.Group(node.name(),
                                 tensorflow::grappler::NodeName(node.input(i)));
               }
             }
           }
 
-          std::vector<std::vector<std::string>> groups;
-          groupings.ExtractGroups(&groups);
-          return groups;
+          return groupings.ExtractGroups();
         });
 }

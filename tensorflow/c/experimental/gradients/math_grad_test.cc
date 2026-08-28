@@ -14,13 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 
-#include "tensorflow/c/eager/c_api_test_util.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include <cstdint>
+#include <cstring>
+#include <tuple>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/c_api_unified_experimental.h"
+#include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/unified_api_testutil.h"
 #include "tensorflow/c/experimental/gradients/grad_test_helper.h"
-#include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -197,7 +208,8 @@ TEST_P(CppGradients, TestMatMulGrad) {
               absl::Span<AbstractTensorHandle* const> inputs,
               absl::Span<AbstractTensorHandle*> outputs) -> absl::Status {
         return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], transpose_a,
-                           transpose_b, "MatMul");
+                           transpose_b, /*grad_a=*/false, /*grad_b=*/false,
+                           "MatMul");
       };
       ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
           MatMulModel, BuildGradModel(MatMulModel, registry_),
@@ -252,7 +264,8 @@ TEST_P(CppGradients, TestMatMulGradManual) {
             absl::Span<AbstractTensorHandle* const> inputs,
             absl::Span<AbstractTensorHandle*> outputs) -> absl::Status {
       return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], transpose_a,
-                         transpose_b, "MatMul");
+                         transpose_b, /*grad_a=*/false, /*grad_b=*/false,
+                         "MatMul");
     };
     Model MatMulGradModel = BuildGradModel(MatMulModel, registry_);
     std::vector<AbstractTensorHandle*> outputs(2);

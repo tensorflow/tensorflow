@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <iterator>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -24,9 +28,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -43,9 +47,11 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -74,22 +80,6 @@ namespace ttir = ::mlir::triton;
 
 namespace {
 
-class LowerTranspose : public mlir::OpRewritePattern<stablehlo::TransposeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
- private:
-  mlir::LogicalResult matchAndRewrite(
-      stablehlo::TransposeOp op,
-      mlir::PatternRewriter& rewriter) const override {
-    SmallVector<int32_t> permutation =
-        llvm::to_vector_of<int32_t>(op.getPermutation());
-    rewriter.replaceOpWithNewOp<ttir::TransOp>(op, op.getResult().getType(),
-                                               op.getOperand(), permutation);
-    return mlir::success();
-  }
-};
-
 class LowerIotaToMakeRange : public mlir::OpRewritePattern<stablehlo::IotaOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -104,16 +94,9 @@ class LowerIotaToMakeRange : public mlir::OpRewritePattern<stablehlo::IotaOp> {
           op->getLoc(), "tt.make_range is only supported for 1D outputs.");
     }
 
-    if (!result_type.getElementType().isInteger(32)) {
+    if (!result_type.getElementType().isSignlessInteger(32)) {
       return rewriter.notifyMatchFailure(
           op->getLoc(), "tt.make_range is only supported for integer types.");
-    }
-
-    if (result_type.getElementType().isUnsignedInteger(32)) {
-      return rewriter.notifyMatchFailure(
-          op->getLoc(),
-          "lowering to tt.make_range is only supported for 32 bit signed "
-          "integers.");
     }
 
     auto iota_end = result_type.getDimSize(0);
@@ -144,7 +127,12 @@ class LowerBroadcastInDim
 
       auto extracted = mlir::tensor::ExtractOp::create(rewriter, op.getLoc(),
                                                        broadcast_dim_input);
-
+      if (output_shape.empty()) {
+        rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
+            op, RankedTensorType::get({}, extracted.getType()),
+            ValueRange{extracted});
+        return mlir::success();
+      }
       rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getResult().getType(),
                                                  extracted);
       return mlir::success();
@@ -175,32 +163,101 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
   using OpRewritePattern::OpRewritePattern;
 
  private:
-  mlir::LogicalResult matchAndRewrite(
-      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const override {
-    if (mlir::failed(VerifyOpIsCompatibleWithTritonReduce(op, rewriter))) {
-      return mlir::failure();
-    }
-
-    int32_t axis = op.getDimensions()[0];
-
-    // In case shlo returns a 0 rank tensor triton needs to return a scalar as
-    // triton doesn't support 0 rank tensors.
-    SmallVector<Type> adjusted_result_types;
-    adjusted_result_types.reserve(op.getNumResults());
-    for (auto result : op.getResults()) {
-      auto shaped_type = cast<mlir::ShapedType>(result.getType());
-      if (shaped_type.getRank() == 0) {
-        adjusted_result_types.push_back(shaped_type.getElementType());
-      } else {
-        adjusted_result_types.push_back(shaped_type);
+  Type RemoveDimension(Type type, int32_t axis) const {
+    auto ranked_type = cast<RankedTensorType>(type);
+    auto shape = ranked_type.getShape();
+    SmallVector<int64_t> new_shape;
+    new_shape.reserve(shape.size() - 1);
+    for (int i = 0; i < shape.size(); ++i) {
+      if (i != axis) {
+        new_shape.push_back(shape[i]);
       }
     }
+    return RankedTensorType::get(new_shape, ranked_type.getElementType());
+  }
 
-    auto triton_reduce_op = ttir::ReduceOp::create(
-        rewriter, op.getLoc(), adjusted_result_types, op.getInputs(), axis);
-    Region& triton_reduce_region = triton_reduce_op.getCombineOp();
+  // Checks if a single init_value is a neutral constant for the reducer op.
+  bool IsInitValueNeutral(mlir::Operation& reducer_op, Value init_val) const {
+    auto const_op = init_val.getDefiningOp<stablehlo::ConstantOp>();
+    if (!const_op) {
+      return false;
+    }
+    auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(const_op.getValue());
+    if (!dense_attr || !dense_attr.isSplat()) {
+      return false;
+    }
 
-    mlir::Block& old_block = op.getBody().front();
+    Type elem_type = dense_attr.getElementType();
+    if (elem_type.isF32() || elem_type.isF64() || elem_type.isF16() ||
+        elem_type.isBF16()) {
+      double val = dense_attr.getSplatValue<FloatAttr>().getValueAsDouble();
+      if (isa<arith::AddFOp, stablehlo::AddOp>(reducer_op)) {
+        return val == 0.0;
+      }
+      if (isa<arith::MulFOp, stablehlo::MulOp>(reducer_op)) {
+        return val == 1.0;
+      }
+      if (isa<arith::MaximumFOp, stablehlo::MaxOp>(reducer_op)) {
+        return std::isinf(val) && val < 0;
+      }
+      if (isa<arith::MinimumFOp, stablehlo::MinOp>(reducer_op)) {
+        return std::isinf(val) && val > 0;
+      }
+      return false;
+    }
+
+    if (elem_type.isIntOrIndex()) {
+      int64_t val = dense_attr.getSplatValue<IntegerAttr>().getInt();
+      unsigned bitwidth = elem_type.getIntOrFloatBitWidth();
+      bool is_unsigned = elem_type.isUnsignedInteger();
+      if (isa<arith::AddIOp, stablehlo::AddOp>(reducer_op)) {
+        return val == 0;
+      }
+      if (isa<arith::MulIOp, stablehlo::MulOp>(reducer_op)) {
+        return val == 1;
+      }
+      if (isa<arith::MaxSIOp>(reducer_op) ||
+          (isa<stablehlo::MaxOp>(reducer_op) && !is_unsigned)) {
+        return val == llvm::APInt::getSignedMinValue(bitwidth).getSExtValue();
+      }
+      if (isa<arith::MaxUIOp>(reducer_op) ||
+          (isa<stablehlo::MaxOp>(reducer_op) && is_unsigned)) {
+        return val == 0;
+      }
+      if (isa<arith::MinSIOp>(reducer_op) ||
+          (isa<stablehlo::MinOp>(reducer_op) && !is_unsigned)) {
+        return val == llvm::APInt::getSignedMaxValue(bitwidth).getSExtValue();
+      }
+      if (isa<arith::MinUIOp>(reducer_op) ||
+          (isa<stablehlo::MinOp>(reducer_op) && is_unsigned)) {
+        return static_cast<uint64_t>(val) ==
+               llvm::APInt::getMaxValue(bitwidth).getZExtValue();
+      }
+      return false;
+    }
+
+    return false;
+  }
+
+  // Checks if all init_values are neutral constants for the reducer.
+  bool AllInitValuesAreNeutral(stablehlo::ReduceOp op,
+                               mlir::Block& old_block) const {
+    auto body_ops = old_block.without_terminator();
+    if (body_ops.empty() ||
+        std::distance(body_ops.begin(), body_ops.end()) != 1) {
+      return false;
+    }
+    mlir::Operation& reducer_op = *body_ops.begin();
+    return llvm::all_of(op.getInitValues(), [&](Value init_val) {
+      return IsInitValueNeutral(reducer_op, init_val);
+    });
+  }
+
+  // Populates the region block of the ttir::ReduceOp with converted operands
+  // and cloned reducer block ops from the stablehlo::ReduceOp.
+  void BuildTritonReduceBlock(stablehlo::ReduceOp op, mlir::Block& old_block,
+                              Region& triton_reduce_region,
+                              mlir::PatternRewriter& rewriter) const {
     llvm::SmallVector<Type> arg_types;
     llvm::SmallVector<mlir::Location> arg_locs;
     for (auto old_arg_type : old_block.getArgumentTypes()) {
@@ -222,8 +279,8 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
       mapping.map(old_arg, to_tensor_op);
     }
 
-    for (mlir::Operation& op : old_block.without_terminator()) {
-      rewriter.clone(op, mapping);
+    for (mlir::Operation& reduce_body_op : old_block.without_terminator()) {
+      rewriter.clone(reduce_body_op, mapping);
     }
 
     SmallVector<Value> return_operands;
@@ -232,43 +289,218 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
           rewriter, op->getLoc(), mapping.lookupOrDefault(operand)));
     }
     ttir::ReduceReturnOp::create(rewriter, op.getLoc(), return_operands);
+  }
 
-    // Replace usages of the original op results. If the original result was a
-    // 0-rank tensor, we need to wrap the scalar result of tt.reduce in a
-    // tensor.to_tensor op.
+  Value AdaptOperandToMultiDim(Value val, ShapedType target_shaped_type,
+                               Location loc,
+                               mlir::PatternRewriter& rewriter) const {
+    if (!target_shaped_type || target_shaped_type.getRank() == 0) {
+      return val;
+    }
+    Type val_type = val.getType();
+    if (auto val_shaped_type = mlir::dyn_cast<ShapedType>(val_type)) {
+      if (val_shaped_type == target_shaped_type) {
+        return val;
+      }
+      if (val_shaped_type.getRank() == 0) {
+        auto target_type = mlir::RankedTensorType::get(
+            target_shaped_type.getShape(), val_shaped_type.getElementType());
+        return mlir::stablehlo::BroadcastInDimOp::create(
+            rewriter, loc, target_type, val, rewriter.getDenseI64ArrayAttr({}));
+      }
+    } else {
+      Value tensor_0d = mlir::tensor::FromElementsOp::create(
+          rewriter, loc, mlir::RankedTensorType::get({}, val_type), val);
+      auto target_type =
+          mlir::RankedTensorType::get(target_shaped_type.getShape(), val_type);
+      return mlir::stablehlo::BroadcastInDimOp::create(
+          rewriter, loc, target_type, tensor_0d,
+          rewriter.getDenseI64ArrayAttr({}));
+    }
+    return val;
+  }
+
+  // Combines the results of the ttir::ReduceOp with the init_values
+  // post-reduction by cloning the reducer block operations.
+  llvm::SmallVector<Value> CombineReduceResultsWithInitValues(
+      stablehlo::ReduceOp op, ttir::ReduceOp triton_reduce_op,
+      mlir::Block& old_block, mlir::PatternRewriter& rewriter) const {
     rewriter.setInsertionPointAfter(triton_reduce_op);
-    llvm::SmallVector<Value> new_results;
-    for (const auto& triton_result : triton_reduce_op.getResults()) {
-      if (mlir::isa<mlir::ShapedType>(triton_result.getType())) {
-        new_results.push_back(triton_result);
-      } else {
-        new_results.push_back(mlir::tensor::FromElementsOp::create(
-            rewriter, op.getLoc(), op.getType(0), triton_result));
+
+    std::size_t num_inputs = op.getInputs().size();
+    llvm::SmallVector<Value> res_tensors;
+    res_tensors.reserve(num_inputs);
+    llvm::SmallVector<Value> broadcasted_inits;
+    broadcasted_inits.reserve(num_inputs);
+
+    for (auto [idx, tuple] :
+         llvm::enumerate(llvm::zip(triton_reduce_op.getResults(),
+                                   op.getInitValues(), op.getResultTypes()))) {
+      auto [triton_result, init_val, op_result_type] = tuple;
+      Value res_tensor = triton_result;
+      auto result_shaped_type = mlir::cast<mlir::ShapedType>(op_result_type);
+      if (result_shaped_type.getRank() == 0) {
+        if (!mlir::isa<mlir::ShapedType>(triton_result.getType())) {
+          res_tensor = mlir::tensor::FromElementsOp::create(
+              rewriter, op.getLoc(), op_result_type, triton_result);
+        } else {
+          res_tensor = mlir::stablehlo::ReshapeOp::create(
+              rewriter, op.getLoc(), op_result_type, triton_result);
+        }
+      }
+      res_tensors.push_back(res_tensor);
+
+      Value broadcasted_init = init_val;
+      if (auto shaped_type =
+              mlir::dyn_cast<mlir::ShapedType>(res_tensor.getType())) {
+        if (shaped_type.getRank() == 0) {
+          broadcasted_init = mlir::stablehlo::ReshapeOp::create(
+              rewriter, op.getLoc(), shaped_type, init_val);
+        } else {
+          broadcasted_init = mlir::stablehlo::BroadcastInDimOp::create(
+              rewriter, op.getLoc(), shaped_type, init_val,
+              rewriter.getDenseI64ArrayAttr({}));
+        }
+      }
+      broadcasted_inits.push_back(broadcasted_init);
+    }
+
+    mlir::IRMapping combine_mapping;
+    for (std::size_t i = 0; i < num_inputs; ++i) {
+      combine_mapping.map(old_block.getArgument(i), res_tensors[i]);
+      combine_mapping.map(old_block.getArgument(num_inputs + i),
+                          broadcasted_inits[i]);
+    }
+
+    for (mlir::Operation& body_op : old_block.without_terminator()) {
+      bool is_multi_dim = false;
+      ShapedType target_shaped_ty = nullptr;
+      Value first_res = res_tensors[0];
+      if (auto shaped_ty =
+              mlir::dyn_cast<mlir::ShapedType>(first_res.getType())) {
+        is_multi_dim = shaped_ty.getRank() > 0;
+        target_shaped_ty = shaped_ty;
+      }
+      SmallVector<Type> new_result_types;
+      for (Type orig_type : body_op.getResultTypes()) {
+        if (is_multi_dim) {
+          Type elem_type = mlir::getElementTypeOrSelf(orig_type);
+          new_result_types.push_back(mlir::RankedTensorType::get(
+              target_shaped_ty.getShape(), elem_type));
+        } else {
+          new_result_types.push_back(orig_type);
+        }
+      }
+      OperationState state(body_op.getLoc(), body_op.getName().getStringRef());
+      for (Value operand : body_op.getOperands()) {
+        Value operand_val = combine_mapping.lookupOrDefault(operand);
+        if (is_multi_dim && target_shaped_ty) {
+          operand_val = AdaptOperandToMultiDim(operand_val, target_shaped_ty,
+                                               body_op.getLoc(), rewriter);
+        }
+        state.addOperands(operand_val);
+      }
+      state.addTypes(new_result_types);
+      state.addAttributes(body_op.getAttrs());
+      Operation* cloned_op = rewriter.create(state);
+      for (auto [orig_res, cloned_res] :
+           llvm::zip(body_op.getResults(), cloned_op->getResults())) {
+        combine_mapping.map(orig_res, cloned_res);
       }
     }
 
-    rewriter.replaceOp(op, new_results);
-    return mlir::success();
+    llvm::SmallVector<Value> new_results;
+    for (std::size_t i = 0; i < num_inputs; ++i) {
+      Value combined_res = combine_mapping.lookupOrDefault(
+          old_block.getTerminator()->getOperand(i));
+      new_results.push_back(combined_res);
+    }
+    return new_results;
   }
 
-  // Verifies that the stablehlo reduce op can be lowered to a triton reduce
-  // op.
-  // This checks that proper emitting of `tensor.from_elements` and
-  // `tensor.extract` on reducer inputs and outputs has happened. It also checks
-  // that `tensor.extract` was emitted on the result of the reduce operation if
-  // the result is a zero rank tensor.
-  mlir::LogicalResult VerifyOpIsCompatibleWithTritonReduce(
-      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const {
-    // Check that the reduction is along a single dimension.
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const override {
     auto dimensions = op.getDimensions();
-    if (dimensions.size() != 1) {
+    if (dimensions.empty()) {
       absl::string_view error_text =
-          "tt.reduce only supports single dimension reductions.";
-      // Report this as a hard error to abort the compilation.
+          "Reduction must have at least one dimension.";
       op.emitError(error_text);
       return rewriter.notifyMatchFailure(op->getLoc(), error_text);
     }
 
+    // Sort axes descending so peeling higher dimensions doesn't shift the
+    // index positions of remaining lower dimensions.
+    SmallVector<int64_t> sorted_dims(dimensions.begin(), dimensions.end());
+    std::sort(sorted_dims.begin(), sorted_dims.end(), std::greater<int64_t>());
+
+    SmallVector<Value> current_vals(op.getInputs().begin(),
+                                    op.getInputs().end());
+
+    // In case shlo returns a 0 rank tensor triton needs to return a scalar as
+    // triton doesn't support 0 rank tensors.
+    // We only apply this to the VERY LAST reduction in the chain.
+    SmallVector<Type> final_result_types;
+    final_result_types.reserve(op.getNumResults());
+    for (auto result : op.getResults()) {
+      auto shaped_type = cast<mlir::ShapedType>(result.getType());
+      if (shaped_type.getRank() == 0) {
+        final_result_types.push_back(shaped_type.getElementType());
+      } else {
+        final_result_types.push_back(shaped_type);
+      }
+    }
+
+    ttir::ReduceOp triton_reduce_op;
+    mlir::Block& old_block = op.getBody().front();
+
+    // Peel off reduction dimensions one at a time from highest axis to lowest,
+    // creating a sequential chain of 1D tt.reduce instructions.
+    for (auto [k, axis] : llvm::enumerate(sorted_dims)) {
+      bool is_last = (k == sorted_dims.size() - 1);
+      SmallVector<Type> step_result_types;
+      if (is_last) {
+        step_result_types = final_result_types;
+      } else {
+        step_result_types.reserve(current_vals.size());
+        for (auto val : current_vals) {
+          step_result_types.push_back(RemoveDimension(val.getType(), axis));
+        }
+      }
+
+      triton_reduce_op = ttir::ReduceOp::create(
+          rewriter, op.getLoc(), step_result_types, current_vals, axis);
+
+      BuildTritonReduceBlock(op, old_block, triton_reduce_op.getCombineOp(),
+                             rewriter);
+
+      current_vals.assign(triton_reduce_op.getResults().begin(),
+                          triton_reduce_op.getResults().end());
+      rewriter.setInsertionPointAfter(triton_reduce_op);
+    }
+
+    llvm::SmallVector<Value> new_results;
+    if (AllInitValuesAreNeutral(op, old_block)) {
+      for (auto [triton_result, op_result_type] :
+           llvm::zip(triton_reduce_op.getResults(), op.getResultTypes())) {
+        auto result_shaped_type = mlir::cast<mlir::ShapedType>(op_result_type);
+        if (result_shaped_type.getRank() == 0) {
+          if (!mlir::isa<mlir::ShapedType>(triton_result.getType())) {
+            new_results.push_back(mlir::tensor::FromElementsOp::create(
+                rewriter, op.getLoc(), op_result_type, triton_result));
+          } else {
+            new_results.push_back(mlir::stablehlo::ReshapeOp::create(
+                rewriter, op.getLoc(), op_result_type, triton_result));
+          }
+        } else {
+          new_results.push_back(triton_result);
+        }
+      }
+    } else {
+      new_results = CombineReduceResultsWithInitValues(op, triton_reduce_op,
+                                                       old_block, rewriter);
+    }
+
+    rewriter.replaceOp(op, new_results);
     return mlir::success();
   }
 };
@@ -381,11 +613,13 @@ absl::StatusOr<Value> EmitRegularDot(
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
     if (ElementType(lhs).isF32()) {
-      lhs = ::xla::xtile::Cast(b, lhs, b.getBF16Type());
+      auto lhs_shaped = mlir::cast<ShapedType>(lhs.getType());
+      lhs = arith::TruncFOp::create(b, lhs_shaped.clone(b.getBF16Type()), lhs);
     }
 
     if (ElementType(rhs).isF32()) {
-      rhs = ::xla::xtile::Cast(b, rhs, b.getBF16Type());
+      auto rhs_shaped = mlir::cast<ShapedType>(rhs.getType());
+      rhs = arith::TruncFOp::create(b, rhs_shaped.clone(b.getBF16Type()), rhs);
     }
   }
 
@@ -432,10 +666,13 @@ std::vector<Value> SplitF32(mlir::ImplicitLocOpBuilder& b, Value input,
                             int split_count) {
   std::vector<Value> split_inputs;
   split_inputs.reserve(split_count);
+  auto shaped_type = mlir::cast<ShapedType>(input.getType());
+  Type bf16_type = shaped_type.clone(b.getBF16Type());
+  Type f32_type = shaped_type.clone(b.getF32Type());
   for (int i = 0; i < split_count; ++i) {
-    Value input_as_bf16 = ::xla::xtile::Cast(b, input, b.getBF16Type());
+    Value input_as_bf16 = arith::TruncFOp::create(b, bf16_type, input);
     if (i != split_count - 1) {
-      Value input_as_f32 = ::xla::xtile::Cast(b, input_as_bf16, b.getF32Type());
+      Value input_as_f32 = arith::ExtFOp::create(b, f32_type, input_as_bf16);
       input = arith::SubFOp::create(b, input, input_as_f32);
     }
     split_inputs.push_back(input_as_bf16);
@@ -461,9 +698,9 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
   constexpr int kLow = 2;
 
   Type f32 = b.getF32Type();
-  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
@@ -500,9 +737,9 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
   constexpr int kLow = 2;
 
   Type f32 = b.getF32Type();
-  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
@@ -534,9 +771,9 @@ absl::StatusOr<Value> EmitBF16x3Matmul(
   constexpr int kLow = 1;
 
   Type f32 = b.getF32Type();
-  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_bf16 = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_bf16 = SplitF32(b, dot_operands.rhs, kNumParts);
@@ -590,18 +827,20 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
 
 bool IsTf32Allowed(const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm == ::xla::PrecisionConfig::ALG_UNSET) {
-    return tsl::tensor_float_32_execution_enabled() &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.lhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.rhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT;
+    if (!tsl::tensor_float_32_execution_enabled()) {
+      return false;
+    }
+    ::xla::PrecisionConfig::Precision lhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.lhs_operand_precision);
+    ::xla::PrecisionConfig::Precision rhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.rhs_operand_precision);
+    return lhs_precision <= ::xla::PrecisionConfig::HIGH &&
+           rhs_precision <= ::xla::PrecisionConfig::HIGH;
   }
   return ::xla::algorithm_util::HasTf32InputType(precision_spec.algorithm);
 }
 
-ttir::InputPrecision InferDotPrecision(
+ttir::InputPrecision InferFpDotPrecision(
     const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
@@ -712,8 +951,15 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
   ::xla::xtile::PrecisionSpec precision_spec{*hlo_algorithm, lhs_precision,
                                              rhs_precision};
 
+  ttir::InputPrecision ttir_input_precision = ttir::InputPrecision::IEEE;
+  if (mlir::isa<mlir::FloatType>(ElementType(op.getLhs())) &&
+      mlir::isa<mlir::FloatType>(ElementType(op.getRhs())) &&
+      mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(op.getType()))) {
+    ttir_input_precision = InferFpDotPrecision(precision_spec);
+  }
+
   TritonPrecisionSpec triton_precision_spec{*hlo_algorithm,
-                                            InferDotPrecision(precision_spec)};
+                                            ttir_input_precision};
   absl::StatusOr<Value> triton_dot_op =
       (*algorithm_emitter)(builder, dot_operands, triton_precision_spec);
   if (!triton_dot_op.ok()) {
@@ -820,12 +1066,5 @@ class StableHLOLowerToTritonPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateStableHLOLowerToTritonPass(
-    bool warp_specialization_allowed) {
-  StableHLOLowerToTritonPassOptions options;
-  options.warp_specialization_allowed_ = warp_specialization_allowed;
-  return std::make_unique<StableHLOLowerToTritonPass>(options);
-}
 
 }  // namespace mlir::triton::xla

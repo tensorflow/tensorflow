@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s --xla-cpu-lower-to-llvm="prefer_vector_width=128" -split-input-file -cse | FileCheck %s
 
 func.func @several_inputs(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
@@ -102,7 +116,7 @@ func.func private @wrap_entry(
       : tensor<2xi32>, tensor<21x12xi32>, index, index, index
 }
 
-// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr) -> !llvm.ptr attributes
+// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> !llvm.ptr attributes
 // CHECK-SAME: frame_pointer = #llvm.framePointerKind<all>
 // CHECK-SAME: "prefer-vector-width", "128"
 // CHECK-SAME: uwtable_kind = #llvm.uwtableKind<async>

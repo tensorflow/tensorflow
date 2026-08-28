@@ -95,7 +95,9 @@ void RemoveAt(protobuf::RepeatedPtrField<T>* array,
 template <typename T>
 void Remove(protobuf::RepeatedPtrField<T>* array, const T* elem) {
   int i = Find(*array, [elem](const T* e) { return elem == e; });
-  RemoveAt(array, {i});
+  if (i != -1) {
+    RemoveAt(array, {i});
+  }
 }
 
 template <typename T, typename Pred>

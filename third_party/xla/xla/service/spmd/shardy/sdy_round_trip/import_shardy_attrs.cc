@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
+#include "xla/side_effect_util.h"
 
 namespace xla {
 namespace sdy {
@@ -74,12 +76,16 @@ using ::mlir::Operation;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
+using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 
+using ::mlir::sdy::getSharding;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::OpShardingRuleAttr;
+using ::mlir::sdy::PropagationBarrierOp;
+using ::mlir::sdy::PropagationDirection;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 using ::mlir::stablehlo::CustomCallOp;
@@ -101,19 +107,31 @@ CustomCallOp dynCastX64CombineCustomCall(Operation* op) {
   return customCallOp;
 }
 
+CustomCallOp getX64CombineUser(Operation* op) {
+  for (Operation* user : op->getUsers()) {
+    if (auto combineOp = dynCastX64CombineCustomCall(user)) {
+      return combineOp;
+    }
+  }
+  return nullptr;
+}
+
 CustomCallOp getX64CombineOnFuncResultSharding(
     CustomCallOp funcResultSharding) {
-  if (funcResultSharding.getNumResults() != 2 ||
-      !funcResultSharding.getResult(0).hasOneUse() ||
-      !funcResultSharding.getResult(1).hasOneUse()) {
-    return nullptr;
+  if (auto combineOp = getX64CombineUser(funcResultSharding)) {
+    return combineOp;
   }
-  Operation* lhsUser = *funcResultSharding.getResult(0).user_begin();
-  Operation* rhsUser = *funcResultSharding.getResult(1).user_begin();
-  if (lhsUser != rhsUser) {
-    return nullptr;
+  for (Operation* user : funcResultSharding->getUsers()) {
+    auto tupleOp = mlir::dyn_cast<stablehlo::TupleOp>(user);
+    if (!tupleOp) continue;
+    for (Operation* gteOp : tupleOp->getUsers()) {
+      if (!mlir::isa<stablehlo::GetTupleElementOp>(gteOp)) continue;
+      if (auto combineOp = getX64CombineUser(gteOp)) {
+        return combineOp;
+      }
+    }
   }
-  return dynCastX64CombineCustomCall(lhsUser);
+  return nullptr;
 }
 
 // TODO(kostiantynl): b/448858211 when API is fixed, use
@@ -143,15 +161,12 @@ bool handleFuncResultSharding(
 
   auto resultUses = funcResultSharding->getUses();
   bool anyChanged = false;
-  auto x64CombineOp = getX64CombineOnFuncResultSharding(funcResultSharding);
-  if (x64CombineOp) {
-    // X64Rewriter pass will pass through the two split 32-bit operands to
-    // the `xla.sdy.FuncResultSharding`, which will return two 32-bit results,
-    // that would then be passed to a `X64Combine` custom-call. Therefore, we
-    // need to look at the uses of the `X64Combine` instead to find the
-    // corresponding `func.return` op.
-    mlir::sdy::setShardings(x64CombineOp, shardingPerValueAttr);
-    resultUses = x64CombineOp->getUses();
+  if (CustomCallOp combineOp =
+          getX64CombineOnFuncResultSharding(funcResultSharding)) {
+    resultUses = combineOp->getUses();
+    if (!combineOp->hasAttr(kShardingAttr)) {
+      combineOp->setAttr(kShardingAttr, shardingPerValueAttr);
+    }
   } else if (auto* defOp = funcResultSharding.getOperand(0).getDefiningOp();
              defOp && funcResultSharding->use_empty()) {
     // It `funcResultSharding` has no uses, it is likely because it has a
@@ -174,7 +189,7 @@ bool handleFuncResultSharding(
       hasNonFuncReturnUses = true;
     }
   }
-  if (hasNonFuncReturnUses && !x64CombineOp) {
+  if (hasNonFuncReturnUses) {
     // If there are users that are not the func return op, which might happen
     // due to inlined func ops that originally had result shardings, we replace
     // the `xla.sdy.FuncResultSharding` with a `ShardingConstraintOp` to
@@ -213,6 +228,10 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
       }
     }
     funcOp.removeResultAttr(resNum, kXlaShardingAttr);
+  }
+
+  if (funcOp.isExternal()) {
+    return;
   }
 
   // Extract the round-tripped shardy attributes from the operations.
@@ -309,6 +328,10 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
     }
   }
   funcOp.setAllResultAttrs(newResultAttrs);
+
+  if (funcOp.isExternal()) {
+    return;
+  }
 
   llvm::SmallVector<std::pair<CustomCallOp, DictionaryAttr>>
       funcResultShardingOps;
@@ -425,6 +448,130 @@ LogicalResult handleFuncTupleInOutShardings(ModuleOp moduleOp, FuncOp funcOp,
   return mlir::success();
 }
 
+// Returns true if the call operation is annotated with
+// _xla_compute_type="sparseoffload", either directly as an attribute or
+// nested inside its frontend attributes.
+bool hasSparseOffloadAttribute(CallOp callOp) {
+  mlir::StringAttr computeTypeAttr =
+      callOp->getAttrOfType<mlir::StringAttr>(xla::kXlaComputeTypeAttr);
+  if (!computeTypeAttr) {
+    if (DictionaryAttr frontendAttrs =
+            getFrontendAttrs(callOp.getOperation())) {
+      computeTypeAttr =
+          frontendAttrs.getAs<mlir::StringAttr>(xla::kXlaComputeTypeAttr);
+    }
+  }
+  return computeTypeAttr &&
+         computeTypeAttr.getValue() == xla::kXlaComputeTypeSparseOffload;
+}
+
+// Returns true if the transition from callerSharding to calleeSharding
+// contains a replicated-to-partitioned (slicing) transition in any dimension.
+// When this is true, we will not insert a propagation barrier for the parameter
+// to allow backward propagation of the callee's sharding constraint. This
+// avoids forcing a slicing transition inside the callee, which would crash the
+// compiler due to unsupported partition-id() instructions on SparseCore.
+bool isSlicing(TensorShardingAttr callerSharding,
+               TensorShardingAttr calleeSharding) {
+  CHECK(calleeSharding);
+  if (!callerSharding) {
+    // Caller has no sharding (treated as replicated). If the callee has any
+    // sharded axes, it is a slicing transition. We allow this layout to
+    // propagate backward to the caller so that they end up with matching
+    // layouts, avoiding a slicing transition inside the callee.
+    return llvm::any_of(calleeSharding.getDimShardings(),
+                        [](auto dim) { return !dim.emptyAxes(); });
+  }
+
+  auto callerDims = callerSharding.getDimShardings();
+  auto calleeDims = calleeSharding.getDimShardings();
+  if (callerDims.size() != calleeDims.size()) {
+    return false;
+  }
+
+  for (int i = 0; i < callerDims.size(); ++i) {
+    if (callerDims[i].emptyAxes() && !calleeDims[i].emptyAxes()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Checks if any call site of funcOp passes a value that would cause a slicing
+// transition (replicated-to-partitioned) inside the callee.
+bool isSlicingAtCallSites(FuncOp funcOp, int argIdx,
+                          TensorShardingAttr calleeSharding,
+                          ModuleOp moduleOp) {
+  auto symbolUses = mlir::SymbolTable::getSymbolUses(funcOp, moduleOp);
+  if (!symbolUses) {
+    return false;
+  }
+  return llvm::any_of(
+      *symbolUses, [&](const mlir::SymbolTable::SymbolUse& use) {
+        if (auto callOp = mlir::dyn_cast<CallOp>(use.getUser())) {
+          return isSlicing(getSharding(callOp->getOperand(argIdx)),
+                           calleeSharding);
+        }
+        return false;
+      });
+}
+
+// Inserts propagation barriers with direction FORWARD on parameters of the
+// function that have an internal sharding constraint.
+//
+// Inserting the barrier is bypassed (not done) if it would force a slicing
+// (replicated-to-partitioned) transition inside the callee, which is
+// unsupported on SparseCore and crashes the compiler.
+//
+// When we bypass the barrier, the callee's layout constraint propagates
+// backward to the caller argument. If the caller argument has no sharding,
+// it inherits the layout constraint directly, ensuring they match and
+// avoiding slicing inside the callee.
+void insertPropagationBarriers(FuncOp funcOp, ModuleOp moduleOp,
+                               IRRewriter& rewriter) {
+  if (funcOp.isExternal()) {
+    return;
+  }
+
+  mlir::Block& entryBlock = funcOp.getBody().front();
+  rewriter.setInsertionPointToStart(&entryBlock);
+
+  for (const mlir::BlockArgument& arg : entryBlock.getArguments()) {
+    auto findArgShardingUser =
+        llvm::find_if(arg.getUses(), [](const mlir::OpOperand& use) {
+          if (auto customCallOp =
+                  mlir::dyn_cast<CustomCallOp>(use.getOwner())) {
+            return customCallOp.getCallTargetName() ==
+                   kShardingCustomCallTargetName;
+          }
+          return false;
+        });
+
+    if (findArgShardingUser != arg.getUses().end()) {
+      TensorShardingAttr calleeSharding =
+          getSharding(mlir::cast<CustomCallOp>(findArgShardingUser->getOwner())
+                          .getResult(0));
+      bool shouldInsertBarrier = true;
+      if (calleeSharding) {
+        if (isSlicingAtCallSites(funcOp, arg.getArgNumber(), calleeSharding,
+                                 moduleOp)) {
+          shouldInsertBarrier = false;
+        }
+      }
+
+      if (shouldInsertBarrier &&
+          (!calleeSharding || calleeSharding.getUnreducedAxes().empty())) {
+        // Insert the barrier on the argument itself (before the constraint, if
+        // any). We only do this when there's no unreduced sharding, to avoid
+        // altering JAX's decision for unreduced boundary shardings.
+        auto barrierOp = PropagationBarrierOp::create(
+            rewriter, funcOp.getLoc(), arg, PropagationDirection::FORWARD);
+        rewriter.replaceAllUsesExcept(arg, barrierOp.getResult(), barrierOp);
+      }
+    }
+  }
+}
+
 class SdyRoundTripImportShardyAttrsPass
     : public mlir::PassWrapper<SdyRoundTripImportShardyAttrsPass,
                                mlir::OperationPass<ModuleOp>> {
@@ -490,6 +637,16 @@ class SdyRoundTripImportShardyAttrsPass
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
       convertShardyAttrs(funcOp, rewriter, enableHloShardingV3);
     }
+
+    llvm::DenseSet<FuncOp> modifiedCallees;
+    moduleOp.walk([&](CallOp callOp) {
+      if (hasSparseOffloadAttribute(callOp)) {
+        const FuncOp callee = symbolTable.lookup<FuncOp>(callOp.getCallee());
+        if (callee && modifiedCallees.insert(callee).second) {
+          insertPropagationBarriers(callee, moduleOp, rewriter);
+        }
+      }
+    });
   }
 
   StringRef getArgument() const override {

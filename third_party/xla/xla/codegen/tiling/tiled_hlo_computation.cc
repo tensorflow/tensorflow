@@ -44,8 +44,8 @@ std::string InstructionsToString(
        instructions) {
     absl::InlinedVector<std::string, 4> regions;
     for (const auto& region : tiled_hlo->hlo_regions()) {
-      regions.push_back(
-          InstructionsToString(region, indent + 4, name_uniquer, tile_names));
+      regions.push_back(InstructionsToString(region.instructions(), indent + 4,
+                                             name_uniquer, tile_names));
     }
     std::string tile_name = name_uniquer.GetUniqueName(
         absl::StrCat(tiled_hlo->hlo()->name(), ".tile_0"));

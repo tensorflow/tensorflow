@@ -21,11 +21,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -52,7 +52,7 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 StreamExecutorAddressAllocator::Allocate(int device_ordinal, uint64_t size,
                                          bool retry_on_failure,
                                          int64_t memory_space) {
-  ASSIGN_OR_RETURN(StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                    GetStreamExecutor(device_ordinal));
   DeviceAddressBase result =
       executor->AllocateArray<uint8_t>(size, memory_space);
@@ -70,7 +70,7 @@ StreamExecutorAddressAllocator::Allocate(int device_ordinal, uint64_t size,
 absl::Status StreamExecutorAddressAllocator::Deallocate(int device_ordinal,
                                                         DeviceAddressBase mem) {
   if (!mem.is_null()) {
-    ASSIGN_OR_RETURN(StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                      GetStreamExecutor(device_ordinal));
     VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
                                   mem.opaque(), device_ordinal);
@@ -96,18 +96,23 @@ StreamExecutorAddressAllocator::GetStreamExecutor(int device_ordinal) const {
 }
 
 bool StreamExecutorAddressAllocator::AllowsAsynchronousDeallocation() const {
-  return false;
+  // Only report asynchronous deallocation on ROCm. Deallocate() routes to
+  // hipFree, which synchronizes the whole device, so scratch can be freed
+  // inline instead of being deferred into a stream host callback (where hipFree
+  // deadlocks on ROCm). CUDA's cuMemFree is also device-synchronizing and would
+  // be safe, but SYCL's sycl::free only synchronizes the passed queue, so
+  // returning true there could free memory still in use on another queue.
+  // Scope the behavior to ROCm to keep the other platforms unchanged.
+  return platform()->Name() == "ROCM";
 }
 
 absl::StatusOr<Stream*> StreamExecutorAddressAllocator::GetStream(
     int device_ordinal) {
-  CHECK(!AllowsAsynchronousDeallocation())
-      << "The logic below only works for synchronous allocators";
-  ASSIGN_OR_RETURN(StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                    GetStreamExecutor(device_ordinal));
   absl::MutexLock lock(mutex_);
   if (!streams_.count(device_ordinal)) {
-    ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+    ABSL_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     auto stream_ptr = stream.get();
     stream_ptr->SetName("StreamExecutorAddressAllocator");
     streams_.emplace(device_ordinal, std::move(stream));

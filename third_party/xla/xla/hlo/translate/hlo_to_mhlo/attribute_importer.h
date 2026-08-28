@@ -154,6 +154,31 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(xla::Shape shape,
                                                         mlir::Builder* builder);
 
+// Extracts tilings from shapes and converts it into tiling attributes (array of
+// arrays of rank-1 index tensors). Returns an error if any of the shapes is a
+// tuple.
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromShapes(
+    absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder);
+
+// Extracts the tilings of each element from a tuple shape and returns them as
+// an array of tiling attributes. Returns an error in presence of nested
+// tuple shapes.
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromTuple(xla::Shape shape,
+                                                        mlir::Builder* builder);
+
+// Extracts the memory space of each shape's layout as a flat array of i64
+// (one entry per shape). The minor-to-major index tensors produced by
+// ExtractLayoutsFromShapes cannot express memory spaces, so these are carried
+// alongside them. Returns std::nullopt when every shape uses the default
+// memory space, so the common case is left unchanged.
+std::optional<mlir::DenseI64ArrayAttr> ExtractMemorySpacesFromShapes(
+    absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder);
+
+// Like ExtractMemorySpacesFromShapes but for a (possibly tuple) result shape:
+// one entry per tuple element, or a single entry for a non-tuple shape.
+std::optional<mlir::DenseI64ArrayAttr> ExtractMemorySpacesFromTuple(
+    xla::Shape shape, mlir::Builder* builder);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_ATTRIBUTE_IMPORTER_H_

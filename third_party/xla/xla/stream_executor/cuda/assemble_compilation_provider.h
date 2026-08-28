@@ -30,7 +30,6 @@ namespace stream_executor::cuda {
 // - xla_gpu_enable_libnvptxcompiler
 // - xla_gpu_libnvjitlink_mode
 // - xla_gpu_cuda_data_dir
-// - xla_gpu_enable_llvm_module_compilation_parallelism
 // - xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found
 //
 // Considered compilation methods are:

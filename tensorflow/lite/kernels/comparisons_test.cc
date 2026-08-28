@@ -200,6 +200,18 @@ TEST(ComparisonsTest, EqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
+TEST(ComparisonsTest, EqualBroadcastRankFive) {
+  ComparisonOpModel model({1, 2, 1, 2, 2}, {1, 1, 2}, TensorType_INT32,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<int>(model.input1(), {1, 2, 3, 4, 5, 6, 7, 8});
+  model.PopulateTensor<int>(model.input2(), {3, 4});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, true, false,
+                                             false, false, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 1, 2, 2));
+}
+
 TEST(ComparisonsTest, EqualBroadcastString) {
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
@@ -212,6 +224,22 @@ TEST(ComparisonsTest, EqualBroadcastString) {
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, true, false));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, EqualBroadcastStringRankFive) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ComparisonOpModel model({1, 2, 1, 2, 2}, {1, 1, 2}, TensorType_STRING,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<std::string>(model.input1(),
+                                    {"A", "B", "A", "C", "A", "B", "D", "C"});
+  model.PopulateTensor<std::string>(model.input2(), {"A", "C"});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAre(true, false, true, true, true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 1, 2, 2));
 }
 
 TEST(ComparisonsTest, NotEqualBool) {

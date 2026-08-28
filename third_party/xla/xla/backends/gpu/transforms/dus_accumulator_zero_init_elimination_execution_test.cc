@@ -23,7 +23,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class DusAccumulatorZeroInitEliminationExecutionTest : public HloPjRtTestBase {
+class DusAccumulatorZeroInitEliminationExecutionTest : public HloTestBase {
  protected:
   HloModuleConfig ConfigWithFlag(bool enable) {
     HloModuleConfig config = GetModuleConfigForTest();

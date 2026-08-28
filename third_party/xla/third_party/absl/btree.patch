@@ -1,11 +1,25 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 diff --git a/absl/container/internal/btree.h b/absl/container/internal/btree.h
 --- a/absl/container/internal/btree.h
 +++ b/absl/container/internal/btree.h
-@@ -1119,10 +1119,8 @@ class btree_iterator : private btree_iterator_generation_info {
+@@ -1124,10 +1124,8 @@ class btree_iterator : private btree_iterator_generation_info {
    using slot_type = typename params_type::slot_type;
  
    // In sets, all iterators are const.
--  using iterator = absl::conditional_t<
+-  using iterator = std::conditional_t<
 -      is_map_container::value,
 -      btree_iterator<normal_node, normal_reference, normal_pointer>,
 -      btree_iterator<normal_node, const_reference, const_pointer>>;
@@ -13,4 +27,5 @@ diff --git a/absl/container/internal/btree.h b/absl/container/internal/btree.h
 +      btree_iterator<normal_node, normal_reference, normal_pointer>;
    using const_iterator =
        btree_iterator<const_node, const_reference, const_pointer>;
+
  

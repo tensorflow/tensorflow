@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -91,6 +92,10 @@ std::string NodeToString(const Node& node) {
   }
 
   return absl::StrCat("(", absl::StrJoin(children_str, ", "), ")");
+}
+
+bool HasNegativeShapeIndex(absl::Span<const int64_t> shape_index) {
+  return absl::c_any_of(shape_index, [](int64_t idx) { return idx < 0; });
 }
 }  // namespace
 
@@ -178,6 +183,11 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
   }
   std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
   for (const auto& leaf : original_value_proto.elements()) {
+    if (HasNegativeShapeIndex(leaf.shape_index()) ||
+        (leaf.has_original_array() &&
+         HasNegativeShapeIndex(leaf.original_array().shape_index()))) {
+      return nullptr;
+    }
     ShapeIndex index(leaf.shape_index());
     if (leaf.has_original_array()) {
       nodes.emplace_back(index,

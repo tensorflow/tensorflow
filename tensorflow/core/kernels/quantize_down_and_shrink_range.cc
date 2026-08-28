@@ -45,12 +45,12 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(input_min.shape()),
-        errors::InvalidArgument("`input_min` must be rank 0 but is rank ",
-                                input_min.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`input_min` must be rank 0 but is rank ", input_min.dims())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(input_max.shape()),
-        errors::InvalidArgument("`input_max` must be rank 0 but is rank ",
-                                input_max.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`input_max` must be rank 0 but is rank ", input_max.dims())));
 
     const float input_min_float = input_min.scalar<float>()();
     const float input_max_float = input_max.scalar<float>()();

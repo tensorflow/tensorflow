@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: dtensor-opt %s -split-input-file -dtensor-lower-send-recv -verify-diagnostics | FileCheck %s
 
 // Check that Data transfer from CPU to TPU is lowered correctly.
@@ -15,7 +29,7 @@ func.func @main(%arg0: tensor<i32>) {
   // CHECK-DAG:    %[[RECV_SIZE_TYPE]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}>
   // CHECK-DAG:    %[[RECV_SLICE_SIZE]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}>
   // CHECK-DAG:    %[[RECV_SCALAR_TYPE]] = "tf.Const"() <{value = dense<> : tensor<0xi32>}>
-  // COMMENT: Recv and Send seperated by the output tensor.
+  // COMMENT: Recv and Send separated by the output tensor.
   // CHECK:   %[[PROGRAM_KEY:.*]] = "tf._XlaCompileMlirPlaceholderProgramKey"
   // CHECK-NEXT:   %[[CONST_OUT:.*]] = "tf.Const"() <{value = dense<10> : tensor<1xi32>}>
   // CHECK-NEXT:   %[[LAYOUT_OUT:.*]] = "tf.DTensorLayout"(%[[CONST_OUT]])

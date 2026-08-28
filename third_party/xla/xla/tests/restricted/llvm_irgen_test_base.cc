@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/executable.h"
@@ -36,7 +38,7 @@ absl::StatusOr<std::unique_ptr<Executable>>
 LlvmIrGenTestBase::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
                                        bool run_optimization_passes) {
   if (run_optimization_passes) {
-    ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
+    ABSL_ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
                                      std::move(hlo_module),
                                      backend().default_stream_executor(),
                                      /*device_allocator=*/nullptr));

@@ -2,30 +2,30 @@ path: "tensorflow.io.RaggedFeature"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.parsing_config.RaggedFeature\'>"
   is_instance: "<class \'tensorflow.python.ops.parsing_config.RaggedFeature\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "RowLengths"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "RowLimits"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "RowSplits"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "RowStarts"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "UniformRowLength"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "ValueRowIds"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "dtype"
@@ -48,7 +48,20 @@ tf_class {
     mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
+    name: "__getnewargs__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'dtype\', \'value_key\', \'partitions\', \'row_splits_dtype\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'()\', \"<dtype: \'int32\'>\", \'False\'], "
+    method_kind: STATIC
+  }
+  member_method {
+    name: "__replace__"
+    argspec: "args=[\'self\'], varargs=None, keywords=kwds, defaults=None"
   }
   member_method {
     name: "count"

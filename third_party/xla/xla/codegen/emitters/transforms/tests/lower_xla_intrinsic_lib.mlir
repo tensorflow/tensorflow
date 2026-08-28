@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-lower-xla-intrinsic-lib | FileCheck %s
 
 module {
@@ -103,7 +117,7 @@ module {
 
 // CHECK-LABEL: @erf64
 // CHECK-NOT: math.erf
-// CHECK: %[[ERF_CALL:.*]] = call @erf
+// CHECK: %[[ERF_CALL:.*]] = call @xla.erf.f64
 // CHECK: return %[[ERF_CALL]]
 
 
@@ -118,7 +132,7 @@ module {
 
 // CHECK-LABEL: @erf64_vector
 // CHECK-NOT: math.erf
-// CHECK-COUNT-4: call @erf
+// CHECK-COUNT-4: call @xla.erf.f64
 
 // -----
 
@@ -163,3 +177,143 @@ func.func @rsqrt_unsupported_vector_size(%arg0: vector<3xf32>) -> vector<3xf32> 
   // CHECK: return %[[RESULT]]
   return %ret : vector<3xf32>
 }
+// -----
+
+func.func @exp_f16(%arg0: f16) -> f16 {
+  %ret = math.exp %arg0 : f16
+  return %ret : f16
+}
+// CHECK-LABEL: @exp_f16
+// CHECK: math.exp %arg0 : f16
+// CHECK: return
+
+
+// -----
+
+func.func @tanh_bf16_vector(%arg0: vector<4xbf16>) -> vector<4xbf16> {
+  %ret = math.tanh %arg0 : vector<4xbf16>
+  return %ret : vector<4xbf16>
+}
+// CHECK-LABEL: @tanh_bf16_vector
+// CHECK: %[[EXT:.*]] = arith.extf %arg0 : vector<4xbf16> to vector<4xf32>
+// CHECK: %[[CALL:.*]] = call @xla.tanh.v4f32(%[[EXT]])
+// CHECK: %[[TRUNC:.*]] = call @xla.fptrunc.v4f32.to.v4bf16(%[[CALL]])
+// CHECK: return %[[TRUNC]]
+
+// -----
+
+func.func @rsqrt_unsupported_f16_vector(%arg0: vector<3xf16>) -> vector<3xf16> {
+  %ret = math.rsqrt %arg0 : vector<3xf16>
+  return %ret : vector<3xf16>
+}
+// CHECK-LABEL: @rsqrt_unsupported_f16_vector
+// CHECK: %[[EXT:.*]] = arith.extf %arg0 : vector<3xf16> to vector<3xf32>
+// CHECK: %[[EX0:.*]] = vector.extract %[[EXT]][0]
+// CHECK: %[[C0:.*]] = call @xla.rsqrt.f32(%[[EX0]])
+// CHECK: %[[EX1:.*]] = vector.extract %[[EXT]][1]
+// CHECK: %[[C1:.*]] = call @xla.rsqrt.f32(%[[EX1]])
+// CHECK: %[[EX2:.*]] = vector.extract %[[EXT]][2]
+// CHECK: %[[C2:.*]] = call @xla.rsqrt.f32(%[[EX2]])
+// CHECK: %[[FROM:.*]] = vector.from_elements %[[C0]], %[[C1]], %[[C2]] : vector<3xf32>
+// CHECK: %[[TRUNC:.*]] = arith.truncf %[[FROM]] : vector<3xf32> to vector<3xf16>
+// CHECK: return %[[TRUNC]]
+
+
+
+// -----
+
+module {
+  func.func @atan_vector(%arg0: vector<4xf32>) -> vector<4xf32> {
+    %ret = math.atan %arg0 : vector<4xf32>
+    return %ret : vector<4xf32>
+  }
+}
+
+// CHECK-LABEL: @atan_vector
+// CHECK-NOT: math.atan
+// CHECK: %[[ATAN_CALL:.*]] = call @xla.atan.v4f32(%arg0) : (vector<4xf32>) -> vector<4xf32>
+// CHECK: return %[[ATAN_CALL]]
+
+// -----
+
+module {
+  func.func @atan_vector_unsupported(%arg0: vector<3xf32>) -> vector<3xf32> {
+    %ret = math.atan %arg0 : vector<3xf32>
+    return %ret : vector<3xf32>
+  }
+}
+
+// CHECK-LABEL: @atan_vector_unsupported
+// CHECK: %[[IN0:.*]] = vector.extract %arg0[0]
+// CHECK: %[[ATAN0:.*]] = call @xla.atan.f32(%[[IN0]])
+// CHECK: %[[IN1:.*]] = vector.extract %arg0[1]
+// CHECK: %[[ATAN1:.*]] = call @xla.atan.f32(%[[IN1]])
+// CHECK: %[[IN2:.*]] = vector.extract %arg0[2]
+// CHECK: %[[ATAN2:.*]] = call @xla.atan.f32(%[[IN2]])
+// CHECK: %[[RESULT:.*]] = vector.from_elements %[[ATAN0]], %[[ATAN1]], %[[ATAN2]]
+// CHECK: return %[[RESULT]]
+
+// -----
+
+module {
+  func.func @atan_f32(%arg0: f32) -> f32 {
+    %ret = math.atan %arg0 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @atan_f32
+// CHECK-NOT: math.atan
+// CHECK: %[[RESULT:.*]] = call @xla.atan.f32(%arg0) : (f32) -> f32
+// CHECK: return %[[RESULT]] : f32
+
+// -----
+
+module {
+  func.func @tanh_f32_vector_64(%arg0: vector<64xf32>) -> vector<64xf32> {
+    %ret = math.tanh %arg0 : vector<64xf32>
+    return %ret : vector<64xf32>
+  }
+}
+
+// CHECK-LABEL: @tanh_f32_vector_64
+// CHECK-NOT: math.tanh
+// CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : vector<64xf32>
+// CHECK: %[[S0:.*]] = vector.extract_strided_slice %arg0 {offsets = [0], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[C0:.*]] = call @xla.tanh.v16f32(%[[S0]])
+// CHECK: %[[I0:.*]] = vector.insert_strided_slice %[[C0]], %[[INIT]] {offsets = [0], strides = [1]} : vector<16xf32> into vector<64xf32>
+// CHECK: %[[S1:.*]] = vector.extract_strided_slice %arg0 {offsets = [16], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[C1:.*]] = call @xla.tanh.v16f32(%[[S1]])
+// CHECK: %[[I1:.*]] = vector.insert_strided_slice %[[C1]], %[[I0]] {offsets = [16], strides = [1]} : vector<16xf32> into vector<64xf32>
+// CHECK: %[[S2:.*]] = vector.extract_strided_slice %arg0 {offsets = [32], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[C2:.*]] = call @xla.tanh.v16f32(%[[S2]])
+// CHECK: %[[I2:.*]] = vector.insert_strided_slice %[[C2]], %[[I1]] {offsets = [32], strides = [1]} : vector<16xf32> into vector<64xf32>
+// CHECK: %[[S3:.*]] = vector.extract_strided_slice %arg0 {offsets = [48], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[C3:.*]] = call @xla.tanh.v16f32(%[[S3]])
+// CHECK: %[[I3:.*]] = vector.insert_strided_slice %[[C3]], %[[I2]] {offsets = [48], strides = [1]} : vector<16xf32> into vector<64xf32>
+// CHECK: return %[[I3]] : vector<64xf32>
+
+// -----
+
+module {
+  func.func @tanh_bf16_vector_32(%arg0: vector<32xbf16>) -> vector<32xbf16> {
+    %ret = math.tanh %arg0 : vector<32xbf16>
+    return %ret : vector<32xbf16>
+  }
+}
+
+// CHECK-LABEL: @tanh_bf16_vector_32
+// CHECK-NOT: math.tanh
+// CHECK: %[[S0:.*]] = vector.extract_strided_slice %arg0 {offsets = [0], sizes = [16], strides = [1]} : vector<32xbf16> to vector<16xbf16>
+// CHECK: %[[EXT0:.*]] = arith.extf %[[S0]] : vector<16xbf16> to vector<16xf32>
+// CHECK: %[[C0:.*]] = call @xla.tanh.v16f32(%[[EXT0]])
+// CHECK: %[[TR0:.*]] = call @xla.fptrunc.v8f32.to.v8bf16
+// CHECK: %[[S1:.*]] = vector.extract_strided_slice %arg0 {offsets = [16], sizes = [16], strides = [1]} : vector<32xbf16> to vector<16xbf16>
+// CHECK: %[[EXT1:.*]] = arith.extf %[[S1]] : vector<16xbf16> to vector<16xf32>
+// CHECK: %[[C1:.*]] = call @xla.tanh.v16f32(%[[EXT1]])
+// CHECK: %[[TR1:.*]] = call @xla.fptrunc.v8f32.to.v8bf16
+// CHECK: return
+
+
+
+

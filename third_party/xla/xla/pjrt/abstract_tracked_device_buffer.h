@@ -38,9 +38,11 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/util.h"
+#include "xla/tsl/util/maybe_owning.h"
 
 namespace xla {
+
+class CommonPjRtClient;
 
 class AbstractTrackedDeviceBuffer {
  public:
@@ -68,33 +70,19 @@ class AbstractTrackedDeviceBuffer {
     return result;
   }
 
-  // Construct (or return) a vector of tsl::AsyncValue events which
-  // will become ready when this buffer is ok to mutate.
-  std::vector<tsl::RCReference<tsl::AsyncValue>>
-  GetAsyncValueDefinitionAndUsageEvents() {
-    std::vector<tsl::RCReference<tsl::AsyncValue>> result;
-    result.reserve(definition_events_.size());
-    for (const auto& ev : definition_events_) {
-      if (ev) {
-        result.push_back(tsl::FormRef(ev.async_value()));
-      }
-    }
-    usage_events_->AppendTo(result);
-    return result;
-  }
-
   // Construct (or return) a vector of PjRtDeviceEventRef events which
   // will become ready when this buffer is ok to mutate.
-  std::vector<PjRtDeviceEventRef>
-  GetAsyncValueDefinitionAndUsageDeviceEvents() {
-    std::vector<PjRtDeviceEventRef> result;
-    result.reserve(definition_events_.size());
+  PjRtDeviceEventRefVector GetAsyncValueDefinitionAndUsageDeviceEvents() {
+    PjRtDeviceEventRefVector result;
+    result.reserve(definition_events_.size() + usage_events_.size());
     for (const auto& ev : definition_events_) {
       if (ev) {
         result.push_back(ev);
       }
     }
-    usage_events_->AppendTo(result);
+    for (const auto& ev : usage_events_) {
+      result.push_back(ev);
+    }
     return result;
   }
 
@@ -105,13 +93,12 @@ class AbstractTrackedDeviceBuffer {
   // Only to be called via the result of
   // CommonPjRtBuffer::ScopedHold::ConvertUsageHold with an optional device
   // event to add to the usage events.
-  void AddUsageEvent(PjRtDeviceEventRef event) {
-    usage_events_->AddEvent(std::move(event));
-  }
+  void AddUsageEvent(PjRtDeviceEventRef event);
 
   void ConfirmDonation() {
-    CHECK(usage_events_ != nullptr);
-    usage_events_ = nullptr;
+    CHECK(!usage_events_locked_);
+    usage_events_locked_ = true;
+    usage_events_.clear();
     ReleaseDeviceMemory();
   }
 
@@ -144,36 +131,13 @@ class AbstractTrackedDeviceBuffer {
                                             std::intptr_t stream);
 
   // Returns true if there is an error in any of the events.
-  bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
-    bool is_error = false;
-    for (const auto& ev : definition_events()) {
-      if (ev) {
-        switch (ev.async_value()->state()) {
-          case tsl::AsyncValue::State::kError:
-            is_error = true;
-            ABSL_FALLTHROUGH_INTENDED;
-          case tsl::AsyncValue::State::kConstructed:
-          case tsl::AsyncValue::State::kUnconstructed:
-            events.AddEvent(ev);
-            break;
-          case tsl::AsyncValue::State::kConcrete:
-            break;
-        }
-      }
-    }
-    return is_error;
+  absl::Span<const PjRtDeviceEventRef> usage_events() const {
+    return usage_events_;
   }
 
-  void AddUsageEventsToSet(PjRtDeviceEventSet& events) {
-    usage_events_->AppendTo(events);
-  }
-
-  // Return the usage events for the buffers. After
-  // LockUseAndTransferUsageEvents is called, it is illegal to AddUsageEvent.
-  std::unique_ptr<PjRtDeviceEventSet> LockUseAndTransferUsageEvents() {
-    CHECK(usage_events_ != nullptr);
-    return std::move(usage_events_);
-  }
+  // Locks the usage events. After LockUsageEvents is called, it is illegal to
+  // AddUsageEvent.
+  void LockUsageEvents();
 
  protected:
   void ReleaseDeviceMemory() {
@@ -184,10 +148,14 @@ class AbstractTrackedDeviceBuffer {
  private:
   PjRtRawBufferRef raw_buffer_;
   absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events_;
-  std::unique_ptr<PjRtDeviceEventSet> usage_events_;
+  absl::InlinedVector<PjRtDeviceEventRef, 4> usage_events_;
+  bool use_stream_based_compaction_;
+  bool usage_events_locked_ = false;
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {
+  friend class CommonPjRtClient;
+
  public:
   // Helper class to retain a "hold" on a CommonPjRtBuffer. A ScopedHold
   // may not outlive its parent CommonPjRtBuffer.
@@ -237,6 +205,8 @@ class CommonPjRtBuffer : public PjRtBuffer {
   // converted/confirmed.
   class ScopedHold {
    public:
+    struct UninitializedTag {};
+
     enum Type { kUsage = 0, kExternalReference, kDonation, kMaxValue };
     // Use a State enum instead of encoding the state in an error absl::Status
     // to avoid creating absl::Status values in non-error cases. Creating a
@@ -252,6 +222,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
       kError
     };
 
+    explicit ScopedHold(UninitializedTag);
     ~ScopedHold();
     ScopedHold(ScopedHold&& other);
     ScopedHold(const ScopedHold&) = delete;
@@ -263,10 +234,15 @@ class CommonPjRtBuffer : public PjRtBuffer {
     bool ok() const { return state_ == kValid; }
 
     // Access to the underlying device buffer storage. Requires this->ok().
-    AbstractTrackedDeviceBuffer* buffer() const {
+    AbstractTrackedDeviceBuffer* buffer() {
       CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_ptr_, nullptr);
-      return buffer_ptr_;
+      CHECK_NE(buffer_.get(), nullptr);
+      return buffer_.get_mutable();
+    }
+    const AbstractTrackedDeviceBuffer* buffer() const {
+      CHECK_EQ(state_, kValid);
+      CHECK_NE(buffer_.get(), nullptr);
+      return buffer_.get();
     }
     CommonPjRtBuffer* parent() const { return parent_; }
 
@@ -307,15 +283,12 @@ class CommonPjRtBuffer : public PjRtBuffer {
     CommonPjRtBuffer* const parent_;
     const Type type_;
 
-    // There is an invariant that if ok() then buffer_.value() != nullptr.
+    // There is an invariant that if ok() then buffer_.get() != nullptr.
     State state_;
     absl::Status status_;
-    // The non-owning pointer to the underlying buffer. It is not nullptr for
-    // all types of holds.
-    AbstractTrackedDeviceBuffer* buffer_ptr_ = nullptr;
-    // If it is a donation hold, `buffer_` will not be nullptr. Otherwise, it is
-    // a nullptr.
-    std::unique_ptr<AbstractTrackedDeviceBuffer> buffer_;
+    // Holds the underlying buffer, either owned (donation hold) or borrowed
+    // (usage or external reference hold).
+    tsl::MaybeOwning<AbstractTrackedDeviceBuffer> buffer_;
   };
 
   bool IsDeleted() const override;
@@ -323,14 +296,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
   absl::Status AcquireScopedRawBuffer(
       absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
           PjRtRawBufferRef raw_buffer,
-          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
-          scoped_acquire,
-      const char* caller_name = "AcquireScopedRawBuffer");
-
-  absl::Status AcquireScopedRawBuffer(
-      absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
-          PjRtRawBufferRef raw_buffer,
-          std::vector<PjRtDeviceEventRef> definition_events) &&>
+          PjRtDeviceEventRefVector definition_events) &&>
           scoped_acquire,
       const char* caller_name = "AcquireScopedRawBuffer");
 
@@ -426,25 +392,6 @@ class CommonPjRtBuffer : public PjRtBuffer {
       ABSL_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
-};
-
-// DefaultUsageEventSet is a PjRtDeviceEventSet that coalesces events and
-// removes stale usage events to prevent the event set from growing unbounded.
-class DefaultUsageEventSet : public PjRtDeviceEventSet {
- public:
-  explicit DefaultUsageEventSet(bool stream_based_compaction = false)
-      : stream_based_compaction_(stream_based_compaction) {}
-
-  void AddEvent(PjRtDeviceEventRef event) override;
-
-  void AppendTo(
-      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
-  void AppendTo(std::vector<PjRtDeviceEventRef>& events) override;
-  void AppendTo(PjRtDeviceEventSet& events) override;
-
- private:
-  bool stream_based_compaction_;
-  absl::InlinedVector<PjRtDeviceEventRef, 4> usage_events_;
 };
 
 }  // namespace xla

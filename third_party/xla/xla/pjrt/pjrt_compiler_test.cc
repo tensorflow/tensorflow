@@ -36,11 +36,40 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler_variant.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
+
+absl::StatusOr<PjRtCompilerVariant> PickTpuCompilerVariant() {
+  static const PjRtCompilerVariant kFactoryVariantId =
+      tsl::Fingerprint64("factory_variant");
+  return kFactoryVariantId;
+}
+
+std::string CompilerVariantToString(PjRtCompilerVariant variant) {
+  if (variant == LinkedCompilerVariantId()) {
+    return std::string(kLinkedVariant);
+  }
+  if (variant == tsl::Fingerprint64("factory_variant")) {
+    return "factory_variant";
+  }
+  return std::string(kUnknownVariant);
+}
+
+namespace {
+bool RegisterTestVariantPicker() {
+  PjRtRegisterCompilerVariantPicker("tpu", []() -> absl::StatusOr<std::string> {
+    ABSL_ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant());
+    return CompilerVariantToString(variant);
+  });
+  return true;
+}
+bool test_variant_picker_registered = RegisterTestVariantPicker();
+}  // namespace
 
 namespace {
 using ::absl_testing::StatusIs;
@@ -134,9 +163,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   };
   CompileOptions options;
   std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
-  PjRtRegisterCompiler(topology.platform_name(),
-                       options.compiler_variant.value_or(""),
-                       std::move(compiler));
+  PjRtRegisterCompiler(topology.platform_name(), "", std::move(compiler));
 
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
@@ -258,7 +285,7 @@ TEST(PjRtTopologyDescriptionTest, DefaultMemorySpaceKindIds) {
 }
 
 TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
-  const std::string platform = "factory_test_platform";
+  const std::string platform = "tpu";
   const std::string variant = "factory_variant";
   auto factory_called = std::make_shared<bool>(false);
 
@@ -271,13 +298,11 @@ TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
 
   class PjRtResetPlatformNameTopology : public PjRtTestTopology {
    public:
-    absl::string_view platform_name() const override {
-      return "factory_test_platform";
-    }
+    PjRtPlatformId platform_id() const override { return xla::TpuId(); }
+    absl::string_view platform_name() const override { return "tpu"; }
   };
   PjRtResetPlatformNameTopology topology;
   CompileOptions options;
-  options.compiler_variant = variant;
   XlaComputation computation;
 
   // Factory should not be called yet.

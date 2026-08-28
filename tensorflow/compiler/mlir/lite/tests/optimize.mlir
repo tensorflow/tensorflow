@@ -1,3 +1,18 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // Run optimize pass only and check the results.
 // RUN: litert-opt %s -tfl-optimize='enable-canonicalization=false' | FileCheck %s
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
@@ -593,6 +608,26 @@ func.func @fuseMulIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<
 // CHECK-DAG: %[[w:.*]] = "tfl.pseudo_const"(){{.*}}dense<{{\[}}[1.500000e+00, 3.000000e+00], [4.500000e+00, 6.000000e+00]]> : tensor<2x2xf32>
 // CHECK-NEXT: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %[[w]], %[[b]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
 // CHECK-NEXT: return %[[fc]] : tensor<4x2xf32>
+}
+
+// CHECK-LABEL: @DontFuseExpandingMulIntoFollowingFullyConnected
+// Regression test for https://github.com/tensorflow/tensorflow/issues/124103:
+// Mul that expands the feature dim (e.g. [...,1]*[K] -> [...,K]) must not be
+// folded into a following FullyConnected filter.
+func.func @DontFuseExpandingMulIntoFollowingFullyConnected(%arg0: tensor<4x4x1xf32>) -> tensor<4x4x4xf32> {
+  %scale = arith.constant dense<[3.0, 4.0]> : tensor<2xf32>
+  %0 = "tfl.mul"(%arg0, %scale) {fused_activation_function = "NONE"} : (tensor<4x4x1xf32>, tensor<2xf32>) -> tensor<4x4x2xf32>
+  %filter = arith.constant dense<[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]> : tensor<4x2xf32>
+  %bias = "tfl.no_value"() {value} : () -> none
+  %1 = "tfl.fully_connected"(%0, %filter, %bias) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x4x2xf32>, tensor<4x2xf32>, none) -> tensor<4x4x4xf32>
+  func.return %1 : tensor<4x4x4xf32>
+
+// CHECK-DAG: %[[SCALE:.*]] = arith.constant dense<[3.000000e+00, 4.000000e+00]> : tensor<2xf32>
+// CHECK-DAG: %[[MUL:.*]] = tfl.mul(%arg0, %[[SCALE]])
+// CHECK-DAG: %[[FILTER:.*]] = arith.constant dense<{{\[}}[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00], [7.000000e+00, 8.000000e+00]]> : tensor<4x2xf32>
+// CHECK-DAG: %[[BIAS:.*]] = "tfl.no_value"()
+// CHECK: %[[FC:.*]] = "tfl.fully_connected"(%[[MUL]], %[[FILTER]], %[[BIAS]])
+// CHECK: return %[[FC]]
 }
 
 // CHECK-LABEL: @DontFuseRhsNonConstMulIntoFollowingFullyConnected
@@ -3378,6 +3413,16 @@ func.func @fuseUnpackAndConcatToReshape(%arg0: tensor<1x3x2xf32>) -> tensor<1x6x
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: noFuseUnpackAndConcatToReshapeWhenAxesDiffer
+func.func @noFuseUnpackAndConcatToReshapeWhenAxesDiffer(%arg0: tensor<4x3x1xf32>) -> tensor<12x1xf32> {
+  %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 3 : i32} : (tensor<4x3x1xf32>) -> (tensor<4x1xf32>, tensor<4x1xf32>, tensor<4x1xf32>)
+  %1 = "tfl.concatenation"(%0#0, %0#1, %0#2) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<4x1xf32>, tensor<4x1xf32>, tensor<4x1xf32>) -> tensor<12x1xf32>
+  func.return %1 : tensor<12x1xf32>
+  // CHECK-NOT: tfl.reshape
+  // CHECK: tfl.unpack
+  // CHECK: tfl.concatenation
+}
+
 // CHECK-LABEL: replaceReshapeEqualWithOneHotSingleDim
 func.func @replaceReshapeEqualWithOneHotSingleDim(%arg: tensor<1xi32>) -> tensor<3xi1> {
   %cst = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
@@ -4687,13 +4732,13 @@ func.func @broadcast_to_i32_with_dynamic_shape_and_output(%arg0: tensor<3xi32>, 
 
 // CHECK-LABEL: @broadcast_to_ui32_with_dynamic_output
 func.func @broadcast_to_ui32_with_dynamic_output(%arg0: tensor<1xi32>) -> tensor<?xui32> {
-  %cst = arith.constant dense<0> : tensor<1xui32>
+  %cst = "tfl.pseudo_const"() {value = dense<0> : tensor<1xui32>} : () -> tensor<1xui32>
   %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
   return %0 : tensor<?xui32>
 
-  // CHECK:  %cst = arith.constant dense<0> : tensor<1xui32>
-  // CHECK:  %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
-  // CHECK:  return %0 : tensor<?xui32>
+  // CHECK:  %[[CST:.*]] = "tfl.pseudo_const"(){{.*}}dense<0> : tensor<1xui32>
+  // CHECK:  %[[VAL:.*]] = "tfl.broadcast_to"(%[[CST]], %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
+  // CHECK:  return %[[VAL]] : tensor<?xui32>
 }
 
 
@@ -5057,4 +5102,66 @@ func.func @ConvertSubZerosLikeToNeg(%arg0: tensor<5x5xf32>, %arg1: tensor<5x5xf3
   // CHECK: %[[NEG:.*]] = "tfl.neg"(%arg1) : (tensor<5x5xf32>) -> tensor<5x5xf32> 
   // CHECK: return %[[NEG]] : tensor<5x5xf32>
   func.return %1 : tensor<5x5xf32>
+}
+
+// CHECK-LABEL: @Fuse4DResourceAddIntoConv2D
+func.func @Fuse4DResourceAddIntoConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<2x3x3x3xf32>) -> tensor<256x32x32x2xf32> {
+  %cst = arith.constant dense_resource<bias_4d_resource> : tensor<1x1x1x2xf32>
+  %cst_0 = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %0 = "tfl.conv_2d"(%arg0, %arg1, %cst_0) {
+    dilation_h_factor = 1 : i32,
+    dilation_w_factor = 1 : i32,
+    fused_activation_function = "NONE",
+    padding = "SAME",
+    stride_h = 1 : i32,
+    stride_w = 1 : i32
+  } : (tensor<256x32x32x3xf32>, tensor<2x3x3x3xf32>, tensor<2xf32>) -> tensor<256x32x32x2xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<256x32x32x2xf32>, tensor<1x1x1x2xf32>) -> tensor<256x32x32x2xf32>
+  func.return %1 : tensor<256x32x32x2xf32>
+
+  // CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>
+  // CHECK-DAG: %[[CST_FLAT:.*]] = arith.constant dense_resource<bias_4d_resource> : tensor<2xf32>
+  // CHECK: %[[NEW_BIAS:.*]] = tfl.add %[[BIAS]], %[[CST_FLAT]]
+  // CHECK: %[[CONV:.*]] = "tfl.conv_2d"(%arg0, %arg1, %[[NEW_BIAS]])
+  // CHECK: return %[[CONV]]
+}
+
+// CHECK-LABEL: @ReorderNCHWTransposeResourceAddForConv
+func.func @ReorderNCHWTransposeResourceAddForConv(%arg0: tensor<1x40x40x1xf32>, %filter: tensor<3x3x3x3xf32>) -> tensor<1x3x40x40xf32> {
+  %no_bias = "tfl.no_value"() {value} : () -> none
+  %perm = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  %bias = arith.constant dense_resource<nchw_bias_resource> : tensor<1x3x1x1xf32>
+  %0 = "tfl.conv_2d"(%arg0, %filter, %no_bias) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x40x40x1xf32>, tensor<3x3x3x3xf32>, none) -> tensor<1x40x40x3xf32>
+  %1 = "tfl.transpose"(%0, %perm) : (tensor<1x40x40x3xf32>, tensor<4xi32>) -> tensor<1x3x40x40xf32>
+  %2 = "tfl.add"(%1, %bias) {fused_activation_function = "NONE"} : (tensor<1x3x40x40xf32>, tensor<1x3x1x1xf32>) -> tensor<1x3x40x40xf32>
+  func.return %2 : tensor<1x3x40x40xf32>
+
+  // CHECK: %[[BIAS_FLAT:.*]] = arith.constant dense_resource<nchw_bias_resource> : tensor<3xf32>
+  // CHECK: %[[CONV:.*]] = "tfl.conv_2d"
+  // CHECK: %[[ADD:.*]] = tfl.add(%[[CONV]], %[[BIAS_FLAT]])
+  // CHECK: %[[TRANSPOSE:.*]] = "tfl.transpose"(%[[ADD]],
+  // CHECK: return %[[TRANSPOSE]]
+}
+
+// CHECK-LABEL: @Fuse4DResourceAddIntoDepthwiseConv2D
+func.func @Fuse4DResourceAddIntoDepthwiseConv2D(%arg0: tensor<1x32x32x4xf32>, %arg1: tensor<1x3x3x4xf32>) -> tensor<1x32x32x4xf32> {
+  %cst = arith.constant dense_resource<dw_bias_4d_resource> : tensor<1x1x1x4xf32>
+  %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf32>
+  %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst_0) {
+    depth_multiplier = 1 : i32,
+    dilation_h_factor = 1 : i32,
+    dilation_w_factor = 1 : i32,
+    fused_activation_function = "NONE",
+    padding = "SAME",
+    stride_h = 1 : i32,
+    stride_w = 1 : i32
+  } : (tensor<1x32x32x4xf32>, tensor<1x3x3x4xf32>, tensor<4xf32>) -> tensor<1x32x32x4xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x32x32x4xf32>, tensor<1x1x1x4xf32>) -> tensor<1x32x32x4xf32>
+  func.return %1 : tensor<1x32x32x4xf32>
+
+  // CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf32>
+  // CHECK-DAG: %[[CST_FLAT:.*]] = arith.constant dense_resource<dw_bias_4d_resource> : tensor<4xf32>
+  // CHECK: %[[NEW_BIAS:.*]] = tfl.add %[[BIAS]], %[[CST_FLAT]]
+  // CHECK: %[[DW_CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %arg1, %[[NEW_BIAS]])
+  // CHECK: return %[[DW_CONV]]
 }

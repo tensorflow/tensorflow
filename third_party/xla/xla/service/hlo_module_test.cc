@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -48,7 +49,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/compilation_environments.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"
@@ -68,7 +69,8 @@ namespace xla {
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      absl::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      google::protobuf::DownCastMessage<test::TestCompilationEnvironment1>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
     env->set_some_flag(100);

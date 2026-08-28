@@ -35,8 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class TokenHloTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
-};
+class TokenHloTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(TokenHloTest, SingleTokenInstruction) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();

@@ -74,8 +74,8 @@ absl::Status DoParallelConcat(const Device& d, const Tensor& value, int32_t loc,
 // that CASE is not defined...hence the above construction
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
-                                     DataTypeString(value.dtype()));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported data type: ", DataTypeString(value.dtype())));
   }
   return absl::OkStatus();
 }
@@ -183,8 +183,8 @@ absl::Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
     CASE(uint64_t)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type from DoInplace: ",
-                                     DataTypeString(v.dtype()));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported data type from DoInplace: ", DataTypeString(v.dtype())));
   }
   return absl::OkStatus();
 }
@@ -211,8 +211,8 @@ absl::Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
     CASE(uint64_t)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported dtype from DoCopy: ",
-                                     DataTypeString(x.dtype()));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported dtype from DoCopy: ", DataTypeString(x.dtype())));
   }
   return absl::OkStatus();
 }

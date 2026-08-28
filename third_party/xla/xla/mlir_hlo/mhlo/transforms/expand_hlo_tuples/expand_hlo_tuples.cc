@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iterator>
-#include <memory>
-#include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,11 +41,8 @@ namespace {
 class ExpandHloTuplesPass
     : public impl::ExpandHloTuplesPassBase<ExpandHloTuplesPass> {
  public:
-  ExpandHloTuplesPass() = default;
-  ExpandHloTuplesPass(const ExpandHloTuplesPass&) = default;
-  explicit ExpandHloTuplesPass(const std::string& entryFunctionName) {
-    entry_function_name_ = entryFunctionName;
-  }
+  using impl::ExpandHloTuplesPassBase<
+      ExpandHloTuplesPass>::ExpandHloTuplesPassBase;
 
   // Expands the mhlo.tuple used in return op. Also updates function
   // signature accordingly.
@@ -160,11 +155,6 @@ class ExpandHloTuplesPass
 };
 
 }  // end namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> createExpandHloTuplesPass(
-    const std::string& entryFunctionName) {
-  return std::make_unique<ExpandHloTuplesPass>(entryFunctionName);
-}
 
 }  // namespace mhlo
 }  // namespace mlir

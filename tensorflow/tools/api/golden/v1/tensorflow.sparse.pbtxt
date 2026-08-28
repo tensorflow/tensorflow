@@ -2,11 +2,11 @@ path: "tensorflow.sparse"
 tf_module {
   member {
     name: "SparseConditionalAccumulator"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "SparseTensor"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member_method {
     name: "add"

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Build macro that compile a Mhlo or StableHlo file into a Aot Result
 
 
@@ -15,6 +30,7 @@ xla_aot_compile(
 """
 
 load("//xla:xla.default.bzl", "xla_compile_target_cpu")
+load("//xla/backends/gpu/target_config:target_config_map.bzl", gpu_target_config_map = "target_config_map")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
@@ -80,40 +96,46 @@ def xla_aot_compile_cpu(
 def xla_aot_compile_gpu(
         name,
         module,
-        gpu_target_config,
+        gpu_targets,
         autotune_results):
     """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an AotCompilationResult for GPU
 
     Args:
         name: The name of the build rule.
         module: The MHLO or StableHLO file to compile.
-        gpu_target_config: The serialized GpuTargetConfigProto
+        gpu_targets: The list of gpu targets.
         autotune_results: AOT AutotuneResults
     """
 
-    # Run xla_compile to generate the file containing an AotCompilationResult.
-    native.genrule(
-        name = ("gen_" + name),
-        srcs = [module, gpu_target_config, autotune_results],
-        outs = [name],
-        cmd = (
-            "$(location " + xla_compile_tool + ")" +
-            " --module_file=$(location " + module + ")" +
-            " --output_file=$(location " + name + ")" +
-            " --platform=gpu" +
-            " --gpu_target_config=$(location " + gpu_target_config + ")" +
-            " --autotune_results=$(location " + autotune_results + ")"
-        ),
-        tools = [xla_compile_tool],
-        # copybara:comment_begin(oss-only)
-        target_compatible_with = select({
-            "@local_config_cuda//:is_cuda_enabled": [],
-            "//conditions:default": ["@platforms//:incompatible"],
-        }),
-        # copybara:comment_end
+    res = []
+    for target in gpu_targets:
+        # Run xla_compile to generate the file containing an AotCompilationResult.
+        compiled_binary = name + "_" + target
+        native.genrule(
+            name = "gen_" + name + "_" + target,
+            srcs = [module, gpu_target_config_map[target], autotune_results],
+            outs = [name + "_" + target],
+            cmd = (
+                "$(location " + xla_compile_tool + ")" +
+                " --module_file=$(location " + module + ")" +
+                " --output_file=$(location " + compiled_binary + ")" +
+                " --platform=gpu" +
+                " --gpu_target_config=$(location " + gpu_target_config_map[target] + ")" +
+                " --autotune_results=$(location " + autotune_results + ")"
+            ),
+            tools = [xla_compile_tool],
+            # copybara:comment_begin(oss-only)
+            target_compatible_with = select({
+                "@local_config_cuda//:is_cuda_enabled": [],
+                "//conditions:default": ["@platforms//:incompatible"],
+            }),
+            # copybara:comment_end
+        )
+        res.append(compiled_binary)
+    native.filegroup(
+        name = name,
+        data = res,
     )
-
-    return
 
 def xla_aot_compile_gpu_runtime_autotuning(
         name,

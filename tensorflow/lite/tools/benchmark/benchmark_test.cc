@@ -199,9 +199,9 @@ void CheckInputTensorValue(const TfLiteTensor* input_tensor,
                            int tensor_dim_index,
                            const std::string& expected_value) {
   StringRef tensor_value = GetString(input_tensor, tensor_dim_index);
-  EXPECT_TRUE(absl::equal(tensor_value.str, tensor_value.str + tensor_value.len,
-                          expected_value.c_str(),
-                          expected_value.c_str() + expected_value.length()));
+  EXPECT_TRUE(std::equal(tensor_value.str, tensor_value.str + tensor_value.len,
+                         expected_value.c_str(),
+                         expected_value.c_str() + expected_value.length()));
 }
 
 class TestBenchmark : public BenchmarkTfLiteModel {
@@ -288,6 +288,15 @@ TEST(BenchmarkTest, SingleSignatureModelWithInvalidSignatureKeyFails) {
   TestBenchmark benchmark(std::move(params));
   auto status = benchmark.Run();
   EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, SingleSignatureModelWithUnspecifiedSignatureKeySucceeds) {
+  ASSERT_THAT(g_string_model_path, testing::NotNull());
+
+  BenchmarkParams params = CreateStringParams();
+  TestBenchmark benchmark(std::move(params));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteOk, status);
 }
 
 TEST(BenchmarkTest, MultiSignatureModelWithUnspecifiedSignatureKeyFails) {
@@ -618,9 +627,9 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
 
   // Expect data is not the same.
   EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
-  EXPECT_FALSE(absl::equal(input_bytes.begin(), input_bytes.end(),
-                           input_tensor->data.raw,
-                           input_tensor->data.raw + input_tensor->bytes));
+  EXPECT_FALSE(std::equal(input_bytes.begin(), input_bytes.end(),
+                          input_tensor->data.raw,
+                          input_tensor->data.raw + input_tensor->bytes));
 }
 
 TEST(BenchmarkTest, InitializationFailedWhenInvalidGraphPathIsProvided) {

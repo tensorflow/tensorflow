@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -358,6 +360,58 @@ INSTANTIATE_TEST_SUITE_P(JitVectorizationTestInstantiation,
                          JitVectorizationTest,
                          ::testing::ValuesIn(GetJitVectorizationTestCases()),
                          JitVectorizationTest::Name);
+
+class AtanJitVectorizationTest : public HloHardwareIndependentTestBase {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_max_isa("AVX512");
+    debug_options.set_xla_cpu_prefer_vector_width(512);
+    return debug_options;
+  }
+};
+
+TEST_F(AtanJitVectorizationTest, AtanF32) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+
+  const absl::string_view hlo_text = R"(
+    HloModule AtanF32
+
+    ENTRY AtanF32 {
+      p0 = f32[1024] parameter(0)
+      c1 = f32[] constant(1)
+      b1 = f32[1024] broadcast(c1), dimensions={}
+      ROOT atan2 = f32[1024] atan2(p0, b1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+
+  int num_elements = 16;
+  if (!tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX512F)) {
+    if (tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX2)) {
+      num_elements = 8;
+    } else {
+      num_elements = 4;
+    }
+  }
+
+  std::string check_lines =
+      absl::StrFormat("CHECK: fdiv <%d x float>", num_elements);
+
+  TF_ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                                  std::move(hlo_module), check_lines,
+                                  /*match_optimized_ir=*/true));
+}
 
 }  // namespace
 }  // namespace cpu

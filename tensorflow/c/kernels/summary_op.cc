@@ -14,24 +14,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <sstream>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels/tensor_shape_utils.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/protobuf.h"
 
 namespace {
 
@@ -90,7 +92,7 @@ void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       static_cast<tensorflow::tstring*>(TF_TensorData(params.tags));
   auto values_array = static_cast<T*>(TF_TensorData(params.values));
   // Copy tags and values into summary protobuf
-  for (int i = 0; i < TF_TensorElementCount(params.tags); ++i) {
+  for (int64_t i = 0; i < TF_TensorElementCount(params.tags); ++i) {
     tensorflow::Summary::Value* v = s.add_value();
     const tensorflow::tstring& Ttags_i = tags_array[i];
     v->set_tag(Ttags_i.data(), Ttags_i.size());

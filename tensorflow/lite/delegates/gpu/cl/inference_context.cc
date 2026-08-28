@@ -176,8 +176,9 @@ absl::Status GetBufferAssignment(
           (descriptor.GetStorageType() == TensorStorageType::TEXTURE_2D
                ? 4
                : shape.c);
-      const size_t width = shape.b * shape.w;
-      const size_t height = shape.h * DivideRoundUp(shape.c, 4);
+      const size_t width = static_cast<size_t>(shape.b) * shape.w;
+      const size_t height =
+          static_cast<size_t>(shape.h) * DivideRoundUp(shape.c, 4);
       size_t width_pixel_alignment = gpu_info.opencl_info.image_pitch_alignment;
       if (gpu_info.IsAdreno() && width_pixel_alignment % bytes_per_pixel == 0) {
         width_pixel_alignment /= bytes_per_pixel;
@@ -188,8 +189,8 @@ absl::Status GetBufferAssignment(
       if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
         has_buffer_based_images = true;
       }
-      buffer_size =
-          shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
+      buffer_size = static_cast<size_t>(shape.b) * shape.w * shape.h *
+                    AlignByN(shape.c, 4) * element_size;
     }
     if (graph_ids_to_shared_buffer_tensors) {
       (*graph_ids_to_shared_buffer_tensors)[usage.first] =
@@ -602,7 +603,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
 
       shared_buffers_.resize(buffer_assignment.object_sizes.size());
       size_t offset = 0;
-      for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+      for (size_t i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
         const size_t aligned_size =
             AlignByN(buffer_assignment.object_sizes[i], base_align_bytes);
         RETURN_IF_ERROR(CreateReadWriteSubBuffer(*shared_buffers_parent_ptr_,
@@ -612,7 +613,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
       }
     } else {
       shared_buffers_.resize(buffer_assignment.object_sizes.size());
-      for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+      for (size_t i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
         RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
                                               context, &shared_buffers_[i]));
       }

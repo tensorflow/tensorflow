@@ -375,8 +375,11 @@ class UnaryVariantDecodeRegistration {
           if (t == nullptr) {
             return false;
           }
+          VariantTensorData data;
+          if (!data.FromProto(std::move(*t))) {
+            return false;
+          }
           Variant decoded = T();
-          VariantTensorData data(std::move(*t));
           if (!decoded.Decode(std::move(data))) {
             return false;
           }

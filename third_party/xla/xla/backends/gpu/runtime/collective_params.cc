@@ -19,12 +19,13 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
@@ -61,26 +62,9 @@ static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
   return it->second;
 }
 
-static GpuCollectives* ResolveCollectives(
-    const GpuExecutableRunOptions* gpu_options, absl::string_view platform_name,
-    const std::optional<std::string>& implementation_name) {
-  if (gpu_options && gpu_options->collectives()) {
-    return gpu_options->collectives();
-  }
-  if (implementation_name.has_value()) {
-    absl::StatusOr<Collectives*> collectives =
-        CollectivesRegistry::Get(platform_name, *implementation_name);
-    CHECK_OK(collectives) << "Failed to get GPU collectives implementation: "
-                          << *implementation_name;
-    return tsl::down_cast<GpuCollectives*>(*collectives);
-  }
-  return GpuCollectives::Default(platform_name);
-}
-
 absl::StatusOr<CollectiveParams> CollectiveParams::Create(
     const ServiceExecutableRunOptions& run_options,
     absl::Span<se::Stream* const> async_streams, LocalDeviceId local_device_id,
-    std::optional<std::string> implementation_name,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
     bool collective_use_minimal_resource) {
   const GpuExecutableRunOptions* gpu_options =
@@ -88,8 +72,12 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
 
   const std::string& platform_name =
       run_options.run_options().stream()->parent()->GetPlatform()->Name();
-  auto* collectives =
-      ResolveCollectives(gpu_options, platform_name, implementation_name);
+
+  GpuCollectives* collectives =
+      gpu_options ? gpu_options->collectives() : nullptr;
+  if (collectives == nullptr) {
+    collectives = GpuCollectives::Resolve(platform_name);
+  }
 
   auto* device_id_map = gpu_options && gpu_options->gpu_global_device_ids()
                             ? &*gpu_options->gpu_global_device_ids()
@@ -103,7 +91,7 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
                            ? &*gpu_options->incarnations()
                            : nullptr;
 
-  ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+  ABSL_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                    GetGlobalDeviceId(device_id_map, local_device_id));
 
   return CollectiveParams(

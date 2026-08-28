@@ -33,33 +33,10 @@ namespace emitters {
 #define GEN_PASS_DECL
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateLowerXlaIntrinsicLibPass();
-std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
-std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(
-    bool aproximate_tanh = true);
-std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass();
-std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
-    const std::string& target_type = "gpu",
-    const std::string& gpu_device_info = "");
-std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
+std::unique_ptr<mlir::Pass> createLowerTensorsPass(
     const stream_executor::DeviceDescription& device_description);
-std::unique_ptr<mlir::Pass> CreateLowerXlaToScfPass(int64_t warp_size = 32);
-std::unique_ptr<mlir::Pass> CreateLowerXlaLoopsToScfPass();
-std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
-std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
-std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(
-    bool fast_min_max = false, bool explicit_nan_propagation = false);
-std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();
-std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
-    const std::string& target_type = "gpu",
-    const std::string& gpu_device_info = "");
-std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
+std::unique_ptr<mlir::Pass> createVectorizeLoadsAndStoresPass(
     const stream_executor::DeviceDescription& device_description);
-std::unique_ptr<mlir::Pass> CreateSafeIntegerArithmeticPass();
-std::unique_ptr<mlir::Pass> CreateExpandIntegerPowerPass();
-std::unique_ptr<mlir::Pass> CreateLowerPdlWaitPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

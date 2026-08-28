@@ -93,15 +93,14 @@ __device__ void TransferDataToLsaPeer(
   }
 }
 
-template <typename PtrStorage, int64_t kVectorSize>
-__global__ void __launch_bounds__(128)
-    RaggedAllToAllKernelImpl(const void* __restrict__ input_ptr,
-                             PtrStorage output_ptrs,
-                             const int64_t* __restrict__ input_offsets_ptr,
-                             const int64_t* __restrict__ send_sizes_ptr,
-                             const int64_t* __restrict__ output_offsets_ptr,
-                             int64_t num_updates_per_replica,
-                             int64_t num_row_elements) {
+template <int64_t kVectorSize>
+__global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
+    const void* __restrict__ input_ptr,
+    stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs,
+    const int64_t* __restrict__ input_offsets_ptr,
+    const int64_t* __restrict__ send_sizes_ptr,
+    const int64_t* __restrict__ output_offsets_ptr,
+    int64_t num_updates_per_replica, int64_t num_row_elements) {
   using T = Vec<kVectorSize>;
   const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
   T* output_ptr = static_cast<T* __restrict__>(output_ptrs[blockIdx.x]);

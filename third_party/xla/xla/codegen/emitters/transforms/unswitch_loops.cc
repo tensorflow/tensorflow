@@ -105,9 +105,5 @@ void UnswitchLoopsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass() {
-  return std::make_unique<UnswitchLoopsPass>();
-}
-
 }  // namespace emitters
 }  // namespace xla

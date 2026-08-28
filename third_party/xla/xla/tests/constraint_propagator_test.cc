@@ -15,16 +15,17 @@ limitations under the License.
 
 #include "xla/tests/constraint_propagator.h"
 
+#include <cmath>
+
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/constraint_state.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
-class ConstraintPropagatorTest : public HloPjRtTestBase {};
+class ConstraintPropagatorTest : public HloTestBase {};
 
 TEST_F(ConstraintPropagatorTest, EmptyInterval) {
   ConstraintInterval a{0.0, 10.0, false};
@@ -131,8 +132,8 @@ ENTRY main {
   ROOT root = f32[] sqrt(sub)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
@@ -157,8 +158,8 @@ ENTRY main {
   ROOT root = f32[] sqrt(negx)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
@@ -185,8 +186,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(log, rsqrt)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
@@ -213,8 +214,8 @@ ENTRY main {
   ROOT root = f32[] log(div_a) 
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto b_int = states[module->entry_computation()->parameter_instruction(1)]
                    .GetConstraintInterval();
@@ -238,15 +239,15 @@ ENTRY main {
   ROOT root = f32[] divide(x, add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto y_int = states[module->entry_computation()->parameter_instruction(1)]
                    .GetConstraintInterval();
   auto z_int = states[module->entry_computation()->parameter_instruction(2)]
                    .GetConstraintInterval();
 
-  // add != 0 => y and z cant both be 0 and must have the same sign to avoid
+  // add != 0 => y and z can't both be 0 and must have the same sign to avoid
   // zero-crossing.
   EXPECT_EQ(y_int.exclude_zero, true);
   EXPECT_EQ(z_int.exclude_zero, true);
@@ -268,8 +269,8 @@ ENTRY main {
   ROOT rsqrt = f32[2048,4] rsqrt(add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
   auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
                     .GetConstraintInterval();
   EXPECT_TRUE(p0_int.IsPositive());
@@ -291,8 +292,8 @@ ENTRY main {
   ROOT bitcast_2 = f32[2048,4] bitcast(rsqrt)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
                     .GetConstraintInterval();
@@ -316,8 +317,8 @@ ENTRY main {
   ROOT sqrt = f32[4]{0} sqrt(div)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
                     .GetConstraintInterval();
@@ -327,6 +328,114 @@ ENTRY main {
   // slice_0 is part of param_0, so param_0 should be constrained to >= 0.
   EXPECT_GE(p0_int.min, 0.0);
   EXPECT_FALSE(p0_int.IsEmpty());
+}
+
+TEST_F(ConstraintPropagatorTest, LogConvert) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  convert = f32[8,128] convert(param_0)
+  ROOT log = f32[8,128] log(convert)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+}
+
+TEST_F(ConstraintPropagatorTest, LogConvertPad) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[4,128] parameter(0)
+  c_zero = s32[] constant(0)
+  pad = s32[8,128] pad(param_0, c_zero), padding=0_4x0_0
+  convert = f32[8,128] convert(pad)
+  ROOT log = f32[8,128] log(convert)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+}
+
+TEST_F(ConstraintPropagatorTest, RsqrtSelect) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  pred_0 = pred[8,128] parameter(0)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  param_1 = f32[8,128] parameter(1)
+  select_in = f32[8,128] select(pred_0, b_one, param_1)
+  ROOT rsqrt = f32[8,128] rsqrt(select_in)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p1_int.IsPositiveStrict());
+}
+
+// Tests guarded division clipping: where(select_val > threshold, threshold /
+// select_val, 1.0) with masked inputs select_val = where(mask, x, 0.0). On
+// masked lanes (mask == false), select_val evaluates to 0.0. For the guard
+// condition (0.0 > threshold) to evaluate to false (avoiding division by zero
+// threshold / 0.0), threshold must be strictly positive (threshold > 0).
+TEST_F(ConstraintPropagatorTest, GuardedDivideThresholdPositive) {
+  const char* hlo = R"(
+HloModule direct_compare_select_divide_fusion_8x128
+ENTRY main {
+  param_0 = f32[] parameter(0)
+  param_1 = pred[8,128] parameter(1)
+  param_2 = f32[8,128] parameter(2)
+  c_zero = f32[] constant(0)
+  b_zero = f32[8,128] broadcast(c_zero), dimensions={}
+  select_val = f32[8,128] select(param_1, param_2, b_zero)
+  b_threshold = f32[8,128] broadcast(param_0), dimensions={}
+  cmp = pred[8,128] compare(select_val, b_threshold), direction=GT
+  div = f32[8,128] divide(b_threshold, select_val)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  ROOT select_n = f32[8,128] select(cmp, div, b_one)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+
+  auto p2_int = states[module->entry_computation()->parameter_instruction(2)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p2_int.exclude_zero);
+}
+
+TEST_F(ConstraintPropagatorTest, SqrtConvert) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  convert = f32[8,128] convert(param_0)
+  ROOT sqrt = f32[8,128] sqrt(convert)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositive());
 }
 
 TEST_F(ConstraintPropagatorTest, TheoreticalLimitationConflictingConstraints) {
@@ -343,8 +452,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(log1, log2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
@@ -356,6 +465,714 @@ ENTRY main {
   // from log(x), so the ConstraintInterval for x is empty.
   EXPECT_TRUE(x_int.IsEmpty());
   EXPECT_TRUE(y_int.IsNegativeStrict());
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplySquareReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = bf16[8,1024,3072] parameter(0)
+  ROOT mul = bf16[8,1024,3072] multiply(param_0, param_0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+
+  // Root bf16 output is seeded with [-65504.0, 65504.0].
+  // Reverse propagation for multiply computes max_in = sqrt(65504.0) ~
+  // 255.9375.
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, std::sqrt(65504.0), 1e-3);
+  EXPECT_NEAR(p0_int.min, -std::sqrt(65504.0), 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, ConvolutionReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = bf16[8,1024,3072,1] parameter(0)
+  param_1 = bf16[24,3072,256,1] parameter(1)
+  ROOT conv = bf16[8,1024,24,256] convolution(param_0, param_1),
+    window={size=1x24 pad=0_0x23_23 rhs_reversal=0x1}, dim_labels=0bf1_1io0->0b1f
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+
+  // Contracting size K = 3072 * 1 * 24 = 73728 terms.
+  // Root max_out = 65504.0.
+  // max_in = sqrt(65504.0 / 73728) ~ 0.9426.
+  double expected_max_in = std::sqrt(65504.0 / 73728.0);
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
+
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_NEAR(p1_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p1_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, ReduceSumReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+add_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+ENTRY main {
+  param_0 = bf16[8,1024,24,256] parameter(0)
+  init = bf16[] constant(0)
+  ROOT reduce = bf16[8,1024] reduce(param_0, init), dimensions={2,3},
+    to_apply=add_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+
+  // Reduce sum across 24 * 256 = 6144 elements.
+  // Root max_out = 65504.0.
+  // max_in = 65504.0 / 6144 ~ 10.661458.
+  double expected_max_in = 65504.0 / 6144.0;
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, DotReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  lhs = bf16[8,1024,3072] parameter(0)
+  rhs = bf16[3072,256] parameter(1)
+  ROOT dot = bf16[8,1024,256] dot(lhs, rhs),
+    lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto lhs_int = states[module->entry_computation()->parameter_instruction(0)]
+                     .GetConstraintInterval();
+  auto rhs_int = states[module->entry_computation()->parameter_instruction(1)]
+                     .GetConstraintInterval();
+
+  // Contracting size K = 3072 terms.
+  // Root max_out = 65504.0.
+  // max_in = sqrt(65504.0 / 3072) ~ 4.61735.
+  double expected_max_in = std::sqrt(65504.0 / 3072.0);
+  EXPECT_FALSE(lhs_int.IsEmpty());
+  EXPECT_NEAR(lhs_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(lhs_int.min, -expected_max_in, 1e-3);
+
+  EXPECT_FALSE(rhs_int.IsEmpty());
+  EXPECT_NEAR(rhs_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(rhs_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplyReduceFusionSequence) {
+  const char* hlo = R"(
+HloModule TestModule
+add_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+ENTRY main {
+  param_0 = bf16[8,1024,3072,1] parameter(0)
+  param_1 = bf16[24,3072,256,1] parameter(1)
+  conv = bf16[8,1024,24,256] convolution(param_0, param_1),
+    window={size=1x24 pad=0_0x23_23 rhs_reversal=0x1}, dim_labels=0bf1_1io0->0b1f
+  square = bf16[8,1024,24,256] multiply(conv, conv)
+  init = bf16[] constant(0)
+  ROOT reduce = bf16[8,1024] reduce(square, init), dimensions={2,3},
+    to_apply=add_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+
+  // Sequence trace:
+  // 1. reduce max_out = 65504.0 -> square bound max_in = 65504 / 6144
+  // ~ 10.661458.
+  // 2. square (conv * conv) -> conv bound max_in = sqrt(10.661458) ~ 3.265188.
+  // 3. conv (K = 73728) -> param_0 and param_1 bound max_in = sqrt(3.265188 /
+  // 73728) ~ 0.006654.
+  double expected_max_in = std::sqrt(std::sqrt(65504.0 / 6144.0) / 73728.0);
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-4);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-4);
+
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_NEAR(p1_int.max, expected_max_in, 1e-4);
+  EXPECT_NEAR(p1_int.min, -expected_max_in, 1e-4);
+}
+
+TEST_F(ConstraintPropagatorTest, RootTupleSeeding) {
+  const char* hlo = R"(
+HloModule TestModule
+add_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+ENTRY main {
+  param_0 = bf16[8,1024,24,256] parameter(0)
+  init = bf16[] constant(0)
+  reduce = bf16[8,1024] reduce(param_0, init), dimensions={2,3},
+    to_apply=add_computation
+  ROOT tuple = (bf16[8,1024]) tuple(reduce)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+
+  // N = 24 * 256 = 6144 elements.
+  // Root bf16 output in tuple is seeded with [-65504.0, 65504.0].
+  // Expected max_in = 65504.0 / 6144 ~ 10.661458.
+  double expected_max_in = 65504.0 / 6144.0;
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, VariadicReduceSharedOperandDoubleDipping) {
+  const char* hlo = R"(
+HloModule TestModule
+add_computation {
+  p0 = bf16[] parameter(0)
+  p1 = bf16[] parameter(1)
+  p2 = bf16[] parameter(2)
+  p3 = bf16[] parameter(3)
+  add0 = bf16[] add(p0, p2)
+  add1 = bf16[] add(p1, p3)
+  ROOT tuple = (bf16[], bf16[]) tuple(add0, add1)
+}
+ENTRY main {
+  param_0 = bf16[8,1024,24,256] parameter(0)
+  init = bf16[] constant(0)
+  reduce = (bf16[8,1024], bf16[8,1024]) reduce(param_0, param_0, init, init),
+    dimensions={2,3}, to_apply=add_computation
+  gte0 = bf16[8,1024] get-tuple-element(reduce), index=0
+  gte1 = bf16[8,1024] get-tuple-element(reduce), index=1
+  ROOT tuple = (bf16[8,1024], bf16[8,1024]) tuple(gte0, gte1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+
+  // N = 24 * 256 = 6144 elements.
+  // Root max_out = 65504.0.
+  // Expected max_in = 65504.0 / 6144 ~ 10.661458.
+  double expected_max_in = 65504.0 / 6144.0;
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, ReducePrecisionRsqrtPropagatesStrictPositive) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = bf16[8,128] parameter(0)
+  reduce_precision = bf16[8,128] reduce-precision(param_0), exponent_bits=8, mantissa_bits=7
+  convert = f32[8,128] convert(reduce_precision)
+  ROOT rsqrt = f32[8,128] rsqrt(convert)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+  EXPECT_TRUE(p0_int.exclude_zero);
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, InverseSigmoidLogitPropagatesConstraint) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  sub = f32[8,128] subtract(b_one, param_0)
+  div = f32[8,128] divide(sub, param_0)
+  ROOT log = f32[8,128] log(div)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+  EXPECT_TRUE(p0_int.exclude_zero);
+  EXPECT_GE(p0_int.min, 0.0);
+  EXPECT_LE(p0_int.max, 1.0);
+}
+
+TEST_F(ConstraintPropagatorTest, AddConstantPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_offset = f32[] constant(-1024)
+  b_offset = f32[8,128] broadcast(c_offset), dimensions={}
+  add = f32[8,128] add(param_0, b_offset)
+  ROOT log = f32[8,128] log(add)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 1024.0);
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplyPositiveConstantPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_scale = f32[] constant(0.25)
+  b_scale = f32[8,128] broadcast(c_scale), dimensions={}
+  mul = f32[8,128] multiply(param_0, b_scale)
+  ROOT sqrt = f32[8,128] sqrt(mul)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplyNegativeConstantPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_scale = f32[] constant(-2.0)
+  b_scale = f32[8,128] broadcast(c_scale), dimensions={}
+  mul = f32[8,128] multiply(param_0, b_scale)
+  ROOT sqrt = f32[8,128] sqrt(mul)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, MaximumConstantZeroStrictPositive) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_zero = f32[] constant(0)
+  b_zero = f32[8,128] broadcast(c_zero), dimensions={}
+  max = f32[8,128] maximum(param_0, b_zero)
+  ROOT log = f32[8,128] log(max)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+  EXPECT_TRUE(p0_int.exclude_zero);
+}
+
+TEST_F(ConstraintPropagatorTest, MaximumNonConstantsStrictPositive) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  max = f32[8,128] maximum(param_0, param_1)
+  ROOT log = f32[8,128] log(max)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+  EXPECT_TRUE(p0_int.exclude_zero);
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_GE(p1_int.min, 0.0);
+  EXPECT_TRUE(p1_int.exclude_zero);
+}
+
+TEST_F(ConstraintPropagatorTest, MinimumConstantNegativeUpperBound) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_five = f32[] constant(5)
+  b_five = f32[8,128] broadcast(c_five), dimensions={}
+  min = f32[8,128] minimum(param_0, b_five)
+  neg = f32[8,128] negate(min)
+  ROOT sqrt = f32[8,128] sqrt(neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, MinimumNonConstantsNegativeUpperBound) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  min = f32[8,128] minimum(param_0, param_1)
+  neg = f32[8,128] negate(min)
+  ROOT sqrt = f32[8,128] sqrt(neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_LE(p1_int.max, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, LogSubExpMaxPropagatesStrictNegative) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  sub = f32[8,128] subtract(param_0, param_1)
+  exp = f32[8,128] exponential(sub)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  sub_exp = f32[8,128] subtract(b_one, exp)
+  c_zero = f32[] constant(0)
+  b_zero = f32[8,128] broadcast(c_zero), dimensions={}
+  max = f32[8,128] maximum(sub_exp, b_zero)
+  ROOT log = f32[8,128] log(max)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_GE(p1_int.min, 0.0);
+}
+
+// Tests that for Power(base, exp) with base in (0, 1) (decay schedule, e.g.
+// 0.95^t), the exponent is seeded with [0, +inf) to prevent negative exponents
+// from blowing up exponentially to +inf (e.g. 0.95^-10000 = +inf), which causes
+// float overflow and NaNs in downstream operations (like 1.0 - 0.95^t).
+TEST_F(ConstraintPropagatorTest, PowerDecaySeedConstrainsNonNegativeExponent) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  conv = f32[8,128] convert(param_0)
+  c_decay = f32[] constant(0.95)
+  b_decay = f32[8,128] broadcast(c_decay), dimensions={}
+  power = f32[8,128] power(b_decay, conv)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  ROOT sub = f32[8,128] subtract(b_one, power)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+// Tests that for Power(base, exp) with base > 1 (e.g. 2.0^x), the exponent is
+// seeded with exp <= max_log / ln(base) to prevent large positive exponents
+// from blowing up to +inf (e.g. 2.0^1000 = +inf), avoiding floating-point
+// overflow.
+TEST_F(ConstraintPropagatorTest, PowerGreaterThanOneConstrainsUpperBound) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_two = f32[] constant(2.0)
+  b_two = f32[8,128] broadcast(c_two), dimensions={}
+  ROOT power = f32[8,128] power(b_two, param_0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 85.0 / std::log(2.0) + 1.0);
+}
+
+// Tests that for C / Y with constant C > 0 and output interval <= max_val,
+// the denominator Y is constrained to Y >= C / max_val.
+TEST_F(ConstraintPropagatorTest, DivideConstantNumeratorPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_two = f32[] constant(2.0)
+  b_two = f32[8,128] broadcast(c_two), dimensions={}
+  div = f32[8,128] divide(b_two, param_0)
+  c_four = f32[] constant(4.0)
+  b_four = f32[8,128] broadcast(c_four), dimensions={}
+  sub = f32[8,128] subtract(b_four, div)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  // 4.0 - div >= 0 => div <= 4.0. With 2.0 / param_0 <= 4.0 => param_0 >= 0.5.
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.5);
+}
+
+// Tests that for X / C with constant C > 0 and output interval [min_val,
+// max_val], the numerator X is scaled by C.
+TEST_F(ConstraintPropagatorTest, DivideConstantDenominatorPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_two = f32[] constant(2.0)
+  b_two = f32[8,128] broadcast(c_two), dimensions={}
+  div = f32[8,128] divide(param_0, b_two)
+  c_ten = f32[] constant(10.0)
+  b_ten = f32[8,128] broadcast(c_ten), dimensions={}
+  sub = f32[8,128] subtract(b_ten, div)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  // 10.0 - div >= 0 => div <= 10.0. With param_0 / 2.0 <= 10.0 => param_0
+  // <= 20.0.
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 20.0);
+}
+
+// Tests that the gated residual sqrt pattern: sqrt(1.0 - (1.0 / (1.0 + x))^2)
+// constrains x >= 0.0 to guarantee (1 / (1 + x))^2 <= 1.0, preventing negative
+// square root radicands and NaNs.
+TEST_F(ConstraintPropagatorTest, GatedResidualSqrtSubPropagatesNonNegative) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_one = f32[] constant(1.0)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  add = f32[8,128] add(b_one, param_0)
+  div = f32[8,128] divide(b_one, add)
+  mul = f32[8,128] multiply(div, div)
+  sub = f32[8,128] subtract(b_one, mul)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+// Tests that for C / Y with constant C > 0 where output is strictly negative
+// (div <= -1.0), Y is constrained to [-1.0, 0.0).
+TEST_F(ConstraintPropagatorTest, DivideConstantNumeratorStrictNegativeOutput) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_one = f32[] constant(1.0)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  div = f32[8,128] divide(b_one, param_0)
+  c_neg_one = f32[] constant(-1.0)
+  b_neg_one = f32[8,128] broadcast(c_neg_one), dimensions={}
+  sub = f32[8,128] subtract(b_neg_one, div)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+  EXPECT_GE(p0_int.min, -1.0);
+}
+
+TEST_F(ConstraintPropagatorTest, DynamicSliceLog) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[16,128] parameter(0)
+  param_1 = s32[] parameter(1)
+  c_zero = s32[] constant(0)
+  dynamic-slice = f32[8,128] dynamic-slice(param_0, param_1, c_zero), dynamic_slice_sizes={8,128}
+  ROOT log = f32[8,128] log(dynamic-slice)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_GE(p1_int.min, 0.0);
+  EXPECT_LE(p1_int.max, 8.0);
+}
+
+TEST_F(ConstraintPropagatorTest, DynamicUpdateSliceSqrt) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[16,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  param_2 = s32[] parameter(2)
+  c_zero = s32[] constant(0)
+  dus = f32[16,128] dynamic-update-slice(param_0, param_1, param_2, c_zero)
+  ROOT sqrt = f32[16,128] sqrt(dus)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositive());
+
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p1_int.IsPositive());
+}
+
+TEST_F(ConstraintPropagatorTest, MaskedAttentionSoftmax) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = pred[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  c_neg_inf = f32[] constant(-1e+30)
+  b_neg_inf = f32[8,128] broadcast(c_neg_inf), dimensions={}
+  select = f32[8,128] select(param_0, param_1, b_neg_inf)
+  param_2 = f32[8,128] parameter(2)
+  sub = f32[8,128] subtract(select, param_2)
+  ROOT exp = f32[8,128] exponential(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto logits_int =
+      states[module->entry_computation()->parameter_instruction(1)]
+          .GetConstraintInterval();
+  EXPECT_TRUE(logits_int.IsNegative());
+
+  auto row_max_int =
+      states[module->entry_computation()->parameter_instruction(2)]
+          .GetConstraintInterval();
+  EXPECT_TRUE(row_max_int.IsPositive());
+}
+
+TEST_F(ConstraintPropagatorTest, GaussianDistanceSquaredExponential) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  iota = s32[8,128] iota(), iota_dimension=1
+  sub = s32[8,128] subtract(iota, param_0)
+  square = s32[8,128] multiply(sub, sub)
+  neg = s32[8,128] negate(square)
+  conv = f32[8,128] convert(neg)
+  c_scale = f32[] constant(0.8888)
+  b_scale = f32[8,128] broadcast(c_scale), dimensions={}
+  mul = f32[8,128] multiply(conv, b_scale)
+  ROOT exp = f32[8,128] exponential(mul)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsUnconstrained());
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, -20.0);
+  EXPECT_LE(p0_int.max, 150.0);
 }
 
 }  // namespace

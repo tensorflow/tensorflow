@@ -69,16 +69,15 @@ DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
 }
 
 bool GemmRewriteTestBase::SkipGpuBlasLtTest() {
-  return !IsCuda() &&
-         !Capability().rocm_compute_capability()->has_hipblaslt() &&
+  return IsRocm() && !Capability().rocm_compute_capability()->has_hipblaslt() &&
          GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
 }
 
 bool GemmRewriteTestBase::SkipGroupedGemmTest() {
   // Grouped GEMM is only supported on ROCm with hipBLASLt on gfx942 or gfx950
-  return IsCuda() || !Capability().rocm_compute_capability()->has_hipblaslt() ||
-         (Capability().rocm_compute_capability()->has_hipblaslt() &&
-          !Capability().rocm_compute_capability()->gfx9_mi300_series());
+  const auto* rocm_cc = Capability().rocm_compute_capability();
+  return IsCuda() || IsSycl() || !rocm_cc->has_hipblaslt() ||
+         (rocm_cc->has_hipblaslt() && !rocm_cc->gfx9_mi300_series());
 }
 
 bool GemmRewriteTestBase::HasFp8Support() const {

@@ -47,12 +47,10 @@ namespace gpu {
 GpuPerformanceModel::GpuPerformanceModel(
     const se::DeviceDescription& device_info,
     HloFusionAnalysisCache& fusion_analysis_cache,
-    GpuPerformanceModelCache& gpu_performance_model_cache,
-    mlir::MLIRContext* mlir_context)
+    GpuPerformanceModelCache& gpu_performance_model_cache)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
-      gpu_performance_model_cache_(gpu_performance_model_cache),
-      mlir_context_(mlir_context) {};
+      gpu_performance_model_cache_(gpu_performance_model_cache) {};
 
 EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
@@ -63,7 +61,7 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
 
   const auto& fusion_analysis = fusion_analysis_cache_.Get(*instr);
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, mlir_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis);
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   absl::Duration compute_time =
@@ -145,7 +143,7 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
       fusion_analysis_cache_.Get(*producer, *consumer);
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, mlir_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis);
 
   int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
                   consumer_runtime.flops;

@@ -15,6 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/ctc_ops.cc.
 
+#include <algorithm>
+#include <cstddef>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include <limits>
