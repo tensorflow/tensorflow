@@ -425,7 +425,7 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
           GetTensorData<float>(input) + s * input_size * batch_size;
       const float* aux_input_ptr_batch =
           (aux_input != nullptr)
-              ? GetTensorData<float>(aux_input) + s * input_size * batch_size
+              ? GetTensorData<float>(aux_input) + s * aux_input_size * batch_size
               : nullptr;
       float* output_ptr_batch =
           GetTensorData<float>(fw_output) + s * fw_output_step * batch_size;
@@ -443,7 +443,7 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
           GetTensorData<float>(bw_input) + s * input_size * batch_size;
       const float* aux_input_ptr_batch =
           (aux_input != nullptr)
-              ? GetTensorData<float>(aux_input) + s * input_size * batch_size
+              ? GetTensorData<float>(aux_input) + s * aux_input_size * batch_size
               : nullptr;
       float* output_ptr_batch =
           (params->merge_outputs
@@ -598,7 +598,7 @@ TfLiteStatus EvalHybrid(
             GetTensorData<float>(input) + s * input_size * batch_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? GetTensorData<float>(aux_input) + s * input_size * batch_size
+                ? GetTensorData<float>(aux_input) + s * aux_input_size * batch_size
                 : nullptr;
         float* output_ptr_batch =
             GetTensorData<float>(fw_output) + s * fw_output_step * batch_size;
@@ -622,7 +622,7 @@ TfLiteStatus EvalHybrid(
             GetTensorData<float>(bw_input) + s * input_size * batch_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? GetTensorData<float>(aux_input) + s * input_size * batch_size
+                ? GetTensorData<float>(aux_input) + s * aux_input_size * batch_size
                 : nullptr;
         float* output_ptr_batch =
             (params->merge_outputs
