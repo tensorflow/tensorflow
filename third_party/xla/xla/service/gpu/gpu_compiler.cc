@@ -209,7 +209,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
-#include "xla/hlo/transforms/simplifiers/degenerate_dimension_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/dot_merger.h"
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
@@ -978,14 +977,6 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ScatterSliceSimplifier>();
     pipeline.AddPass<DotStrengthReduction>(
         gpu_target_config.device_description.gpu_compute_capability());
-
-    // It's important to run AlgebraicSimplifier after
-    // DegenerateDimensionRewriter before ReshapeMover.
-    // DegenerateDimensionRewriter introduces reshape to remove size-1 dims from
-    // ops like iota and broadcast, and algebraic simplifier has patterns to
-    // fold reshape(iota) and reshape(broadcast). If we run ReshapeMover first,
-    // it will move these reshapes down the graph, and prevent the folding.
-    pipeline.AddPass<DegenerateDimensionRewriter>();
     pipeline.AddPass<GpuAlgebraicSimplifier>(layout_insensitive_algsimp_opts,
                                              gpu_version);
     pipeline.AddPass<SortSimplifier>();
