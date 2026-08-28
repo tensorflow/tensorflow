@@ -570,5 +570,65 @@ func.func @reduce_scatter_max_multiple_dims(%arg0: tensor<8x8x8xf32> {sdy.shardi
   return %0 : tensor<8x8x8xf32>
 }
 
+// -----
+
+sdy.mesh @mesh_x_4_y_2_z_2 = <["x"=4, "y"=2, "z"=2]>
+
+// CHECK-LABEL: func @sharded_to_unreduced_max
+func.func @sharded_to_unreduced_max(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_4_y_2_z_2, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+  // 0xFF800000 represents negative infinity (-inf), the identity for max reduction.
+  // CHECK:            %[[INIT:.*]] = stablehlo.constant dense<0xFF800000> : tensor<f32>
+  // CHECK-NEXT:       %[[BCAST:.*]] = stablehlo.broadcast %[[INIT]], sizes = [8, 8] : (tensor<f32>) -> tensor<8x8xf32>
+  // CHECK:            %[[DUS:.*]] = stablehlo.dynamic_update_slice %[[BCAST]], %arg1, {{.*}} : (tensor<8x8xf32>, tensor<2x8xf32>, tensor<i32>, tensor<i32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:       sdy.return %[[DUS]] : tensor<8x8xf32>
+  %0 = sdy.sharded_to_unreduced [{"x"}, {}] %arg0 out_sharding=<@mesh_x_4_y_2_z_2, [{}, {}], unreduced=max{"x"}> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+sdy.mesh @mesh_x_4_y_2_z_2 = <["x"=4, "y"=2, "z"=2]>
+
+// CHECK-LABEL: func @sharded_to_unreduced_min
+func.func @sharded_to_unreduced_min(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_4_y_2_z_2, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+  // 0x7F800000 represents positive infinity (+inf), the identity for min reduction.
+  // CHECK:            %[[INIT:.*]] = stablehlo.constant dense<0x7F800000> : tensor<f32>
+  // CHECK-NEXT:       %[[BCAST:.*]] = stablehlo.broadcast %[[INIT]], sizes = [8, 8] : (tensor<f32>) -> tensor<8x8xf32>
+  // CHECK:            %[[DUS:.*]] = stablehlo.dynamic_update_slice %[[BCAST]], %arg1, {{.*}} : (tensor<8x8xf32>, tensor<2x8xf32>, tensor<i32>, tensor<i32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:       sdy.return %[[DUS]] : tensor<8x8xf32>
+  %0 = sdy.sharded_to_unreduced [{"x"}, {}] %arg0 out_sharding=<@mesh_x_4_y_2_z_2, [{}, {}], unreduced=min{"x"}> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+sdy.mesh @mesh_x_4_y_2_z_2 = <["x"=4, "y"=2, "z"=2]>
+
+// CHECK-LABEL: func @replicated_to_unreduced_max
+func.func @replicated_to_unreduced_max(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_4_y_2_z_2, [{}, {}]>}) -> tensor<8x8xf32> {
+  // 0xFF800000 represents negative infinity (-inf), the identity for max reduction.
+  // CHECK:            %[[INIT:.*]] = stablehlo.constant dense<0xFF800000> : tensor<f32>
+  // CHECK-NEXT:       %[[BCAST:.*]] = stablehlo.broadcast %[[INIT]], sizes = [8, 8] : (tensor<f32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:       %[[SEL:.*]] = stablehlo.select {{.*}}, %arg1, %[[BCAST]] : tensor<i1>, tensor<8x8xf32>
+  // CHECK-NEXT:       sdy.return %[[SEL]] : tensor<8x8xf32>
+  %0 = sdy.replicated_to_unreduced {"x"} %arg0 out_sharding=<@mesh_x_4_y_2_z_2, [{}, {}], unreduced=max{"x"}> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+sdy.mesh @mesh_x_4_y_2_z_2 = <["x"=4, "y"=2, "z"=2]>
+
+// CHECK-LABEL: func @replicated_to_unreduced_min
+func.func @replicated_to_unreduced_min(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_4_y_2_z_2, [{}, {}]>}) -> tensor<8x8xf32> {
+  // 0x7F800000 represents positive infinity (+inf), the identity for min reduction.
+  // CHECK:            %[[INIT:.*]] = stablehlo.constant dense<0x7F800000> : tensor<f32>
+  // CHECK-NEXT:       %[[BCAST:.*]] = stablehlo.broadcast %[[INIT]], sizes = [8, 8] : (tensor<f32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:       %[[SEL:.*]] = stablehlo.select {{.*}}, %arg1, %[[BCAST]] : tensor<i1>, tensor<8x8xf32>
+  // CHECK-NEXT:       sdy.return %[[SEL]] : tensor<8x8xf32>
+  %0 = sdy.replicated_to_unreduced {"x"} %arg0 out_sharding=<@mesh_x_4_y_2_z_2, [{}, {}], unreduced=min{"x"}> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
 
 
