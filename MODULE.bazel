@@ -253,6 +253,11 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 
 use_repo(pip, "pypi_mods", pypi = "tf_pypi")
 
+override_repo(
+    pip,
+    xla_pypi = "pypi",
+)
+
 python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
 use_repo(python_version_ext, "python_version_repo")
 
