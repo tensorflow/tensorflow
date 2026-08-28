@@ -2450,6 +2450,7 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
                  // that's 1 << 6.
   llvm::Value* accumulator = llvm::ConstantInt::get(base->getType(), 1);
   llvm::Value* one = llvm::ConstantInt::get(exponent->getType(), 1);
+  llvm::Value* neg_one = llvm::ConstantInt::get(exponent->getType(), -1);
   llvm::Value* zero = llvm::ConstantInt::get(exponent->getType(), 0);
   llvm::Value* original_base = base;
   llvm::Value* original_exponent = exponent;
@@ -2462,9 +2463,13 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
     base = b_->CreateMul(base, base);
     exponent = b_->CreateLShr(exponent, 1);
   }
+  auto neg_one_base_result = b_->CreateSelect(
+      b_->CreateICmpEQ(b_->CreateAnd(base, one), one), neg_one, one);
+  auto neg_exp_res = b_->CreateSelect(b_->CreateICmpEQ(original_base, neg_one),
+                                      neg_one_base_result, zero);
   return b_->CreateSelect(
       b_->CreateICmpSGE(original_exponent, zero), accumulator,
-      b_->CreateSelect(b_->CreateICmpEQ(original_base, one), one, zero));
+      b_->CreateSelect(b_->CreateICmpEQ(original_base, one), one, neg_exp_res));
 }
 
 llvm::Value* ElementalIrEmitter::EmitIntegerMulhi(llvm::Value* lhs,
