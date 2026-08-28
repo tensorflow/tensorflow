@@ -6473,42 +6473,79 @@ xla_aot_compile_cpu(
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
+    gpu_targets = [
+        "h100",
+        "b200",
+    ],
+    module = "xla_aot_compile_test.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_legacy_cache",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_hlo",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
+    gpu_targets = [
+        "h100",
+        "b200",
+    ],
+    module = "xla_aot_compile_test.hlo",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_hlo_legacy_cache",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test.hlo",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_constant",
-    autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test_constant.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
+    gpu_targets = [
+        "h100",
+        "b200",
+    ],
+    module = "xla_aot_compile_test_convolution.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
 )
 
 xla_aot_compile_gpu_runtime_autotuning(
@@ -6596,7 +6633,10 @@ xla_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_convolution",
+        ":xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
         ":xla_aot_compile_test_gpu_executable_hlo",
+        ":xla_aot_compile_test_gpu_executable_hlo_legacy_cache",
+        ":xla_aot_compile_test_gpu_executable_legacy_cache",
     ],
     tags = [
         "cuda-only",
