@@ -612,6 +612,23 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     x = np.zeros((0,) * dims).astype(np_ctype)
     self.assertEqual(x.shape, self._tf_ifft(x, rank).shape)
 
+  @parameterized.parameters(
+      itertools.product(VALID_FFT_RANKS, range(3), (np.float32, np.float64)))
+  def test_empty_with_explicit_fft_length(self, rank, extra_dims, np_rtype):
+    # An empty FFT axis skips the "input dimension must be at least
+    # fft_length" requirement. `fft_length` must not then size that axis in
+    # the output: the kernel returns early without writing the output for an
+    # empty input, so a non-empty output would be returned uninitialized.
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    dims = rank + extra_dims
+    fft_length = (16,) * rank
+
+    x = np.zeros((0,) * dims).astype(np_rtype)
+    self.assertEqual(0, self._tf_fft(x, rank, fft_length).size)
+
+    x = np.zeros((0,) * dims).astype(np_ctype)
+    self.assertEqual(0, self._tf_ifft(x, rank, fft_length).size)
+
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
   def test_basic(self, rank, extra_dims, size, np_rtype):
