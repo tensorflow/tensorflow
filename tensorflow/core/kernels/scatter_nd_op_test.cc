@@ -671,8 +671,11 @@ TEST(ScatterNdIndexTest, Int32PrefixStrideDoesNotWrap) {
   Eigen::array<int32_t, 3> coords = {1, 0, 61440};
   const int64_t num_slices = 2LL * 65536LL * 65535LL;
   int64_t flat = -1;
-  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
-      prefix, strides, coords, num_slices, &flat));
+  // Assign first: ASSERT_TRUE(fn<T, N>(...)) treats the template comma as a
+  // second macro argument.
+  const bool in_range = scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, num_slices, &flat);
+  ASSERT_TRUE(in_range);
   EXPECT_EQ(flat, 4294963200LL);
   EXPECT_EQ(flat - (1LL << 32), -4096);
 }
@@ -683,8 +686,9 @@ TEST(ScatterNdIndexTest, Int64IndicesSameFlatIndex) {
   ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
   Eigen::array<int64_t, 3> coords = {1, 0, 61440};
   int64_t flat = -1;
-  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int64_t, 3>(
-      prefix, strides, coords, /*num_slices=*/2LL * 65536LL * 65535LL, &flat));
+  const bool in_range = scatter_nd_op::ComputeScatterNdFlatIndex<int64_t, 3>(
+      prefix, strides, coords, /*num_slices=*/2LL * 65536LL * 65535LL, &flat);
+  ASSERT_TRUE(in_range);
   EXPECT_EQ(flat, 4294963200LL);
 }
 
@@ -696,8 +700,9 @@ TEST(ScatterNdIndexTest, TwoDimStrideExceedsInt32) {
   EXPECT_EQ(strides[0], 3000000000LL);
   Eigen::array<int32_t, 2> coords = {1, 0};
   int64_t flat = -1;
-  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 2>(
-      prefix, strides, coords, /*num_slices=*/6000000000LL, &flat));
+  const bool in_range = scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 2>(
+      prefix, strides, coords, /*num_slices=*/6000000000LL, &flat);
+  ASSERT_TRUE(in_range);
   EXPECT_EQ(flat, 3000000000LL);
 }
 
@@ -707,8 +712,9 @@ TEST(ScatterNdIndexTest, SmallThreeDMatchesChipLayout) {
   ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
   Eigen::array<int32_t, 3> coords = {1, 0, 2};
   int64_t flat = -1;
-  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
-      prefix, strides, coords, /*num_slices=*/24, &flat));
+  const bool in_range = scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/24, &flat);
+  ASSERT_TRUE(in_range);
   EXPECT_EQ(flat, 14);
 }
 
@@ -718,8 +724,9 @@ TEST(ScatterNdIndexTest, OutOfRangeCoordinateRejected) {
   ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
   Eigen::array<int32_t, 3> coords = {1, 0, 4};
   int64_t flat = -1;
-  EXPECT_FALSE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
-      prefix, strides, coords, /*num_slices=*/24, &flat));
+  const bool in_range = scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/24, &flat);
+  EXPECT_FALSE(in_range);
 }
 
 TEST(ScatterNdIndexTest, NegativeCoordinateRejected) {
@@ -728,8 +735,9 @@ TEST(ScatterNdIndexTest, NegativeCoordinateRejected) {
   ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
   Eigen::array<int32_t, 3> coords = {-1, 0, 0};
   int64_t flat = -1;
-  EXPECT_FALSE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
-      prefix, strides, coords, /*num_slices=*/24, &flat));
+  const bool in_range = scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/24, &flat);
+  EXPECT_FALSE(in_range);
 }
 
 TEST(ScatterNdIndexTest, FlatIndexPastNumSlicesRejected) {
@@ -738,8 +746,9 @@ TEST(ScatterNdIndexTest, FlatIndexPastNumSlicesRejected) {
   ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
   Eigen::array<int32_t, 3> coords = {1, 0, 2};  // flat index 14
   int64_t flat = -1;
-  EXPECT_FALSE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
-      prefix, strides, coords, /*num_slices=*/10, &flat));
+  const bool in_range = scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/10, &flat);
+  EXPECT_FALSE(in_range);
 }
 
 TEST(ScatterNdIndexTest, StrideProductOverflowRejected) {
