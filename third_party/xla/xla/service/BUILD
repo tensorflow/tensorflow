@@ -3676,19 +3676,13 @@ cc_library(
     hdrs = ["computation_placer.h"],
     deps = [
         ":device_assignment",
-        "//xla:util",
         "//xla/stream_executor:platform_id",
-        "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/host:host_platform_id",
-        "//xla/stream_executor/rocm:rocm_platform_id",
-        "//xla/stream_executor/sycl:sycl_platform_id",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
     ],
-    alwayslink = True,  # Contains per-platform computation placer registration
 )
 
 xla_cc_test(
@@ -3697,6 +3691,8 @@ xla_cc_test(
     deps = [
         ":computation_placer",
         ":device_assignment",
+        "//xla/stream_executor:platform_id",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

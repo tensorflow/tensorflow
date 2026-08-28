@@ -337,9 +337,8 @@ StreamExecutorGpuTopologyDescription::GetDefaultDeviceAssignment(
       stream_executor::PlatformId se_platform_id,
       StreamExecutorPlatformIdMapping::Global().GetStreamExecutorPlatformId(
           platform_id()));
-  ABSL_ASSIGN_OR_RETURN(auto* placer,
-                   ComputationPlacer::GetForPlatform(se_platform_id));
-  return placer->AssignDevices(num_replicas, num_partitions);
+  return ComputationPlacer::GetForPlatform(se_platform_id)
+      ->AssignDevices(num_replicas, num_partitions);
 }
 
 absl::StatusOr<xla::PjRtTopologyDescriptionProto>
