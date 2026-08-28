@@ -185,6 +185,9 @@ void RegisterMetalCollectiveKernels();
 // its two canonical conversions.
 void RegisterMetalCudnnRnnKernels();
 
+// GatherNd, which is not a resource op and is registered on its own.
+void RegisterMetalGatherNdKernels();
+
 // DebugNumericSummaryV2 and _TensorToHashBucketFast.
 void RegisterMetalDebugKernels();
 

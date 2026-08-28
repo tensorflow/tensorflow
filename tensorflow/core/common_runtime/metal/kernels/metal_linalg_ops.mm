@@ -294,10 +294,27 @@ void Lu_ComputeImpl(SolveOp* op, TF_OpKernelContext* ctx, TF_Status* status) {
                    "Metal: could not create a command buffer for Lu.");
       return;
     }
+    // The factorisation runs in place, over a copy of the input.
+    //
+    // MPSMatrixDecompositionLU writes nothing at all when its source and its
+    // result live in the same MTLBuffer, even at offsets that do not overlap,
+    // and TensorFlow's allocator carves every tensor out of one buffer, so
+    // that is the only shape a kernel can hand it: the output came back as
+    // zeros for every matrix and every size. Factorising in place is the one
+    // arrangement it accepts, and it costs a blit.
+    id<MTLBlitCommandEncoder> blit = [command_buffer.get() blitCommandEncoder];
+    [blit copyFromBuffer:in_slice.buffer
+            sourceOffset:in_slice.offset
+                toBuffer:lu_slice.buffer
+       destinationOffset:lu_slice.offset
+                    size:static_cast<NSUInteger>(ElementCount(shape)) *
+                         sizeof(float)];
+    [blit endEncoding];
+
     const size_t matrix_stride = static_cast<size_t>(order * order);
     for (int64_t i = 0; i < batch; ++i) {
       MPSMatrix* source =
-          MatrixAt(in_slice, i * matrix_stride, order, order, status);
+          MatrixAt(lu_slice, i * matrix_stride, order, order, status);
       if (source == nil) return;
       MPSMatrix* result =
           MatrixAt(lu_slice, i * matrix_stride, order, order, status);

@@ -84,6 +84,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalDebugKernels();
   RegisterMetalCollectiveKernels();
   RegisterMetalCudnnRnnKernels();
+  RegisterMetalGatherNdKernels();
 #if defined(TF_METAL_OUT_OF_TREE)
   if (ResourceVariableApiAvailable()) {
     RegisterMetalRefVariableKernels();

@@ -347,14 +347,69 @@ void Bucketize_ComputeImpl(AliasOp* op, TF_OpKernelContext* ctx,
 
 /*** CONJ, POPULATION COUNT, CROSS ***/
 
-// Conj is the identity on real data, for the same reason ConjugateTranspose
-// is a plain transpose: this backend has no complex dtype.
+// Conj negates the imaginary part.
+//
+// It used to forward its input unchanged, on the reasoning that conjugation
+// is the identity on real data. TensorFlow's op def does not allow real data:
+// Conj takes complex64, complex128 or variant, so the real registrations
+// could never match a call and the op had no usable kernel at all. A
+// complex64 tensor is a pair of float32 per element, so the conjugate is a
+// multiply by one and minus one along a trailing axis of two.
 void Conj_ComputeImpl(AliasOp* op, TF_OpKernelContext* ctx,
                       TF_Status* status) {
   ScopedTensor input;
   TF_GetInput(ctx, 0, input.address(), status);
   if (TF_GetCode(status) != TF_OK) return;
-  TF_SetOutput(ctx, 0, input.get(), status);
+
+  const std::vector<int64_t> shape = ShapeOf(input.get());
+  const int64_t count = ElementCount(shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, TF_COMPLEX64, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(TF_COMPLEX64), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  // Seen as float32, the tensor is its element count doubled, and the sign
+  // pattern repeats every two values.
+  const std::vector<int64_t> paired = {count, 2};
+  std::string key = "Conj";
+  AppendShapeToKey(paired, &key);
+  static const float kSigns[2] = {1.0f, -1.0f};
+  NSData* signs = [NSData dataWithBytes:kSigns length:sizeof(kSigns)];
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(paired)
+                                           dataType:MPSDataTypeFloat32
+                                               name:nil];
+        MPSGraphTensor* flip = [g constantWithData:signs
+                                             shape:@[ @1, @2 ]
+                                          dataType:MPSDataTypeFloat32];
+        [out->inputs addObject:x];
+        [out->outputs addObject:[g multiplicationWithPrimaryTensor:x
+                                                   secondaryTensor:flip
+                                                              name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  BufferSlice in_slice, out_slice;
+  if (!SliceForTensor(input.get(), &in_slice, status)) return;
+  if (!SliceForTensor(output.get(), &out_slice, status)) return;
+  MPSGraphTensorData* in_data =
+      TensorDataFor(in_slice, paired, TF_FLOAT, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataFor(out_slice, paired, TF_FLOAT, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
 }
 
 // Cross product over the last axis, which must have length 3.
@@ -493,12 +548,16 @@ void RegisterMetalAliasKernels() {
   static constexpr const char* kSuffixes[] = {"Float", "Half"};
   static constexpr TF_DataType kIndexTypes[] = {TF_INT32, TF_INT64};
 
+  // Conj is registered once, for the only type this backend can represent
+  // among the three its op def allows.
+  Register("Conj", &Conj_Compute, TF_COMPLEX64, "MetalConjComplex64", {});
+
   for (int i = 0; i < 2; ++i) {
     const TF_DataType t = kDTypes[i];
     const std::string s = kSuffixes[i];
     Register("BiasAddV1", &BiasAddV1_Compute, t, "MetalBiasAddV1" + s, {});
     Register("Bucketize", &Bucketize_Compute, t, "MetalBucketize" + s, {});
-    Register("Conj", &Conj_Compute, t, "MetalConj" + s, {});
+
     Register("Cross", &Cross_Compute, t, "MetalCross" + s, {});
     // Once per element type, not once per index type. The kernel reads the
     // permutation as either int32 or int64 from the tensor it is given, so

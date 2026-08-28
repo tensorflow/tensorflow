@@ -475,11 +475,27 @@ void RegisterMetalResourceKernels() {
                "MetalResourceScatterUpdate" + suffix);
       Register("ResourceGatherNd", &ResourceGatherNd_Compute, kDTypes[i],
                kIndexTypes[j], "MetalResourceGatherNd" + suffix);
-      // The plain form names its type Tparams and takes a tensor rather than
-      // a variable handle.
+    }
+  }
+}
+
+// Registered on its own, because it is not a resource op.
+//
+// GatherNd takes a plain tensor and needs none of the variable entry points,
+// but it used to be registered inside RegisterMetalResourceKernels, which an
+// out-of-tree build skips when those entry points are missing. It went
+// missing with them, and an op with no kernel is indistinguishable from an
+// op the backend never claimed.
+void RegisterMetalGatherNdKernels() {
+  static constexpr TF_DataType kDTypes[] = {TF_FLOAT, TF_HALF};
+  static constexpr const char* kSuffixes[] = {"Float", "Half"};
+  static constexpr TF_DataType kIndexTypes[] = {TF_INT32, TF_INT64};
+  static constexpr const char* kIndexSuffixes[] = {"Int32", "Int64"};
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
       Register("GatherNd", &GatherNd_Compute, kDTypes[i], kIndexTypes[j],
-               "MetalGatherNd" + suffix, "Tparams",
-               /*resource_input=*/false);
+               std::string("MetalGatherNd") + kSuffixes[i] + kIndexSuffixes[j],
+               "Tparams", /*resource_input=*/false);
     }
   }
 }

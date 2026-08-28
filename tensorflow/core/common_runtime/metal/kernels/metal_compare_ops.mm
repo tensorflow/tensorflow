@@ -135,12 +135,14 @@ struct DTypeOp {
 void* DTypeOp_Create(TF_OpKernelConstruction* ctx) {
   TF_Status* status = TF_NewStatus();
   auto* op = new DTypeOp();
+  // The logical operators are bool on both sides and therefore have no T
+  // attribute at all. Insisting on one made LogicalAnd, LogicalOr and
+  // LogicalNot fail construction with "No attr named 'T' in NodeDef", so all
+  // three were registered and unusable.
   TF_OpKernelConstruction_GetAttrType(ctx, "T", &op->dtype, status);
   if (TF_GetCode(status) != TF_OK) {
-    TF_OpKernelConstruction_Failure(ctx, status);
-    TF_DeleteStatus(status);
-    delete op;
-    return nullptr;
+    TF_SetStatus(status, TF_OK, "");
+    op->dtype = TF_BOOL;
   }
   TF_OpKernelConstruction_GetAttrFloat(ctx, "tolerance", &op->tolerance,
                                        status);
