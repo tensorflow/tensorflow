@@ -53,11 +53,17 @@ what TensorFlow looks up in a shared object it has `dlopen`ed. Everything
 behind those entry points is the same code.
 
 There is one difference in what they can do, and it is not this backend's to
-fix. Six entry points of the kernel C API are declared in the headers a
-released TensorFlow ships and exported by no binary in it, so the plugin form
-loaded into a released TensorFlow leaves fifteen ops to the host, the five
-optimisers among them. The in-tree form links them directly. See
-[Limitations](#limitations).
+fix. `libtensorflow_framework` stopped exporting the experimental kernel C API
+in 2.20.0: fourteen symbols present in 2.19.1 are absent from every binary in
+the 2.20.0 wheel, none were added, and they are the whole public surface of
+`tensorflow/c/kernels_experimental.cc`. The headers still declare them. Filed
+as [#126374](https://github.com/tensorflow/tensorflow/issues/126374).
+
+Without them no PluggableDevice can reach a resource variable's tensor, which
+is fifteen ops including every optimiser, so the plugin form loaded into a
+released TensorFlow can do inference but not training. The in-tree form links
+them directly and is unaffected. Restoring those exports would also un-break
+every other out-of-tree plugin, Apple's included.
 
 ## Building
 
