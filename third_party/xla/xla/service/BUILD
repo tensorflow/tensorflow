@@ -5817,6 +5817,19 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_rendezvous",
+    srcs = ["collective_rendezvous.cc"],
+    hdrs = ["collective_rendezvous.h"],
+    deps = [
+        "//xla:executable_run_options",
+        "//xla/runtime:device_id",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "collective_ops_utils",
     srcs = ["collective_ops_utils.cc"],
     hdrs = ["collective_ops_utils.h"],
@@ -5826,7 +5839,6 @@ cc_library(
         ":hlo_module_config",
         ":pattern_matcher",
         ":source_target_pairs",
-        "//xla:executable_run_options",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -5847,7 +5859,6 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@jsoncpp_git//:jsoncpp",
