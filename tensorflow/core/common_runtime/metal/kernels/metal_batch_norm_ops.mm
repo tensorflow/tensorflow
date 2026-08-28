@@ -142,6 +142,29 @@ void* BatchNormOp_Create(TF_OpKernelConstruction* ctx) {
   return op;
 }
 
+// A rank-0 output that exists only to fill a slot in the op's signature.
+//
+// Asking for zero bytes gets a scalar whose one element has no storage behind
+// it, so whatever the allocator last left there is what the caller reads.
+// reserve_space_3 came back as zero on a fresh allocation and as arbitrary
+// values once the allocator had recycled memory, which is a graph output that
+// changes with what ran before it. The slot is given its element and that
+// element is set to zero, which is what TensorFlow's own kernels leave there.
+bool AllocateEmptyScalar(TF_OpKernelContext* ctx, int index, TF_DataType dtype,
+                         TF_Status* status) {
+  ScopedTensor scalar;
+  scalar.reset(TF_AllocateOutput(ctx, index, dtype, nullptr, 0,
+                                 TF_DataTypeSize(dtype), status));
+  if (TF_GetCode(status) != TF_OK) return false;
+  void* data = TF_TensorData(scalar.get());
+  if (data != nullptr) {
+    // Freshly allocated, with nothing in flight against it, so the host may
+    // write it directly.
+    std::memset(data, 0, TF_DataTypeSize(dtype));
+  }
+  return true;
+}
+
 void BatchNormOp_Delete(void* kernel) {
   delete static_cast<BatchNormOp*>(kernel);
 }
@@ -226,11 +249,9 @@ void FusedBatchNorm_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
   saved_var.reset(TF_AllocateOutput(ctx, 4, op->param_dtype, vec_shape.data(),
                                     1, vec_bytes, status));
   if (TF_GetCode(status) != TF_OK) return;
-  if (num_outputs > 5) {
-    ScopedTensor dummy;
-    dummy.reset(TF_AllocateOutput(ctx, 5, op->param_dtype, nullptr, 0, 0,
-                                  status));
-    if (TF_GetCode(status) != TF_OK) return;
+  if (num_outputs > 5 &&
+      !AllocateEmptyScalar(ctx, 5, op->param_dtype, status)) {
+    return;
   }
   if (ElementCount(x_shape) == 0) return;
 
@@ -503,10 +524,7 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
       if (TF_GetCode(status) != TF_OK) return;
       continue;
     }
-    ScopedTensor dummy;
-    dummy.reset(
-        TF_AllocateOutput(ctx, i, op->param_dtype, nullptr, 0, 0, status));
-    if (TF_GetCode(status) != TF_OK) return;
+    if (!AllocateEmptyScalar(ctx, i, op->param_dtype, status)) return;
   }
   if (ElementCount(x_shape) == 0) return;
 
