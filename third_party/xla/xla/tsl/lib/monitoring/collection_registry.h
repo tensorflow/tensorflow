@@ -562,8 +562,8 @@ class ExporterRegistrar {
 #define REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(ctr, exporter) \
   REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)
 
-#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                  \
-  ABSL_ATTRIBUTE_UNUSED static ::tsl::monitoring::exporter_registration:: \
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)             \
+  [[maybe_unused]] static ::tsl::monitoring::exporter_registration:: \
       ExporterRegistrar exporter_registrar_##ctr(new exporter())
 
 }  // namespace monitoring
