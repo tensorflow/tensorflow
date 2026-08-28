@@ -463,6 +463,10 @@ class WrapComparatorWithDataArray
     // every target that needs it.
     comparator_func.setResultAttr(0, mlir::LLVM::LLVMDialect::getZExtAttrName(),
                                   builder.getUnitAttr());
+    // Clang marks `bool` return values noundef too; msan relies on it.
+    comparator_func.setResultAttr(0,
+                                  mlir::LLVM::LLVMDialect::getNoUndefAttrName(),
+                                  builder.getUnitAttr());
 
     mlir::Value params_ptr = comparator_func.getArgument(0);
 

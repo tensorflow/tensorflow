@@ -114,6 +114,8 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
       /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
       /*disable_loop_unrolling=*/options::DisableLoopUnrolling(config),
   };
+  ir_compiler_options.msan_enabled = IrCompiler::HostMsanEnabled();
+  ir_compiler_options.msan_track_origins = IrCompiler::HostMsanTrackOrigins();
 
   IrCompiler::CompilationHooks ir_compiler_hooks;
 
