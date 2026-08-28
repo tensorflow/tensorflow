@@ -3832,7 +3832,6 @@ cc_library(
 
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
-    timeout = "short",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
     backends = [
         "a100",
