@@ -62,7 +62,14 @@ struct RandomOp {
 void* RandomOp_Create(TF_OpKernelConstruction* ctx) {
   TF_Status* status = TF_NewStatus();
   auto* op = new RandomOp();
+  // Most of the generators name their output type "dtype"; RandomUniformInt
+  // names it "Tout". Reading only "dtype" made that op fail on every call
+  // with "No attr named 'dtype' in NodeDef".
   TF_OpKernelConstruction_GetAttrType(ctx, "dtype", &op->dtype, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+    TF_OpKernelConstruction_GetAttrType(ctx, "Tout", &op->dtype, status);
+  }
   if (TF_GetCode(status) != TF_OK) {
     TF_OpKernelConstruction_Failure(ctx, status);
     TF_DeleteStatus(status);

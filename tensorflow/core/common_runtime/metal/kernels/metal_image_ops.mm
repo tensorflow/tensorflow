@@ -18,6 +18,7 @@ limitations under the License.
 #import <Metal/Metal.h>
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -142,6 +143,53 @@ void Resize_ComputeImpl(ResizeOp* op, TF_OpKernelContext* ctx,
 
   const BOOL center = op->half_pixel_centers ? YES : NO;
   const BOOL align = op->align_corners ? YES : NO;
+
+  // Nearest neighbour is indexed here rather than by MPSGraph.
+  //
+  // resizeNearestWithTensor: takes centerResult and alignCorners and, on this
+  // SDK, produces the same output whatever they are set to, and that output
+  // matches none of TensorFlow's three modes: resizing 4 to 3 it read rows
+  // 0, 1, 3 where TensorFlow reads 0, 1, 2. Since the source index for each
+  // output position depends only on the sizes and the two flags, all of which
+  // are known while the graph is being built, the mapping is computed here
+  // and applied as a gather, which is exact by construction.
+  auto source_indices = [&](int64_t in, int64_t out) {
+    std::vector<int32_t> indices(static_cast<size_t>(out));
+    // TensorFlow's scale: the corner-aligned form divides by one fewer step,
+    // which is what makes the last output sample land exactly on the last
+    // input sample.
+    const float scale =
+        (op->align_corners && out > 1)
+            ? static_cast<float>(in - 1) / static_cast<float>(out - 1)
+            : static_cast<float>(in) / static_cast<float>(out);
+    for (int64_t i = 0; i < out; ++i) {
+      const float position = op->half_pixel_centers
+                                 ? (static_cast<float>(i) + 0.5f) * scale
+                                 : static_cast<float>(i) * scale;
+      // Corner-aligned sampling rounds; the other two truncate.
+      const float chosen = op->align_corners ? std::round(position)
+                                             : std::floor(position);
+      int64_t index = static_cast<int64_t>(chosen);
+      if (index < 0) index = 0;
+      if (index > in - 1) index = in - 1;
+      indices[static_cast<size_t>(i)] = static_cast<int32_t>(index);
+    }
+    return indices;
+  };
+  std::vector<int32_t> row_indices, column_indices;
+  NSData* row_data = nil;
+  NSData* column_data = nil;
+  if (!kBilinear) {
+    row_indices = source_indices(in_shape[1], out_shape[1]);
+    column_indices = source_indices(in_shape[2], out_shape[2]);
+    row_data = [NSData dataWithBytes:row_indices.data()
+                              length:row_indices.size() * sizeof(int32_t)];
+    column_data =
+        [NSData dataWithBytes:column_indices.data()
+                       length:column_indices.size() * sizeof(int32_t)];
+  }
+  const std::vector<int64_t> row_shape = {out_shape[1]};
+  const std::vector<int64_t> column_shape = {out_shape[2]};
   // The target size goes in as a constant tensor, since it was read on the
   // host to size the output anyway.
   std::vector<int32_t> size_values = {wanted[0], wanted[1]};
@@ -169,15 +217,27 @@ void Resize_ComputeImpl(ResizeOp* op, TF_OpKernelContext* ctx,
                                                   layout:
                                                       MPSGraphTensorNamedDataLayoutNHWC
                                                     name:nil]
-                           : [g resizeNearestWithTensor:x
-                                             sizeTensor:sz
-                                    nearestRoundingMode:
-                                        MPSGraphResizeNearestRoundingModeRoundPreferFloor
-                                           centerResult:center
-                                           alignCorners:align
-                                                 layout:
-                                                     MPSGraphTensorNamedDataLayoutNHWC
-                                                   name:nil])];
+                           : ({
+                               MPSGraphTensor* rows =
+                                   [g constantWithData:row_data
+                                                 shape:MPSShape(row_shape)
+                                              dataType:MPSDataTypeInt32];
+                               MPSGraphTensor* columns =
+                                   [g constantWithData:column_data
+                                                 shape:MPSShape(column_shape)
+                                              dataType:MPSDataTypeInt32];
+                               MPSGraphTensor* picked =
+                                   [g gatherWithUpdatesTensor:x
+                                                indicesTensor:rows
+                                                         axis:1
+                                              batchDimensions:0
+                                                         name:nil];
+                               [g gatherWithUpdatesTensor:picked
+                                            indicesTensor:columns
+                                                     axis:2
+                                          batchDimensions:0
+                                                     name:nil];
+                             }))];
       },
       status);
   if (cached == nullptr) return;

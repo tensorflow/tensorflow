@@ -544,7 +544,15 @@ void RegisterMetalSparseSegmentKernels() {
     // read on the host; nothing else leaves the device.
     std::vector<const char*> host;
     if (entry.num_segments) host.push_back("num_segments");
-    if (entry.gradient) host.push_back("dense_output_dim0");
+    if (entry.gradient) {
+      // The two generations name this input differently, and a HostMemory
+      // clause naming an argument the op does not have is rejected outright:
+      // "HostMemory args 'dense_output_dim0' not found in OpDef". The three
+      // first-generation gradients were unregistered because of it.
+      const std::string op(entry.op);
+      const bool v2 = op.size() >= 2 && op.compare(op.size() - 2, 2, "V2") == 0;
+      host.push_back(v2 ? "dense_output_dim0" : "output_dim0");
+    }
     for (int i = 0; i < 2; ++i) {
       for (int j = 0; j < 2; ++j) {
         Register(entry.op, entry.compute, kTypes[i], kTypes[j],

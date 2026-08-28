@@ -111,9 +111,17 @@ bool ReadIndexVector(TF_Tensor* t, std::vector<int64_t>* out,
       out->push_back(static_cast<const int32_t*>(data)[i]);
     } else if (dtype == TF_INT64) {
       out->push_back(static_cast<const int64_t*>(data)[i]);
+    } else if (dtype == TF_UINT32) {
+      out->push_back(static_cast<const uint32_t*>(data)[i]);
+    } else if (dtype == TF_UINT64) {
+      // The V3 stateless generators take their key and counter as uint64,
+      // which this refused, so every StatelessRandom*V3 op failed on a type
+      // its own op def requires.
+      out->push_back(
+          static_cast<int64_t>(static_cast<const uint64_t*>(data)[i]));
     } else {
       TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                   "Metal: expected an int32 or int64 argument.");
+                   "Metal: expected an integer argument.");
       return false;
     }
   }
@@ -143,13 +151,23 @@ bool ResolveSeed(DistOp* op, TF_OpKernelContext* ctx, int seed_index,
   if (TF_GetCode(status) != TF_OK) return false;
   std::vector<int64_t> values;
   if (!ReadIndexVector(seed.get(), &values, status)) return false;
-  if (values.size() < 2) {
+  if (values.empty()) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Metal: a stateless seed must have two entries.");
+                 "Metal: a stateless seed must have at least one entry.");
     return false;
   }
-  out->lo = static_cast<uint32_t>(values[0]);
-  out->hi = static_cast<uint32_t>(values[1]);
+  if (values.size() == 1) {
+    // The V3 generators take a single 64-bit key where the V2 ones take a
+    // pair of 32-bit seeds. Splitting the key in half is the same quantity of
+    // seed material arriving in one input instead of two; requiring two
+    // entries rejected every V3 op outright.
+    const uint64_t key = static_cast<uint64_t>(values[0]);
+    out->lo = static_cast<uint32_t>(key & 0xFFFFFFFFu);
+    out->hi = static_cast<uint32_t>(key >> 32);
+  } else {
+    out->lo = static_cast<uint32_t>(values[0]);
+    out->hi = static_cast<uint32_t>(values[1]);
+  }
   out->counter = 0;
   return true;
 }
