@@ -119,13 +119,15 @@ void PopulationCount_ComputeImpl(ExtraOp* op, TF_OpKernelContext* ctx,
 
   const std::vector<int64_t> shape = ShapeOf(input.get());
   const int64_t count = ElementCount(shape);
-  // TensorFlow declares the output as uint8; this backend has no uint8, so
-  // the count is produced as int32 and the op is registered only where that
-  // is what callers read.
+  // TensorFlow declares the output as uint8, and that is not negotiable by a
+  // kernel: the runtime hands the caller a tensor of the type the op def
+  // states whatever the kernel allocated. Producing int32 here wrote four
+  // bytes where one was read, so a count of 3 came back as the bytes of an
+  // int32 spread across four elements.
   ScopedTensor output;
   output.reset(TF_AllocateOutput(
-      ctx, 0, TF_INT32, shape.data(), static_cast<int>(shape.size()),
-      static_cast<size_t>(count) * TF_DataTypeSize(TF_INT32), status));
+      ctx, 0, TF_UINT8, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(TF_UINT8), status));
   if (TF_GetCode(status) != TF_OK) return;
   if (count == 0) return;
 
@@ -150,7 +152,7 @@ void PopulationCount_ComputeImpl(ExtraOp* op, TF_OpKernelContext* ctx,
         [out->outputs
             addObject:[g castTensor:[g bitwisePopulationCountWithTensor:x
                                                                    name:nil]
-                             toType:MPSDataTypeInt32
+                             toType:MPSDataTypeUInt8
                                name:nil]];
       },
       status);
@@ -160,7 +162,7 @@ void PopulationCount_ComputeImpl(ExtraOp* op, TF_OpKernelContext* ctx,
       TensorDataForTensor(input.get(), op->dtype, device, status);
   if (in_data == nil) return;
   MPSGraphTensorData* o_data =
-      TensorDataForTensor(output.get(), TF_INT32, device, status);
+      TensorDataForTensor(output.get(), TF_UINT8, device, status);
   if (o_data == nil) return;
   RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
 }
@@ -220,18 +222,21 @@ void CumulativeLogsumexp_ComputeImpl(ExtraOp* op, TF_OpKernelContext* ctx,
         MPSGraphTensor* x = [g placeholderWithShape:MPSShape(shape)
                                            dataType:mps_dtype
                                                name:nil];
-        // The running maximum along the same axis and direction is the
-        // tightest shift available at each position, which is what keeps the
-        // exponentials in range for large inputs.
-        MPSGraphTensor* running_max = [g cumulativeMaximumWithTensor:x
-                                                                axis:mps_axis
-                                                           exclusive:excl
-                                                             reverse:rev
-                                                                name:nil];
+        // One shift for the whole axis, not a running one.
+        //
+        // max + log(cumsum(exp(x - max))) is only the cumulative log-sum-exp
+        // when the same max comes out of every term of the sum. A running
+        // maximum subtracts a different value at each position, so the terms
+        // being added are scaled differently from each other and the sum means
+        // nothing: with an increasing input every term became exp(0) and the
+        // answer came out as the running maximum plus the log of the number of
+        // terms. The axis-wide maximum keeps the exponentials in range, which
+        // is the only reason the shift is there.
+        MPSGraphTensor* shift = [g reductionMaximumWithTensor:x
+                                                         axis:mps_axis
+                                                         name:nil];
         MPSGraphTensor* shifted =
-            [g subtractionWithPrimaryTensor:x
-                            secondaryTensor:running_max
-                                       name:nil];
+            [g subtractionWithPrimaryTensor:x secondaryTensor:shift name:nil];
         MPSGraphTensor* summed =
             [g cumulativeSumWithTensor:[g exponentWithTensor:shifted name:nil]
                                   axis:mps_axis
@@ -240,7 +245,7 @@ void CumulativeLogsumexp_ComputeImpl(ExtraOp* op, TF_OpKernelContext* ctx,
                                   name:nil];
         [out->inputs addObject:x];
         [out->outputs
-            addObject:[g additionWithPrimaryTensor:running_max
+            addObject:[g additionWithPrimaryTensor:shift
                                    secondaryTensor:[g logarithmWithTensor:summed
                                                                      name:nil]
                                               name:nil]];

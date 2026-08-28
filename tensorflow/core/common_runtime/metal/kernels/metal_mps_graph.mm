@@ -131,6 +131,12 @@ bool MPSTypeFor(TF_DataType dtype, MPSDataType* out, TF_Status* status) {
     case TF_BOOL:
       *out = MPSDataTypeBool;
       return true;
+    case TF_UINT8:
+      *out = MPSDataTypeUInt8;
+      return true;
+    case TF_INT8:
+      *out = MPSDataTypeInt8;
+      return true;
     default:
       TF_SetStatus(status, TF_UNIMPLEMENTED,
                    ("Metal: dtype " + std::to_string(static_cast<int>(dtype)) +
