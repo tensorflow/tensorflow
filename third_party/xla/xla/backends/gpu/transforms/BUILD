@@ -1734,10 +1734,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_slice_fusion_rewriter_v2_test",
     srcs = ["dynamic_slice_fusion_rewriter_v2_test.cc"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
+    tags = ["gpu"],
     deps = [
         ":dynamic_slice_annotator",
         ":dynamic_slice_fusion",

@@ -2655,16 +2655,14 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_aot_compilation_test",
     srcs = [
         "gpu_aot_compilation_test.cc",
     ],
+    backends = ["gpu"],
     tags = [
-        "gpu",
-        "no_oss",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-        "requires-gpu-nvidia",
     ],
     deps = if_cuda_is_configured([
         ":nvptx_compiler_impl",
@@ -2678,26 +2676,24 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/service:gpu_plugin",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_runner_interface",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:statusor",
+        "//xla/util/split_proto:split_executable_and_options_writer",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/bytes:string_writer",
         "@tsl//tsl/platform:statusor",
     ],
 )

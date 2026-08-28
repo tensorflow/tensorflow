@@ -1719,13 +1719,10 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "command_buffer_profiling_test",
     srcs = ["command_buffer_profiling_test.cc"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
+    backends = ["gpu"],
     deps = [
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
@@ -1736,11 +1733,11 @@ xla_cc_test(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/service:gpu_plugin",
         "//xla/service:gpu_topology",
+        "//xla/service:platform_util",
         "//xla/service/gpu:gpu_executable",
-        "//xla/stream_executor:device_description_proto_cc",
-        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
