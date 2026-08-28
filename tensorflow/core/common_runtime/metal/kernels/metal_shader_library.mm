@@ -2304,6 +2304,16 @@ class ShaderLibrary {
     } else {
       options.fastMathEnabled = NO;
     }
+    // Metal 3.0, asked for rather than left to the default.
+    //
+    // Fourteen of these kernels accumulate into an atomic_float, and
+    // atomic_fetch_add_explicit only has a floating point overload from
+    // Metal 3.0 onwards. The default language version follows the toolchain,
+    // so on a newer machine the library compiled and on macOS 15 the same
+    // source failed with "no matching function for call to
+    // atomic_fetch_add_explicit", listing only the integer candidates. Every
+    // Mac this backend runs on supports Metal 3.
+    options.languageVersion = MTLLanguageVersion3_0;
     library_ = [[device
         newLibraryWithSource:[NSString stringWithUTF8String:kShaderSource]
                      options:options

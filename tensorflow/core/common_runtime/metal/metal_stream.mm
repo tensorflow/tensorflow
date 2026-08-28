@@ -45,12 +45,29 @@ namespace {
 // Records the first command buffer failure on the stream, if any.
 void NoteFailure(SP_Stream stream, id<MTLCommandBuffer> completed) {
   if (completed.error == nil) return;
+  // The description is often empty, so the domain, the code and the buffer's
+  // label carry what there is to know. Without them a stream failure says only
+  // that something went wrong somewhere earlier, which is not enough to find
+  // the kernel that caused it.
+  const char* text = completed.error.localizedDescription.UTF8String;
+  const char* domain = completed.error.domain.UTF8String;
+  const char* label = completed.label.UTF8String;
+  std::string detail =
+      (text != nullptr && text[0] != '\0')
+          ? text
+          : std::string("no description; domain ") +
+                (domain != nullptr ? domain : "unknown") + ", code " +
+                std::to_string(static_cast<long>(completed.error.code));
+  if (label != nullptr && label[0] != '\0') {
+    detail += ", encoded by ";
+    detail += label;
+  }
+  LOG(ERROR) << "Metal: command buffer failed: " << detail;
+
   absl::MutexLock lock(&stream->mu);
   if (stream->failed) return;  // Keep the first failure, it is the useful one.
   stream->failed = true;
-  const char* message = completed.error.localizedDescription.UTF8String;
-  stream->failure_message =
-      message != nullptr ? message : "unknown Metal command buffer error";
+  stream->failure_message = detail;
 }
 
 }  // namespace
@@ -103,6 +120,10 @@ ScopedAutoreleasePool::~ScopedAutoreleasePool() {
 
 OrderedCommandBuffer::OrderedCommandBuffer(SP_Stream stream)
     : stream_(stream) {
+  // Held until this buffer is committed: see SP_Stream_st::submit.
+  stream_->submit.Lock();
+  holds_submission_ = true;
+
   uint64_t wait_value = 0;
   {
     absl::MutexLock lock(&stream_->mu);
@@ -120,6 +141,7 @@ OrderedCommandBuffer::OrderedCommandBuffer(SP_Stream stream)
       stream_->last_enqueued = wait_value;
     }
     LOG(ERROR) << "Metal: MTLCommandQueue returned no command buffer.";
+    ReleaseSubmission();
     return;
   }
 
@@ -141,6 +163,13 @@ OrderedCommandBuffer::~OrderedCommandBuffer() {
     Commit();
   }
   [buffer_ release];
+  ReleaseSubmission();
+}
+
+void OrderedCommandBuffer::ReleaseSubmission() {
+  if (!holds_submission_) return;
+  holds_submission_ = false;
+  stream_->submit.Unlock();
 }
 
 void OrderedCommandBuffer::EncodeSignal() {
@@ -159,6 +188,7 @@ void OrderedCommandBuffer::Commit() {
   }];
 
   [buffer_ commit];
+  ReleaseSubmission();
 }
 
 OrderedCommandBuffer::ExternalCommit
@@ -166,6 +196,9 @@ OrderedCommandBuffer::ReleaseForExternalCommit() {
   // Marked committed so the destructor neither commits nor warns; the caller
   // owns the signal from here.
   committed_ = true;
+  // The caller commits, so the submission lock is theirs to end. It is
+  // released when this object is destroyed, which the caller must arrange to
+  // happen after it has committed.
   return ExternalCommit{stream_, signal_value_};
 }
 
@@ -189,6 +222,7 @@ void OrderedCommandBuffer::CommitWithHostCompletion(void (^on_complete)()) {
   }];
 
   [buffer_ commit];
+  ReleaseSubmission();
 }
 
 void OrderedCommandBuffer::CommitAndWait() {

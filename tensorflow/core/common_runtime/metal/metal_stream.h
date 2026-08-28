@@ -50,6 +50,20 @@ struct SP_Stream_st {
   id<MTLCommandQueue> queue;
   id<MTLSharedEvent> order_event;
 
+  // Held from the moment a command buffer takes its sequence number until it
+  // is committed, so that commit order matches the order the numbers were
+  // handed out in.
+  //
+  // A Metal queue runs command buffers in commit order, and each buffer waits
+  // for its predecessor's number before doing anything. TensorFlow runs
+  // kernels on several threads, so without this two buffers could be numbered
+  // in one order and committed in the other, and the one committed first would
+  // wait for a number only the one behind it will ever signal. The queue then
+  // stops for good, which is what a GPU timeout partway through a training
+  // step looks like. This serialises submission, not execution: the GPU still
+  // overlaps the work itself.
+  mutable absl::Mutex submit;
+
   mutable absl::Mutex mu;
   // Sequence number of the last command buffer handed out for this stream.
   uint64_t last_enqueued ABSL_GUARDED_BY(mu) = 0;
@@ -73,6 +87,20 @@ struct SP_Event_st {
   // recording the same event on two streams is well defined.
   id<MTLSharedEvent> event;
 
+  // Held from the moment a command buffer takes its sequence number until it
+  // is committed, so that commit order matches the order the numbers were
+  // handed out in.
+  //
+  // A Metal queue runs command buffers in commit order, and each buffer waits
+  // for its predecessor's number before doing anything. TensorFlow runs
+  // kernels on several threads, so without this two buffers could be numbered
+  // in one order and committed in the other, and the one committed first would
+  // wait for a number only the one behind it will ever signal. The queue then
+  // stops for good, which is what a GPU timeout partway through a training
+  // step looks like. This serialises submission, not execution: the GPU still
+  // overlaps the work itself.
+  mutable absl::Mutex submit;
+
   mutable absl::Mutex mu;
   // 0 means "never recorded", which core treats as already complete.
   uint64_t target ABSL_GUARDED_BY(mu) = 0;
@@ -82,6 +110,20 @@ struct SP_Event_st {
 // a timer is just the pair of timestamps harvested from the empty command
 // buffers that start_timer and stop_timer enqueue.
 struct SP_Timer_st {
+  // Held from the moment a command buffer takes its sequence number until it
+  // is committed, so that commit order matches the order the numbers were
+  // handed out in.
+  //
+  // A Metal queue runs command buffers in commit order, and each buffer waits
+  // for its predecessor's number before doing anything. TensorFlow runs
+  // kernels on several threads, so without this two buffers could be numbered
+  // in one order and committed in the other, and the one committed first would
+  // wait for a number only the one behind it will ever signal. The queue then
+  // stops for good, which is what a GPU timeout partway through a training
+  // step looks like. This serialises submission, not execution: the GPU still
+  // overlaps the work itself.
+  mutable absl::Mutex submit;
+
   mutable absl::Mutex mu;
   double start_seconds ABSL_GUARDED_BY(mu) = 0.0;
   double end_seconds ABSL_GUARDED_BY(mu) = 0.0;
@@ -110,6 +152,20 @@ struct MetalDeviceState {
   void BlockUntilIdle();
 
   id<MTLDevice> device;
+
+  // Held from the moment a command buffer takes its sequence number until it
+  // is committed, so that commit order matches the order the numbers were
+  // handed out in.
+  //
+  // A Metal queue runs command buffers in commit order, and each buffer waits
+  // for its predecessor's number before doing anything. TensorFlow runs
+  // kernels on several threads, so without this two buffers could be numbered
+  // in one order and committed in the other, and the one committed first would
+  // wait for a number only the one behind it will ever signal. The queue then
+  // stops for good, which is what a GPU timeout partway through a training
+  // step looks like. This serialises submission, not execution: the GPU still
+  // overlaps the work itself.
+  mutable absl::Mutex submit;
 
   mutable absl::Mutex mu;
   std::vector<SP_Stream> streams ABSL_GUARDED_BY(mu);
@@ -196,11 +252,15 @@ class OrderedCommandBuffer {
 
  private:
   void EncodeSignal();
+  // Releases the stream's submission lock, once, whichever way this buffer
+  // was committed.
+  void ReleaseSubmission();
 
   SP_Stream stream_;
   id<MTLCommandBuffer> buffer_ = nil;
   uint64_t signal_value_ = 0;
   bool committed_ = false;
+  bool holds_submission_ = false;
 };
 
 }  // namespace metal
