@@ -140,7 +140,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/sanitize_constant_names.h"
 #include "xla/backends/gpu/transforms/scalar_constant_sinker.h"
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
-#include "xla/backends/gpu/transforms/scan_rewriter.h"
 #include "xla/backends/gpu/transforms/scatter_determinism_expander.h"
 #include "xla/backends/gpu/transforms/scatter_expander.h"
 #include "xla/backends/gpu/transforms/scatter_slice_simplifier.h"
@@ -905,13 +904,6 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
-
-  // Rewrite eligible scans to CUB device scans only after SPMD partitioning,
-  // so sharded scans are partitioned as scans (the partitioner replicates
-  // unknown custom calls, and the CUB call's tuple result crashes the Shardy
-  // sharding import). The scans that remain fall through to
-  // AssociativeScanRewriter and ScanExpander below.
-  pipeline.AddPass<ScanRewriter>();
 
   int64_t rw_length = debug_options.xla_reduce_window_rewrite_base_length();
   pipeline.AddPass<HloPassFix<AssociativeScanRewriter>>(rw_length);
