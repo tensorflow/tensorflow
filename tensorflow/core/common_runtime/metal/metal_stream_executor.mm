@@ -241,6 +241,12 @@ void GetStreamStatus(const SP_Device* device, SP_Stream stream,
   Ok(status);
 }
 
+// SP_StreamOptions and the callback that takes it were added to the
+// StreamExecutor C API after the last TensorFlow release. An in-tree build
+// always has them. A build against an installed TensorFlow may not, which is
+// what TF_METAL_NO_STREAM_OPTIONS says; the plugin then simply offers one
+// fewer callback, and core falls back to create_stream.
+#if !defined(TF_METAL_NO_STREAM_OPTIONS)
 void CreateStreamWithOptions(const SP_Device* device,
                              const SP_StreamOptions* options, SP_Stream* stream,
                              TF_Status* status) {
@@ -248,6 +254,7 @@ void CreateStreamWithOptions(const SP_Device* device,
   // `options` has nothing to map onto and is deliberately ignored.
   CreateStream(device, stream, status);
 }
+#endif  // TF_METAL_NO_STREAM_OPTIONS
 
 /*** EVENTS ***/
 
@@ -643,7 +650,9 @@ void PopulateStreamExecutor(SP_StreamExecutor* se) {
   se->destroy_stream = DestroyStream;
   se->create_stream_dependency = CreateStreamDependency;
   se->get_stream_status = GetStreamStatus;
+#if !defined(TF_METAL_NO_STREAM_OPTIONS)
   se->create_stream_with_options = CreateStreamWithOptions;
+#endif  // TF_METAL_NO_STREAM_OPTIONS
 
   se->create_event = CreateEvent;
   se->destroy_event = DestroyEvent;
