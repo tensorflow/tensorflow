@@ -17,14 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/strings/match.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/target_machine_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -33,8 +32,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -153,7 +150,7 @@ TEST_P(SkipInstructionTest, Bf16InF32Out) {
 
   // Run FloatNormalization and check the results.
   FloatNormalization float_normalization(&cpu_float_support);
-  TF_ASSERT_OK_AND_ASSIGN(bool upcast, float_normalization.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool upcast, float_normalization.Run(module.get()));
   EXPECT_EQ(upcast, spec.upcast);
   PrimitiveType expected_input_dtype = spec.upcast ? F32 : BF16;
   CheckDtype(module.get(), expected_input_dtype, expected_input_dtype, F32);
@@ -201,6 +198,124 @@ std::vector<SkipInstructionTestSpec> GetSkipInstructionTestSpecs() {
 INSTANTIATE_TEST_SUITE_P(SkipInstructionTestSuite, SkipInstructionTest,
                          ::testing::ValuesIn(GetSkipInstructionTestSpecs()),
                          SkipInstructionTest::Name);
+
+TEST_F(TargetMachineTestBase, SortNotUpcast) {
+  for (absl::string_view type_str : {"bf16", "f16"}) {
+    std::string hlo_text = absl::StrReplaceAll(R"(
+HloModule test_module
+
+compare {
+  p0 = $type$[] parameter(0)
+  p1 = $type$[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=LT
+}
+
+ENTRY main {
+  k = $type$[100] parameter(0)
+  v = s32[100] parameter(1)
+  ROOT sort = ($type$[100], s32[100]) sort(k, v), dimensions={0}, to_apply=compare, is_stable=true
+}
+)",
+                                               {{"$type$", type_str}});
+
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+    PrimitiveType low_precision_type = (type_str == "bf16") ? BF16 : F16;
+
+    CpuFloatSupport cpu_float_support(
+        low_precision_type, [](const HloInstruction&) { return false; });
+
+    FloatNormalization float_normalization(&cpu_float_support);
+    ASSERT_OK_AND_ASSIGN(bool upcast, float_normalization.Run(module.get()));
+    EXPECT_FALSE(upcast);
+
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    EXPECT_EQ(root->opcode(), HloOpcode::kSort);
+    EXPECT_EQ(root->operand(0)->shape().element_type(), low_precision_type);
+    EXPECT_EQ(root->operand(1)->shape().element_type(), S32);
+
+    HloComputation* compare_comp = root->to_apply();
+    EXPECT_EQ(compare_comp->parameter_instruction(0)->shape().element_type(),
+              low_precision_type);
+  }
+}
+
+TEST_F(TargetMachineTestBase, SortUpcastForUnsupportedType) {
+  std::string hlo_text = R"(
+HloModule test_module
+
+compare {
+  p0 = f8e5m2[] parameter(0)
+  p1 = f8e5m2[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=LT
+}
+
+ENTRY main {
+  k = f8e5m2[100] parameter(0)
+  v = s32[100] parameter(1)
+  ROOT sort = (f8e5m2[100], s32[100]) sort(k, v), dimensions={0}, to_apply=compare, is_stable=true
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  CpuFloatSupport cpu_float_support(
+      F8E5M2, [](const HloInstruction&) { return false; });
+
+  FloatNormalization float_normalization(&cpu_float_support);
+  ASSERT_OK_AND_ASSIGN(bool upcast, float_normalization.Run(module.get()));
+  EXPECT_TRUE(upcast);
+
+  HloInstruction* sort_instr = FindInstruction(module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort_instr, nullptr);
+  EXPECT_EQ(sort_instr->operand(0)->shape().element_type(), F32);
+  EXPECT_EQ(sort_instr->operand(1)->shape().element_type(), S32);
+  HloComputation* updated_cmp = sort_instr->to_apply();
+  EXPECT_EQ(updated_cmp->parameter_instruction(0)->shape().element_type(), F32);
+  EXPECT_EQ(updated_cmp->parameter_instruction(1)->shape().element_type(), F32);
+}
+
+TEST_F(TargetMachineTestBase, CompareAndSelectNotUpcast) {
+  for (absl::string_view type_str : {"bf16", "f16"}) {
+    std::string hlo_text = absl::StrReplaceAll(R"(
+HloModule test_module
+
+ENTRY main {
+  p0 = $type$[100] parameter(0)
+  p1 = $type$[100] parameter(1)
+  cmp = pred[100] compare(p0, p1), direction=LT
+  ROOT select = $type$[100] select(cmp, p0, p1)
+}
+)",
+                                               {{"$type$", type_str}});
+
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+    PrimitiveType low_precision_type = (type_str == "bf16") ? BF16 : F16;
+
+    CpuFloatSupport cpu_float_support(
+        low_precision_type, [](const HloInstruction&) { return false; });
+
+    FloatNormalization float_normalization(&cpu_float_support);
+    ASSERT_OK_AND_ASSIGN(bool upcast, float_normalization.Run(module.get()));
+    EXPECT_FALSE(upcast);
+
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+    EXPECT_EQ(root->shape().element_type(), low_precision_type);
+    EXPECT_EQ(root->operand(1)->shape().element_type(), low_precision_type);
+    EXPECT_EQ(root->operand(2)->shape().element_type(), low_precision_type);
+
+    const HloInstruction* cmp = root->operand(0);
+    EXPECT_EQ(cmp->opcode(), HloOpcode::kCompare);
+    EXPECT_EQ(cmp->operand(0)->shape().element_type(), low_precision_type);
+    EXPECT_EQ(cmp->operand(1)->shape().element_type(), low_precision_type);
+  }
+}
 
 }  // namespace
 }  // namespace xla::cpu
