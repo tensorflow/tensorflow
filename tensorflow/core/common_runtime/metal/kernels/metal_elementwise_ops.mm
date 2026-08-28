@@ -754,6 +754,11 @@ void Register(const char* op_name, void* (*create)(TF_OpKernelConstruction*),
   if (TF_GetCode(status) == TF_OK && attr2 != nullptr) {
     TF_KernelBuilder_TypeConstraint(builder, attr2, dtype2, status);
   }
+  // The builder is deleted here and only here. TF_RegisterKernelBuilder hands
+  // it to an OpKernelRegistrar, which owns it from then on, and sets the
+  // status to OK unconditionally: with no serialized KernelDef there is
+  // nothing for it to fail on. So the only way to still hold the builder is
+  // for a type constraint to have failed before the call.
   if (TF_GetCode(status) == TF_OK) {
     TF_RegisterKernelBuilder(name.c_str(), builder, status);
   } else {

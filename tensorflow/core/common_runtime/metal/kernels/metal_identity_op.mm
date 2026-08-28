@@ -104,6 +104,11 @@ void RegisterIdentity(const char* op_name, TF_DataType dtype,
       op_name, kMetalDeviceType, /*create_func=*/nullptr, &IdentityOp_Compute,
       /*delete_func=*/nullptr);
   TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
+  // The builder is deleted here and only here. TF_RegisterKernelBuilder hands
+  // it to an OpKernelRegistrar, which owns it from then on, and sets the
+  // status to OK unconditionally: with no serialized KernelDef there is
+  // nothing for it to fail on. So the only way to still hold the builder is
+  // for a type constraint to have failed before the call.
   if (TF_GetCode(status) == TF_OK) {
     TF_RegisterKernelBuilder(kernel_name.c_str(), builder, status);
   } else {

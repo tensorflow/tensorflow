@@ -236,6 +236,11 @@ void RegisterMatMul(TF_DataType dtype, const char* kernel_name) {
       TF_NewKernelBuilder("MatMul", kMetalDeviceType, &MatMulOp_Create,
                           &MatMulOp_Compute, &MatMulOp_Delete);
   TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
+  // The builder is deleted here and only here. TF_RegisterKernelBuilder hands
+  // it to an OpKernelRegistrar, which owns it from then on, and sets the
+  // status to OK unconditionally: with no serialized KernelDef there is
+  // nothing for it to fail on. So the only way to still hold the builder is
+  // for a type constraint to have failed before the call.
   if (TF_GetCode(status) == TF_OK) {
     TF_RegisterKernelBuilder(kernel_name, builder, status);
   } else {
