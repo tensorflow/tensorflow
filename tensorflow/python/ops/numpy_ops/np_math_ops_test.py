@@ -651,7 +651,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(np_math_ops.diff(a, axis=0), np.diff(a, axis=0))
     self.match(np_math_ops.diff(a, axis=-1), np.diff(a, axis=-1))
     self.match(np_math_ops.diff(a, n=2, axis=1), np.diff(a, n=2, axis=1))
-    self.match(np_math_ops.diff(np_array_ops.array([1, 3, 6])),
+    self.match(np_math_ops.diff(np_array_ops.array([1, 3, 6], dtype=np.int32)),
                np.diff(np.array([1, 3, 6], dtype=np.int32)))
     self.match(
         np_math_ops.diff(np_array_ops.array([True, False, True])),
@@ -661,7 +661,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.diff(np_array_ops.array([1.5, 2.5, 4.0], np.float32)),
         np.diff(np.array([1.5, 2.5, 4.0], dtype=np.float32)))
     self.match(
-        np_math_ops.diff(np_array_ops.array([1, 3, 6]), n=0),
+        np_math_ops.diff(np_array_ops.array([1, 3, 6], dtype=np.int32), n=0),
         np.diff(np.array([1, 3, 6], dtype=np.int32), n=0))
     # NumPy raises ValueError for 0-d inputs too.
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
