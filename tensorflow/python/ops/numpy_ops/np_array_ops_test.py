@@ -1363,6 +1363,13 @@ class ArrayMethodsTest(test.TestCase):
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
 
+  def testSplitOutOfBoundsAxis(self):
+    x = np_array_ops.arange(6).reshape(2, 3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x, 2, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x, 2, axis=2)
+
   def testHSplitBecomesVsplitFor1DInput(self):
     @def_function.function
     def f(arr):
