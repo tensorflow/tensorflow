@@ -67,12 +67,12 @@ size_t AlignedBufferBytesFromSizes(const intptr_t* sizes, size_t n) {
 }
 
 void* MallocContiguousBuffersFromSizes(const intptr_t* sizes, size_t n,
-                                       void** bufs, bool annotate_initialized) {
+                                       void** bufs) {
   std::vector<BufferAllocationInfo> buffer_infos =
       SizesToBufferAllocationInfos(sizes, n);
   return tensorflow::MallocContiguousBuffers(buffer_infos,
                                              /*allocate_entry_params=*/false,
-                                             bufs, annotate_initialized);
+                                             bufs);
 }
 
 TEST(AllocatorTest, AlignedBufferBytes) {
@@ -101,14 +101,14 @@ void* add_ptr(void* base, uintptr_t delta) {
 // free.  We also check the contiguous property.
 TEST(AllocatorTest, MallocFreeContiguousBuffers) {
   // Test empty sizes.
-  void* base = MallocContiguousBuffersFromSizes(nullptr, 0, nullptr, false);
+  void* base = MallocContiguousBuffersFromSizes(nullptr, 0, nullptr);
   EXPECT_EQ(base, nullptr);
   FreeContiguous(base);
 
   // Test non-empty sizes with 0 sum.
   static constexpr intptr_t sizesA[1] = {-1};
   void* bufA[1];
-  base = MallocContiguousBuffersFromSizes(sizesA, 1, bufA, false);
+  base = MallocContiguousBuffersFromSizes(sizesA, 1, bufA);
   EXPECT_EQ(base, nullptr);
   EXPECT_EQ(bufA[0], nullptr);
   FreeContiguous(base);
@@ -116,7 +116,7 @@ TEST(AllocatorTest, MallocFreeContiguousBuffers) {
   // Test non-empty sizes with non-0 sum.
   static constexpr intptr_t sizesB[1] = {3};
   void* bufB[1];
-  base = MallocContiguousBuffersFromSizes(sizesB, 1, bufB, false);
+  base = MallocContiguousBuffersFromSizes(sizesB, 1, bufB);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufB[0], add_ptr(base, 0));
   char* bufB0_bytes = static_cast<char*>(bufB[0]);
@@ -125,22 +125,10 @@ TEST(AllocatorTest, MallocFreeContiguousBuffers) {
   bufB0_bytes[2] = 'C';
   FreeContiguous(base);
 
-  // Test non-empty sizes with non-0 sum, and annotate_initialized.
-  static constexpr intptr_t sizesC[1] = {3};
-  void* bufC[1];
-  base = MallocContiguousBuffersFromSizes(sizesC, 1, bufC, true);
-  EXPECT_NE(base, nullptr);
-  EXPECT_EQ(bufC[0], add_ptr(base, 0));
-  char* bufC0_bytes = static_cast<char*>(bufC[0]);
-  bufC0_bytes[0] = 'A';
-  bufC0_bytes[1] = 'B';
-  bufC0_bytes[2] = 'C';
-  FreeContiguous(base);
-
   // Test mixed sizes.
   static constexpr intptr_t sizesD[7] = {1, -1, 32, -1, 64, 2, 3};
   void* bufD[7];
-  base = MallocContiguousBuffersFromSizes(sizesD, 7, bufD, false);
+  base = MallocContiguousBuffersFromSizes(sizesD, 7, bufD);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufD[0], add_ptr(base, 0));
   EXPECT_EQ(bufD[1], nullptr);
