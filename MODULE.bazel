@@ -30,6 +30,11 @@ bazel_dep(name = "rules_jvm_external", version = "6.8")
 bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
 single_version_override(
     module_name = "protobuf",
+    patch_strip = 1,
+    patches = [
+        "//third_party/xla/third_party/protobuf:protobuf.patch",
+        "//third_party/xla/third_party/protobuf:protobuf_arena.patch",
+    ],
     version = "31.1",
 )
 
@@ -229,6 +234,13 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
     hub_name = "tf_pypi",
     python_version = python_version,
     requirements_lock = "//:requirements_lock_{}.txt".format(python_version.replace(".", "_")),
+    target_platforms = [
+        "linux_x86_64",
+        "linux_aarch64",
+        "osx_x86_64",
+        "osx_aarch64",
+        "windows_x86_64",
+    ],
     whl_modifications = {
         "@pypi_mods//:numpy.json": "numpy",  # @pypi_mods is defined in XLA's MODULE.bazel
     },
