@@ -13,6 +13,8 @@ single_version_override(
     patches = [
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
+        "//third_party/xla/third_party/absl:btree.patch",
+        "//third_party/xla/third_party/absl:raw_hash_set.patch",
     ],
     version = "20260526.0",
 )
@@ -158,9 +160,12 @@ use_repo(
     "mpitrampoline",
     "nanobind",
     "nasm",
+    "nccl_archive",
     "nvshmem",
+    "nvtx_archive",
     "onednn",
     "onednn_async",
+    "org_sqlite",
     "pthreadpool",
     "raft",
     "riegeli",
@@ -198,12 +203,9 @@ use_repo(
     "linenoise",
     "mobile_multibox",
     "mobile_ssd",
-    "nccl_archive",
-    "nvtx_archive",
     "opencl_headers",
     "org_checkerframework_qual",
     "org_hamcrest_core",
-    "org_sqlite",
     "org_xprof",
     "person_detect_data",
     "ruy",
@@ -307,6 +309,15 @@ use_repo(cuda_configure, "local_config_cuda")
 
 nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
 use_repo(nccl_configure, "local_config_nccl")
+
+nccl_redist = use_extension("//third_party/nccl:nccl_redist_extension.bzl", "nccl_redist_ext")
+use_repo(nccl_redist, "cuda_nccl")
+
+nccl_redist_xla = use_extension("@rules_ml_toolchain//extensions:nccl_redist.bzl", "nccl_redist_ext")
+override_repo(
+    nccl_redist_xla,
+    cuda_nccl = "cuda_nccl",
+)
 
 sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "local_config_sycl")

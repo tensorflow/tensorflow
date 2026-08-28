@@ -1,10 +1,13 @@
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -340,7 +340,6 @@
-                 "-lpthread",
-             ],
-         }),
--        linkstatic = True,
-         local_defines = select({
-             "@platforms//os:macos": [
-                 'CURL_CA_BUNDLE=\\"/etc/ssl/cert.pem\\"',
+@@ -248,10 +248,6 @@
+ 
+     # Extra defines needed by curl
+     "-DBUILDING_LIBCURL",
+-    # These 3 all have to be set correctly
+-    "-DCURL_HIDDEN_SYMBOLS",
+-    '-DCURL_EXTERN_SYMBOL=__attribute__((__visibility__(\"default\")))',
+-    "-fvisibility=hidden",
+ ]
+ 
+ expand_template(
