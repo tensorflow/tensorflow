@@ -251,7 +251,7 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
     std::vector<std::string> items =
         str_util::Split(server_data_.server->node_names[i], '_');
     int tensor_index;
-    strings::safe_strto32(items[2], &tensor_index);
+    absl::SimpleAtoi(items[2], &tensor_index);
 
     ASSERT_EQ(TensorShape({1, 1}),
               server_data_.server->debug_tensors[i].shape());
