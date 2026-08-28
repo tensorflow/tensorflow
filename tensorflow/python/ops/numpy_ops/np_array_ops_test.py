@@ -641,6 +641,13 @@ class ArrayMethodsTest(test.TestCase):
     run_test([True, False], [[1, 2, 3], [4, 5, 6]], axis=1)
     run_test([True], [[1, 2], [3, 4], [5, 6]], axis=0)
 
+  def testCompressOutOfBoundsAxis(self):
+    x = np_array_ops.array([[1, 2], [3, 4]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.compress([True, False], x, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.compress([True, False], x, axis=2)
+
   def testCompressJitCompile(self):
     # Regression test for #122055: `compress` produced a dynamic size bounded by
     # `a.shape[axis]` rather than `len(condition)`, so feeding its result into an

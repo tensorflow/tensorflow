@@ -460,7 +460,10 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
   if axis < 0:
     axis += a.ndim
 
-  assert axis >= 0 and axis < a.ndim
+  if axis < 0 or axis >= a.ndim:
+    raise ValueError(
+        f'Argument `axis` is out of bounds for input of rank {a.ndim}.'
+    )
 
   # `tf.boolean_mask` requires `a`'s size along `axis` to equal `condition`'s
   # length. `np.compress` instead pairs `condition[k]` with `a[k]` along `axis`
