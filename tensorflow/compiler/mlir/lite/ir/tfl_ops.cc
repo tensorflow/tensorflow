@@ -260,7 +260,9 @@ bool HasDenseResourceOperand(mlir::Operation* op) {
 // TODO(b/394905516): Remove this once we have a way to configure the threshold.
 bool ShouldFoldOperation(Operation* inst) {
   if (!(ENABLE_DENSE_RESOURCE_ATTR_FOLD) && HasDenseResourceOperand(inst)) {
-    return false;
+    if (!llvm::isa<TransposeOp, ReshapeOp>(inst)) {
+      return false;
+    }
   }
 
   auto get_size = [&](TypeRange types) {
