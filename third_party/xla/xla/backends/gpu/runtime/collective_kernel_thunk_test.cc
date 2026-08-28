@@ -372,7 +372,6 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &buffer_allocations;
   initialize_params.collective_params = &collective_params;
-  initialize_params.collective_cliques = &collective_cliques;
   initialize_params.src = {kKernelSource};
   initialize_params.collective_memory = &collective_memory;
 
@@ -478,7 +477,7 @@ TEST(CollectiveKernelThunkTest, MultiprocessTest) {
       /*is_multimem_enabled=*/false, /*use_ptx=*/true);
   EXPECT_THAT(RunCollectiveKernelThunkOnDevices(metadata,
                                                 /*emulate_multiprocess=*/true),
-              StatusIs(absl::StatusCode::kNotFound));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CollectiveKernelThunkTest, BufferUses) {
@@ -616,29 +615,19 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
                                       &allocations1};
   ASSERT_OK(collective_kernel_thunk->Prepare(prepare_params));
 
-  CollectiveMemoryCache collective_memory_cache;
-  ASSERT_OK_AND_ASSIGN(
-      CollectiveCliques collective_cliques,
-      AcquireCollectiveCliques(collective_params, clique_requests));
-  ASSERT_OK_AND_ASSIGN(
-      CollectiveMemory collective_memory,
-      AcquireCollectiveMemory(collective_params, collective_cliques,
-                              memory_requests, collective_memory_cache));
-
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = executor;
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &allocations1;
   initialize_params.collective_params = &collective_params;
-  initialize_params.collective_cliques = &collective_cliques;
   initialize_params.src.text = kKernelSource;
-  initialize_params.collective_memory = &collective_memory;
   ASSERT_OK(collective_kernel_thunk->Initialize(initialize_params));
   ASSERT_OK(stream->BlockHostUntilDone());
 
   Thunk::ExecuteParams params1 = Thunk::ExecuteParams::Create(
       run_options, allocations1, stream.get(), trace_stream.get(),
-      &collective_params, &collective_cliques, &collective_memory);
+      &collective_params, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -659,7 +648,8 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
   BufferAllocations updated_allocations({src2, dst2}, 0, nullptr);
   Thunk::ExecuteParams params2 = Thunk::ExecuteParams::Create(
       run_options, updated_allocations, stream.get(), trace_stream.get(),
-      &collective_params, &collective_cliques, &collective_memory);
+      &collective_params, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
   std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
   Command::RecordParams update_record_params = {state,
                                                 std::move(updated_allocs)};

@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
@@ -54,6 +56,13 @@ size_t GetMultiGpuBarrierSignalBufferSize();
 
 // Returns the size of the barrier signal value in bytes.
 size_t GetMultiGpuBarrierSignalValueSize();
+
+// Collect the pointers to the parameters at the peer devices.
+// The size of the returned vector is num_parameters * num_devices.
+absl::StatusOr<std::vector<void*>> CollectParamToPeers(
+    const GpuCliqueKey& clique_key, RankId rank,
+    stream_executor::Stream* stream,
+    std::vector<stream_executor::DeviceAddressBase> parameters);
 
 }  // namespace xla::gpu
 
