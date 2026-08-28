@@ -326,6 +326,9 @@ populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
 populate_tflite_source_vars("core/tools" TFLITE_CORE_TOOLS_SRCS)
 populate_tflite_source_vars("c" TFLITE_C_SRCS)
 populate_tflite_source_vars("delegates" TFLITE_DELEGATES_SRCS)
+
+set(_TFLITE_GENERATED_FBS_ROOT "${PROJECT_BINARY_DIR}/flatbuffer_includes")
+
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
@@ -411,11 +414,51 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/tools/versioning/gpu_compatibility.cc
     ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
     ${TF_SOURCE_DIR}/compiler/mlir/lite/tools/versioning/op_signature.cc
+    "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h"
+    "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
+    "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
+    "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/task/tflite_serialization_base_generated.h"
   )
   include_directories(
     AFTER
     ${TFLITE_SOURCE_DIR}/delegates/gpu/common
     ${TFLITE_SOURCE_DIR}/delegates/gpu/common/task
+  )
+
+  # Generate the flatbuffer schema headers for the GPU delegate
+  add_custom_command(
+    OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/task/tflite_serialization_base_generated.h"
+      COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c --scoped-enums
+        -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/task"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/common/task/tflite_serialization_base.fbs"
+      DEPENDS "${FLATC_TARGET}"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/common/task/tflite_serialization_base.fbs"
+  )
+  add_custom_command(
+    OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
+      COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c --scoped-enums
+        -I "${TENSORFLOW_SOURCE_DIR}"
+        -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/common/gpu_model.fbs"
+      DEPENDS "${FLATC_TARGET}"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/common/gpu_model.fbs"
+  )
+  add_custom_command(
+    OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
+      COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c --scoped-enums
+        -I "${TENSORFLOW_SOURCE_DIR}"
+        -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/cl"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/cl/serialization.fbs"
+      DEPENDS "${FLATC_TARGET}"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/cl/serialization.fbs"
+  )
+  add_custom_command(
+    OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h"
+      COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c --scoped-enums
+        -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/cl"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/cl/compiled_program_cache.fbs"
+      DEPENDS "${FLATC_TARGET}"
+        "${TFLITE_SOURCE_DIR}/delegates/gpu/cl/compiled_program_cache.fbs"
   )
   if(TFLITE_ENABLE_METAL AND "${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
     #
@@ -439,6 +482,7 @@ if(TFLITE_ENABLE_GPU)
     target_include_directories(metal_delegate PUBLIC
       ${CMAKE_BINARY_DIR}/abseil-cpp
       ${CMAKE_BINARY_DIR}/flatbuffers/include
+      ${_TFLITE_GENERATED_FBS_ROOT}
       PRIVATE ${TENSORFLOW_SOURCE_DIR}
       PRIVATE ${PROJECT_BINARY_DIR}
     )
@@ -511,32 +555,32 @@ if(TFLITE_ENABLE_XNNPACK)
     FILTER ".*(_test|_tester)\\.(cc|h)"
   )
   add_custom_command(
-    OUTPUT "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+    OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
     COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c
-      -o "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/"
+      -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/xnnpack/"
       --gen-mutable --gen-object-api
       "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/tflite/delegates/xnnpack"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_TFLITE_GENERATED_FBS_ROOT}/tflite/delegates/xnnpack"
     COMMAND ${CMAKE_COMMAND} -E copy
-      "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
-      "${PROJECT_BINARY_DIR}/tflite/delegates/xnnpack/weight_cache_schema_generated.h"
+      "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+      "${_TFLITE_GENERATED_FBS_ROOT}/tflite/delegates/xnnpack/weight_cache_schema_generated.h"
     DEPENDS "${FLATC_TARGET}" "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
   )
 
   add_custom_target(
       xnnpack_weight_cache_schema_cc_fbs
-      DEPENDS "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+      DEPENDS "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
   )
 
   add_library(xnnpack-delegate STATIC
     "${TFLITE_DELEGATES_XNNPACK_SRCS}"
-    "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+    "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
   )
   target_include_directories(xnnpack-delegate
     PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    PRIVATE "${PROJECT_BINARY_DIR}"
+    PRIVATE "${_TFLITE_GENERATED_FBS_ROOT}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/.."
-    PRIVATE "${PROJECT_BINARY_DIR}/tensorflow"
+    PRIVATE "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow"
     PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
     PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/tflite"
   )
@@ -643,9 +687,52 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "iOS")
   set_source_files_properties(${TFLITE_SOURCE_DIR}/profiling/signpost_profiler.mm PROPERTIES COMPILE_FLAGS -fno-objc-arc)
 endif()
 
+add_custom_command(
+  OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+    COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c
+      --no-union-value-namespacing --gen-object-api
+      -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/compiler/mlir/lite/schema"
+      "${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema.fbs"
+    DEPENDS "${FLATC_TARGET}"
+      "${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema.fbs"
+)
+
+add_custom_command(
+  OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/compiler/mlir/lite/schema/conversion_metadata_generated.h"
+    COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c
+      --no-union-value-namespacing --gen-object-api
+      -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/compiler/mlir/lite/schema"
+      "${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata.fbs"
+    DEPENDS "${FLATC_TARGET}"
+      "${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata.fbs"
+)
+
+# The configuration schema is defined in Protobuf syntax and converted to a
+# FlatBuffer schema before generating the C++ header. The namespace is renamed
+# from "tflite.proto" to "tflite" to match the Bazel-generated header.
+find_package(Perl REQUIRED)
+
+add_custom_command(
+  OUTPUT "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/acceleration/configuration/configuration_generated.h"
+    COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" --proto
+      -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/acceleration/configuration"
+      "${TFLITE_SOURCE_DIR}/acceleration/configuration/configuration.proto"
+    COMMAND "${PERL_EXECUTABLE}" -p -i -e "s/tflite.proto/tflite/"
+      "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/acceleration/configuration/configuration.fbs"
+    COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c
+      --no-union-value-namespacing --gen-object-api --gen-compare
+      -o "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/acceleration/configuration"
+      "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/acceleration/configuration/configuration.fbs"
+    DEPENDS "${FLATC_TARGET}"
+      "${TFLITE_SOURCE_DIR}/acceleration/configuration/configuration.proto"
+)
+
 # TFLite library
 set(_ALL_TFLITE_SRCS
   # go/keep-sorted start
+  ${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/compiler/mlir/lite/schema/conversion_metadata_generated.h
+  ${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/compiler/mlir/lite/schema/schema_generated.h
+  ${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/acceleration/configuration/configuration_generated.h
   ${TFLITE_CORE_ACCELERATION_SRCS}
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_ASYNC_C_SRCS}
@@ -697,8 +784,6 @@ set(_ALL_TFLITE_SRCS
   ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation_disabled.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata_generated.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
@@ -723,6 +808,7 @@ target_include_directories(tensorflow-lite
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+    $<BUILD_INTERFACE:${_TFLITE_GENERATED_FBS_ROOT}>
 )
 target_link_libraries(tensorflow-lite
   PUBLIC

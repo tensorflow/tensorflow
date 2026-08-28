@@ -184,10 +184,16 @@ cc_library(
     deps = ["//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils"],
 )
 
-flatbuffer_cc_library(
+cc_library(
     name = "conversion_metadata_fbs",
-    srcs = ["//tensorflow/compiler/mlir/lite/schema:conversion_metadata.fbs"],
-    compatible_with = get_compatible_with_portable(),
+    hdrs = [
+        ":conversion_metadata_generated.h",
+        "//tensorflow/compiler/mlir/lite/schema:conversion_metadata_generated.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/schema:conversion_metadata_fbs",
+        "@flatbuffers//:runtime_cc",
+    ],
 )
 
 tflite_portable_test_suite()

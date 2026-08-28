@@ -103,6 +103,12 @@ flatbuffer_cc_library(
     out_prefix = "mutable/",
 )
 
+flatbuffer_cc_library(
+    name = "conversion_metadata_fbs",
+    srcs = ["conversion_metadata.fbs"],
+    compatible_with = get_compatible_with_portable(),
+)
+
 # Generic schema for inference on device (but with reflections makes bigger).
 flatbuffer_cc_library(
     name = "schema_fbs_with_reflection",
