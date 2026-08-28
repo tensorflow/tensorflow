@@ -2957,7 +2957,6 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                            module->name(), module->unique_id());
   }};
 
-  RecordGpuCompilerStacktrace();
   if (module->config().has_static_device_assignment()) {
     const DeviceAssignment& da = module->config().static_device_assignment();
     if (!da.IsIota() && !da.IsAll(0)) {

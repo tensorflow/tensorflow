@@ -3420,27 +3420,6 @@ cc_library(
         "//xla/tsl/lib/monitoring:counter",
         "//xla/tsl/lib/monitoring:gauge",
         "//xla/tsl/lib/monitoring:sampler",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform",
-        "@tsl//tsl/platform:stacktrace",
-    ],
-)
-
-xla_cc_test(
-    name = "metrics_test",
-    srcs = ["metrics_test.cc"],
-    tags = [
-        # Streamz recording doesn't work in OSS.
-        "no_oss",
-    ],
-    deps = [
-        ":metrics",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/monitoring:collected_metrics",
-        "//xla/tsl/lib/monitoring:collection_registry",
-        "@com_google_googletest//:gtest",
-        "@tsl//tsl/platform:test",
     ],
 )
 

@@ -230,43 +230,6 @@ ENTRY test_computation {
                         "non-cyclical source-target pairs"));
 }
 
-TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
-  if (tsl::kIsOpenSource) {
-    GTEST_SKIP() << "Streamz is not supported in OSS.";
-  }
-
-  const char* hlo_text = R"(
-HloModule test
-
-ENTRY main {
-  p = f32[10]{0} parameter(0)
-  ROOT neg = f32[10]{0} negate(p)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_text));
-
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<OpaqueExecutable> executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
-
-  const std::string kGpuCompilerStacktraceMetricName =
-      "/xla/service/gpu/compiler_stacktrace_count";
-  tsl::monitoring::CollectionRegistry::CollectMetricsOptions options;
-  std::unique_ptr<tsl::monitoring::CollectedMetrics> metrics =
-      tsl::monitoring::CollectionRegistry::Default()->CollectMetrics(options);
-
-  EXPECT_TRUE(metrics->point_set_map.find(kGpuCompilerStacktraceMetricName) !=
-              metrics->point_set_map.end());
-
-  // Since Streamz is recorded every call, we expect at least one point.
-  // All other callers may increment the counter as well.
-  EXPECT_GT(
-      metrics->point_set_map[kGpuCompilerStacktraceMetricName]->points.size(),
-      0);
-}
-
 TEST_F(GpuCompilerTest, GenerateDebugInfoForNonAutotuningCompilations) {
   const char* hlo_text = R"(
 HloModule test
