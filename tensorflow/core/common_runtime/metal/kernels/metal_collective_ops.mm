@@ -18,10 +18,13 @@ limitations under the License.
 #import <Metal/Metal.h>
 
 #include <cstdint>
+#include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -48,6 +51,7 @@ namespace {
 // only case that can arise here, implemented exactly.
 
 struct CollectiveOp {
+  std::string shared_name;
   int32_t num_devices = 1;
   TF_DataType dtype = TF_FLOAT;
 };
@@ -64,6 +68,11 @@ void* CollectiveOp_Create(TF_OpKernelConstruction* ctx) {
     TF_SetStatus(status, TF_OK, "");
     op->dtype = TF_FLOAT;
   }
+  char name[256] = {0};
+  TF_OpKernelConstruction_GetAttrString(ctx, "shared_name", name,
+                                        sizeof(name) - 1, status);
+  if (TF_GetCode(status) == TF_OK) op->shared_name = name;
+  TF_SetStatus(status, TF_OK, "");
   if (op->num_devices > 1) {
     TF_SetStatus(
         status, TF_UNIMPLEMENTED,
@@ -124,12 +133,89 @@ void Passthrough_ComputeImpl(CollectiveOp* op, TF_OpKernelContext* ctx,
   command_buffer.Commit();
 }
 
-// The send halves of the two-node forms produce nothing: with one device the
-// receiving half already has the only copy there is.
+// The split forms meet through their shared name.
+//
+// _NcclBroadcastSend takes the value and produces nothing; its matching
+// _NcclBroadcastRecv takes a shape and produces the value. Across devices
+// NCCL carries it between them. On one device both halves run in the same
+// process, so the send parks the bytes under the shared name and the receive
+// collects them. Treating the receive as a passthrough, which is right for
+// every other member of the family, returned its shape tensor as the result.
+absl::Mutex& RendezvousMutex() {
+  static absl::Mutex* mutex = new absl::Mutex();
+  return *mutex;
+}
+
+std::map<std::string, std::vector<uint8_t>>& Rendezvous() {
+  static auto* parked = new std::map<std::string, std::vector<uint8_t>>();
+  return *parked;
+}
+
 void Sink_ComputeImpl(CollectiveOp* op, TF_OpKernelContext* ctx,
                       TF_Status* status) {
   ScopedTensor input;
   TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  if (op->shared_name.empty()) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  // The bytes are read on the host, so everything written into them has to
+  // have happened.
+  WaitForStream(stream);
+  const size_t bytes = TF_TensorByteSize(input.get());
+  const void* data = TF_TensorData(input.get());
+  if (data == nullptr) return;
+  std::vector<uint8_t> copy(bytes);
+  std::memcpy(copy.data(), data, bytes);
+  absl::MutexLock lock(&RendezvousMutex());
+  Rendezvous()[op->shared_name] = std::move(copy);
+}
+
+// The receive half: its input is the shape, and its output is whatever the
+// matching send parked.
+void Recv_ComputeImpl(CollectiveOp* op, TF_OpKernelContext* ctx,
+                      TF_Status* status) {
+  ScopedTensor shape_tensor;
+  TF_GetInput(ctx, 0, shape_tensor.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  const int64_t entries = NumElements(shape_tensor.get());
+  const void* raw = TF_TensorData(shape_tensor.get());
+  if (raw == nullptr) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: a broadcast receive has no shape.");
+    return;
+  }
+  std::vector<int64_t> shape(static_cast<size_t>(entries));
+  for (int64_t i = 0; i < entries; ++i) {
+    shape[static_cast<size_t>(i)] =
+        TF_TensorType(shape_tensor.get()) == TF_INT64
+            ? static_cast<const int64_t*>(raw)[i]
+            : static_cast<const int32_t*>(raw)[i];
+  }
+  int64_t count = 1;
+  for (int64_t d : shape) count *= d;
+  const size_t bytes =
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype);
+
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(ctx, 0, op->dtype, shape.data(),
+                                 static_cast<int>(shape.size()), bytes,
+                                 status));
+  if (TF_GetCode(status) != TF_OK) return;
+  void* destination = TF_TensorData(output.get());
+  if (destination == nullptr || bytes == 0) return;
+
+  absl::MutexLock lock(&RendezvousMutex());
+  auto parked = Rendezvous().find(op->shared_name);
+  if (parked == Rendezvous().end() || parked->second.size() != bytes) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                 ("Metal: no broadcast was sent under the name '" +
+                  op->shared_name + "', so there is nothing to receive.")
+                     .c_str());
+    return;
+  }
+  std::memcpy(destination, parked->second.data(), bytes);
 }
 
 #define METAL_COLLECTIVE_COMPUTE(NAME, IMPL)                                \
@@ -149,16 +235,19 @@ void Sink_ComputeImpl(CollectiveOp* op, TF_OpKernelContext* ctx,
 
 METAL_COLLECTIVE_COMPUTE(Collective_Compute, Passthrough_ComputeImpl)
 METAL_COLLECTIVE_COMPUTE(CollectiveSink_Compute, Sink_ComputeImpl)
+METAL_COLLECTIVE_COMPUTE(CollectiveRecv_Compute, Recv_ComputeImpl)
 
 #undef METAL_COLLECTIVE_COMPUTE
 
 void Register(const char* op_name,
               void (*compute)(void*, TF_OpKernelContext*), TF_DataType dtype,
-              const std::string& name) {
+              const std::string& name,
+              std::vector<const char*> host_args = {}) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder =
       TF_NewKernelBuilder(op_name, kMetalDeviceType, &CollectiveOp_Create,
                           compute, &CollectiveOp_Delete);
+  for (const char* arg : host_args) TF_KernelBuilder_HostMemory(builder, arg);
   TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
   if (TF_GetCode(status) == TF_OK) {
     TF_RegisterKernelBuilder(name.c_str(), builder, status);
@@ -189,8 +278,11 @@ void RegisterMetalCollectiveKernels() {
              "MetalNcclReduce" + suffix);
     // The receiving halves produce the result; the sending halves have
     // nothing to send to.
-    Register("_NcclBroadcastRecv", &Collective_Compute, kDTypes[i],
-             "Metal_NcclBroadcastRecv" + suffix);
+    // The receive half takes a shape, not a value, so it is not a
+    // passthrough like the rest of the family. The shape is read on the host
+    // to size the output.
+    Register("_NcclBroadcastRecv", &CollectiveRecv_Compute, kDTypes[i],
+             "Metal_NcclBroadcastRecv" + suffix, {"shape"});
     Register("_NcclReduceRecv", &Collective_Compute, kDTypes[i],
              "Metal_NcclReduceRecv" + suffix);
     Register("_NcclBroadcastSend", &CollectiveSink_Compute, kDTypes[i],
