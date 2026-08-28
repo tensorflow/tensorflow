@@ -1022,7 +1022,9 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
   a_rank = np_utils._maybe_static(array_ops.rank(a))  # pylint: disable=protected-access
 
   def _correct_axis(axis, rank):
-    if isinstance(rank, int):
+    if isinstance(axis, (int, np.integer)) and isinstance(rank, (int, np.integer)):
+      axis = int(axis)
+      rank = int(rank)
       normalized = axis + rank if axis < 0 else axis
       if normalized < 0 or normalized >= rank:
         raise ValueError(
