@@ -1,0 +1,10 @@
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -35,7 +35,6 @@
+ [
+   python.toolchain(
+     python_version = version,
+-    is_default = version == DEFAULT_PYTHON,
+   )
+   for version in SUPPORTED_PYTHON_VERSIONS
+ ]
