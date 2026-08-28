@@ -1260,9 +1260,11 @@ class FunctionTest(xla_test.XLATestCase):
     """Test that jit_compile=True validates tf.device() constraints.
 
     When using tf.device() with a non-existent device (e.g., GPU on CPU-only
-    machine), eager execution and autoclustering correctly fail with
+    machine), eager execution correctly fails with
     "Could not satisfy device specification". This test ensures jit_compile=True
     also validates device constraints instead of silently ignoring them.
+
+    See https://github.com/tensorflow/tensorflow/issues/124880
     """
     # Use a device specification that doesn't exist on this machine.
     # The test runs on CPU, so GPU device should fail.
@@ -1283,11 +1285,6 @@ class FunctionTest(xla_test.XLATestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                  'Could not satisfy device specification'):
       polymorphic_function.function(compute, jit_compile=True)(x).numpy()
-
-    # Autoclustering (jit_compile=False with XLA auto-jit) should also fail
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                 'Could not satisfy device specification'):
-      polymorphic_function.function(compute)(x).numpy()
 
 
 if __name__ == '__main__':

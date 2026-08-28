@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
 #include "tensorflow/core/common_runtime/eager/summary_optimizer.h"
+#include "tensorflow/core/common_runtime/eager/validate_function_devices.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -1405,6 +1406,28 @@ absl::Status GetOrCreateKernelAndDevice(
       TF_RETURN_IF_ERROR(
           UpdateCompileCounter(op, ctx, compile_with_xla, has_tpu_replication));
       if (compile_with_xla && !has_tpu_replication) {
+        // Validate device constraints when jit_compile=True was explicitly
+        // set by the user. When jit_compile=True, the function is compiled
+        // by XLA as a whole, bypassing the Placer which normally validates
+        // device constraints. We validate here to ensure tf.device()
+        // constraints are enforced.
+        //
+        // Only validate when _XlaMustCompile was explicitly set (user's
+        // jit_compile=True), not when compile_with_xla is inferred from
+        // the function being on an XLA device (TPU/XLA_GPU/XLA_CPU).
+        bool has_xla_must_compile = false;
+        GetFuncAttr(op, ctx, kXlaMustCompileAttr, &has_xla_must_compile)
+            .IgnoreError();
+        if (has_xla_must_compile) {
+          const FunctionLibraryDefinition* func_lib = ctx.FuncLibDef();
+          const FunctionDef* fdef = func_lib->Find(op->Name());
+          if (fdef != nullptr) {
+            std::vector<DeviceAttributes> device_attrs;
+            ctx.ListDevices(&device_attrs);
+            TF_RETURN_IF_ERROR(ValidateFunctionDeviceConstraints(
+                *fdef, device_attrs));
+          }
+        }
         if (ctx.JitCompileRewrite()) {
           xla_compile_device_type = op->GetDeviceParsedName().type;
         } else {
