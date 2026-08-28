@@ -2379,16 +2379,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   DumpHloModuleMetadataIfEnabled(module.get());
 
-  AutotuneResults autotune_results;
   if (stream_exec != nullptr) {
-    ABSL_RETURN_IF_ERROR(
-        AutotunerCache::SerializeAutotuneResults(&autotune_results));
     ABSL_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
   }
   std::optional<std::string> optimized_fingerprint;
   if (should_upload_hlo_modules) {
     optimized_fingerprint =
-        MaybeUploadOptimizedGpuSymbols(module.get(), autotune_results);
+        MaybeUploadOptimizedGpuSymbols(module.get(), AutotuneResults());
   }
   if (unoptimized_fingerprint.has_value() &&
       optimized_fingerprint.has_value()) {
