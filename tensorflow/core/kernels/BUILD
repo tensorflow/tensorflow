@@ -5802,6 +5802,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
