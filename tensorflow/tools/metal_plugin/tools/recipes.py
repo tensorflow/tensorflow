@@ -908,7 +908,8 @@ def last_few():
       "GenerateBoundingBoxProposals": (
           {"scores": tf.reshape(scores, [1, 1, 1, 4]),
            "bbox_deltas": tf.zeros([1, 1, 1, 16], dtype=tf.float32),
-           "image_info": tf.constant([[1.0, 1.0, 1.0]], dtype=tf.float32),
+           "image_info": tf.constant([[1.0, 1.0, 1.0, 1.0, 1.0]],
+                                     dtype=tf.float32),
            "anchors": anchors, "nms_threshold": 0.7, "pre_nms_topn": 4,
            "min_size": 0.0},
           "finite, and no more boxes than were offered"),

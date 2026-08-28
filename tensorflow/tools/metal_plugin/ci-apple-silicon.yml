@@ -15,6 +15,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+defaults:
+  run:
+    # The project lives in its own directory and its Makefile uses relative
+    # paths, so every step runs from there rather than from the repository
+    # root.
+    working-directory: tensorflow/tools/metal_plugin
+
 jobs:
   build-and-test:
     # macos-15 rather than macos-14: the backend aliases an MTLBuffer through
@@ -30,8 +37,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Work in the plugin directory
-        run: echo "working from tensorflow/tools/metal_plugin"
 
       - uses: actions/setup-python@v5
         with:

@@ -1,16 +1,4 @@
-# Metal PluggableDevice plugin for TensorFlow
-
-A GPU backend for Apple silicon, built as a loadable PluggableDevice. It is a
-self-contained project: it builds outside Bazel against an installed
-TensorFlow, ships as a source distribution that compiles at install time, and
-carries its own tests, its own op sweep and its own benchmarks.
-
-Nothing in TensorFlow's build refers to it. `bazel build //tensorflow/...`
-does not reach it, and no target of TensorFlow's gains a dependency. What it
-adds to this repository is the source of a plugin that currently has no
-maintained equivalent.
-
-Building it, and what it is:
+# tensorflow-metal-plugin
 
 A Metal GPU backend for TensorFlow on Apple silicon, built as an out-of-tree
 PluggableDevice. It loads into a stock TensorFlow wheel and adds

@@ -831,18 +831,25 @@ void RegisterMetalElementwiseKernels() {
     }
   }
 
-  // Cast, over the pairs a mixed-precision or index-handling graph emits.
-  struct CastPair { TF_DataType src, dst; const char* name; };
-  static const CastPair kCasts[] = {
-      {TF_FLOAT, TF_HALF, "FloatToHalf"},   {TF_HALF, TF_FLOAT, "HalfToFloat"},
-      {TF_FLOAT, TF_BFLOAT16, "FloatToBf"}, {TF_BFLOAT16, TF_FLOAT, "BfToFloat"},
-      {TF_FLOAT, TF_INT32, "FloatToInt32"}, {TF_INT32, TF_FLOAT, "Int32ToFloat"},
-      {TF_INT32, TF_INT64, "Int32ToInt64"}, {TF_INT64, TF_INT32, "Int64ToInt32"},
-      {TF_FLOAT, TF_FLOAT, "FloatToFloat"},
+  // Cast, over every pair of the types this backend represents.
+  //
+  // The list used to hold the handful a mixed-precision graph emits, which
+  // left ordinary ones out: an optimiser casts its step counter from int64 to
+  // float on every update, and with no kernel for that pair the value makes a
+  // round trip through the host in the middle of the update.
+  struct CastType { TF_DataType type; const char* name; };
+  static const CastType kCastTypes[] = {
+      {TF_FLOAT, "Float"}, {TF_HALF, "Half"},   {TF_BFLOAT16, "Bf"},
+      {TF_INT32, "Int32"}, {TF_INT64, "Int64"}, {TF_BOOL, "Bool"},
+      {TF_UINT8, "Uint8"}, {TF_INT8, "Int8"},
   };
-  for (const CastPair& c : kCasts) {
-    Register("Cast", &CastOp_Create, &Cast_Compute, &CastOp_Delete, "SrcT",
-             c.src, std::string("MetalCast") + c.name, "DstT", c.dst);
+  for (const CastType& from : kCastTypes) {
+    for (const CastType& to : kCastTypes) {
+      Register("Cast", &CastOp_Create, &Cast_Compute, &CastOp_Delete, "SrcT",
+               from.type,
+               std::string("MetalCast") + from.name + "To" + to.name, "DstT",
+               to.type);
+    }
   }
 }
 

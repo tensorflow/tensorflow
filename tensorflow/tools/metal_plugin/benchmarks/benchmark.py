@@ -11,7 +11,6 @@ work can be enqueued.
 """
 
 import argparse
-import os
 import statistics
 import time
 
@@ -69,6 +68,8 @@ def main():
     return 1
   tf.config.set_soft_device_placement(True)
 
+  # Both generators, since the model's initialisers draw from TensorFlow's.
+  tf.random.set_seed(0)
   rng = np.random.default_rng(0)
   cases = []
 
@@ -115,7 +116,10 @@ def main():
     try:
       gpu = timed(fn, "/GPU:0")
       cpu = timed(fn, "/CPU:0")
-    except Exception as error:  # pylint: disable=broad-except
+    except (tf.errors.OpError, ValueError, TypeError) as error:
+      # An op with no kernel raises OpError; a case whose inputs do not suit
+      # the op raises from Python before it gets that far. Anything else is
+      # not this script's to swallow.
       print(f"{name:34s} {str(error).splitlines()[0][:28]}")
       continue
     ratio = cpu / gpu if gpu > 0 else float("inf")

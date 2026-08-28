@@ -403,6 +403,17 @@ void DynamicStitch_ComputeImpl(DynamicOp* op, TF_OpKernelContext* ctx,
                    "indices.");
       return;
     }
+    // Matching rank is not enough: the row count and the row width both come
+    // from these shapes, so a data tensor that merely has the right number of
+    // axes would move the wrong number of rows.
+    for (size_t axis = 0; axis < index_shape.size(); ++axis) {
+      if (data_shape[axis] != index_shape[axis]) {
+        TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                     "Metal: DynamicStitch data must agree with its indices on "
+                     "every axis the indices span.");
+        return;
+      }
+    }
     if (k == 0) {
       dtype = TF_TensorType(data[k].get());
       row_elements = 1;

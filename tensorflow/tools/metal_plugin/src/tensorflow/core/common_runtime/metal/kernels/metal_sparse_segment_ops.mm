@@ -52,17 +52,6 @@ int64_t ElementCount(const std::vector<int64_t>& s) {
   return n;
 }
 
-void WaitForStream(SP_Stream stream) {
-  uint64_t target = 0;
-  {
-    absl::MutexLock lock(&stream->mu);
-    target = stream->last_enqueued;
-  }
-  if (target > 0) {
-    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
-  }
-}
-
 // 0 sum, 1 mean, 2 square root of the count.
 enum class Mode { kSum = 0, kMean = 1, kSqrtN = 2 };
 

@@ -68,17 +68,6 @@ void* NmsOp_Create(TF_OpKernelConstruction* ctx) {
 
 void NmsOp_Delete(void* kernel) { delete static_cast<NmsOp*>(kernel); }
 
-void WaitForStream(SP_Stream stream) {
-  uint64_t target = 0;
-  {
-    absl::MutexLock lock(&stream->mu);
-    target = stream->last_enqueued;
-  }
-  if (target > 0) {
-    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
-  }
-}
-
 // TensorFlow's intersection over union, including its treatment of a box with
 // no area, which suppresses nothing rather than dividing by zero.
 float IntersectionOverUnion(const float* boxes, int i, int j) {

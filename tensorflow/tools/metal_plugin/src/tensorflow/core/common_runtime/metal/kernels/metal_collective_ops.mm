@@ -216,6 +216,10 @@ void Recv_ComputeImpl(CollectiveOp* op, TF_OpKernelContext* ctx,
     return;
   }
   std::memcpy(destination, parked->second.data(), bytes);
+  // Consumed. There is one receiver, since a collective over more than one
+  // device is refused at construction, so keeping the bytes any longer would
+  // grow the map by one entry per step for the life of the process.
+  Rendezvous().erase(parked);
 }
 
 #define METAL_COLLECTIVE_COMPUTE(NAME, IMPL)                                \

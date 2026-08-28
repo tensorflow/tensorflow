@@ -250,16 +250,9 @@ void HashBucket_ComputeImpl(DebugOp* op, TF_OpKernelContext* ctx,
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
-  {
-    uint64_t target = 0;
-    {
-      absl::MutexLock lock(&stream->mu);
-      target = stream->last_enqueued;
-    }
-    if (target > 0) {
-      [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
-    }
-  }
+  // The buckets are computed on the host, so everything enqueued has to have
+  // finished.
+  WaitForStream(stream);
 
   const void* data = TF_TensorData(input.get());
   int64_t* out = static_cast<int64_t*>(TF_TensorData(output.get()));
