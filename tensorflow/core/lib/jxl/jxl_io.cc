@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -68,11 +69,19 @@ bool DecodeHeader(absl::string_view encoded, int* width, int* height,
     if (JXL_DEC_SUCCESS != JxlDecoderGetBasicInfo(dec.get(), &info)) {
       return false;
     }
+    // `info.xsize` and `info.ysize` are uint32_t, while the callers hold the
+    // dimensions in `int`. Reject anything that does not fit rather than
+    // narrowing: a value above INT_MAX becomes negative, and the caller then
+    // builds a TensorShape from it, which CHECK-fails and aborts the process.
+    if (info.xsize > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+        info.ysize > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
+      return false;
+    }
     if (width != nullptr) {
-      *width = info.xsize;
+      *width = static_cast<int>(info.xsize);
     }
     if (height != nullptr) {
-      *height = info.ysize;
+      *height = static_cast<int>(info.ysize);
     }
     if (channels != nullptr) {
       *channels = info.num_color_channels + (info.alpha_bits != 0);
