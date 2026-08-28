@@ -513,10 +513,10 @@ class CommonPjRtClient : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       absl::string_view serialized,
-      std::optional<CompileOptions> options) override;
+      std::optional<CompileOptions>&& options) override;
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       const absl::Cord& serialized,
-      std::optional<CompileOptions> options) override;
+      std::optional<CompileOptions>&& options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,

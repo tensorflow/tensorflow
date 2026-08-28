@@ -546,7 +546,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InterpreterClient::Load(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 InterpreterClient::DeserializeExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
+    absl::string_view serialized, std::optional<CompileOptions>&& options) {
   return InterpreterExecutable::Deserialize(serialized, *topology_,
                                             std::move(options));
 }

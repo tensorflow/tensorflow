@@ -700,14 +700,14 @@ class PjRtClient {
   // most implementations of this interface. They _are_ optional for
   // implementations related to the PJRT C API.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::optional<CompileOptions> options) {
+      absl::string_view serialized, std::optional<CompileOptions>&& options) {
     return absl::UnimplementedError(
         "Deserializing serialized executable not supported.");
   }
 
   // A variant of `DeserializeExecutable` that accepts a Cord.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      const absl::Cord& serialized, std::optional<CompileOptions> options) {
+      const absl::Cord& serialized, std::optional<CompileOptions>&& options) {
     return DeserializeExecutable(absl::Cord(serialized).Flatten(),
                                  std::move(options));
   }
