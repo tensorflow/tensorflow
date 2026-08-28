@@ -22,7 +22,7 @@
 
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library", "cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -146,4 +146,37 @@ cc_test(
         ":metal_buffer_registry_test_lib",
         "//tensorflow/core:test_main",
     ],
+)
+
+# The same backend, built as a loadable PluggableDevice instead of linked into
+# the framework.
+#
+# TensorFlow dlopens this and looks up SE_InitPlugin and TF_InitKernel; nothing
+# else in it is reachable from outside. It exists so that where a device
+# backend belongs is a build target rather than a fork: an installed
+# TensorFlow can load this, and a TensorFlow built with --config=metal has the
+# same code linked in.
+#
+#   bazel build --config=metal \
+#       //tensorflow/core/common_runtime/metal:libmetal_plugin.so
+#
+cc_library(
+    name = "metal_plugin_init",
+    srcs = ["metal_plugin_init.cc"],
+    copts = tf_copts(),
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":metal_platform",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/core/common_runtime/metal/kernels:metal_kernels",
+    ],
+    alwayslink = 1,
+)
+
+cc_binary(
+    name = "libmetal_plugin.so",
+    linkshared = 1,
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":metal_plugin_init"],
 )

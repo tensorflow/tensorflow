@@ -31,6 +31,34 @@ registration TensorFlow holds for these ops is checked for being duplicated
 or for constraining an attribute the op does not have, either of which makes
 an op unusable while leaving it looking registered.
 
+## Two ways to build the same code
+
+Where a device backend belongs is a real question, and this tree does not need
+to answer it twice. The same sources build either way, and which one you get
+is a build target:
+
+```
+# linked into the framework
+bazel build --config=metal //tensorflow/tools/pip_package:wheel
+
+# the same backend as a loadable PluggableDevice, for an installed TensorFlow
+bazel build --config=metal \
+    //tensorflow/core/common_runtime/metal:libmetal_plugin.so
+```
+
+The difference between the two is one file. `metal_plugin_registrar.cc` hands
+core the function pointers directly, which is what an in-tree backend does;
+`metal_plugin_init.cc` exports `SE_InitPlugin` and `TF_InitKernel`, which is
+what TensorFlow looks up in a shared object it has `dlopen`ed. Everything
+behind those entry points is the same code.
+
+There is one difference in what they can do, and it is not this backend's to
+fix. Six entry points of the kernel C API are declared in the headers a
+released TensorFlow ships and exported by no binary in it, so the plugin form
+loaded into a released TensorFlow leaves fifteen ops to the host, the five
+optimisers among them. The in-tree form links them directly. See
+[Limitations](#limitations).
+
 ## Building
 
 ```
