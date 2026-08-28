@@ -439,6 +439,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       np_math_ops.average(x, weights=np_array_ops.array([0, 0, 0]))
 
+    x2 = np_array_ops.ones([2, 2])
+    with self.assertRaises(errors.InvalidArgumentError):
+      np_math_ops.average(
+          x2, axis=0, weights=np_array_ops.array([[0, 1], [0, 1]])
+      )
+
   def testClip(self):
 
     def run_test(arr, *args, **kwargs):
