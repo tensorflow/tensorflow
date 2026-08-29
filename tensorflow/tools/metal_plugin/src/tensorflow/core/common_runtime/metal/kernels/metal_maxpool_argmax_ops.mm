@@ -46,9 +46,15 @@ namespace {
 // one into the other without knowing which window the value came from. They
 // run as shaders that scan the window directly and emit TensorFlow's index.
 //
-// Everything here is float32 and NHWC. The gradient scatter accumulates with a
-// Metal atomic, which exists for float and not for half, so half is left
-// unregistered rather than silently accumulated in the wrong precision.
+// NHWC only, which is the op definition rather than a restriction: none of
+// these ops has a data_format attribute, so the layout is not something a
+// caller can vary.
+//
+// float32 and float16, matching what CUDA registers. Metal has no atomic add
+// for half, and the gradient scatter needs one because overlapping windows
+// share winners, so the half gradient accumulates into a float32 temporary
+// and is narrowed in a second pass. That is also where half would lose the
+// most, so the extra pass buys accuracy as well as making the op work.
 
 int64_t ElementCount(const std::vector<int64_t>& s) {
   int64_t n = 1;
@@ -86,6 +92,7 @@ struct ArgmaxPoolOp {
   bool same_padding = false;
   bool include_batch = false;
   TF_DataType index_dtype = TF_INT64;
+  TF_DataType dtype = TF_FLOAT;
   // The V2 form takes the window and strides as tensors instead.
   bool window_from_tensors = false;
 };
@@ -170,6 +177,13 @@ void* ArgmaxPoolOp_Create(TF_OpKernelConstruction* ctx) {
   TF_OpKernelConstruction_GetAttrType(ctx, "Targmax", &targmax, status);
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
   op->index_dtype = targmax;
+  TF_DataType value_dtype = TF_FLOAT;
+  TF_OpKernelConstruction_GetAttrType(ctx, "T", &value_dtype, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+    value_dtype = TF_FLOAT;
+  }
+  op->dtype = value_dtype;
 
   TF_DeleteStatus(status);
   return op;
@@ -224,6 +238,10 @@ const char* IndexSuffix(TF_DataType t) {
   return t == TF_INT32 ? "_i32" : "_i64";
 }
 
+const char* ValueSuffix(TF_DataType t) {
+  return t == TF_HALF ? "_half" : "_float";
+}
+
 /*** MAX POOL WITH ARGMAX ***/
 
 void MaxPoolWithArgmax_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
@@ -242,9 +260,9 @@ void MaxPoolWithArgmax_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
 
   const int64_t count = ElementCount(out_shape);
   ScopedTensor output, argmax;
-  output.reset(TF_AllocateOutput(ctx, 0, TF_FLOAT, out_shape.data(), 4,
-                                 static_cast<size_t>(count) * sizeof(float),
-                                 status));
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), 4,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
   if (TF_GetCode(status) != TF_OK) return;
   argmax.reset(TF_AllocateOutput(
       ctx, 1, op->index_dtype, out_shape.data(), 4,
@@ -255,7 +273,8 @@ void MaxPoolWithArgmax_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
   const std::string fn =
-      std::string("tf_maxpool_argmax_float") + IndexSuffix(op->index_dtype);
+      std::string("tf_maxpool_argmax") + ValueSuffix(op->dtype) +
+      IndexSuffix(op->index_dtype);
   id<MTLComputePipelineState> pipeline =
       PipelineFor(DeviceForStream(stream), fn.c_str(), status);
   if (pipeline == nil) return;
@@ -311,9 +330,9 @@ void ArgmaxGrad_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
   const std::vector<int64_t>& out_shape = scatter ? in_shape : pooled_shape;
   const int64_t out_count = ElementCount(out_shape);
   ScopedTensor output;
-  output.reset(TF_AllocateOutput(ctx, 0, TF_FLOAT, out_shape.data(), 4,
-                                 static_cast<size_t>(out_count) * sizeof(float),
-                                 status));
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), 4,
+      static_cast<size_t>(out_count) * TF_DataTypeSize(op->dtype), status));
   if (TF_GetCode(status) != TF_OK) return;
   if (out_count == 0) return;
 
@@ -321,17 +340,38 @@ void ArgmaxGrad_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
   if (TF_GetCode(status) != TF_OK) return;
   const TF_DataType idx_dtype = TF_TensorType(argmax.get());
   const std::string fn =
-      std::string(scatter ? "tf_maxpool_grad_with_argmax_float"
-                          : "tf_maxpool_gradgrad_with_argmax_float") +
-      IndexSuffix(idx_dtype);
+      std::string(scatter ? "tf_maxpool_grad_with_argmax"
+                          : "tf_maxpool_gradgrad_with_argmax") +
+      ValueSuffix(op->dtype) + IndexSuffix(idx_dtype);
   id<MTLComputePipelineState> pipeline =
       PipelineFor(DeviceForStream(stream), fn.c_str(), status);
   if (pipeline == nil) return;
 
-  BufferSlice grad_slice, idx_slice, out_slice;
+  // The scatter accumulates through an atomic, and Metal has no atomic add
+  // for half, so a half gradient lands in a float32 temporary that is
+  // narrowed afterwards. Half is also where a sum of gradients loses the
+  // most, so accumulating wide is the right answer regardless.
+  const bool narrow = scatter && op->dtype == TF_HALF;
+  ScopedTensor wide;
+  id<MTLComputePipelineState> narrow_pipeline = nil;
+  if (narrow) {
+    wide.reset(TF_AllocateTemp(ctx, TF_FLOAT, out_shape.data(), 4, nullptr,
+                               status));
+    if (TF_GetCode(status) != TF_OK) return;
+    narrow_pipeline =
+        PipelineFor(DeviceForStream(stream), "tf_narrow_float_to_half", status);
+    if (narrow_pipeline == nil) return;
+  }
+
+  BufferSlice grad_slice, idx_slice, out_slice, wide_slice;
   if (!SliceForTensor(grad.get(), &grad_slice, status)) return;
   if (!SliceForTensor(argmax.get(), &idx_slice, status)) return;
   if (!SliceForTensor(output.get(), &out_slice, status)) return;
+  if (narrow && !SliceForTensor(wide.get(), &wide_slice, status)) return;
+
+  // Where the scatter accumulates, which is the output itself unless it has
+  // to be accumulated wider than the output can hold.
+  const BufferSlice& sink = narrow ? wide_slice : out_slice;
 
   OrderedCommandBuffer command_buffer(stream);
   if (!command_buffer.ok()) {
@@ -345,8 +385,8 @@ void ArgmaxGrad_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
     // has to start at zero. The fill goes in the same command buffer as the
     // dispatch, so the ordering belongs to the queue.
     id<MTLBlitCommandEncoder> zero = [command_buffer.get() blitCommandEncoder];
-    [zero fillBuffer:out_slice.buffer
-               range:NSMakeRange(out_slice.offset,
+    [zero fillBuffer:sink.buffer
+               range:NSMakeRange(sink.offset,
                                  static_cast<NSUInteger>(out_count) *
                                      sizeof(float))
                value:0];
@@ -358,12 +398,27 @@ void ArgmaxGrad_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
     [encoder setComputePipelineState:pipeline];
     [encoder setBuffer:grad_slice.buffer offset:grad_slice.offset atIndex:0];
     [encoder setBuffer:idx_slice.buffer offset:idx_slice.offset atIndex:1];
-    [encoder setBuffer:out_slice.buffer offset:out_slice.offset atIndex:2];
+    [encoder setBuffer:sink.buffer offset:sink.offset atIndex:2];
     [encoder setBytes:&params length:sizeof(params) atIndex:3];
     Dispatch1D(encoder, pipeline, params.count);
     [encoder endEncoding];
   }
+  if (narrow) {
+    FillParams narrow_params = {};
+    narrow_params.count = static_cast<uint32_t>(out_count);
+    id<MTLComputeCommandEncoder> encoder =
+        [command_buffer.get() computeCommandEncoder];
+    [encoder setComputePipelineState:narrow_pipeline];
+    [encoder setBuffer:wide_slice.buffer offset:wide_slice.offset atIndex:0];
+    [encoder setBuffer:out_slice.buffer offset:out_slice.offset atIndex:1];
+    [encoder setBytes:&narrow_params length:sizeof(narrow_params) atIndex:2];
+    Dispatch1D(encoder, narrow_pipeline, narrow_params.count);
+    [encoder endEncoding];
+  }
   command_buffer.Commit();
+  // The temporary goes back to the allocator when this returns, so the work
+  // that reads it has to have finished.
+  if (narrow) WaitForStream(stream);
 }
 
 /*** SECOND-ORDER GRADIENT WITHOUT STORED INDICES ***/
@@ -419,16 +474,18 @@ void MaxPoolGradGrad_ComputeImpl(ArgmaxPoolOp* op, TF_OpKernelContext* ctx,
 
   const int64_t count = ElementCount(out_shape);
   ScopedTensor output;
-  output.reset(TF_AllocateOutput(ctx, 0, TF_FLOAT, out_shape.data(), 4,
-                                 static_cast<size_t>(count) * sizeof(float),
-                                 status));
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), 4,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
   if (TF_GetCode(status) != TF_OK) return;
   if (count == 0) return;
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
-  id<MTLComputePipelineState> pipeline = PipelineFor(
-      DeviceForStream(stream), "tf_maxpool_gradgrad_float", status);
+  const std::string gradgrad_fn =
+      std::string("tf_maxpool_gradgrad") + ValueSuffix(op->dtype);
+  id<MTLComputePipelineState> pipeline =
+      PipelineFor(DeviceForStream(stream), gradgrad_fn.c_str(), status);
   if (pipeline == nil) return;
 
   BufferSlice in_slice, grad_slice, out_slice;
@@ -484,12 +541,13 @@ TF_METAL_ARGMAX_POOL_COMPUTE(MaxPoolGradGrad_Compute,
 void Register(const char* op_name,
               void (*compute)(void*, TF_OpKernelContext*),
               const std::string& name,
-              const std::vector<const char*>& host_inputs) {
+              const std::vector<const char*>& host_inputs,
+              TF_DataType dtype) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder =
       TF_NewKernelBuilder(op_name, kMetalDeviceType, &ArgmaxPoolOp_Create,
                           compute, &ArgmaxPoolOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "T", TF_FLOAT, status);
+  TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
   for (const char* input : host_inputs) {
     TF_KernelBuilder_HostMemory(builder, input);
   }
@@ -508,17 +566,23 @@ void Register(const char* op_name,
 }  // namespace
 
 void RegisterMetalMaxPoolArgmaxKernels() {
-  Register("MaxPoolWithArgmax", &MaxPoolWithArgmax_Compute,
-           "MetalMaxPoolWithArgmaxFloat", {});
-  Register("MaxPoolGradWithArgmax", &MaxPoolGradWithArgmax_Compute,
-           "MetalMaxPoolGradWithArgmaxFloat", {});
-  Register("MaxPoolGradGradWithArgmax", &MaxPoolGradGradWithArgmax_Compute,
-           "MetalMaxPoolGradGradWithArgmaxFloat", {});
-  Register("MaxPoolGradGrad", &MaxPoolGradGrad_Compute,
-           "MetalMaxPoolGradGradFloat", {});
-  // The V2 form reads its window and strides on the host to size the output.
-  Register("MaxPoolGradGradV2", &MaxPoolGradGrad_Compute,
-           "MetalMaxPoolGradGradV2Float", {"ksize", "strides"});
+  static constexpr TF_DataType kDTypes[] = {TF_FLOAT, TF_HALF};
+  static constexpr const char* kSuffixes[] = {"Float", "Half"};
+  for (int i = 0; i < 2; ++i) {
+    const TF_DataType t = kDTypes[i];
+    const std::string s = kSuffixes[i];
+    Register("MaxPoolWithArgmax", &MaxPoolWithArgmax_Compute,
+             "MetalMaxPoolWithArgmax" + s, {}, t);
+    Register("MaxPoolGradWithArgmax", &MaxPoolGradWithArgmax_Compute,
+             "MetalMaxPoolGradWithArgmax" + s, {}, t);
+    Register("MaxPoolGradGradWithArgmax", &MaxPoolGradGradWithArgmax_Compute,
+             "MetalMaxPoolGradGradWithArgmax" + s, {}, t);
+    Register("MaxPoolGradGrad", &MaxPoolGradGrad_Compute,
+             "MetalMaxPoolGradGrad" + s, {}, t);
+    // The V2 form reads its window and strides on the host to size the output.
+    Register("MaxPoolGradGradV2", &MaxPoolGradGrad_Compute,
+             "MetalMaxPoolGradGradV2" + s, {"ksize", "strides"}, t);
+  }
 }
 
 }  // namespace metal
