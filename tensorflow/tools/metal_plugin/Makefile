@@ -8,8 +8,16 @@
 # Override it when `python3` on PATH is not that one:
 #   make PYTHON=/path/to/venv/bin/python
 PYTHON ?= python3
-TF_INCLUDE := $(shell $(PYTHON) -c "import tensorflow as tf; print(tf.sysconfig.get_include())")
-TF_LIB := $(shell $(PYTHON) -c "import tensorflow as tf; print(tf.sysconfig.get_lib())")
+# Overridable, because the build does not always run somewhere TensorFlow can
+# be imported: pip isolates the build environment, so setup.py resolves these
+# itself and passes them in.
+TF_INCLUDE ?= $(shell $(PYTHON) -c "import tensorflow as tf; print(tf.sysconfig.get_include())" 2>/dev/null)
+TF_LIB ?= $(shell $(PYTHON) -c "import tensorflow as tf; print(tf.sysconfig.get_lib())" 2>/dev/null)
+
+ifeq ($(strip $(TF_INCLUDE)),)
+$(error TensorFlow was not found. Install it first, or pass TF_INCLUDE and \
+TF_LIB explicitly)
+endif
 SDK := $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null)
 
 BUILD := build
