@@ -1361,6 +1361,76 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestCrossLinkingAuxInputOnly) {
 // Same as ClosedBox test, but an input is passed to auxiliary input instead of
 // the regular one. Regular input and weights are set to zero. Time major inputs
 // and outputs.
+// Every other test in this file uses aux_input_size == input_size, so a stride
+// computed from the wrong one is invisible. These two exercise the case where
+// they differ.
+//
+// The regular input weights, the recurrent weights and the biases are all zero,
+// so each output element is just relu(aux_weights . aux_input[t]) and the time
+// steps are independent. That makes the expected values exact.
+TEST(BidirectionalRNNOpTest, AuxInputLargerThanInputIsStridedCorrectly) {
+  // aux_input_size > input_size, so striding aux_input by input_size stays
+  // inside the tensor but lands on the wrong time step: the second step would
+  // read elements [2, 6) instead of [4, 8), giving 22 instead of 40.
+  BidirectionalRNNOpModel rnn(/*batches=*/1, /*sequence_len=*/2,
+                              /*fw_units=*/1, /*bw_units=*/1,
+                              /*input_size=*/2, /*aux_input_size=*/4,
+                              /*aux_input_mode=*/AuxInputMode::kCrossLinking,
+                              /*time_major=*/true,
+                              /*merge_outputs=*/false);
+  rnn.SetFwWeights({0.0f, 0.0f});
+  rnn.SetBwWeights({0.0f, 0.0f});
+  rnn.SetFwRecurrentWeights({0.0f});
+  rnn.SetBwRecurrentWeights({0.0f});
+  rnn.SetFwBias({0.0f});
+  rnn.SetBwBias({0.0f});
+  rnn.SetAuxFwWeights({1.0f, 1.0f, 1.0f, 1.0f});
+  rnn.SetAuxBwWeights({1.0f, 1.0f, 1.0f, 1.0f});
+
+  std::vector<float> input(2 * 1 * 2, 0.0f);
+  rnn.SetInput(0, input.data(), input.data() + input.size());
+  // [t0 | t1]
+  std::vector<float> aux_input = {1.0f, 1.0f, 1.0f, 1.0f,
+                                  10.0f, 10.0f, 10.0f, 10.0f};
+  rnn.SetAuxInput(0, aux_input.data(), aux_input.data() + aux_input.size());
+
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(rnn.GetFwOutput(), ElementsAreArray(ArrayFloatNear({4.0f, 40.0f})));
+  EXPECT_THAT(rnn.GetBwOutput(), ElementsAreArray(ArrayFloatNear({4.0f, 40.0f})));
+}
+
+TEST(BidirectionalRNNOpTest, AuxInputSmallerThanInputIsStridedCorrectly) {
+  // The reported configuration: input_size = 4096, aux_input_size = 1. The
+  // aux_input tensor holds sequence_len * batches * 1 = 2 floats, so striding
+  // it by input_size reads 4096 floats past the end on the second time step.
+  constexpr int kInputSize = 4096;
+  BidirectionalRNNOpModel rnn(/*batches=*/1, /*sequence_len=*/2,
+                              /*fw_units=*/1, /*bw_units=*/1,
+                              /*input_size=*/kInputSize, /*aux_input_size=*/1,
+                              /*aux_input_mode=*/AuxInputMode::kCrossLinking,
+                              /*time_major=*/true,
+                              /*merge_outputs=*/false);
+  rnn.SetFwWeights(std::vector<float>(kInputSize, 0.0f));
+  rnn.SetBwWeights(std::vector<float>(kInputSize, 0.0f));
+  rnn.SetFwRecurrentWeights({0.0f});
+  rnn.SetBwRecurrentWeights({0.0f});
+  rnn.SetFwBias({0.0f});
+  rnn.SetBwBias({0.0f});
+  rnn.SetAuxFwWeights({1.0f});
+  rnn.SetAuxBwWeights({1.0f});
+
+  std::vector<float> input(2 * 1 * kInputSize, 0.0f);
+  rnn.SetInput(0, input.data(), input.data() + input.size());
+  std::vector<float> aux_input = {1.0f, 10.0f};
+  rnn.SetAuxInput(0, aux_input.data(), aux_input.data() + aux_input.size());
+
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(rnn.GetFwOutput(), ElementsAreArray(ArrayFloatNear({1.0f, 10.0f})));
+  EXPECT_THAT(rnn.GetBwOutput(), ElementsAreArray(ArrayFloatNear({1.0f, 10.0f})));
+}
+
 TEST(BidirectionalRNNOpTest, ClosedBoxTestCrossLinkingAuxInputOnlyTimeMajor) {
   BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                               /*fw_units=*/16, /*bw_units=*/16,
