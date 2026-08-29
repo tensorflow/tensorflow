@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/metal/metal_graph.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <map>
@@ -509,8 +510,8 @@ bool FuseGraph(const uint8_t* data, size_t size, std::vector<uint8_t>* out) {
   for (const Node& node : additions) WriteNode(node, &writer);
   for (const RawField& extra : other) WriteRaw(extra, &writer);
   *out = std::move(writer.bytes());
-  if (fused > 0) {
-    VLOG(1) << "Metal: fused " << fused << " bias and activation chains.";
+  if (fused > 0 && std::getenv("TF_METAL_LOG_FUSION") != nullptr) {
+    LOG(INFO) << "Metal: fused " << fused << " bias and activation chains.";
   }
   return true;
 }

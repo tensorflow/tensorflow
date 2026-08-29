@@ -2313,6 +2313,27 @@ kernel void tf_debug_three_slots_float(device const float* data [[buffer(0)]],
   }
 }
 
+// ---- in-place variable updates ----
+
+// AssignAdd and AssignSub on a resource variable, in place. Each thread owns
+// one element, so reading and writing the same buffer is safe; `add` chooses
+// the sign. In place is the point: the alternative is a temporary, and a
+// temporary handed back to the allocator while this is still running is what
+// the ordering rules here exist to avoid.
+#define TF_METAL_ASSIGN_UPDATE(NAME, T)                                    \
+  kernel void NAME(device T* target [[buffer(0)]],                         \
+                   device const T* value [[buffer(1)]],                    \
+                   constant FillParams& params [[buffer(2)]],              \
+                   uint gid [[thread_position_in_grid]]) {                 \
+    if (gid >= params.count) return;                                       \
+    const float delta = float(value[gid]);                                 \
+    target[gid] = T(float(target[gid]) +                                   \
+                    (params.value >= 0.0f ? delta : -delta));              \
+  }
+
+TF_METAL_ASSIGN_UPDATE(tf_assign_update_float, float)
+TF_METAL_ASSIGN_UPDATE(tf_assign_update_half, half)
+
 // ---- check numerics ----
 
 struct CheckNumericsParams {

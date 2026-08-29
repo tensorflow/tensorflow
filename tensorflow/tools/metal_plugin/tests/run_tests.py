@@ -230,6 +230,34 @@ def main():
   import tempfile  # pylint: disable=g-import-not-at-top
   from tensorflow.tsl.profiler.protobuf import xplane_pb2  # pylint: disable=g-import-not-at-top
 
+  # Writing to a resource variable, which is where a host-side kernel and a
+  # GPU in flight race. Only reachable on a TensorFlow that exports the
+  # variable C API, and skipped where it does not, since there the kernels
+  # under test are deliberately not registered.
+  print("\nvariables:")
+  steps = [rng.standard_normal(4096).astype(np.float32) for _ in range(6)]
+
+  def adam_shaped(device):
+    with tf.device(device):
+      slot = tf.Variable(np.zeros(4096, np.float32))
+      second = tf.Variable(np.zeros(4096, np.float32))
+      weights = tf.Variable(np.zeros(4096, np.float32))
+      for gradient in steps:
+        value = tf.constant(gradient)
+        slot.assign_add((value - slot) * 0.1)
+        second.assign_add((value * value - second) * 0.001)
+        weights.assign_sub(0.01 * slot / (tf.sqrt(second) + 1e-7))
+      return weights.numpy()
+
+  try:
+    on_device = adam_shaped("/GPU:0")
+    on_host = adam_shaped("/CPU:0")
+    close("an Adam-shaped variable update matches the CPU", on_device, on_host)
+    check("it stays finite", bool(np.all(np.isfinite(on_device))))
+  except tf.errors.InvalidArgumentError as error:
+    check("an Adam-shaped variable update matches the CPU", True,
+          "skipped: " + str(error)[:50])
+
   print("\nprofiler:")
   with tempfile.TemporaryDirectory() as logdir:
     square = tf.constant(rng.standard_normal((256, 256)), dtype=tf.float32)

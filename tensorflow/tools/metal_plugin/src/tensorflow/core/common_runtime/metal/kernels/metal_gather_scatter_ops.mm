@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_mps_graph.h"
+#include "tensorflow/core/common_runtime/metal/kernels/metal_shader_library.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
@@ -457,6 +458,110 @@ void Register(const char* op_name,
   TF_DeleteStatus(status);
 }
 
+/*** WRITING TO A VARIABLE ***/
+
+// The arithmetic behind AssignAdd and AssignSub, in place on the variable's
+// own storage. `op` is 1 for an addition and anything else for a subtraction;
+// the value is this file's own, since the C API passes it through untouched.
+void UpdateVariableOnDevice(TF_OpKernelContext* ctx, TF_Tensor* tensor,
+                            TF_Tensor* value, int op) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  const int64_t count = TF_TensorElementCount(tensor);
+  const TF_DataType dtype = TF_TensorType(tensor);
+  SP_Stream stream = StreamForContext(ctx, status);
+  BufferSlice target, delta;
+  if (TF_GetCode(status) == TF_OK && count > 0 &&
+      count == TF_TensorElementCount(value) &&
+      SliceForTensor(tensor, &target, status) &&
+      SliceForTensor(value, &delta, status)) {
+    const char* fn = dtype == TF_HALF ? "tf_assign_update_half"
+                                      : "tf_assign_update_float";
+    id<MTLComputePipelineState> pipeline =
+        PipelineFor(DeviceForStream(stream), fn, status);
+    OrderedCommandBuffer command_buffer(stream);
+    if (pipeline != nil && command_buffer.ok()) {
+      FillParams params = {};
+      params.count = static_cast<uint32_t>(count);
+      params.value = op == 1 ? 1.0f : -1.0f;
+      id<MTLComputeCommandEncoder> encoder =
+          [command_buffer.get() computeCommandEncoder];
+      [encoder setComputePipelineState:pipeline];
+      [encoder setBuffer:target.buffer offset:target.offset atIndex:0];
+      [encoder setBuffer:delta.buffer offset:delta.offset atIndex:1];
+      [encoder setBytes:&params length:sizeof(params) atIndex:2];
+      Dispatch1D(encoder, pipeline, params.count);
+      [encoder endEncoding];
+      command_buffer.Commit();
+    }
+  }
+  if (TF_GetCode(status) != TF_OK) {
+    LOG(ERROR) << "Metal: a variable update failed: " << TF_Message(status);
+  }
+  TF_DeleteStatus(status);
+}
+
+struct VariableOp {
+  bool validate_shape = false;
+};
+
+void* VariableOp_Create(TF_OpKernelConstruction* ctx) {
+  TF_Status* status = TF_NewStatus();
+  auto* op = new VariableOp();
+  TF_Bool flag = 0;
+  TF_OpKernelConstruction_GetAttrBool(ctx, "validate_shape", &flag, status);
+  if (TF_GetCode(status) == TF_OK) op->validate_shape = flag != 0;
+  TF_DeleteStatus(status);
+  return op;
+}
+
+void VariableOp_Delete(void* kernel) {
+  delete static_cast<VariableOp*>(kernel);
+}
+
+void AssignVariable_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<VariableOp*>(kernel);
+  TF_AssignVariable(ctx, 0, 1, op != nullptr && op->validate_shape,
+                    &CopyTensorOnDevice, status);
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+template <int kOp>
+void AssignUpdateVariable_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  TF_AssignUpdateVariable(ctx, 0, 1, kOp, /*isVariantType=*/0,
+                          &CopyTensorOnDevice, &UpdateVariableOnDevice,
+                          status);
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void RegisterVariableOp(const char* op_name,
+                        void (*compute)(void*, TF_OpKernelContext*),
+                        TF_DataType dtype, const std::string& name) {
+  TF_Status* status = TF_NewStatus();
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, kMetalDeviceType, &VariableOp_Create, compute,
+      &VariableOp_Delete);
+  TF_KernelBuilder_TypeConstraint(builder, "dtype", dtype, status);
+  // The handle is a resource and lives on the host.
+  TF_KernelBuilder_HostMemory(builder, "resource");
+  if (TF_GetCode(status) == TF_OK) {
+    TF_RegisterKernelBuilder(name.c_str(), builder, status);
+  } else {
+    TF_DeleteKernelBuilder(builder);
+  }
+  if (TF_GetCode(status) != TF_OK) {
+    LOG(ERROR) << "Metal: could not register kernel " << name << ": "
+               << TF_Message(status);
+  }
+  TF_DeleteStatus(status);
+}
+
 }  // namespace
 
 void RegisterMetalResourceKernels() {
@@ -476,6 +581,28 @@ void RegisterMetalResourceKernels() {
       Register("ResourceGatherNd", &ResourceGatherNd_Compute, kDTypes[i],
                kIndexTypes[j], "MetalResourceGatherNd" + suffix);
     }
+  }
+
+  // Writing to a variable, on the device.
+  //
+  // Without these TensorFlow falls back to its own DEVICE_DEFAULT kernels,
+  // which reach the variable through its data pointer. On a unified memory
+  // device that pointer is host-addressable, so those kernels read and write
+  // device memory from the host with no idea that GPU work is in flight
+  // against it, and an optimizer that reads a slot and writes it back races
+  // with the arithmetic that produced the value. It is not a hypothetical: on
+  // a TensorFlow that does export this C API, six steps of an Adam-shaped
+  // update disagreed with the CPU and then went non-finite.
+  for (int i = 0; i < 2; ++i) {
+    const std::string s = kSuffixes[i];
+    RegisterVariableOp("AssignVariableOp", &AssignVariable_Compute, kDTypes[i],
+                       "MetalAssignVariableOp" + s);
+    RegisterVariableOp("AssignAddVariableOp",
+                       &AssignUpdateVariable_Compute<1>, kDTypes[i],
+                       "MetalAssignAddVariableOp" + s);
+    RegisterVariableOp("AssignSubVariableOp",
+                       &AssignUpdateVariable_Compute<2>, kDTypes[i],
+                       "MetalAssignSubVariableOp" + s);
   }
 }
 
