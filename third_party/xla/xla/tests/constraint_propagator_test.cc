@@ -1269,5 +1269,47 @@ ENTRY %main {
   EXPECT_EQ(GetMaxAddReductionElementsForExp(propagator, exp_reduced), 256);
   EXPECT_EQ(GetMaxAddReductionElementsForExp(propagator, exp_unreduced), 1);
 }
+
+TEST_F(ConstraintPropagatorTest, ConvertClampsIntervalToOperandTypeDomain) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  x = f8e4m3fn[] parameter(0)
+  ROOT root = bf16[] convert(x)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto x_int = states[module->entry_computation()->parameter_instruction(0)]
+                   .GetConstraintInterval();
+
+  // Root bf16 is seeded with [-65504.0, 65504.0].
+  // Backward propagation through convert must clamp to f8e4m3fn finite domain
+  // [-448.0, 448.0].
+  EXPECT_DOUBLE_EQ(x_int.min, -448.0);
+  EXPECT_DOUBLE_EQ(x_int.max, 448.0);
+}
+
+TEST_F(ConstraintPropagatorTest, ConvertClampsIntervalToIntegerTypeDomain) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  x = s8[] parameter(0)
+  ROOT root = bf16[] convert(x)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto x_int = states[module->entry_computation()->parameter_instruction(0)]
+                   .GetConstraintInterval();
+
+  // Root bf16 is seeded with [-65504.0, 65504.0].
+  // Backward propagation through convert must clamp to s8 domain [-128.0,
+  // 127.0].
+  EXPECT_DOUBLE_EQ(x_int.min, -128.0);
+  EXPECT_DOUBLE_EQ(x_int.max, 127.0);
+}
 }  // namespace
 }  // namespace xla
