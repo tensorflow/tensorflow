@@ -637,5 +637,37 @@ ENTRY main {
   RunTest(hlo_text, {&base, &exponent});
 }
 
+TEST_F(ElementalIrEmitterExecutionTest, UnsignedIntegerPowLargeExponent) {
+  const std::string hlo_text = R"(
+HloModule UnsignedIntegerPowLargeExponent
+ENTRY main {
+  base = u32[4]{0} parameter(0)
+  exponent = u32[4]{0} parameter(1)
+  ROOT power = u32[4]{0} power(base, exponent)
+}
+)";
+  // Exponents with MSB set (>= 2^31)
+  Literal base = LiteralUtil::CreateR1<uint32_t>({3, 5, 3, 5});
+  Literal exponent = LiteralUtil::CreateR1<uint32_t>(
+      {1u << 31, 1u << 31, (1u << 31) + 1, (1u << 31) + 1});
+  RunTest(hlo_text, {&base, &exponent});
+}
+
+TEST_F(ElementalIrEmitterExecutionTest, UnsignedInteger64PowLargeExponent) {
+  const std::string hlo_text = R"(
+HloModule UnsignedIntegerPowLargeExponent
+ENTRY main {
+  base = u64[4]{0} parameter(0)
+  exponent = u64[4]{0} parameter(1)
+  ROOT power = u64[4]{0} power(base, exponent)
+}
+)";
+  // Exponents with MSB set (>= 2^63)
+  Literal base = LiteralUtil::CreateR1<uint64_t>({3, 5, 3, 5});
+  Literal exponent = LiteralUtil::CreateR1<uint64_t>(
+      {1ul << 63, 1ul << 63, (1ul << 63) + 1, (1ul << 63) + 1});
+  RunTest(hlo_text, {&base, &exponent});
+}
+
 }  // namespace
 }  // namespace xla

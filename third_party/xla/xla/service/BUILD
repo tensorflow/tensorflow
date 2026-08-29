@@ -3215,6 +3215,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -4735,6 +4736,9 @@ xla_test(
     backends = [
         "cpu",
         "gpu",
+    ],
+    disabled_backends = [
+        "gb300",  # LLVM compilation fails due to PTX < 8.8
     ],
     tags = [
         "no_windows",  # TODO(b/152037541)

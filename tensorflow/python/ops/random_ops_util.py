@@ -26,6 +26,12 @@ from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
+# Matches RNG_MAX_COUNTER_SIZE in tensorflow/core/framework/rng_alg.h.
+# ThreeFry only consumes the first uint64; the second element is padding so
+# non-XLA kernels (which historically checked against the algorithm enum id)
+# and StatelessRandomGetKeyCounter accept the counter shape.
+_RNG_MAX_COUNTER_SIZE = 2
+
 
 @tf_export("random.Algorithm", "random.experimental.Algorithm")
 class Algorithm(enum.Enum):
@@ -118,7 +124,7 @@ def _get_key_counter(seed, alg):
     key = array_ops.reshape(
         _uint32s_to_uint64(math_ops.cast(seed, dtypes.uint32)), [1]
     )
-    counter = array_ops.zeros([1], dtypes.uint64)
+    counter = array_ops.zeros([_RNG_MAX_COUNTER_SIZE], dtypes.uint64)
   else:
     raise ValueError(unsupported_alg_error_msg(alg))
   return key, counter

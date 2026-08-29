@@ -1861,6 +1861,39 @@ ENTRY main {
       )"));
 }
 
+TEST_F(ElementalHloToMlirTest, PowU32) {
+  EXPECT_OK(Run(
+      R"(
+HloModule pow_u32_test
+
+ENTRY main {
+  p0 = u32[1] parameter(0)
+  p1 = u32[1] parameter(1)
+  out = u32[1] power(p0, p1)
+}
+      )",
+      R"(
+      // CHECK-NOT: power
+      // CHECK-NOT: arith.remsi
+      )"));
+}
+
+TEST_F(ElementalHloToMlirTest, PowU64) {
+  EXPECT_OK(Run(
+      R"(
+HloModule pow_u64_test
+
+ENTRY main {
+  p0 = u64[1] parameter(0)
+  p1 = u64[1] parameter(1)
+  out = u64[1] power(p0, p1)
+}
+      )",
+      R"(
+      // CHECK-NOT: power
+      )"));
+}
+
 }  // namespace
 }  // namespace emitters
 }  // namespace xla
