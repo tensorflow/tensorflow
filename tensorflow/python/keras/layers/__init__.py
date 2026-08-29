@@ -77,7 +77,6 @@ from tensorflow.python.keras.layers.core import Flatten
 from tensorflow.python.keras.layers.core import RepeatVector
 from tensorflow.python.keras.layers.core import Lambda
 from tensorflow.python.keras.layers.core import Dense
-from tensorflow.python.keras.layers.quantized import QuantizedDense
 from tensorflow.python.keras.layers.core import ActivityRegularization
 
 # Dense Attention layers.

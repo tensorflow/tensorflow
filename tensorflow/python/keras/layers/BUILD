@@ -17,7 +17,6 @@
 #   Contains the Keras layers (internal TensorFlow version).
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -55,7 +54,6 @@ py_library(
         ":convolutional",
         ":convolutional_recurrent",
         ":core",
-        ":quantized",
         ":dense_attention",
         ":embeddings",
         ":merge",
@@ -130,40 +128,6 @@ py_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "quantized",
-    srcs = ["quantized.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/initializers",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:nn",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:nn_ops",
-    ],
-)
-
-tf_py_test(
-    name = "quantized_test",
-    srcs = ["quantized_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":quantized",
-        "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops:random_ops",
-        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for quantized Dense layer."""
+"""Tests for quantized Dense module."""
 
 from tensorflow.python.framework import random_seed
-from tensorflow.python.keras.layers.quantized import QuantizedDense
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.quantized_dense import QuantizedDense
 from tensorflow.python.platform import test
 
 
@@ -48,8 +48,9 @@ class QuantizedDenseTest(test.TestCase):
     self.assertIsNone(layer_4bit.bias)
 
   def test_invalid_bits(self):
-    with self.assertRaisesRegex(ValueError,
-                                "Only 4-bit and 8-bit quantization"):
+    with self.assertRaisesRegex(
+        ValueError, "Only 4-bit and 8-bit quantization"
+    ):
       QuantizedDense(32, bits=16)
 
 
