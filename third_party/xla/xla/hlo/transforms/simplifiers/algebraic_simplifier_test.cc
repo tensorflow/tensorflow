@@ -12658,6 +12658,41 @@ TEST_F(AlgebraicSimplifierTest, DoNotSimplifyOptimizationBarrierSideEffects) {
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, SimplifyOptimizationBarrierTokens) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    ENTRY entry {
+      param.0 = f32[] parameter(0)
+      param.1 = f32[] parameter(1)
+      add.0 = f32[] add(param.0, param.1)
+      sub.0 = f32[] subtract(param.0, param.1)
+      mul.0 = f32[] multiply(param.0, param.1)
+      tok = token[] after-all()
+      tuple.0 = (f32[], f32[], f32[], token[]) tuple(mul.0, sub.0, add.0, tok)
+      b = (f32[], f32[], f32[], token[]) opt-barrier(tuple.0)
+      gte.0 = f32[] get-tuple-element(b), index=1
+      ROOT  t = (f32[], f32[]) tuple(mul.0,gte.0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            4);
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            3);
+}
+
 TEST_F(AlgebraicSimplifierTest, GTETupleShardingLoss) {
   // Verify the gte(tuple) folding does not happen if it loses sharding info.
   constexpr absl::string_view kModuleStr = R"(
