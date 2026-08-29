@@ -25,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/dynamic_annotations.h"
 #include "absl/container/fixed_array.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -164,9 +163,7 @@ class NanoRtExecutable {
   template <size_t n>
   class ManagedTemp {
    public:
-    explicit ManagedTemp(size_t size) : data_(size) {
-      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data_.data(), data_.memsize());
-    }
+    explicit ManagedTemp(size_t size) : data_(size) {}
 
     ManagedTemp(const ManagedTemp&) = delete;
     ManagedTemp& operator=(const ManagedTemp&) = delete;

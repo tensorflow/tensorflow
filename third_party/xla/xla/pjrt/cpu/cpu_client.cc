@@ -31,7 +31,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -1260,8 +1259,6 @@ struct BufferAlloc {
         buffers[i].SetError(status);
         return;
       }
-      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(buffers[i]->untyped_data(),
-                                          allocation_sizes[i]);
     }
   }
 };

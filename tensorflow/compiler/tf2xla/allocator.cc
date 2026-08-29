@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 
-#include "absl/base/dynamic_annotations.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
@@ -82,17 +81,12 @@ size_t AlignedBufferBytes(
 
 void* MallocContiguousBuffers(
     absl::Span<const xla::cpu::BufferAllocationInfo> buffers,
-    bool allocate_entry_params, void** bufs, bool annotate_initialized) {
+    bool allocate_entry_params, void** bufs) {
   const size_t total =
       tensorflow::AlignedBufferBytes(buffers, allocate_entry_params);
   void* contiguous = nullptr;
   if (total > 0) {
     contiguous = aligned_malloc(total, xla::cpu::Align());
-    if (annotate_initialized) {
-      // Since the memory for temp buffers is written to by JITed code, msan has
-      // no way of knowing the memory was initialized, so explicitly mark it.
-      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
-    }
   }
   uintptr_t pos = reinterpret_cast<uintptr_t>(contiguous);
   for (size_t i = 0; i < buffers.size(); ++i) {

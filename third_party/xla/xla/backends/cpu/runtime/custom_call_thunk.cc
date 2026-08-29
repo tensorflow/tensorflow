@@ -25,7 +25,6 @@ limitations under the License.
 #include <variant>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
@@ -316,8 +315,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       arguments.push_back(
           params.buffer_allocations->GetDeviceAddressUnchecked(slice));
     }
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(arguments[i].opaque(),
-                                        arguments[i].size());
     VLOG(3) << absl::StreamFormat(
         "  arg: %s in slice %s (%p)",
         op_buffers_.arguments_shapes[i].ToString(true), slice.ToString(),
@@ -336,7 +333,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       results.push_back(
           params.buffer_allocations->GetDeviceAddressUnchecked(slice));
     }
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(results[i].opaque(), results[i].size());
     VLOG(3) << absl::StreamFormat("  res: %s in slice %s (%p)",
                                   op_buffers_.results_shapes[i].ToString(true),
                                   slice.ToString(), results[i].opaque());
