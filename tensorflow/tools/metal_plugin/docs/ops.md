@@ -307,6 +307,13 @@ inherits when it has no kernel of its own.
   other consumers pointing at a node that no longer exists, so both are
   refused. The pass also turns TensorFlow's layout optimizer off, because
   MPSGraph takes NHWC and NCHW alike and its transposes are pure loss here.
+
+  Most of the fusing is TensorFlow's own remapper, which does run for a
+  pluggable device named GPU. What it leaves behind, and this pass picks up,
+  is a convolution followed by a bias with no activation, and anything
+  starting from a `MatMul`: the remapper gates those on
+  `BlasLtMatmulEnabled()`, which reads `TF_USE_CUBLASLT`, a switch named after
+  a CUDA library and one a Metal device can never satisfy.
 * **The profiler reports command buffers, not kernels.** One event per
   submission, named after the node that submitted it. A command buffer that
   the runtime issues on its own, a copy or a fill, has no node to name and
