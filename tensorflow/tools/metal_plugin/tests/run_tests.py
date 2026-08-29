@@ -91,6 +91,36 @@ def main():
   except Exception:  # pylint: disable=broad-except
     check("an op with no GPU kernel is refused", True)
 
+  # skip_input and a recurrent projection change the parameter buffer's
+  # layout, so a mismatch between what the size op reports and what the graph
+  # reads shows up here as a wrong size rather than as a wrong answer.
+  def params_size(**kwargs):
+    return int(tf.raw_ops.CudnnRNNParamsSize(
+        num_layers=1, num_units=4, input_size=4, T=tf.float32, S=tf.int32,
+        rnn_mode="lstm", **kwargs).numpy())
+
+  check("skip_input drops the input matrices",
+        params_size(input_mode="linear_input") -
+        params_size(input_mode="skip_input") == 4 * 4 * 4)
+  # Recurrent matrices narrow from 4 to 2 columns, and a 2x4 projection joins
+  # them.
+  check("a projection resizes the parameter buffer",
+        params_size(num_proj=2) ==
+        params_size() - 4 * 4 * 2 + 2 * 4)
+
+  with tf.device("/GPU:0"):
+    projected = tf.raw_ops.CudnnRNNV3(
+        input=tf.zeros([3, 2, 4]), input_h=tf.zeros([1, 2, 2]),
+        input_c=tf.zeros([1, 2, 4]),
+        params=tf.zeros([params_size(num_proj=2)]),
+        sequence_lengths=tf.constant([3, 3], dtype=tf.int32),
+        rnn_mode="lstm", num_proj=2, is_training=True)
+  check("a projection narrows the hidden state but not the cell",
+        projected.output.shape[2] == 2 and projected.output_h.shape[2] == 2
+        and projected.output_c.shape[2] == 4,
+        f"y {projected.output.shape} h {projected.output_h.shape} "
+        f"c {projected.output_c.shape}")
+
   # RandomUniform promises [0, 1). In float16 that is not free: a float draw
   # above 1 - 2^-12 rounds up to exactly one, and a caller computing
   # log(1 - u) would get -inf from a generator that can return one.
