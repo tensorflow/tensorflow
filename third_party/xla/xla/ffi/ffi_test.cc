@@ -1425,7 +1425,7 @@ TEST(FfiTest, DuplicateHandlerTraits) {
   XLA_FFI_DEFINE_HANDLER(NoOp2, noop, Ffi::Bind(),
                          {Traits::kCmdBufferCompatible});
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-traits", "Host", NoOp1);
-  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+  auto status = TakeError(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-traits", "Host", NoOp2));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Duplicate FFI handler registration"))
@@ -1439,7 +1439,7 @@ TEST(FfiTest, DuplicateHandlerAddress) {
   XLA_FFI_DEFINE_HANDLER(NoOp1, noop1, Ffi::Bind());
   XLA_FFI_DEFINE_HANDLER(NoOp2, noop2, Ffi::Bind());
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-address", "Host", NoOp1);
-  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+  auto status = TakeError(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-address", "Host", NoOp2));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Duplicate FFI handler registration"))
@@ -1452,7 +1452,7 @@ TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
   XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-when-equal", "Host",
                            NoOp);
-  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+  auto status = TakeError(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-when-equal", "Host", NoOp));
   TF_ASSERT_OK(status);
 }

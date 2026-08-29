@@ -117,7 +117,7 @@ static absl::StatusOr<XLA_FFI_Future*> Invoke(const XLA_FFI_Api* api,
   if (error != nullptr) {
     DCHECK_EQ(ffi_call_frame.future, nullptr)
         << "Error must not be used together with a future";
-    return TakeStatus(error);
+    return TakeError(error);
   }
 
   return ffi_call_frame.future;
@@ -210,7 +210,7 @@ absl::StatusOr<XLA_FFI_Metadata> GetMetadata(const XLA_FFI_Api* api,
     return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
   }
   if (error != nullptr) {
-    return TakeStatus(error);
+    return TakeError(error);
   }
   return metadata;
 }
@@ -227,7 +227,7 @@ absl::StatusOr<XLA_FFI_Metadata> GetMetadata(const XLA_FFI_Api* api,
     return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
   }
   if (error != nullptr) {
-    return TakeStatus(error);
+    return TakeError(error);
   }
   return metadata;
 }
