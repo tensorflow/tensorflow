@@ -847,6 +847,7 @@ cc_library(
         ":small_constants_optimizer",
         ":summary_optimizer",
         ":tensor_handle",
+        ":validate_function_devices",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:abstract_function",
