@@ -94,10 +94,10 @@ def main():
   # skip_input and a recurrent projection change the parameter buffer's
   # layout, so a mismatch between what the size op reports and what the graph
   # reads shows up here as a wrong size rather than as a wrong answer.
-  def params_size(**kwargs):
+  def params_size(num_layers=1, **kwargs):
     return int(tf.raw_ops.CudnnRNNParamsSize(
-        num_layers=1, num_units=4, input_size=4, T=tf.float32, S=tf.int32,
-        rnn_mode="lstm", **kwargs).numpy())
+        num_layers=num_layers, num_units=4, input_size=4, T=tf.float32,
+        S=tf.int32, rnn_mode="lstm", **kwargs).numpy())
 
   check("skip_input drops the input matrices",
         params_size(input_mode="linear_input") -
@@ -120,6 +120,36 @@ def main():
         and projected.output_c.shape[2] == 4,
         f"y {projected.output.shape} h {projected.output_h.shape} "
         f"c {projected.output_c.shape}")
+
+  # Dropout has to change the answer, has to leave the draws behind for the
+  # gradient, and has to do nothing at all outside training. Two layers,
+  # because dropout applies at the boundary between them and a single layer
+  # has none.
+  weights = tf.constant(rng.standard_normal(params_size(num_layers=2)) * 0.3,
+                        dtype=tf.float32)
+  series = tf.constant(rng.standard_normal((3, 2, 4)), dtype=tf.float32)
+
+  def recurrent(dropout, training):
+    with tf.device("/GPU:0"):
+      return tf.raw_ops.CudnnRNNV3(
+          input=series, input_h=tf.zeros([2, 2, 4]),
+          input_c=tf.zeros([2, 2, 4]), params=weights,
+          sequence_lengths=tf.constant([3, 3], dtype=tf.int32),
+          rnn_mode="lstm", dropout=dropout, seed=7, seed2=0,
+          is_training=training)
+
+  dropped = recurrent(0.5, True)
+  check("dropout leaves its draws in the reserve space",
+        int(dropped.reserve_space.shape[0]) == 3 * 2 * 4,
+        f"reserve {int(dropped.reserve_space.shape[0])}")
+  check("no dropout leaves the reserve space empty",
+        int(recurrent(0.0, True).reserve_space.shape[0]) == 0)
+  check("dropout changes the output",
+        not np.allclose(dropped.output.numpy(),
+                        recurrent(0.0, True).output.numpy()))
+  check("dropout is inactive outside training",
+        np.allclose(recurrent(0.5, False).output.numpy(),
+                    recurrent(0.0, False).output.numpy()))
 
   # RandomUniform promises [0, 1). In float16 that is not free: a float draw
   # above 1 - 2^-12 rounds up to exactly one, and a caller computing
