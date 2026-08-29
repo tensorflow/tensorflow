@@ -72,6 +72,16 @@ struct RnnSpec {
   int64_t batch = 1;
   int64_t seq_length = 1;
   bool has_lengths = false;
+  // cuDNN's CUDNN_SKIP_INPUT: the first layer consumes its input directly,
+  // with no matrix in front of it. Only the first layer; the rest keep theirs.
+  bool skip_input = false;
+  // Dropout between layers, and the seeds that make its masks reproducible.
+  float dropout = 0.0f;
+  int64_t seed = 0;
+  int64_t seed2 = 0;
+  // A recurrent projection, LSTM only. Zero means none, which is the usual
+  // case; anything else makes the hidden state narrower than the cell.
+  int64_t num_proj = 0;
 
   int64_t gates() const {
     switch (mode) {
@@ -84,11 +94,16 @@ struct RnnSpec {
     }
   }
   int64_t directions() const { return bidirectional ? 2 : 1; }
+  // The width of the hidden state, which the projection narrows. The cell
+  // state keeps num_units either way.
+  int64_t state_width() const { return num_proj > 0 ? num_proj : num_units; }
   // Every layer past the first reads the previous layer's output, which is
   // twice as wide when both directions run.
   int64_t layer_input(int64_t layer) const {
-    return layer == 0 ? input_size : num_units * directions();
+    return layer == 0 ? input_size : state_width() * directions();
   }
+  // Whether this layer feeds its input straight into the recurrence.
+  bool skips_input(int64_t layer) const { return skip_input && layer == 0; }
 };
 
 // Where one matrix or bias vector sits inside the opaque buffer.
@@ -108,16 +123,30 @@ void BuildLayout(const RnnSpec& spec, std::vector<ParamSlot>* weights,
   biases->clear();
   int64_t offset = 0;
   const int64_t gates = spec.gates();
+  const int64_t state = spec.state_width();
   for (int64_t layer = 0; layer < spec.num_layers; ++layer) {
     for (int64_t dir = 0; dir < spec.directions(); ++dir) {
       const int64_t in = spec.layer_input(layer);
-      for (int64_t g = 0; g < gates; ++g) {
-        weights->push_back({offset, spec.num_units, in});
-        offset += spec.num_units * in;
+      // A skipped input layer has no input matrices at all, which is what
+      // cuDNN reports for its size too. The input biases stay, as they do
+      // there.
+      if (!spec.skips_input(layer)) {
+        for (int64_t g = 0; g < gates; ++g) {
+          weights->push_back({offset, spec.num_units, in});
+          offset += spec.num_units * in;
+        }
       }
+      // The recurrent matrices read the hidden state, which the projection
+      // narrows, so their width is the state width and not num_units.
       for (int64_t g = 0; g < gates; ++g) {
-        weights->push_back({offset, spec.num_units, spec.num_units});
-        offset += spec.num_units * spec.num_units;
+        weights->push_back({offset, spec.num_units, state});
+        offset += spec.num_units * state;
+      }
+      // The projection itself, last in the direction, mapping the cell's
+      // output down to the state width.
+      if (spec.num_proj > 0) {
+        weights->push_back({offset, spec.num_proj, spec.num_units});
+        offset += spec.num_proj * spec.num_units;
       }
     }
   }
@@ -181,37 +210,63 @@ bool ReadMode(TF_OpKernelConstruction* ctx, RnnSpec* spec,
   std::memset(text, 0, sizeof(text));
   TF_OpKernelConstruction_GetAttrString(ctx, "input_mode", text,
                                         sizeof(text) - 1, status);
-  if (TF_GetCode(status) == TF_OK && text[0] != '\0' &&
-      std::strcmp(text, "linear_input") != 0 &&
-      std::strcmp(text, "auto_select") != 0) {
-    // skip_input drops the input matrix entirely, which changes the layout
-    // and only works when the widths already agree.
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: the recurrent ops implement linear_input only.");
-    return false;
+  if (TF_GetCode(status) == TF_OK && text[0] != '\0') {
+    if (std::strcmp(text, "skip_input") == 0) {
+      spec->skip_input = true;
+    } else if (std::strcmp(text, "linear_input") != 0 &&
+               std::strcmp(text, "auto_select") != 0) {
+      TF_SetStatus(status, TF_UNIMPLEMENTED,
+                   "Metal: unknown recurrent input mode.");
+      return false;
+    }
   }
   TF_SetStatus(status, TF_OK, "");
 
-  float dropout = 0.0f;
-  TF_OpKernelConstruction_GetAttrFloat(ctx, "dropout", &dropout, status);
-  if (TF_GetCode(status) == TF_OK && dropout != 0.0f) {
-    // Dropout between layers would have to reproduce cuDNN's own generator to
-    // be reproducible, and nothing defines that sequence outside cuDNN.
+  TF_OpKernelConstruction_GetAttrFloat(ctx, "dropout", &spec->dropout, status);
+  if (TF_GetCode(status) != TF_OK) spec->dropout = 0.0f;
+  TF_SetStatus(status, TF_OK, "");
+  if (spec->dropout < 0.0f || spec->dropout >= 1.0f) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the recurrent dropout rate must be in [0, 1).");
+    return false;
+  }
+  if (spec->dropout != 0.0f) {
+    // The masks have to be stored so the gradient uses the same numbers as
+    // the forward, which means giving the reserve space a layout. Refused
+    // until then rather than silently trained without regularisation.
     TF_SetStatus(status, TF_UNIMPLEMENTED,
                  "Metal: the recurrent ops implement dropout of zero only.");
     return false;
   }
+
+  int32_t seed = 0;
+  TF_OpKernelConstruction_GetAttrInt32(ctx, "seed", &seed, status);
+  if (TF_GetCode(status) != TF_OK) seed = 0;
+  spec->seed = seed;
+  TF_SetStatus(status, TF_OK, "");
+  int32_t seed2 = 0;
+  TF_OpKernelConstruction_GetAttrInt32(ctx, "seed2", &seed2, status);
+  if (TF_GetCode(status) != TF_OK) seed2 = 0;
+  spec->seed2 = seed2;
   TF_SetStatus(status, TF_OK, "");
 
   int32_t num_proj = 0;
   TF_OpKernelConstruction_GetAttrInt32(ctx, "num_proj", &num_proj, status);
-  if (TF_GetCode(status) == TF_OK && num_proj != 0) {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: the recurrent ops implement a projection size of "
-                 "zero only.");
+  if (TF_GetCode(status) != TF_OK) num_proj = 0;
+  TF_SetStatus(status, TF_OK, "");
+  if (num_proj < 0) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the recurrent projection size cannot be negative.");
     return false;
   }
-  TF_SetStatus(status, TF_OK, "");
+  if (num_proj > 0 && spec->mode != Mode::kLstm) {
+    // cuDNN has the same restriction: only the LSTM has a cell to project
+    // away from.
+    TF_SetStatus(status, TF_UNIMPLEMENTED,
+                 "Metal: a recurrent projection applies to the LSTM only.");
+    return false;
+  }
+  spec->num_proj = num_proj;
 
   TF_Bool flag = 1;
   TF_OpKernelConstruction_GetAttrBool(ctx, "is_training", &flag, status);
@@ -338,10 +393,16 @@ struct RnnGraph {
   MPSGraphTensor* output_c = nil;
 };
 
+// `masks` holds one dropout mask per layer boundary, so `num_layers - 1` of
+// them, each shaped like that boundary's input. They are nil when the rate is
+// zero or the pass is not training. They are supplied rather than drawn inside
+// the graph because the backward pass has to use the same numbers as the
+// forward, and a graph that drew its own would draw different ones.
 RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
                     MPSGraphTensor* input, MPSGraphTensor* input_h,
                     MPSGraphTensor* input_c, MPSGraphTensor* params,
-                    MPSGraphTensor* lengths) {
+                    MPSGraphTensor* lengths,
+                    const std::vector<MPSGraphTensor*>& masks) {
   std::vector<ParamSlot> weights, biases;
   BuildLayout(spec, &weights, &biases);
   const int64_t gates = spec.gates();
@@ -349,6 +410,7 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
   const int64_t T = spec.seq_length;
   const int64_t B = spec.batch;
   const int64_t U = spec.num_units;
+  const int64_t S = spec.state_width();
 
   MPSGraphTensor* zero = [g constantWithScalar:0.0 dataType:dtype];
 
@@ -386,7 +448,7 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
                                     name:nil];
       h = [g reshapeTensor:h
                  withShape:@[
-                   @(static_cast<NSInteger>(B)), @(static_cast<NSInteger>(U))
+                   @(static_cast<NSInteger>(B)), @(static_cast<NSInteger>(S))
                  ]
                       name:nil];
       MPSGraphTensor* c = nil;
@@ -405,18 +467,30 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
 
       // This direction's matrices and biases, in the order the layout lays
       // them down.
-      std::vector<MPSGraphTensor*> wx(static_cast<size_t>(gates));
+      const bool skip = spec.skips_input(layer);
+      std::vector<MPSGraphTensor*> wx(static_cast<size_t>(gates), nil);
       std::vector<MPSGraphTensor*> wh(static_cast<size_t>(gates));
       std::vector<MPSGraphTensor*> bx(static_cast<size_t>(gates));
       std::vector<MPSGraphTensor*> bh(static_cast<size_t>(gates));
-      for (int64_t k = 0; k < gates; ++k) {
-        wx[static_cast<size_t>(k)] =
-            Matrix(g, params, weights[static_cast<size_t>(weight_index++)]);
+      if (!skip) {
+        for (int64_t k = 0; k < gates; ++k) {
+          wx[static_cast<size_t>(k)] =
+              Matrix(g, params, weights[static_cast<size_t>(weight_index++)]);
+        }
       }
       for (int64_t k = 0; k < gates; ++k) {
         wh[static_cast<size_t>(k)] =
             Matrix(g, params, weights[static_cast<size_t>(weight_index++)]);
       }
+      MPSGraphTensor* w_proj = nil;
+      if (spec.num_proj > 0) {
+        w_proj = Matrix(g, params, weights[static_cast<size_t>(weight_index++)]);
+      }
+      // The input term of a gate: the matrix product, or the input itself when
+      // the layer skips its matrices.
+      auto input_term = [&](MPSGraphTensor* x, int k) -> MPSGraphTensor* {
+        return skip ? x : MatMulT(g, x, wx[static_cast<size_t>(k)]);
+      };
       for (int64_t k = 0; k < gates; ++k) {
         bx[static_cast<size_t>(k)] =
             Row(g, params, biases[static_cast<size_t>(bias_index++)]);
@@ -439,7 +513,7 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
           MPSGraphTensor* gate[4];
           for (int k = 0; k < 4; ++k) {
             gate[k] = Add(g,
-                          Add(g, MatMulT(g, x, wx[k]), bx[k]),
+                          Add(g, input_term(x, k), bx[k]),
                           Add(g, MatMulT(g, h, wh[k]), bh[k]));
           }
           // The canonical order is input, forget, cell, output.
@@ -449,19 +523,22 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
           MPSGraphTensor* o = [g sigmoidWithTensor:gate[3] name:nil];
           c_new = Add(g, Mul(g, f, c), Mul(g, i, cell));
           h_new = Mul(g, o, [g tanhWithTensor:c_new name:nil]);
+          // The projection narrows the hidden state; the cell keeps its own
+          // width, which is why only h passes through it.
+          if (w_proj != nil) h_new = MatMulT(g, h_new, w_proj);
         } else if (spec.mode == Mode::kGru) {
           // The reset gate is applied after the recurrent multiply, which is
           // what distinguishes this from the GRU in GRUBlockCell.
           MPSGraphTensor* r = [g
-              sigmoidWithTensor:Add(g, Add(g, MatMulT(g, x, wx[0]), bx[0]),
+              sigmoidWithTensor:Add(g, Add(g, input_term(x, 0), bx[0]),
                                     Add(g, MatMulT(g, h, wh[0]), bh[0]))
                            name:nil];
           MPSGraphTensor* u = [g
-              sigmoidWithTensor:Add(g, Add(g, MatMulT(g, x, wx[1]), bx[1]),
+              sigmoidWithTensor:Add(g, Add(g, input_term(x, 1), bx[1]),
                                     Add(g, MatMulT(g, h, wh[1]), bh[1]))
                            name:nil];
           MPSGraphTensor* n = [g
-              tanhWithTensor:Add(g, Add(g, MatMulT(g, x, wx[2]), bx[2]),
+              tanhWithTensor:Add(g, Add(g, input_term(x, 2), bx[2]),
                                  Mul(g, r, Add(g, MatMulT(g, h, wh[2]),
                                                bh[2])))
                         name:nil];
@@ -472,7 +549,7 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
                       Mul(g, u, h));
         } else {
           MPSGraphTensor* pre =
-              Add(g, Add(g, MatMulT(g, x, wx[0]), bx[0]),
+              Add(g, Add(g, input_term(x, 0), bx[0]),
                   Add(g, MatMulT(g, h, wh[0]), bh[0]));
           h_new = spec.mode == Mode::kRnnTanh
                       ? [g tanhWithTensor:pre name:nil]
@@ -513,7 +590,16 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
       if (spec.mode == Mode::kLstm) final_c.push_back(c);
     }
 
-    // The next layer reads this one, with both directions side by side.
+    // The next layer reads this one, with both directions side by side, and
+    // with dropout applied at the boundary between them. cuDNN drops between
+    // layers only, never on the first layer's input or the last layer's
+    // output, which is why the mask is indexed by the boundary rather than by
+    // the layer.
+    MPSGraphTensor* mask = nil;
+    if (layer + 1 < spec.num_layers &&
+        static_cast<size_t>(layer) < masks.size()) {
+      mask = masks[static_cast<size_t>(layer)];
+    }
     for (int64_t t = 0; t < T; ++t) {
       MPSGraphTensor* joined = per_direction[0][static_cast<size_t>(t)];
       if (dirs == 2) {
@@ -521,6 +607,20 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
                       withTensor:per_direction[1][static_cast<size_t>(t)]
                        dimension:1
                             name:nil];
+      }
+      if (mask != nil) {
+        MPSGraphTensor* step = [g sliceTensor:mask
+                                    dimension:0
+                                        start:static_cast<NSInteger>(t)
+                                       length:1
+                                         name:nil];
+        joined = Mul(g, joined,
+                     [g reshapeTensor:step
+                            withShape:@[
+                              @(static_cast<NSInteger>(B)),
+                              @(static_cast<NSInteger>(S * dirs))
+                            ]
+                                 name:nil]);
       }
       layer_input[static_cast<size_t>(t)] = joined;
     }
@@ -532,7 +632,7 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
     [stacked addObject:[g reshapeTensor:layer_input[static_cast<size_t>(t)]
                               withShape:@[
                                 @1, @(static_cast<NSInteger>(B)),
-                                @(static_cast<NSInteger>(U * dirs))
+                                @(static_cast<NSInteger>(S * dirs))
                               ]
                                    name:nil]];
   }
@@ -544,7 +644,7 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
     [states addObject:[g reshapeTensor:h
                              withShape:@[
                                @1, @(static_cast<NSInteger>(B)),
-                               @(static_cast<NSInteger>(U))
+                               @(static_cast<NSInteger>(S))
                              ]
                                   name:nil]];
   }
@@ -573,6 +673,11 @@ void AppendSpecToKey(const RnnSpec& spec, std::string* key) {
   key->append("/b").append(std::to_string(spec.batch));
   key->append("/t").append(std::to_string(spec.seq_length));
   key->append(spec.has_lengths ? "/masked" : "/full");
+  key->append(spec.skip_input ? "/skip" : "/lin");
+  key->append("/p").append(std::to_string(spec.num_proj));
+  // The rate rather than the seed: the mask arrives as an input, so two calls
+  // with different seeds share a graph and differ only in what they are fed.
+  key->append("/do").append(spec.dropout > 0.0f ? "1" : "0");
 }
 
 }  // namespace
@@ -740,19 +845,40 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
   spec.seq_length = spec.time_major ? in_shape[0] : in_shape[1];
   spec.batch = spec.time_major ? in_shape[1] : in_shape[0];
   spec.input_size = in_shape[2];
-  spec.num_units = h_shape[2];
+  // input_h is as wide as the hidden state, which a projection narrows, so
+  // num_units comes from the cell state instead. Without a projection the two
+  // are the same and either would do.
+  const std::vector<int64_t> c_shape = ShapeOf(input_c.get());
+  spec.num_units = spec.num_proj > 0 && c_shape.size() == 3 ? c_shape[2]
+                                                            : h_shape[2];
   spec.num_layers = h_shape[0] / spec.directions();
   spec.has_lengths = lengths_index >= 0;
 
+  if (spec.skip_input && spec.input_size != spec.num_units) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: skip_input feeds the input straight into the "
+                 "recurrence, so the input width must equal the number of "
+                 "units.");
+    return;
+  }
+  if (spec.num_proj > 0 && spec.num_proj > spec.num_units) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the recurrent projection cannot be wider than the "
+                 "number of units.");
+    return;
+  }
+
   const int64_t dirs = spec.directions();
+  const int64_t state = spec.state_width();
   std::vector<int64_t> out_shape = in_shape;
   if (spec.time_major) {
-    out_shape = {spec.seq_length, spec.batch, spec.num_units * dirs};
+    out_shape = {spec.seq_length, spec.batch, state * dirs};
   } else {
-    out_shape = {spec.batch, spec.seq_length, spec.num_units * dirs};
+    out_shape = {spec.batch, spec.seq_length, state * dirs};
   }
-  const std::vector<int64_t> state_shape = {h_shape[0], spec.batch,
-                                            spec.num_units};
+  const std::vector<int64_t> state_shape = {h_shape[0], spec.batch, state};
+  const std::vector<int64_t> cell_shape = {h_shape[0], spec.batch,
+                                           spec.num_units};
 
   const size_t element = TF_DataTypeSize(op->dtype);
   ScopedTensor output, output_h, output_c, reserve;
@@ -765,8 +891,8 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
       static_cast<size_t>(ElementCount(state_shape)) * element, status));
   if (TF_GetCode(status) != TF_OK) return;
   output_c.reset(TF_AllocateOutput(
-      ctx, 2, op->dtype, state_shape.data(), 3,
-      static_cast<size_t>(ElementCount(state_shape)) * element, status));
+      ctx, 2, op->dtype, cell_shape.data(), 3,
+      static_cast<size_t>(ElementCount(cell_shape)) * element, status));
   if (TF_GetCode(status) != TF_OK) return;
   // The reserve space is opaque and this backend keeps nothing in it: the
   // gradient rebuilds the forward pass from the inputs it is given, which
@@ -812,7 +938,7 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         MPSGraphTensor* h0 = [g placeholderWithShape:MPSShape(state_shape)
                                             dataType:mps_dtype
                                                 name:nil];
-        MPSGraphTensor* c0 = [g placeholderWithShape:MPSShape(state_shape)
+        MPSGraphTensor* c0 = [g placeholderWithShape:MPSShape(cell_shape)
                                             dataType:mps_dtype
                                                 name:nil];
         MPSGraphTensor* p = [g placeholderWithShape:MPSShape(params_shape)
@@ -842,7 +968,7 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
                 ? x
                 : [g transposeTensor:x dimension:0 withDimension:1 name:nil];
         RnnGraph built = BuildStack(g, captured, mps_dtype, sequence, h0, c0,
-                                    p, len);
+                                    p, len, {});
         MPSGraphTensor* result =
             captured.time_major
                 ? built.output
@@ -933,12 +1059,18 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
   spec.seq_length = spec.time_major ? in_shape[0] : in_shape[1];
   spec.batch = spec.time_major ? in_shape[1] : in_shape[0];
   spec.input_size = in_shape[2];
-  spec.num_units = h_shape[2];
+  // As in the forward: with a projection, input_h is the narrow one and the
+  // cell state carries num_units.
+  const std::vector<int64_t> c_shape = ShapeOf(input_c.get());
+  spec.num_units = spec.num_proj > 0 && c_shape.size() == 3 ? c_shape[2]
+                                                            : h_shape[2];
   spec.num_layers = h_shape[0] / spec.directions();
   spec.has_lengths = lengths_index >= 0;
 
   const std::vector<int64_t> state_shape = {h_shape[0], spec.batch,
-                                            spec.num_units};
+                                            spec.state_width()};
+  const std::vector<int64_t> cell_shape = {h_shape[0], spec.batch,
+                                           spec.num_units};
   const int64_t total_params = ParamsSize(spec);
   const std::vector<int64_t> params_shape = {total_params};
   const std::vector<int64_t> out_shape = ShapeOf(output_backprop.get());
@@ -955,8 +1087,8 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
       static_cast<size_t>(ElementCount(state_shape)) * element, status));
   if (TF_GetCode(status) != TF_OK) return;
   dc.reset(TF_AllocateOutput(
-      ctx, 2, op->dtype, state_shape.data(), 3,
-      static_cast<size_t>(ElementCount(state_shape)) * element, status));
+      ctx, 2, op->dtype, cell_shape.data(), 3,
+      static_cast<size_t>(ElementCount(cell_shape)) * element, status));
   if (TF_GetCode(status) != TF_OK) return;
   dparams.reset(TF_AllocateOutput(
       ctx, 3, op->dtype, params_shape.data(), 1,
@@ -986,7 +1118,7 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         MPSGraphTensor* h0 = [g placeholderWithShape:MPSShape(state_shape)
                                             dataType:mps_dtype
                                                 name:nil];
-        MPSGraphTensor* c0 = [g placeholderWithShape:MPSShape(state_shape)
+        MPSGraphTensor* c0 = [g placeholderWithShape:MPSShape(cell_shape)
                                             dataType:mps_dtype
                                                 name:nil];
         MPSGraphTensor* p = [g placeholderWithShape:MPSShape(params_shape)
@@ -998,7 +1130,7 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         MPSGraphTensor* dhy = [g placeholderWithShape:MPSShape(state_shape)
                                              dataType:mps_dtype
                                                  name:nil];
-        MPSGraphTensor* dcy = [g placeholderWithShape:MPSShape(state_shape)
+        MPSGraphTensor* dcy = [g placeholderWithShape:MPSShape(cell_shape)
                                              dataType:mps_dtype
                                                  name:nil];
         [out->inputs addObject:x];
@@ -1026,7 +1158,7 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
                 ? x
                 : [g transposeTensor:x dimension:0 withDimension:1 name:nil];
         RnnGraph built = BuildStack(g, captured, mps_dtype, sequence, h0, c0,
-                                    p, len);
+                                    p, len, {});
         MPSGraphTensor* result =
             captured.time_major
                 ? built.output
@@ -1067,6 +1199,10 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
             [g constantWithScalar:0.0
                             shape:MPSShape(state_shape)
                          dataType:mps_dtype];
+        MPSGraphTensor* zero_cell =
+            [g constantWithScalar:0.0
+                            shape:MPSShape(cell_shape)
+                         dataType:mps_dtype];
         MPSGraphTensor* zero_params =
             [g constantWithScalar:0.0
                             shape:MPSShape(params_shape)
@@ -1079,7 +1215,7 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         // recurrent network among them, simply has no gradient.
         [out->outputs addObject:grads[x] != nil ? grads[x] : zero_input];
         [out->outputs addObject:grads[h0] != nil ? grads[h0] : zero_state];
-        [out->outputs addObject:grads[c0] != nil ? grads[c0] : zero_state];
+        [out->outputs addObject:grads[c0] != nil ? grads[c0] : zero_cell];
         [out->outputs addObject:grads[p] != nil ? grads[p] : zero_params];
       },
       status);
