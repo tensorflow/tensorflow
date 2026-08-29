@@ -19,6 +19,7 @@ limitations under the License.
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
+#include "tensorflow/core/common_runtime/metal/kernels/metal_mps_graph.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
@@ -97,16 +99,15 @@ MPSMatrix* MatrixFor(const BufferSlice& slice, int64_t rows, int64_t columns,
   const size_t row_bytes = static_cast<size_t>(columns) * element_size;
 
   // MPS requires the row stride and the buffer offset to be 4-byte aligned.
-  // The offset always is, since core's allocator aligns well past that, but a
-  // float16 matrix with an odd column count has a 2 mod 4 stride. Repacking
-  // such a matrix is possible and belongs with the wider op coverage; until
-  // then, say so rather than let MPS trap.
+  // Callers check the stride before getting here and take the graph path when
+  // it does not hold, so reaching this with a bad stride is a bug rather than
+  // an unsupported shape.
   if (row_bytes % 4 != 0) {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
+    TF_SetStatus(status, TF_INTERNAL,
                  (std::string("Metal: MatMul on ") + what + " with " +
                   std::to_string(columns) +
-                  " columns of this dtype gives a row stride that MPS cannot "
-                  "use; an even column count is required for float16.")
+                  " columns reached the matrix path with a row stride MPS "
+                  "cannot use.")
                      .c_str());
     return nil;
   }
@@ -126,6 +127,85 @@ MPSMatrix* MatrixFor(const BufferSlice& slice, int64_t rows, int64_t columns,
   return [[[MPSMatrix alloc] initWithBuffer:slice.buffer
                                      offset:slice.offset
                                  descriptor:descriptor] autorelease];
+}
+
+// Whether MPSMatrixMultiplication can address these operands at all.
+//
+// A row stride has to be a multiple of four bytes. Every float32 matrix
+// satisfies that whatever its width, and so does a float16 matrix with an even
+// column count; a float16 matrix with an odd one has a stride of 2 mod 4 and
+// has to go somewhere else.
+bool MatrixPathUsable(TF_DataType dtype,
+                      std::initializer_list<int64_t> column_counts) {
+  const size_t element_size = TF_DataTypeSize(dtype);
+  for (int64_t columns : column_counts) {
+    if ((static_cast<size_t>(columns) * element_size) % 4 != 0) return false;
+  }
+  return true;
+}
+
+// The same product through MPSGraph, for the shapes MPSMatrixMultiplication
+// cannot address.
+//
+// MPSGraph reaches tensor storage through MPSNDArray with packed rows rather
+// than through MPSMatrix, so the four-byte stride rule does not apply and an
+// odd float16 width is just a width. It is the slower of the two on the shapes
+// where both work, which is why it is the fallback and not the default.
+void MatMulViaGraph(MatMulOp* op, TF_OpKernelContext* ctx, TF_Tensor* lhs,
+                    TF_Tensor* rhs, TF_Tensor* output, SP_Stream stream,
+                    TF_Status* status) {
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  const std::vector<int64_t> a_shape = ShapeOf(lhs);
+  const std::vector<int64_t> b_shape = ShapeOf(rhs);
+  const bool transpose_a = op->transpose_a;
+  const bool transpose_b = op->transpose_b;
+
+  std::string key = "matmul_graph";
+  AppendShapeToKey(a_shape, &key);
+  AppendShapeToKey(b_shape, &key);
+  key.append(transpose_a ? "/ta" : "/-").append(transpose_b ? "tb" : "-");
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* a = [g placeholderWithShape:MPSShape(a_shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* b = [g placeholderWithShape:MPSShape(b_shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* at =
+            transpose_a ? [g transposeTensor:a dimension:0 withDimension:1
+                                        name:nil]
+                        : a;
+        MPSGraphTensor* bt =
+            transpose_b ? [g transposeTensor:b dimension:0 withDimension:1
+                                        name:nil]
+                        : b;
+        [out->inputs addObject:a];
+        [out->inputs addObject:b];
+        [out->outputs addObject:[g matrixMultiplicationWithPrimaryTensor:at
+                                                        secondaryTensor:bt
+                                                                   name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSGraphTensorData* a_data =
+      TensorDataForTensor(lhs, op->dtype, device, status);
+  if (a_data == nil) return;
+  MPSGraphTensorData* b_data =
+      TensorDataForTensor(rhs, op->dtype, device, status);
+  if (b_data == nil) return;
+  MPSGraphTensorData* out_data =
+      TensorDataForTensor(output, op->dtype, device, status);
+  if (out_data == nil) return;
+  RunGraph(stream, *cached, @[ a_data, b_data ], @[ out_data ], status);
 }
 
 void MatMulOp_ComputeImpl(MatMulOp* op, TF_OpKernelContext* ctx,
@@ -176,6 +256,12 @@ void MatMulOp_ComputeImpl(MatMulOp* op, TF_OpKernelContext* ctx,
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
+
+  if (!MatrixPathUsable(op->dtype, {TF_Dim(lhs.get(), 1), TF_Dim(rhs.get(), 1),
+                                   n})) {
+    MatMulViaGraph(op, ctx, lhs.get(), rhs.get(), output.get(), stream, status);
+    return;
+  }
 
   BufferSlice lhs_slice;
   BufferSlice rhs_slice;
