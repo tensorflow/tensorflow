@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/common_runtime/metal/metal_profiler.h"
 
 SP_Stream_st::SP_Stream_st(id<MTLCommandQueue> command_queue,
                            id<MTLSharedEvent> event)
@@ -41,6 +42,16 @@ namespace tensorflow {
 namespace metal {
 
 namespace {
+
+// Hands a finished command buffer's GPU timestamps to the profiler, when one
+// is collecting. The check is first so that a run nobody is profiling pays a
+// single atomic load per command buffer.
+void NoteTiming(id<MTLCommandBuffer> completed) {
+  if (!ProfilingActive()) return;
+  const char* label = completed.label.UTF8String;
+  RecordCommandBuffer(label != nullptr ? label : "",
+                      completed.GPUStartTime, completed.GPUEndTime);
+}
 
 // Records the first command buffer failure on the stream, if any.
 void NoteFailure(SP_Stream stream, id<MTLCommandBuffer> completed) {
@@ -71,6 +82,12 @@ void NoteFailure(SP_Stream stream, id<MTLCommandBuffer> completed) {
 }
 
 }  // namespace
+
+void NoteCommandBufferCompletion(SP_Stream stream,
+                                 id<MTLCommandBuffer> completed) {
+  NoteFailure(stream, completed);
+  NoteTiming(completed);
+}
 
 MetalDeviceState::MetalDeviceState(id<MTLDevice> mtl_device)
     : device([mtl_device retain]) {}
@@ -133,6 +150,12 @@ OrderedCommandBuffer::OrderedCommandBuffer(SP_Stream stream)
   }
 
   buffer_ = [[stream_->queue commandBuffer] retain];
+  // The label serves twice over: it names the op in a profile, and it names
+  // the culprit when a command buffer fails, which is otherwise reported with
+  // no indication of which kernel encoded it.
+  if (buffer_ != nil && !CurrentOpName().empty()) {
+    buffer_.label = [NSString stringWithUTF8String:CurrentOpName().c_str()];
+  }
   if (buffer_ == nil) {
     // Give the sequence number back so the stream is not permanently stuck
     // waiting for a value that will never be signalled.
@@ -184,7 +207,7 @@ void OrderedCommandBuffer::Commit() {
   // Captured by value; the block outlives this object.
   SP_Stream stream = stream_;
   [buffer_ addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-    NoteFailure(stream, completed);
+    NoteCommandBufferCompletion(stream, completed);
   }];
 
   [buffer_ commit];

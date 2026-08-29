@@ -221,6 +221,44 @@ def main():
   check("host round trip is exact",
         np.array_equal(on_device.numpy(), data))
 
+  # The profiler module, end to end: a session has to produce an XSpace that
+  # TensorFlow can parse, with this backend's plane in it and the op names on
+  # its events. Encoding that proto by hand is the part worth checking, since
+  # a wrong field number produces bytes that parse to nothing rather than an
+  # error.
+  import glob  # pylint: disable=g-import-not-at-top
+  import tempfile  # pylint: disable=g-import-not-at-top
+  from tensorflow.tsl.profiler.protobuf import xplane_pb2  # pylint: disable=g-import-not-at-top
+
+  print("\nprofiler:")
+  with tempfile.TemporaryDirectory() as logdir:
+    square = tf.constant(rng.standard_normal((256, 256)), dtype=tf.float32)
+    with tf.device("/GPU:0"):
+      tf.matmul(square, square)  # Warm the graph cache outside the session.
+    tf.profiler.experimental.start(logdir)
+    with tf.device("/GPU:0"):
+      for _ in range(3):
+        product = tf.nn.relu(tf.matmul(square, square))
+      _ = product.numpy()
+    tf.profiler.experimental.stop()
+
+    found = glob.glob(os.path.join(logdir, "**", "*.xplane.pb"), recursive=True)
+    check("a profiling session writes an xplane", bool(found))
+    if found:
+      space = xplane_pb2.XSpace()
+      space.ParseFromString(open(found[0], "rb").read())
+      planes = [p for p in space.planes if "Metal" in p.name]
+      check("the trace carries a Metal plane",
+            bool(planes), f"planes {[p.name for p in space.planes]}")
+      if planes:
+        events = [e for line in planes[0].lines for e in line.events]
+        names = {planes[0].event_metadata[e.metadata_id].name for e in events}
+        check("the Metal plane names the ops it timed",
+              "MatMul" in names and "Relu" in names, f"names {sorted(names)}")
+        check("every timed event has a duration",
+              bool(events) and all(e.duration_ps > 0 for e in events),
+              f"{len(events)} events")
+
   print(f"\n{'all checks passed' if _failures == 0 else str(_failures) + ' FAILED'}")
   return 0 if _failures == 0 else 1
 
