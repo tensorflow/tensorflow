@@ -525,6 +525,72 @@ void SynchronizeAllActivity(const SP_Device* device, TF_Status* status) {
 
 /*** FILLS ***/
 
+// Parameters for the 32-bit fill shader. Layout must match the Metal struct.
+struct Fill32Params {
+  uint32_t count;
+  uint32_t pattern;
+};
+
+// The shader behind a memset32 whose pattern is not four equal bytes.
+//
+// Deliberately compiled here rather than reached for in the kernels' shader
+// library: the kernels are built on top of this layer, and having the stream
+// executor call into them would turn that into a cycle. One function is a
+// small enough price for keeping the direction of the dependency honest.
+id<MTLComputePipelineState> Fill32Pipeline(id<MTLDevice> device,
+                                           TF_Status* status) {
+  static constexpr char kSource[] = R"METAL(
+#include <metal_stdlib>
+using namespace metal;
+
+struct Fill32Params {
+  uint count;
+  uint pattern;
+};
+
+kernel void tf_metal_fill32(device uint* out [[buffer(0)]],
+                            constant Fill32Params& params [[buffer(1)]],
+                            uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  out[gid] = params.pattern;
+}
+)METAL";
+
+  static absl::Mutex mu(absl::kConstInit);
+  static id<MTLComputePipelineState> pipeline = nil;  // Guarded by mu.
+  static bool failed = false;                         // Guarded by mu.
+
+  absl::MutexLock lock(&mu);
+  if (pipeline != nil) return pipeline;
+  // Recompiling after a failure would fail identically and flood the log; the
+  // host loop is the answer either way, so report it once and move on.
+  if (failed) return nil;
+
+  NSError* error = nil;
+  id<MTLLibrary> library =
+      [device newLibraryWithSource:[NSString stringWithUTF8String:kSource]
+                           options:nil
+                             error:&error];
+  id<MTLFunction> function =
+      library == nil ? nil : [library newFunctionWithName:@"tf_metal_fill32"];
+  if (function != nil) {
+    pipeline = [[device newComputePipelineStateWithFunction:function
+                                                      error:&error] retain];
+    [function release];
+  }
+  // The pipeline keeps whatever it needs from the library; this file holds no
+  // other reference to it.
+  [library release];
+  if (pipeline == nil) {
+    failed = true;
+    const char* reason = error.localizedDescription.UTF8String;
+    LOG(WARNING) << "Metal: the 32-bit fill shader did not compile ("
+                 << (reason != nullptr ? reason : "unknown error")
+                 << "); filling on the host instead.";
+  }
+  return pipeline;
+}
+
 // Byte fills go through the blit encoder: it is the one operation Metal does
 // natively over a whole buffer range, and it keeps large fills off the CPU.
 void EncodeFill(SP_Stream stream, SP_DeviceMemoryBase* location, uint8_t value,
@@ -589,10 +655,8 @@ void Memset32(const SP_Device* device, SP_Stream stream,
          "Metal: memset32 size must be a multiple of 4 bytes.");
     return;
   }
-  // A blit fill writes one byte value, so a repeating 32-bit pattern that is
-  // not four equal bytes has to be written word by word. Doing it on the host
-  // is correct on a unified memory system; a compute shader would be faster
-  // for large buffers and is left for the kernel work.
+  // A blit fill writes one byte value, so four equal bytes are the case Metal
+  // handles natively and everything else needs a shader.
   const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&pattern);
   if (bytes[0] == bytes[1] && bytes[1] == bytes[2] && bytes[2] == bytes[3]) {
     EncodeFill(stream, location, bytes[0], size, "a device memory 32-bit fill",
@@ -601,18 +665,62 @@ void Memset32(const SP_Device* device, SP_Stream stream,
   }
 
   if (StreamAlreadyFailed(stream, status)) return;
-  OrderedCommandBuffer buffer(stream);
-  if (!buffer.ok()) {
+
+  const char* const what = "a device memory 32-bit fill";
+  id<MTLBuffer> buffer = nil;
+  size_t offset = 0;
+  if (!ResolveOrFail(location->opaque, what, &buffer, &offset, status)) return;
+  if (offset + size > [buffer length]) {
+    Fail(status, TF_INVALID_ARGUMENT,
+         std::string("Metal: ") + what + " of " + std::to_string(size) +
+             " bytes at offset " + std::to_string(offset) +
+             " runs past the end of a " + std::to_string([buffer length]) +
+             " byte allocation.");
+    return;
+  }
+
+  const uint64_t words = size / sizeof(uint32_t);
+  // The shader indexes with a 32-bit thread identifier, so a fill wider than
+  // that many words goes to the host rather than silently covering a prefix.
+  // Sixteen gigabytes in one memset is not a case any allocator here produces,
+  // but writing part of the range and reporting success would be the kind of
+  // failure that surfaces somewhere else entirely.
+  id<MTLComputePipelineState> pipeline =
+      words <= UINT32_MAX ? Fill32Pipeline(MTLDeviceOf(device), status) : nil;
+  if (pipeline == nil && TF_GetCode(status) != TF_OK) return;
+
+  OrderedCommandBuffer command_buffer(stream);
+  if (!command_buffer.ok()) {
     Fail(status, TF_RESOURCE_EXHAUSTED,
          "Metal: could not create a command buffer for a 32-bit fill.");
     return;
   }
-  void* destination = location->opaque;
-  const uint64_t words = size / sizeof(uint32_t);
-  buffer.CommitWithHostCompletion(^{
-    uint32_t* out = static_cast<uint32_t*>(destination);
-    for (uint64_t i = 0; i < words; ++i) out[i] = pattern;
-  });
+
+  if (pipeline == nil) {
+    void* destination = location->opaque;
+    command_buffer.CommitWithHostCompletion(^{
+      uint32_t* out = static_cast<uint32_t*>(destination);
+      for (uint64_t i = 0; i < words; ++i) out[i] = pattern;
+    });
+    Ok(status);
+    return;
+  }
+
+  const Fill32Params params = {static_cast<uint32_t>(words), pattern};
+  id<MTLComputeCommandEncoder> encoder =
+      [command_buffer.get() computeCommandEncoder];
+  [encoder setComputePipelineState:pipeline];
+  [encoder setBuffer:buffer offset:offset atIndex:0];
+  [encoder setBytes:&params length:sizeof(params) atIndex:1];
+  // dispatchThreadgroups rather than dispatchThreads, so the grid rounds up to
+  // whole threadgroups and this works on every GPU family; the shader bounds
+  // checks, which is what makes the rounding safe.
+  const NSUInteger width = [pipeline maxTotalThreadsPerThreadgroup];
+  const NSUInteger groups = (params.count + width - 1) / width;
+  [encoder dispatchThreadgroups:MTLSizeMake(groups, 1, 1)
+          threadsPerThreadgroup:MTLSizeMake(width, 1, 1)];
+  [encoder endEncoding];
+  command_buffer.Commit();
   Ok(status);
 }
 

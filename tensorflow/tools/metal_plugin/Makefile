@@ -69,7 +69,7 @@ LDFLAGS := -dynamiclib $(FRAMEWORKS) \
            -Wl,-undefined,dynamic_lookup \
            -Wl,-rpath,$(TF_LIB)
 
-.PHONY: all clean test sweep install
+.PHONY: all clean test test-stream sweep install
 
 all: $(OUT)
 
@@ -86,8 +86,20 @@ $(BUILD)/%.o: src/%
 check-symbols: $(OUT)
 	@bash tools/check_symbols.sh $(OUT)
 
-test: $(OUT)
+test: $(OUT) test-stream
 	$(PYTHON) tests/run_tests.py
+
+# The StreamExecutor C API driven directly, without TensorFlow. Reaches what
+# no op can: memset32 with a pattern that is not four equal bytes has one
+# caller in the whole tree and it is a CUDA-only kernel.
+$(BUILD)/stream_executor_test: tests/stream_executor_test.mm $(OUT)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) tests/stream_executor_test.mm -o $@ \
+	  -framework Foundation -L$(TF_LIB) -ltensorflow_framework.2 \
+	  -Wl,-rpath,$(TF_LIB)
+
+test-stream: $(BUILD)/stream_executor_test
+	$(BUILD)/stream_executor_test $(OUT)
 
 # Every registered op, through TensorFlow's own dispatch, against the CPU.
 sweep: $(OUT)
