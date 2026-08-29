@@ -23,6 +23,19 @@ SDK := $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null)
 BUILD := build
 OUT := $(BUILD)/libmetal_plugin.dylib
 
+# Which TensorFlow the objects in $(BUILD) were compiled against.
+#
+# The header dependencies recorded by -MMD name paths inside that TensorFlow,
+# and those paths keep existing when PYTHON is pointed at a different one, so
+# make sees nothing to redo and links objects built against two different
+# TensorFlows. The result is a library that fails to load with an absl symbol
+# missing, which says nothing about the cause. This makes the include path
+# itself a dependency.
+STAMP := $(BUILD)/tf-include-path
+$(shell mkdir -p $(BUILD); \
+        [ "$$(cat $(STAMP) 2>/dev/null)" = "$(TF_INCLUDE)" ] || \
+        printf '%s' "$(TF_INCLUDE)" > $(STAMP))
+
 SOURCES := src/plugin_init.cc \
            $(wildcard src/tensorflow/core/common_runtime/metal/*.mm) \
            $(wildcard src/tensorflow/core/common_runtime/metal/kernels/*.mm)
@@ -78,7 +91,7 @@ $(OUT): $(OBJECTS)
 	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
 	@echo "built $@"
 
-$(BUILD)/%.o: src/%
+$(BUILD)/%.o: src/% $(STAMP)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
