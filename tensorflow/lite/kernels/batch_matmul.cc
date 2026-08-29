@@ -124,8 +124,13 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   // The temporaries are sized from the two innermost dimensions of each
   // operand, so both must be at least rank 2 before any dimension is read.
   // Prepare() also checks this, but only after this function has run.
+  // `NumDimensions()` dereferences `dims`, so check it first.
+  TF_LITE_ENSURE_MSG(context, lhs->dims != nullptr,
+                     "BatchMatMul: LHS tensor has no dimensions.");
   TF_LITE_ENSURE_MSG(context, NumDimensions(lhs) >= 2,
                      "BatchMatMul: LHS must have at least 2 dimensions.");
+  TF_LITE_ENSURE_MSG(context, rhs->dims != nullptr,
+                     "BatchMatMul: RHS tensor has no dimensions.");
   TF_LITE_ENSURE_MSG(context, NumDimensions(rhs) >= 2,
                      "BatchMatMul: RHS must have at least 2 dimensions.");
   TfLiteIntArrayFree(node->temporaries);
