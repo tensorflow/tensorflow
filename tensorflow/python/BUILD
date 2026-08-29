@@ -974,7 +974,6 @@ pywrap_aware_filegroup(
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
-        "//tensorflow/compiler/mlir/lite/python:converter_python_api",  # converter_python_api
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
         "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
