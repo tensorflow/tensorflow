@@ -5,10 +5,15 @@ PluggableDevice. It loads into a stock TensorFlow wheel and adds
 `/physical_device:GPU:0`.
 
 This is the out-of-tree form of the backend proposed in
-[tensorflow/tensorflow#126254](https://github.com/tensorflow/tensorflow/pull/126254).
+[tensorflow/tensorflow#126384](https://github.com/tensorflow/tensorflow/pull/126384).
 The sources are the same; the only difference is this repository exports
-`SE_InitPlugin` and `TF_InitKernel` from a shared object, where the in-tree
-form hands the same function pointers to `RegisterPluggableDevicePlugin`.
+`SE_InitPlugin`, `TF_InitKernel`, `TF_InitProfiler` and `TF_InitGraph` from a
+shared object, where the in-tree form hands the same function pointers to
+`RegisterPluggableDevicePlugin`.
+
+Four modules, then: the device and its memory, the kernels, a profiler that
+puts Metal work on the TensorFlow timeline, and a graph pass that fuses a bias
+and an activation into the convolution or matrix multiply in front of them.
 
 ## Status
 
@@ -241,7 +246,7 @@ Metal kernels with their dtypes is in
 ## Layout
 
 ```
-src/plugin_init.cc                          the two exported entry points
+src/plugin_init.cc                          the exported entry points
 src/tensorflow/core/common_runtime/metal/   the backend, verbatim from the
                                             TensorFlow tree
 tools/                                      build probes and the symbol check
