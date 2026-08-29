@@ -533,7 +533,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser& parser, OperationState& result) {
                                    {"public", "private", "nested"})) {
     StringAttr visibility_attr = parser.getBuilder().getStringAttr(visibility);
     result.attributes.push_back(parser.getBuilder().getNamedAttr(
-        SymbolTable::getVisibilityAttrName(), visibility_attr));
+        SymbolOpInterface::getDefaultVisibilityAttrName(), visibility_attr));
   }
 
   if (succeeded(parser.parseOptionalKeyword("generic")))
@@ -652,7 +652,8 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
   Operation* op = *this;
   p << " ";
   int argIndentSize = op->getName().getStringRef().size() + 3;
-  StringRef visibility_attr_name = SymbolTable::getVisibilityAttrName();
+  StringRef visibility_attr_name =
+      SymbolOpInterface::getDefaultVisibilityAttrName();
   if (auto visibility = op->getAttrOfType<StringAttr>(visibility_attr_name)) {
     p << visibility.getValue() << ' ';
     argIndentSize += visibility.getValue().size() + 1;
@@ -709,7 +710,7 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
     p.printNewline();
     function_interface_impl::printFunctionAttributes(
         p, *this,
-        {"generic", SymbolTable::getVisibilityAttrName(),
+        {"generic", SymbolOpInterface::getDefaultVisibilityAttrName(),
          getFunctionTypeAttrName(), getArgAttrsAttrName(),
          getResAttrsAttrName()});
   }
