@@ -102,16 +102,20 @@ void* RandomOp_Create(TF_OpKernelConstruction* ctx) {
 
 void RandomOp_Delete(void* kernel) { delete static_cast<RandomOp*>(kernel); }
 
-const char* ShaderFor(Distribution distribution) {
+// float32 and float16, matching what CUDA registers. The Philox stream is the
+// same for both, so a half draw is the float draw rounded once at the end
+// rather than a different sequence.
+std::string ShaderFor(Distribution distribution, TF_DataType dtype) {
+  const char* suffix = dtype == TF_HALF ? "_half" : "_float";
   switch (distribution) {
     case Distribution::kUniform:
-      return "tf_random_uniform_float";
+      return std::string("tf_random_uniform") + suffix;
     case Distribution::kNormal:
-      return "tf_random_normal_float";
+      return std::string("tf_random_normal") + suffix;
     case Distribution::kTruncatedNormal:
-      return "tf_truncated_normal_float";
+      return std::string("tf_truncated_normal") + suffix;
   }
-  return nullptr;
+  return std::string();
 }
 
 template <Distribution kDistribution>
@@ -145,19 +149,12 @@ void Random_ComputeImpl(RandomOp* op, TF_OpKernelContext* ctx,
   if (TF_GetCode(status) != TF_OK) return;
   if (count == 0) return;
 
-  if (op->dtype != TF_FLOAT) {
-    // The generators are written for float32 only. Half-precision weights are
-    // normally initialised in float32 and cast, so this has not been needed.
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: random ops are implemented for float32 only.");
-    return;
-  }
-
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
 
+  const std::string shader = ShaderFor(kDistribution, op->dtype);
   id<MTLComputePipelineState> pipeline =
-      PipelineFor(DeviceForStream(stream), ShaderFor(kDistribution), status);
+      PipelineFor(DeviceForStream(stream), shader.c_str(), status);
   if (pipeline == nil) return;
 
   BufferSlice out_slice;
@@ -317,11 +314,12 @@ METAL_DEFINE_RANDOM_COMPUTE(TruncatedNormal_Compute,
 
 void RegisterRandom(const char* op_name,
                     void (*compute)(void*, TF_OpKernelContext*),
-                    TF_DataType index_dtype, const std::string& kernel_name) {
+                    TF_DataType index_dtype, const std::string& kernel_name,
+                    TF_DataType dtype) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
       op_name, kMetalDeviceType, &RandomOp_Create, compute, &RandomOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "dtype", TF_FLOAT, status);
+  TF_KernelBuilder_TypeConstraint(builder, "dtype", dtype, status);
   if (TF_GetCode(status) == TF_OK) {
     TF_KernelBuilder_TypeConstraint(builder, "T", index_dtype, status);
   }
@@ -344,15 +342,27 @@ void RegisterRandom(const char* op_name,
 void RegisterMetalRandomKernels() {
   static constexpr TF_DataType kIndexTypes[] = {TF_INT32, TF_INT64};
   static constexpr const char* kIndexSuffixes[] = {"Int32", "Int64"};
+  static constexpr TF_DataType kValueTypes[] = {TF_FLOAT, TF_HALF};
+  static constexpr const char* kValueSuffixes[] = {"", "Half"};
   for (int i = 0; i < 2; ++i) {
-    RegisterRandom("RandomUniform", &RandomUniform_Compute, kIndexTypes[i],
-                   std::string("MetalRandomUniform") + kIndexSuffixes[i]);
-    RegisterRandom("RandomStandardNormal", &RandomNormal_Compute,
-                   kIndexTypes[i],
-                   std::string("MetalRandomStandardNormal") +
-                       kIndexSuffixes[i]);
-    RegisterRandom("TruncatedNormal", &TruncatedNormal_Compute, kIndexTypes[i],
-                   std::string("MetalTruncatedNormal") + kIndexSuffixes[i]);
+    for (int v = 0; v < 2; ++v) {
+      const TF_DataType t = kValueTypes[v];
+      const std::string vs = kValueSuffixes[v];
+      RegisterRandom("RandomUniform", &RandomUniform_Compute, kIndexTypes[i],
+                     std::string("MetalRandomUniform") + vs +
+                         kIndexSuffixes[i],
+                     t);
+      RegisterRandom("RandomStandardNormal", &RandomNormal_Compute,
+                     kIndexTypes[i],
+                     std::string("MetalRandomStandardNormal") + vs +
+                         kIndexSuffixes[i],
+                     t);
+      RegisterRandom("TruncatedNormal", &TruncatedNormal_Compute,
+                     kIndexTypes[i],
+                     std::string("MetalTruncatedNormal") + vs +
+                         kIndexSuffixes[i],
+                     t);
+    }
     // RandomUniformInt's dtype constraint names the output, which is int32,
     // so it cannot go through RegisterRandom's float32 constraint.
     {
