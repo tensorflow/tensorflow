@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass propagates QSV information through the model.
+// This transformation pass propagates quantization parameters through the
+// model.
 
 #include <algorithm>
 #include <cstdint>
@@ -24,7 +25,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
@@ -57,17 +57,24 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-#define GEN_PASS_DEF_PROPAGATEQSVPASS
+#define GEN_PASS_DEF_PROPAGATEQPARAMSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 //-------------------------------------------------------------------------===//
 // Helper Functions
 //===----------------------------------------------------------------------===//
 
-// Returns true if any of the op's operands are per-axis quantized.
-bool HasPerAxisQuantizedOperand(mlir::Operation* op) {
+// Returns true if any of the op's operands or results are per-axis quantized.
+bool HasPerAxisQuantizedValue(mlir::Operation* op) {
   for (const auto& operand : op->getOperands()) {
     auto qtype = GetQTypeFromDefiningDequantize(operand);
+    if (qtype.has_value() &&
+        dyn_cast<quant::UniformQuantizedPerAxisType>(*qtype)) {
+      return true;
+    }
+  }
+  for (const auto& result : op->getResults()) {
+    auto qtype = GetQTypeFromConsumingQuantize(result);
     if (qtype.has_value() &&
         dyn_cast<quant::UniformQuantizedPerAxisType>(*qtype)) {
       return true;
@@ -79,7 +86,7 @@ bool HasPerAxisQuantizedOperand(mlir::Operation* op) {
 // Propagates the quantized type `qtype` to all float operands and results of
 // `same_scales_op` by inserting QDQ pairs. This is only used for ops that have
 // the SameScalesOpInterface.
-LogicalResult PropagateQsvAcrossOperandsAndResults(
+LogicalResult PropagateQParamsAcrossOperandsAndResults(
     SameScalesOpInterface same_scales_op, quant::QuantizedType qtype,
     PatternRewriter& rewriter) {
   mlir::Operation* op = same_scales_op.getOperation();
@@ -164,8 +171,8 @@ LogicalResult GetQuantDimensionAfterTranspose(TFL::TransposeOp transpose_op,
   // Find what the quantized dimension has been transposed to
   const auto it = std::find(axes.begin(), axes.end(), quant_dim);
   if (it == axes.end()) {
-    llvm_unreachable(
-        "quantized dimension should be present in a valid permutation");
+    return rewriter.notifyMatchFailure(transpose_op,
+                                       "quantized dimension not found in perm");
   }
   new_quant_dim = std::distance(axes.begin(), it);
   return success();
@@ -185,6 +192,33 @@ class PropagateReshapedPerAxisQuantDim
     std::optional<quant::QuantizedType> qtype =
         GetQTypeFromDefiningDequantize(reshape_op.getOperand(0));
     if (!qtype.has_value()) {
+      // Backward propagation: if result is quantized and input is not
+      std::optional<quant::QuantizedType> out_qtype =
+          GetQTypeFromConsumingQuantize(reshape_op.getResult());
+      if (out_qtype.has_value()) {
+        if (auto per_axis_quant =
+                dyn_cast<quant::UniformQuantizedPerAxisType>(*out_qtype)) {
+          absl::StatusOr<int32_t> in_quant_dim = GetQuantDimensionAfterReshape(
+              reshape_op.getType().getShape(),
+              reshape_op.getInput().getType().getShape(),
+              per_axis_quant.getQuantizedDimension());
+          if (in_quant_dim.ok()) {
+            auto new_element_type =
+                mlir::quant::UniformQuantizedPerAxisType::getChecked(
+                    reshape_op.getLoc(), per_axis_quant.getFlags(),
+                    per_axis_quant.getStorageType(),
+                    per_axis_quant.getExpressedType(),
+                    per_axis_quant.getScales(), per_axis_quant.getZeroPoints(),
+                    *in_quant_dim, per_axis_quant.getStorageTypeMin(),
+                    per_axis_quant.getStorageTypeMax());
+            if (failed(InsertQDQ(reshape_op.getOperand(0), new_element_type,
+                                 rewriter, reshape_op))) {
+              return failure();
+            }
+            return success();
+          }
+        }
+      }
       return rewriter.notifyMatchFailure(reshape_op,
                                          "input is not a dequantize op");
     }
@@ -238,6 +272,50 @@ class PropagateTransposedPerAxisQuantDim
     std::optional<quant::QuantizedType> qtype =
         GetQTypeFromDefiningDequantize(transpose_op.getOperand(0));
     if (!qtype.has_value()) {
+      // Backward propagation: if result is quantized and input is not
+      std::optional<quant::QuantizedType> out_qtype =
+          GetQTypeFromConsumingQuantize(transpose_op.getResult());
+      if (out_qtype.has_value()) {
+        if (auto per_axis_quant =
+                dyn_cast<quant::UniformQuantizedPerAxisType>(*out_qtype)) {
+          DenseIntElementsAttr perm;
+          if (matchPattern(transpose_op.getPerm(), m_Constant(&perm))) {
+            auto input_type =
+                mlir::cast<mlir::ShapedType>(transpose_op.getInput().getType());
+            SmallVector<int64_t, 4> axes;
+            axes.reserve(perm.getNumElements());
+            for (const auto& axis_int : perm.getValues<APInt>()) {
+              int64_t axis = axis_int.getSExtValue();
+              if (axis < 0) {
+                axis += input_type.getRank();
+              }
+              if (axis < 0 ||
+                  (input_type.hasRank() && axis >= input_type.getRank())) {
+                continue;
+              }
+              axes.push_back(axis);
+            }
+            int out_quant_dim = per_axis_quant.getQuantizedDimension();
+            if (out_quant_dim >= 0 && out_quant_dim < axes.size()) {
+              int in_quant_dim = axes[out_quant_dim];
+              auto new_element_type =
+                  mlir::quant::UniformQuantizedPerAxisType::getChecked(
+                      transpose_op.getLoc(), per_axis_quant.getFlags(),
+                      per_axis_quant.getStorageType(),
+                      per_axis_quant.getExpressedType(),
+                      per_axis_quant.getScales(),
+                      per_axis_quant.getZeroPoints(), in_quant_dim,
+                      per_axis_quant.getStorageTypeMin(),
+                      per_axis_quant.getStorageTypeMax());
+              if (failed(InsertQDQ(transpose_op.getOperand(0), new_element_type,
+                                   rewriter, transpose_op))) {
+                return failure();
+              }
+              return success();
+            }
+          }
+        }
+      }
       return rewriter.notifyMatchFailure(transpose_op,
                                          "input is not a dequantize op");
     }
@@ -278,7 +356,8 @@ class PropagateTransposedPerAxisQuantDim
   }
 };
 
-class PropagateQsv : public OpInterfaceRewritePattern<SameScalesOpInterface> {
+class PropagateQParams
+    : public OpInterfaceRewritePattern<SameScalesOpInterface> {
   using OpInterfaceRewritePattern<
       SameScalesOpInterface>::OpInterfaceRewritePattern;
 
@@ -287,7 +366,7 @@ class PropagateQsv : public OpInterfaceRewritePattern<SameScalesOpInterface> {
     // The per-axis quantized ops that don't directly transfer the quantized
     // types from input to output (e.g. TransposeOp, ReshapeOp), need dedicated
     // propagation patterns.
-    if (!op.RequiredSameQuantizedAxes() && HasPerAxisQuantizedOperand(op)) {
+    if (!op.RequiredSameQuantizedAxes() && HasPerAxisQuantizedValue(op)) {
       return rewriter.notifyMatchFailure(
           op, "requires dedicated propagation pattern.");
     }
@@ -296,7 +375,8 @@ class PropagateQsv : public OpInterfaceRewritePattern<SameScalesOpInterface> {
     if (!propagated_type) {
       return rewriter.notifyMatchFailure(op, "No propagated type found.");
     }
-    return PropagateQsvAcrossOperandsAndResults(op, *propagated_type, rewriter);
+    return PropagateQParamsAcrossOperandsAndResults(op, *propagated_type,
+                                                    rewriter);
   }
 };
 
@@ -304,9 +384,10 @@ class PropagateQsv : public OpInterfaceRewritePattern<SameScalesOpInterface> {
 // Pass Definition
 //===----------------------------------------------------------------------===//
 
-struct PropagateQsvPass : public impl::PropagateQsvPassBase<PropagateQsvPass> {
+struct PropagateQParamsPass
+    : public impl::PropagateQParamsPassBase<PropagateQParamsPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PropagateQsvPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PropagateQParamsPass)
 
   void runOnOperation() override;
 };
@@ -316,12 +397,12 @@ struct PropagateQsvPass : public impl::PropagateQsvPassBase<PropagateQsvPass> {
 //===----------------------------------------------------------------------===//
 #include "tensorflow/compiler/mlir/lite/transforms/quantization/generated_strict_quantize.inc"
 
-void PropagateQsvPass::runOnOperation() {
+void PropagateQParamsPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   mlir::ModuleOp module = getOperation();
 
   RewritePatternSet patterns(ctx);
-  patterns.add<PropagateQsv>(ctx);
+  patterns.add<PropagateQParams>(ctx);
 
   // Dedicated propagation patterns.
   patterns.add<PropagateTransposedPerAxisQuantDim,
@@ -331,7 +412,7 @@ void PropagateQsvPass::runOnOperation() {
   greedy_config.enableFolding(false);
   if (failed(
           applyPatternsGreedily(module, std::move(patterns), greedy_config))) {
-    module.emitError("Failed to apply PropagateQsvPass patterns.");
+    module.emitError("Failed to apply PropagateQParamsPass patterns.");
     signalPassFailure();
     return;
   }
@@ -342,8 +423,8 @@ void PropagateQsvPass::runOnOperation() {
   if (failed(applyPatternsGreedily(module, std::move(cleanup_patterns),
                                    greedy_config))) {
     module.emitError(
-        "Failed to apply requant and clean up patterns during QSV "
-        "propagation.");
+        "Failed to apply requant and clean up patterns during quantization "
+        "parameters propagation.");
     signalPassFailure();
   }
 }
@@ -354,8 +435,8 @@ void PropagateQsvPass::runOnOperation() {
 // Pass Creation Function
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<OperationPass<mlir::ModuleOp>> CreatePropagateQsvPass() {
-  return std::make_unique<PropagateQsvPass>();
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreatePropagateQParamsPass() {
+  return std::make_unique<PropagateQParamsPass>();
 }
 
 }  // namespace TFL
