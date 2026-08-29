@@ -158,12 +158,7 @@ TEST(FingerprintingTest, TestFingerprintHasVersion) {
                           ReadSavedModel(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
                           CreateFingerprintDef(export_dir));
-  // version().producer() differs between Windows and non-Windows platforms
-#ifdef _WIN32
-  EXPECT_GT(fingerprint_def.version().producer(), 3);
-#else
   EXPECT_EQ(fingerprint_def.version().producer(), 4);
-#endif
 }
 
 TEST(FingerprintingTest, TestHashCheckpointForModelWithNoVariables) {
