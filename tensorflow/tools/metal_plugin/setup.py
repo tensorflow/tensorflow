@@ -75,7 +75,7 @@ class BinaryDistribution(Distribution):
 
 setup(
     name="tensorflow-metal-plugin",
-    version="0.1.1",
+    version="0.1.2",
     description="Metal GPU backend for TensorFlow on Apple silicon",
     long_description=(HERE / "README.md").read_text(),
     long_description_content_type="text/markdown",
