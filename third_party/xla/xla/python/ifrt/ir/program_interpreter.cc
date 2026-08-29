@@ -362,9 +362,8 @@ struct CallLoadedExecutableOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("Execute program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     ExecuteOptions options = execute_options;
@@ -571,9 +570,8 @@ struct RemapArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("RemapArrays program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
@@ -744,9 +742,8 @@ struct BitcastArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("BitcastArrays program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
@@ -876,9 +873,8 @@ struct CopyArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("CopyArrays program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
