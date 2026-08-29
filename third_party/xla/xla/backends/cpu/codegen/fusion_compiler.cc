@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/config.h"  // IWYU pragma: keep
-#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -133,6 +132,14 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
+emitters::SimplifyArithPassOptions GetSimplifyArithPassOptions(
+    bool fast_min_max) {
+  emitters::SimplifyArithPassOptions options;
+  options.fast_min_max_ = fast_min_max;
+  options.explicit_nan_propagation_ = false;
+  return options;
+}
+
 absl::Status RunPassPipeline(mlir::ModuleOp module, mlir::PassManager& pm,
                              mlir::interpreter::MlirCompilationTrace* trace,
                              int32_t verification_level) {
@@ -231,11 +238,8 @@ void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
 // These passes are primarily responsible for lowering individual ops to
 // their LLVM equivalent.
 void AddGenericLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
-  emitters::SimplifyArithPassOptions simplify_arith_options;
-  simplify_arith_options.fast_min_max_ = fast_min_max;
-  simplify_arith_options.explicit_nan_propagation_ = false;
-  pm.addNestedPass<mlir::func::FuncOp>(
-      emitters::createSimplifyArithPass(simplify_arith_options));
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::createSimplifyArithPass(
+      GetSimplifyArithPassOptions(fast_min_max)));
   pm.addPass(emitters::createExpandIntegerPowerPass());
   pm.addPass(emitters::createSimplifyAffinePass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -405,8 +409,12 @@ void AddNewXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(cpu::createVectorizeXTilePass());
-
   pm.addPass(cpu::createLowerXTileEntryPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::createSimplifyArithPass(
+      GetSimplifyArithPassOptions(/*fast_min_max=*/false)));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
