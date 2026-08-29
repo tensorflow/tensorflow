@@ -71,6 +71,8 @@ load(
     _tfcompile_dfsan_abilists = "tfcompile_dfsan_abilists",
     _tfcompile_dfsan_enabled = "tfcompile_dfsan_enabled",
     _tfcompile_friends = "tfcompile_friends",
+    _tfcompile_msan_enabled = "tfcompile_msan_enabled",
+    _tfcompile_msan_track_origins = "tfcompile_msan_track_origins",
     _tfcompile_target_cpu = "tfcompile_target_cpu",
 )
 
@@ -104,6 +106,8 @@ tfcompile_friends = _tfcompile_friends
 tfcompile_target_cpu = _tfcompile_target_cpu
 tfcompile_dfsan_enabled = _tfcompile_dfsan_enabled
 tfcompile_dfsan_abilists = _tfcompile_dfsan_abilists
+tfcompile_msan_enabled = _tfcompile_msan_enabled
+tfcompile_msan_track_origins = _tfcompile_msan_track_origins
 tf_external_workspace_visible = _tf_external_workspace_visible
 tf_grpc_dependencies = _tf_grpc_dependencies
 tf_grpc_cc_dependencies = _tf_grpc_cc_dependencies

@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -288,7 +287,7 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
   AddGenericLoweringPasses(pm, fast_min_max);
 }
 
-void AddBufferizationPasses(mlir::OpPassManager& pm, bool msan_enabled) {
+void AddBufferizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addPass(mlir::bufferization::createOneShotBufferizePass());
@@ -297,10 +296,6 @@ void AddBufferizationPasses(mlir::OpPassManager& pm, bool msan_enabled) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferHoistingPass());
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
-
-  if (msan_enabled) {
-    pm.addPass(cpu::createInitializeAllocsPass());
-  }
 
   mlir::bufferization::PromoteBuffersToStackPassOptions
       buffer_promotion_options;
@@ -349,7 +344,7 @@ class ModuleCallbackPass
 // Optimizations passes for the tiled emitter.
 // This is currently very simple but will grow to include tiled optimizations
 // such as transpose hoisting and dimension reduction.
-void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled) {
+void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(xtile::createVerifyLegalXTileOpsPass());
 
   emitters::RegisterOptimizationPasses(pm);
@@ -381,7 +376,7 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled) {
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
   pm.addPass(cpu::createFuseElementwisePass());
 
-  AddBufferizationPasses(pm, msan_enabled);
+  AddBufferizationPasses(pm);
 
   pm.addPass(cpu::createLinalgElementwiseToVectorPass());
 
@@ -510,7 +505,7 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
   if (options_.use_new_xtile_lowering) {
     AddNewXtileToVectorPasses(tiled_pass_manager_);
   } else {
-    AddXtileToVectorPasses(tiled_pass_manager_, options_.msan_enabled);
+    AddXtileToVectorPasses(tiled_pass_manager_);
   }
   if (should_dump_mlir_passes) {
     tiled_pass_manager_.addPass(
