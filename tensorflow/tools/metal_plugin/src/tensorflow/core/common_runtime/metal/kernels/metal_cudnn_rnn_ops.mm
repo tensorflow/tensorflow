@@ -19,6 +19,7 @@ limitations under the License.
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_mps_graph.h"
+#include "tensorflow/core/common_runtime/metal/kernels/metal_shader_library.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
@@ -160,6 +162,24 @@ void BuildLayout(const RnnSpec& spec, std::vector<ParamSlot>* weights,
   }
 }
 
+// How many uniform draws the dropout masks need, and where each layer
+// boundary's block starts.
+//
+// One block per boundary between layers, shaped like the tensor that crosses
+// it: [time, batch, state * directions]. Zero when there is no dropout, when
+// the pass is not training, or when there is only one layer and so no
+// boundary to drop at, which is exactly cuDNN's rule.
+int64_t MaskBlock(const RnnSpec& spec) {
+  return spec.seq_length * spec.batch * spec.state_width() * spec.directions();
+}
+
+int64_t MaskElements(const RnnSpec& spec) {
+  if (spec.dropout <= 0.0f || !spec.is_training || spec.num_layers < 2) {
+    return 0;
+  }
+  return (spec.num_layers - 1) * MaskBlock(spec);
+}
+
 int64_t ParamsSize(const RnnSpec& spec) {
   std::vector<ParamSlot> weights, biases;
   BuildLayout(spec, &weights, &biases);
@@ -171,6 +191,9 @@ int64_t ParamsSize(const RnnSpec& spec) {
 
 struct RnnOp {
   RnnSpec spec;
+  // Bumped on every forward so two steps do not drop the same units. Atomic
+  // because one kernel object serves every thread running that node.
+  std::atomic<uint32_t> dropout_counter{0};
   TF_DataType dtype = TF_FLOAT;
   TF_DataType size_dtype = TF_INT32;
   int32_t num_params = 0;
@@ -228,14 +251,6 @@ bool ReadMode(TF_OpKernelConstruction* ctx, RnnSpec* spec,
   if (spec->dropout < 0.0f || spec->dropout >= 1.0f) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "Metal: the recurrent dropout rate must be in [0, 1).");
-    return false;
-  }
-  if (spec->dropout != 0.0f) {
-    // The masks have to be stored so the gradient uses the same numbers as
-    // the forward, which means giving the reserve space a layout. Refused
-    // until then rather than silently trained without regularisation.
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: the recurrent ops implement dropout of zero only.");
     return false;
   }
 
@@ -393,16 +408,16 @@ struct RnnGraph {
   MPSGraphTensor* output_c = nil;
 };
 
-// `masks` holds one dropout mask per layer boundary, so `num_layers - 1` of
-// them, each shaped like that boundary's input. They are nil when the rate is
-// zero or the pass is not training. They are supplied rather than drawn inside
-// the graph because the backward pass has to use the same numbers as the
-// forward, and a graph that drew its own would draw different ones.
+// `uniforms` is the flat block of draws behind the dropout masks, one region
+// per layer boundary, or nil when there is no dropout. It is fed in rather
+// than drawn inside the graph for two reasons: MPSGraph would bake a seed into
+// the cached graph and hand back the same numbers on every call, and the
+// backward pass has to reconstruct exactly the masks the forward used, which
+// it can only do by being given them.
 RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
                     MPSGraphTensor* input, MPSGraphTensor* input_h,
                     MPSGraphTensor* input_c, MPSGraphTensor* params,
-                    MPSGraphTensor* lengths,
-                    const std::vector<MPSGraphTensor*>& masks) {
+                    MPSGraphTensor* lengths, MPSGraphTensor* uniforms) {
   std::vector<ParamSlot> weights, biases;
   BuildLayout(spec, &weights, &biases);
   const int64_t gates = spec.gates();
@@ -596,9 +611,36 @@ RnnGraph BuildStack(MPSGraph* g, const RnnSpec& spec, MPSDataType dtype,
     // output, which is why the mask is indexed by the boundary rather than by
     // the layer.
     MPSGraphTensor* mask = nil;
-    if (layer + 1 < spec.num_layers &&
-        static_cast<size_t>(layer) < masks.size()) {
-      mask = masks[static_cast<size_t>(layer)];
+    if (uniforms != nil && layer + 1 < spec.num_layers) {
+      // Inverted dropout: survivors are scaled up by 1/(1 - rate) so the
+      // expected value crossing the boundary is unchanged and inference needs
+      // no compensating pass.
+      const int64_t block = MaskBlock(spec);
+      MPSGraphTensor* draws =
+          [g sliceTensor:uniforms
+               dimension:0
+                   start:static_cast<NSInteger>(layer * block)
+                  length:static_cast<NSInteger>(block)
+                    name:nil];
+      draws = [g reshapeTensor:draws
+                     withShape:@[
+                       @(static_cast<NSInteger>(T)),
+                       @(static_cast<NSInteger>(B)),
+                       @(static_cast<NSInteger>(S * dirs))
+                     ]
+                          name:nil];
+      MPSGraphTensor* rate =
+          [g constantWithScalar:static_cast<double>(spec.dropout)
+                       dataType:dtype];
+      MPSGraphTensor* kept =
+          [g castTensor:[g greaterThanOrEqualToWithPrimaryTensor:draws
+                                                secondaryTensor:rate
+                                                           name:nil]
+                 toType:dtype
+                   name:nil];
+      mask = Mul(g, kept,
+                 [g constantWithScalar:1.0 / (1.0 - spec.dropout)
+                              dataType:dtype]);
     }
     for (int64_t t = 0; t < T; ++t) {
       MPSGraphTensor* joined = per_direction[0][static_cast<size_t>(t)];
@@ -675,9 +717,14 @@ void AppendSpecToKey(const RnnSpec& spec, std::string* key) {
   key->append(spec.has_lengths ? "/masked" : "/full");
   key->append(spec.skip_input ? "/skip" : "/lin");
   key->append("/p").append(std::to_string(spec.num_proj));
-  // The rate rather than the seed: the mask arrives as an input, so two calls
-  // with different seeds share a graph and differ only in what they are fed.
-  key->append("/do").append(spec.dropout > 0.0f ? "1" : "0");
+  // The rate itself, because it is baked into the graph as the threshold the
+  // draws are compared against: keying only on whether dropout is on would
+  // hand a network asking for 0.1 the graph built for 0.5. The seed is
+  // deliberately absent, since the draws arrive as an input and two seeds
+  // differ only in what is fed. Zero when no mask is in play at all, so an
+  // inference pass cannot share a graph with a training pass at the same rate.
+  key->append("/do").append(
+      std::to_string(MaskElements(spec) > 0 ? spec.dropout : 0.0f));
 }
 
 }  // namespace
@@ -894,12 +941,15 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
       ctx, 2, op->dtype, cell_shape.data(), 3,
       static_cast<size_t>(ElementCount(cell_shape)) * element, status));
   if (TF_GetCode(status) != TF_OK) return;
-  // The reserve space is opaque and this backend keeps nothing in it: the
-  // gradient rebuilds the forward pass from the inputs it is given, which
-  // costs time and saves having to define a second layout.
-  const std::vector<int64_t> reserve_shape = {0};
-  reserve.reset(TF_AllocateOutput(ctx, 3, op->dtype, reserve_shape.data(), 1,
-                                  0, status));
+  // The reserve space holds the dropout draws and nothing else. Everything
+  // else the gradient needs it rebuilds from the inputs it is given, which
+  // costs time and saves defining a second layout; the draws are the one
+  // thing it cannot rebuild, because a second draw would not be the same one.
+  const int64_t mask_elements = MaskElements(spec);
+  const std::vector<int64_t> reserve_shape = {mask_elements};
+  reserve.reset(TF_AllocateOutput(
+      ctx, 3, op->dtype, reserve_shape.data(), 1,
+      static_cast<size_t>(mask_elements) * element, status));
   if (TF_GetCode(status) != TF_OK) return;
   for (int i = 4; i < TF_NumOutputs(ctx); ++i) {
     ScopedTensor extra;
@@ -921,6 +971,42 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
   const std::vector<int64_t> graph_in_shape = {spec.seq_length, spec.batch,
                                                spec.input_size};
   const std::vector<int64_t> lengths_shape = {spec.batch};
+  const std::vector<int64_t> mask_shape = {mask_elements};
+
+  // The draws are made here rather than in the graph, into the reserve space
+  // the gradient will be handed. The counter is what makes two steps drop
+  // different units while the seed keeps a run reproducible.
+  if (mask_elements > 0) {
+    BufferSlice reserve_slice;
+    if (!SliceForTensor(reserve.get(), &reserve_slice, status)) return;
+    const char* fn = op->dtype == TF_HALF ? "tf_random_uniform_half"
+                                          : "tf_random_uniform_float";
+    id<MTLComputePipelineState> draw = PipelineFor(device, fn, status);
+    if (draw == nil) return;
+    OrderedCommandBuffer draw_buffer(stream);
+    if (!draw_buffer.ok()) {
+      TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
+                   "Metal: could not create a command buffer for the "
+                   "recurrent dropout draws.");
+      return;
+    }
+    RandomParams draw_params;
+    draw_params.count = static_cast<uint32_t>(mask_elements);
+    draw_params.seed_lo = static_cast<uint32_t>(spec.seed);
+    draw_params.seed_hi = static_cast<uint32_t>(spec.seed2);
+    draw_params.counter =
+        op->dropout_counter.fetch_add(1, std::memory_order_relaxed);
+    id<MTLComputeCommandEncoder> encoder =
+        [draw_buffer.get() computeCommandEncoder];
+    [encoder setComputePipelineState:draw];
+    [encoder setBuffer:reserve_slice.buffer
+                offset:reserve_slice.offset
+               atIndex:0];
+    [encoder setBytes:&draw_params length:sizeof(draw_params) atIndex:1];
+    Dispatch1D(encoder, draw, draw_params.count);
+    [encoder endEncoding];
+    draw_buffer.Commit();
+  }
 
   std::string key = "CudnnRNNForward";
   AppendSpecToKey(spec, &key);
@@ -948,6 +1034,13 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         [out->inputs addObject:h0];
         [out->inputs addObject:c0];
         [out->inputs addObject:p];
+        MPSGraphTensor* drops = nil;
+        if (mask_elements > 0) {
+          drops = [g placeholderWithShape:MPSShape(mask_shape)
+                                 dataType:mps_dtype
+                                     name:nil];
+          [out->inputs addObject:drops];
+        }
         MPSGraphTensor* len = nil;
         if (captured.has_lengths) {
           len = [g placeholderWithShape:MPSShape(lengths_shape)
@@ -968,7 +1061,7 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
                 ? x
                 : [g transposeTensor:x dimension:0 withDimension:1 name:nil];
         RnnGraph built = BuildStack(g, captured, mps_dtype, sequence, h0, c0,
-                                    p, len, {});
+                                    p, len, drops);
         MPSGraphTensor* result =
             captured.time_major
                 ? built.output
@@ -1005,6 +1098,12 @@ void Forward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
   [feeds addObject:h_data];
   [feeds addObject:c_data];
   [feeds addObject:p_data];
+  if (mask_elements > 0) {
+    MPSGraphTensorData* drop_data =
+        TensorDataForTensor(reserve.get(), op->dtype, device, status);
+    if (drop_data == nil) return;
+    [feeds addObject:drop_data];
+  }
   if (spec.has_lengths) {
     MPSGraphTensorData* len_data =
         TensorDataForTensor(lengths.get(), TF_INT32, device, status);
@@ -1047,6 +1146,9 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
   ScopedTensor& output_backprop = in[7 + shift];
   ScopedTensor& output_h_backprop = in[8 + shift];
   ScopedTensor& output_c_backprop = in[9 + shift];
+  // The forward's dropout draws, which the gradient has to reuse: masking
+  // with a fresh draw would differentiate a network the forward never ran.
+  ScopedTensor& reserve = in[10 + shift];
 
   RnnSpec spec = op->spec;
   const std::vector<int64_t> in_shape = ShapeOf(input.get());
@@ -1076,6 +1178,14 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
   const std::vector<int64_t> out_shape = ShapeOf(output_backprop.get());
   const std::vector<int64_t> lengths_shape = {spec.batch};
   const size_t element = TF_DataTypeSize(op->dtype);
+  const int64_t mask_elements = TF_TensorElementCount(reserve.get());
+  const std::vector<int64_t> mask_shape = {mask_elements};
+  if (mask_elements != MaskElements(spec)) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the recurrent gradient was handed a reserve space "
+                 "that does not match the configuration it was told about.");
+    return;
+  }
 
   ScopedTensor dx, dh, dc, dparams;
   dx.reset(TF_AllocateOutput(
@@ -1140,6 +1250,13 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         [out->inputs addObject:dy];
         [out->inputs addObject:dhy];
         [out->inputs addObject:dcy];
+        MPSGraphTensor* drops = nil;
+        if (mask_elements > 0) {
+          drops = [g placeholderWithShape:MPSShape(mask_shape)
+                                 dataType:mps_dtype
+                                     name:nil];
+          [out->inputs addObject:drops];
+        }
         MPSGraphTensor* len = nil;
         if (captured.has_lengths) {
           len = [g placeholderWithShape:MPSShape(lengths_shape)
@@ -1158,7 +1275,7 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
                 ? x
                 : [g transposeTensor:x dimension:0 withDimension:1 name:nil];
         RnnGraph built = BuildStack(g, captured, mps_dtype, sequence, h0, c0,
-                                    p, len, {});
+                                    p, len, drops);
         MPSGraphTensor* result =
             captured.time_major
                 ? built.output
@@ -1230,6 +1347,12 @@ void Backward_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         TensorDataForTensor(fed[i]->get(), op->dtype, device, status);
     if (data == nil) return;
     [feeds addObject:data];
+  }
+  if (mask_elements > 0) {
+    MPSGraphTensorData* drop_data =
+        TensorDataForTensor(reserve.get(), op->dtype, device, status);
+    if (drop_data == nil) return;
+    [feeds addObject:drop_data];
   }
   if (spec.has_lengths) {
     MPSGraphTensorData* len_data =
