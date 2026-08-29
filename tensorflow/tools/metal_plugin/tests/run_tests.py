@@ -91,6 +91,19 @@ def main():
   except Exception:  # pylint: disable=broad-except
     check("an op with no GPU kernel is refused", True)
 
+  # float16 with an odd column count gives a row stride MPSMatrix will not
+  # accept, so these shapes take a different path through the kernel than the
+  # even ones and are the reason to check both.
+  for m, kk, n in [(3, 5, 7), (4, 6, 8)]:
+    lhs = rng.standard_normal((m, kk)).astype(np.float16)
+    rhs = rng.standard_normal((kk, n)).astype(np.float16)
+    with tf.device("/GPU:0"):
+      got = tf.matmul(tf.constant(lhs), tf.constant(rhs))
+    with tf.device("/CPU:0"):
+      want = tf.matmul(tf.constant(lhs), tf.constant(rhs))
+    close(f"MatMul float16 {m}x{kk}x{n}", got.numpy().astype(np.float32),
+          want.numpy().astype(np.float32), rtol=2e-2, atol=2e-2)
+
   # CheckNumerics is the identity plus a promise to fail, and a version of it
   # that only forwarded would pass every value check above while breaking the
   # one thing the op exists for.
