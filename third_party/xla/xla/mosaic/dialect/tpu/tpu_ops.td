@@ -221,7 +221,7 @@ def TPU_SortOp : TPU_Op<"sort", [Pure]> {
     preserve their input order regardless of the sorting order. Masked-out keys
     and values are placed at the end of the output vectors. Integer keys are
     treated as unsigned. An output mask indicates which outputs correspond to
-    the valid inputs. 
+    the valid inputs.
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
@@ -1217,6 +1217,45 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+}
+
+def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure]> {
+  let summary = "Slices a SPMEM memref to a TileSPMEM memref for the executing subcore.";
+  let description = [{
+    Extracts a TileSPMEM slice from a SPMEM memref.
+
+    The slicing occurs along the final dimension of the input shape. To properly
+    align with the physical SPMEM stripe allocation on SparseCore, the final
+    dimension of the input shape must satisfy strict requirements.
+
+    For layouts that do not pack multiple elements per word, the requirement is:
+    ```
+    input_shape[-1] == num_subcores * spmem_stripe_granularity * num_elements_per_word
+    ```
+    For layouts that pack multiple elements per word:
+    ```
+    input_shape[-1] == num_subcores * spmem_stripe_granularity
+    ```
+    where `spmem_stripe_granularity` is the stripe size in physical words (e.g. 8
+    words on TPU v7x).
+
+    Examples of valid input shapes/layouts, assuming 16 subcores and word size 4
+    bytes:
+      - `8x128xbf16, #tpu.tiled<(8,128)(2,1),[1,1]>`, (2 packed elements / word)
+      - `8x256xbf16, #tpu.tiled<(16),[16,1]>` (no packing)
+      - `8x128xi32, #tpu.tiled<(8,128),[1,1]>`
+
+    The resulting slice matches the input shape on all dimensions except the
+    final dimension, which is reduced by a factor of `num_subcores`.
+  }];
+  let arguments = (ins
+    AnyMemRef:$mem_ref
+  );
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $mem_ref attr-dict `:` type($mem_ref) `->` type($result)
+  }];
+  let hasVerifier = 1;
 }
 
 def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
