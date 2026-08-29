@@ -362,6 +362,15 @@ struct DebugParams {
   float prefix[10];
 };
 
+// Parameters for the check-numerics shaders. Layout must match the Metal
+// struct.
+struct CheckNumericsParams {
+  uint32_t count;
+  uint32_t padding0;
+  uint32_t padding1;
+  uint32_t padding2;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
