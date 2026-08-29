@@ -620,13 +620,15 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     # the output: the kernel returns early without writing the output for an
     # empty input, so a non-empty output would be returned uninitialized.
     np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
-    dims = rank + extra_dims
     fft_length = (16,) * rank
 
-    x = np.zeros((0,) * dims).astype(np_rtype)
+    # Batch dimensions must stay non-empty: if every dimension is zero the
+    # output is empty regardless of how the FFT axes are sized, and the test
+    # would pass against the unfixed kernel too.
+    x = np.zeros((2,) * extra_dims + (0,) * rank).astype(np_rtype)
     self.assertEqual(0, self._tf_fft(x, rank, fft_length).size)
 
-    x = np.zeros((0,) * dims).astype(np_ctype)
+    x = np.zeros((2,) * extra_dims + (0,) * rank).astype(np_ctype)
     self.assertEqual(0, self._tf_ifft(x, rank, fft_length).size)
 
   @parameterized.parameters(itertools.product(
