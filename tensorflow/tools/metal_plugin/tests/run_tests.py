@@ -91,6 +91,27 @@ def main():
   except Exception:  # pylint: disable=broad-except
     check("an op with no GPU kernel is refused", True)
 
+  # The float16 max-pooling gradient scatters through an atomic, which Metal
+  # has only for float, so it accumulates into a float32 temporary and is
+  # narrowed afterwards. Overlapping windows are what make that path matter:
+  # without them no two gradients ever land on the same element.
+  pooled = rng.standard_normal((1, 4, 4, 2)).astype(np.float16)
+  image = rng.standard_normal((1, 8, 8, 2)).astype(np.float16)
+  pool_args = dict(ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding="SAME")
+  with tf.device("/GPU:0"):
+    _, argmax = tf.raw_ops.MaxPoolWithArgmax(
+        input=tf.constant(image), Targmax=tf.int64,
+        include_batch_in_index=True, **pool_args)
+    scattered = tf.raw_ops.MaxPoolGradWithArgmax(
+        input=tf.constant(image), grad=tf.constant(pooled), argmax=argmax,
+        include_batch_in_index=True, **pool_args).numpy()
+  expected = np.zeros(image.size, dtype=np.float64)
+  for value, index in zip(pooled.reshape(-1).astype(np.float64),
+                          argmax.numpy().reshape(-1)):
+    expected[index] += value
+  close("MaxPoolGradWithArgmax float16", scattered.reshape(-1), expected,
+        rtol=2e-2, atol=2e-2)
+
   # float16 with an odd column count gives a row stride MPSMatrix will not
   # accept, so these shapes take a different path through the kernel than the
   # even ones and are the reason to check both.

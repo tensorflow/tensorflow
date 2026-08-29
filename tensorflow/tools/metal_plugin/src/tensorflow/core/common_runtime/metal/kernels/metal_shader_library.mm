@@ -483,27 +483,36 @@ struct PoolIndexParams {
           ? offset                                                            \
           : ((best_y * params.in_w + best_x) * params.channels + c);
 
-#define TF_METAL_POOL_ARGMAX_FWD(NAME, IDX)                                   \
-  kernel void NAME(device const float* in [[buffer(0)]],                      \
-                   device float* out [[buffer(1)]],                           \
+// The scan itself always compares in float, whatever the storage type: a half
+// comparison would be the same order but the accumulator costs nothing here
+// and the widening is free on the read.
+#define TF_METAL_POOL_ARGMAX_FWD(NAME, IDX, T)                                \
+  kernel void NAME(device const T* in [[buffer(0)]],                          \
+                   device T* out [[buffer(1)]],                               \
                    device IDX* argmax [[buffer(2)]],                          \
                    constant PoolIndexParams& params [[buffer(3)]],            \
                    uint gid [[thread_position_in_grid]]) {                    \
     if (gid >= params.count) return;                                          \
     TF_METAL_POOL_ARGMAX(in)                                                  \
-    out[gid] = best;                                                          \
+    out[gid] = T(best);                                                       \
     argmax[gid] = IDX(flat);                                                  \
   }
 
-TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_float_i32, int)
-TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_float_i64, long)
+TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_float_i32, int, float)
+TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_float_i64, long, float)
+TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_half_i32, int, half)
+TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_half_i64, long, half)
 
 // Scatters one pooled gradient back to the input element that won its window.
 // Overlapping windows share winners, so the accumulation is atomic. The index
 // is turned back into a full offset here, since TensorFlow's default form
 // drops the batch.
-#define TF_METAL_POOL_GRAD_ARGMAX(NAME, IDX)                                  \
-  kernel void NAME(device const float* grad [[buffer(0)]],                    \
+// The destination is always atomic_float, including for half input. Metal has
+// no atomic add for half, and the sum of several gradients is exactly where
+// half would lose the most; the caller narrows the result afterwards, so half
+// pays one extra pass and keeps float accumulation.
+#define TF_METAL_POOL_GRAD_ARGMAX(NAME, IDX, T)                               \
+  kernel void NAME(device const T* grad [[buffer(0)]],                        \
                    device const IDX* argmax [[buffer(1)]],                    \
                    device atomic_float* out [[buffer(2)]],                    \
                    constant PoolIndexParams& params [[buffer(3)]],            \
@@ -514,19 +523,31 @@ TF_METAL_POOL_ARGMAX_FWD(tf_maxpool_argmax_float_i64, long)
     uint index = uint(argmax[gid]);                                           \
     if (params.include_batch == 0) index += b * per_image;                    \
     if (index >= params.batch * per_image) return;                            \
-    atomic_fetch_add_explicit(&out[index], grad[gid], memory_order_relaxed);  \
+    atomic_fetch_add_explicit(&out[index], float(grad[gid]),                  \
+                              memory_order_relaxed);                          \
   }
 
-TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_float_i32, int)
-TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_float_i64, long)
+TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_float_i32, int, float)
+TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_float_i64, long, float)
+TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_half_i32, int, half)
+TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_half_i64, long, half)
+
+// Narrows the float accumulator the half gradient scatters into.
+kernel void tf_narrow_float_to_half(device const float* in [[buffer(0)]],
+                                    device half* out [[buffer(1)]],
+                                    constant FillParams& params [[buffer(2)]],
+                                    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  out[gid] = half(in[gid]);
+}
 
 // The second-order gradient is the gather that mirrors that scatter: each
 // pooled position reads the input-shaped gradient at the element it selected.
 // No atomics, since every pooled position writes its own slot.
-#define TF_METAL_POOL_GRADGRAD_ARGMAX(NAME, IDX)                              \
-  kernel void NAME(device const float* grad [[buffer(0)]],                    \
+#define TF_METAL_POOL_GRADGRAD_ARGMAX(NAME, IDX, T)                           \
+  kernel void NAME(device const T* grad [[buffer(0)]],                        \
                    device const IDX* argmax [[buffer(1)]],                    \
-                   device float* out [[buffer(2)]],                           \
+                   device T* out [[buffer(2)]],                               \
                    constant PoolIndexParams& params [[buffer(3)]],            \
                    uint gid [[thread_position_in_grid]]) {                    \
     if (gid >= params.count) return;                                          \
@@ -534,24 +555,33 @@ TF_METAL_POOL_GRAD_ARGMAX(tf_maxpool_grad_with_argmax_float_i64, long)
     const uint b = gid / (params.channels * params.out_w * params.out_h);     \
     uint index = uint(argmax[gid]);                                           \
     if (params.include_batch == 0) index += b * per_image;                    \
-    out[gid] = index < params.batch * per_image ? grad[index] : 0.0f;         \
+    out[gid] = index < params.batch * per_image ? grad[index] : T(0);         \
   }
 
-TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_float_i32, int)
-TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_float_i64, long)
+TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_float_i32, int,
+                              float)
+TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_float_i64, long,
+                              float)
+TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_half_i32, int,
+                              half)
+TF_METAL_POOL_GRADGRAD_ARGMAX(tf_maxpool_gradgrad_with_argmax_half_i64, long,
+                              half)
 
 // MaxPoolGradGrad without stored indices: the winner is recomputed from the
 // original input, then the input-shaped gradient is read there.
-kernel void tf_maxpool_gradgrad_float(device const float* in [[buffer(0)]],
-                                      device const float* grad [[buffer(1)]],
-                                      device float* out [[buffer(2)]],
-                                      constant PoolIndexParams& params
-                                          [[buffer(3)]],
-                                      uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  TF_METAL_POOL_ARGMAX(in)
-  out[gid] = grad[offset];
-}
+#define TF_METAL_POOL_GRADGRAD(NAME, T)                                       \
+  kernel void NAME(device const T* in [[buffer(0)]],                          \
+                   device const T* grad [[buffer(1)]],                        \
+                   device T* out [[buffer(2)]],                               \
+                   constant PoolIndexParams& params [[buffer(3)]],            \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    TF_METAL_POOL_ARGMAX(in)                                                  \
+    out[gid] = grad[offset];                                                  \
+  }
+
+TF_METAL_POOL_GRADGRAD(tf_maxpool_gradgrad_float, float)
+TF_METAL_POOL_GRADGRAD(tf_maxpool_gradgrad_half, half)
 
 // ---- bin counting ----
 
