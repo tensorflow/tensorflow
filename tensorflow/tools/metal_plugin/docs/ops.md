@@ -281,39 +281,43 @@ inherits when it has no kernel of its own.
   sparse matrix ops are registered with their tensors pinned to host memory,
   because their kernels run the host's arithmetic over a resource the kernel C
   API cannot reach. On a unified memory device the pinning costs a memcpy
-  rather than a transfer, but the arithmetic itself is on the CPU.
-* **The recurrent ops implement a subset of what cuDNN accepts.** Dropout
-  between layers, a projection size other than zero, and the `skip_input`
-  mode are refused by name at construction rather than approximated. The four
-  cell types, both directions, any number of layers and per-sequence lengths
-  all work. The parameter buffer's layout is this backend's own, which is
+  rather than a transfer, but the arithmetic itself is on the CPU. This is the
+  same missing C API as
+  [#126374](https://github.com/tensorflow/tensorflow/issues/126374) and is not
+  fixable from inside a plugin; the proposed fix is
+  [#126377](https://github.com/tensorflow/tensorflow/pull/126377).
+* **The recurrent parameter buffer's layout is this backend's own.** That is
   allowed because the buffer is opaque and the canonical conversions are the
-  only defined way in and out of it; a checkpoint holding a buffer written by
-  cuDNN will not load, and one holding canonical weights will.
+  only defined way in and out of it, but a checkpoint holding a buffer written
+  by cuDNN will not load; one holding canonical weights will. Dropout's masks
+  are likewise this backend's own sequence, since nothing outside cuDNN
+  defines that one either: what is guaranteed is the rate, the inverted
+  scaling, the placement between layers, and reproducibility from the seed.
+  Everything else cuDNN accepts is implemented, including `skip_input`, a
+  recurrent projection, all four cell types, both directions, any number of
+  layers and per-sequence lengths.
 * **`ParallelConcat` is registered but always fails**, which is what every
   device does, CUDA included: the graph rewrite replaces the op with an
   allocation and one update per stacked value, so reaching the kernel means
-  the rewrite did not run. Both ops it is replaced by are implemented.
-* **Random ops and optimisers are float32 only.**
-* **`CheckNumerics` forwards its input without checking.** Detecting a
-  non-finite value on device needs a readback of a reduction on every call,
-  which would serialise the stream. The values pass through unchanged; the
-  op does not raise.
-* **The max pooling ops that carry indices are float32 and NHWC only.**
-  MPSGraph reports the winner's position within the pooling window rather
-  than the flattened position in the image that TensorFlow defines, so these
-  run as shaders that scan the window and emit TensorFlow's index directly.
-  The gradient accumulates with a Metal atomic, which exists for float and
-  not for half.
-* **`MatMul`** takes rank-2 tensors only, and float16 requires an even column
-  count, since an odd one produces a row stride MPS will not accept.
-* **No graph optimizer or profiler module.** The `TF_InitGraph` and
-  `TF_InitProfiler` hooks are unimplemented, so there is no op fusion and no
-  Metal timeline in the TensorFlow profiler.
+  the rewrite did not run. Both ops it is replaced by are implemented. This is
+  correct behaviour rather than a gap.
+* **The graph pass fuses a bias and an activation, and nothing else.** A
+  folded batch normalisation would need more inputs than the fused kernels
+  read, and fusing across a tensor with more than one consumer would leave the
+  other consumers pointing at a node that no longer exists, so both are
+  refused. The pass also turns TensorFlow's layout optimizer off, because
+  MPSGraph takes NHWC and NCHW alike and its transposes are pure loss here.
+* **The profiler reports command buffers, not kernels.** One event per
+  submission, named after the node that submitted it. A command buffer that
+  the runtime issues on its own, a copy or a fill, has no node to name and
+  appears as `unnamed`.
+* **`MatMul` takes rank-2 tensors only**, which is the op definition rather
+  than a restriction: anything higher is `BatchMatMulV2` or `V3`, which this
+  backend implements separately.
+* **The max pooling ops that carry indices are NHWC only**, which is again the
+  op definition: none of them has a `data_format` attribute.
 * **Single device.** Every Apple silicon Mac reports one GPU; multi-device has
   had no testing.
-* **`memset32`** with a pattern that is not four equal bytes runs on the host.
-  A compute shader would be faster for large buffers.
 
 ## Ops the CUDA build registers and this one does not
 
@@ -337,14 +341,13 @@ routes, and it is worth knowing which because they are not equally fast:
   `TensorArray` and the CSR sparse matrix ops. That is the pinned-memory case
   under [Limitations](#limitations).
 
-Three groups are registered but do less than the CUDA kernel of the same name,
+Two groups are registered but do less than the CUDA kernel of the same name,
 and say so rather than pretending otherwise:
 
 * **The NCCL collectives** reduce across devices, and every Apple silicon Mac
   reports one GPU. `NcclAllReduce`, `NcclBroadcast` and `NcclReduce` copy their
   input to their output, which is what reducing over one device means, and
   fail at construction when asked for more than one.
-* **`CheckNumerics`** forwards its input without checking it.
 * **`ParallelConcat`** fails with TensorFlow's own message, as it does on
   every device including CUDA.
 
@@ -356,6 +359,8 @@ and say so rather than pretending otherwise:
 | `metal_stream.{h,mm}` | Streams, events, timers, `OrderedCommandBuffer`, per-device state |
 | `metal_stream_executor.{h,mm}` | The `SP_StreamExecutor` callback table |
 | `metal_platform.{h,mm}` | `SP_Platform`, device discovery, plugin entry point |
+| `metal_profiler.{h,mm}` | The pluggable profiler: op labels, GPU timings, XSpace |
+| `metal_graph.{h,mm}` | The graph optimizer: bias and activation fusion |
 | `metal_plugin_registrar.cc` | Static registration with core |
 | `kernels/metal_mps_graph.{h,mm}` | MPSGraph bridge, graph cache, zero-copy tensor aliasing |
 | `kernels/metal_shader_library.{h,mm}` | Embedded Metal source and pipeline cache |
