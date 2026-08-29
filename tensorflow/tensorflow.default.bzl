@@ -125,7 +125,6 @@ pywrap_aware_tf_cc_shared_object = _pywrap_aware_tf_cc_shared_object
 pywrap_aware_filegroup = _pywrap_aware_filegroup
 pywrap_aware_genrule = _pywrap_aware_genrule
 pywrap_aware_cc_import = _pywrap_aware_cc_import
-pywrap_library = _pywrap_library
 pywrap_common_library = _pywrap_common_library
 stripped_cc_info = _stripped_cc_info
 pywrap_binaries = _pywrap_binaries
@@ -155,5 +154,20 @@ def tf_cc_shared_library(name, linkopts = [], **kwargs):
     _tf_cc_shared_library(
         name = name,
         linkopts = linkopts + tf_system_libs_linkopts(),
+        **kwargs
+    )
+
+def pywrap_library(name, common_lib_linkopts = {}, **kwargs):
+    updated_common_lib_linkopts = dict(common_lib_linkopts)
+    sys_linkopts = tf_system_libs_linkopts()
+    if sys_linkopts:
+        for lib in ["tensorflow/tensorflow_framework", "tensorflow/tensorflow_cc"]:
+            if lib in updated_common_lib_linkopts:
+                updated_common_lib_linkopts[lib] = updated_common_lib_linkopts[lib] + sys_linkopts
+            else:
+                updated_common_lib_linkopts[lib] = sys_linkopts
+    _pywrap_library(
+        name = name,
+        common_lib_linkopts = updated_common_lib_linkopts,
         **kwargs
     )
