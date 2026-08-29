@@ -259,6 +259,60 @@ def main():
               bool(events) and all(e.duration_ps > 0 for e in events),
               f"{len(events)} events")
 
+  # The graph module. Fusion is not visible in the answer, only in how many
+  # ops reach the device, so the check is a profile of two graphs that differ
+  # in exactly the condition the pass refuses to fuse across: a second
+  # consumer of the convolution's output.
+  print("\ngraph optimizer:")
+  image = tf.constant(rng.standard_normal((4, 16, 16, 8)), dtype=tf.float32)
+  kernel = tf.constant(rng.standard_normal((3, 3, 8, 16)), dtype=tf.float32)
+  bias = tf.constant(rng.standard_normal((16,)), dtype=tf.float32)
+
+  @tf.function
+  def fusable(value):
+    return tf.nn.relu(tf.nn.bias_add(
+        tf.nn.conv2d(value, kernel, 1, "SAME"), bias))
+
+  @tf.function
+  def blocked(value):
+    convolved = tf.nn.conv2d(value, kernel, 1, "SAME")
+    return tf.nn.relu(tf.nn.bias_add(convolved, bias)) + convolved
+
+  def ops_on_device(fn):
+    with tf.device("/GPU:0"):
+      fn(image)  # Warm the graph so the trace holds only the steady state.
+    with tempfile.TemporaryDirectory() as logdir:
+      tf.profiler.experimental.start(logdir)
+      with tf.device("/GPU:0"):
+        _ = fn(image).numpy()
+      tf.profiler.experimental.stop()
+      traces = glob.glob(os.path.join(logdir, "**", "*.xplane.pb"),
+                         recursive=True)
+      if not traces:
+        return set()
+      space = xplane_pb2.XSpace()
+      space.ParseFromString(open(traces[0], "rb").read())
+      for plane in space.planes:
+        if "Metal" in plane.name:
+          return {plane.event_metadata[e.metadata_id].name
+                  for line in plane.lines for e in line.events}
+    return set()
+
+  fused_ops = ops_on_device(fusable)
+  unfused_ops = ops_on_device(blocked)
+  check("a fusable block reaches the device as one op",
+        "BiasAdd" not in fused_ops and "Conv2D" not in fused_ops,
+        f"ops {sorted(fused_ops)}")
+  check("a second consumer stops the fusion",
+        "BiasAdd" in unfused_ops and "Conv2D" in unfused_ops,
+        f"ops {sorted(unfused_ops)}")
+
+  with tf.device("/GPU:0"):
+    on_gpu = fusable(image).numpy()
+  with tf.device("/CPU:0"):
+    on_cpu = fusable(image).numpy()
+  close("a fused block matches the CPU", on_gpu, on_cpu)
+
   print(f"\n{'all checks passed' if _failures == 0 else str(_failures) + ' FAILED'}")
   return 0 if _failures == 0 else 1
 

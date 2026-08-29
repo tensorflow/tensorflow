@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernels.h"
+#include "tensorflow/core/common_runtime/metal/metal_graph.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/metal/metal_profiler.h"
 
@@ -66,6 +67,18 @@ void TF_InitProfiler(TF_ProfilerRegistrationParams* params,
     return;
   }
   tensorflow::metal::MetalInitProfiler(params, status);
+}
+
+// Optional, like the profiler. Fuses a bias and an activation into the
+// convolution or matrix multiply in front of them, which this backend has
+// kernels for and which nothing else produces for a pluggable device.
+void TF_InitGraph(TP_OptimizerRegistrationParams* params, TF_Status* status) {
+  if (MetalDisabledByEnvironment()) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                 "Metal: backend disabled by TF_DISABLE_METAL.");
+    return;
+  }
+  tensorflow::metal::MetalInitGraph(params, status);
 }
 
 }  // extern "C"
