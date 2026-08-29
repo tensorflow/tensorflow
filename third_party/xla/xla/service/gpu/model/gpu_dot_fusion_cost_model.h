@@ -146,6 +146,16 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
                                            const DotTileSize& dot_tile,
                                            int64_t num_stages);
 
+// Represents a 2D warp grid factorization (warps_m x warps_n).
+struct WarpGrid {
+  int64_t warps_m = 1;
+  int64_t warps_n = 1;
+};
+
+// Heuristic to factor `num_warps` into a 2D warp grid (warps_m x warps_n)
+// matching the tile aspect ratio to balance per-warp tile dimensions.
+WarpGrid FactorWarpGrid(int64_t num_warps, int64_t tile_m, int64_t tile_n);
+
 // Estimates physical PTX register usage per thread for a GPU dot fusion kernel,
 // accounting for output accumulator registers and base state overhead.
 int CalculateRegistersPerThread(const DotProblemInfo& dot_info,

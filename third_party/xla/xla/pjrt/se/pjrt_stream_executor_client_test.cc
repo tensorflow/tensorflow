@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -212,7 +213,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
-      0, devices.back().get(), "cpu", 0));
+      0, devices.back().get(), "device", tsl::Fingerprint32("device")));
   devices.back()->AttachMemorySpace(memory_spaces.back().get(),
                                     /*is_default=*/true);
   auto topology = CreateCpuTopologyDescription(devices.size());
@@ -264,7 +265,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
         /*process_index=*/0,
         /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
     memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
-        i, devices.back().get(), "cpu", 0));
+        i, devices.back().get(), "device", tsl::Fingerprint32("device")));
     devices.back()->AttachMemorySpace(memory_spaces.back().get(),
                                       /*is_default=*/true);
   }

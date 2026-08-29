@@ -362,6 +362,36 @@ TEST(ConvolutionPrepareSecurityTest, RejectsPaddingOverflow) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(ConvolutionPrepareSecurityTest, RejectsParametersOutsideInt16Range) {
+  constexpr int kTooLarge = std::numeric_limits<int16_t>::max() + 1;
+  PrepareOnlyConvolutionOpModel<float> stride_model(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/kTooLarge, /*stride_height=*/1);
+  EXPECT_EQ(stride_model.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyConvolutionOpModel<float> dilation_model(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+      ActivationFunctionType_NONE, /*dilation_width_factor=*/kTooLarge);
+  EXPECT_EQ(dilation_model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsPaddingOutsideInt16Range) {
+  constexpr int kFilterWidth =
+      2 * (std::numeric_limits<int16_t>::max() + 1) + 1;
+  PrepareOnlyConvolutionOpModel<float> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, kFilterWidth, 1}}, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST_P(ConvolutionOpTest, SimpleTestFloat32) {
   ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
                        {TensorType_FLOAT32, {3, 2, 2, 1}},

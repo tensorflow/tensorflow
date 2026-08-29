@@ -190,8 +190,8 @@ CreateGpuAllocators(const se::Platform* platform,
       PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
   ABSL_ASSIGN_OR_RETURN(auto transfer_manager,
                    TransferManager::GetForPlatform(platform));
-  ABSL_ASSIGN_OR_RETURN(auto computation_placer,
-                   ComputationPlacer::GetForPlatform(platform->id()));
+  ComputationPlacer* computation_placer =
+      ComputationPlacer::GetForPlatform(platform->id());
   std::unique_ptr<Backend> backend(new Backend(
       platform, std::move(compiler), stream_executors, transfer_manager,
       computation_placer, options.intra_op_parallelism_threads()));

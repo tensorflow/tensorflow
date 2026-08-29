@@ -172,7 +172,7 @@ cc_library(
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
         "//xla/runtime:device_id",
-        "//xla/service:collective_ops_utils",
+        "//xla/service:collective_rendezvous",
         "//xla/tsl/concurrency:future",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",

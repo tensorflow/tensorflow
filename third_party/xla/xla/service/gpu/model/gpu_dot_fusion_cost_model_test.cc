@@ -51,12 +51,14 @@ using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
+using gpu_dot_fusion_cost_model::detail::FactorWarpGrid;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveFlopsPerNsForTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
 using gpu_dot_fusion_cost_model::detail::HbmEstimates;
 using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
 using gpu_dot_fusion_cost_model::detail::LaunchConfig;
 using gpu_dot_fusion_cost_model::detail::SmOccupancy;
+using ::testing::FieldsAre;
 using ::xla::xtile::BlockLevelParameters;
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
@@ -835,6 +837,25 @@ BlockLevelParameters CreateBlockParams(int64_t num_warps) {
   return params;
 }
 
+TEST_F(GpuDotFusionCostModelTest, FactorWarpGrid) {
+  // Non-positive inputs fall back to 1x1.
+  EXPECT_THAT(FactorWarpGrid(0, 128, 128), FieldsAre(1, 1));
+  EXPECT_THAT(FactorWarpGrid(4, 0, 128), FieldsAre(1, 1));
+  EXPECT_THAT(FactorWarpGrid(4, 128, 0), FieldsAre(1, 1));
+
+  // Square tiles factor evenly.
+  EXPECT_THAT(FactorWarpGrid(1, 64, 64), FieldsAre(1, 1));
+  EXPECT_THAT(FactorWarpGrid(2, 64, 64), FieldsAre(1, 2));
+  EXPECT_THAT(FactorWarpGrid(4, 64, 64), FieldsAre(2, 2));
+  EXPECT_THAT(FactorWarpGrid(8, 64, 64), FieldsAre(2, 4));
+  EXPECT_THAT(FactorWarpGrid(16, 64, 64), FieldsAre(4, 4));
+
+  // Asymmetric tiles allocate warps along the larger dimension.
+  EXPECT_THAT(FactorWarpGrid(4, 256, 32), FieldsAre(4, 1));
+  EXPECT_THAT(FactorWarpGrid(4, 32, 256), FieldsAre(1, 4));
+  EXPECT_THAT(FactorWarpGrid(16, 32, 128), FieldsAre(2, 8));
+}
+
 TEST_F(GpuDotFusionCostModelTest,
        CalculateRegistersPerThreadIncreasesWithTileSize) {
   const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
@@ -875,7 +896,8 @@ TEST_F(GpuDotFusionCostModelTest,
   const int regs_f64 = CalculateRegistersPerThread(
       CreateDotInfo(PrimitiveType::F64), tile, block_params, ddh100_);
 
-  EXPECT_GT(regs_f32, regs_f16);
+  // F16 and F32 use 32-bit hardware accumulators, while F64 uses 64-bit.
+  EXPECT_EQ(regs_f16, regs_f32);
   EXPECT_GT(regs_f64, regs_f32);
 }
 

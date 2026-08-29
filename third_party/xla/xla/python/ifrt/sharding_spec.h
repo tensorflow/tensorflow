@@ -66,7 +66,8 @@ using ShardingSpecRef = absl_nonnull std::shared_ptr<const ShardingSpec>;
 // Depending on the type of a sharding spec, the partitioning of the sharding
 // spec is applicable only to a particular array shape, but that of some others
 // may be applicable to a broad set of shapes.
-class ShardingSpec : public RTTIExtends<ShardingSpec, Serializable> {
+class ShardingSpec : public RTTIExtends<ShardingSpec, Serializable>,
+                     public std::enable_shared_from_this<ShardingSpec> {
  public:
   // Returns the number of shards.
   int num_shards() const { return num_shards_; }

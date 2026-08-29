@@ -125,19 +125,7 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
       void* dst, int64_t offset, int64_t transfer_size,
       PjRtDeviceEventRefVector dependencies) override;
 
-  absl::StatusOr<PjRtDeviceEventRef> CopyFromLiteral(
-      const LiteralSlice& literal, const xla::Layout& layout,
-      AsyncWorkRunner* async_work_runner);
-
   absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
-
-  absl::StatusOr<PjRtDeviceEventRef> CopyFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      PjRtClient::HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const Shape& shape, AsyncWorkRunner* async_work_runner,
-      tsl::thread::ThreadPool* thread_pool, int max_transpose_threads);
 
   void CopyTo(
       PjRtRawBufferRef dst_raw_buffer,

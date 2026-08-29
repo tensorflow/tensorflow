@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/xla_data.pb.h"
 
@@ -106,8 +107,9 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
       if (instruction.shape() == instruction.operand(0)->shape()) {
         return false;
       }
-
-      return IsSupportedTilingType(instruction.shape().element_type());
+      return IsSupportedTilingType(instruction.shape().element_type()) ||
+             primitive_util::IsSubByteNonPredType(
+                 instruction.shape().element_type());
     case HloOpcode::kConcatenate:
       return !CanDoFastConcatenate(instruction).ok();
     case HloOpcode::kConvolution:

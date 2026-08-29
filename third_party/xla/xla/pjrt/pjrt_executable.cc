@@ -315,6 +315,12 @@ void GetOpSharding(std::vector<OpSharding>& out, const OpSharding& sharding) {
   }
 }
 
+absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
+PjRtExecutable::GetHloModules() const {
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module, GetHloModule());
+  return std::vector<std::shared_ptr<HloModule>>{std::move(hlo_module)};
+}
+
 std::optional<std::vector<OpSharding>> PjRtExecutable::GetOutputShardings()
     const {
   auto modules = GetHloModules();

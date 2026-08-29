@@ -1,0 +1,23 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_slice
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = slice %[[ARG0]] starts = [2, 0] limits = [6, 8] strides = [1, 2] : tensor<8x16xf32> -> tensor<4x4xf32>
+// CHECK: results %[[OUT]]
+
+test_slice {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[4,4] slice(%p0), slice={[2:6], [0:8:2]}
+}
+
+// -----
+
+// CHECK-LABEL: @test_transpose
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x4x8x16xf32>
+// CHECK: %[[OUT:.*]] = transpose %[[ARG0]] permutation = [2, 0, 1, 3] : tensor<2x4x8x16xf32> -> tensor<8x2x4x16xf32>
+// CHECK: results %[[OUT]]
+
+test_transpose {
+  %p0 = f32[2,4,8,16] parameter(0)
+  %out = f32[8,2,4,16] transpose(%p0), dimensions={2,0,1,3}
+}
