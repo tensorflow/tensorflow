@@ -108,8 +108,15 @@ error raised. `model.fit` reported `[nan, nan, nan]` and carried on.
 
 While those entry points are missing, every Metal kernel waits for the GPU
 before returning, which closes the window. It is announced in a warning at
-load, and `TF_METAL_SYNCHRONOUS` forces it either way. When the entry points
-come back the plugin returns to running asynchronously with no change here.
+load, and `TF_METAL_SYNCHRONOUS` forces it either way.
+
+Where the entry points do exist, the plugin implements `AssignVariableOp`,
+`AssignAddVariableOp` and `AssignSubVariableOp` itself, on the device, and
+nothing touches a variable from the host at all. That is what makes running
+asynchronously safe rather than merely faster: without those kernels, an
+asynchronous run reproduced the same `nan` on TensorFlow 2.19.1, where the C
+API is present. With them, a training step is 11.48 ms against 21.04 ms on the
+CPU, and correct.
 
 ## Is it faster than the CPU
 
@@ -118,21 +125,25 @@ on an M4 Max against TensorFlow 2.21.0, median of ten runs each, both devices
 in the same process on the same data, waiting for the device before stopping
 the clock:
 
-Two columns of speedup, because the wait above costs most of it. "Today" is
-what you get from a released TensorFlow; "async" is the same machine with
-`TF_METAL_SYNCHRONOUS=0`, which is what the plugin does once
+Two columns, because the wait above costs most of it. "Today" is a released
+TensorFlow, 2.21.0, where the kernel C API for resource variables is missing
+and every kernel therefore waits. "Async" is 2.19.1, which still exports that
+API, so the same code runs asynchronously; it is what a released TensorFlow
+does again once
 [#126374](https://github.com/tensorflow/tensorflow/issues/126374) is fixed.
+Both columns are measured, not projected.
 
 | | GPU today | CPU | today | async |
 | --- | ---: | ---: | ---: | ---: |
-| MatMul 2048x2048 | 3.80 ms | 14.42 ms | **3.8x** | 6.5x |
-| Conv2D, batch 64, 64x64x32 to 64 | 4.58 ms | 10.91 ms | **2.4x** | 3.0x |
-| MatMul 1024x1024 | 1.12 ms | 2.17 ms | 1.9x | 1.5x |
-| CNN training step, SGD, batch 128 | 19.46 ms | 20.61 ms | 1.1x | 1.7x |
-| CNN forward, batch 128 | 5.53 ms | 6.00 ms | 1.1x | 1.5x |
-| MatMul 512x512 | 0.44 ms | 0.36 ms | 0.8x | 0.9x |
-| ReduceSum 4096x4096 | 0.44 ms | 0.34 ms | 0.8x | 0.8x |
-| Elementwise 4096x4096 | 2.88 ms | 1.54 ms | 0.5x | 0.5x |
+| MatMul 2048x2048 | 1.78 ms | 11.97 ms | **6.7x** | 5.5x |
+| Conv2D, batch 64, 64x64x32 to 64 | 2.25 ms | 8.95 ms | **4.0x** | 4.2x |
+| CNN training step, SGD, batch 128 | 12.60 ms | 18.80 ms | 1.5x | 1.8x |
+| MatMul 1024x1024 | 1.19 ms | 1.89 ms | 1.6x | 2.0x |
+| Conv2D, batch 16 | 1.37 ms | 2.31 ms | 1.7x | 1.7x |
+| CNN forward, batch 128 | 4.55 ms | 5.17 ms | 1.1x | 1.5x |
+| MatMul 512x512 | 0.37 ms | 0.34 ms | 0.9x | 1.0x |
+| ReduceSum 4096x4096 | 0.46 ms | 0.28 ms | 0.6x | 0.7x |
+| Elementwise 4096x4096 | 3.05 ms | 1.36 ms | 0.5x | 0.5x |
 
 The pattern is the ordinary one and worth stating plainly: the GPU wins where
 there is arithmetic to do per byte moved, and loses where there is not. A
@@ -141,9 +152,12 @@ operations per element, so it is bound by memory on a machine whose CPU shares
 that same memory. Small matrices lose to the cost of getting work to the
 device at all.
 
-A training step is 1.7x the CPU when the plugin can run asynchronously, and
-barely ahead of it while it cannot. That gap is the cost of the missing entry
-points, not of the backend.
+The convolution numbers owe as much to the graph pass as to the kernels. It
+folds the bias and the activation into the convolution, and it turns
+TensorFlow's layout optimizer off, which was inserting an NHWC to NCHW
+transpose on either side of every convolution: on a 4x16x16x8 case those cost
+42.8 and 44.2 microseconds around a 43.0 microsecond convolution. MPSGraph
+takes either layout, so the rewrite was pure loss.
 
 `benchmarks/benchmark.py` reproduces the table.
 
