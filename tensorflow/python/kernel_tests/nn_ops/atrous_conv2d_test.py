@@ -266,7 +266,7 @@ class AtrousDepthwiseConv2DTest(test.TestCase):
   def testInvalidInputRank(self):
     value = array_ops.zeros([10], dtype=dtypes.float32)
     filters = array_ops.zeros([5, 5, 1, 8], dtype=dtypes.float32)
-    with self.assertRaisesRegex(ValueError, "rank at least 3"):
+    with self.assertRaisesRegex(ValueError, "rank 4"):
       nn_ops.atrous_conv2d(value, filters, rate=1, padding="VALID")
 
 
