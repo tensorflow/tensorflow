@@ -30,6 +30,21 @@ namespace tensorflow {
 namespace metal {
 namespace {
 
+// What this adds over TensorFlow's own remapper, which does run for a
+// pluggable device named GPU and does fuse Conv2D, BiasAdd and Relu into
+// _FusedConv2D:
+//
+//   * A convolution followed by a bias with no activation. The remapper sends
+//     that pattern to IsGpuCompatibleMatMul, which is not about convolutions,
+//     so on a GPU it is never fused.
+//   * Anything starting from a MatMul. The remapper gates those on
+//     BlasLtMatmulEnabled(), which reads TF_USE_CUBLASLT: a switch named after
+//     a CUDA library, and one a Metal device can never satisfy.
+//
+// Where the remapper has already fused a chain there is no BiasAdd left to
+// find and this pass does nothing, which is the intended outcome rather than a
+// coincidence: plugin optimizers run last.
+//
 // This file reads and writes GraphDef on the wire rather than through
 // TensorFlow's generated C++ classes, for the same reason the profiler encodes
 // XSpace by hand: those classes live in libtensorflow_framework's C++ ABI, and
@@ -368,10 +383,12 @@ bool AttrBelongs(const std::string& name, bool is_conv) {
 }
 
 bool OnThisDevice(const std::string& device) {
-  // An unassigned node is still a candidate: placement runs after this, and a
-  // graph handed to this optimizer is one TensorFlow has already decided
-  // belongs to this device type.
-  return device.empty() || device.find("GPU") != std::string::npos;
+  // An explicit assignment is required, not merely the absence of one.
+  // Placement has already run by the time a plugin optimizer sees a graph, so
+  // a node with no device is one this pass has no claim on; fusing it would
+  // put a _FusedConv2D somewhere that may have no kernel for it. TensorFlow's
+  // own remapper takes the same position.
+  return device.find("GPU") != std::string::npos;
 }
 
 }  // namespace
