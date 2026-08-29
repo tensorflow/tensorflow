@@ -41,7 +41,7 @@ namespace xla {
 namespace {
 
 using ParamsTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(ParamsTest, ConstantR0F32Param) {
   XlaBuilder builder(TestName());

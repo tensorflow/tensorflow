@@ -20,9 +20,11 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -158,6 +160,31 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def testSqrt(self):
     self._testUnaryOp(np_math_ops.sqrt, np.sqrt, 'sqrt')
+
+  def testAngle(self):
+    # The result must keep the dtype of the argument. Building the real-input
+    # branch out of Python scalars made it float32 for every real dtype, which
+    # for float64 also cost precision.
+    for dtype in [np.float16, np.float32, np.float64]:
+      arg = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=dtype)
+      self.match(
+          np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
+      )
+      self.match(
+          np_math_ops.angle(arg, deg=True),
+          np.angle(arg, deg=True),
+          msg='angle({}, deg=True)'.format(arg),
+      )
+
+    for dtype in [np.complex64, np.complex128]:
+      arg = np.array([1 + 2j, -1 - 2j, 0j], dtype=dtype)
+      self.match(
+          np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
+      )
+
+    # An integer argument is promoted to the default float type.
+    arg = np.array([-3, 0, 3], dtype=np.int32)
+    self.match(np_math_ops.angle(arg), np.angle(arg), msg='angle(int32)')
 
   def testHypot(self):
     self._testBinaryOp(np_math_ops.hypot, np.hypot, 'hypot')
@@ -347,6 +374,54 @@ class MathTest(test.TestCase, parameterized.TestCase):
     compiled_close_fn = def_function.function(close_fn, jit_compile=True)
     with self.assertRaisesRegex(error_types, error_pattern):
       compiled_close_fn(a, b)
+
+  def testCrossXlaUnknownBatchDim(self):
+    # The batch dimension is unknown at trace time while the last dimension
+    # is statically 3 (or 2). The padding and output selection in cross must
+    # resolve from the static last dimension rather than through tf.cond,
+    # otherwise XLA cannot infer the shape of the Cross operands and fails
+    # to compile even though the input is a valid 3-element vector.
+    if not test_util.is_xla_enabled():
+      self.skipTest('XLA JIT compiler is not enabled in this test environment.')
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
+
+    compiled_cross = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 3], np.float32),
+            tensor.TensorSpec([None, 3], np.float32),
+        ],
+    )
+    self.match(compiled_cross(a, b), np.cross(a, b), check_dtype=False)
+
+    # A statically 2-element last dimension pads to 3 and returns the z
+    # component only.
+    a2 = np.arange(4, dtype=np.float32).reshape(2, 2)
+    b2 = np.arange(4, 8, dtype=np.float32).reshape(2, 2)
+    compiled_cross_2 = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 2], np.float32),
+            tensor.TensorSpec([None, 2], np.float32),
+        ],
+    )
+    self.match(compiled_cross_2(a2, b2), np.cross(a2, b2), check_dtype=False)
+
+  def testCrossDynamicUnknownBatchDim(self):
+    # A fully dynamic shape still works outside of jit compilation.
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
+    dynamic_cross = def_function.function(
+        np_math_ops.cross,
+        input_signature=[
+            tensor.TensorSpec([None, None], np.float32),
+            tensor.TensorSpec([None, None], np.float32),
+        ],
+    )
+    self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
@@ -570,6 +645,83 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isposinf(x2))
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
+
+  def testSignBit(self):
+    for transform in self.array_transforms:
+      values = transform([-1.5, -0.0, 0.0, 1.5])
+      self.assertAllEqual(
+          np_math_ops.signbit(values), [True, True, False, False]
+      )
+    # The sign bit is set even when the value compares equal to zero or NaN.
+    self.assertAllEqual(np_math_ops.signbit([np.nan, -np.nan]), [False, True])
+    self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
+    negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
+    self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testIsInfFamilyNonFloatInputs(self):
+    # A non-floating input has no infinities, but the result must still be an
+    # elementwise boolean array shaped like the input, as numpy returns, and
+    # the argument must be converted before its dtype is inspected.
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        [1, 2, 3],
+        np.array([1, 2, 3], dtype=np.int32),
+        np.array([1, 2, 3], dtype=np.int64),
+        np.array([[1, 2], [3, 4]], dtype=np.int32),
+        np.array([True, False]),
+        ops.convert_to_tensor([1, 2, 3]),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg),
+            np_fun(np.asarray(arg)),
+            msg='{}({})'.format(np_fun.__name__, arg),
+        )
+
+  def testIsInfFamilyFloatInputs(self):
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        np.array([1.0, np.inf, -np.inf, np.nan], dtype=np.float64),
+        np.array([1.0, np.inf, -np.inf], dtype=np.float32),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg), np_fun(arg), msg='{}({})'.format(np_fun.__name__, arg)
+        )
+
+  def testFabsAlwaysReturnsFloat(self):
+    # `fabs` differs from `absolute` in that its result is always floating
+    # point, so an integer argument is promoted rather than passed through.
+    int_args = [
+        [1, -2, 3],
+        -5,
+        np.array([1, -2, 3], dtype=np.int32),
+        np.array([1, -2, 3], dtype=np.int64),
+        np.array([], dtype=np.int32),
+        np.array([[1, -2], [3, -4]], dtype=np.int32),
+    ]
+    for arg in int_args:
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
+
+    # A floating point argument keeps its own dtype.
+    for dtype in [np.float16, np.float32, np.float64]:
+      arg = np.array([1.5, -2.5], dtype=dtype)
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
+
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()

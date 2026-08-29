@@ -1263,15 +1263,21 @@ def convolution_internal(
         f"filters.shape={filters.shape} of rank {filters_rank} and "
         f"num_spatial_dims={num_spatial_dims}")
 
-  if inputs_rank:
-    num_batch_dims = inputs_rank - num_spatial_dims - 1  # Channel dimension.
-  else:
-    num_batch_dims = 1  # By default, assume single batch dimension.
-
   if num_spatial_dims not in {1, 2, 3}:
     raise ValueError(
         "`num_spatial_dims` must be 1, 2, or 3. "
         f"Received: num_spatial_dims={num_spatial_dims}.")
+
+  if inputs_rank is not None:
+    num_batch_dims = inputs_rank - num_spatial_dims - 1  # Channel dimension.
+    if num_batch_dims < 0:
+      raise ValueError(
+          f"`input` must have rank at least {num_spatial_dims + 1} "
+          f"({num_spatial_dims} spatial dimensions + 1 channel dimension). "
+          f"Received: input.shape={input.shape} of rank {inputs_rank}"
+      )
+  else:
+    num_batch_dims = 1  # By default, assume single batch dimension.
 
   if data_format is None or data_format in _CHANNELS_LAST_FORMATS:
     channel_index = num_batch_dims + num_spatial_dims
@@ -2738,8 +2744,9 @@ def conv2d_transpose_v2(
     A `Tensor` with the same type as `input`.
 
   Raises:
-    ValueError: If input/output depth does not match `filter`'s shape, or if
-      padding is other than `'VALID'` or `'SAME'`.
+    ValueError: If input/output depth does not match `filter`'s shape, if
+      `output_shape` is not a rank-1 tensor with four elements, or if padding
+      is other than `'VALID'` or `'SAME'`.
 
   References:
     Deconvolutional Networks:
@@ -2750,6 +2757,41 @@ def conv2d_transpose_v2(
   """
   with ops.name_scope(name, "conv2d_transpose",
                       [input, filter, output_shape]) as name:
+    output_shape = ops.convert_to_tensor(output_shape, name="output_shape")
+    if output_shape.shape.rank is not None:
+      if output_shape.shape.rank != 1:
+        raise ValueError(
+            "`output_shape` must be a rank 1 Tensor. "
+            f"Received: output_shape={output_shape.shape}"
+        )
+      if output_shape.shape[0] is not None:
+        if output_shape.shape[0] != 4:
+          raise ValueError(
+              "`output_shape` must have four elements. "
+              f"Received: output_shape={output_shape.shape}"
+          )
+      else:
+        with ops.control_dependencies([
+            check_ops.assert_equal(
+                array_ops.size(output_shape),
+                4,
+                message="`output_shape` must have four elements.",
+            )
+        ]):
+          output_shape = array_ops.identity(output_shape)
+    else:
+      with ops.control_dependencies([
+          check_ops.assert_rank(
+              output_shape, 1, message="`output_shape` must be a rank 1 Tensor."
+          ),
+          check_ops.assert_equal(
+              array_ops.size(output_shape),
+              4,
+              message="`output_shape` must have four elements.",
+          ),
+      ]):
+        output_shape = array_ops.identity(output_shape)
+
     if data_format is None:
       data_format = "NHWC"
     channel_index = 1 if data_format.startswith("NC") else 3

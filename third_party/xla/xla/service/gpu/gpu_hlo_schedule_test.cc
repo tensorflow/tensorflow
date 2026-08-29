@@ -582,10 +582,7 @@ TEST_P(GpuHloScheduleParameterizedTest,
 
   EXPECT_EQ(count_between_pairs_high_latency.size(), 2);
   EXPECT_EQ(count_between_pairs_low_latency.size(), 2);
-  EXPECT_NE(count_between_pairs_high_latency[0],
-            count_between_pairs_low_latency[0]);
-  EXPECT_NE(count_between_pairs_high_latency[1],
-            count_between_pairs_low_latency[1]);
+  EXPECT_NE(count_between_pairs_high_latency, count_between_pairs_low_latency);
 }
 
 TEST_P(GpuHloScheduleParameterizedTest,
@@ -2050,6 +2047,42 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
   TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);
   EXPECT_EQ(metadata.peak_memory_usage, 12288);  // 3*32*32 * 4 bytes
+}
+
+TEST_F(GpuHloScheduleTest,
+       ExplicitDisableLatencyHidingSchedulerOverridesSolEstimator) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[16] parameter(0)
+    p1 = f32[16, 16] parameter(1)
+    p2 = f32[16, 16] parameter(2)
+
+    dot0 = f32[16,16]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    ar-start = f32[16] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[16] all-reduce-done(ar-start)
+
+    ROOT t = (f32[16], f32[16,16]) tuple(ar-done, dot0)
+  })";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = false;
+  test_config.enable_sol_latency_estimator = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo_text, GetModuleConfig(test_config)));
+
+  const se::DeviceDescription& gpu_device_info =
+      backend().default_stream_executor()->GetDeviceDescription();
+  // SolLatencyEstimator may be supported on this device, but explicit
+  // flag=false must disable LHS.
+  EXPECT_FALSE(IsLHSEnabled(*module, "", gpu_device_info));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,

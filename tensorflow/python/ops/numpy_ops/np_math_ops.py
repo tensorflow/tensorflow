@@ -56,6 +56,15 @@ tf_export.tf_export('experimental.numpy.inf', v1=[]).export_constant(
     __name__, 'inf'
 )
 
+# Floating-point types mapped to an integer type of the same size, so their
+# IEEE-754 sign bit can be checked with an integer comparison.
+_SIGN_BITCAST_DTYPES = {
+    dtypes.bfloat16: dtypes.int16,
+    dtypes.float16: dtypes.int16,
+    dtypes.float32: dtypes.int32,
+    dtypes.float64: dtypes.int64,
+}
+
 
 @tf_export.tf_export('experimental.numpy.dot', v1=[])
 @np_utils.np_doc_only('dot')
@@ -326,8 +335,19 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
 
     a = maybe_move_axis_to_last(a, axis_a)
     b = maybe_move_axis_to_last(b, axis_b)
-    a_dim = np_utils.getitem(array_ops.shape(a), -1)
-    b_dim = np_utils.getitem(array_ops.shape(b), -1)
+
+    def size_of_last_dim(a):
+      # Prefer the statically-known dimension so that the padding and output
+      # selection below resolve at trace time; a dynamic size turns them into
+      # tf.cond branches whose output shapes XLA cannot infer.
+      if hasattr(a, 'shape') and a.shape.rank:
+        static_size = a.shape.as_list()[-1]
+        if static_size is not None:
+          return static_size
+      return np_utils.getitem(array_ops.shape(a), -1)
+
+    a_dim = size_of_last_dim(a)
+    b_dim = size_of_last_dim(b)
 
     def maybe_pad_0(a, size_of_last_dim):
       def pad_0(a):
@@ -733,7 +753,10 @@ def _scalar(tf_fn, x, promote_to_float=False):
   """
   x = np_array_ops.asarray(x)
   if promote_to_float and not np.issubdtype(x.dtype.as_numpy_dtype, np.inexact):
-    x = x.astype(np_utils.result_type(float))
+    # `Tensor.astype` only exists once `enable_numpy_methods_on_tensor()` has
+    # been called, and is an alias of `math_ops.cast`; calling `cast` directly
+    # keeps these functions working without that opt-in.
+    x = math_ops.cast(x, np_utils.result_type(float))
   return tf_fn(x)
 
 
@@ -770,7 +793,9 @@ def absolute(x):
 @tf_export.tf_export('experimental.numpy.fabs', v1=[])
 @np_utils.np_doc('fabs')
 def fabs(x):
-  return abs(x)
+  # Unlike `absolute`, `fabs` always produces a floating point result,
+  # so an integer argument has to be promoted first.
+  return _scalar(math_ops.abs, x, True)
 
 
 @tf_export.tf_export('experimental.numpy.ceil', v1=[])
@@ -809,6 +834,11 @@ def signbit(x):
   def f(x):
     if x.dtype == dtypes.bool:
       return array_ops.fill(array_ops.shape(x), False)
+    if x.dtype in _SIGN_BITCAST_DTYPES:
+      # Check the IEEE-754 sign bit instead of comparing with zero, which
+      # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
+      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+      return math_ops.less(bits, 0)
     return x < 0
 
   return _scalar(f, x)
@@ -915,7 +945,13 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
   def f(x):
     if x.dtype in _tf_float_types:
       # Workaround for b/147515503
-      return array_ops.where_v2(x < 0, np.pi, 0)
+      # `np.pi` and `0` are Python scalars, which would make the result
+      # float32 whatever `x` is, so build them in `x`'s dtype instead.
+      return array_ops.where_v2(
+          x < 0,
+          constant_op.constant(np.pi, dtype=x.dtype),
+          constant_op.constant(0, dtype=x.dtype),
+      )
     else:
       return math_ops.angle(x)
 
@@ -1048,25 +1084,28 @@ def isfinite(x):
 @tf_export.tf_export('experimental.numpy.isinf', v1=[])
 @np_utils.np_doc('isinf')
 def isinf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return _scalar(math_ops.is_inf, x, True)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isneginf', v1=[])
 @np_utils.np_doc('isneginf')
 def isneginf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, -np.inf)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isposinf', v1=[])
 @np_utils.np_doc('isposinf')
 def isposinf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, np.inf)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.log2', v1=[])

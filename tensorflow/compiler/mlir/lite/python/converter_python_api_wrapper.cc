@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_converter_api, m) {
+PYBIND11_MODULE(_pywrap_converter_api, m, py::mod_gil_not_used()) {
   m.def(
       "Convert",
       [](py::object model_flags_proto_txt_raw,
@@ -124,5 +124,18 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
       },
       R"pbdoc(
       Returns MLIR dump of the given TFLite model.
+    )pbdoc");
+  m.def(
+      "ConvertMlirBytecode",
+      [](py::object converter_flags_proto_txt_raw, py::object model_dir_txt_raw,
+         py::object output_file_path_raw) {
+        return tensorflow::PyoOrThrow(tflite::ConvertMlirBytecode(
+            converter_flags_proto_txt_raw.ptr(), model_dir_txt_raw.ptr(),
+            output_file_path_raw.ptr()));
+      },
+      py::arg("converter_flags_proto_txt_raw"), py::arg("model_dir_txt_raw"),
+      py::arg("output_file_path_raw"),
+      R"pbdoc(
+      Convert a model represented in JAX slim export directory directly to a file.
     )pbdoc");
 }

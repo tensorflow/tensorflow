@@ -55,6 +55,7 @@ IdentityElementType GetReductionIdentityElementType(
 //   between operands are simplified into independent constraints to keep
 //   computation scalable.
 //
+class ConstraintPropagatorTest;
 // Limitations:
 // - Does not handle control flow.
 // - Uses weak heuristics for accumulation-intensive operations.
@@ -67,10 +68,21 @@ class ConstraintPropagator {
           get_index_known_zeroes = nullptr);
 
  private:
+  friend class ConstraintPropagatorTest;
+
   explicit ConstraintPropagator(
       std::function<std::optional<uint64_t>(const HloInstruction*, int64_t)>
           get_index_known_zeroes)
       : get_index_known_zeroes_(get_index_known_zeroes) {}
+
+  // Populates max_add_reduction_elements_per_exp_ by analyzing downstream
+  // addition-reduction chains across the computation.
+  void ComputeMaxAddReductionElementsPerExp(const HloComputation* computation);
+
+  // Returns the maximum number of downstream addition-reduction elements for
+  // the given kExp instruction, or 1 if unreduced or not found.
+  int64_t GetMaxAddReductionElementsForExp(
+      const HloInstruction* exp_instruction) const;
 
   // Propagates constraints in post-order throughout the given computation.
   absl::Status Propagate(const HloComputation* computation);
@@ -142,6 +154,11 @@ class ConstraintPropagator {
 
   // Constraint states for each instruction in the module.
   absl::flat_hash_map<const HloInstruction*, ConstraintState> states_;
+
+  // Maps each kExp instruction to the maximum number of elements summed
+  // downstream across any addition reduction path.
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      max_add_reduction_elements_per_exp_;
 };
 
 }  // namespace xla

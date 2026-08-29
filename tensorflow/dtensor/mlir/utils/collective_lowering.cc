@@ -178,9 +178,9 @@ int32_t GetCollectiveKeyBase(
   const llvm::SmallVector<int32_t, 4> group_key_offsets =
       GetGroupKeyOffsets(group_assignment, &group_size);
 
+  tensorflow::mutex_lock lock(*mtx);
   const auto iter =
       mesh_to_key_base->find({mesh.ToString(), group_key_offsets});
-  tensorflow::mutex_lock lock(*mtx);
   if (iter != mesh_to_key_base->end()) {
     return iter->second;
   }

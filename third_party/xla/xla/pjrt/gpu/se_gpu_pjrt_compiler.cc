@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -235,9 +237,10 @@ StreamExecutorGpuCompiler::Compile(
         topology_with_target_config.status().ToString()));
   }
   if (!topology_with_target_config.ok() && client != nullptr) {
-    LOG(INFO) << "Found PjRtClient and no GPU target config. Performing a JIT "
-                 "compilation. Details: "
-              << topology_with_target_config.status();
+    LOG_EVERY_N(INFO, 60)
+        << "Found PjRtClient and no GPU target config. Performing a JIT "
+           "compilation. Details: "
+        << topology_with_target_config.status();
     TF_RET_CHECK(IsGpuClient(*client))
         << "JIT compilation requires a GPU PjRt client.";
     ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, se_client));
@@ -252,8 +255,9 @@ StreamExecutorGpuCompiler::Compile(
   }
 
   if (IsEarlyExitCompilation(options)) {
-    LOG(INFO) << "Early exit compilation is enabled. Note that this is always "
-                 "a deviceless compilation.";
+    LOG_EVERY_N(INFO, 60)
+        << "Early exit compilation is enabled. Note that this is always "
+           "a deviceless compilation.";
   } else if (client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
@@ -261,18 +265,21 @@ StreamExecutorGpuCompiler::Compile(
 
     if (local_gpu_target_config ==
         topology_with_target_config->gpu_target_config()) {
-      LOG(INFO) << "Found GPU target config and a PjRtClient with matching "
-                   "configuration. Performing a JIT compilation.";
+      LOG_EVERY_N(INFO, 60)
+          << "Found GPU target config and a PjRtClient with matching "
+             "configuration. Performing a JIT compilation.";
       // This code path is necessary as long as the legacy AOT compilation is
       // still in use.
       return CrossCompile(se_client, computation, input_options, topology);
     }
 
-    LOG(INFO) << "Found GPU target config and a PjRtClient. Performing a cross "
-                 "compilation.";
+    LOG_EVERY_N(INFO, 60)
+        << "Found GPU target config and a PjRtClient. Performing a cross "
+           "compilation.";
   } else {
-    LOG(INFO) << "Found GPU target config and no PjRtClient. Performing a "
-                 "deviceless compilation.";
+    LOG_EVERY_N(INFO, 60)
+        << "Found GPU target config and no PjRtClient. Performing a "
+           "deviceless compilation.";
   }
   ABSL_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
@@ -374,8 +381,9 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
     gpu::GpuTargetConfig local_gpu_target_config(stream_executor);
     if (local_gpu_target_config ==
         topology_with_target_config->gpu_target_config()) {
-      LOG(INFO) << "Found GPU target config and a PjRtClient with matching "
-                   "configuration. Performing a JIT compilation.";
+      LOG_EVERY_N(INFO, 60)
+          << "Found GPU target config and a PjRtClient with matching "
+             "configuration. Performing a JIT compilation.";
       // This code path is necessary as long as the legacy AOT compilation is
       // still in use.
       return CrossCompile(se_client, std::move(module), options, topology);
@@ -446,6 +454,26 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
   return Compile(std::move(options), xla_computation, topology, client,
                  std::move(layout_callback));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+StreamExecutorGpuCompiler::DeserializePjRtTopologyDescription(
+    const std::string& serialized_topology) {
+  xla::PjRtTopologyDescriptionProto proto;
+  if (!proto.ParseFromString(serialized_topology)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse StreamExecutorGpuTopologyDescription from string.");
+  }
+  return StreamExecutorGpuTopologyDescription::FromProto(proto);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+StreamExecutorGpuCompiler::DeserializeExecutable(
+    const PjRtTopologyDescription& topology,
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions>&& options) {
+  return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
+                                               std::move(options));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>

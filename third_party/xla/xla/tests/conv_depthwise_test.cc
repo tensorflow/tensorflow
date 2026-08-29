@@ -35,7 +35,7 @@ namespace xla {
 namespace {
 
 class DepthwiseConvolution2DTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<
           ::testing::tuple<DepthwiseConvolution2DSpec, bool>> {};
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -279,6 +280,53 @@ TEST_F(CpuWhileTest, WhileDotDoesNotError) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   TF_EXPECT_OK(Execute(std::move(module), {&input_real, &input_imag}));
+}
+
+TEST_F(CpuWhileTest, FusedDynamicUpdateSliceInSmallWhileLoop) {
+  const std::string hlo_text = R"(
+    HloModule FusedDynamicUpdateSliceInSmallWhileLoop
+
+    fused_dus {
+      param_data = f32[8] parameter(0)
+      param_update = f32[2] parameter(1)
+      param_idx = s32[] parameter(2)
+      ROOT dus = f32[8] dynamic-update-slice(param_data, param_update, param_idx)
+    }
+
+    body {
+      loop_state = (s32[], f32[8]) parameter(0)
+      idx = s32[] get-tuple-element(loop_state), index=0
+      data = f32[8] get-tuple-element(loop_state), index=1
+      one = s32[] constant(1)
+      next_idx = s32[] add(idx, one)
+      update = f32[2] constant({10.0, 20.0})
+      fused = f32[8] fusion(data, update, idx), kind=kLoop, calls=fused_dus
+      ROOT new_state = (s32[], f32[8]) tuple(next_idx, fused)
+    }
+
+    cond {
+      loop_state = (s32[], f32[8]) parameter(0)
+      idx = s32[] get-tuple-element(loop_state), index=0
+      limit = s32[] constant(3)
+      ROOT cmp = pred[] compare(idx, limit), direction=LT
+    }
+
+    ENTRY main {
+      init_idx = s32[] constant(0)
+      zero = f32[] constant(0.0)
+      init_data = f32[8] broadcast(zero), dimensions={}
+      init_state = (s32[], f32[8]) tuple(init_idx, init_data)
+      while_loop = (s32[], f32[8]) while(init_state), condition=cond, body=body
+      ROOT result = f32[8] get-tuple-element(while_loop), index=1
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+
+  LiteralTestUtil::ExpectR1Equal(
+      absl::MakeConstSpan({10.0f, 10.0f, 10.0f, 20.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+      result);
 }
 
 }  // namespace

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -69,6 +69,7 @@ namespace xla::gpu {
 namespace {
 
 namespace m = ::xla::match;
+using ::xla::xtile::BlockLevelParameters;
 
 struct ModuleAndNestedFusionMetadata {
   std::unique_ptr<VerifiedHloModule> module;

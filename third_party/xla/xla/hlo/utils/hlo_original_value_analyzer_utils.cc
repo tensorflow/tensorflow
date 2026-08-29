@@ -103,24 +103,18 @@ AbsoluteScopedTensorKey AbsoluteScopedTensorKey::Create(
       if (mapped_original_scopes.empty()) {
         continue;
       }
-      if (scope.iteration_index != 0) {
-        if (mapped_original_scopes.size() == 1) {
-          if (combined_scopes.back().iteration_index == -2) {
-            combined_scopes.back().iteration_index = scope.iteration_index;
-          }
-          continue;
+      if (mapped_original_scopes.size() == 1) {
+        if (combined_scopes.back().iteration_index == -2) {
+          combined_scopes.back().iteration_index = scope.iteration_index;
         }
-        bool found_while_loop = false;
-        for (int64_t i = 0; i < mapped_original_scopes.size(); ++i) {
-          auto& original_scope =
-              combined_scopes[combined_scopes.size() - i - 1];
-          if (original_scope.iteration_index == -2) {
-            original_scope.iteration_index = scope.iteration_index;
-            found_while_loop = true;
-            break;
-          }
+        continue;
+      }
+      for (int64_t i = 0; i < mapped_original_scopes.size(); ++i) {
+        auto& original_scope = combined_scopes[combined_scopes.size() - i - 1];
+        if (original_scope.iteration_index == -2) {
+          original_scope.iteration_index = scope.iteration_index;
+          break;
         }
-        // If not found, we don't do fallbacks as requested by user.
       }
     } else {
       combined_scopes.push_back(scope);

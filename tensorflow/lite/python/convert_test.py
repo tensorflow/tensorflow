@@ -48,7 +48,7 @@ def _mock_wrapped_convert(
   # Simulate the converter throwing and error when
   # `guarantee_all_funcs_one_use` is not set.
   if not _conversion_flags_pb2.ConverterFlags.FromString(
-      conversion_flags_str
+      conversion_flags_str  # pyrefly: ignore[bad-argument-type]
   ).guarantee_all_funcs_one_use:
     raise Exception()
   else:

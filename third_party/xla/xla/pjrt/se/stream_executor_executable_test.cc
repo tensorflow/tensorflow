@@ -21,11 +21,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/mock_compiled_module.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/abi/executable_abi_version.pb.h"
@@ -49,6 +51,9 @@ TEST(StreamExecutorExecutableTest, GetAbiVersion) {
   constexpr PjRtPlatformId kPlatformId = 42;
 
   auto module = std::make_unique<MockCompiledModule>();
+  auto hlo_module = std::make_shared<HloModule>("name", HloModuleConfig());
+  EXPECT_CALL(*module, shared_optimized_module())
+      .WillRepeatedly(Return(hlo_module));
   EXPECT_CALL(*module, GetExecutableAbiVersion())
       .WillOnce(Return(executable_abi_version));
   StreamExecutorExecutable executable(kPlatformId, CompileOptions(),

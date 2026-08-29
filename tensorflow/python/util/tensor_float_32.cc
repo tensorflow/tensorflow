@@ -16,7 +16,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 
-PYBIND11_MODULE(_pywrap_tensor_float_32_execution, m) {
+PYBIND11_MODULE(_pywrap_tensor_float_32_execution, m,
+                pybind11::mod_gil_not_used()) {
   m.def("enable", &tensorflow::enable_tensor_float_32_execution);
   m.def("is_enabled", &tensorflow::tensor_float_32_execution_enabled);
 }

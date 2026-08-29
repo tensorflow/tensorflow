@@ -136,10 +136,6 @@ bool MemoryPressureMetadata::InstructionDefinesValue(
   if (value->defining_instruction() == instruction) {
     return true;
   }
-  if (value->shape().has_layout() &&
-      value->shape().layout().memory_space() != kDefaultMemorySpace) {
-    return false;
-  }
   // Also check if the instruction is a call to a computation that defines the
   // value. This is needed in cases, e.g., where we wrap a value-defining
   // instruction in a async call for offloading, and the async start itself will
@@ -147,6 +143,9 @@ bool MemoryPressureMetadata::InstructionDefinesValue(
   // running in. This also handles the case of a call instruction.
   HloBuffer::Id id = hlo_alias_analysis_->GetBufferContainingValue(*value).id();
   const auto& info = buffer_tracker_.GetBufferInfo(id);
+  if (info.non_default_memory_space_layout) {
+    return false;
+  }
   return InstructionTransitivelyDefines(instruction, info);
 }
 
@@ -1025,13 +1024,24 @@ BufferInfoTracker::BufferInfoTracker(
 
 void ModulePressureState::InitializePressureStates() { ResetPressureStates(); }
 
+const MemoryPressureMetadata* ModulePressureState::GetOrCreatePressureMetadata(
+    const HloComputation* comp) const {
+  absl::MutexLock lock(&pressure_metadata_cache_mu_);
+  auto it = pressure_metadata_cache_.find(comp);
+  if (it == pressure_metadata_cache_.end()) {
+    auto new_metadata = std::make_unique<MemoryPressureMetadata>(
+        hlo_alias_analysis_, buffer_tracker_, memory_pressure_states_,
+        top_down_scheduling_);
+    new_metadata->Initialize(comp);
+    it = pressure_metadata_cache_.emplace(comp, std::move(new_metadata)).first;
+  }
+  return it->second.get();
+}
+
 void ModulePressureState::ResetPressureStates() {
   memory_pressure_states_.clear();
-  absl::flat_hash_map<const HloComputation*,
-                      std::unique_ptr<MemoryPressureMetadata>>
-      temp_metadata;
   std::function<void(HloComputation*, const LiveBufferSet&)>
-      process_computation = [this, &process_computation, &temp_metadata](
+      process_computation = [this, &process_computation](
                                 HloComputation* computation,
                                 const LiveBufferSet& initial_live_buffers) {
         // Skip computations that don't have schedules (e.g., host computations
@@ -1043,16 +1053,8 @@ void ModulePressureState::ResetPressureStates() {
         }
         const HloInstructionSequence& sequence =
             module_->schedule().sequence(computation);
-        auto it = temp_metadata.find(computation);
-        if (it == temp_metadata.end()) {
-          auto new_metadata = std::make_unique<MemoryPressureMetadata>(
-              hlo_alias_analysis_, buffer_tracker_, memory_pressure_states_,
-              top_down_scheduling_);
-          new_metadata->Initialize(computation);
-          it =
-              temp_metadata.emplace(computation, std::move(new_metadata)).first;
-        }
-        MemoryPressureMetadata* metadata = it->second.get();
+        const MemoryPressureMetadata* metadata =
+            GetOrCreatePressureMetadata(computation);
         MemoryPressureTracker tracker(metadata, initial_live_buffers);
         VLOG(6) << "Pressure at " << (top_down_scheduling_ ? "top" : "bottom")
                 << " for " << computation->name() << ": "
@@ -1122,13 +1124,18 @@ void MemoryPressureMetadata::Initialize(const HloComputation* computation) {
         [&](const Shape& subshape, const ShapeIndex& index) {
           for (const HloBuffer* buffer :
                hlo_alias_analysis_->ComputeBuffersAt(instruction, index)) {
-            output_values.push_back(std::make_pair(
-                buffer_tracker_.GetBufferInfo(buffer->id()), index));
-            if (absl::c_any_of(buffer->values(), [&](const HloValue* value) {
-                  return InstructionDefinesValue(instruction, value);
-                })) {
-              defined_values.push_back(
-                  buffer_tracker_.GetBufferInfo(buffer->id()));
+            const auto& info = buffer_tracker_.GetBufferInfo(buffer->id());
+            output_values.push_back(std::make_pair(info, index));
+            bool defines =
+                absl::c_any_of(buffer->values(),
+                               [&](const HloValue* value) {
+                                 return value->defining_instruction() ==
+                                        instruction;
+                               }) ||
+                (!info.non_default_memory_space_layout &&
+                 InstructionTransitivelyDefines(instruction, info));
+            if (defines) {
+              defined_values.push_back(info);
             }
           }
         });
@@ -3741,23 +3748,16 @@ absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
 DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
 
-  auto it = pressure_metadata_.find(computation);
-  if (it == pressure_metadata_.end()) {
-    auto metadata = std::make_unique<MemoryPressureMetadata>(
-        scheduling_context_->GetAliasAnalysis().get(),
-        module_pressure_state_->buffer_tracker(),
-        module_pressure_state_->pressure_state_cache(), top_down_scheduling_);
-    metadata->Initialize(computation);
-    it = pressure_metadata_.emplace(computation, std::move(metadata)).first;
-  }
+  const MemoryPressureMetadata* metadata =
+      module_pressure_state_->GetOrCreatePressureMetadata(computation);
   auto reachability = GetReachabilityMap(computation);
   auto graph =
       CreateScheduleGraph(&module_schedule.sequence(computation).instructions(),
                           scheduling_context_, reachability);
   std::shared_ptr<SchedulingState> sched_state =
       std::make_shared<SchedulingState>(&module_schedule.sequence(computation),
-                                        scheduling_context_, it->second.get(),
-                                        config_, std::move(graph));
+                                        scheduling_context_, metadata, config_,
+                                        std::move(graph));
   sched_state->sched_graph->InitializeGraphAnalysis();
   sched_state->graph_processing_hook = default_graph_processing_hook_;
   return sched_state;
@@ -4167,22 +4167,16 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       module_pressure_state->GetPressureStateForComputation(computation);
   const MemoryPressureState* memory_pressure_state =
       memory_tracked ? &computation_pressure_state : nullptr;
-  std::unique_ptr<MemoryPressureMetadata> memory_pressure_metadata_ptr;
   std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker_ptr;
   if (memory_pressure_tracker == nullptr) {
-    memory_pressure_metadata_ptr = std::make_unique<MemoryPressureMetadata>(
-        scheduling_context->GetAliasAnalysis().get(),
-        module_pressure_state->buffer_tracker(),
-        module_pressure_state->pressure_state_cache(),
-        scheduling_context->GetAsyncTracker()->IsTopDownScheduling());
-    memory_pressure_metadata_ptr->Initialize(computation);
+    const MemoryPressureMetadata* metadata =
+        module_pressure_state->GetOrCreatePressureMetadata(computation);
     if (memory_pressure_state != nullptr) {
       memory_pressure_tracker_ptr = std::make_unique<MemoryPressureTracker>(
-          memory_pressure_metadata_ptr.get(),
-          memory_pressure_state->live_ids_at_bottom);
+          metadata, memory_pressure_state->live_ids_at_bottom);
     } else {
-      memory_pressure_tracker_ptr = std::make_unique<MemoryPressureTracker>(
-          memory_pressure_metadata_ptr.get());
+      memory_pressure_tracker_ptr =
+          std::make_unique<MemoryPressureTracker>(metadata);
     }
     memory_pressure_tracker = memory_pressure_tracker_ptr.get();
   }

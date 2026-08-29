@@ -1650,6 +1650,24 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     check_output_dtype("float64")
     check_output_dtype(np.float64)
 
+  def testXlaJitCompileWithStaticMaxlen(self):
+    if not context.executing_eagerly() or not test_util.is_xla_enabled():
+      return
+
+    @def_function.function(jit_compile=True)
+    def fn(lengths):
+      return array_ops.sequence_mask(lengths, maxlen=5)
+
+    res = fn(constant_op.constant([1, 3, 2]))
+    self.assertAllEqual(
+        res,
+        [
+            [True, False, False, False, False],
+            [True, True, True, False, False],
+            [True, True, False, False, False],
+        ],
+    )
+
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
@@ -1794,6 +1812,26 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
                                     "dims cannot contain a dim of zero"):
           indices = constant_op.constant([2, 5, 7], dtype=dtype)
           dims = constant_op.constant([3, 0], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
+  def testUnravelIndexNegativeIndex(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "index is out of bound as with dims"
+        ):
+          indices = constant_op.constant(-14, dtype=dtype)
+          dims = constant_op.constant([10], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
+  def testUnravelIndexMixedNegativeIndex(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "index is out of bound as with dims"
+        ):
+          indices = constant_op.constant([0, 5, -1, 7], dtype=dtype)
+          dims = constant_op.constant([3, 4], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
   def testUnravelIndexIntegerOverflow(self):

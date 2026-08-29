@@ -33,7 +33,6 @@ class FusionWrapper : public emitters::FusionWrapperBase {
       bool using_new_fusion_emitter, bool use_tiled_emitter,
       const TargetMachineFeatures* target_machine_features = nullptr)
       : using_new_fusion_emitter_(using_new_fusion_emitter),
-        use_tiled_emitter_(use_tiled_emitter),
         target_machine_features_(target_machine_features) {}
   ~FusionWrapper() override = default;
 
@@ -43,7 +42,6 @@ class FusionWrapper : public emitters::FusionWrapperBase {
 
  private:
   bool using_new_fusion_emitter_;
-  bool use_tiled_emitter_;
   const TargetMachineFeatures* target_machine_features_;
 };
 

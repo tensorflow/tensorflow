@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -47,7 +49,9 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -58,22 +62,27 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/util.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
+
+using ::xla::xtile::BlockLevelParameters;
+using ::xla::xtile::GetTilingSpaceConcreteSizes;
+using ::xla::xtile::TilingFromAnnotatedFusion;
+
 namespace {
 
 // Information about an operand read.
@@ -561,6 +570,51 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
   return TiledRunTimeData{estimate_run_time_data, block_level_parameters};
 }
 
+absl::Status DumpAndLogTopKCandidates(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::Span<const TiledRunTimeData> candidates) {
+  const HloInstruction& root = fusion_adaptor.GetRoots().front().instruction();
+  std::string dump_path;
+  if (const HloModule* module = root.GetModule()) {
+    dump_path = module->config()
+                    .debug_options()
+                    .xla_gpu_dump_cost_model_top_k_candidates_to();
+  }
+
+  if (!VLOG_IS_ON(2) && dump_path.empty()) {
+    return absl::OkStatus();
+  }
+
+  const std::string fusion_name =
+      root.ToString(HloPrintOptions::ShortParsable());
+
+  std::string dump_content;
+  if (!dump_path.empty()) {
+    absl::StrAppend(&dump_content, "=== Cost model top-", candidates.size(),
+                    " candidates for: ", fusion_name, " ===\n");
+  }
+  for (int i = 0; i < candidates.size(); ++i) {
+    std::string cand_str = absl::StrCat("Candidate #", i, ": ", candidates[i]);
+    VLOG(2) << "[" << fusion_name << "] " << cand_str;
+    if (!dump_path.empty()) {
+      absl::StrAppend(&dump_content, cand_str, "\n");
+    }
+  }
+
+  if (!dump_path.empty()) {
+    absl::StrAppend(&dump_content, "\n");
+    std::string resolved_path;
+    if (!tsl::io::ResolveTestPrefixes(dump_path, resolved_path)) {
+      return FailedPrecondition("Failed to resolve cost model dump path: %s",
+                                dump_path);
+    }
+    tsl::Env* env = tsl::Env::Default();
+    ABSL_RETURN_IF_ERROR(tsl::AppendStringToFile(env, resolved_path, dump_content));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
@@ -868,6 +922,8 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
   if (candidates.size() > top_k) {
     candidates.resize(top_k);
   }
+
+  ABSL_RETURN_IF_ERROR(DumpAndLogTopKCandidates(fusion_adaptor, candidates));
 
   return candidates;
 }

@@ -84,9 +84,8 @@ Operation* GetParentOpWithCoreType(Operation& op);
 // annotation is found, returns kTc.
 CoreType GetCoreTypeOfParentOp(Operation& op);
 
-// Returns the function in the module with the given core type.
-absl::StatusOr<func::FuncOp> GetFuncWithCoreType(ModuleOp module,
-                                                 CoreType core_type);
+// Returns the main function in the module for the given core type.
+absl::StatusOr<func::FuncOp> GetMainFunc(ModuleOp module, CoreType core_type);
 
 // Changes the memory space of the value and propagates it through the program.
 LogicalResult specializeMemorySpace(TypedValue<MemRefType> value,

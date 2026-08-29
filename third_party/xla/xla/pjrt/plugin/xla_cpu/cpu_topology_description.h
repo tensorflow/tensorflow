@@ -109,7 +109,8 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
-  absl::StatusOr<int> GetMemorySpaceKindForShape(const Shape& shape) const;
+  absl::StatusOr<int> GetMemorySpaceKindForShape(
+      const Shape& shape) const override;
 
   absl::StatusOr<absl::string_view> KindIdToKind(int kind) const;
 

@@ -64,7 +64,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/plugin_names.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"

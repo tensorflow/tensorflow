@@ -24,15 +24,78 @@ from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import memory_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import flag_utils
+from xla.benchmarks.core import platform_info
+from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
+from xla.benchmarks.pallas_microbenchmarks import memory_utils
 
 Benchmark = benchmark.Benchmark
 InputSpec = benchmark.InputSpec
 
 
+_KERNEL_NAME_TEMPLATE = "matmul_{m}_{k}_{n}_{lhs_dtype}_{rhs_dtype}_{out_dtype}"
+
+
+def get_default_subblock_m(
+    chip_version: pltpu.ChipVersion | None = None,
+) -> int | None:
+  """Returns a default subblock_m size utilizing all accumulators."""
+  pinfo = platform_info.get_platform_info(chip_version)
+  num_accumulators = pinfo.num_accumulators
+  if num_accumulators > 0:
+    num_sublanes, _ = pinfo.vreg_size
+    return num_sublanes * num_accumulators
+  return None
+
+
+def select_window(
+    m: int,
+    k: int,
+    n: int,
+    lhs_mem: pltpu.MemorySpace,
+    rhs_mem: pltpu.MemorySpace,
+    out_mem: pltpu.MemorySpace,
+    lhs_dtype: jnp.dtype,
+    rhs_dtype: jnp.dtype,
+    out_dtype: jnp.dtype,
+    acc_dtype: jnp.dtype,
+    subblock_m: int | None = None,
+    chip_version: pltpu.ChipVersion | None = None,
+) -> tuple[int, int, int]:
+  """Derives the optimal window size for dense matmul using the cost model."""
+  default_vmem_kib = platform_info.get_default_vmem_limit_kib(chip_version)
+  vmem_limit_kib = flag_utils.get_flag_value(
+      "xla_tpu_scoped_vmem_limit_kib", default=default_vmem_kib, flag_type=int
+  )
+  vmem_limit_bytes = vmem_limit_kib * 1024
+  p_state = flag_utils.get_flag_value(
+      "xla_tpu_dvfs_p_state", default=None, flag_type=int
+  )
+  if p_state is not None and p_state < 0:
+    p_state = None
+  block_m, block_k, block_n = pallas_cost_model.CostModel(
+      m,
+      k,
+      n,
+      lhs_mem,
+      rhs_mem,
+      out_mem,
+      lhs_dtype,
+      rhs_dtype,
+      out_dtype,
+      acc_dtype,
+      subblock_m=subblock_m,
+      chip_version=chip_version,
+  ).select_window(
+      vmem_limit_bytes,
+      p_state,
+  )
+  return int(block_m), int(block_k), int(block_n)
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class DenseMatmulConfig:
+class DenseMatmulConfig(benchmark.BenchmarkConfig):
   """Config for Pallas dense matmul benchmark.
 
   Attributes:
@@ -49,6 +112,8 @@ class DenseMatmulConfig:
     rhs_dtype: The dtype of the second operand.
     out_dtype: The dtype of the output.
     acc_dtype: The dtype of the accumulator.
+    subblock_m: Subblock size in the m dimension on which the matmuls are
+      emitted.
   """
   m: int
   k: int
@@ -63,16 +128,19 @@ class DenseMatmulConfig:
   rhs_dtype: jnp.dtype
   out_dtype: jnp.dtype
   acc_dtype: jnp.dtype
+  subblock_m: int | None = None
+
+  def get_benchmark(self) -> benchmark.Benchmark:
+    return DenseMatmulBenchmark(self)
 
 
 def dense_matmul_kernel(
-    cfg: DenseMatmulConfig, internal_scratch_in_bytes: int, kernel_name: str
+    cfg: DenseMatmulConfig, kernel_name: str
 ) -> Callable[..., Any]:
   """Returns a Pallas kernel for dense matmul benchmark.
 
   Args:
     cfg: The config for the dense matmul benchmark.
-    internal_scratch_in_bytes: The size of the internal scratch in bytes.
     kernel_name: The name of the kernel.
 
   Returns:
@@ -88,6 +156,7 @@ def dense_matmul_kernel(
       cfg.out_dtype,
   )
   acc_dtype = cfg.acc_dtype
+  subblock_m = cfg.subblock_m or block_m
 
   grid_m = math.ceil(m / block_m)
   grid_n = math.ceil(n / block_n)
@@ -105,12 +174,20 @@ def dense_matmul_kernel(
     def init():
       acc_ref[...] = jnp.zeros_like(acc_ref)
 
-    matmul = jnp.dot(
-        x_tile_ref[...],
-        y_tile_ref[...],
-        preferred_element_type=acc_ref.dtype,
-    )
-    acc_ref[...] = acc_ref[...] + matmul
+    num_iters = math.ceil(block_m / subblock_m)
+    for i in range(num_iters):
+      x = x_tile_ref[
+          i * subblock_m : (i + 1) * subblock_m,
+          :,
+      ]
+      matmul = jnp.dot(
+          x,
+          y_tile_ref[...],
+          preferred_element_type=acc_ref.dtype,
+      )
+      acc_ref[i * subblock_m : (i + 1) * subblock_m, :] = (
+          acc_ref[i * subblock_m : (i + 1) * subblock_m, :] + matmul
+      )
 
     @pl.when(pl.program_id(2) == grid_k - 1)
     def store():
@@ -133,7 +210,7 @@ def dense_matmul_kernel(
       ),
       compiler_params=pltpu.CompilerParams(
           dimension_semantics=("parallel", "parallel", "arbitrary"),
-          internal_scratch_in_bytes=internal_scratch_in_bytes,
+          internal_scratch_in_bytes=platform_info.get_default_internal_scratch_bytes(),
       ),
       cost_estimate=pl.CostEstimate(
           flops=2 * m * k * n,
@@ -151,8 +228,10 @@ def dense_matmul_kernel(
   def _target_fn(lhs, rhs):
     if lhs_mem == pltpu.VMEM:
       lhs = memory_utils.copy_to_vmem(lhs)
+    lhs = memory_utils.with_large_2nd_minor_layout(lhs)
     if rhs_mem == pltpu.VMEM:
       rhs = memory_utils.copy_to_vmem(rhs)
+    rhs = memory_utils.with_large_2nd_minor_layout(rhs)
     return pallas_func(lhs, rhs)
 
   return _target_fn.lower(
@@ -186,20 +265,22 @@ class DenseMatmulBenchmark(Benchmark):
   def __init__(
       self,
       cfg: DenseMatmulConfig,
-      internal_scratch_in_bytes: int,
-      kernel_name: str,
   ):
     """Initializes the dense matmul benchmark.
 
     Args:
       cfg: The config for the dense matmul benchmark.
-      internal_scratch_in_bytes: The size of the internal scratch in bytes.
-      kernel_name: The name of the kernel.
     """
     super().__init__()
     self._cfg = cfg
-    self._internal_scratch_in_bytes = internal_scratch_in_bytes
-    self._kernel_name = kernel_name
+    self._kernel_name = _KERNEL_NAME_TEMPLATE.format(
+        m=cfg.m,
+        k=cfg.k,
+        n=cfg.n,
+        lhs_dtype=benchmark.dtype_to_str(cfg.lhs_dtype),
+        rhs_dtype=benchmark.dtype_to_str(cfg.rhs_dtype),
+        out_dtype=benchmark.dtype_to_str(cfg.out_dtype),
+    )
 
   def get_input_shapes_and_dtypes(self) -> Sequence[InputSpec | None]:
     cfg = self._cfg
@@ -209,9 +290,7 @@ class DenseMatmulBenchmark(Benchmark):
     ]
 
   def target_fn(self) -> Callable[..., Any]:
-    return dense_matmul_kernel(
-        self._cfg, self._internal_scratch_in_bytes, self._kernel_name
-    )
+    return dense_matmul_kernel(self._cfg, self._kernel_name)
 
   def kernel_name(self) -> str:
     return self._kernel_name

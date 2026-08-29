@@ -32,6 +32,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -76,6 +78,10 @@ inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
 }
+inline const char* InterpreterName() {
+  static constexpr char kInterpreterName[] = "interpreter";
+  return kInterpreterName;
+}
 inline PjRtPlatformId CpuId() {
   static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
   return kCpuId;
@@ -100,6 +106,11 @@ inline PjRtPlatformId SyclId() { return OneapiId(); }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
+}
+inline PjRtPlatformId InterpreterId() {
+  static const PjRtPlatformId kInterpreterId =
+      tsl::Fingerprint64(InterpreterName());
+  return kInterpreterId;
 }
 
 class PjRtCompiler;
@@ -443,6 +454,13 @@ class PjRtTopologyDescription {
         "GetDefaultDeviceAssignment is not supported.");
   }
 
+  // Gets the memory_space_kind for a particular XLA layout.
+  virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
+      const xla::Shape& shape) const {
+    return absl::UnimplementedError(
+        "GetMemorySpaceKindForShape is not supported.");
+  }
+
   // A list of all memory spaces kind_ids supported by this topology.
   virtual absl::Span<const int> GetMemorySpaceKindIds() const;
 
@@ -478,6 +496,11 @@ inline bool IsCpuId(PjRtPlatformId platform_id) {
   return platform_id == xla::CpuId();
 }
 
+// Returns true if it's Interpreter id.
+inline bool IsInterpreterId(PjRtPlatformId platform_id) {
+  return platform_id == xla::InterpreterId();
+}
+
 class PjRtPhaseCompiler;
 
 // Abstract interface that all registered compilers must implement.
@@ -508,6 +531,18 @@ class PjRtCompiler {
   GetTargetRuntimeAbiVersion() {
     return absl::UnimplementedError(
         "GetTargetRuntimeAbiVersion is not implemented.");
+  }
+
+  // Deserializes a serialized executable as produced by
+  // PjRtExecutable::SerializeExecutable(). `serialized` must have been
+  // produced by a compiler of the same platform and version as this one.
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const PjRtTopologyDescription& topology,
+      riegeli::Any<riegeli::Reader*> reader,
+      std::optional<CompileOptions>&& options) {
+    return absl::UnimplementedError(
+        absl::StrCat("DeserializeExecutable is not implemented for: ",
+                     topology.platform_name(), "."));
   }
 
   // Allow fallible downcasting to PjRtPhaseCompiler.
@@ -552,6 +587,14 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
     PjRtClient* client = nullptr);
 
+// Deserializes a serialized executable as produced by
+// PjRtExecutable::SerializeExecutable(). `serialized` must have been
+// produced by a compiler of the same platform and version as this one.
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
+    const PjRtTopologyDescription& topology,
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions> options = std::nullopt);
+
 // Stores a compilation phase's compiler and validator functions.
 // This struct bundles the essential functional components required to define
 // a single phase within a multi-phase compilation pipeline. It is used by
@@ -564,8 +607,13 @@ struct CompilationPhaseFunctions {
   // `PjRtTopologyDescription` describing the target hardware. It transforms the
   // input programs based on the phase's logic and returns a vector of
   // `PjRtPartialProgramProto` or an error status if compilation fails.
+  //
+  // The inputs are taken as rvalue-ref to allow the `compiler` function to
+  // clear the inputs to reclaim memory. Typically, these inputs are
+  // transformed into a typed object and then no longer needed in their
+  // PjRtPartialProgramProto form.
   std::function<absl::StatusOr<std::vector<PjRtPartialProgramProto>>(
-      CompileOptions, const std::vector<PjRtPartialProgramProto>&,
+      CompileOptions, std::vector<PjRtPartialProgramProto>&&,
       const PjRtTopologyDescription&)>
       compiler;
 
@@ -601,7 +649,7 @@ class PjRtPhaseCompiler : public PjRtCompiler {
   // or an error status if any validation or compilation step fails.
   virtual absl::StatusOr<std::vector<PjRtPartialProgramProto>> RunPhases(
       CompileOptions options,
-      const std::vector<PjRtPartialProgramProto>& input_programs,
+      std::vector<PjRtPartialProgramProto>&& input_programs,
       const PjRtTopologyDescription& topology,
       const std::vector<std::string>& phases_to_run);
 

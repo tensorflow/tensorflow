@@ -19,15 +19,20 @@ import math
 from typing import Any, Callable, Sequence
 
 import jax
-from jax.experimental import layout
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
 from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import flag_utils
+from xla.benchmarks.core import platform_info
+from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
 from xla.benchmarks.pallas_microbenchmarks import memory_utils
 
 InputSpec = benchmark.InputSpec
+
+
+_KERNEL_NAME_TEMPLATE = "subchannel_matmul_{m}_{k}_{n}_{lhs_dtype}-{lhs_quantized_dtype}_{rhs_dtype}-{rhs_quantized_dtype}_{out_dtype}"
 
 
 def _get_dtype_max_val(dtype: jnp.dtype) -> float:
@@ -70,8 +75,58 @@ def quantize(arr: jax.Array, dtype: jnp.dtype) -> tuple[jax.Array, jax.Array]:
   return (arr * inv_scales).clip(-max_val, max_val).astype(dtype), safe_scales
 
 
+def select_window(
+    m: int,
+    k: int,
+    n: int,
+    lhs_mem: pltpu.MemorySpace,
+    rhs_mem: pltpu.MemorySpace,
+    out_mem: pltpu.MemorySpace,
+    lhs_dtype: jnp.dtype,
+    rhs_dtype: jnp.dtype,
+    out_dtype: jnp.dtype,
+    acc_dtype: jnp.dtype,
+    lhs_quantized_dtype: jnp.dtype,
+    rhs_quantized_dtype: jnp.dtype,
+    pre_quantize_lhs: bool = False,
+    chip_version: pltpu.ChipVersion | None = None,
+) -> tuple[int, int, int]:
+  """Derives the optimal window size for subchannel matmul using the cost model."""
+  # Unused for now, may be used if `pre_quantize_rhs` is added in the future.
+  del rhs_dtype
+  default_vmem_kib = platform_info.get_default_vmem_limit_kib(chip_version)
+  vmem_limit_kib = flag_utils.get_flag_value(
+      "xla_tpu_scoped_vmem_limit_kib", default=default_vmem_kib, flag_type=int
+  )
+  vmem_limit_bytes = vmem_limit_kib * 1024
+  p_state = flag_utils.get_flag_value(
+      "xla_tpu_dvfs_p_state", default=None, flag_type=int
+  )
+  if p_state is not None and p_state < 0:
+    p_state = None
+  cost_lhs_dtype = lhs_quantized_dtype if pre_quantize_lhs else lhs_dtype
+  cost_rhs_dtype = rhs_quantized_dtype
+  block_m, block_k, block_n = pallas_cost_model.CostModel(
+      m,
+      k,
+      n,
+      lhs_mem,
+      rhs_mem,
+      out_mem,
+      cost_lhs_dtype,
+      cost_rhs_dtype,
+      out_dtype,
+      acc_dtype,
+      chip_version=chip_version,
+  ).select_window(
+      vmem_limit_bytes,
+      p_state,
+  )
+  return int(block_m), int(block_k), int(block_n)
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class SubchannelMatmulConfig:
+class SubchannelMatmulConfig(benchmark.BenchmarkConfig):
   """Config for Pallas subchannel quantized matmul benchmark.
 
   Attributes:
@@ -112,10 +167,12 @@ class SubchannelMatmulConfig:
   rhs_quantized_dtype: jnp.dtype
   pre_quantize_lhs: bool = False
 
+  def get_benchmark(self) -> benchmark.Benchmark:
+    return SubchannelMatmulBenchmark(self)
+
 
 def subchannel_matmul_kernel(
     cfg: SubchannelMatmulConfig,
-    internal_scratch_in_bytes: int,
     kernel_name: str,
 ) -> Callable[..., Any]:
   """Returns a Pallas kernel for subchannel quantized matmul."""
@@ -238,7 +295,7 @@ def subchannel_matmul_kernel(
       ),
       compiler_params=pltpu.CompilerParams(
           dimension_semantics=("parallel", "parallel", "arbitrary"),
-          internal_scratch_in_bytes=internal_scratch_in_bytes,
+          internal_scratch_in_bytes=platform_info.get_default_internal_scratch_bytes(),
       ),
       cost_estimate=pl.CostEstimate(
           flops=2 * m * k * n,
@@ -254,20 +311,12 @@ def subchannel_matmul_kernel(
       lhs = memory_utils.copy_to_vmem(lhs)
       if lhs_scales is not None:
         lhs_scales = memory_utils.copy_to_vmem(lhs_scales)
-    elems_per_word = 32 // lhs_bits
-    lanes = pltpu.get_tpu_info().num_lanes
-    sublanes = pltpu.get_tpu_info().num_sublanes
-    lhs = layout.with_layout_constraint(
-        lhs,
-        layout.Layout(
-            major_to_minor=tuple(range(0, lhs.ndim)),
-            tiling=((elems_per_word * sublanes, lanes), (elems_per_word, 1)),
-        ),
-    )
+    lhs = memory_utils.with_large_2nd_minor_layout(lhs)
     if rhs_mem == pltpu.VMEM:
       rhs = memory_utils.copy_to_vmem(rhs)
       if rhs_scales is not None:
         rhs_scales = memory_utils.copy_to_vmem(rhs_scales)
+    rhs = memory_utils.with_large_2nd_minor_layout(rhs)
     return pallas_func(lhs, rhs, lhs_scales, rhs_scales)
 
   return _target_fn
@@ -316,23 +365,24 @@ def subchannel_matmul_jax(
 class SubchannelMatmulBenchmark(benchmark.Benchmark):
   """Pallas subchannel quantization matmul benchmark."""
 
-  def __init__(
-      self,
-      cfg: SubchannelMatmulConfig,
-      internal_scratch_in_bytes: int,
-      kernel_name: str,
-  ):
+  def __init__(self, cfg: SubchannelMatmulConfig):
     """Initializes the subchannel matmul benchmark.
 
     Args:
       cfg: The config for the subchannel matmul benchmark.
-      internal_scratch_in_bytes: The size of the internal scratch in bytes.
-      kernel_name: The name of the kernel.
     """
     super().__init__()
     self._cfg = cfg
-    self._internal_scratch_in_bytes = internal_scratch_in_bytes
-    self._kernel_name = kernel_name
+    self._kernel_name = _KERNEL_NAME_TEMPLATE.format(
+        m=cfg.m,
+        k=cfg.k,
+        n=cfg.n,
+        lhs_dtype=benchmark.dtype_to_str(cfg.lhs_dtype),
+        lhs_quantized_dtype=benchmark.dtype_to_str(cfg.lhs_quantized_dtype),
+        rhs_dtype=benchmark.dtype_to_str(cfg.rhs_dtype),
+        rhs_quantized_dtype=benchmark.dtype_to_str(cfg.rhs_quantized_dtype),
+        out_dtype=benchmark.dtype_to_str(cfg.out_dtype),
+    )
 
   def get_input_shapes_and_dtypes(self) -> Sequence[InputSpec | None]:
     cfg = self._cfg
@@ -359,7 +409,6 @@ class SubchannelMatmulBenchmark(benchmark.Benchmark):
     cfg = self._cfg
     return subchannel_matmul_kernel(
         cfg=cfg,
-        internal_scratch_in_bytes=self._internal_scratch_in_bytes,
         kernel_name=self._kernel_name,
     )
 

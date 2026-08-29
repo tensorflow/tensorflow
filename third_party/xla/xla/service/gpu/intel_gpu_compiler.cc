@@ -16,9 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/intel_gpu_compiler.h"
 
 #include "absl/status/status_macros.h"
+#include "xla/backends/gpu/transforms/sycl_gemm_workspace_pass.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 
 namespace xla {
@@ -37,13 +40,30 @@ absl::Status IntelGpuCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
+absl::Status IntelGpuCompiler::OptimizeHloPostLayoutAssignment(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    const CompileOptions& options, const GpuTopology& gpu_topology,
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+    CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
+  ABSL_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+      hlo_module, stream_exec, options, gpu_topology, alias_info, thread_pool,
+      compilation_stats, mlir_context));
+
+  HloPassPipeline post_pipeline("Intel GPU post-layout_assignment",
+                                compilation_stats);
+  post_pipeline.AddPass<SyclGemmWorkspacePass>(
+      gpu_topology.gpu_target_config()
+          .device_description.gpu_compute_capability());
+  return post_pipeline.Run(hlo_module).status();
+}
+
 void IntelGpuCompiler::AddPaddingForGpublasGemms(
     HloPassPipeline& pipeline, const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version) {
   // Stub for Intel GPUs
 }
 
-absl::Status IntelGpuCompiler::AddAutotunerPass(
+absl::Status IntelGpuCompiler::AddConfigAssignerPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
     tsl::thread::ThreadPool* thread_pool,

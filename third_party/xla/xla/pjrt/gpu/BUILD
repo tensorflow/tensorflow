@@ -147,7 +147,6 @@ cc_library(
         "//xla/runtime:process_id",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
-        "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
@@ -217,6 +216,7 @@ cc_library(
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:random",
         "@tsl//tsl/platform:status",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/profiler/lib:connected_traceme",
@@ -224,6 +224,7 @@ cc_library(
         "@tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_or_rocm([
         # keep sorted
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_executable_buffer_allocator",
@@ -240,6 +241,7 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + if_sycl([
         # keep sorted
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_executable_buffer_allocator",
@@ -280,7 +282,7 @@ cc_library(
         "//xla/pjrt/se:local_device_state",
         "//xla/pjrt/se:pjrt_stream_executor_client",
         "//xla/runtime:device_id",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
         "//xla/service/gpu:gpu_executable_run_options",
@@ -371,6 +373,10 @@ xla_test(
 xla_test(
     name = "se_gpu_pjrt_client_test",
     srcs = ["se_gpu_pjrt_client_test.cc"],
+    args = [
+        # TODO(b/552357098): Fix flakiness and re-enable threadmanager_use_executor_impl
+        "--threadmanager_use_executor_impl=false",
+    ],
     backends = ["gpu"],
     shard_count = 3,
     tags = ["nofixdeps"],
@@ -385,6 +391,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:parse_flags_from_env",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -394,6 +401,7 @@ xla_test(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt:host_memory_spaces",
@@ -428,6 +436,7 @@ xla_test(
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -438,6 +447,7 @@ xla_test(
         "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -767,6 +777,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ],
 )
 
@@ -855,6 +867,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ] + if_rocm([
         ":se_gpu_pjrt_compiler_rocm_registration",
     ]) + if_sycl([
@@ -903,6 +917,7 @@ xla_test(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:gpu_topology",
+        "//xla/service:mock_compiled_module",
         "//xla/service:mock_compiler",
         "//xla/service:platform_util",
         "//xla/stream_executor:stream_executor_h",
@@ -986,7 +1001,7 @@ cc_library(
         "//xla/pjrt/se:stream_executor_platform_id_mapping",
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:computation_placer",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
         "//xla/stream_executor:device_description_proto_cc",

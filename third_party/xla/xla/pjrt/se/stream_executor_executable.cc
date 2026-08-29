@@ -169,6 +169,7 @@ StreamExecutorExecutable::StreamExecutorExecutable(
   if (mod != nullptr) {
     hlo_module_ = mod->shared_optimized_module();
   }
+  CHECK(hlo_module_ != nullptr);
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
@@ -193,6 +194,7 @@ StreamExecutorExecutable::StreamExecutorExecutable(
   if (local_exec != nullptr) {
     hlo_module_ = local_exec->executable()->shared_module();
   }
+  CHECK(hlo_module_ != nullptr);
 }
 
 absl::StatusOr<CompiledMemoryStats>

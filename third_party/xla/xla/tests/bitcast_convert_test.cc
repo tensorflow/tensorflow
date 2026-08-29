@@ -39,7 +39,7 @@ namespace xla {
 namespace {
 
 class BitcastConvertTest : public ClientLibraryTestRunnerMixin<
-                               HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                               HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   BitcastConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -153,8 +153,8 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
   ComputeAndCompareR0<float>(&builder, 42.0f, {});
 }
 
-class BitcastConvertHloTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
+class BitcastConvertHloTest : public HloInterpreterReferenceMixin<HloTestBase> {
+};
 
 TEST_F(BitcastConvertHloTest, S32to4S8) {
   absl::string_view hlo_string = R"(

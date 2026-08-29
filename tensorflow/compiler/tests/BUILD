@@ -172,6 +172,7 @@ tf_xla_combined_py_test(
     ],
     tests = [
         # go/keep-sorted start
+        ":matrix_determinant_op_test_lib",
         ":matrix_inverse_op_test_lib",
         ":matrix_solve_op_test_lib",
         ":momentum_test_lib",
@@ -604,6 +605,26 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "matrix_determinant_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["matrix_determinant_op_test.py"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:linalg_ops_gen",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "matrix_inverse_op_test",
     size = "small",
     timeout = "moderate",
@@ -857,6 +878,23 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_strict_test(
+    name = "unravel_index_op_test",
+    size = "small",
+    srcs = ["unravel_index_op_test.py"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1506,6 +1544,7 @@ tf_xla_py_strict_test(
     ],
 )
 
+# b/447471184, b/447470262, b/447961559
 tf_xla_py_strict_test(
     name = "scan_ops_test",
     size = "medium",

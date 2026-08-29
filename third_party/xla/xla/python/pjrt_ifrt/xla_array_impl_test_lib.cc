@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -24,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/layout_util.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -62,9 +63,15 @@ TEST_P(XlaArrayImplHashTest, HashValuesDifferentLayouts) {
   absl::c_iota(data, 0.0f);
 
   // Array 0: Row-major layout
-  std::shared_ptr<const xla::ifrt::PjRtLayout> layout0 =
-      xla::ifrt::PjRtLayout::Create(std::make_shared<const xla::PjRtLayout>(
-          xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2)));
+  std::shared_ptr<const xla::ifrt::PjRtLayout> layout0;
+  {
+    ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const xla::PjRtLayout> default_layout,
+        client->GetDefaultPjRtLayout(dtype, shape.dims(),
+                                     client->addressable_devices().at(0),
+                                     MemoryKind()));
+    layout0 = xla::ifrt::PjRtLayout::Create(default_layout);
+  }
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array0,
       client->MakeArrayFromHostBuffer(
@@ -83,9 +90,20 @@ TEST_P(XlaArrayImplHashTest, HashValuesDifferentLayouts) {
   ASSERT_OK(actual_layout0.status());
 
   // Array 1: Column-major layout
-  std::shared_ptr<const xla::ifrt::PjRtLayout> layout1 =
-      xla::ifrt::PjRtLayout::Create(std::make_shared<const xla::PjRtLayout>(
-          xla::LayoutUtil::MakeAscendingLayout(/*num_dims=*/2)));
+  std::shared_ptr<const xla::ifrt::PjRtLayout> layout1;
+  {
+    ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const xla::PjRtLayout> default_layout,
+        client->GetDefaultPjRtLayout(dtype, shape.dims(),
+                                     client->addressable_devices().at(0),
+                                     MemoryKind()));
+    xla::Layout transposed_layout = default_layout->xla_layout();
+    // We assume that reversing the minor_to_major still gives a valid layout
+    // for this shape.
+    absl::c_reverse(*transposed_layout.mutable_minor_to_major());
+    layout1 = xla::ifrt::PjRtLayout::Create(
+        std::make_shared<const xla::PjRtLayout>(std::move(transposed_layout)));
+  }
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array1,
       client->MakeArrayFromHostBuffer(

@@ -393,6 +393,29 @@ TEST(Conv3dOpModel, DilationTest) {
                                 19880, 19248, 20392, 19728, 20904}));
 }
 
+// End-to-end correctness test for the dilated 3D im2col path when the spatial
+// depth D exceeds the channel count C (b/512611805). This complements the
+// memory-safety regression test in im2col_utils_test: the underlying overflow
+// there is a forward out-of-bounds write into the TFLite arena, which does not
+// change the visible Conv3D output, so this test only guards the functional
+// result of the D>C dilated-depth path (D=8, C=1, dilation_depth=2).
+TEST(Conv3dOpModel, DilatedDepthGreaterThanChannelsTest) {
+  Conv3dOpModel m({TensorType_FLOAT32, {1, 8, 1, 1, 1}},
+                  {TensorType_FLOAT32, {2, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID, /*stride_depth=*/1,
+                  /*stride_width=*/1, /*stride_height=*/1,
+                  /*activation=*/ActivationFunctionType_NONE,
+                  /*dilation_depth=*/2, /*dilation_width=*/1,
+                  /*dilation_height=*/1);
+
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
+  m.SetFilter({1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 6, 1, 1, 1));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 6, 8, 10, 12, 14}));
+}
+
 TEST(Conv3dOpModel, BiasTest) {
   Conv3dOpModel m({TensorType_FLOAT32, {2, 2, 3, 4, 2}},
                   {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
