@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/common_runtime/metal/metal_profiler.h"
 
 namespace tensorflow {
 namespace metal {
@@ -286,6 +287,17 @@ bool RunGraph(SP_Stream stream, const CachedGraph& cached,
   // necessarily the one handed to MPS above.
   id<MTLCommandBuffer> live = mps_buffer.rootCommandBuffer;
   [live encodeSignalEvent:commit.stream->order_event value:commit.signal_value];
+  // MPSGraph's own buffer carries neither the label nor the handler the one we
+  // opened had, so both are put back: without them an MPSGraph failure is
+  // never reported and every op that goes through MPSGraph, which is most of
+  // them, is missing from a profile.
+  if (!CurrentOpName().empty() && live.label == nil) {
+    live.label = [NSString stringWithUTF8String:CurrentOpName().c_str()];
+  }
+  SP_Stream owner = commit.stream;
+  [live addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+    NoteCommandBufferCompletion(owner, completed);
+  }];
   [mps_buffer commit];
   if (SynchronousMode()) WaitForStream(stream);
   return true;

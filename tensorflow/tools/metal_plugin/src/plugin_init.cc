@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernels.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
+#include "tensorflow/core/common_runtime/metal/metal_profiler.h"
 
 namespace {
 
@@ -54,5 +55,17 @@ void SE_InitPlugin(SE_PlatformRegistrationParams* params, TF_Status* status) {
 }
 
 void TF_InitKernel() { tensorflow::metal::RegisterAllMetalKernels(); }
+
+// Optional: TensorFlow looks this up and carries on without it if absent. It
+// is what puts a Metal row in the trace viewer next to the host's.
+void TF_InitProfiler(TF_ProfilerRegistrationParams* params,
+                     TF_Status* status) {
+  if (MetalDisabledByEnvironment()) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                 "Metal: backend disabled by TF_DISABLE_METAL.");
+    return;
+  }
+  tensorflow::metal::MetalInitProfiler(params, status);
+}
 
 }  // extern "C"

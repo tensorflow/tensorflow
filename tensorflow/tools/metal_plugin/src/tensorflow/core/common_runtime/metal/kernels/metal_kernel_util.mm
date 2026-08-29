@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/metal/metal_buffer_registry.h"
+#include "tensorflow/core/common_runtime/metal/metal_profiler.h"
 
 namespace tensorflow {
 namespace metal {
@@ -154,6 +155,15 @@ bool SliceForTensor(TF_Tensor* tensor, BufferSlice* slice, TF_Status* status) {
 }
 
 SP_Stream StreamForContext(TF_OpKernelContext* ctx, TF_Status* status) {
+  // Every kernel comes through here to reach its stream, and this is the only
+  // place in the backend that holds an op kernel context, so it is where the
+  // op's name is picked up. Command buffers created after this point carry it
+  // as their label, which is what puts an op name on a profile row and on a
+  // command buffer failure.
+  if (ProfilingActive()) {
+    const TF_StringView name = TF_GetOpKernelName(ctx);
+    SetCurrentOpName(name.data, name.len);
+  }
   SP_Stream stream = TF_GetStream(ctx, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   if (stream == nullptr) {

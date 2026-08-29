@@ -201,6 +201,17 @@ class ScopedAutoreleasePool {
 // previous one; Commit() encodes the matching signal. Callers encode their own
 // work in between. Destroying one without committing cancels the reservation,
 // so a failed encode does not wedge the stream forever.
+// Records a finished command buffer's failure, if it had one, and its GPU
+// timing when a profiler is collecting.
+//
+// Exposed because not every command buffer this backend opens is committed by
+// OrderedCommandBuffer::Commit. MPSGraph may call commitAndContinue and commit
+// a buffer of its own, and that path has to report failures and timings the
+// same way or an MPSGraph error is silently dropped and every MPSGraph op is
+// missing from the profile.
+void NoteCommandBufferCompletion(SP_Stream stream,
+                                 id<MTLCommandBuffer> completed);
+
 class OrderedCommandBuffer {
  public:
   explicit OrderedCommandBuffer(SP_Stream stream);
