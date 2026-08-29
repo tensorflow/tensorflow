@@ -57,10 +57,18 @@ instead of quietly producing a correct answer on the wrong device.
 
 ```
 pip install tensorflow
-pip install git+https://github.com/IPNP-BIPN/tensorflow-metal-plugin
+pip install tensorflow-metal-plugin
 ```
 
-That is all. The shared object is built at install time against the
+The two commands are in that order for a reason, and the second one fails
+without the first. There is no prebuilt wheel: a PluggableDevice is compiled
+against the TensorFlow it will be loaded into, and it records that
+TensorFlow's location in its own load path, so there is nothing to build
+against until TensorFlow is installed. Installing both in a single
+`pip install` does not work either, since pip builds this package before it
+installs the dependency.
+
+The shared object is built at install time against the
 TensorFlow of the interpreter doing the installing, and lands in
 `site-packages/tensorflow-plugins`, which TensorFlow scans at import. Nothing
 has to be loaded by hand:
