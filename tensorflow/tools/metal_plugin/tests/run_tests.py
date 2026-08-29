@@ -91,6 +91,26 @@ def main():
   except Exception:  # pylint: disable=broad-except
     check("an op with no GPU kernel is refused", True)
 
+  # CheckNumerics is the identity plus a promise to fail, and a version of it
+  # that only forwarded would pass every value check above while breaking the
+  # one thing the op exists for.
+  inf, nan = float("inf"), float("nan")
+  numerics = [
+      ("CheckNumerics passes finite values", [1.0, 2.0], False, None),
+      ("CheckNumerics reports a NaN", [1.0, nan], False, "Tensor had NaN"),
+      ("CheckNumerics reports an Inf", [1.0, inf], False, "Tensor had Inf"),
+      ("CheckNumericsV2 names the sign", [1.0, -inf], True, "Tensor had -Inf"),
+  ]
+  for name, values, v2, want in numerics:
+    op = tf.raw_ops.CheckNumericsV2 if v2 else tf.raw_ops.CheckNumerics
+    try:
+      with tf.device("/GPU:0"):
+        op(tensor=tf.constant(values, dtype=tf.float32), message="check")
+      check(name, want is None, "" if want is None else "it did not raise")
+    except tf.errors.InvalidArgumentError as error:
+      matched = want is not None and want in str(error)
+      check(name, matched, "" if matched else str(error)[:70])
+
   data = rng.standard_normal((257, 33), dtype=np.float32)
   with tf.device("/GPU:0"):
     on_device = tf.constant(data)

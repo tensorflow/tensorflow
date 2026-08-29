@@ -2230,6 +2230,38 @@ kernel void tf_debug_three_slots_float(device const float* data [[buffer(0)]],
     out[2] = NAN;
   }
 }
+
+// ---- check numerics ----
+
+struct CheckNumericsParams {
+  uint count;
+  uint pad0;
+  uint pad1;
+  uint pad2;
+};
+
+// Three flags: not-a-number, negative infinity, positive infinity. Each is
+// stored rather than accumulated, because the only value ever written is one,
+// so a store races only against a store of what is already there. The host
+// reads them once the stream has drained and turns them into the message
+// TensorFlow's own kernel would have produced.
+#define TF_METAL_CHECK_NUMERICS(NAME, T)                                   \
+  kernel void NAME(device const T* data [[buffer(0)]],                     \
+                   device atomic_uint* flags [[buffer(1)]],                \
+                   constant CheckNumericsParams& params [[buffer(2)]],     \
+                   uint gid [[thread_position_in_grid]]) {                 \
+    if (gid >= params.count) return;                                       \
+    const float v = static_cast<float>(data[gid]);                         \
+    if (isnan(v)) {                                                        \
+      atomic_store_explicit(&flags[0], 1u, memory_order_relaxed);          \
+    } else if (isinf(v)) {                                                 \
+      atomic_store_explicit(&flags[v < 0.0f ? 1 : 2], 1u,                  \
+                            memory_order_relaxed);                         \
+    }                                                                      \
+  }
+
+TF_METAL_CHECK_NUMERICS(tf_check_numerics_float, float)
+TF_METAL_CHECK_NUMERICS(tf_check_numerics_half, half)
 )METAL";
 
 class ShaderLibrary {

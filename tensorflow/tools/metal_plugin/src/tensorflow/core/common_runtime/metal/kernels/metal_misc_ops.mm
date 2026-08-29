@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_mps_graph.h"
+#include "tensorflow/core/common_runtime/metal/kernels/metal_shader_library.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
@@ -79,6 +80,9 @@ struct MiscOp {
   float bias = 1.0f;
   float alpha = 1.0f;
   float beta = 0.5f;
+  // CheckNumerics: the prefix its failure message carries, which is usually
+  // the name of the op that produced the tensor.
+  std::string message;
   // ExtractImagePatches
   int patch_h = 1, patch_w = 1;
   int patch_stride_h = 1, patch_stride_w = 1;
@@ -104,6 +108,26 @@ void* MiscOp_Create(TF_OpKernelConstruction* ctx) {
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
   TF_OpKernelConstruction_GetAttrFloat(ctx, "beta", &op->beta, status);
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
+
+  // CheckNumerics prefixes its failure with this. It is arbitrary user text,
+  // so its length has to be asked for rather than assumed.
+  int32_t message_list_size = 0;
+  int32_t message_size = 0;
+  TF_OpKernelConstruction_GetAttrSize(ctx, "message", &message_list_size,
+                                      &message_size, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+  } else if (message_size > 0) {
+    std::vector<char> buffer(static_cast<size_t>(message_size) + 1, '\0');
+    TF_OpKernelConstruction_GetAttrString(ctx, "message", buffer.data(),
+                                          static_cast<size_t>(message_size),
+                                          status);
+    if (TF_GetCode(status) != TF_OK) {
+      TF_SetStatus(status, TF_OK, "");
+    } else {
+      op->message.assign(buffer.data());
+    }
+  }
 
   // ExtractImagePatches carries its window as four-element lists whose batch
   // and channel entries must be 1.
@@ -467,17 +491,126 @@ void ExtractImagePatches_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx,
 
 /*** CHECK NUMERICS ***/
 
-// CheckNumerics is the identity plus a promise to fail on a non-finite value.
-// Detecting that on device would need a readback of a reduction on every call,
-// which would serialise the stream; instead the values are forwarded and the
-// check is left to whatever the graph does with them. That is a deliberate
-// weakening, recorded here rather than pretended away.
-void CheckNumerics_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx,
-                               TF_Status* status) {
+// CheckNumerics is the identity plus a promise to fail on a non-finite value,
+// and the promise is the whole point of the op: forwarding without checking
+// would leave a graph that asked to be told about a NaN silently unaware of
+// one.
+//
+// Honouring it costs a readback. A shader raises three flags on device, and
+// the host has to see them before it can decide whether to fail, so the stream
+// drains here. TensorFlow's own GPU kernel pays the same price by a different
+// route, running as an AsyncOpKernel that copies the flags back and decides in
+// a completion callback; the C kernel API has no asynchronous form, so this
+// waits instead.
+void CheckNumericsImpl(MiscOp* op, TF_OpKernelContext* ctx, bool v2,
+                       TF_Status* status) {
   ScopedTensor input;
   TF_GetInput(ctx, 0, input.address(), status);
   if (TF_GetCode(status) != TF_OK) return;
   TF_SetOutput(ctx, 0, input.get(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const int64_t count = TF_TensorElementCount(input.get());
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  BufferSlice in_slice;
+  if (!SliceForTensor(input.get(), &in_slice, status)) return;
+
+  const char* function = op->dtype == TF_HALF ? "tf_check_numerics_half"
+                                              : "tf_check_numerics_float";
+  id<MTLComputePipelineState> pipeline =
+      PipelineFor(DeviceForStream(stream), function, status);
+  if (pipeline == nil) return;
+
+  // Not-a-number, negative infinity, positive infinity, in that order.
+  ScopedTensor flags;
+  const int64_t flag_dims[1] = {3};
+  flags.reset(TF_AllocateTemp(ctx, TF_INT32, flag_dims, 1, nullptr, status));
+  if (TF_GetCode(status) != TF_OK) return;
+  BufferSlice flag_slice;
+  if (!SliceForTensor(flags.get(), &flag_slice, status)) return;
+
+  CheckNumericsParams params = {};
+  params.count = static_cast<uint32_t>(count);
+
+  OrderedCommandBuffer command_buffer(stream);
+  if (!command_buffer.ok()) {
+    TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
+                 "Metal: could not create a command buffer for a numeric "
+                 "check.");
+    return;
+  }
+  id<MTLBlitCommandEncoder> zero = [command_buffer.get() blitCommandEncoder];
+  [zero fillBuffer:flag_slice.buffer
+             range:NSMakeRange(flag_slice.offset, 3 * sizeof(uint32_t))
+             value:0];
+  [zero endEncoding];
+  id<MTLComputeCommandEncoder> encoder =
+      [command_buffer.get() computeCommandEncoder];
+  [encoder setComputePipelineState:pipeline];
+  [encoder setBuffer:in_slice.buffer offset:in_slice.offset atIndex:0];
+  [encoder setBuffer:flag_slice.buffer offset:flag_slice.offset atIndex:1];
+  [encoder setBytes:&params length:sizeof(params) atIndex:2];
+  Dispatch1D(encoder, pipeline, params.count);
+  [encoder endEncoding];
+  command_buffer.Commit();
+
+  // Both because the verdict is a host decision and because the flags live in
+  // a temporary the allocator reclaims the moment this returns.
+  WaitForStream(stream);
+
+  const auto* flag = static_cast<const uint32_t*>(TF_TensorData(flags.get()));
+  if (flag == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Metal: the numeric check flags have no storage.");
+    return;
+  }
+  const bool has_nan = flag[0] != 0;
+  const bool has_negative_inf = flag[1] != 0;
+  const bool has_positive_inf = flag[2] != 0;
+  if (!has_nan && !has_negative_inf && !has_positive_inf) return;
+
+  // Worded exactly as TensorFlow's GPU kernel words it, down to the two
+  // versions disagreeing about whether the sign of an infinity is reported:
+  // the first collapses both into "Inf", the second names each.
+  std::string anomalies;
+  if (v2) {
+    std::vector<std::string> found;
+    if (has_negative_inf) found.push_back("-Inf");
+    if (has_positive_inf) found.push_back("+Inf");
+    if (has_nan) found.push_back("NaN");
+    if (found.size() == 3) {
+      anomalies = found[0] + ", " + found[1] + ", and " + found[2];
+    } else if (found.size() == 2) {
+      anomalies = found[0] + " and " + found[1];
+    } else {
+      anomalies = found[0];
+    }
+  } else {
+    const bool has_inf = has_negative_inf || has_positive_inf;
+    if (has_nan && has_inf) {
+      anomalies = "Inf and NaN";
+    } else if (has_nan) {
+      anomalies = "NaN";
+    } else {
+      anomalies = "Inf";
+    }
+  }
+  TF_SetStatus(status, TF_INVALID_ARGUMENT,
+               (op->message + " : Tensor had " + anomalies + " values")
+                   .c_str());
+}
+
+void CheckNumerics_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx,
+                               TF_Status* status) {
+  CheckNumericsImpl(op, ctx, /*v2=*/false, status);
+}
+
+void CheckNumericsV2_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx,
+                                 TF_Status* status) {
+  CheckNumericsImpl(op, ctx, /*v2=*/true, status);
 }
 
 /*** WRAPPERS AND REGISTRATION ***/
@@ -499,6 +632,7 @@ void CheckNumerics_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx,
 METAL_COMPUTE(Reverse_Compute, Reverse_ComputeImpl)
 METAL_COMPUTE(LRN_Compute, LRN_ComputeImpl)
 METAL_COMPUTE(CheckNumerics_Compute, CheckNumerics_ComputeImpl)
+METAL_COMPUTE(CheckNumericsV2_Compute, CheckNumericsV2_ComputeImpl)
 METAL_COMPUTE(ExtractImagePatches_Compute, ExtractImagePatches_ComputeImpl)
 
 #undef METAL_COMPUTE
@@ -536,7 +670,7 @@ void RegisterMetalMiscKernels() {
     Register("Reverse", &Reverse_Compute, t, "MetalReverse" + s, {"dims"});
     Register("CheckNumerics", &CheckNumerics_Compute, t,
              "MetalCheckNumerics" + s, {});
-    Register("CheckNumericsV2", &CheckNumerics_Compute, t,
+    Register("CheckNumericsV2", &CheckNumericsV2_Compute, t,
              "MetalCheckNumericsV2" + s, {});
   }
   for (int i = 0; i < 2; ++i) {
