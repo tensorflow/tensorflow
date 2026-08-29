@@ -87,7 +87,7 @@ cc_library(
         "@xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/api:__pkg__",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
-        "//third_party/py/torch_tpu/pjrt:__pkg__",
+        "//third_party/py/torch_tpu/csrc/pjrt:__pkg__",
     ]),
     deps = [
         ":profiler_interface",
@@ -144,7 +144,7 @@ cc_library(
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
-        "//third_party/py/torch_tpu/pjrt:__pkg__",
+        "//third_party/py/torch_tpu/csrc/pjrt:__pkg__",
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
