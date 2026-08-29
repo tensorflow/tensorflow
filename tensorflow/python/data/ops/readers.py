@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -551,15 +552,20 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
         "header_bytes", header_bytes)
     self._footer_bytes = convert.optional_param_to_tensor(
         "footer_bytes", footer_bytes)
-    if (isinstance(buffer_size, int) and
-        buffer_size > _MAX_READER_BUFFER_SIZE_BYTES):
-      raise ValueError(
-          f"`buffer_size` must not exceed {_MAX_READER_BUFFER_SIZE_BYTES} "
-          f"bytes, but got {buffer_size}. Requesting a buffer this large "
-          "would cause the reader to abort the process instead of raising "
-          "a catchable error.")
     self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
+    # Validate against the *resolved* static value so this catches Python
+    # ints, NumPy integers, and constant Tensors/EagerTensors alike (not just
+    # plain Python `int`). Fully dynamic Tensors (unknown until runtime) are
+    # left unchecked here, since no static value is available to inspect.
+    buffer_size_static = tensor_util.constant_value(self._buffer_size)
+    if (buffer_size_static is not None and
+        buffer_size_static > _MAX_READER_BUFFER_SIZE_BYTES):
+      raise ValueError(
+          f"`buffer_size` must not exceed {_MAX_READER_BUFFER_SIZE_BYTES} "
+          f"bytes, but got {buffer_size_static}. Requesting a buffer this "
+          "large would cause the reader to abort the process instead of "
+          "raising a catchable error.")
     self._compression_type = convert.optional_param_to_tensor(
         "compression_type",
         compression_type,
