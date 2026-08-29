@@ -124,12 +124,27 @@ inline uint4 tf_random_bits(constant RandomParams& params, uint gid) {
                    uint2(params.seed_lo, params.seed_hi));
 }
 
-kernel void tf_random_uniform_float(device float* out [[buffer(0)]],
-                                    constant RandomParams& params [[buffer(1)]],
-                                    uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  out[gid] = tf_to_unit_float(tf_random_bits(params, gid).x);
-}
+// Storage type parameterised, arithmetic always in float. The Philox stream is
+// the same whatever the output type, so a half draw is a float draw rounded
+// once at the end rather than a different sequence.
+//
+// The rounding is why ALMOST_ONE exists. The float value is in [0, 1), but a
+// draw above 1 - 2^-12 rounds up to exactly 1 in half, and the op promises a
+// half-open interval: a caller computing log(1 - u) would get -inf from a
+// generator that can return one. Values that round up are pushed back to the
+// largest representable value below one.
+#define TF_METAL_RANDOM_UNIFORM(NAME, T, ALMOST_ONE)                        \
+  kernel void NAME(device T* out [[buffer(0)]],                             \
+                   constant RandomParams& params [[buffer(1)]],             \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    const T value = T(tf_to_unit_float(tf_random_bits(params, gid).x));     \
+    out[gid] = value < T(1) ? value : T(ALMOST_ONE);                        \
+  }
+
+// 1 - 2^-24 and 1 - 2^-11, the largest values below one in each format.
+TF_METAL_RANDOM_UNIFORM(tf_random_uniform_float, float, 0.99999994f)
+TF_METAL_RANDOM_UNIFORM(tf_random_uniform_half, half, 0.99951171875h)
 
 // Box-Muller. Both normals come from one Philox call, and only the first is
 // kept: generating pairs would make a thread responsible for two output
@@ -141,32 +156,39 @@ inline float tf_box_muller(uint4 bits) {
   return sqrt(-2.0f * log(u1)) * cos(6.28318530718f * u2);
 }
 
-kernel void tf_random_normal_float(device float* out [[buffer(0)]],
-                                   constant RandomParams& params [[buffer(1)]],
-                                   uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  out[gid] = tf_box_muller(tf_random_bits(params, gid));
-}
+#define TF_METAL_RANDOM_NORMAL(NAME, T)                                     \
+  kernel void NAME(device T* out [[buffer(0)]],                             \
+                   constant RandomParams& params [[buffer(1)]],             \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    out[gid] = T(tf_box_muller(tf_random_bits(params, gid)));               \
+  }
+
+TF_METAL_RANDOM_NORMAL(tf_random_normal_float, float)
+TF_METAL_RANDOM_NORMAL(tf_random_normal_half, half)
 
 // Truncated to two standard deviations, which is TensorFlow's definition.
 // Resampled rather than clamped: clamping would pile mass onto the two
 // boundary values and visibly distort weight initialisation.
-kernel void tf_truncated_normal_float(device float* out [[buffer(0)]],
-                                      constant RandomParams& params
-                                          [[buffer(1)]],
-                                      uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  float value = 0.0f;
-  for (uint attempt = 0; attempt < 8; ++attempt) {
-    uint4 bits = tf_philox(uint4(gid, params.counter, attempt, 0u),
-                           uint2(params.seed_lo, params.seed_hi));
-    value = tf_box_muller(bits);
-    if (fabs(value) <= 2.0f) break;
-    // After the last attempt the value is kept as is; the probability of
-    // eight consecutive rejections is under 1e-13.
+#define TF_METAL_TRUNCATED_NORMAL(NAME, T)                                  \
+  kernel void NAME(device T* out [[buffer(0)]],                             \
+                   constant RandomParams& params [[buffer(1)]],             \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    float value = 0.0f;                                                     \
+    for (uint attempt = 0; attempt < 8; ++attempt) {                        \
+      uint4 bits = tf_philox(uint4(gid, params.counter, attempt, 0u),       \
+                             uint2(params.seed_lo, params.seed_hi));        \
+      value = tf_box_muller(bits);                                          \
+      if (fabs(value) <= 2.0f) break;                                       \
+      /* After the last attempt the value is kept as is; the probability */ \
+      /* of eight consecutive rejections is under 1e-13. */                 \
+    }                                                                       \
+    out[gid] = T(clamp(value, -2.0f, 2.0f));                                \
   }
-  out[gid] = clamp(value, -2.0f, 2.0f);
-}
+
+TF_METAL_TRUNCATED_NORMAL(tf_truncated_normal_float, float)
+TF_METAL_TRUNCATED_NORMAL(tf_truncated_normal_half, half)
 
 // Uniform integers in [lo, hi). Derived from the same Philox stream as the
 // float generator, but reduced by remainder rather than scaled, so the result
@@ -202,15 +224,23 @@ struct SgdParams {
   uint pad2;
 };
 
-kernel void tf_apply_gradient_descent_float(
-    device float* var [[buffer(0)]],
-    device const float* alpha [[buffer(1)]],
-    device const float* delta [[buffer(2)]],
-    constant SgdParams& params [[buffer(3)]],
-    uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  var[gid] -= alpha[0] * delta[gid];
-}
+// Every optimizer below is parameterised by storage type and computes in
+// float regardless. Half is a storage format here, not an arithmetic one: an
+// accumulator updated thousands of times in half stops moving once the update
+// falls below its resolution, which is a silent failure to train rather than
+// a wrong answer anyone would notice.
+#define TF_METAL_APPLY_SGD(NAME, T)                                         \
+  kernel void NAME(device T* var [[buffer(0)]],                             \
+                   device const T* alpha [[buffer(1)]],                     \
+                   device const T* delta [[buffer(2)]],                     \
+                   constant SgdParams& params [[buffer(3)]],                \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    var[gid] = T(float(var[gid]) - float(alpha[0]) * float(delta[gid]));    \
+  }
+
+TF_METAL_APPLY_SGD(tf_apply_gradient_descent_float, float)
+TF_METAL_APPLY_SGD(tf_apply_gradient_descent_half, half)
 
 struct AdamParams {
   uint count;
@@ -230,20 +260,27 @@ struct AdamParams {
 // TensorFlow's ResourceApplyMomentum:
 //   accum = accum * momentum + grad
 //   var  -= use_nesterov ? (grad*lr + accum*momentum*lr) : accum*lr
-kernel void tf_apply_momentum_float(device float* var [[buffer(0)]],
-                                    device float* accum [[buffer(1)]],
-                                    device const float* lr [[buffer(2)]],
-                                    device const float* grad [[buffer(3)]],
-                                    device const float* momentum [[buffer(4)]],
-                                    constant AdamParams& params [[buffer(5)]],
-                                    uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  const float g = grad[gid];
-  const float m = momentum[0];
-  const float a = accum[gid] * m + g;
-  accum[gid] = a;
-  var[gid] -= params.use_nesterov ? (g * lr[0] + a * m * lr[0]) : (a * lr[0]);
-}
+#define TF_METAL_APPLY_MOMENTUM(NAME, T)                                    \
+  kernel void NAME(device T* var [[buffer(0)]],                             \
+                   device T* accum [[buffer(1)]],                           \
+                   device const T* lr [[buffer(2)]],                        \
+                   device const T* grad [[buffer(3)]],                      \
+                   device const T* momentum [[buffer(4)]],                  \
+                   constant AdamParams& params [[buffer(5)]],               \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    const float g = float(grad[gid]);                                       \
+    const float m = float(momentum[0]);                                     \
+    const float rate = float(lr[0]);                                        \
+    const float a = float(accum[gid]) * m + g;                              \
+    accum[gid] = T(a);                                                      \
+    var[gid] = T(float(var[gid]) - (params.use_nesterov                     \
+                                        ? (g * rate + a * m * rate)         \
+                                        : (a * rate)));                     \
+  }
+
+TF_METAL_APPLY_MOMENTUM(tf_apply_momentum_float, float)
+TF_METAL_APPLY_MOMENTUM(tf_apply_momentum_half, half)
 
 // TensorFlow's ResourceApplyKerasMomentum, which is NOT the same update as
 // ResourceApplyMomentum above. Keras folds the learning rate into the
@@ -253,21 +290,26 @@ kernel void tf_apply_momentum_float(device float* var [[buffer(0)]],
 //   var  += use_nesterov ? (accum*momentum - grad*lr) : accum
 // Sharing one kernel between the two would train subtly differently rather
 // than fail, which is why they are separate.
-kernel void tf_apply_keras_momentum_float(
-    device float* var [[buffer(0)]],
-    device float* accum [[buffer(1)]],
-    device const float* lr [[buffer(2)]],
-    device const float* grad [[buffer(3)]],
-    device const float* momentum [[buffer(4)]],
-    constant AdamParams& params [[buffer(5)]],
-    uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  const float g = grad[gid];
-  const float m = momentum[0];
-  const float a = accum[gid] * m - g * lr[0];
-  accum[gid] = a;
-  var[gid] += params.use_nesterov ? (a * m - g * lr[0]) : a;
-}
+#define TF_METAL_APPLY_KERAS_MOMENTUM(NAME, T)                              \
+  kernel void NAME(device T* var [[buffer(0)]],                             \
+                   device T* accum [[buffer(1)]],                           \
+                   device const T* lr [[buffer(2)]],                        \
+                   device const T* grad [[buffer(3)]],                      \
+                   device const T* momentum [[buffer(4)]],                  \
+                   constant AdamParams& params [[buffer(5)]],               \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    const float g = float(grad[gid]);                                       \
+    const float m = float(momentum[0]);                                     \
+    const float rate = float(lr[0]);                                        \
+    const float a = float(accum[gid]) * m - g * rate;                       \
+    accum[gid] = T(a);                                                      \
+    var[gid] = T(float(var[gid]) +                                          \
+                 (params.use_nesterov ? (a * m - g * rate) : a));           \
+  }
+
+TF_METAL_APPLY_KERAS_MOMENTUM(tf_apply_keras_momentum_float, float)
+TF_METAL_APPLY_KERAS_MOMENTUM(tf_apply_keras_momentum_half, half)
 
 // TensorFlow's ResourceApplyRMSProp:
 //   ms  += (grad^2 - ms) * (1 - rho)
@@ -275,55 +317,65 @@ kernel void tf_apply_keras_momentum_float(
 //   var -= mom
 // Note the epsilon sits inside the square root here, unlike Adam where it is
 // added to the root. Moving it changes the update.
-kernel void tf_apply_rms_prop_float(device float* var [[buffer(0)]],
-                                    device float* ms [[buffer(1)]],
-                                    device float* mom [[buffer(2)]],
-                                    device const float* lr [[buffer(3)]],
-                                    device const float* rho [[buffer(4)]],
-                                    device const float* momentum [[buffer(5)]],
-                                    device const float* epsilon [[buffer(6)]],
-                                    device const float* grad [[buffer(7)]],
-                                    constant AdamParams& params [[buffer(8)]],
-                                    uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
-  const float g = grad[gid];
-  const float ms_new = ms[gid] + (g * g - ms[gid]) * (1.0f - rho[0]);
-  ms[gid] = ms_new;
-  const float mom_new =
-      mom[gid] * momentum[0] + (g * lr[0]) / sqrt(ms_new + epsilon[0]);
-  mom[gid] = mom_new;
-  var[gid] -= mom_new;
-}
+#define TF_METAL_APPLY_RMS_PROP(NAME, T)                                    \
+  kernel void NAME(device T* var [[buffer(0)]],                             \
+                   device T* ms [[buffer(1)]],                              \
+                   device T* mom [[buffer(2)]],                             \
+                   device const T* lr [[buffer(3)]],                        \
+                   device const T* rho [[buffer(4)]],                       \
+                   device const T* momentum [[buffer(5)]],                  \
+                   device const T* epsilon [[buffer(6)]],                   \
+                   device const T* grad [[buffer(7)]],                      \
+                   constant AdamParams& params [[buffer(8)]],               \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    const float g = float(grad[gid]);                                       \
+    const float ms_old = float(ms[gid]);                                    \
+    const float ms_new = ms_old + (g * g - ms_old) * (1.0f - float(rho[0]));\
+    ms[gid] = T(ms_new);                                                    \
+    const float mom_new = float(mom[gid]) * float(momentum[0]) +            \
+                          (g * float(lr[0])) /                              \
+                              sqrt(ms_new + float(epsilon[0]));             \
+    mom[gid] = T(mom_new);                                                  \
+    var[gid] = T(float(var[gid]) - mom_new);                                \
+  }
 
-kernel void tf_apply_adam_float(device float* var [[buffer(0)]],
-                                device float* m [[buffer(1)]],
-                                device float* v [[buffer(2)]],
-                                device const float* beta1_power [[buffer(3)]],
-                                device const float* beta2_power [[buffer(4)]],
-                                device const float* lr [[buffer(5)]],
-                                device const float* beta1 [[buffer(6)]],
-                                device const float* beta2 [[buffer(7)]],
-                                device const float* epsilon [[buffer(8)]],
-                                device const float* grad [[buffer(9)]],
-                                constant AdamParams& params [[buffer(10)]],
-                                uint gid [[thread_position_in_grid]]) {
-  if (gid >= params.count) return;
+TF_METAL_APPLY_RMS_PROP(tf_apply_rms_prop_float, float)
+TF_METAL_APPLY_RMS_PROP(tf_apply_rms_prop_half, half)
 
-  const float b1 = beta1[0];
-  const float b2 = beta2[0];
-  const float alpha = lr[0] * sqrt(1.0f - beta2_power[0]) /
-                      (1.0f - beta1_power[0]);
+#define TF_METAL_APPLY_ADAM(NAME, T)                                        \
+  kernel void NAME(device T* var [[buffer(0)]],                             \
+                   device T* m [[buffer(1)]],                               \
+                   device T* v [[buffer(2)]],                               \
+                   device const T* beta1_power [[buffer(3)]],               \
+                   device const T* beta2_power [[buffer(4)]],               \
+                   device const T* lr [[buffer(5)]],                        \
+                   device const T* beta1 [[buffer(6)]],                     \
+                   device const T* beta2 [[buffer(7)]],                     \
+                   device const T* epsilon [[buffer(8)]],                   \
+                   device const T* grad [[buffer(9)]],                      \
+                   constant AdamParams& params [[buffer(10)]],              \
+                   uint gid [[thread_position_in_grid]]) {                  \
+    if (gid >= params.count) return;                                        \
+    const float b1 = float(beta1[0]);                                       \
+    const float b2 = float(beta2[0]);                                       \
+    const float alpha = float(lr[0]) *                                      \
+                        sqrt(1.0f - float(beta2_power[0])) /                \
+                        (1.0f - float(beta1_power[0]));                     \
+    const float g = float(grad[gid]);                                       \
+    const float m_new = float(m[gid]) + (1.0f - b1) * (g - float(m[gid]));  \
+    const float v_new =                                                     \
+        float(v[gid]) + (1.0f - b2) * (g * g - float(v[gid]));              \
+    m[gid] = T(m_new);                                                      \
+    v[gid] = T(v_new);                                                      \
+    const float numerator =                                                 \
+        params.use_nesterov ? (m_new * b1 + (1.0f - b1) * g) : m_new;       \
+    var[gid] = T(float(var[gid]) -                                          \
+                 alpha * numerator / (sqrt(v_new) + float(epsilon[0])));    \
+  }
 
-  const float g = grad[gid];
-  const float m_new = m[gid] + (1.0f - b1) * (g - m[gid]);
-  const float v_new = v[gid] + (1.0f - b2) * (g * g - v[gid]);
-  m[gid] = m_new;
-  v[gid] = v_new;
-
-  const float numerator =
-      params.use_nesterov ? (m_new * b1 + (1.0f - b1) * g) : m_new;
-  var[gid] -= alpha * numerator / (sqrt(v_new) + epsilon[0]);
-}
+TF_METAL_APPLY_ADAM(tf_apply_adam_float, float)
+TF_METAL_APPLY_ADAM(tf_apply_adam_half, half)
 
 // ---- morphological dilation gradients ----
 

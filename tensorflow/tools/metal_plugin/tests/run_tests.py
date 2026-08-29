@@ -91,6 +91,16 @@ def main():
   except Exception:  # pylint: disable=broad-except
     check("an op with no GPU kernel is refused", True)
 
+  # RandomUniform promises [0, 1). In float16 that is not free: a float draw
+  # above 1 - 2^-12 rounds up to exactly one, and a caller computing
+  # log(1 - u) would get -inf from a generator that can return one.
+  with tf.device("/GPU:0"):
+    draws = tf.raw_ops.RandomUniform(shape=[20000], dtype=tf.float16,
+                                     seed=1, seed2=2).numpy()
+  check("RandomUniform float16 stays below one",
+        bool(draws.max() < 1.0 and draws.min() >= 0.0),
+        f"range [{draws.min():.4f}, {draws.max():.4f}]")
+
   # The float16 max-pooling gradient scatters through an atomic, which Metal
   # has only for float, so it accumulates into a float32 temporary and is
   # narrowed afterwards. Overlapping windows are what make that path matter:

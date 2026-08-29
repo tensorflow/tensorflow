@@ -118,6 +118,12 @@ void* TrainingOp_Create(TF_OpKernelConstruction* ctx) {
   return op;
 }
 
+// float32 and float16, matching what CUDA registers. Half is storage only:
+// every shader here widens to float before touching the arithmetic.
+const char* ValueSuffix(TF_DataType t) {
+  return t == TF_HALF ? "_half" : "_float";
+}
+
 void TrainingOp_Delete(void* kernel) {
   delete static_cast<TrainingOp*>(kernel);
 }
@@ -171,17 +177,15 @@ void ApplyGradientDescent_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
     return;
   }
   if (count == 0) return;
-  if (op->dtype != TF_FLOAT) {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: optimizers are implemented for float32 only.");
-    return;
-  }
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   id<MTLComputePipelineState> pipeline = PipelineFor(
-      DeviceForStream(stream), "tf_apply_gradient_descent_float", status);
+      DeviceForStream(stream),
+      (std::string("tf_apply_gradient_descent") + ValueSuffix(op->dtype))
+          .c_str(),
+      status);
   if (pipeline == nil) return;
 
   BufferSlice var_slice;
@@ -263,17 +267,15 @@ void ApplyAdam_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
     return;
   }
   if (count == 0) return;
-  if (op->dtype != TF_FLOAT) {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: optimizers are implemented for float32 only.");
-    return;
-  }
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   id<MTLComputePipelineState> pipeline =
-      PipelineFor(DeviceForStream(stream), "tf_apply_adam_float", status);
+      PipelineFor(DeviceForStream(stream),
+                  (std::string("tf_apply_adam") + ValueSuffix(op->dtype))
+                      .c_str(),
+                  status);
   if (pipeline == nil) return;
 
   BufferSlice slices[10];
@@ -313,12 +315,19 @@ void ApplyAdam_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
 
 /*** MOMENTUM AND RMSPROP ***/
 
-// Both take one or two resource slots followed by scalars and the gradient.
+// These take one or more resource slots followed by scalars and the gradient.
 // `slot_count` is how many leading inputs are resources; the rest are read as
 // ordinary tensors in order.
+//
+// `grad_index` is passed rather than assumed to be last, because it is not.
+// ResourceApplyRMSProp ends with the gradient, but ResourceApplyMomentum and
+// ResourceApplyKerasMomentum are (var, accum, lr, grad, momentum), so taking
+// the final input as the gradient compared the variable against a scalar and
+// rejected every call.
 void ApplySlotted_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
-                              const char* shader, int slot_count,
-                              int scalar_count, TF_Status* status) {
+                              const char* shader_base, int slot_count,
+                              int scalar_count, int grad_index,
+                              TF_Status* status) {
   std::vector<int> locked(slot_count);
   for (int i = 0; i < slot_count; ++i) locked[i] = i;
   ScopedVariableLock lock;
@@ -349,22 +358,18 @@ void ApplySlotted_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
       return;
     }
   }
-  if (TF_TensorElementCount(tensors[total - 1].get()) != count) {
+  if (TF_TensorElementCount(tensors[grad_index].get()) != count) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "Metal: optimizer gradient differs in size from the variable.");
     return;
   }
   if (count == 0) return;
-  if (op->dtype != TF_FLOAT) {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: optimizers are implemented for float32 only.");
-    return;
-  }
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
+  const std::string shader = std::string(shader_base) + ValueSuffix(op->dtype);
   id<MTLComputePipelineState> pipeline =
-      PipelineFor(DeviceForStream(stream), shader, status);
+      PipelineFor(DeviceForStream(stream), shader.c_str(), status);
   if (pipeline == nil) return;
 
   std::vector<BufferSlice> slices(total);
@@ -400,23 +405,26 @@ void ApplySlotted_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
 // var, accum | lr, grad, momentum
 void ApplyMomentum_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
                                TF_Status* status) {
-  ApplySlotted_ComputeImpl(op, ctx, "tf_apply_momentum_float",
-                           /*slot_count=*/2, /*scalar_count=*/2, status);
+  ApplySlotted_ComputeImpl(op, ctx, "tf_apply_momentum",
+                           /*slot_count=*/2, /*scalar_count=*/2,
+                           /*grad_index=*/3, status);
 }
 
 // Keras folds the learning rate into the accumulator, so this is a different
 // update from ResourceApplyMomentum and needs its own shader.
 void ApplyKerasMomentum_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
                                     TF_Status* status) {
-  ApplySlotted_ComputeImpl(op, ctx, "tf_apply_keras_momentum_float",
-                           /*slot_count=*/2, /*scalar_count=*/2, status);
+  ApplySlotted_ComputeImpl(op, ctx, "tf_apply_keras_momentum",
+                           /*slot_count=*/2, /*scalar_count=*/2,
+                           /*grad_index=*/3, status);
 }
 
 // var, ms, mom | lr, rho, momentum, epsilon, grad
 void ApplyRMSProp_ComputeImpl(TrainingOp* op, TF_OpKernelContext* ctx,
                               TF_Status* status) {
-  ApplySlotted_ComputeImpl(op, ctx, "tf_apply_rms_prop_float",
-                           /*slot_count=*/3, /*scalar_count=*/4, status);
+  ApplySlotted_ComputeImpl(op, ctx, "tf_apply_rms_prop",
+                           /*slot_count=*/3, /*scalar_count=*/4,
+                           /*grad_index=*/7, status);
 }
 
 /*** WRAPPERS AND REGISTRATION ***/
@@ -449,11 +457,11 @@ METAL_DEFINE_TRAINING_COMPUTE(ApplyRMSProp_Compute, ApplyRMSProp_ComputeImpl)
 void RegisterTraining(const char* op_name,
                       void* (*create)(TF_OpKernelConstruction*),
                       void (*compute)(void*, TF_OpKernelContext*),
-                      const std::string& kernel_name) {
+                      const std::string& kernel_name, TF_DataType dtype) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
       op_name, kMetalDeviceType, create, compute, &TrainingOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "T", TF_FLOAT, status);
+  TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
   // The variable handles are resource tensors and live on the host.
   TF_KernelBuilder_HostMemory(builder, "var");
   if (TF_GetCode(status) == TF_OK) {
@@ -471,18 +479,25 @@ void RegisterTraining(const char* op_name,
 }  // namespace
 
 void RegisterMetalTrainingKernels() {
-  RegisterTraining("ResourceApplyGradientDescent", &TrainingOp_Create<false>,
-                   &ApplyGradientDescent_Compute,
-                   "MetalResourceApplyGradientDescentFloat");
-  RegisterTraining("ResourceApplyAdam", &TrainingOp_Create<true>,
-                   &ApplyAdam_Compute, "MetalResourceApplyAdamFloat");
-  RegisterTraining("ResourceApplyMomentum", &TrainingOp_Create<true>,
-                   &ApplyMomentum_Compute, "MetalResourceApplyMomentumFloat");
-  RegisterTraining("ResourceApplyKerasMomentum", &TrainingOp_Create<true>,
-                   &ApplyKerasMomentum_Compute,
-                   "MetalResourceApplyKerasMomentumFloat");
-  RegisterTraining("ResourceApplyRMSProp", &TrainingOp_Create<false>,
-                   &ApplyRMSProp_Compute, "MetalResourceApplyRMSPropFloat");
+  static constexpr TF_DataType kDTypes[] = {TF_FLOAT, TF_HALF};
+  static constexpr const char* kSuffixes[] = {"Float", "Half"};
+  for (int i = 0; i < 2; ++i) {
+    const TF_DataType t = kDTypes[i];
+    const std::string s = kSuffixes[i];
+    RegisterTraining("ResourceApplyGradientDescent", &TrainingOp_Create<false>,
+                     &ApplyGradientDescent_Compute,
+                     "MetalResourceApplyGradientDescent" + s, t);
+    RegisterTraining("ResourceApplyAdam", &TrainingOp_Create<true>,
+                     &ApplyAdam_Compute, "MetalResourceApplyAdam" + s, t);
+    RegisterTraining("ResourceApplyMomentum", &TrainingOp_Create<true>,
+                     &ApplyMomentum_Compute, "MetalResourceApplyMomentum" + s,
+                     t);
+    RegisterTraining("ResourceApplyKerasMomentum", &TrainingOp_Create<true>,
+                     &ApplyKerasMomentum_Compute,
+                     "MetalResourceApplyKerasMomentum" + s, t);
+    RegisterTraining("ResourceApplyRMSProp", &TrainingOp_Create<false>,
+                     &ApplyRMSProp_Compute, "MetalResourceApplyRMSProp" + s, t);
+  }
 }
 
 }  // namespace metal
