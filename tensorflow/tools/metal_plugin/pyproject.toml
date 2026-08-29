@@ -1,0 +1,8 @@
+# The build itself only needs setuptools. TensorFlow is deliberately absent
+# from `requires`: listing it would make pip download a second copy of
+# TensorFlow into the isolated build environment, when the one already
+# installed in the target interpreter is exactly the one the plugin must be
+# compiled against. setup.py locates it there instead.
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
