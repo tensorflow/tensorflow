@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/measuring_cost_estimator.h"
 
-#include <limits>
+#include <algorithm>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -25,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
