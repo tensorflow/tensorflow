@@ -1169,7 +1169,7 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
       )
     if n < 0:
       raise ValueError(
-          f'Argument `order` must be a non-negative integer. Received: n={n}'
+          f'Argument `n` must be a non-negative integer. Received: n={n}'
       )
     slice1 = [slice(None)] * nd
     slice2 = [slice(None)] * nd
