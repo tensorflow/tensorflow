@@ -48,7 +48,9 @@ xla_test_friend_package_group(name = "friends")
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
 
-# Target to add main for tests. Do not link this target and
+# Target to add main for tests that pass XLA flags via args. Prefer to use
+# @com_google_googletest//:gtest_main and pass XLA flags via the env attribute
+# (XLA_FLAGS) over this target. Do not link this target and
 # @com_google_googletest//:gtest_main into the same target.
 cc_library(
     name = "xla_internal_test_main",
@@ -56,13 +58,13 @@ cc_library(
     srcs = ["xla_internal_test_main.cc"],
     deps = [
         "//xla:debug_options_flags",
-        "@com_google_absl//absl/flags:flag",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_for_library",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:test",
-        "@tsl//tsl/platform:test_benchmark",
     ],
     alwayslink = True,
 )
@@ -485,7 +487,6 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
@@ -1551,7 +1552,10 @@ xla_test(
     args = ["--xla_gpu_autotune_level=0"],
     backends = ["gpu"],
     shard_count = 40,
-    tags = ["optonly"],
+    tags = [
+        "nozapfhahn",
+        "optonly",
+    ],
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1610,6 +1614,7 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
+    tags = ["nozapfhahn"],
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1920,7 +1925,6 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service",
-        "//xla/service:computation_placer",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
@@ -2700,14 +2704,12 @@ xla_test(
         ":hlo_pjrt_test_base",
         ":literal_test_util",
         ":pjrt_client_registry",
-        ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:xla_test_backend_predicates",

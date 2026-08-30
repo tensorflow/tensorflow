@@ -1360,8 +1360,31 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     with self.session(use_gpu=False):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
-        with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
+        with self.assertRaisesOpError("Invalid number of segments"):
           self.evaluate(s)
+
+  def testGradientEmptyInputWithNonEmptyIndices(self):
+    ops_list = [
+        math_ops.sparse_segment_sum_grad,
+        math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad,
+    ]
+    v2_ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    indices = [0, 1]
+    segment_ids = [0, 1]
+    output_dim0 = 2
+    for dtype in [dtypes_lib.float16, dtypes_lib.float32, dtypes_lib.float64]:
+      grad = constant_op.constant([], shape=[0], dtype=dtype)
+      for tf_op in ops_list:
+        with self.assertRaisesOpError("Invalid number of segments"):
+          self.evaluate(tf_op(grad, indices, segment_ids, output_dim0))
+      for tf_op in v2_ops_list:
+        with self.assertRaisesOpError("Invalid number of segments"):
+          self.evaluate(tf_op(grad, indices, segment_ids, output_dim0))
 
   def testGradientV2Valid(self):
     # Baseline for the testGradientV2*Invalid* methods below.
@@ -1473,7 +1496,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     with self.session(use_gpu=False):
       for tf_op in ops_list:
         s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
-        with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
+        with self.assertRaisesOpError("Invalid number of segments"):
           self.evaluate([s, j])
 
 

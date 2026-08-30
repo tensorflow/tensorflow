@@ -142,9 +142,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "llvm_kernel_autotuner",
-    srcs = ["llvm_kernel_autotuner.cc"],
-    hdrs = ["llvm_kernel_autotuner.h"],
+    name = "cpu_autotuner",
+    srcs = ["cpu_autotuner.cc"],
+    hdrs = ["cpu_autotuner.h"],
     deps = [
         ":cpu_codegen_backend",
         ":cpu_profiler",
@@ -171,10 +171,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "llvm_kernel_autotuner_test",
-    srcs = ["llvm_kernel_autotuner_test.cc"],
+    name = "cpu_autotuner_test",
+    srcs = ["cpu_autotuner_test.cc"],
     deps = [
-        ":llvm_kernel_autotuner",
+        ":cpu_autotuner",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/cpu:cpu_compiler",

@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
@@ -82,13 +83,10 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/testing_utils.h"
 #include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
-#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -2434,6 +2432,529 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
   EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
   EXPECT_THAT(sequence.instructions()[2], op::CopyStart());
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchExactTimeSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch {
+        after_instruction { instruction_name_regex: ".*negate.3.*" }
+        strict_timing: true
+      }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Ensure the CopyStart is scheduled after negate.3 (schedule index 6).
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[5], op::Negate());
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchLogicalTimeSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch { logical_time: 4 strict_timing: true }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[5], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchUnsatisfiableFails) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate1, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch { logical_time: 0 strict_timing: true }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  InstructionHoister instruction_hoister;
+  CHECK_OK(instruction_hoister.Run(module.get()).status());
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  auto status_or = AssignMemorySpaceAndReturnStatus(
+      module.get(), std::move(options), /*buffer_interval_compare=*/{},
+      &prefetch_interval_picker);
+  EXPECT_FALSE(status_or.ok());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPinInAlternateMemory) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate1, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*p1.*" }
+      pin_in_alternate_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  // p1 is pinned in alternate memory, so no copy allocation is created and
+  // add consumes p1 directly.
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  EXPECT_EQ(p1->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictKeepInDefaultMemory) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  // Strictly keep p1 in default memory, preventing prefetch.
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      keep_in_default_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  // Without override, p1 would be prefetched via AsyncCopy.
+  // With keep_in_default_memory, add consumes Parameter(1) directly.
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictKeepInDefaultMemoryDefiningPosition) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*p1.*" }
+      keep_in_default_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       PositionMatcherDoesNotMatchConsumerInstruction) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  // Matching ".*add.*" with HloPositionMatcher should ONLY match buffers
+  // PRODUCED by add, NOT buffers CONSUMED by add (like p1).
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*add.*" }
+      keep_in_default_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  // Since p1's defining position is p1 (not add), it is NOT kept in default
+  // memory and gets prefetched into alternate memory space.
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchBeforeInstructionSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch {
+        before_instruction { instruction_name_regex: ".*negate.4.*" }
+        strict_timing: true
+      }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchExactTimeWithStrictBool) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch { logical_time: 4 strict_timing: true }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[5], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchCostAnalysisExactTimeSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch {
+        after_instruction { instruction_name_regex: ".*negate.3.*" }
+        strict_timing: true
+      }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPinInAlternateMemoryFailsOnOom) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});  // 24 bytes
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, negate0});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 10;
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*p0.*" }
+      pin_in_alternate_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  InstructionHoister instruction_hoister;
+  CHECK_OK(instruction_hoister.Run(module.get()).status());
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  auto status_or = AssignMemorySpaceAndReturnStatus(
+      module.get(), std::move(options), /*buffer_interval_compare=*/{},
+      &prefetch_interval_picker);
+  EXPECT_FALSE(status_or.ok());
 }
 
 TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetch) {
@@ -18605,6 +19126,398 @@ ENTRY entry {
             kAlternateMemorySpace);
 }
 
+// Returns OK if all the following conditions are met:
+// 1. All positions belong to the same HloBuffer.
+// 2. All positions are found in preset_assignments.
+// 3. All positions have the same offset in preset_assignments.
+absl::Status ArePositionsColocatedInAltMem(
+    absl::Span<const HloPosition> positions,
+    const PresetAssignments* preset_assignments,
+    const HloAliasAnalysis* alias_analysis) {
+  if (positions.empty()) {
+    return absl::OkStatus();
+  }
+
+  // Check that all positions belong to the same HloBuffer.
+  std::optional<HloBuffer::Id> buffer_id;
+  for (const HloPosition& position : positions) {
+    const HloBuffer& buffer =
+        alias_analysis->GetUniqueBufferAt(position.instruction, position.index);
+    if (!buffer_id.has_value()) {
+      buffer_id = buffer.id();
+    } else if (buffer_id.value() != buffer.id()) {
+      return absl::InternalError(absl::StrCat(
+          "Positions do not belong to the same HloBuffer. Expected buffer id ",
+          buffer_id.value(), " but position ", position.instruction->name(),
+          " index ", position.index.ToString(), " has buffer id ", buffer.id(),
+          "."));
+    }
+  }
+
+  // Check that all positions in preset_assignments have the same offset.
+  std::optional<int64_t> offset;
+  const HloPosition* first_chunk_pos = nullptr;
+  int chunk_found_count = 0;
+  for (const HloPosition& position : positions) {
+    for (const auto& chunk : preset_assignments->chunks()) {
+      if (chunk.first.instruction == position.instruction &&
+          chunk.first.index == position.index) {
+        chunk_found_count++;
+        if (!offset.has_value()) {
+          offset = chunk.second.offset;
+          first_chunk_pos = &position;
+        } else if (offset.value() != chunk.second.offset) {
+          return absl::InternalError(absl::StrCat(
+              "Offsets do not match. Position ",
+              first_chunk_pos->instruction->name(), " index ",
+              first_chunk_pos->index.ToString(), " has offset ", offset.value(),
+              ", but position ", position.instruction->name(), " index ",
+              position.index.ToString(), " has offset ", chunk.second.offset,
+              "."));
+        }
+        break;
+      }
+    }
+  }
+
+  // Check that at least one position was found in preset_assignments.
+  if (chunk_found_count == 0) {
+    return absl::InternalError(
+        "None of the provided positions were found in preset_assignments.");
+  }
+
+  return absl::OkStatus();
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncPipelinedWhileLoopAsyncSliceColocationAndIntermediateVmemReuse) {
+  absl::string_view hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
+
+ds_comp1 {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
+}
+
+ds_comp2 {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
+}
+
+while_cond {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(4)
+  ROOT cond = pred[] compare(i, limit), direction=LT
+}
+
+while_body {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  async_in1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(param), index=1
+  async_in2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(param), index=2
+  acc = f32[2,16]{1,0} get-tuple-element(param), index=3
+  base1 = f32[8,16]{1,0} get-tuple-element(param), index=4
+  base2 = f32[8,16]{1,0} get-tuple-element(param), index=5
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ds_done1 = f32[2,16]{1,0} async-done(async_in1), calls=ds_comp1
+  ds_done2 = f32[2,16]{1,0} async-done(async_in2), calls=ds_comp2
+  new_acc1 = f32[2,16]{1,0} add(acc, ds_done1)
+  new_acc2 = f32[2,16]{1,0} add(new_acc1, ds_done2)
+  new_acc3 = f32[2,16]{1,0} add(new_acc2, new_acc2)
+  new_acc4 = f32[2,16]{1,0} add(new_acc3, new_acc3)
+  zero = s32[] constant(0)
+  next_row = s32[] multiply(next_i, s32[] constant(2))
+  async_next1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(base1, next_row, zero), calls=ds_comp1
+  async_next2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(base2, next_row, zero), calls=ds_comp2
+  ROOT next_state = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(next_i, async_next1, async_next2, new_acc4, base1, base2)
+}
+
+ENTRY main {
+  p_base1 = f32[8,16]{1,0} parameter(0)
+  p_base2 = f32[8,16]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  c_idx0 = s32[] constant(0)
+  c_idx1 = s32[] constant(0)
+  c_zero = f32[] constant(0.0)
+  init_acc = f32[2,16]{1,0} broadcast(c_zero), dimensions={}
+  prologue_start1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base1, c_idx0, c_idx1), calls=ds_comp1
+  prologue_start2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base2, c_idx0, c_idx1), calls=ds_comp2
+  init = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(c0, prologue_start1, prologue_start2, init_acc, p_base1, p_base2)
+  loop = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true"}
+  loop_async_out1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(loop), index=1
+  loop_async_out2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(loop), index=2
+  loop_acc_out = f32[2,16]{1,0} get-tuple-element(loop), index=3
+  epilogue_done1 = f32[2,16]{1,0} async-done(loop_async_out1), calls=ds_comp1
+  epilogue_done2 = f32[2,16]{1,0} async-done(loop_async_out2), calls=ds_comp2
+  acc_with_done1 = f32[2,16]{1,0} add(loop_acc_out, epilogue_done1)
+  ROOT acc_with_done2 = f32[2,16]{1,0} add(acc_with_done1, epilogue_done2)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 256;
+  options.max_outstanding_prefetches = 0;
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"new_acc3"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+      2, /*max_overlap_count=*/10000);
+
+  auto preset_assignments =
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
+
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HloInstruction* while_instr =
+      module->entry_computation()->GetInstructionWithName("loop");
+  ASSERT_NE(while_instr, nullptr);
+  HloComputation* while_body = while_instr->while_body();
+  HloInstruction* body_param = while_body->parameter_instruction(0);
+  HloInstruction* prologue_start1 =
+      module->entry_computation()->GetInstructionWithName("prologue_start1");
+  HloInstruction* prologue_start2 =
+      module->entry_computation()->GetInstructionWithName("prologue_start2");
+  HloInstruction* epilogue_done1 =
+      module->entry_computation()->GetInstructionWithName("epilogue_done1");
+  HloInstruction* epilogue_done2 =
+      module->entry_computation()->GetInstructionWithName("epilogue_done2");
+  HloInstruction* async_next1 =
+      while_body->GetInstructionWithName("async_next1");
+  HloInstruction* async_next2 =
+      while_body->GetInstructionWithName("async_next2");
+  HloInstruction* new_acc3 = while_body->GetInstructionWithName("new_acc3");
+
+  // Verify that all of the positions for the first pipelined async slice are
+  // colocated in alternate memory.
+  EXPECT_OK(ArePositionsColocatedInAltMem(
+      {
+          HloPosition{prologue_start1, {1}},
+          HloPosition{while_instr, {1, 1}},
+          HloPosition{epilogue_done1, {}},
+          HloPosition{body_param, {1, 1}},
+          HloPosition{async_next1, {1}},
+      },
+      preset_assignments.get(), alias_analysis.get()));
+
+  // Verify that all of the positions for the second pipelined async slice are
+  // colocated in alternate memory.
+  EXPECT_OK(ArePositionsColocatedInAltMem(
+      {
+          HloPosition{prologue_start2, {1}},
+          HloPosition{while_instr, {2, 1}},
+          HloPosition{epilogue_done2, {}},
+          HloPosition{body_param, {2, 1}},
+          HloPosition{async_next2, {1}},
+      },
+      preset_assignments.get(), alias_analysis.get()));
+
+  // Verify that new_acc3 gets alt mem. This demonstrates that we can reuse the
+  // alt mem allocated for the pipelined async slices, when they are not alive
+  // in the middle of the while loop.
+  EXPECT_OK(ArePositionsColocatedInAltMem(
+      {
+          HloPosition{new_acc3, {}},
+      },
+      preset_assignments.get(), alias_analysis.get()));
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncPipelinedWhileLoopColocationWithPrefetchesEnabled) {
+  absl::string_view hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
+
+ds_comp1 {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
+}
+
+ds_comp2 {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
+}
+
+while_cond {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(4)
+  ROOT cond = pred[] compare(i, limit), direction=LT
+}
+
+while_body {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  async_in1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(param), index=1
+  async_in2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(param), index=2
+  acc = f32[2,16]{1,0} get-tuple-element(param), index=3
+  base1 = f32[8,16]{1,0} get-tuple-element(param), index=4
+  base2 = f32[8,16]{1,0} get-tuple-element(param), index=5
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ds_done1 = f32[2,16]{1,0} async-done(async_in1), calls=ds_comp1
+  ds_done2 = f32[2,16]{1,0} async-done(async_in2), calls=ds_comp2
+  new_acc1 = f32[2,16]{1,0} add(acc, ds_done1)
+  new_acc2 = f32[2,16]{1,0} add(new_acc1, ds_done2)
+  zero = s32[] constant(0)
+  next_row = s32[] multiply(next_i, s32[] constant(2))
+  async_next1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(base1, next_row, zero), calls=ds_comp1
+  async_next2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(base2, next_row, zero), calls=ds_comp2
+  ROOT next_state = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(next_i, async_next1, async_next2, new_acc2, base1, base2)
+}
+
+ENTRY main {
+  p_base1 = f32[8,16]{1,0} parameter(0)
+  p_base2 = f32[8,16]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  c_idx0 = s32[] constant(0)
+  c_idx1 = s32[] constant(0)
+  c_zero = f32[] constant(0.0)
+  init_acc = f32[2,16]{1,0} broadcast(c_zero), dimensions={}
+  prologue_start1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base1, c_idx0, c_idx1), calls=ds_comp1
+  prologue_start2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base2, c_idx0, c_idx1), calls=ds_comp2
+  init = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(c0, prologue_start1, prologue_start2, init_acc, p_base1, p_base2)
+  loop = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0}) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true"}
+  loop_async_out1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(loop), index=1
+  loop_async_out2 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(loop), index=2
+  loop_acc_out = f32[2,16]{1,0} get-tuple-element(loop), index=3
+  epilogue_done1 = f32[2,16]{1,0} async-done(loop_async_out1), calls=ds_comp1
+  epilogue_done2 = f32[2,16]{1,0} async-done(loop_async_out2), calls=ds_comp2
+  acc_with_done1 = f32[2,16]{1,0} add(loop_acc_out, epilogue_done1)
+  ROOT acc_with_done2 = f32[2,16]{1,0} add(acc_with_done1, epilogue_done2)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 512;
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+      2, /*max_overlap_count=*/10000);
+
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), std::move(options),
+      /*buffer_interval_compare=*/std::nullopt, &prefetch_interval_picker);
+
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HloInstruction* while_instr =
+      module->entry_computation()->GetInstructionWithName("loop");
+  ASSERT_NE(while_instr, nullptr);
+  HloComputation* while_body = while_instr->while_body();
+  HloInstruction* body_param = while_body->parameter_instruction(0);
+  HloInstruction* prologue_start1 =
+      module->entry_computation()->GetInstructionWithName("prologue_start1");
+  HloInstruction* prologue_start2 =
+      module->entry_computation()->GetInstructionWithName("prologue_start2");
+  HloInstruction* epilogue_done1 =
+      module->entry_computation()->GetInstructionWithName("epilogue_done1");
+  HloInstruction* epilogue_done2 =
+      module->entry_computation()->GetInstructionWithName("epilogue_done2");
+  HloInstruction* async_next1 =
+      while_body->GetInstructionWithName("async_next1");
+  HloInstruction* async_next2 =
+      while_body->GetInstructionWithName("async_next2");
+
+  // Verify that all of the positions for the first pipelined async slice are
+  // colocated in alternate memory.
+  EXPECT_OK(ArePositionsColocatedInAltMem(
+      {
+          HloPosition{prologue_start1, {1}},
+          HloPosition{while_instr, {1, 1}},
+          HloPosition{epilogue_done1, {}},
+          HloPosition{body_param, {1, 1}},
+          HloPosition{async_next1, {1}},
+      },
+      preset_assignments.get(), alias_analysis.get()));
+
+  // Verify that all of the positions for the second pipelined async slice are
+  // colocated in alternate memory.
+  EXPECT_OK(ArePositionsColocatedInAltMem(
+      {
+          HloPosition{prologue_start2, {1}},
+          HloPosition{while_instr, {2, 1}},
+          HloPosition{epilogue_done2, {}},
+          HloPosition{body_param, {2, 1}},
+          HloPosition{async_next2, {1}},
+      },
+      preset_assignments.get(), alias_analysis.get()));
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncStartAcrossUntouchedWhileLoopTest) {
+  absl::string_view hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
+
+ds_comp {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
+}
+
+while_cond {
+  param = s32[] parameter(0)
+  limit = s32[] constant(4)
+  ROOT cond = pred[] compare(param, limit), direction=LT
+}
+
+while_body {
+  param = s32[] parameter(0)
+  one = s32[] constant(1)
+  ROOT next_param = s32[] add(param, one)
+}
+
+ENTRY main {
+  p_base = f32[8,16]{1,0} parameter(0)
+  c0 = s32[] constant(0)
+  c_idx0 = s32[] constant(0)
+  c_idx1 = s32[] constant(0)
+  start = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base, c_idx0, c_idx1), calls=ds_comp
+  loop = s32[] while(c0), condition=while_cond, body=while_body
+  done = f32[2,16]{1,0} async-done(start), calls=ds_comp
+  ROOT result = (s32[], f32[2,16]{1,0}) tuple(loop, done)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 128;
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+      2, /*max_overlap_count=*/10000);
+
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), std::move(options),
+      /*buffer_interval_compare=*/std::nullopt, &prefetch_interval_picker);
+
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HloInstruction* start =
+      module->entry_computation()->GetInstructionWithName("start");
+  HloInstruction* done =
+      module->entry_computation()->GetInstructionWithName("done");
+
+  EXPECT_OK(ArePositionsColocatedInAltMem(
+      {
+          HloPosition{start, {1}},
+          HloPosition{done, {}},
+      },
+      preset_assignments.get(), alias_analysis.get()));
+}
 }  // namespace
+
 }  // namespace memory_space_assignment
 }  // namespace xla

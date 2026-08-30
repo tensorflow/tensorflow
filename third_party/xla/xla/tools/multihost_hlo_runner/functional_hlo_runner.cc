@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -1229,6 +1230,7 @@ absl::Status DumpOutput(
   output_path_vec.push_back("");
   int literal_id_index = output_path_vec.size() - 1;
   output_path_vec.push_back(suffix);
+  std::vector<std::function<absl::Status()>> write_tasks;
   for (const auto& [device_id, literal_vec] : output) {
     output_path_vec[device_id_index] = absl::StrCat("device_", device_id);
     for (int literal_id = 0; literal_id < literal_vec.size(); ++literal_id) {
@@ -1237,31 +1239,48 @@ absl::Status DumpOutput(
       switch (output_format) {
         case OutputFormat::kText: {
           CHECK_EQ(suffix, std::string("txt"));
-          absl::Status write_status =
-              tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
-                                     literal_vec[literal_id].ToString());
-          if (!write_status.ok()) {
-            return write_status;
-          }
+          auto& literal = literal_vec[literal_id];
+          write_tasks.push_back([literal_path, &literal]() {
+            return tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
+                                          literal.ToString());
+          });
           break;
         }
         case OutputFormat::kProtoBinary: {
           CHECK_EQ(suffix, std::string("pb"));
-          ABSL_RETURN_IF_ERROR(
-              tsl::WriteBinaryProto(tsl::Env::Default(), literal_path,
-                                    literal_vec[literal_id].ToProto()));
+          auto& literal = literal_vec[literal_id];
+          write_tasks.push_back([literal_path, &literal]() {
+            return tsl::WriteBinaryProto(tsl::Env::Default(), literal_path,
+                                         literal.ToProto());
+          });
           break;
         }
         case OutputFormat::kProtoText: {
           CHECK(suffix == "pbtxt" || suffix == "textproto");
-          ABSL_RETURN_IF_ERROR(
-              tsl::WriteTextProto(tsl::Env::Default(), literal_path,
-                                  literal_vec[literal_id].ToProto()));
+          auto& literal = literal_vec[literal_id];
+          write_tasks.push_back([literal_path, &literal]() {
+            return tsl::WriteTextProto(tsl::Env::Default(), literal_path,
+                                       literal.ToProto());
+          });
           break;
         }
       }
     }
   }
+  std::vector<absl::Status> results;
+  results.resize(write_tasks.size());
+  {
+    tsl::Env* env = tsl::Env::Default();
+    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner::DumpOutput", 16);
+    for (int i = 0; i < write_tasks.size(); ++i) {
+      thread_pool.Schedule(
+          [&write_tasks, &results, i]() { results[i] = write_tasks[i](); });
+    }
+  }
+  for (const auto& result : results) {
+    ABSL_RETURN_IF_ERROR(result) << "Failed to dump output";
+  }
+  LOG(INFO) << "Dumped output to " << write_tasks.size() << " files.";
   return absl::OkStatus();
 }
 
@@ -1340,6 +1359,7 @@ absl::Status LoadAndRunAndDump(
       FunctionalHloRunner::LoadAndRun(client, preproc_options, compile_options,
                                       running_options, hlo_file, input_format,
                                       /*arguments=*/{}, engine));
+  LOG(INFO) << "Dump output to: " << dump_output_to;
   return dump_output_to.empty()
              ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
@@ -1774,9 +1794,24 @@ void HLORunnerProfiler::UploadSession() {
 
   CHECK(!dump_path_.empty());
 
-  LOG(INFO) << "Saving xspace result to " << dump_path_;
+  std::string unique_dump_path = dump_path_;
+  if (session_index_ > 0) {
+    absl::string_view stem = dump_path_;
+    absl::string_view suffix = "";
+    const std::string::size_type dot_pos = dump_path_.rfind('.');
+    const std::string::size_type slash_pos = dump_path_.rfind('/');
+    if (dot_pos != std::string::npos &&
+        (slash_pos == std::string::npos || dot_pos > slash_pos)) {
+      suffix = stem.substr(dot_pos);
+      stem = stem.substr(0, dot_pos);
+    }
+    unique_dump_path = absl::StrCat(stem, "_", session_index_, suffix);
+  }
+  ++session_index_;
+
+  LOG(INFO) << "Saving xspace result to " << unique_dump_path;
   // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), dump_path_, *xspace_.get()));
+  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), unique_dump_path, *xspace_));
   if (!keep_xspace_) {
     xspace_ = nullptr;
   }

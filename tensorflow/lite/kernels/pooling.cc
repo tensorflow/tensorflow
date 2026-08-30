@@ -95,6 +95,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
       params->stride_height, params->stride_width, 1, 1, height, width,
       params->filter_height, params->filter_width, padding, &out_height,
       &out_width);
+  TF_LITE_ENSURE_STATUS(ValidatePaddingValuesForInt16(data->padding));
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (pool_type == kAverage || pool_type == kMax) {

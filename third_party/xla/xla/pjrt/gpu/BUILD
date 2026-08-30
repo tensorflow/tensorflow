@@ -373,6 +373,10 @@ xla_test(
 xla_test(
     name = "se_gpu_pjrt_client_test",
     srcs = ["se_gpu_pjrt_client_test.cc"],
+    args = [
+        # TODO(b/552357098): Fix flakiness and re-enable threadmanager_use_executor_impl
+        "--threadmanager_use_executor_impl=false",
+    ],
     backends = ["gpu"],
     shard_count = 3,
     tags = ["nofixdeps"],
@@ -773,6 +777,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ],
 )
 
@@ -861,6 +867,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ] + if_rocm([
         ":se_gpu_pjrt_compiler_rocm_registration",
     ]) + if_sycl([
@@ -909,6 +917,7 @@ xla_test(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:gpu_topology",
+        "//xla/service:mock_compiled_module",
         "//xla/service:mock_compiler",
         "//xla/service:platform_util",
         "//xla/stream_executor:stream_executor_h",

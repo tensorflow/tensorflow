@@ -48,12 +48,30 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoConvolution(
     return {};
   }
 
-  TransposeFolding::OperandIndices operand_set;
-  for (int64_t i = 0; i < convolution.operand_count(); ++i) {
-    auto& operand = *convolution.operand(i);
-    if (operand.opcode() == HloOpcode::kTranspose) {
-      operand_set.push_back(i);
+  const SparsityConfig& sparsity_config = convolution.sparsity_config();
+  auto is_sparsity_metadata = [&](int64_t index) {
+    return (sparsity_config.has_lhs() &&
+            sparsity_config.lhs().idx() == index) ||
+           (sparsity_config.has_rhs() && sparsity_config.rhs().idx() == index);
+  };
+  // Extra operands, such as block scales, may need to be transformed with the
+  // lhs or rhs. Only sparsity metadata can be preserved unchanged here.
+  for (int64_t i = 2; i < convolution.operand_count(); ++i) {
+    if (!is_sparsity_metadata(i)) {
+      return {};
     }
+  }
+
+  TransposeFolding::OperandIndices operand_set;
+  // Do not fold a transpose into a sparse operand, since its sparsity
+  // descriptor would no longer match the operand.
+  if (!sparsity_config.has_lhs() &&
+      convolution.operand(0)->opcode() == HloOpcode::kTranspose) {
+    operand_set.push_back(0);
+  }
+  if (!sparsity_config.has_rhs() &&
+      convolution.operand(1)->opcode() == HloOpcode::kTranspose) {
+    operand_set.push_back(1);
   }
 
   return transposable_conv_operands(convolution, operand_set);
@@ -173,10 +191,18 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair& pair) {
     new_rhs = convolution.mutable_operand(kRhsIdx);
   }
 
-  auto new_conv = HloInstruction::CreateConvolve(
-      convolution.shape(), {new_lhs, new_rhs},
-      convolution.feature_group_count(), convolution.batch_group_count(),
-      convolution.window(), new_dnums, convolution.precision_config());
+  // Replace the lhs and rhs while preserving auxiliary operands such as
+  // sparsity metadata.
+  std::vector<HloInstruction*> new_operands(convolution.operands().begin(),
+                                            convolution.operands().end());
+  new_operands[kLhsIdx] = new_lhs;
+  new_operands[kRhsIdx] = new_rhs;
+
+  // Clone the convolution to preserve all of its attributes without copying
+  // them individually.
+  auto new_conv =
+      convolution.CloneWithNewOperands(convolution.shape(), new_operands);
+  new_conv->set_convolution_dimension_numbers(new_dnums);
   CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 

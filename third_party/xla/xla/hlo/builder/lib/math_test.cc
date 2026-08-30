@@ -483,6 +483,27 @@ TEST_F(MathTest, Digamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
+TEST_F(MathTest, DigammaPoles) {
+  // digamma has a pole at zero and at every negative integer. The two one-sided
+  // limits agree at zero, so return -inf there (for -0.0 as well); at the
+  // negative integers they disagree, so return nan.
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {0.0, -0.0, -1.0, -2.0, -10.0, -1.5});
+  Digamma(x);
+
+  constexpr double euler_mascheroni =
+      0.57721566490153286060651209008240243104215933593992;
+  std::vector<float> expected = {
+      -std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN(),
+      // digamma(-1.5) = 2/3 + 2 - 2 * log(2) - euler_mascheroni.
+      static_cast<float>(2 / 3.0 + 2 - 2 * std::log(2) - euler_mascheroni)};
+  ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
+}
+
 TEST_F(MathTest, PolygammaNegativeInputs) {
   // Regression test for https://github.com/jax-ml/jax/issues/37635.
   // Polygamma for n >= 1 and x < 0 (non-integer) previously produced
@@ -840,6 +861,76 @@ TEST_F(MathTest, ZetaF64) {
 
   ComputeAndCompareR1<double>(&builder, expected, {},
                               ErrorSpec{0.00000000000001});
+}
+
+TEST_F(MathTest, IgammaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // Logical shape is identical, but one operand carries a dynamic-dimension
+  // bit.
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Igamma(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, IgammacDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Igammac(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, IgammaGradADynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  IgammaGradA(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, RandomGammaGradDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  RandomGammaGrad(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, ZetaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // x is static; q carries a dynamic-dimension bit.
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_q = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_q.set_dynamic_dimension(0, true);
+  XlaOp x = Parameter(&builder, 0, shape_x, "x");
+  XlaOp q = Parameter(&builder, 1, shape_q, "q");
+  Zeta(x, q);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, PolygammaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // n is static; x carries a dynamic-dimension bit.
+  Shape shape_n = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp n = Parameter(&builder, 0, shape_n, "n");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Polygamma(n, x);
+  EXPECT_OK(builder.Build().status());
 }
 
 }  // namespace

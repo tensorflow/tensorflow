@@ -1584,18 +1584,27 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
           graph_def, input_tensors, output_tensors
       )
 
-    trackable_obj = _load(self.saved_model_dir, self._saved_model_tags)
-    if trackable_obj is None:
-      self._debug_info = _get_debug_info(
-          _build_debug_info_func(self._funcs[0].graph), graph_def
-      )
-    else:
-      self._debug_info = _get_debug_info(
-          _convert_debug_info_func(trackable_obj.graph_debug_info),
-          graph_def,
-      )
-
-    del trackable_obj
+    # Read debug info directly from the SavedModel directory instead of loading
+    # the full model with _load(). Loading the model allocates all variable
+    # tensors (~25MB for DenseNet121) plus registers function defs in the
+    # EagerContext, and these can leak across convert() calls due to reference
+    # cycles that are slow to collect.  The debug info proto is already written
+    # to disk alongside saved_model.pb and can be read cheaply.
+    #
+    # Note on adjust_debug_info_func_names: _convert_debug_info_func() (in
+    # util.py) ignores its original_nodes argument entirely and returns the
+    # saved_debug_info proto unchanged, so the function-name adjustment that
+    # _load() applies via adjust_debug_info_func_names() has no effect on this
+    # code path.  The on-disk proto already contains the names as written during
+    # save(), which is what the TFLite C++ pipeline uses for source-location
+    # tracking.
+    _, saved_debug_info = _parse_saved_model_with_debug_info(
+        self.saved_model_dir
+    )
+    self._debug_info = _get_debug_info(
+        _convert_debug_info_func(saved_debug_info),
+        graph_def,
+    )
     return self._convert_from_saved_model(graph_def)
 
 

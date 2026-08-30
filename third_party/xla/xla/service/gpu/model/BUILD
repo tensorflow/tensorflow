@@ -11,6 +11,7 @@ load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
+load("//xla/util:build_defs.bzl", "text_to_binary_proto")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -591,12 +592,14 @@ cc_library(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -605,6 +608,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -636,11 +640,14 @@ xla_cc_test(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/testing:temporary_directory",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -1145,7 +1152,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -1363,9 +1369,17 @@ cc_embed_data(
     flatten = True,
 )
 
+text_to_binary_proto(
+    name = "default_collective_perf_table_binary",
+    src = "default_collective_perf_table.txtpb",
+    out = "default_collective_perf_table.pb",
+    proto_deps = [":hlo_op_profile_proto"],
+    proto_name = "xla.gpu.DeviceHloInstructionProfiles",
+)
+
 cc_embed_data(
     name = "default_collective_perf_table",
-    srcs = ["default_collective_perf_table.txtpb"],
+    srcs = [":default_collective_perf_table_binary"],
     outs = [
         "default_collective_perf_table.cc",
         "default_collective_perf_table.h",

@@ -18,7 +18,7 @@ from absl import flags
 from absl.testing import absltest
 import jax
 import jax.numpy as jnp
-from xla.benchmarks.dma_microbenchmarks import memory_base  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.dma_microbenchmarks import memory_base
 
 
 _NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(

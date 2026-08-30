@@ -276,7 +276,7 @@ _PLATFORM_INFOS = (
             jnp.int4: 4,
             jnp.uint4: 4,
         }),
-        # Note that GLC doesn't support P states.
+        # Note that v6e doesn't support P states.
         clock_speed_ghz_by_p_state=immutabledict({
             None: 1.75,
         }),

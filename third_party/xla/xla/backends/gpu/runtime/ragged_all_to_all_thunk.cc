@@ -400,16 +400,6 @@ absl::Status RunNcclFallbackRaggedAllToAll(
   ABSL_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
   auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
-  if (gpu_comm->gxl_communicator() != nullptr) {
-    GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
-    return gxl_nccl_comm->RunRaggedAllToAllGxl(
-        &stream, original_buffers[0].element_type,
-        original_buffers[0].source_buffer,
-        original_buffers[1].destination_buffer,
-        original_buffers[2].source_buffer, original_buffers[3].source_buffer,
-        original_buffers[4].source_buffer, original_buffers[5].source_buffer,
-        ragged_row_element_size, num_total_updates, rank);
-  }
 
   std::vector<DeviceBufferPair> buffers = original_buffers;
 
@@ -932,6 +922,17 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
   }
 
   auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  if (gpu_comm->gxl_communicator() != nullptr) {
+    GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
+    return gxl_nccl_comm->RunRaggedAllToAllGxl(
+        &stream, device_buffers[0].element_type,
+        device_buffers[0].source_buffer, device_buffers[1].destination_buffer,
+        device_buffers[2].source_buffer, device_buffers[3].source_buffer,
+        device_buffers[4].source_buffer, device_buffers[5].source_buffer,
+        config_.num_row_elements, config_.num_total_updates,
+        state->rank.value());
+  }
+
   if (UsesDeviceKernel() && gpu_comm->SupportsDeviceComm() &&
       params.collective_memory != nullptr && state->lsa_size.has_value()) {
     auto [input_sym, input_offset] =

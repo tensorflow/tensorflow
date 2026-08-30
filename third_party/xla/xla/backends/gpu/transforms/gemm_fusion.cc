@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -1209,15 +1210,6 @@ bool IsBinaryElementwiseOfBroadcastParamOrConst(const HloInstruction& hlo) {
   return false;
 }
 
-FusionDecision ShouldFuseUser(mlir::MLIRContext& mlir_context,
-                              HloInstruction* user,
-                              const HloInstruction& original_user,
-                              HloInstruction* fusion) {
-  if (triton_fusion::IsOutputWorthFusing(original_user)) {
-    return CanFuse(mlir_context, fusion, user);
-  }
-  return FusionDecision::Forbid("Not obviously profitable to fuse as output.");
-}
 
 // Holds shape tracking information for an instruction during backward BFS.
 struct TrackerInfo {
@@ -1228,6 +1220,51 @@ struct TrackerInfo {
   // with.
   int64_t dot_operand_index;
 };
+
+FusionDecision ShouldFuseConcat(const HloInstruction& concat,
+                                const HloInstruction& fusion,
+                                const TrackerInfo& tracker) {
+  constexpr int kMinConcatFragmentSize = 64;
+  if (absl::c_any_of(
+          concat.operands(), [&concat](const HloInstruction* operand) {
+            return operand->shape().dimensions(concat.concatenate_dimension()) %
+                       kMinConcatFragmentSize !=
+                   0;
+          })) {
+    return FusionDecision::Forbid(
+        "At least one operand of concatenation cannot be perfectly tiled.");
+  }
+
+  const HloInstruction* dot = hlo_query::FindInstruction(
+      fusion.fused_instructions_computation(), HloOpcode::kDot);
+  if (dot == nullptr) {
+    return FusionDecision::Forbid("Dot not found in fusion.");
+  }
+
+  int64_t concat_dim = concat.concatenate_dimension();
+  std::optional<std::vector<int64_t>> mapped_dims =
+      tracker.tracker.MapInputDimensionsToOutputUnordered({concat_dim});
+
+  if (!mapped_dims.has_value() || mapped_dims->size() != 1) {
+    return FusionDecision::Forbid(
+        "Failed to map concat dimension to dot operand dimension.");
+  }
+  int64_t mapped_dim = (*mapped_dims)[0];
+
+  auto dims = DotOperandDims::FromDotOperand(dot, tracker.dot_operand_index);
+  if (!dims.ok()) {
+    return FusionDecision::Forbid("Failed to get dot operand dims.");
+  }
+
+  absl::Span<const int64_t> contracting =
+      dims->Indices(DotOperandDims::kContracting);
+  if (absl::c_linear_search(contracting, mapped_dim)) {
+    return FusionDecision::Forbid(
+        "Not fusing concatenate along contracting dimension.");
+  }
+
+  return FusionDecision::Allow();
+}
 
 FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
                                    const HloInstruction& fusion,
@@ -1261,9 +1298,13 @@ FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
       dims->Indices(DotOperandDims::kContracting);
   absl::Span<const int64_t> non_contracting =
       dims->Indices(DotOperandDims::kNonContracting);
+  absl::Span<const int64_t> batch = dims->Indices(DotOperandDims::kBatch);
   if (!inverted_tracker->MapsToOneStride(contracting)) {
     return FusionDecision::Forbid(
         "Contracting dimension has non-contiguous section.");
+  }
+  if (!inverted_tracker->MapsToOneStride(batch, /*allow_swaps=*/true)) {
+    return FusionDecision::Forbid("Batch dimension splits other dimensions.");
   }
   if (operand_index == 1 &&
       !inverted_tracker->MapsToOneStride(non_contracting)) {
@@ -1281,13 +1322,24 @@ FusionDecision ShouldFuseOperand(HloInstruction* operand,
   if (parameter_count > TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
     return FusionDecision::Forbid("Too many parameters.");
   }
-
-  switch (original_operand.opcode()) {
+  switch (operand->opcode()) {
     case HloOpcode::kTranspose:
       if (!tracker.has_value()) {
         return FusionDecision::Forbid("No shape tracker found for transpose.");
       }
       return ShouldFuseTranspose(*operand, *fusion, *tracker);
+    case HloOpcode::kConcatenate:
+      if (!tracker.has_value()) {
+        return FusionDecision::Forbid(
+            "No shape tracker found for concatenate.");
+      }
+      return ShouldFuseConcat(*operand, *fusion, *tracker);
+    case HloOpcode::kPower:
+      if (original_operand.user_count() > 1) {
+        return FusionDecision::Forbid(
+            "Not fusing power op with multiple users.");
+      }
+      break;
     default:
       break;
   }
@@ -1325,6 +1377,91 @@ std::optional<TrackerInfo> ComputeCandidateTracker(
                        user_info.dot_operand_index};
   }
   return std::nullopt;
+}
+
+FusionDecision ShouldFuseUserTranspose(const HloInstruction& transpose,
+                                       const HloInstruction& fusion,
+                                       const ShapeTracker& tracker) {
+  const HloInstruction* dot = hlo_query::FindInstruction(
+      fusion.fused_instructions_computation(), HloOpcode::kDot);
+  if (dot == nullptr) {
+    return FusionDecision::Forbid("Dot not found in fusion.");
+  }
+
+  absl::StatusOr<std::array<DotOperandDims, 2>> dot_dims =
+      DotOperandDims::FromDot(dot);
+  if (!dot_dims.ok()) {
+    return FusionDecision::Forbid("Failed to get dot operand dims.");
+  }
+  const auto& [lhs_dims, rhs_dims] = *dot_dims;
+
+  int64_t num_batch = lhs_dims.Rank(DotOperandDims::kBatch);
+  int64_t num_lhs_nc = lhs_dims.Rank(DotOperandDims::kNonContracting);
+  int64_t num_rhs_nc = rhs_dims.Rank(DotOperandDims::kNonContracting);
+
+  // Dot result always maps to [batch..., lhs_nc..., rhs_nc...].
+  absl::InlinedVector<int64_t, 4> batch_dims(num_batch);
+  absl::c_iota(batch_dims, 0);
+
+  absl::InlinedVector<int64_t, 4> lhs_nc_dims(num_lhs_nc);
+  absl::c_iota(lhs_nc_dims, num_batch);
+
+  absl::InlinedVector<int64_t, 4> rhs_nc_dims(num_rhs_nc);
+  absl::c_iota(rhs_nc_dims, num_batch + num_lhs_nc);
+
+  ShapeTracker transpose_tracker = tracker;
+  if (!transpose_tracker.AppendInstruction(&transpose).ok()) {
+    return FusionDecision::Forbid("Failed to append transpose to tracker.");
+  }
+
+  for (auto& dim : {batch_dims, lhs_nc_dims, rhs_nc_dims}) {
+    if (!dim.empty() &&
+        !transpose_tracker.MapsToOneStride(dim, /*allow_swaps=*/true)) {
+      return FusionDecision::Forbid("Dimension has non-contiguous section.");
+    }
+  }
+
+  return FusionDecision::Allow();
+}
+
+// Propagates shape tracking information forward from the dot output to `user`.
+// Returns the updated ShapeTracker if propagation is successful, or nullopt if
+// propagation fails.
+std::optional<ShapeTracker> ComputeUserTracker(
+    const HloInstruction* user, std::optional<ShapeTracker> current_tracker) {
+  if (!current_tracker.has_value()) {
+    return std::nullopt;
+  }
+  if (current_tracker->AppendInstruction(user).ok()) {
+    return current_tracker;
+  }
+  if (user->IsElementwise()) {
+    current_tracker->SetElementType(user->shape().element_type());
+    return current_tracker;
+  }
+  return std::nullopt;
+}
+
+FusionDecision ShouldFuseUser(const HloInstruction* user,
+                              const HloInstruction& original_user,
+                              const HloInstruction* fusion,
+                              const std::optional<ShapeTracker>& tracker) {
+  switch (user->opcode()) {
+    case HloOpcode::kTranspose:
+      if (!tracker.has_value()) {
+        return FusionDecision::Forbid(
+            "No shape tracker found for transpose user.");
+      }
+      return ShouldFuseUserTranspose(*user, *fusion, *tracker);
+    default:
+      break;
+  }
+
+  if (!triton_fusion::IsOutputWorthFusing(original_user)) {
+    return FusionDecision::Forbid(
+        "Not obviously profitable to fuse as output.");
+  }
+  return FusionDecision::Allow();
 }
 
 // Attempts to fuse all candidates and their operands into the fusion.
@@ -1464,6 +1601,9 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
   ABSL_RETURN_IF_ERROR(
       FuseOperandsBFS(mlir_context, fusion_search_space, queue, fusion));
 
+  // Initialize tracker for dot users.
+  std::optional<ShapeTracker> epilogue_tracker = ShapeTracker(dot->shape());
+
   // Fuse in users until we cannot tile or reach the root.
   while (!fusion->IsRoot()) {
     // Search space was created so that the result only ever has a single user.
@@ -1483,12 +1623,14 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
     HloInstruction* original_user =
         fusion_search_space.fused_to_original().at(user);
     if (FusionDecision decision =
-            ShouldFuseUser(mlir_context, user, *original_user, fusion);
+            ShouldFuseUser(user, *original_user, fusion, epilogue_tracker)
+                .And(CanFuse(mlir_context, fusion, user));
         !decision.IsAllowed()) {
       VLOG(5) << "Not fusing user: " << decision.Explain();
       break;
     }
     VLOG(5) << "Fusing user into epilogue: " << user->ToString();
+    epilogue_tracker = ComputeUserTracker(user, std::move(epilogue_tracker));
     ABSL_ASSIGN_OR_RETURN(
         fusion,
         FuseUserAndOperands(mlir_context, fusion_search_space, fusion, user));

@@ -51,8 +51,9 @@ fusion {
 // NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // NEW-VECTOR:         scf.for
 // NEW-VECTOR-NOT:     scf.if
-// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true]} : memref<128x256xf32>, vector<4xf32>
-// NEW-VECTOR:         vector.transfer_write %[[R0]], %[[ARG1]][%{{.*}}] {in_bounds = [true]} : vector<4xf32>, memref<32768xf32>
+// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[CAST:.*]] = vector.shape_cast %[[R0]] : vector<1x4xf32> to vector<4xf32>
+// NEW-VECTOR:         vector.transfer_write %[[CAST]], %[[ARG1]][%{{.*}}] {in_bounds = [true]} : vector<4xf32>, memref<32768xf32>
 
 // CHECK-LLVM: llvm.intr.memcpy
 

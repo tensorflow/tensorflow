@@ -546,6 +546,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kSend:
       instruction = CreateSend(operands(0), operands(1), channel_id,
                                proto.is_host_transfer());
+      // CreateSend will create an assumed layout-less u32[] in the output
+      // shape, so copy over the shape from the proto to ensure no information
+      // is lost.
+      *instruction->mutable_shape() = shape;
       break;
     case HloOpcode::kSendDone:
       TF_RET_CHECK(DynCast<HloSendInstruction>(operands(0)) != nullptr)
@@ -556,6 +560,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kRecv:
       instruction = CreateRecv(shape.tuple_shapes(0), operands(0), channel_id,
                                proto.is_host_transfer());
+      // CreateRecv will create an assumed layout-less u32[] in the output
+      // shape, so copy over the shape from the proto to ensure no information
+      // is lost.
+      *instruction->mutable_shape() = shape;
       break;
     case HloOpcode::kRecvDone:
       TF_RET_CHECK(DynCast<HloRecvInstruction>(operands(0)) != nullptr)
@@ -4731,7 +4739,9 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 void HloInstruction::ToProto(HloInstructionProto* proto,
                              HloProtoOptions options) const {
   ToProto(proto);
-  if (options.deduplicate_backend_config && !backend_config_->empty()) {
+  if (options.deduplicate_backend_config && !backend_config_->empty() &&
+      backend_config_->GetRawString().size() >=
+          options.min_backend_config_size) {
     if (options.payload_deduplicator == nullptr) {
       LOG_FIRST_N(WARNING, 1)
           << "Backend config deduplication requested without a payload "

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 
@@ -187,7 +188,7 @@ TEST_F(DirectoryStoreTest, ReadOnlyWriteIsIgnored) {
   EXPECT_THAT(entries, SizeIs(0));
 }
 
-TEST_F(DirectoryStoreTest, ReadInvalidProtoFails) {
+TEST_F(DirectoryStoreTest, ReadInvalidProtoReturnsEmpty) {
   DirectoryStore store(cache_dir_, CacheMode::kReadWrite);
   autotuner::AutotuneEntry entry = MakeEntry(
       "gpu", "v1.0", "fp1", "cg1", "opt1", autotuner::Backend::TRITON);
@@ -208,9 +209,37 @@ TEST_F(DirectoryStoreTest, ReadInvalidProtoFails) {
   target_key.set_explicit_version("v1.0");
   target_key.set_hlo_fingerprint("fp1");
 
-  EXPECT_THAT(store.Read(target_key),
-              StatusIs(absl::StatusCode::kInternal,
-                       testing::HasSubstr("Failed to parse cache entry")));
+  ASSERT_OK_AND_ASSIGN(std::vector<autotuner::AutotuneEntry> entries,
+                       store.Read(target_key));
+  EXPECT_THAT(entries, SizeIs(0));
+}
+
+TEST_F(DirectoryStoreTest, NoTemporaryFilesLeftBehind) {
+  DirectoryStore store(cache_dir_, CacheMode::kReadWrite);
+  autotuner::AutotuneEntry entry = MakeEntry(
+      "gpu", "v1.0", "fp1", "cg1", "opt1", autotuner::Backend::TRITON);
+  EXPECT_OK(store.Write(entry));
+
+  std::vector<std::string> children;
+  ASSERT_OK(
+      tsl::Env::Default()->GetChildren(cache_dir_ + "/gpu/v1.0", &children));
+  EXPECT_THAT(children, testing::ElementsAre("fp1.pb"));
+}
+
+TEST_F(DirectoryStoreTest, WriteToInvalidPathIsNonFatal) {
+  // Create a file at a path where a directory is expected so that directory
+  // creation fails.
+  std::string blocking_file = cache_dir_ + "/blocked_dir";
+  std::ofstream ofs(blocking_file);
+  ofs << "blocking file";
+  ofs.close();
+
+  // Try to use a cache dir underneath the regular file.
+  DirectoryStore store(blocking_file + "/subpath", CacheMode::kReadWrite);
+  autotuner::AutotuneEntry entry = MakeEntry(
+      "gpu", "v1.0", "fp1", "cg1", "opt1", autotuner::Backend::TRITON);
+  // Write should be non-fatal (log warning and return OK).
+  EXPECT_OK(store.Write(entry));
 }
 
 }  // namespace

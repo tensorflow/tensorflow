@@ -387,7 +387,7 @@ def ConstAPFloatNegLargestOrNegInfinity : Constraint<CPred<
   "llvm::cast<DenseElementsAttr>($0).getValues<APFloat>()[0].isNegInfinity())">>;
 
 def L2NormValidReduceIndex : Constraint<CPred<
-  "L2NormalizeReduceAxis($0, llvm::cast<DenseElementsAttr>($1))">>;
+  "llvm::isa<DenseElementsAttr>($1) && L2NormalizeReduceAxis($0, llvm::cast<DenseElementsAttr>($1))">>;
 
 // Checks if the ReshapeOp adds a trailing dimension of size 1.
 def IsL2NormalizationKeepDimsReshape
@@ -526,10 +526,7 @@ def IsTailOfShape : Constraint<CPred<
 def IsReducedTailOfShape : Constraint<CPred<
   "TFL::IsReducedTailOfShape($0.getType(), $1.getType())">>;
 
-def Flatten : NativeCodeCall<
-  "llvm::cast<DenseElementsAttr>($0)"
-    ".reshape(RankedTensorType::get({llvm::cast<ShapedType>($0.getType()).getNumElements()}, "
-                                   "llvm::cast<ShapedType>($0.getType()).getElementType()))">;
+def Flatten : NativeCodeCall<"FlattenTo1D($0)">;
 
 def IsLastDimEqualToNumElements : Constraint<CPred<
   "TFL::IsLastDimEqualToNumElements($0.getType(), $1.getType())">>;
@@ -2028,7 +2025,7 @@ class HasStaticDim<int d> : Constraint<CPred<
 
 class IsBalancedPaddingArray<int spatials_start, int spatials_end> :
   Constraint<CPred<
-    "IsBalancedPaddingArray("# spatials_start #","# spatials_end #","
+    "llvm::isa<DenseElementsAttr>($0) && IsBalancedPaddingArray("# spatials_start #","# spatials_end #","
       "llvm::cast<DenseElementsAttr>($0))">>;
 
 // Given in_shape, out_shape, stride checks ceil(in_shape[d] / stride) == out_shape[d]

@@ -101,12 +101,14 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "conv_operand_canonicalizer",
-    srcs = ["conv_operand_canonicalizer.cc"],
-    hdrs = ["conv_operand_canonicalizer.h"],
+    name = "conv_canonicalizer",
+    srcs = ["conv_canonicalizer.cc"],
+    hdrs = ["conv_canonicalizer.h"],
     deps = [
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -118,10 +120,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "conv_operand_canonicalizer_test",
-    srcs = ["conv_operand_canonicalizer_test.cc"],
+    name = "conv_canonicalizer_test",
+    srcs = ["conv_canonicalizer_test.cc"],
     deps = [
-        ":conv_operand_canonicalizer",
+        ":conv_canonicalizer",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_googletest//:gtest_main",
@@ -544,11 +546,13 @@ xla_cc_test(
     deps = [
         ":conv_padding_legalization",
         "//xla:shape_util",
+        "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:cublas_cudnn",
         "@com_google_googletest//:gtest_main",
@@ -1705,7 +1709,6 @@ cc_library(
         ":dynamic_slice_fusion",
         "//xla:shape_util",
         "//xla/codegen/xtile:xtile_config_proto_cc",
-        "//xla/hlo/analysis:hlo_dfs_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",
@@ -1731,10 +1734,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_slice_fusion_rewriter_v2_test",
     srcs = ["dynamic_slice_fusion_rewriter_v2_test.cc"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
+    tags = ["gpu"],
     deps = [
         ":dynamic_slice_annotator",
         ":dynamic_slice_fusion",
@@ -1979,6 +1979,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -2096,6 +2097,32 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:ml_dtypes",
+    ],
+)
+
+cc_library(
+    name = "sycl_gemm_workspace_pass",
+    srcs = ["sycl_gemm_workspace_pass.cc"],
+    hdrs = ["sycl_gemm_workspace_pass.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/sycl:sycl_matmul_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -2400,7 +2427,6 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -2568,6 +2594,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -3049,10 +3076,12 @@ xla_test(
         ":scatter_determinism_expander",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3607,6 +3636,7 @@ xla_test(
     name = "topk_specializer_test",
     srcs = ["topk_specializer_test.cc"],
     backends = ["gpu"],
+    shard_count = 10,
     deps = [
         ":topk_specializer",
         "//xla:shape_util",
@@ -3803,7 +3833,6 @@ cc_library(
 
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
-    timeout = "short",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
     backends = [
         "a100",
@@ -4279,6 +4308,43 @@ xla_cc_test(
     deps = [
         ":pdl_launch_annotation",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "scan_rewriter_triton",
+    srcs = ["scan_rewriter_triton.cc"],
+    hdrs = ["scan_rewriter_triton.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/backends/gpu/codegen/triton:support",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "scan_rewriter_triton_test",
+    srcs = ["scan_rewriter_triton_test.cc"],
+    deps = [
+        ":scan_rewriter_triton",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

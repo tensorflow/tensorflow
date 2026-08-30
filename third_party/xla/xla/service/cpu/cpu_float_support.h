@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
 #define XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
 
+#include <cstdint>
 #include <functional>
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
@@ -35,6 +37,41 @@ class CpuFloatSupport : public FloatSupport {
                            CallLibraryChecker call_library_for_instruction)
       : FloatSupport(low_precision_type),
         call_library_for_instruction_(call_library_for_instruction) {}
+
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
+    if (LowPrecisionType() == BF16 || LowPrecisionType() == F16) {
+      switch (hlo.opcode()) {
+        case HloOpcode::kSort:
+        case HloOpcode::kCompare:
+        case HloOpcode::kSelect:
+          return true;
+        default:
+          break;
+      }
+    }
+    return FloatSupport::SupportsLowPrecisionOperand(hlo, operand_index);
+  }
+
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
+    if (LowPrecisionType() == BF16 || LowPrecisionType() == F16) {
+      switch (hlo.opcode()) {
+        case HloOpcode::kSort:
+        case HloOpcode::kSelect:
+          return true;
+        default:
+          break;
+      }
+    }
+    return FloatSupport::SupportsLowPrecisionOutput(hlo);
+  }
+
+  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
+    if (hlo.opcode() == HloOpcode::kSort) {
+      return true;
+    }
+    return FloatSupport::SupportsMixedPrecisions(hlo);
+  }
 
   // Skip trying to upcast the dot if the dot is supported by a library.
   bool ShouldSkipInstruction(const HloInstruction& hlo) const override {

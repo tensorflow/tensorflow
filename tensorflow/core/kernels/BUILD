@@ -5999,6 +5999,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )

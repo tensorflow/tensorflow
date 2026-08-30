@@ -491,26 +491,15 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
     std::vector<HloInstruction*> instructions_across_comps;
     for (const auto& [comp, annotated_instructions] :
          comp_annotated_instructions) {
-      if (annotated_instructions.size() == 1 &&
-          !config_.keep_trivial_sync_annotation(annotated_instructions[0])) {
-        // Remove annotations from synchronous operations (control flow, TC
-        // custom calls) since they won't do anything and will just get in the
-        // way of scheduling.
-        VLOG(2) << "Removing trivial group: " << group_id
-                << " from instruction: " << annotated_instructions[0]->name()
-                << " in computation: " << comp->name();
-        changed |= RemoveSchedulingAnnotation(annotated_instructions[0]);
-        deleted_instructions.insert(annotated_instructions[0]);
-        continue;
-      }
       instructions_across_comps.insert(instructions_across_comps.end(),
                                        annotated_instructions.begin(),
                                        annotated_instructions.end());
     }
     // Remove the groups without any async operations across all computations.
-    if (absl::c_none_of(instructions_across_comps, [](HloInstruction* instr) {
+    if (absl::c_none_of(instructions_across_comps, [&](HloInstruction* instr) {
           return IsSupportedAsyncOp(instr, /*supports_async_start=*/true,
-                                    /*check_sync_versions=*/true);
+                                    /*check_sync_versions=*/true) ||
+                 config_.keep_trivial_sync_annotation(instr);
         })) {
       for (HloInstruction* instr : instructions_across_comps) {
         VLOG(1) << "Removing group id: " << group_id

@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
@@ -53,12 +53,17 @@ absl::StatusOr<std::vector<autotuner::AutotuneEntry>> DirectoryStore::Read(
   }
 
   std::string content;
-  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, path, &content));
+  absl::Status read_status = tsl::ReadFileToString(env, path, &content);
+  if (!read_status.ok()) {
+    LOG(WARNING) << "Failed to read cache entry from file: " << path << ": "
+                 << read_status;
+    return std::vector<autotuner::AutotuneEntry>{};
+  }
 
   autotuner::AutotuneEntry entry;
   if (!entry.ParseFromString(content)) {
-    return absl::InternalError(
-        absl::StrCat("Failed to parse cache entry from file: ", path));
+    LOG(WARNING) << "Failed to parse cache entry from file: " << path;
+    return std::vector<autotuner::AutotuneEntry>{};
   }
 
   return std::vector<autotuner::AutotuneEntry>{entry};
@@ -73,22 +78,42 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
   tsl::Env* env = tsl::Env::Default();
 
   std::string dir(tsl::io::Dirname(path));
-  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
+  absl::Status dir_status = env->RecursivelyCreateDir(dir);
+  if (!dir_status.ok()) {
+    LOG(WARNING) << "Failed to create directory for autotune cache: " << dir
+                 << ": " << dir_status;
+    return absl::OkStatus();
+  }
 
   std::string content;
   if (!entry.SerializeToString(&content)) {
-    return absl::InternalError("Failed to serialize autotune entry.");
+    LOG(WARNING) << "Failed to serialize autotune entry.";
+    return absl::OkStatus();
   }
 
   // Rename trick: Write to a temporary file, then rename it to the final file
   // to avoid mingled files when multiple threads are writing to the same file.
-  std::string tmp_dir = tsl::io::JoinPath(directory_path_, "tmp");
-  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(tmp_dir));
   std::string tmp_path = tsl::io::JoinPath(
-      tmp_dir, absl::StrCat("tmp_", absl::GetCurrentTimeNanos()));
+      dir, absl::StrCat(".tmp_", entry.key().target().hlo_fingerprint(), "_",
+                        env->GetProcessId(), "_", absl::GetCurrentTimeNanos()));
 
-  ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(env, tmp_path, content));
-  return env->RenameFile(tmp_path, path);
+  absl::Status status = tsl::WriteStringToFile(env, tmp_path, content);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to write temporary autotune cache file: "
+                 << tmp_path << ": " << status;
+    env->DeleteFile(tmp_path).IgnoreError();
+    return absl::OkStatus();
+  }
+
+  status = env->RenameFile(tmp_path, path);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to rename temporary autotune cache file to " << path
+                 << ": " << status;
+    env->DeleteFile(tmp_path).IgnoreError();
+    return absl::OkStatus();
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<autotuner::AutotuneEntry>>

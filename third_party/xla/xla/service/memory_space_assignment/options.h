@@ -407,6 +407,10 @@ struct Options {
   // filtered prefetches.
   PreferredPrefetchOverrides preferred_prefetch_overrides;
 
+  // Unified overrides for tensor placement, pinning, retention, and prefetch
+  // timing.
+  MsaTensorOverrides msa_tensor_overrides;
+
   // Options for slicing prefetches into smaller asynchronously copied pieces.
   SlicedPrefetchOptions sliced_prefetch_options;
 
