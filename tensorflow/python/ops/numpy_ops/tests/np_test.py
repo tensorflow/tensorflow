@@ -28,7 +28,6 @@ import six
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.ops.numpy_ops.tests.config import config
 from tensorflow.python.ops.numpy_ops.tests.config import FLAGS
 import tensorflow.python.ops.numpy_ops.tests.extensions as nje
