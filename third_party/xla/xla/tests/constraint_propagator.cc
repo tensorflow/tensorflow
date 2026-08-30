@@ -374,9 +374,25 @@ ConstraintPropagator::Run(
         get_index_known_zeroes) {
   ConstraintPropagator propagator(get_index_known_zeroes);
   auto computations = module.MakeComputationPostOrder();
+
+  // Phase 1: Seed constraints and ML patterns across all computations in the
+  // module.
   for (HloComputation* computation : computations) {
-    ABSL_RETURN_IF_ERROR(propagator.Propagate(computation));
+    ABSL_RETURN_IF_ERROR(propagator.SeedConstraints(computation));
+    ABSL_RETURN_IF_ERROR(propagator.SeedMLPatternsConstraints(computation));
+    ABSL_RETURN_IF_ERROR(propagator.PropagateSeedConstraints(computation));
   }
+
+  // Phase 2: Inter-procedural fixed-point propagation across all computations
+  // in the module. Post-order iteration ensures constraints propagate backward
+  // across fusion boundaries in each iteration until convergence.
+  absl::flat_hash_map<const HloInstruction*, ConstraintState> before;
+  do {
+    before = propagator.states_;
+    for (HloComputation* computation : computations) {
+      ABSL_RETURN_IF_ERROR(propagator.PropagateConstraints(computation));
+    }
+  } while (before != propagator.states_);
 
   // Extract only the parameters
   absl::flat_hash_map<const HloInstruction*, ConstraintState> result;
@@ -848,6 +864,10 @@ absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
 
 absl::Status ConstraintPropagator::PropagateConstraintsExact(
     const HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    return PropagateFusionBoundary(instruction);
+  }
+
   ConstraintState output_state = states_[instruction];
   ConstraintInterval output_interval = output_state.GetConstraintInterval();
   StructuralConstraints output_structural =
@@ -966,6 +986,46 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
     default:
       break;
   }
+  return absl::OkStatus();
+}
+
+absl::Status ConstraintPropagator::PropagateFusionBoundary(
+    const HloInstruction* fusion_instruction) {
+  const HloComputation* fused_comp =
+      fusion_instruction->fused_instructions_computation();
+  if (fused_comp == nullptr) {
+    return absl::OkStatus();
+  }
+
+  // 1. Output / Root binding:
+  const HloInstruction* fused_root =
+      fusion_instruction->fused_expression_root();
+  if (fused_root != nullptr) {
+    // Backward: outer constraint on fusion result flows into inner root.
+    ConstraintState fusion_state = states_[fusion_instruction];
+    states_[fused_root].Merge(fusion_state);
+    // Forward: internal constraint computed on root flows out to fusion result.
+    ConstraintState root_state = states_[fused_root];
+    states_[fusion_instruction].Merge(root_state);
+  }
+
+  // 2. Operands / Parameters binding:
+  for (int64_t i = 0; i < fusion_instruction->operand_count(); ++i) {
+    const HloInstruction* operand = fusion_instruction->operand(i);
+    const HloInstruction* fused_param = fusion_instruction->fused_parameter(i);
+    if (fused_param == nullptr) {
+      continue;
+    }
+    // Backward: constraints accumulated on the internal parameter flow out
+    // to the caller operand.
+    ConstraintState param_state = states_[fused_param];
+    states_[operand].Merge(param_state);
+    // Forward: constraints established on the caller operand flow into the
+    // internal parameter.
+    ConstraintState operand_state = states_[operand];
+    states_[fused_param].Merge(operand_state);
+  }
+
   return absl::OkStatus();
 }
 

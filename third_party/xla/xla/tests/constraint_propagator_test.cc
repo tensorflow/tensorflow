@@ -1311,5 +1311,59 @@ ENTRY main {
   EXPECT_DOUBLE_EQ(x_int.min, -128.0);
   EXPECT_DOUBLE_EQ(x_int.max, 127.0);
 }
+TEST_F(ConstraintPropagatorTest,
+       FusionBoundaryPropagatesConstraintsToCallerOperands) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%inner_computation (inner_param: f32[8,128]) -> f32[8,128] {
+  %inner_param = f32[8,128] parameter(0)
+  ROOT %sqrt = f32[8,128] sqrt(%inner_param)
+}
+
+ENTRY main {
+  %param_0 = f32[8,128] parameter(0)
+  ROOT %fusion = f32[8,128] fusion(%param_0), kind=kLoop, calls=%inner_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositive());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest,
+       NestedFusionBoundaryPropagatesConstraintsAcrossMultipleLevels) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%innermost_computation (p: f32[8,128]) -> f32[8,128] {
+  %p = f32[8,128] parameter(0)
+  ROOT %sqrt = f32[8,128] sqrt(%p)
+}
+
+%outer_computation (p_outer: f32[8,128]) -> f32[8,128] {
+  %p_outer = f32[8,128] parameter(0)
+  ROOT %inner_fusion = f32[8,128] fusion(%p_outer), kind=kLoop, calls=%innermost_computation
+}
+
+ENTRY main {
+  %param_0 = f32[8,128] parameter(0)
+  ROOT %outer_fusion = f32[8,128] fusion(%param_0), kind=kOutput, calls=%outer_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositive());
+  EXPECT_GE(p0_int.min, 0.0);
+}
 }  // namespace
 }  // namespace xla
