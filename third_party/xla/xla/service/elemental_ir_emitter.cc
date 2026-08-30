@@ -1376,16 +1376,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       ABSL_ASSIGN_OR_RETURN(llvm::Value * sin_b, EmitSin(component_type, b));
       llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
 
-      // About "x^2 is a better approximation than Expm1(x) + Expm1(x)
-      // for small values of x": this statement is not
-      // accurate. Previously, Expm1(x) implementation had accuracy
-      // issues for small x (where it was supposed to stand out in
-      // accuracy!), but after resolving these issues (see
-      // openxla/xla#10376), using precomputed exp_2a_m1 and
-      // exp_neg_2a_m1 is accurate enough and we'll save a few
-      // instructions.
-
-      auto exp_sum_m2 = FAdd(exp_2a_m1, exp_neg_2a_m1);
+      // Computing the denominator's exponential term as expm1(2a) + expm1(-2a)
+      // suffers from catastrophic cancellation as a -> 0. Instead, use the
+      // identity (e^(2a) - 1)(e^(-2a) - 1) = 2 - 2*cosh(2a), which gives
+      // 2*(cosh(2a) - 1) = -expm1(2a) * expm1(-2a) to avoid cancellation
+      // and reuse exp_2a_m1 and exp_neg_2a_m1.
+      llvm::Value* exp_product = FMul(exp_2a_m1, exp_neg_2a_m1);
+      llvm::Value* exp_sum_m2 = FMul(neg_one, exp_product);
       llvm::Value* denom = FAdd(exp_sum_m2, two_cos_2b_p2);
 
       // As `a` grows toward +inf and -inf, the real numerator will grow towards

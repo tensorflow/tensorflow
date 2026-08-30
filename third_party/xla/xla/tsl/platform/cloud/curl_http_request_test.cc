@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
+#include <stdlib.h>
+
 #include <fstream>
 #include <string>
 
@@ -25,7 +27,6 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/platform.h"
 
 namespace tsl {
 namespace {
@@ -333,8 +334,22 @@ TEST(CurlHttpRequestTest, GetRequest_Direct) {
 }
 
 TEST(CurlHttpRequestTest, GetRequest_CustomCaInfoFlag) {
-  static char set_var[] = "CURL_CA_BUNDLE=test";
-  putenv(set_var);
+  // Save existing CURL_CA_BUNDLE and restore on exit to avoid leaking state.
+  const char* old_ca_bundle = getenv("CURL_CA_BUNDLE");
+  std::string old_val = old_ca_bundle != nullptr ? old_ca_bundle : "";
+  bool had_ca_bundle = old_ca_bundle != nullptr;
+  ::setenv("CURL_CA_BUNDLE", "test", 1);
+  struct EnvCleanup {
+    bool had_var;
+    std::string prev_val;
+    ~EnvCleanup() {
+      if (had_var) {
+        ::setenv("CURL_CA_BUNDLE", prev_val.c_str(), 1);
+      } else {
+        ::unsetenv("CURL_CA_BUNDLE");
+      }
+    }
+  } cleanup{had_ca_bundle, old_val};
   FakeLibCurl libcurl("get response", 200);
   CurlHttpRequest http_request(&libcurl);
 
