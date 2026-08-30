@@ -60,18 +60,19 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self.assertEqual(result[0], expected[0])
 
   def testRange(self):
-    self._testTernary(
-        math_ops.range,
-        np.int32(1),
-        np.int32(2),
-        np.int32(1),
-        expected=np.array([1], dtype=np.int32))
-    self._testTernary(
-        math_ops.range,
-        np.int32(1),
-        np.int32(7),
-        np.int32(2),
-        expected=np.array([1, 3, 5], dtype=np.int32))
+    for dtype in self.int_types | self.float_types:
+      self._testTernary(
+          math_ops.range,
+          dtype(1),
+          dtype(2),
+          dtype(1),
+          expected=np.array([1], dtype=dtype))
+      self._testTernary(
+          math_ops.range,
+          dtype(1),
+          dtype(7),
+          dtype(2),
+          expected=np.array([1, 3, 5], dtype=dtype))
 
   def testSelect(self):
     for dtype in self.numeric_types:
