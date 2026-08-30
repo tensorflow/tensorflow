@@ -60,6 +60,7 @@ struct ModuleIsolationOptions {
   double rel_error_bound = 0.1;
   bool run_hlo_passes = false;
   int64_t max_module_size_bytes = 0;
+  bool use_dataflow_based_input_generation = true;
 
   std::function<absl::StatusOr<Literal>(
       std::unique_ptr<HloModule> module, HloRunnerInterface* runner,

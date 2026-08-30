@@ -122,7 +122,10 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
   }
   if (!options.make_fake_arguments_fn) {
     options.make_fake_arguments_fn =
-        [](const HloModule& module) -> absl::StatusOr<std::vector<Literal>> {
+        [&](const HloModule& module) -> absl::StatusOr<std::vector<Literal>> {
+      if (options.use_dataflow_based_input_generation) {
+        return MakeDataflowConstrainedArguments(&module);
+      }
       return MakeFakeArguments(&module);
     };
   }
