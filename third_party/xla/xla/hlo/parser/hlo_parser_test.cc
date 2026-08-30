@@ -7622,6 +7622,43 @@ ENTRY main {
   EXPECT_EQ(async_computation->num_parameters(), 2);
 }
 
+TEST_F(HloParserTest, CallStart_InheritExecutionThread) {
+  const char* const kHlo = R"(
+HloModule module
+
+%sparsecore_computation (input: f32[10]) -> f32[10] {
+  %input = f32[10] parameter(0)
+  ROOT %abs = f32[10] abs(%input)
+}, execution_thread="sparsecore"
+
+ENTRY %main (input: f32[10]) -> f32[10] {
+  %input = f32[10] parameter(0)
+  %call-start = ((f32[10]), f32[10], u32[]) call-start(%input), to_apply=%sparsecore_computation
+  %call-done = f32[10] call-done(%call-start)
+  ROOT %res = f32[10] copy(%call-done)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* sc_comp =
+      module->GetComputationWithName("sparsecore_computation");
+  ASSERT_NE(sc_comp, nullptr);
+  EXPECT_EQ(sc_comp->execution_thread(), "sparsecore");
+
+  HloInstruction* call_start =
+      module->entry_computation()->GetInstructionWithName("call-start");
+  ASSERT_NE(call_start, nullptr);
+  auto* async_start = DynCast<HloAsyncStartInstruction>(call_start);
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_EQ(async_start->async_execution_thread(), "sparsecore");
+  ASSERT_NE(async_start->async_wrapped_computation(), nullptr);
+  EXPECT_EQ(async_start->async_wrapped_computation()->execution_thread(),
+            "sparsecore");
+
+  // Verify that printing retains the execution_thread attribute.
+  std::string printed = module->ToString();
+  EXPECT_THAT(printed, ::testing::HasSubstr("execution_thread=\"sparsecore\""));
+}
+
 TEST_F(HloParserTest, DesugarParsingTest_CallStart_LateBinding_WithLayout) {
   const char* const hlo = R"(
 HloModule main
