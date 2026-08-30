@@ -19,9 +19,11 @@ limitations under the License.
 #include <ostream>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -354,6 +356,30 @@ TensorShape AsTensorShape(absl::Span<const int64_t> dim_sizes) {
   TensorShape out;
   TF_CHECK_OK(TensorShape::BuildTensorShape(dim_sizes, &out));
   return out;
+}
+
+TensorShape ZeroElementRank(int rank) {
+  std::vector<int64_t> dims(rank, 1);
+  if (rank > 0) {
+    dims[0] = 0;
+  }
+  return AsTensorShape(dims);
+}
+
+absl::Status ValidateNewAxis(const TensorShape& input_shape,
+                             TensorShape* processing_shape,
+                             TensorShape* final_shape) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({0});
+  Tensor end_tensor = test::AsTensor<int32_t>({0});
+  Tensor strides_tensor = test::AsTensor<int32_t>({1});
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  return ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape,
+      /*begin_mask_spec=*/0, /*end_mask_spec=*/0, /*ellipsis_mask=*/0,
+      /*new_axis_mask=*/1, /*shrink_axis_mask=*/0, processing_shape,
+      final_shape, &is_identity, &is_simple_slice, &slice_dim0, &begin, &end,
+      &strides);
 }
 
 TEST(ValidateStridedSliceOpTest, BasicStride) {
@@ -769,6 +795,42 @@ TEST(ValidateStridedSliceOpTest, PartialInputShape) {
       begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
       shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
       &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec));
+}
+
+TEST(ValidateStridedSliceOpTest, NewAxisAtMaxRankSucceeds) {
+  TensorShape processing_shape, final_shape;
+  TF_EXPECT_OK(ValidateNewAxis(ZeroElementRank(TensorShape::MaxDimensions() - 1),
+                               &processing_shape, &final_shape));
+  EXPECT_EQ(final_shape.dims(), TensorShape::MaxDimensions());
+  EXPECT_EQ(final_shape.dim_size(0), 1);
+}
+
+TEST(ValidateStridedSliceOpTest, NewAxisBeyondMaxRankFails) {
+  TensorShape processing_shape, final_shape;
+  EXPECT_THAT(
+      ValidateNewAxis(ZeroElementRank(TensorShape::MaxDimensions()),
+                      &processing_shape, &final_shape),
+      absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                             ::testing::HasSubstr("maximum supported rank")));
+}
+
+TEST(ValidateStridedSliceOpTest, ManyNewAxesBeyondMaxRankFails) {
+  // Mirrors the public StridedSlice repro: rank 225 plus 30 new axes.
+  Tensor begin_tensor = test::AsTensor<int32_t>(std::vector<int32_t>(31, 0));
+  Tensor end_tensor = test::AsTensor<int32_t>(std::vector<int32_t>(31, 0));
+  Tensor strides_tensor = test::AsTensor<int32_t>(std::vector<int32_t>(31, 1));
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          &begin_tensor, &end_tensor, strides_tensor, ZeroElementRank(225),
+          /*begin_mask_spec=*/0, /*end_mask_spec=*/0,
+          /*ellipsis_mask=*/(1 << 30), /*new_axis_mask=*/(1 << 30) - 1,
+          /*shrink_axis_mask=*/0, &processing_shape, &final_shape,
+          &is_identity, &is_simple_slice, &slice_dim0, &begin, &end, &strides),
+      absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                             ::testing::HasSubstr("maximum supported rank")));
 }
 
 }  // namespace

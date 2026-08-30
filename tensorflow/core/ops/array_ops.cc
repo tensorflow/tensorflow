@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -376,6 +377,13 @@ REGISTER_OP("Pack")
       int32_t rank = c->Rank(cur);
       int32_t axis;
       TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank + 1, &axis));
+
+      if (rank >= TensorShape::MaxDimensions()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Cannot pack tensors of rank ", rank,
+            ": packing would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), "."));
+      }
 
       // Copy all dimensions over, inserting a dimension of value #inputs
       // at <axis>.
@@ -2148,6 +2156,13 @@ REGISTER_OP("ExpandDims")
 
       if (dim < 0) {
         dim += rank + 1;
+      }
+
+      if (rank >= TensorShape::MaxDimensions()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Cannot expand a tensor of rank ", rank,
+            ": expanding would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), "."));
       }
 
       ShapeHandle end;

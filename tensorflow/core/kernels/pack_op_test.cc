@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2026 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,32 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <functional>
-#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
@@ -55,66 +46,41 @@ absl::Status MakeZeroElementShape(int rank, TensorShape* shape) {
   return TensorShape::BuildTensorShape(dims, shape);
 }
 
-class ExpandDimsOpTest : public OpsTestBase {
+class PackOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    TF_ASSERT_OK(NodeDefBuilder("expand", "ExpandDims")
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_INT32))
+    TF_ASSERT_OK(NodeDefBuilder("pack", "Pack")
+                     .Input(FakeInput(1, DT_FLOAT))
+                     .Attr("N", 1)
+                     .Attr("T", DT_FLOAT)
+                     .Attr("axis", 0)
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
 };
 
-TEST_F(ExpandDimsOpTest, ExpandingMaxRankSucceeds) {
+TEST_F(PackOpTest, PackingMaxRankSucceeds) {
   MakeOp();
   TensorShape input_shape;
   TF_ASSERT_OK(
       MakeZeroElementShape(TensorShape::MaxDimensions() - 1, &input_shape));
   AddInput<float>(input_shape, [](int) { return 0.0f; });
-  AddInputFromList<int32_t>(TensorShape({}), {0});
 
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_EQ(GetOutput(0)->dims(), TensorShape::MaxDimensions());
   EXPECT_EQ(GetOutput(0)->dim_size(0), 1);
 }
 
-TEST_F(ExpandDimsOpTest, ExpandingBeyondMaxRankFails) {
+TEST_F(PackOpTest, PackingBeyondMaxRankFails) {
   MakeOp();
   TensorShape input_shape;
   TF_ASSERT_OK(MakeZeroElementShape(TensorShape::MaxDimensions(), &input_shape));
   AddInput<float>(input_shape, [](int) { return 0.0f; });
-  AddInputFromList<int32_t>(TensorShape({}), {0});
 
   EXPECT_THAT(RunOpKernel(),
               StatusIs(error::INVALID_ARGUMENT,
                        HasSubstr("maximum supported rank")));
 }
-
-static void BM_ExpandDims(::testing::benchmark::State& state) {
-  Graph* g = new Graph(OpRegistry::Global());
-
-  Tensor input(DT_INT32, TensorShape({1, 1, 1, 1}));
-  input.flat<int32_t>()(0) = 10;
-
-  Tensor axis(DT_INT32, TensorShape({}));
-  axis.flat<int32_t>()(0) = 2;
-
-  Node* node;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "ExpandDims")
-                  .Input(test::graph::Constant(g, input))
-                  .Input(test::graph::Constant(g, axis))
-                  .Attr("T", DT_INT32)
-                  .Attr("Tdim", DT_INT32)
-                  .Finalize(g, &node));
-  FixupSourceAndSinkEdges(g);
-
-  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
-                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
-      .Run(state);
-}
-
-BENCHMARK(BM_ExpandDims)->UseRealTime();
 
 }  // namespace
 }  // namespace tensorflow
