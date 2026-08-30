@@ -1342,7 +1342,16 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, M));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (M == 0 || N == 0) return;
+    if (M == 0 || N == 0) {
+      // `allocate_output` does not initialize the buffer, and the functor below
+      // only runs when N > 0. Without this, an empty `indices` combined with
+      // `output_dim0` > 0 returns the freshly allocated output uninitialized.
+      // Zero is the correct gradient for a row that received no contribution.
+      if (M > 0) {
+        output->flat_outer_dims<T>().setZero();
+      }
+      return;
+    }
 
     functor::SparseSegmentGradFunctor<Device, T, Index, SegmentId>()(
         context, operation_, input_flat, indices_vec, segment_vec, output);
