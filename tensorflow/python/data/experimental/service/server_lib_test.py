@@ -148,6 +148,30 @@ class ServerLibTest(test.TestCase):
     worker.stop()
     worker.join()
 
+  def testJoinDispatcherWithoutStart(self):
+    dispatcher = server_lib.DispatchServer(start=False)
+    with self.assertRaisesRegex(
+        RuntimeError, "Server cannot be joined before it has been started"):
+      dispatcher.join()
+
+  def testJoinWorkerWithoutStart(self):
+    dispatcher = server_lib.DispatchServer()
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(dispatcher._address), start=False)
+    with self.assertRaisesRegex(
+        RuntimeError, "Server cannot be joined before it has been started"):
+      worker.join()
+
+  def testDispatcherDestroyedWithoutStart(self):
+    dispatcher = server_lib.DispatchServer(start=False)
+    del dispatcher
+
+  def testWorkerDestroyedWithoutStart(self):
+    dispatcher = server_lib.DispatchServer()
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(dispatcher._address), start=False)
+    del worker
+
   def testDispatcherNumWorkers(self):
     dispatcher = server_lib.DispatchServer()
     self.assertEqual(0, dispatcher._num_workers())
