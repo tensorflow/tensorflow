@@ -75,7 +75,7 @@ LogicalResult SetOnceModuleAttribute(StringRef attr_name,
   }
   return op->emitOpError() << "module already contains an attribute "
                            << attr_name << "=" << ex_attr_value.getInt()
-                           << ", overwritting to a new value "
+                           << ", overwriting to a new value "
                            << attr_value.getInt() << " is not allowed.";
 }
 

@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -116,20 +117,12 @@ bool CompareShapesIgnoringMemorySpace(const Shape& shape1,
 
 class HostExecuteCallFrame {
  public:
-  static absl::StatusOr<HostExecuteCallFrame> Create(
-      se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
+  static absl::StatusOr<std::shared_ptr<HostExecuteCallFrame>> Create(
+      se::Stream* host_to_device_stream,
       const BufferAllocations* buffer_allocations,
       HostOffloadingAllocator& allocator, absl::Span<ShapedSlice> args,
       absl::Span<ShapedSlice> results, const ProgramShape& program_shape);
 
-  absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters() const {
-    return parameters_;
-  }
-  const ShapeTree<HostOffloadingBuffer>& result() const { return result_; }
-
-  absl::Status PublishResult() &&;
-
- protected:
   HostExecuteCallFrame(
       se::Stream* host_to_device_stream,
       const BufferAllocations* buffer_allocations,
@@ -138,13 +131,25 @@ class HostExecuteCallFrame {
       absl::Span<ShapedSlice> result_slices,
       std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers);
 
+  absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters() const {
+    return parameters_;
+  }
+  const ShapeTree<HostOffloadingBuffer>& result() const { return result_; }
+
+  absl::Status CopyArguments(se::Stream* device_to_host_stream,
+                             const BufferAllocations* buffer_allocations,
+                             absl::Span<ShapedSlice> args);
+
+  static absl::Status PublishResult(
+      std::shared_ptr<HostExecuteCallFrame> self,
+      const BufferAllocations* buffer_allocations);
+
+ private:
   static absl::Status ValidateArgsAndResults(
       absl::Span<const ShapedSlice> args, absl::Span<const ShapedSlice> results,
       const ProgramShape& program_shape);
 
- private:
   se::Stream* host_to_device_stream_;
-  const BufferAllocations* buffer_allocations_;
   std::vector<ShapeTree<HostOffloadingBuffer>> parameters_;
   ShapeTree<HostOffloadingBuffer> result_;
 
@@ -212,11 +217,13 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
   return absl::OkStatus();
 }
 
-absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
-    se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
-    const BufferAllocations* buffer_allocations,
-    HostOffloadingAllocator& allocator, absl::Span<ShapedSlice> args,
-    absl::Span<ShapedSlice> results, const ProgramShape& program_shape) {
+absl::StatusOr<std::shared_ptr<HostExecuteCallFrame>>
+HostExecuteCallFrame::Create(se::Stream* host_to_device_stream,
+                             const BufferAllocations* buffer_allocations,
+                             HostOffloadingAllocator& allocator,
+                             absl::Span<ShapedSlice> args,
+                             absl::Span<ShapedSlice> results,
+                             const ProgramShape& program_shape) {
   tsl::profiler::TraceMe trace("HostExecuteCallFrame::Create");
   ABSL_RETURN_IF_ERROR(ValidateArgsAndResults(args, results, program_shape));
 
@@ -230,8 +237,7 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
         "HostExecuteCallFrame::Create Allocating Args");
     for (const auto& [slice, shape] : args) {
       auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
-      if (IsBufferOnDevice(device_to_host_stream, buffer_allocation.opaque())) {
-        // Copy device memory to host memory.
+      if (IsBufferOnDevice(host_to_device_stream, buffer_allocation.opaque())) {
         ABSL_ASSIGN_OR_RETURN(
             buffers.emplace_back(),
             allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
@@ -239,10 +245,6 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
         parameters.push_back(ShapeTree<HostOffloadingBuffer>(
             shape, HostOffloadingBuffer(buffers.back()->untyped_data(),
                                         buffers.back()->size_bytes())));
-
-        ABSL_RETURN_IF_ERROR(device_to_host_stream->Memcpy(
-            buffers.back()->untyped_data(), buffer_allocation,
-            buffers.back()->size_bytes()));
       } else {
         // We don't allocate as buffer is already in host memory.
         parameters.push_back(ShapeTree<HostOffloadingBuffer>(
@@ -277,9 +279,27 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
     }
   }
 
-  return HostExecuteCallFrame(host_to_device_stream, buffer_allocations,
-                              std::move(parameters), std::move(result),
-                              std::move(results), std::move(buffers));
+  return std::make_shared<HostExecuteCallFrame>(
+      host_to_device_stream, buffer_allocations, std::move(parameters),
+      std::move(result), std::move(results), std::move(buffers));
+}
+
+absl::Status HostExecuteCallFrame::CopyArguments(
+    se::Stream* device_to_host_stream,
+    const BufferAllocations* buffer_allocations, absl::Span<ShapedSlice> args) {
+  tsl::profiler::TraceMe trace("HostExecuteCallFrame::CopyArguments");
+  int i = 0;
+  for (const auto& [slice, shape] : args) {
+    auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
+    if (!IsBufferOnDevice(device_to_host_stream, buffer_allocation.opaque())) {
+      continue;
+    }
+    ABSL_RETURN_IF_ERROR(device_to_host_stream->Memcpy(
+        allocated_buffers_[i]->untyped_data(), buffer_allocation,
+        allocated_buffers_[i]->size_bytes()));
+    i++;
+  }
+  return absl::OkStatus();
 }
 
 HostExecuteCallFrame::HostExecuteCallFrame(
@@ -290,37 +310,36 @@ HostExecuteCallFrame::HostExecuteCallFrame(
     absl::Span<ShapedSlice> result_slices,
     std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers)
     : host_to_device_stream_(host_to_device_stream),
-      buffer_allocations_(buffer_allocations),
       parameters_(std::move(parameters)),
       result_(std::move(result)),
       result_slices_(result_slices),
       allocated_buffers_(std::move(buffers)) {}
 
-absl::Status HostExecuteCallFrame::PublishResult() && {
+absl::Status HostExecuteCallFrame::PublishResult(
+    std::shared_ptr<HostExecuteCallFrame> self,
+    const BufferAllocations* buffer_allocations) {
   tsl::profiler::TraceMe trace("HostExecuteCallFrame::PublishResult");
   size_t result_leaf_index = 0;
-  for (const auto& [index, buffer] : result_.leaves()) {
-    auto result_buffer = buffer_allocations_->GetDeviceAddress(
-        result_slices_[result_leaf_index++].slice);
-    if (!IsBufferOnDevice(host_to_device_stream_, result_buffer.opaque())) {
+  for (const auto& [index, buffer] : self->result_.leaves()) {
+    auto result_buffer = buffer_allocations->GetDeviceAddress(
+        self->result_slices_[result_leaf_index++].slice);
+    if (!IsBufferOnDevice(self->host_to_device_stream_,
+                          result_buffer.opaque())) {
       // No need to copy result since the result is expected to be in host
       // memory and should match the buffer used for execution.
       CHECK(result_buffer.opaque() == buffer.opaque_base());
       continue;
     }
 
-    auto shape = ShapeUtil::GetSubshape(result_.shape(), index);
-    ABSL_RETURN_IF_ERROR(host_to_device_stream_->Memcpy(
+    auto shape = ShapeUtil::GetSubshape(self->result_.shape(), index);
+    ABSL_RETURN_IF_ERROR(self->host_to_device_stream_->Memcpy(
         &result_buffer, buffer.opaque_base(), buffer.size_in_bytes()));
   }
 
-  // Move the backing buffers (allocated_buffers_) to the callback to ensure
-  // that they are only destroyed after the memory copies are done.
-  ABSL_RETURN_IF_ERROR(host_to_device_stream_->DoHostCallbackWithStatus(
-      [buffers = std::move(allocated_buffers_)]() {
-        return absl::OkStatus();
-      }));
-
+  // Store ref to the backing buffers (allocated_buffers_) to the callback to
+  // ensure that they are only destroyed after the memory copies are done.
+  ABSL_RETURN_IF_ERROR(self->host_to_device_stream_->DoHostCallbackWithStatus(
+      [self = std::move(self)]() { return absl::OkStatus(); }));
   return absl::OkStatus();
 }
 
@@ -370,8 +389,6 @@ HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
   events_.erase(it);
   return event;
 }
-
-// HostExecuteStartThunk
 
 absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
 HostExecuteStartThunk::Create(
@@ -527,6 +544,15 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
     }
   });
 
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HostExecuteCallFrame> call_frame,
+                   HostExecuteCallFrame::Create(
+                       params.stream, params.buffer_allocations, *allocator_,
+                       absl::MakeSpan(args_), absl::MakeSpan(results_),
+                       executable_->program_shape()));
+
+  (*params.execution_scoped_state)[thunk_info().thunk_id] =
+      std::move(call_frame);
+
   return initialization_status;
 }
 
@@ -547,19 +573,17 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
       async_events_->CreateEvent(params.host_to_device_stream->parent(),
                                  RunId(params.execution_id)));
 
-  ABSL_ASSIGN_OR_RETURN(
-      auto tmp_call_frame,
-      HostExecuteCallFrame::Create(
-          params.device_to_host_stream, params.host_to_device_stream,
-          params.buffer_allocations, *allocator_, absl::MakeSpan(args_),
-          absl::MakeSpan(results_), executable_->program_shape()));
+  auto it = params.execution_scoped_state->find(thunk_info().thunk_id);
+  if (it == params.execution_scoped_state->end()) {
+    return absl::InternalError("Unable to get HostExecutableCallFrame");
+  }
+  std::shared_ptr<HostExecuteCallFrame>& call_frame =
+      *tsl::any_cast<std::shared_ptr<HostExecuteCallFrame>>(&it->second);
 
-  // We are making a shared pointer here because `execute` needs to be
-  // copyable so that it can be scheduled on the thread pool.
-  auto call_frame =
-      std::make_shared<HostExecuteCallFrame>(std::move(tmp_call_frame));
+  ABSL_RETURN_IF_ERROR(call_frame->CopyArguments(
+      device_to_host_stream, params.buffer_allocations, absl::MakeSpan(args_)));
 
-  auto execute = [this, call_frame = std::move(call_frame), params,
+  auto execute = [this, call_frame, params,
                   // We skip reference counting because destroying the event
                   // would trigger a CUDA API call which is not allowed in host
                   // callbacks.
@@ -585,7 +609,8 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
         return;
       }
     }
-    auto publish_result_status = std::move(*call_frame).PublishResult();
+    auto publish_result_status =
+        call_frame->PublishResult(call_frame, params.buffer_allocations);
     if (!publish_result_status.ok()) {
       execute_event_ptr.SetError(publish_result_status);
       return;

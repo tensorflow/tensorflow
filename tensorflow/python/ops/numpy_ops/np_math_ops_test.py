@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -645,6 +646,18 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
 
+  def testSignBit(self):
+    for transform in self.array_transforms:
+      values = transform([-1.5, -0.0, 0.0, 1.5])
+      self.assertAllEqual(
+          np_math_ops.signbit(values), [True, True, False, False]
+      )
+    # The sign bit is set even when the value compares equal to zero or NaN.
+    self.assertAllEqual(np_math_ops.signbit([np.nan, -np.nan]), [False, True])
+    self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
+    negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
+    self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
   def testIsInfFamilyNonFloatInputs(self):
     # A non-floating input has no infinities, but the result must still be an
     # elementwise boolean array shaped like the input, as numpy returns, and
@@ -685,6 +698,29 @@ class MathTest(test.TestCase, parameterized.TestCase):
         self.match(
             tf_fun(arg), np_fun(arg), msg='{}({})'.format(np_fun.__name__, arg)
         )
+
+  def testFabsAlwaysReturnsFloat(self):
+    # `fabs` differs from `absolute` in that its result is always floating
+    # point, so an integer argument is promoted rather than passed through.
+    int_args = [
+        [1, -2, 3],
+        -5,
+        np.array([1, -2, 3], dtype=np.int32),
+        np.array([1, -2, 3], dtype=np.int64),
+        np.array([], dtype=np.int32),
+        np.array([[1, -2], [3, -4]], dtype=np.int32),
+    ]
+    for arg in int_args:
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
+
+    # A floating point argument keeps its own dtype.
+    for dtype in [np.float16, np.float32, np.float64]:
+      arg = np.array([1.5, -2.5], dtype=dtype)
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
 
 
 if __name__ == '__main__':

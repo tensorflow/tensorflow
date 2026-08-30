@@ -2558,7 +2558,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
@@ -3676,19 +3676,13 @@ cc_library(
     hdrs = ["computation_placer.h"],
     deps = [
         ":device_assignment",
-        "//xla:util",
         "//xla/stream_executor:platform_id",
-        "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/host:host_platform_id",
-        "//xla/stream_executor/rocm:rocm_platform_id",
-        "//xla/stream_executor/sycl:sycl_platform_id",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
     ],
-    alwayslink = True,  # Contains per-platform computation placer registration
 )
 
 xla_cc_test(
@@ -3697,17 +3691,9 @@ xla_cc_test(
     deps = [
         ":computation_placer",
         ":device_assignment",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "computation_placer_hdr",
-    hdrs = ["computation_placer.h"],
-    deps = [
-        ":device_assignment",
         "//xla/stream_executor:platform_id",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -5831,6 +5817,19 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_rendezvous",
+    srcs = ["collective_rendezvous.cc"],
+    hdrs = ["collective_rendezvous.h"],
+    deps = [
+        "//xla:executable_run_options",
+        "//xla/runtime:device_id",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "collective_ops_utils",
     srcs = ["collective_ops_utils.cc"],
     hdrs = ["collective_ops_utils.h"],
@@ -5840,7 +5839,6 @@ cc_library(
         ":hlo_module_config",
         ":pattern_matcher",
         ":source_target_pairs",
-        "//xla:executable_run_options",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -5861,7 +5859,6 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@jsoncpp_git//:jsoncpp",
@@ -6476,42 +6473,79 @@ xla_aot_compile_cpu(
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
+    gpu_targets = [
+        "h100",
+        "b200",
+    ],
+    module = "xla_aot_compile_test.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_legacy_cache",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_hlo",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
+    gpu_targets = [
+        "h100",
+        "b200",
+    ],
+    module = "xla_aot_compile_test.hlo",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_hlo_legacy_cache",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test.hlo",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_constant",
-    autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test_constant.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
+    autotune_results = "xla_aot_compile_test_autotune_cache.txtpb",
+    gpu_targets = [
+        "h100",
+        "b200",
+    ],
+    module = "xla_aot_compile_test_convolution.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
     gpu_targets = [
         "h100",
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
 )
 
 xla_aot_compile_gpu_runtime_autotuning(
@@ -6599,7 +6633,10 @@ xla_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_convolution",
+        ":xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
         ":xla_aot_compile_test_gpu_executable_hlo",
+        ":xla_aot_compile_test_gpu_executable_hlo_legacy_cache",
+        ":xla_aot_compile_test_gpu_executable_legacy_cache",
     ],
     tags = [
         "cuda-only",
@@ -7215,6 +7252,7 @@ xla_cc_test(
         ":cpu_plugin",
         ":hlo_cse",
         ":hlo_proto_cc",
+        ":hlo_verifier",
         ":xla_transform",
         "//xla:shape_layout",
         "//xla:shape_util",

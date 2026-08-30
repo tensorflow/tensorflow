@@ -299,6 +299,9 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
+        "@riegeli//riegeli/messages:parse_message",
         "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:protobuf",
@@ -396,6 +399,8 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "@com_google_absl//absl/status:statusor",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ],
     alwayslink = True,
 )

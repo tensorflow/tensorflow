@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/layout_util.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -954,27 +954,20 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   absl::c_iota(data, 0);
   Device* device = client->addressable_devices()[0];
 
-  std::shared_ptr<xla::PjRtLayout> layout;
+  std::shared_ptr<const xla::PjRtLayout> layout;
   int64_t expected_size;
   {
-    auto xla_layout =
-        xla::LayoutUtil::MakeDescendingLayout(shape.dims().size());
-    TF_ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
-    auto topology = client->GetTopologyForDevices(device_list);
-    if (topology.ok()) {
-      auto topology_desc = (*topology)->description();
-      TF_ASSERT_OK_AND_ASSIGN(
-          xla::Shape xla_shape,
-          topology_desc->MakeCanonicalShapeForMemorySpace(
-              topology_desc->GetDefaultMemorySpaceKindId(),
-              xla::ShapeUtil::MakeShape(xla::PrimitiveType::F32, shape.dims()),
-              &xla_layout));
-      layout = std::make_shared<xla::PjRtLayout>(xla_shape.layout());
-      expected_size = xla::ShapeUtil::ArraySize(xla_shape);
-    } else {
-      layout = std::make_shared<xla::PjRtLayout>(std::move(xla_layout));
-      expected_size = *dtype.byte_size() * shape.num_elements();
-    }
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> default_layout,
+                         client->GetDefaultPjRtLayout(dtype, shape.dims(),
+                                                      device, MemoryKind()));
+    xla::Shape xla_shape =
+        xla::ShapeUtil::MakeShape(xla::PrimitiveType::F32, shape.dims());
+    *xla_shape.mutable_layout() = default_layout->xla_layout();
+    // We assume that reversing the minor_to_major still gives a valid layout
+    // for this shape.
+    absl::c_reverse(*xla_shape.mutable_layout()->mutable_minor_to_major());
+    layout = std::make_shared<xla::PjRtLayout>(xla_shape.layout());
+    expected_size = xla::ShapeUtil::ArraySize(xla_shape);
   }
 
   ArrayRef array;

@@ -917,6 +917,7 @@ xla_test(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:gpu_topology",
+        "//xla/service:mock_compiled_module",
         "//xla/service:mock_compiler",
         "//xla/service:platform_util",
         "//xla/stream_executor:stream_executor_h",

@@ -258,6 +258,8 @@ class SingleDeviceSharding final
   static char ID;  // NOLINT
 
  private:
+  friend class SingleDeviceShardingSpec;
+
   SingleDeviceSharding(
       DeviceListRef device_list, MemoryKind memory_kind,
       std::shared_ptr<const SingleDeviceShardingSpec> sharding_spec);
@@ -309,6 +311,8 @@ class OpaqueSharding : public RTTIExtends<OpaqueSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
+  friend class OpaqueShardingSpec;
+
   OpaqueSharding(DeviceListRef devices, MemoryKind memory_kind,
                  std::shared_ptr<const OpaqueShardingSpec> sharding_spec);
 
@@ -409,6 +413,8 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
+  friend class ConcreteShardingSpec;
+
   ConcreteSharding(DeviceListRef devices, MemoryKind memory_kind,
                    std::shared_ptr<const ConcreteShardingSpec> sharding_spec);
 
@@ -473,6 +479,8 @@ class ConcreteEvenSharding
   static char ID;  // NOLINT
 
  private:
+  friend class ConcreteEvenShardingSpec;
+
   ConcreteEvenSharding(
       DeviceListRef devices, MemoryKind memory_kind,
       std::shared_ptr<const ConcreteEvenShardingSpec> sharding_spec);
@@ -524,6 +532,8 @@ class ShardingParamSharding
   static char ID;  // NOLINT
 
  private:
+  friend class ShardingParamShardingSpec;
+
   ShardingParamSharding(
       DeviceListRef devices, MemoryKind memory_kind,
       std::shared_ptr<const ShardingParamShardingSpec> sharding_spec);

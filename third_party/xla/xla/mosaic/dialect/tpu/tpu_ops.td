@@ -182,7 +182,7 @@ def TPU_ReduceOp : TPU_Op<"reduce", [Pure, SameOperandsAndResultRank]> {
   let hasVerifier = 1;
 }
 
-// tpu.scan performs a scan across a vector.
+// tpu.scan performs a scan across a vector along the specified dimension.
 //
 // If a mask is provided, all output elements before the first unmasked input
 // element is undefined. Subsequent masked elements will hold the result
@@ -203,7 +203,8 @@ def TPU_ScanOp : TPU_Op<"scan"> {
   let arguments = (ins
     VectorOfNonZeroRankOf<[I1, I16, I32, BF16, F32]>:$input,
     TPU_ReductionKindAttr:$kind,
-    Optional<VectorOfNonZeroRankOf<[I1]>>:$mask
+    Optional<VectorOfRankAndType<[1], [I1]>>:$mask,
+    I64Attr:$dimension
   );
   let results = (outs VectorOfNonZeroRankOf<[I16, I32, BF16, F32]>:$output);
   let assemblyFormat = [{
@@ -215,10 +216,12 @@ def TPU_ScanOp : TPU_Op<"scan"> {
 def TPU_SortOp : TPU_Op<"sort", [Pure]> {
   let summary = "Sorts key/value pairs based on keys.";
   let description = [{
-    tpu.sort performs a stable sort of key/value pairs in ascending or
-    descending order based on keys. Masked-out keys and values are placed at the
-    end of the output vectors. An output mask indicates which outputs
-    correspond to the valid inputs.
+    tpu.sort performs a stable sort of key/value pairs in the innermost
+    dimension in ascending or descending order based on keys. Duplicate keys
+    preserve their input order regardless of the sorting order. Masked-out keys
+    and values are placed at the end of the output vectors. Integer keys are
+    treated as unsigned. An output mask indicates which outputs correspond to
+    the valid inputs. 
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
@@ -1196,6 +1199,19 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
     std::optional<std::string> verifyOffsetAndSizeTileAlignment(
         std::array<int64_t, 2> tc_target_shape,
         MemRefType source_type_override = nullptr);
+
+    // Given a source shape size, a slice shape size, a source tile size, a
+    // result tile size and optionally a slice offset, the below functions
+    // returns a tri-state boolean (nullopt means "unknown") indicating whether
+    // the result tiles of the slice stride across or within the source tiles.
+    // The result tile should divide the source tile and the offset, if
+    // provided, should be divisible by the result tile size.
+    static std::optional<bool> sliceStridesAcrossSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
+    static std::optional<bool> sliceStridesWithinSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;

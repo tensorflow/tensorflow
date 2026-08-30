@@ -710,10 +710,18 @@ TEST_P(SingleDeviceShardingSpecTest, ToSharding) {
 
   ASSERT_OK_AND_ASSIGN(ShardingRef sharding,
                        spec->ToSharding(GetDevices({0}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<SingleDeviceShardingSpec> non_shared_spec =
+      SingleDeviceShardingSpec::Create();
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef non_shared_sharding,
+      non_shared_spec->ToSharding(GetDevices({0}), MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 TEST_P(OpaqueShardingSpecTest, ToSharding) {
@@ -722,10 +730,19 @@ TEST_P(OpaqueShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")));
-  EXPECT_EQ(sharding->sharding_spec()->num_shards(), spec->num_shards());
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<OpaqueShardingSpec> non_shared_spec =
+      OpaqueShardingSpec::Create(2);
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef non_shared_sharding,
+      non_shared_spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")));
+  EXPECT_EQ(non_shared_sharding->sharding_spec()->num_shards(),
+            non_shared_spec->num_shards());
 }
 
 TEST_P(ConcreteShardingSpecTest, ToSharding) {
@@ -736,10 +753,20 @@ TEST_P(ConcreteShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1, 2, 3}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<ConcreteShardingSpec> non_shared_spec =
+      ConcreteShardingSpec::Create(
+          Shape({10, 20}),
+          {Shape({5, 20}), Shape({5, 20}), Shape({5, 20}), Shape({5, 20})});
+  ASSERT_OK_AND_ASSIGN(ShardingRef non_shared_sharding,
+                       non_shared_spec->ToSharding(GetDevices({0, 1, 2, 3}),
+                                                   MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 TEST_P(ConcreteEvenShardingSpecTest, ToSharding) {
@@ -749,10 +776,18 @@ TEST_P(ConcreteEvenShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1, 2, 3}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<ConcreteEvenShardingSpec> non_shared_spec =
+      ConcreteEvenShardingSpec::Create(4, Shape({10, 20}), Shape({5, 20}));
+  ASSERT_OK_AND_ASSIGN(ShardingRef non_shared_sharding,
+                       non_shared_spec->ToSharding(GetDevices({0, 1, 2, 3}),
+                                                   MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 TEST_P(ShardingParamShardingSpecTest, ToSharding) {
@@ -763,10 +798,19 @@ TEST_P(ShardingParamShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1, 2, 3}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<ShardingParamShardingSpec> non_shared_spec =
+      ShardingParamShardingSpec::Create(sharding_param);
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef non_shared_sharding,
+      non_shared_spec->ToSharding(GetDevices({0, 1, 2, 3, 4, 5}),
+                                  MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 INSTANTIATE_TEST_SUITE_P(NumShards, SingleDeviceShardingSpecTest,

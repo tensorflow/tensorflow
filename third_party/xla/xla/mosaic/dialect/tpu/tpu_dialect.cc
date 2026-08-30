@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -113,6 +114,19 @@ Operation* TPUDialect::materializeConstant(OpBuilder& builder, Attribute value,
     return std::nullopt;
   }
   return mlir::cast<CoreTypeAttr>(attr).getValue();
+}
+
+LogicalResult TPUDialect::verifyOperationAttribute(Operation* const op,
+                                                   NamedAttribute attr) {
+  CHECK(op != nullptr);
+  if (attr.getName() == GetMainKey()) {
+    if (!isa<func::FuncOp>(op) || !isa<mlir::UnitAttr>(attr.getValue())) {
+      return op->emitOpError() << GetMainKey()
+                               << " attribute is expected to be a unit "
+                                  "attribute on a func.func operation";
+    }
+  }
+  return success();
 }
 
 // Rewrites
@@ -216,9 +230,27 @@ CoreType GetCoreTypeOfParentOp(Operation& op) {
   return parent ? *TPUDialect::GetCoreTypeAttr(parent) : CoreType::kTc;
 }
 
-absl::StatusOr<func::FuncOp> GetFuncWithCoreType(ModuleOp module,
-                                                 CoreType core_type) {
+absl::StatusOr<func::FuncOp> GetMainFunc(ModuleOp module, CoreType core_type) {
   func::FuncOp result = nullptr;
+  for (auto func_op : module.getOps<func::FuncOp>()) {
+    if (!func_op->hasAttr(TPUDialect::GetMainKey())) {
+      continue;
+    }
+    if (TPUDialect::GetCoreTypeAttr(func_op) != core_type) {
+      continue;
+    }
+    if (result != nullptr) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Multiple functions with %v attribute and tpu.core_type = %v found",
+          TPUDialect::GetMainKey(), core_type));
+    }
+    result = func_op;
+  }
+  if (result != nullptr) {
+    return result;
+  }
+  // If there is no function marked with tpu.main, fall back to finding a
+  // (unique) function with the requested core type.
   for (func::FuncOp func_op : module.getOps<func::FuncOp>()) {
     if (TPUDialect::GetCoreTypeAttr(func_op) != core_type) {
       continue;

@@ -1,3 +1,18 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // RUN: fusion_compiler_opt %s -xtile-cpu-drop-vector-unit-dims \
 // RUN:   -split-input-file | FileCheck %s
 
@@ -50,3 +65,17 @@ func.func @no_unit_dims(%arg0: vector<16xf32>, %arg1: vector<16xf32>) -> vector<
 // CHECK-SAME:     %[[ARG0:.*]]: vector<16xf32>, %[[ARG1:.*]]: vector<16xf32>) -> vector<16xf32> {
 // CHECK-NOT: vector.shape_cast
 // CHECK:     arith.addf %[[ARG0]], %[[ARG1]] : vector<16xf32>
+
+// -----
+
+func.func @transfer_read_non_identity_layout_unit_dim(
+    %arg0: memref<2x1x2x1xf32, #xtile.layout<[3, 1, 0, 2]>>, %c0: index) -> vector<2x1x2x1xf32> {
+  %pad = arith.constant 0.0 : f32
+  %0 = vector.transfer_read %arg0[%c0, %c0, %c0, %c0], %pad {in_bounds = [true, true, true, true]} : memref<2x1x2x1xf32, #xtile.layout<[3, 1, 0, 2]>>, vector<2x1x2x1xf32>
+  return %0 : vector<2x1x2x1xf32>
+}
+// CHECK-LABEL: func.func @transfer_read_non_identity_layout_unit_dim(
+// CHECK-SAME:     %[[ARG0:.*]]: memref<2x1x2x1xf32, #xtile.layout<[3, 1, 0, 2]>>, %[[C0:.*]]: index) -> vector<2x1x2x1xf32> {
+// CHECK-NOT:  memref.subview
+// CHECK:      vector.transfer_read %[[ARG0]]
+

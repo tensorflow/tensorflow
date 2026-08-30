@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -61,6 +63,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/platform/env.h"
@@ -277,6 +280,42 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
       std::move(ctx),           std::move(thread_pool),  std::move(autotuner)};
 }
 
+absl::Status InsertTuningResultsToCache(
+    absl::Span<const Autotuner::TuningResult> results,
+    AutotunerCacheInterface* autotuner_cache,
+    tsl::thread::ThreadPool* thread_pool) {
+  if (results.empty()) {
+    return absl::OkStatus();
+  }
+
+  tsl::Executor* executor = thread_pool != nullptr
+                                ? thread_pool->AsExecutor()
+                                : &tsl::InlineExecutor::Instance();
+
+  absl::BlockingCounter counter(results.size());
+  absl::Mutex status_mu;
+  absl::Status insert_status = absl::OkStatus();
+
+  for (const auto& result : results) {
+    AutotunerCacheInterface::Config cached_config;
+    cached_config.codegen_backend = result.config.codegen_backend->backend();
+    cached_config.backend_config = *result.config.backend_config;
+    const HloInstruction* instr = result.instruction;
+
+    executor->Execute([instr, cached_config, autotuner_cache, &counter,
+                       &status_mu, &insert_status]() {
+      absl::Status s = autotuner_cache->Insert(instr, cached_config);
+      if (!s.ok()) {
+        absl::MutexLock lock(&status_mu);
+        insert_status.Update(s);
+      }
+      counter.DecrementCount();
+    });
+  }
+  counter.Wait();
+  return insert_status;
+}
+
 }  // namespace
 
 absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
@@ -316,6 +355,8 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
     absl::Time start_time = absl::Now();
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      LoadModuleFromFile(hlo_file));
+    absl::Duration module_load_time = absl::Now() - start_time;
+    absl::Time autotune_start_time = absl::Now();
     absl::StatusOr<std::vector<Autotuner::TuningResult>> results =
         env.autotuner->TuneConfigs(*module, should_autotune);
     if (!results.ok()) {
@@ -324,20 +365,20 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
       combined_status.Update(results.status());
       continue;
     }
-    absl::Duration autotune_duration = absl::Now() - start_time;
-    for (const auto& result : *results) {
-      AutotunerCacheInterface::Config cached_config;
-      cached_config.codegen_backend = result.config.codegen_backend->backend();
-      cached_config.backend_config = *result.config.backend_config;
-      ABSL_RETURN_IF_ERROR(
-          autotuner_cache->Insert(result.instruction, cached_config));
-    }
+    absl::Duration autotune_duration = absl::Now() - autotune_start_time;
+
+    combined_status.Update(InsertTuningResultsToCache(
+        *results, autotuner_cache.get(),
+        cache_dir.empty() ? nullptr : env.thread_pool.get()));
+
     env.compiler->ClearMlirContextPool();
-    absl::Duration duration_with_cache_update = absl::Now() - start_time;
+    absl::Duration total_duration = absl::Now() - start_time;
+    absl::Duration cache_update_duration =
+        total_duration - autotune_duration - module_load_time;
     LOG(INFO) << "Autotuning " << module->name() << " took "
-              << autotune_duration
-              << " (with cache update: " << duration_with_cache_update
-              << " total)";
+              << autotune_duration << " (module load: " << module_load_time
+              << ", cache update: " << cache_update_duration
+              << ", total: " << total_duration << ")";
   }
   return combined_status;
 }

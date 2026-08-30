@@ -42,12 +42,17 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docker-image: ${{ steps.out.outputs.docker-image }}
+      rocm-distro-url: ${{ steps.out.outputs.rocm-distro-url }}
+      rocm-distro-hash: ${{ steps.out.outputs.rocm-distro-hash }}
     steps:
       - id: out
         shell: bash
         run: |
-          # hermetic llvm based on  ghcr.io/rocm/jax-ubu22.rocm7.2.4:latest
-          echo "docker-image=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
+          {
+            echo "docker-image=ghcr.io/rocm/jax-build-ubu24.rocmless@sha256:68854ed30b800d3e8c390f6e651721e2bead58830da1c59e1b828354eb8f077f"
+            echo "rocm-distro-url=https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz"
+            echo "rocm-distro-hash=1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6"
+          } >> "$GITHUB_OUTPUT"
 
   jax:
     needs: rocm-config
@@ -59,6 +64,8 @@ jobs:
     continue-on-error: true
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
+      ROCM_DISTRO_URL: ${{ needs.rocm-config.outputs.rocm-distro-url }}
+      ROCM_DISTRO_HASH: ${{ needs.rocm-config.outputs.rocm-distro-hash }}
       # Unique per run so a crashed run cannot collide with this one on a pooled node.
       CONTAINER_NAME: jax-${{ github.run_id }}-${{ github.run_attempt }}
       # Stable label so leftover containers from crashed runs can be swept on a pooled node.
@@ -150,6 +157,10 @@ jobs:
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
             --jobs=20 \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            --repo_env=SYSROOT_DIST=linux_glibc_2_31 \
             --bes_keywords=jax \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
@@ -166,7 +177,10 @@ jobs:
     timeout-minutes: 220
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
+      ROCM_DISTRO_URL: ${{ needs.rocm-config.outputs.rocm-distro-url }}
+      ROCM_DISTRO_HASH: ${{ needs.rocm-config.outputs.rocm-distro-hash }}
       EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/execute_ci_build_upstream.sh
+      GLOBAL_SYMBOL_VERSION_LDS_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/global_symbol_version.lds
       # Unique per run so a crashed run cannot collide with this one on a pooled node.
       CONTAINER_NAME: xla-${{ github.run_id }}-${{ github.run_attempt }}
       # Stable label so leftover containers from crashed runs can be swept on a pooled node.
@@ -181,10 +195,21 @@ jobs:
           repository: openxla/xla
           persist-credentials: false
 
-      - name: Fetch ROCm XLA Upstream Script from ROCm/xla
+      - name: Fetch ROCm XLA Upstream Scripts from ROCm/xla
         run: |
           wget -O build_tools/rocm/execute_ci_build_upstream.sh "${EXECUTE_CI_BUILD_URL}"
           chmod +x build_tools/rocm/execute_ci_build_upstream.sh
+          wget -O build_tools/rocm/global_symbol_version.lds "${GLOBAL_SYMBOL_VERSION_LDS_URL}"
+          LDS_SHA=$(sha256sum build_tools/rocm/global_symbol_version.lds | cut -d' ' -f1)
+          # Workaround for the symbol clash with ROCm's libLLVM.so
+          {
+            echo "LLVM_SYMBOL_CLASH_WAR<<EOF"
+            echo "--dynamic_mode=default"
+            echo "--linkopt=-Wl,--version-script,/work/build_tools/rocm/global_symbol_version.lds"
+            echo "--sandbox_add_mount_pair=/work/build_tools/rocm/global_symbol_version.lds"
+            echo "--action_env=global_symbol_version_lds_CACHEBUSTER=${LDS_SHA}"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - *start_container
 
@@ -194,16 +219,20 @@ jobs:
       - name: Test XLA [single_gpu]
         timeout-minutes: 120
         run: |
+          # LLVM_SYMBOL_CLASH_WAR is intentionally unquoted so it splits into one flag per line.
+          # shellcheck disable=SC2086
           docker exec "${CONTAINER_NAME}" build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
+            --config=rocm_ci_hermetic \
             --config=rocm_rbe \
             --config=ci_single_gpu \
-            --local_test_jobs=1 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
-            --repo_env=ROCM_PATH="/opt/rocm" \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
             --local_test_jobs=1 \
             --internal_spawn_scheduler \
             --strategy=TestRunner=dynamic \
+            ${LLVM_SYMBOL_CLASH_WAR} \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
@@ -212,13 +241,18 @@ jobs:
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |
+          # LLVM_SYMBOL_CLASH_WAR is intentionally unquoted so it splits into one flag per line.
+          # shellcheck disable=SC2086
           docker exec "${CONTAINER_NAME}" build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
+            --config=rocm_ci_hermetic \
             --config=rocm_rbe \
             --config=ci_rocm_cpu \
             --local_test_jobs=200 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
-            --repo_env=ROCM_PATH="/opt/rocm" \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            ${LLVM_SYMBOL_CLASH_WAR} \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \

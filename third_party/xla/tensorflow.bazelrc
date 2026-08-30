@@ -189,7 +189,7 @@ common:mkl_aarch64 --config=mkl_aarch64_threadpool
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="13.2.0"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
-common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
+common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.30.7"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -292,20 +292,20 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_rocm=True
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_cuda=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
-common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
+common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic --config=workspace
 common:rocm_clang_hermetic --strategy=CppLink=local
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=False
 
 common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
-common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
+common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic --config=workspace
 
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
 common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
 common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
-common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
+common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic --config=workspace
 
 # This config option is used for SYCL as GPU backend.
 # SYCL Configuration (non-hermetic)

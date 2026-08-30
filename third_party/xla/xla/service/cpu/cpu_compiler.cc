@@ -2199,7 +2199,6 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   };
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/false,
       /*is_aot_compilation=*/options.is_aot_compile};
 
   auto ir_compiler = IrCompiler::Create(CompilerTargetOptions(module->config()),
@@ -2273,9 +2272,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
       IrCompiler::GetCodeGenOptLevel(hlo_module->config());
   llvm::TargetOptions target_options =
       CompilerTargetOptions(hlo_module->config());
-  if (options.sanitize_memory()) {
-    target_options.EmulatedTLS = true;
-  }
   auto target_machine_builder = [&]() {
     return absl::WrapUnique(target->createTargetMachine(
         triple, options.cpu_name(), options.features(), target_options,
@@ -2320,7 +2316,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
                    target_machine_builder());
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
       /*is_aot_compilation=*/true};
 
   TargetMachineOptions target_machine_options(
@@ -2353,8 +2348,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
       options::DisableLoopUnrolling(module->config()),
       /*disable_platform_dependent_math=*/
       options::DisablePlatformDependentMath(module->config()) || fast_compile,
-      /*msan_enabled=*/aot_options.sanitize_memory(),
-      /*msan_track_origins=*/aot_options.sanitize_memory_track_origins(),
       /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
       /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
 

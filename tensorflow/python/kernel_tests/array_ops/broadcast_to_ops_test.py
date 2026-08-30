@@ -16,6 +16,7 @@
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -219,6 +220,37 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(value=[], shape=(3, 0, 5), dtype=np.int32)
       v = array_ops.broadcast_to(x, output_shape)
       self.evaluate(v)
+
+  def testBroadcastToNegativeDimension(self):
+    # -1 is valid for Reshape ("infer this dim") but not for BroadcastTo.
+    x = constant_op.constant([1.0, 2.0, 3.0, 4.0])
+    for shape in (
+        [-1],
+        constant_op.constant([-1], dtype=dtypes.int32),
+        constant_op.constant([-1], dtype=dtypes.int64),
+    ):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"Dimension -1 must be >= 0",
+      ):
+        result = array_ops.broadcast_to(x, shape)
+        self.evaluate(result)
+
+  @test_util.run_v2_only
+  def testBroadcastToNegativeDimensionInFunction(self):
+    # Grappler used to drop BroadcastTo(x, [-1]) as a no-op after shape
+    # inference treated -1 as unknown and merged it with x's shape.
+    x = constant_op.constant([1.0, 2.0, 3.0, 4.0])
+
+    @def_function.function
+    def f():
+      return array_ops.broadcast_to(x, [-1])
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), r"Dimension -1 must be >= 0"
+    ):
+      self.evaluate(f())
+
 
 if __name__ == "__main__":
   test_lib.main()
