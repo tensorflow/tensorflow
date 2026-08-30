@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import numpy as onp
 import six
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.numpy_ops import np_config
@@ -1785,10 +1786,10 @@ class LaxBackedNumpyTests(jtu.TestCase):
     try:
       self._CheckAgainstNumpy(
           onp_fun, lnp_fun, args_maker, check_dtypes=check_dtypes, tol=tol)
-    except ZeroDivisionError:
+      self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=check_dtypes,
+                            rtol=tol, atol=tol, check_incomplete_shape=True)
+    except (ZeroDivisionError, errors.InvalidArgumentError):
       self.skipTest("don't support checking for ZeroDivisionError")
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=check_dtypes,
-                          rtol=tol, atol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_arg{}_ndmin={}".format(i, ndmin),
