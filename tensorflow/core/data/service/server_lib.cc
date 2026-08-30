@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/export.pb.h"
@@ -103,7 +103,15 @@ void GrpcDataServerBase::Stop() {
   stopped_ = true;
 }
 
-void GrpcDataServerBase::Join() { server_->Wait(); }
+absl::Status GrpcDataServerBase::Join() {
+  if (!server_) {
+    return absl::FailedPreconditionError(
+        "Server cannot be joined before it has been started. "
+        "Call `start()` before `join()`.");
+  }
+  server_->Wait();
+  return absl::OkStatus();
+}
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
