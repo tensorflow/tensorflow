@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -22,6 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
