@@ -106,6 +106,7 @@ load(
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
 )
+
 # Do not sort: copybara rule changes this
 def register_extension_info(**kwargs):
     pass  # buildifier: disable=out-of-order-load
