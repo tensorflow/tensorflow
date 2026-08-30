@@ -1511,7 +1511,7 @@ cc_library(
         "transforms/prepare_quantize_helper.cc",
         "transforms/quantization/bias_quantizer_pass.cc",
         "transforms/quantization/fuse_qdq_pass.cc",
-        "transforms/quantization/propagate_qsv_pass.cc",
+        "transforms/quantization/propagate_qparams_pass.cc",
         "transforms/quantization/quant_utils.cc",
         "transforms/quantize.cc",
         "transforms/quantize_variables.cc",

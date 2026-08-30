@@ -159,6 +159,9 @@ absl::StatusOr<std::optional<std::vector<xla::HloSharding>>> GetHloShardings(
       ABSL_ASSIGN_OR_RETURN(
           auto hlo_sharding,
           xla::HloSharding::FromProto((*pjrt_executable_op_shardings)[i]));
+      if (hlo_sharding.UseNamedShardingLeaf()) {
+        hlo_sharding = xla::HloSharding::V3ToV2Sharding(hlo_sharding);
+      }
       hlo_shardings.push_back(hlo_sharding);
     }
   }

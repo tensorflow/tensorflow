@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: litert-opt %s -tfl-propagate-qsv | FileCheck %s
+// RUN: litert-opt %s -tfl-propagate-qparams | FileCheck %s
 
 
 // CHECK-LABEL: concat

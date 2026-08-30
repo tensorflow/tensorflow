@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"

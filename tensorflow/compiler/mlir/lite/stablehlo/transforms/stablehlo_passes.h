@@ -67,6 +67,10 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
 // Drops vhlo/stablehlo custom calls targeting 'shape_assertion'.
 std::unique_ptr<OperationPass<ModuleOp>> CreateDropShapeAssertionsPass();
 
+// Legalizes vhlo custom calls for quantization ops to stablehlo.custom_call.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLegalizeVhloQuantCustomCallsPass();
+
 #define GEN_PASS_DECL
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 

@@ -71,7 +71,6 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <initializer_list>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
