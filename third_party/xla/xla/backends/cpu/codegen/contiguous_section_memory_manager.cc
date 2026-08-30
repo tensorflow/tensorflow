@@ -127,9 +127,8 @@ uint8_t* ContiguousSectionMemoryManager::allocateDataSection(
     llvm::StringRef section_name, bool is_read_only) {
   if (is_read_only) {
     return Allocate(ro_data_free_, size, alignment);
-  } else {
-    return Allocate(rw_data_free_, size, alignment);
   }
+  return Allocate(rw_data_free_, size, alignment);
 }
 
 uint8_t* ContiguousSectionMemoryManager::allocateCodeSection(
