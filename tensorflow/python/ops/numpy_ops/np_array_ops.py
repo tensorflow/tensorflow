@@ -1036,7 +1036,6 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
       return axis + rank if axis < 0 else axis
     rank_t = ops.convert_to_tensor(rank)
     axis_t = ops.convert_to_tensor(axis)
-    axis_t = ops.convert_to_tensor(axis)
     control_flow_assert.Assert(
         math_ops.reduce_all(
             math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
