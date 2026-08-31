@@ -24,6 +24,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -470,6 +471,16 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._check_grad_complex(self._tf_ifft_for_rank(rank), re, im,
                              rtol=tol, atol=tol)
 
+  def testNDOpsAcceptNonTensorInput(self):
+    # The axes used to be inferred from the input before it was converted to
+    # a tensor, so a plain Python list raised AttributeError rather than
+    # being accepted like the equivalent tensor. Build the ops in a graph so
+    # this does not depend on an FFTND/IFFTND kernel being registered.
+    x = [[1.0, 2.0], [3.0, 4.0]]
+    with ops.Graph().as_default():
+      self.assertIsNotNone(fft_ops.fftnd(x))
+      self.assertIsNotNone(fft_ops.ifftnd(x))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
@@ -522,6 +533,16 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       fft_ops.irfft(x, fft_length=[-5, -5])
     with self.assertRaisesRegex(ValueError, "Dimension must be 2 but is 1"):
       fft_ops.irfftnd(x, fft_length=[-5])
+
+  def testNDOpsAcceptNonTensorInput(self):
+    # The axes used to be inferred from the input before it was converted to
+    # a tensor, so a plain Python list raised AttributeError rather than
+    # being accepted like the equivalent tensor. Build the ops in a graph so
+    # this does not depend on an RFFTND/IRFFTND kernel being registered.
+    x = [[1.0, 2.0], [3.0, 4.0]]
+    with ops.Graph().as_default():
+      self.assertIsNotNone(fft_ops.rfftnd(x))
+      self.assertIsNotNone(fft_ops.irfftnd(x))
 
   def _np_fftn(self, x, fft_length=None, axes=None, norm=None):
     return np.fft.rfftn(x, s=fft_length, axes=axes, norm=norm)
