@@ -382,9 +382,10 @@ absl::Status RocmCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status(Stream* stream)> function) {
   ABSL_RETURN_IF_ERROR(CheckNotFinalized());
   ABSL_ASSIGN_OR_RETURN(size_t count, GetNodeCount());
-  if (count != 0 || !is_owned_graph_)
+  if (count != 0 || !is_owned_graph_) {
     return absl::InternalError(
         "Stream can't be traced on non empty command buffer");
+  }
 
   VLOG(5) << "Trace into GPU command buffer graph " << graph_
           << " on a stream: " << stream;
@@ -409,9 +410,10 @@ absl::Status RocmCommandBuffer::Trace(
                "Failed to destroy HIP graph"));
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
-  if (!traced.ok())
+  if (!traced.ok()) {
     return absl::InternalError(
         absl::StrCat("Failed to capture gpu graph: ", traced.message()));
+  }
 
   VLOG(5) << "Traced into the GPU command buffer graph " << graph_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " μs)";

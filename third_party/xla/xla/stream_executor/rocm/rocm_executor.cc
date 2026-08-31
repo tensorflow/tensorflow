@@ -326,7 +326,9 @@ bool CanEnablePeerAccess(hipDevice_t from, hipDevice_t to) {
 }
 
 bool CanEnablePeerAccess(Context* from, Context* to) {
-  if (from == to) return true;
+  if (from == to) {
+    return true;
+  }
 
   auto from_device = GetDevice(from->device_ordinal());
   if (!from_device.ok()) {
@@ -480,7 +482,9 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
 
 absl::StatusOr<void*> CollectiveMemoryAllocate(Context* context,
                                                uint64_t bytes) {
-  if (bytes == 0) return nullptr;
+  if (bytes == 0) {
+    return nullptr;
+  }
   ScopedActivateContext activation(context);
   auto* collectives = xla::gpu::GpuCollectives::Resolve("ROCM");
   ABSL_ASSIGN_OR_RETURN(void* ptr, collectives->Allocate(bytes));
@@ -530,7 +534,8 @@ absl::StatusOr<DeviceAddressBase> RocmExecutor::GetMemoryRange(
       &device_pointer, &size, const_cast<void*>(location.opaque()));
   if (result == hipSuccess) {
     return DeviceAddressBase(device_pointer, size);
-  } else if (result == hipErrorNotFound) {
+  }
+  if (result == hipErrorNotFound) {
     // We differentiate between "this pointer is unknown" (return here) and
     // "there was an internal error while performing this operation" (return
     // below).
@@ -624,9 +629,13 @@ bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
     gpu_binary_to_module_.erase(module_it);
     ModuleHandle mem_it{};
     for (auto x : in_memory_modules_) {
-      if (x.second == module) mem_it = x.first;
+      if (x.second == module) {
+        mem_it = x.first;
+      }
     }
-    if (mem_it != ModuleHandle{}) in_memory_modules_.erase(mem_it);
+    if (mem_it != ModuleHandle{}) {
+      in_memory_modules_.erase(mem_it);
+    }
   }
   return true;
 }
@@ -752,9 +761,8 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModule(
     absl::MutexLock lock{in_memory_modules_mu_};
     return LoadModuleFromHsaco(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
-  } else {
-    return absl::InternalError("No HASCO binary found");
   }
+  return absl::InternalError("No HASCO binary found");
 }
 
 absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
