@@ -395,6 +395,49 @@ TEST(ShapeUtilTest, ByteSizeOfElementsRecursive) {
                  ShapeUtil::MakeShape(S8, {16, 32, 64})})));
 }
 
+// Tests that ByteSizeOfElements aborts on integer overflow (b/333842830).
+TEST(ShapeUtilTest, ByteSizeOfElementsOverflowWithElementSizeInBits) {
+  // Case A: Element count fits in int64_t but total bits overflows.
+  Shape shape_custom = ShapeUtil::MakeShape(S8, {1000000000, 1000000000});
+  shape_custom.mutable_layout()->set_element_size_in_bits(64);
+  EXPECT_DEATH(ShapeUtil::ByteSizeOfElements(shape_custom), "");
+
+  // Case B: Sub-byte 4-bit element size where element count fits in int64_t but
+  // total bits overflows.
+  Shape shape_subbyte = ShapeUtil::MakeShape(S4, {1000000000, 3000000000LL});
+  shape_subbyte.mutable_layout()->set_element_size_in_bits(4);
+  EXPECT_DEATH(ShapeUtil::ByteSizeOfElements(shape_subbyte), "");
+}
+
+// Tests calculation of byte size for shapes with custom element_size_in_bits.
+TEST(ShapeUtilTest, ByteSizeOfElementsWithElementSizeInBits) {
+  // 4-bit sub-byte elements with total bits divisible by 8.
+  Shape shape = ShapeUtil::MakeShape(S4, {10, 20});
+  shape.mutable_layout()->set_element_size_in_bits(4);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape), 100);
+
+  // 3-bit sub-byte elements with total bits NOT divisible by 8 (verifies
+  // ceiling division).
+  Shape shape_odd = ShapeUtil::MakeShape(S4, {5});
+  shape_odd.mutable_layout()->set_element_size_in_bits(3);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_odd), 2);
+
+  // 1-bit elements: 17 elements -> 17 bits -> requires 3 bytes.
+  Shape shape_1bit = ShapeUtil::MakeShape(PRED, {17});
+  shape_1bit.mutable_layout()->set_element_size_in_bits(1);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_1bit), 3);
+
+  // 2-bit elements: 7 elements -> 14 bits -> requires 2 bytes.
+  Shape shape_2bit = ShapeUtil::MakeShape(S2, {7});
+  shape_2bit.mutable_layout()->set_element_size_in_bits(2);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_2bit), 2);
+
+  // 4-bit single element: 1 element -> 4 bits -> requires 1 byte.
+  Shape shape_single = ShapeUtil::MakeShape(S4, {1});
+  shape_single.mutable_layout()->set_element_size_in_bits(4);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_single), 1);
+}
+
 TEST(ShapeUtilTest, UnpackedByteStrides) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {3, 5, 7});
   Shape shape2 = ShapeUtil::MakeShape(F16, {5, 7, 9});

@@ -188,6 +188,8 @@ PjRtCApiClient::PjRtCApiClient(
   LOG(INFO) << "PjRtCApiClient created.";
 }
 
+bool PjRtCApiClient::IsCApi() const { return true; }
+
 void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   // Initialize devices.
   PJRT_Client_Devices_Args devices_args;

@@ -1137,7 +1137,16 @@ absl::Status TransposePlan::Initialize() {
     ++pos_stride1a_in_a;
   }
 
+  is_identity_permutation_ = true;
+  for (int i = 0; i < permutation_.size(); ++i) {
+    if (permutation_[i] != i) {
+      is_identity_permutation_ = false;
+      break;
+    }
+  }
+
   b_dims_ = Permute(a_dims_, permutation_);
+
   ComputeStrides(elem_size_in_bytes_, b_dims_, b_tiling_, ldb_, ldb_tile_);
 
   // Find the innermost dimension of B that is stride 1 element. We know such a
@@ -1377,7 +1386,17 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
   loop_order.clear();
   loop_order.reserve(remaining.size());
 
-  auto soft_cost = [&](const Loop& l) {
+  // Computes a sort key for each candidate loop, returning a 3-tuple:
+  //   <contiguity, -miss_cost, -stride_tie_breaker>
+  // Lexicographical ordering selects the smallest tuple first, placing that
+  // loop into an outer position (from slowest-varying to fastest-varying):
+  // 1. Contiguity category (non-contiguous loops placed in outer loops).
+  // 2. Primary cost: cache-line misses (higher miss cost placed in outer
+  // loops).
+  // 3. Secondary tie-breaker: when cache misses tie (e.g. both loops have
+  //    strides >= 128B), the loop with larger minimum stride goes outer to
+  //    favor better locality in at least one buffer for the inner loop.
+  auto soft_cost = [&](const Loop& l) -> std::tuple<int, double, double> {
     int64_t a_stride = std::abs(l.lda);
     if (!inner_kernel_is_memcpy_ && l.is_inner_dim_in_a) {
       a_stride *= inner_block_elems_ * outer_block_elems_a_;
@@ -1387,21 +1406,41 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
       b_stride *= inner_block_elems_ * outer_block_elems_b_;
     }
 
-    double stride;
     switch (chunk_contiguity_) {
       case ChunkContiguity::kOutput:
-        stride = b_stride;
-        return std::make_tuple(0, -stride);
+        return std::make_tuple(0, -b_stride, 0.0);
       case ChunkContiguity::kInput:
-        stride = a_stride;
-        return std::make_tuple(0, -stride);
-      case ChunkContiguity::kNone:
-        // Add a small penalty to the input strides: given the choice between
-        // consecutive writes and consecutive reads, we would prefer consecutive
-        // writes.
-        constexpr double kPenalty = 1.01;
-        stride = std::min<double>(a_stride * kPenalty, b_stride);
-        return std::make_tuple(l.contiguity, -stride);
+        return std::make_tuple(0, -a_stride, 0.0);
+      case ChunkContiguity::kNone: {
+        constexpr double kOutputPenalty = 1.01;
+        const double min_stride =
+            std::min<double>(a_stride * kOutputPenalty, b_stride);
+
+        // Pure tile-packing identity linearizers/delinearizers preserve the
+        // baseline std::min cost to keep 2D hardware tile pairings intact.
+        if (is_identity_permutation_) {
+          return std::make_tuple(l.contiguity, -min_stride, 0.0);
+        }
+
+        // Model the memory traffic of placing this loop in an inner position
+        // based on the count of cache lines missed (bytes pulled from L2 to
+        // L1). Memory transfers occur at cache-line granularity (128-byte cache
+        // line pairs on modern CPUs like AMD Zen 3/4).
+        // - Strides < 128 bytes share cache lines across iterations (spatial
+        //   reuse).
+        // - Strides >= 128 bytes incur a full cache-line miss per iteration.
+        constexpr double kCacheLineBytes = 128.0;
+
+        const double misses_a = std::min(1.0, a_stride / kCacheLineBytes);
+        const double misses_b = std::min(1.0, b_stride / kCacheLineBytes);
+        const double base_cost = misses_a + misses_b * kOutputPenalty;
+
+        // Break ties among loops with full cache-line misses using the minimum
+        // stride across both buffers (favoring loops with better locality in
+        // at least one buffer, such as tile interior loops over tile exterior
+        // loops).
+        return std::make_tuple(l.contiguity, -base_cost, -min_stride);
+      }
     }
   };
 
@@ -1417,6 +1456,7 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
       }
 
       // Hard constraint 2: tile ordering.
+      // A tile interior MUST come after its corresponding tile exterior.
       if (l.tile_interior) {
         auto is_exterior = [&](const Loop& r) {
           return !r.tile_interior && r.dim_in_a == l.dim_in_a;
@@ -1434,6 +1474,7 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
     loop_order.push_back(std::move(remaining[best_idx]));
     remaining.erase(remaining.begin() + best_idx);
   }
+
   VLOG(5) << "After loop ordering sort: "
           << absl::StrJoin(loop_order, ", ",
                            [](std::string* out, const Loop& l) {

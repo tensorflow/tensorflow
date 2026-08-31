@@ -169,10 +169,9 @@ MakeTestPjRtStreamExecutorClient(
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
     std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr) {
   se::StreamExecutor* first_executor = nullptr;
-  for (const auto& dev : devices) {
-    if (dev->IsAddressable() && dev->local_device_state() != nullptr &&
-        dev->local_device_state()->compute_stream() != nullptr) {
-      first_executor = dev->local_device_state()->compute_stream()->parent();
+  for (const auto& state : local_device_states) {
+    if (state != nullptr && state->compute_stream() != nullptr) {
+      first_executor = state->compute_stream()->parent();
       break;
     }
   }
@@ -209,7 +208,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   int local_device_id = local_device_states.back()->local_device_id().value();
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
-      0, local_device_states.back().get(), local_device_id, /*process_index=*/0,
+      0, /*is_addressable=*/true, local_device_id, /*process_index=*/0,
       /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
@@ -261,7 +260,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
         /*allow_event_reuse=*/false, /*use_callback_stream=*/false));
     int local_device_id = local_device_states.back()->local_device_id().value();
     devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
-        i, local_device_states.back().get(), local_device_id,
+        i, /*is_addressable=*/true, local_device_id,
         /*process_index=*/0,
         /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
     memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
@@ -271,7 +270,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
   }
   for (int i = num_addressable_devices; i < total_devices; ++i) {
     devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
-        i, /*local_device_state=*/nullptr, /*local_device_id=*/-1,
+        i, /*is_addressable=*/false, /*local_device_id=*/-1,
         /*process_index=*/1, /*process_index_in_partition=*/0,
         /*partition_index=*/0, "cpu"));
   }
@@ -485,7 +484,7 @@ TEST(PjRtStreamExecutorClientTest, ExecutePortableRemoteDevice) {
           *client, shape, [](XlaBuilder& builder) {}, compile_options));
 
   auto remote_device = std::make_unique<PjRtStreamExecutorDevice>(
-      1, /*local_device_state=*/nullptr, /*local_device_id=*/-1,
+      1, /*is_addressable=*/false, /*local_device_id=*/-1,
       /*process_index=*/1, /*process_index_in_partition=*/1,
       /*partition_index=*/0, "cpu");
   remote_device->SetClient(client.get());
