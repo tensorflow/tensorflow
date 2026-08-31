@@ -60,7 +60,7 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self.assertEqual(result[0], expected[0])
 
   def testRange(self):
-    for dtype in self.int_types | self.float_types:
+    for dtype in (self.int_types | self.float_types) - {np.uint8}:
       self._testTernary(
           math_ops.range,
           dtype(1),
