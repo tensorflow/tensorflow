@@ -980,8 +980,7 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, CreatesEstimatorWithGfx950Profiles) {
     }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  gpu_device_info_ = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-  gpu_device_info_.set_rocm_compute_capability("gfx950");
+  gpu_device_info_ = TestGpuDeviceInfo::AMDMI350DeviceInfo();
 
   SchedulerConfig scheduler_config;
   ASSERT_OK_AND_ASSIGN(
@@ -1030,8 +1029,7 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, CreatesEstimatorWithGfx942Profiles) {
     }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  gpu_device_info_ = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-  gpu_device_info_.set_rocm_compute_capability("gfx942");
+  gpu_device_info_ = TestGpuDeviceInfo::AMDMI300DeviceInfo();
 
   SchedulerConfig scheduler_config;
   ASSERT_OK_AND_ASSIGN(
