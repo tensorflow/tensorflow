@@ -15,6 +15,7 @@
 
 """Default (OSS) build versions of TensorFlow general-purpose build extensions."""
 
+load("@local_config_syslibs//:build_defs.bzl", "if_system_lib")
 load(
     "@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl",
     _pywrap_aware_cc_import = "pywrap_aware_cc_import",
@@ -80,7 +81,6 @@ if_portable = _if_portable
 ADDITIONAL_API_INDEXABLE_SETTINGS = _ADDITIONAL_API_INDEXABLE_SETTINGS
 if_indexing_source_code = _if_indexing_source_code
 pywrap_tensorflow_macro = _pywrap_tensorflow_macro
-tf_cc_shared_library = _tf_cc_shared_library
 pytype_library = _pytype_library
 tf_py_test = _tf_py_test
 tf_py_strict_test = _tf_py_test
@@ -125,7 +125,49 @@ pywrap_aware_tf_cc_shared_object = _pywrap_aware_tf_cc_shared_object
 pywrap_aware_filegroup = _pywrap_aware_filegroup
 pywrap_aware_genrule = _pywrap_aware_genrule
 pywrap_aware_cc_import = _pywrap_aware_cc_import
-pywrap_library = _pywrap_library
 pywrap_common_library = _pywrap_common_library
 stripped_cc_info = _stripped_cc_info
 pywrap_binaries = _pywrap_binaries
+
+def tf_system_libs_linkopts():
+    """Returns linker flags for system libraries configured via TF_SYSTEM_LIBS."""
+    return (
+        if_system_lib("boringssl", ["-lssl", "-lcrypto"]) +
+        if_system_lib("com_github_googlecloudplatform_google_cloud_cpp", ["-lgoogle_cloud_cpp_common", "-lgoogle_cloud_cpp_bigtable", "-lgoogle_cloud_cpp_storage"]) +
+        if_system_lib("com_github_grpc_grpc", ["-lgrpc++", "-lgrpc", "-lgpr"]) +
+        if_system_lib("com_google_protobuf", ["-lprotobuf"]) +
+        if_system_lib("com_googlesource_code_re2", ["-lre2"]) +
+        if_system_lib("curl", ["-lcurl"]) +
+        if_system_lib("flatbuffers", ["-lflatbuffers"]) +
+        if_system_lib("gif", ["-lgif"]) +
+        if_system_lib("hwloc", ["-lhwloc"]) +
+        if_system_lib("icu", ["-licui18n", "-licuuc", "-licudata"]) +
+        if_system_lib("jsoncpp_git", ["-ljsoncpp"]) +
+        if_system_lib("libjpeg_turbo", ["-ljpeg"]) +
+        if_system_lib("org_sqlite", ["-lsqlite3"]) +
+        if_system_lib("png", ["-lpng"]) +
+        if_system_lib("snappy", ["-lsnappy"]) +
+        if_system_lib("zlib", ["-lz"])
+    )
+
+def tf_cc_shared_library(name, linkopts = [], **kwargs):
+    _tf_cc_shared_library(
+        name = name,
+        linkopts = linkopts + tf_system_libs_linkopts(),
+        **kwargs
+    )
+
+def pywrap_library(name, common_lib_linkopts = {}, **kwargs):
+    updated_common_lib_linkopts = dict(common_lib_linkopts)
+    sys_linkopts = tf_system_libs_linkopts()
+    if sys_linkopts:
+        for lib in ["tensorflow/tensorflow_framework", "tensorflow/tensorflow_cc"]:
+            if lib in updated_common_lib_linkopts:
+                updated_common_lib_linkopts[lib] = updated_common_lib_linkopts[lib] + sys_linkopts
+            else:
+                updated_common_lib_linkopts[lib] = sys_linkopts
+    _pywrap_library(
+        name = name,
+        common_lib_linkopts = updated_common_lib_linkopts,
+        **kwargs
+    )
