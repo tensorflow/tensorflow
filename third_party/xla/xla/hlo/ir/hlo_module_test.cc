@@ -776,6 +776,22 @@ TEST(HloModuleTest, CheckToStringHonorsDebugOptions) {
   EXPECT_TRUE(filecheck_matched);
 }
 
+TEST(HloModuleTest, CheckToStringSortsBackendConfig) {
+  const char* hlo = R"(
+  HloModule test
+
+  ENTRY main {
+    ROOT custom-call = () custom-call(), custom_call_target="test", backend_config={"tuning_knobs":{"3":"0","2":"2"}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(
+      module->ToString(),
+      ::testing::HasSubstr(
+          R"json(backend_config={"tuning_knobs":{"2":"2","3":"0"}})json"));
+}
+
 TEST(HloModuleTest, TestCallersAndCallees) {
   const char* hlo = R"(
     HloModule jit_h
