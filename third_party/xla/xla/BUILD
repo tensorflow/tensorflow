@@ -1628,6 +1628,7 @@ bzl_library(
         "//xla/tsl:package_groups_bzl",
         "//xla/tsl:tsl_bzl",
         "//xla/tsl/platform/default:cuda_build_defs_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
     ],
 )
 

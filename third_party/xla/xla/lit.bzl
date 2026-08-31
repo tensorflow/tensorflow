@@ -16,6 +16,10 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "is_rocm_configured",
+)
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@xla//third_party/rules_python/python:defs.bzl", "py_binary")
 load(
@@ -459,6 +463,9 @@ def lit_test(
     )
 
     # copybara:comment_end
+
+    if is_rocm_configured():
+        env["ROCM_REPO_NAME"] = Label("@local_config_rocm//rocm:hip_runtime").repo_name
 
     native_test_rule(
         name = name,

@@ -39,36 +39,51 @@ class ShTestWithRunfiles(lit.formats.ShTest):
           except FileExistsError:
             pass
 
-      # Dynamically resolve hermetic cuda_nvcc in runfiles if present.
-      # Static relative paths (e.g. %S/../../..) break for deeply nested targets
-      # or under Bazel 8 Bzlmod runfiles layouts. Instead, we dynamically locate
-      # the runfiles directory containing `bin/ptxas`.
-      cuda_dir = None
-      # Fast-path check for standard runfiles repository locations
-      for candidate in [
-          rf_path / "cuda_nvcc",
-          rf_path / "xla" / "cuda_nvcc",
-          rf_path.parent / "cuda_nvcc",
-      ]:
-        if (candidate / "bin" / "ptxas").is_file():
-          cuda_dir = candidate
-          break
-      # Fallback search for Bzlmod mangled repository names
-      # (e.g. rules_cuda~...~cuda_nvcc)
-      if not cuda_dir and rf_path.is_dir():
-        for p in rf_path.rglob("*cuda_nvcc*"):
-          if (p / "bin" / "ptxas").is_file():
-            cuda_dir = p
+      rocm_repo_name_env = os.environ.get("ROCM_REPO_NAME")
+      if rocm_repo_name_env:
+        rocm_repo_dir = rf_path / rocm_repo_name_env
+        if rocm_repo_dir.is_dir():
+          dst = pathlib.Path(test.getExecPath()).parent.parent
+          dst.mkdir(parents=True, exist_ok=True)
+          target = dst / rocm_repo_name_env
+          try:
+            target.symlink_to(rocm_repo_dir, target_is_directory=True)
+            created_symlinks.append(target)
+          except FileExistsError:
+            pass
+        del test.config.environment["ROCM_REPO_NAME"]
+      else:
+        # Dynamically resolve hermetic cuda_nvcc in runfiles if present.
+        # Static relative paths (e.g. %S/../../..) break for deeply
+        # nested targets or under Bazel 8 Bzlmod runfiles layouts.
+        # Instead, we dynamically locate the runfiles directory
+        # containing `bin/ptxas`.
+        cuda_dir = None
+        # Fast-path check for standard runfiles repository locations
+        for candidate in [
+            rf_path / "cuda_nvcc",
+            rf_path / "xla" / "cuda_nvcc",
+            rf_path.parent / "cuda_nvcc",
+        ]:
+          if (candidate / "bin" / "ptxas").is_file():
+            cuda_dir = candidate
             break
+        # Fallback search for Bzlmod mangled repository names
+        # (e.g. rules_cuda~...~cuda_nvcc)
+        if not cuda_dir and rf_path.is_dir():
+          for p in rf_path.rglob("*cuda_nvcc*"):
+            if (p / "bin" / "ptxas").is_file():
+              cuda_dir = p
+              break
 
-      # Inject --xla_gpu_cuda_data_dir into XLA_FLAGS if resolved
-      if cuda_dir:
-        existing_flags = test.config.environment.get("XLA_FLAGS", "")
-        if "--xla_gpu_cuda_data_dir" not in existing_flags:
-          flag = f"--xla_gpu_cuda_data_dir={cuda_dir}"
-          test.config.environment["XLA_FLAGS"] = (
-              f"{existing_flags} {flag}".strip()
-          )
+        # Inject --xla_gpu_cuda_data_dir into XLA_FLAGS if resolved
+        if cuda_dir:
+          existing_flags = test.config.environment.get("XLA_FLAGS", "")
+          if "--xla_gpu_cuda_data_dir" not in existing_flags:
+            flag = f"--xla_gpu_cuda_data_dir={cuda_dir}"
+            test.config.environment["XLA_FLAGS"] = (
+                f"{existing_flags} {flag}".strip()
+            )
 
     result = super().execute(test, lit_config)
     for target in created_symlinks:
