@@ -1022,14 +1022,35 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
   a_rank = np_utils._maybe_static(array_ops.rank(a))  # pylint: disable=protected-access
 
   def _correct_axis(axis, rank):
-    if axis < 0:
-      return axis + rank
-    return axis
+    if isinstance(axis, (int, np.integer)) and isinstance(
+        rank, (int, np.integer)
+    ):
+      axis = int(axis)
+      rank = int(rank)
+      if not (-rank <= axis < rank):
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input {a} of rank {rank}.'
+        )
+      return axis + rank if axis < 0 else axis
+    rank_t = ops.convert_to_tensor(rank)
+    axis_t = ops.convert_to_tensor(axis)
+    control_flow_assert.Assert(
+        math_ops.reduce_all(
+            math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
+        ),
+        ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
+    )
+    return array_ops.where_v2(axis_t < 0, np_utils.add(axis_t, rank_t), axis_t)
 
   source = tuple(_correct_axis(axis, a_rank) for axis in source)
   destination = tuple(_correct_axis(axis, a_rank) for axis in destination)
 
-  if a.shape.rank is not None:
+  if (
+      isinstance(a_rank, (int, np.integer))
+      and builtins.all(isinstance(x, (int, np.integer)) for x in source)
+      and builtins.all(isinstance(x, (int, np.integer)) for x in destination)
+  ):
     perm = [i for i in range(a_rank) if i not in source]
     for dest, src in sorted(zip(destination, source)):
       assert dest <= len(perm)
