@@ -62,16 +62,17 @@ class ArraySpecTest : public testing::TestWithParam<ArraySpecTestParam> {
 
 TEST_P(ArraySpecTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
-      ArraySpec{DType(DType::kS32), Shape({4, 2}),
+      ArraySpec(DType(DType::kS32), Shape({4, 2}),
                 ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
                                              /*shape=*/Shape({4, 2}),
-                                             /*shard_shape=*/Shape({2, 2}))},
-      ArraySpec{DType(DType::kS32), Shape({4, 2}),
+                                             /*shard_shape=*/Shape({2, 2})),
+                /*layout=*/nullptr),
+      ArraySpec(DType(DType::kS32), Shape({4, 2}),
                 ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
                                              /*shape=*/Shape({4, 2}),
                                              /*shard_shape=*/Shape({2, 2})),
                 std::make_shared<xla::PjRtLayout>(
-                    xla::LayoutUtil::MakeDescendingLayout(2))},
+                    xla::LayoutUtil::MakeDescendingLayout(2))),
   }));
 }
 
@@ -80,24 +81,25 @@ TEST_P(ArraySpecTest, ToFromProto) {
   DType dtype(DType::kS32);
   Shape shape({4, 2});
   Shape shard_shape({2, 2});
-  ArraySpec spec{/*dtype=*/dtype, /*shape=*/shape,
+  ArraySpec spec(/*dtype=*/dtype, /*shape=*/shape,
                  /*sharding=*/
                  ConcreteEvenSharding::Create(device_list, MemoryKind(),
                                               /*shape=*/shape,
-                                              /*shard_shape=*/shard_shape)};
+                                              /*shard_shape=*/shard_shape),
+                 /*layout=*/nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(const ArraySpecProto proto, spec.ToProto(version()));
   TF_ASSERT_OK_AND_ASSIGN(const ArraySpec array_spec_copy,
                           ArraySpec::FromProto(client(), proto));
 
-  EXPECT_EQ(array_spec_copy.dtype, dtype);
-  EXPECT_EQ(array_spec_copy.shape, shape);
+  EXPECT_EQ(array_spec_copy.dtype(), dtype);
+  EXPECT_EQ(array_spec_copy.shape(), shape);
 
   const auto* sharding =
-      dyn_cast<ConcreteEvenSharding>(array_spec_copy.sharding.get());
+      dyn_cast<ConcreteEvenSharding>(array_spec_copy.sharding().get());
   ASSERT_NE(sharding, nullptr);
-  EXPECT_EQ(*sharding->devices(), *spec.sharding->devices());
-  EXPECT_EQ(sharding->memory_kind(), spec.sharding->memory_kind());
+  EXPECT_EQ(*sharding->devices(), *spec.sharding()->devices());
+  EXPECT_EQ(sharding->memory_kind(), spec.sharding()->memory_kind());
   EXPECT_EQ(sharding->shape(), shape);
   EXPECT_EQ(sharding->shard_shape(), shard_shape);
 }

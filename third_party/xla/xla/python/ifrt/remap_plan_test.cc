@@ -67,13 +67,12 @@ class RemapPlanTest
   }
 
   ArraySpec GetDummySpec() {
-    return ArraySpec{
-        /*dtype=*/DType(DType::kS32),
-        /*shape=*/Shape({4, 3}),
-        /*sharding=*/
+    return ArraySpec(
+        DType(DType::kS32), Shape({4, 3}),
         ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
                                      /*shape=*/Shape({4, 3}),
-                                     /*shard_shape=*/Shape({2, 3}))};
+                                     /*shard_shape=*/Shape({2, 3})),
+        /*layout=*/nullptr);
   }
 
  private:
@@ -83,19 +82,17 @@ class RemapPlanTest
 TEST_P(RemapPlanTest, EmptyMappings) {
   std::vector<ArraySpec> input_specs;
   input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
+      ArraySpec(DType(DType::kS32), Shape({2, 3}),
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+                                             /*shard_shape=*/Shape({2, 3})),
+                /*layout=*/nullptr));
   input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kF32),  // dtype differs
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
+      ArraySpec(DType(DType::kF32), Shape({2, 3}),  // dtype differs
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+                                             /*shard_shape=*/Shape({2, 3})),
+                /*layout=*/nullptr));
   RemapPlan plan(std::move(input_specs), /*output_specs=*/{},
                  /*mappings=*/{});
   EXPECT_THAT(
@@ -105,20 +102,18 @@ TEST_P(RemapPlanTest, EmptyMappings) {
 }
 
 TEST_P(RemapPlanTest, MixedDtype) {
-  ArraySpec array_spec_s32{
-      /*dtype=*/DType(DType::kS32),
-      /*shape=*/Shape({2, 3}),
-      /*sharding=*/
+  ArraySpec array_spec_s32(
+      DType(DType::kS32), Shape({2, 3}),
       ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                    /*shape=*/Shape({2, 3}),
-                                   /*shard_shape=*/Shape({2, 3}))};
-  ArraySpec array_spec_f32{
-      /*dtype=*/DType(DType::kF32),
-      /*shape=*/Shape({2, 3}),
-      /*sharding=*/
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr);
+  ArraySpec array_spec_f32(
+      DType(DType::kF32), Shape({2, 3}),
       ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                    /*shape=*/Shape({2, 3}),
-                                   /*shard_shape=*/Shape({2, 3}))};
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr);
 
   std::vector<ArraySpec> input_specs;
   input_specs.push_back(array_spec_s32);
@@ -146,20 +141,18 @@ TEST_P(RemapPlanTest, MixedDtype) {
 TEST_P(RemapPlanTest, InvalidOutputDtype) {
   std::vector<ArraySpec> input_specs;
   input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
+      ArraySpec(DType(DType::kS32), Shape({2, 3}),
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+                                             /*shard_shape=*/Shape({2, 3})),
+                /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
   output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kF32),  // dtype differs
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
+      ArraySpec(DType(DType::kF32), Shape({2, 3}),  // dtype differs
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+                                             /*shard_shape=*/Shape({2, 3})),
+                /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
                                         /*out_array=*/0,
@@ -174,20 +167,22 @@ TEST_P(RemapPlanTest, InvalidOutputDtype) {
 }
 
 TEST_P(RemapPlanTest, InvalidOutputDtypeFromMixedInputDtypes) {
-  ArraySpec array_spec_s32{
+  ArraySpec array_spec_s32(
       /*dtype=*/DType(DType::kS32),
       /*shape=*/Shape({4, 3}),
       /*sharding=*/
       ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
                                    /*shape=*/Shape({4, 3}),
-                                   /*shard_shape=*/Shape({2, 3}))};
-  ArraySpec array_spec_f32{
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr);
+  ArraySpec array_spec_f32(
       /*dtype=*/DType(DType::kF32),
       /*shape=*/Shape({4, 3}),
       /*sharding=*/
       ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
                                    /*shape=*/Shape({4, 3}),
-                                   /*shard_shape=*/Shape({2, 3}))};
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr);
   std::vector<ArraySpec> input_specs;
   input_specs.push_back(array_spec_s32);
   input_specs.push_back(array_spec_f32);
@@ -216,7 +211,7 @@ TEST_P(RemapPlanTest, InvalidOutputDtypeFromMixedInputDtypes) {
 
 TEST_P(RemapPlanTest, InvalidLayout) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(ArraySpec{
+  input_specs.push_back(ArraySpec(
       /*dtype=*/DType(DType::kS32),
       /*shape=*/Shape({2, 3}),
       /*sharding=*/
@@ -225,10 +220,9 @@ TEST_P(RemapPlanTest, InvalidLayout) {
                                    /*shard_shape=*/Shape({2, 3})),
       /*layout=*/
       std::make_shared<xla::PjRtLayout>(
-          xla::LayoutUtil::MakeDescendingLayout(2)),
-  });
+          xla::LayoutUtil::MakeDescendingLayout(2))));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(ArraySpec{
+  output_specs.push_back(ArraySpec(
       /*dtype=*/DType(DType::kS32),
       /*shape=*/Shape({2, 3}),
       /*sharding=*/
@@ -237,8 +231,7 @@ TEST_P(RemapPlanTest, InvalidLayout) {
                                    /*shard_shape=*/Shape({2, 3})),
       /*layout=*/
       std::make_shared<xla::PjRtLayout>(
-          xla::LayoutUtil::MakeAscendingLayout(2)),  // layout differs
-  });
+          xla::LayoutUtil::MakeAscendingLayout(2))));  // layout differs
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
                                         /*out_array=*/0,
@@ -254,7 +247,7 @@ TEST_P(RemapPlanTest, InvalidLayout) {
 
 TEST_P(RemapPlanTest, ValidLayoutFromDifferentLayoutObjects) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(ArraySpec{
+  input_specs.push_back(ArraySpec(
       /*dtype=*/DType(DType::kS32),
       /*shape=*/Shape({2, 3}),
       /*sharding=*/
@@ -263,10 +256,9 @@ TEST_P(RemapPlanTest, ValidLayoutFromDifferentLayoutObjects) {
                                    /*shard_shape=*/Shape({2, 3})),
       /*layout=*/
       std::make_shared<xla::PjRtLayout>(
-          xla::LayoutUtil::MakeAscendingLayout(2)),
-  });
+          xla::LayoutUtil::MakeAscendingLayout(2))));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(ArraySpec{
+  output_specs.push_back(ArraySpec(
       /*dtype=*/DType(DType::kS32),
       /*shape=*/Shape({2, 3}),
       /*sharding=*/
@@ -275,8 +267,7 @@ TEST_P(RemapPlanTest, ValidLayoutFromDifferentLayoutObjects) {
                                    /*shard_shape=*/Shape({2, 3})),
       /*layout=*/
       std::make_shared<xla::PjRtLayout>(
-          xla::LayoutUtil::MakeAscendingLayout(2)),  // same layout
-  });
+          xla::LayoutUtil::MakeAscendingLayout(2))));  // same layout
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
                                         /*out_array=*/0,
@@ -289,21 +280,23 @@ TEST_P(RemapPlanTest, ValidLayoutFromDifferentLayoutObjects) {
 
 TEST_P(RemapPlanTest, InvalidInputArrayIndex) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  input_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  output_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/1,  // Invalid in_array
                                         /*out_array=*/0,
@@ -320,21 +313,23 @@ TEST_P(RemapPlanTest, InvalidInputArrayIndex) {
 
 TEST_P(RemapPlanTest, InvalidOutputArrayIndex) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  input_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  output_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
                                         /*out_array=*/1,  // Invalid out_array
@@ -351,21 +346,23 @@ TEST_P(RemapPlanTest, InvalidOutputArrayIndex) {
 
 TEST_P(RemapPlanTest, InvalidIntervalCount) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  input_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  output_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{
       /*in_array=*/0,
@@ -393,21 +390,23 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
     std::vector<int> devices(num_shards);
     absl::c_iota(devices, 0);
     std::vector<ArraySpec> input_specs;
-    input_specs.push_back(ArraySpec{
+    input_specs.push_back(ArraySpec(
         /*dtype=*/DType(DType::kS32),
         /*shape=*/Shape(shape),
         /*sharding=*/
         ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
                                      /*shape=*/Shape(shape),
-                                     /*shard_shape=*/Shape(shard_shape))});
+                                     /*shard_shape=*/Shape(shard_shape)),
+        /*layout=*/nullptr));
     std::vector<ArraySpec> output_specs;
-    output_specs.push_back(ArraySpec{
+    output_specs.push_back(ArraySpec(
         /*dtype=*/DType(DType::kS32),
         /*shape=*/Shape(shape),
         /*sharding=*/
         ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
                                      /*shape=*/Shape(shape),
-                                     /*shard_shape=*/Shape(shard_shape))});
+                                     /*shard_shape=*/Shape(shard_shape)),
+        /*layout=*/nullptr));
     std::vector<RemapPlan::Mapping> mappings;
     mappings.push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                                           /*from=*/{from},
@@ -485,21 +484,23 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
 
 TEST_P(RemapPlanTest, AlreadyUsedInputShard) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  input_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({4, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
-                                             /*shape=*/Shape({4, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  output_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{
       /*in_array=*/0,
@@ -517,21 +518,23 @@ TEST_P(RemapPlanTest, AlreadyUsedInputShard) {
 
 TEST_P(RemapPlanTest, UnassignedOutputShard) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  input_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({4, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
-                                             /*shape=*/Shape({4, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  output_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
                                         /*out_array=*/0,
@@ -548,21 +551,23 @@ TEST_P(RemapPlanTest, UnassignedOutputShard) {
 
 TEST_P(RemapPlanTest, AlreadyAssignedOutputShard) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({4, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
-                                             /*shape=*/Shape({4, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  input_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({2, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                             /*shape=*/Shape({2, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  output_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{
       /*in_array=*/0,
@@ -580,21 +585,23 @@ TEST_P(RemapPlanTest, AlreadyAssignedOutputShard) {
 
 TEST_P(RemapPlanTest, InvalidOutputDevices) {
   std::vector<ArraySpec> input_specs;
-  input_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({4, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
-                                             /*shape=*/Shape({4, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  input_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<ArraySpec> output_specs;
-  output_specs.push_back(
-      ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({4, 3}),
-                /*sharding=*/
-                ConcreteEvenSharding::Create(GetDevices({1, 0}), MemoryKind(),
-                                             /*shape=*/Shape({4, 3}),
-                                             /*shard_shape=*/Shape({2, 3}))});
+  output_specs.push_back(ArraySpec(
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({1, 0}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr));
   std::vector<RemapPlan::Mapping> mappings;
   mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
                                         /*out_array=*/0,
@@ -700,7 +707,7 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
     absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
         input_devices_for_output_map;
     input_devices_for_output_map.insert(
-        {0, {{1, dummy_spec.sharding->devices()}}});
+        {0, {{1, dummy_spec.sharding()->devices()}}});
     RemapPlan plan(input_specs, output_specs, mappings,
                    std::move(input_devices_for_output_map));
     EXPECT_THAT(plan.Validate(),
@@ -713,8 +720,8 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
         input_devices_for_output_map;
     input_devices_for_output_map.insert(
         {0,
-         {{3, dummy_spec.sharding->devices()},
-          {4, dummy_spec.sharding->devices()}}});
+         {{3, dummy_spec.sharding()->devices()},
+          {4, dummy_spec.sharding()->devices()}}});
     RemapPlan plan(input_specs, output_specs, mappings,
                    std::move(input_devices_for_output_map));
     EXPECT_THAT(plan.Validate(),
@@ -726,7 +733,7 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
     absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
         input_devices_for_output_map;
     input_devices_for_output_map.insert(
-        {0, {{0, GetDevices({1})}, {4, dummy_spec.sharding->devices()}}});
+        {0, {{0, GetDevices({1})}, {4, dummy_spec.sharding()->devices()}}});
     RemapPlan plan(input_specs, output_specs, mappings,
                    std::move(input_devices_for_output_map));
     EXPECT_THAT(
@@ -746,39 +753,43 @@ TEST_P(RemapPlanTest, Hash) {
   plans.push_back(RemapPlan());
   {
     std::vector<ArraySpec> input_specs;
-    input_specs.push_back(
-        ArraySpec{/*dtype=*/DType(DType::kS32),
-                  /*shape=*/Shape({2, 3}),
-                  /*sharding=*/
-                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                               /*shape=*/Shape({2, 3}),
-                                               /*shard_shape=*/Shape({2, 3}))});
-    input_specs.push_back(
-        ArraySpec{/*dtype=*/DType(DType::kF32),  // dtype differs
-                  /*shape=*/Shape({2, 3}),
-                  /*sharding=*/
-                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                               /*shape=*/Shape({2, 3}),
-                                               /*shard_shape=*/Shape({2, 3}))});
-
-    plans.push_back(
-        RemapPlan(input_specs, /*output_specs=*/{}, /*mappings=*/{}));
-  }
-  {
-    ArraySpec array_spec_s32{
+    input_specs.push_back(ArraySpec(
         /*dtype=*/DType(DType::kS32),
         /*shape=*/Shape({2, 3}),
         /*sharding=*/
         ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                      /*shape=*/Shape({2, 3}),
-                                     /*shard_shape=*/Shape({2, 3}))};
-    ArraySpec array_spec_f32{
+                                     /*shard_shape=*/Shape({2, 3})),
+        /*layout=*/nullptr));
+    input_specs.push_back(ArraySpec(
+        /*dtype=*/DType(DType::kF32),  // dtype differs
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                     /*shape=*/Shape({2, 3}),
+                                     /*shard_shape=*/Shape({2, 3})),
+        /*layout=*/nullptr));
+
+    plans.push_back(
+        RemapPlan(input_specs, /*output_specs=*/{}, /*mappings=*/{}));
+  }
+  {
+    ArraySpec array_spec_s32(
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                     /*shape=*/Shape({2, 3}),
+                                     /*shard_shape=*/Shape({2, 3})),
+        /*layout=*/nullptr);
+    ArraySpec array_spec_f32(
         /*dtype=*/DType(DType::kF32),
         /*shape=*/Shape({2, 3}),
         /*sharding=*/
         ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                      /*shape=*/Shape({2, 3}),
-                                     /*shard_shape=*/Shape({2, 3}))};
+                                     /*shard_shape=*/Shape({2, 3})),
+        /*layout=*/nullptr);
 
     std::vector<ArraySpec> input_specs;
     input_specs.push_back(array_spec_s32);
@@ -809,13 +820,14 @@ TEST_P(RemapPlanTest, Hash) {
 }
 
 TEST_P(RemapPlanTest, CreateOptimizedIntervalEndExceedsNumShards) {
-  ArraySpec spec{
+  ArraySpec spec(
       /*dtype=*/DType(DType::kS32),
       /*shape=*/Shape({4, 6}),
       /*sharding=*/
       ConcreteEvenSharding::Create(GetDevices({0, 1, 2, 3}), MemoryKind(),
                                    /*shape=*/Shape({4, 6}),
-                                   /*shard_shape=*/Shape({2, 3}))};
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr);
 
   std::vector<ArraySpec> input_specs;
   input_specs.push_back(spec);
@@ -838,13 +850,14 @@ TEST_P(RemapPlanTest, CreateOptimizedIntervalEndExceedsNumShards) {
 }
 
 TEST_P(RemapPlanTest, CreateOptimizedNegativeStartNoCrash) {
-  ArraySpec spec{
+  ArraySpec spec(
       /*dtype=*/DType(DType::kS32),
       /*shape=*/Shape({4, 6}),
       /*sharding=*/
       ConcreteEvenSharding::Create(GetDevices({0, 1, 2, 3}), MemoryKind(),
                                    /*shape=*/Shape({4, 6}),
-                                   /*shard_shape=*/Shape({2, 3}))};
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/nullptr);
 
   std::vector<ArraySpec> input_specs;
   input_specs.push_back(spec);
@@ -902,17 +915,17 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
 
   std::vector<ArraySpec> input_specs;
   input_specs.reserve(2);
-  input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                  /*shape=*/shape, /*sharding=*/sharding});
-  input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                  /*shape=*/shape, /*sharding=*/sharding});
+  input_specs.push_back(
+      ArraySpec(DType(DType::kF32), shape, sharding, nullptr));
+  input_specs.push_back(
+      ArraySpec(DType(DType::kF32), shape, sharding, nullptr));
 
   std::vector<ArraySpec> output_specs;
   output_specs.reserve(2);
-  output_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                   /*shape=*/shape, /*sharding=*/sharding});
-  output_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                   /*shape=*/shape, /*sharding=*/sharding});
+  output_specs.push_back(
+      ArraySpec(DType(DType::kF32), shape, sharding, nullptr));
+  output_specs.push_back(
+      ArraySpec(DType(DType::kF32), shape, sharding, nullptr));
 
   std::vector<RemapPlan::Mapping> mappings;
   mappings.reserve(2);
@@ -955,20 +968,20 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
 
   EXPECT_THAT(plan_copy.output_specs(), SizeIs(2));
   for (const auto& spec : plan_copy.input_specs()) {
-    EXPECT_EQ(spec.dtype, DType(DType::kF32));
-    EXPECT_EQ(spec.shape, shape);
+    EXPECT_EQ(spec.dtype(), DType(DType::kF32));
+    EXPECT_EQ(spec.shape(), shape);
     const auto* sharding_copy =
-        dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+        dyn_cast<ConcreteEvenSharding>(spec.sharding().get());
     ASSERT_NE(sharding_copy, nullptr);
     EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);
     EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
   }
   for (const auto& spec : plan_copy.output_specs()) {
-    EXPECT_EQ(spec.dtype, DType(DType::kF32));
-    EXPECT_EQ(spec.shape, shape);
+    EXPECT_EQ(spec.dtype(), DType(DType::kF32));
+    EXPECT_EQ(spec.shape(), shape);
     const auto* sharding_copy =
-        dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+        dyn_cast<ConcreteEvenSharding>(spec.sharding().get());
     ASSERT_NE(sharding_copy, nullptr);
     EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);

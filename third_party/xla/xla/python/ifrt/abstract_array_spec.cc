@@ -121,12 +121,10 @@ absl::StatusOr<ArraySpec> AbstractArraySpec::ToArraySpec(
   ABSL_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       rep_->sharding_spec->ToSharding(std::move(devices), rep_->memory_kind));
-  return ArraySpec{
-      /*dtype=*/rep_->dtype,
-      /*shape=*/rep_->shape,
-      /*sharding=*/std::move(sharding),
-      /*layout=*/rep_->layout,
-  };
+  return ArraySpec(/*dtype=*/rep_->dtype,
+                   /*shape=*/rep_->shape,
+                   /*sharding=*/std::move(sharding),
+                   /*layout=*/rep_->layout);
 }
 
 absl::StatusOr<AbstractArraySpec> AbstractArraySpec::FromProto(

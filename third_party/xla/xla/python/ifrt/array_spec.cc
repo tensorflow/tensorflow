@@ -35,6 +35,14 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+ArraySpec::ArraySpec(
+    DType dtype, Shape shape, ShardingRef sharding,
+    absl_nullable std::shared_ptr<const xla::PjRtLayout> layout)
+    : dtype_(dtype),
+      shape_(std::move(shape)),
+      sharding_(std::move(sharding)),
+      layout_(std::move(layout)) {}
+
 absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
                                                const ArraySpecProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
@@ -51,12 +59,8 @@ absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
   if (proto.has_layout()) {
     ABSL_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
   }
-  return ArraySpec{
-      /*dtype=*/dtype,
-      /*shape=*/std::move(shape),
-      /*sharding=*/std::move(sharding),
-      /*layout=*/std::move(layout),
-  };
+  return ArraySpec(dtype, std::move(shape), std::move(sharding),
+                   std::move(layout));
 }
 
 absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
@@ -69,18 +73,18 @@ absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
 
   proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
-  dtype.ToProto(*proto.mutable_dtype(), version);
-  shape.ToProto(*proto.mutable_shape(), version);
-  ABSL_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto(version));
-  if (layout != nullptr) {
-    proto.set_layout(layout->Serialize());
+  dtype_.ToProto(*proto.mutable_dtype(), version);
+  shape_.ToProto(*proto.mutable_shape(), version);
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding_->ToProto(version));
+  if (layout_ != nullptr) {
+    proto.set_layout(layout_->Serialize());
   }
   return absl::OkStatus();
 }
 
 absl::StatusOr<AbstractArraySpec> ArraySpec::ToAbstractArraySpec() const {
-  return AbstractArraySpec::Create(dtype, shape, sharding->sharding_spec(),
-                                   sharding->memory_kind(), layout);
+  return AbstractArraySpec::Create(dtype_, shape_, sharding_->sharding_spec(),
+                                   sharding_->memory_kind(), layout_);
 }
 
 }  // namespace ifrt

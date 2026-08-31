@@ -89,21 +89,21 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
 
   const ArraySpec& array_spec() const override { return array_spec_; }
 
-  DType dtype() const override { return array_spec_.dtype; }
+  DType dtype() const override { return array_spec_.dtype(); }
 
   const Shape& shape() const override {
     DCHECK(this);
-    return array_spec_.shape;
+    return array_spec_.shape();
   }
 
   const Sharding& sharding() const override {
     DCHECK(this);
-    return *array_spec_.sharding;
+    return *array_spec_.sharding();
   }
 
   ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
-    return array_spec_.sharding;
+    return array_spec_.sharding();
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()

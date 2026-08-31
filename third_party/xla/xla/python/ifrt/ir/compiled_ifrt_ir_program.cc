@@ -90,11 +90,11 @@ class FutureExecutor : public tsl::Executor {
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
     const ArraySpec& arg_spec, Client* client) {
   ABSL_ASSIGN_OR_RETURN(auto shard_shape,
-                   arg_spec.sharding->GetShardShape(arg_spec.shape));
+                   arg_spec.sharding()->GetShardShape(arg_spec.shape()));
   return client->GetDefaultPjRtLayout(
-      arg_spec.dtype, shard_shape.dims(),
-      arg_spec.sharding->devices()->devices().front(),
-      arg_spec.sharding->memory_kind());
+      arg_spec.dtype(), shard_shape.dims(),
+      arg_spec.sharding()->devices()->devices().front(),
+      arg_spec.sharding()->memory_kind());
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
@@ -122,8 +122,8 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetLayoutForValue(
     absl::Span<const ArraySpec> in_specs,
     mlir::SymbolTableCollection& symbol_table) {
   if (auto block_arg = llvm::dyn_cast<mlir::BlockArgument>(value)) {
-    if (in_specs[block_arg.getArgNumber()].layout != nullptr) {
-      return in_specs[block_arg.getArgNumber()].layout;
+    if (in_specs[block_arg.getArgNumber()].layout() != nullptr) {
+      return in_specs[block_arg.getArgNumber()].layout();
     }
     return BuildDefaultLayout(in_specs[block_arg.getArgNumber()], client);
   }
@@ -217,19 +217,24 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
             BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
       }
     }
-    in_specs[arg.getArgNumber()].layout = std::move(parameter_layout);
+    in_specs[arg.getArgNumber()] = ArraySpec(
+        in_specs[arg.getArgNumber()].dtype(),
+        in_specs[arg.getArgNumber()].shape(),
+        in_specs[arg.getArgNumber()].sharding(), std::move(parameter_layout));
   }
 
   for (mlir::OpOperand& return_operand :
        main_func.front().getTerminator()->getOpOperands()) {
     auto& out_spec = out_specs[return_operand.getOperandNumber()];
     ABSL_ASSIGN_OR_RETURN(
-        out_spec.layout,
+        auto out_layout,
         GetLayoutForValue(return_operand.get(), client,
                           atom_program_executables, in_specs, symbol_table));
-    if (!out_spec.layout) {
-      ABSL_ASSIGN_OR_RETURN(out_spec.layout, BuildDefaultLayout(out_spec, client));
+    if (!out_layout) {
+      ABSL_ASSIGN_OR_RETURN(out_layout, BuildDefaultLayout(out_spec, client));
     }
+    out_spec = ArraySpec(out_spec.dtype(), out_spec.shape(),
+                         out_spec.sharding(), std::move(out_layout));
   }
 
   return absl::OkStatus();
@@ -365,10 +370,10 @@ CompiledIfrtIrProgram::Create(
         absl::MakeSpan(in_specs), absl::MakeSpan(out_specs));
     if (!layout_status.ok()) {
       for (auto& spec : in_specs) {
-        spec.layout = nullptr;
+        spec = ArraySpec(spec.dtype(), spec.shape(), spec.sharding(), nullptr);
       }
       for (auto& spec : out_specs) {
-        spec.layout = nullptr;
+        spec = ArraySpec(spec.dtype(), spec.shape(), spec.sharding(), nullptr);
       }
     }
 

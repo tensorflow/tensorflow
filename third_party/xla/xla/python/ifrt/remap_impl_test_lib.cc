@@ -71,11 +71,10 @@ absl::StatusOr<ArraySpec> CreateArraySpec(Client* client,
   ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list,
                    test_util::GetAddressableDevices(client, device_indices));
   ABSL_ASSIGN_OR_RETURN(Shape shape, GetShape(device_indices.size(), shard_shape));
-  return ArraySpec{/*dtype=*/dtype,
-                   /*shape=*/shape,
-                   /*sharding=*/
+  return ArraySpec(dtype, shape,
                    ConcreteEvenSharding::Create(device_list, MemoryKind(),
-                                                shape, shard_shape)};
+                                                shape, shard_shape),
+                   /*layout=*/nullptr);
 }
 
 // Creates an array with (base_values.size()) shards. Each shard of the

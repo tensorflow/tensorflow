@@ -121,8 +121,8 @@ class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout)
       : client_(client),
         rpc_helper_(std::move(rpc_helper)),
-        array_spec_(xla::ifrt::ArraySpec{dtype, std::move(shape),
-                                         std::move(sharding), pjrt_layout}),
+        array_spec_(xla::ifrt::ArraySpec(dtype, std::move(shape),
+                                         std::move(sharding), pjrt_layout)),
         layout_(pjrt_layout != nullptr
                     ? xla::ifrt::PjRtLayout::Create(pjrt_layout)
                     : nullptr),
@@ -164,15 +164,15 @@ class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
   std::string DebugString() const override;
 
   const ArraySpec& array_spec() const override { return array_spec_; }
-  DType dtype() const override { return array_spec_.dtype; }
-  const Shape& shape() const override { return array_spec_.shape; }
-  const Sharding& sharding() const override { return *array_spec_.sharding; }
+  DType dtype() const override { return array_spec_.dtype(); }
+  const Shape& shape() const override { return array_spec_.shape(); }
+  const Sharding& sharding() const override { return *array_spec_.sharding(); }
   ShardingRef shared_ptr_sharding() const override {
-    return array_spec_.sharding;
+    return array_spec_.sharding();
   }
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const override {
-    return array_spec_.layout;
+    return array_spec_.layout();
   }
   LayoutRef layout() const override { return layout_; }
   UserContextRef user_context() const override { return user_context_; }

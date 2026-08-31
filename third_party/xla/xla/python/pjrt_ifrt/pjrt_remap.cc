@@ -61,29 +61,29 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
           arrays[i]->DebugString());
     }
 
-    if (plan.input_specs()[i].dtype != arrays[i]->dtype()) {
+    if (plan.input_specs()[i].dtype() != arrays[i]->dtype()) {
       return InvalidArgument(
           "RemapArrays expects input #%d to have dtype %v, but got %v", i,
-          plan.input_specs()[i].dtype, arrays[i]->dtype());
+          plan.input_specs()[i].dtype(), arrays[i]->dtype());
     }
-    if (plan.input_specs()[i].shape != arrays[i]->shape()) {
+    if (plan.input_specs()[i].shape() != arrays[i]->shape()) {
       return InvalidArgument(
           "RemapArrays expects input #%d to have shape %v, but got %v", i,
-          plan.input_specs()[i].shape, arrays[i]->shape());
+          plan.input_specs()[i].shape(), arrays[i]->shape());
     }
     // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
     // is currently called with input arrays with implicit sharding
     // reinterpretation. Such patterns should be fixed before enabling stricter
     // checking to avoid false positives.
-    if (*plan.input_specs()[i].sharding->devices() !=
+    if (*plan.input_specs()[i].sharding()->devices() !=
             *arrays[i]->sharding().devices() ||
-        plan.input_specs()[i].sharding->memory_kind() !=
+        plan.input_specs()[i].sharding()->memory_kind() !=
             arrays[i]->sharding().memory_kind()) {
       return InvalidArgument(
           "RemapArrays expects input #%d to be on %v with "
           "%v, but is on %v with %v",
-          i, *plan.input_specs()[i].sharding->devices(),
-          plan.input_specs()[i].sharding->memory_kind(),
+          i, *plan.input_specs()[i].sharding()->devices(),
+          plan.input_specs()[i].sharding()->memory_kind(),
           *arrays[i]->sharding().devices(),
           arrays[i]->sharding().memory_kind());
     }
@@ -92,7 +92,8 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
   std::vector<PjRtArray::PjRtBuffers> out_buffers_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_buffers_list[i].resize(plan.output_specs()[i]
-                                   .sharding->devices()
+                                   .sharding()
+                                   ->devices()
                                    ->AddressableDeviceList()
                                    ->size());
   }
@@ -137,9 +138,9 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
         out_buffers_list[i].front()->layout();
     ABSL_ASSIGN_OR_RETURN(
         auto output_array,
-        PjRtArray::Create(client, plan.output_specs()[i].dtype,
-                          plan.output_specs()[i].shape,
-                          plan.output_specs()[i].sharding,
+        PjRtArray::Create(client, plan.output_specs()[i].dtype(),
+                          plan.output_specs()[i].shape(),
+                          plan.output_specs()[i].sharding(),
                           std::move(out_buffers_list[i]), std::move(layout)));
     output_arrays.push_back(std::move(output_array));
   }

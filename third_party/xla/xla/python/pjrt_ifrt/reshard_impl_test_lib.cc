@@ -257,20 +257,14 @@ TEST_P(ReshardTest, BatchedWithDifferentSharding) {
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
                           client_->MakeDeviceList(client_->devices()));
   std::vector<ArraySpec> array_specs = {
-      {
-          /*dtype=*/src_arrays[0]->dtype(),
-          /*shape=*/src_arrays[0]->shape(),
-          /*sharding=*/
-          HloSharding::Create(dst_device_list, MemoryKind(),
-                              xla::HloSharding::Replicate()),
-      },
-      {
-          /*dtype=*/src_arrays[1]->dtype(),
-          /*shape=*/src_arrays[1]->shape(),
-          /*sharding=*/
-          HloSharding::Create(dst_device_list, MemoryKind(),
-                              xla::HloSharding::IotaTile({2, 4})),
-      },
+      ArraySpec(src_arrays[0]->dtype(), src_arrays[0]->shape(),
+                HloSharding::Create(dst_device_list, MemoryKind(),
+                                    xla::HloSharding::Replicate()),
+                /*layout=*/nullptr),
+      ArraySpec(src_arrays[1]->dtype(), src_arrays[1]->shape(),
+                HloSharding::Create(dst_device_list, MemoryKind(),
+                                    xla::HloSharding::IotaTile({2, 4})),
+                /*layout=*/nullptr),
   };
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
@@ -278,11 +272,11 @@ TEST_P(ReshardTest, BatchedWithDifferentSharding) {
                     array_specs, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 2);
 
-  EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
+  EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding());
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[0]),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 
-  EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding);
+  EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding());
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[1]),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
@@ -323,20 +317,14 @@ TEST_P(ReshardTest, BatchedWithDifferentDeviceLists) {
       DeviceListRef device_list_4_4,
       client_->MakeDeviceList(client_->devices().subspan(4, 4)));
   std::vector<ArraySpec> array_specs = {
-      {
-          /*dtype=*/src_arrays[0]->dtype(),
-          /*shape=*/src_arrays[0]->shape(),
-          /*sharding=*/
-          HloSharding::Create(std::move(device_list_0_4), MemoryKind(),
-                              xla::HloSharding::Replicate()),
-      },
-      {
-          /*dtype=*/src_arrays[1]->dtype(),
-          /*shape=*/src_arrays[1]->shape(),
-          /*sharding=*/
-          HloSharding::Create(std::move(device_list_4_4), MemoryKind(),
-                              xla::HloSharding::IotaTile({2, 2})),
-      },
+      ArraySpec(src_arrays[0]->dtype(), src_arrays[0]->shape(),
+                HloSharding::Create(std::move(device_list_0_4), MemoryKind(),
+                                    xla::HloSharding::Replicate()),
+                /*layout=*/nullptr),
+      ArraySpec(src_arrays[1]->dtype(), src_arrays[1]->shape(),
+                HloSharding::Create(std::move(device_list_4_4), MemoryKind(),
+                                    xla::HloSharding::IotaTile({2, 2})),
+                /*layout=*/nullptr),
   };
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
@@ -344,11 +332,11 @@ TEST_P(ReshardTest, BatchedWithDifferentDeviceLists) {
                     array_specs, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 2);
 
-  EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
+  EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding());
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[0]),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 
-  EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding);
+  EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding());
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[1]),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
@@ -378,13 +366,11 @@ TEST_P(ReshardTest, PoisonedInput) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto arrays,
         client_->MakeErrorArrays(
-            error, {{
-                       /*dtype=*/DType(DType::kS32),
-                       /*shape=*/Shape({4, 8}),
-                       /*sharding=*/
+            error,
+            {ArraySpec(DType(DType::kS32), Shape({4, 8}),
                        HloSharding::Create(src_device_list, MemoryKind(),
                                            xla::HloSharding::IotaTile({2, 2})),
-                   }}));
+                       /*layout=*/nullptr)}));
     src_arrays.push_back(std::move(arrays[0]));
   }
 
@@ -395,20 +381,14 @@ TEST_P(ReshardTest, PoisonedInput) {
       DeviceListRef device_list_4_4,
       client_->MakeDeviceList(client_->devices().subspan(4, 4)));
   std::vector<ArraySpec> array_specs = {
-      {
-          /*dtype=*/src_arrays[0]->dtype(),
-          /*shape=*/src_arrays[0]->shape(),
-          /*sharding=*/
-          HloSharding::Create(std::move(device_list_0_4), MemoryKind(),
-                              xla::HloSharding::Replicate()),
-      },
-      {
-          /*dtype=*/src_arrays[1]->dtype(),
-          /*shape=*/src_arrays[1]->shape(),
-          /*sharding=*/
-          HloSharding::Create(std::move(device_list_4_4), MemoryKind(),
-                              xla::HloSharding::IotaTile({2, 2})),
-      },
+      ArraySpec(src_arrays[0]->dtype(), src_arrays[0]->shape(),
+                HloSharding::Create(std::move(device_list_0_4), MemoryKind(),
+                                    xla::HloSharding::Replicate()),
+                /*layout=*/nullptr),
+      ArraySpec(src_arrays[1]->dtype(), src_arrays[1]->shape(),
+                HloSharding::Create(std::move(device_list_4_4), MemoryKind(),
+                                    xla::HloSharding::IotaTile({2, 2})),
+                /*layout=*/nullptr),
   };
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
@@ -416,11 +396,11 @@ TEST_P(ReshardTest, PoisonedInput) {
                     array_specs, ArrayCopySemantics::kDonateInput));
   ASSERT_EQ(dst_arrays.size(), 2);
 
-  EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
+  EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding());
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[0]),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 
-  EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding);
+  EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding());
   EXPECT_THAT(dst_arrays[1]->GetReadyFuture().Await(),
               absl_testing::StatusIs(error.code(), HasSubstr(error.message())));
 }
@@ -461,14 +441,11 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
     layout = shape.layout();
   }
 
-  ArraySpec dst_array_spec = {
-      /*dtype=*/src_array->dtype(),
-      /*shape=*/src_array->shape(),
-      /*sharding=*/
+  ArraySpec dst_array_spec(
+      src_array->dtype(), src_array->shape(),
       HloSharding::Create(dst_device_list, MemoryKind(),
                           xla::HloSharding::Replicate()),
-      /*layout=*/std::make_shared<const xla::PjRtLayout>(std::move(layout)),
-  };
+      std::make_shared<const xla::PjRtLayout>(std::move(layout)));
 
   // Make sure that the destination layout is actually different from the source
   // layout in order to ensure the test coverage.
@@ -484,7 +461,7 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
                         src_array->sharding().devices()->devices().front(),
                         src_array->sharding().memory_kind()));
   }
-  ASSERT_NE(src_layout->xla_layout(), dst_array_spec.layout->xla_layout());
+  ASSERT_NE(src_layout->xla_layout(), dst_array_spec.layout()->xla_layout());
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
@@ -493,12 +470,12 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
   ASSERT_EQ(dst_arrays.size(), 1);
 
   const ArrayRef& dst_array = dst_arrays[0];
-  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
+  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding());
 
   // Verify that the destination array is created with the user-provided layout.
   TF_ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->pjrt_layout());
   ASSERT_NE(dst_layout, nullptr);
-  EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout->xla_layout());
+  EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout()->xla_layout());
 
   EXPECT_THAT(CopyArrayToLiteral(dst_array),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
@@ -542,14 +519,10 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
   ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
                        client_->MakeDeviceList(client_->devices()));
 
-  ArraySpec dst_array_spec = {
-      /*dtype=*/src_array->dtype(),
-      /*shape=*/src_array->shape(),
-      /*sharding=*/
-      HloSharding::Create(dst_device_list, MemoryKind(),
-                          xla::HloSharding::Replicate()),
-      /*layout=*/nullptr,
-  };
+  ArraySpec dst_array_spec(src_array->dtype(), src_array->shape(),
+                           HloSharding::Create(dst_device_list, MemoryKind(),
+                                               xla::HloSharding::Replicate()),
+                           /*layout=*/nullptr);
 
   // Make sure that the source layout is actually different from the destination
   // layout in order to ensure the test coverage.
@@ -559,13 +532,13 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
 
   ASSERT_OK_AND_ASSIGN(
       Shape shard_shape,
-      dst_array_spec.sharding->GetShardShape(dst_array_spec.shape));
+      dst_array_spec.sharding()->GetShardShape(dst_array_spec.shape()));
   ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const xla::PjRtLayout> default_dst_layout,
       client_->GetDefaultPjRtLayout(
-          dst_array_spec.dtype, shard_shape.dims(),
-          dst_array_spec.sharding->devices()->devices().front(),
-          dst_array_spec.sharding->memory_kind()));
+          dst_array_spec.dtype(), shard_shape.dims(),
+          dst_array_spec.sharding()->devices()->devices().front(),
+          dst_array_spec.sharding()->memory_kind()));
   ASSERT_NE(actual_src_layout->xla_layout(), default_dst_layout->xla_layout());
 
   ASSERT_OK_AND_ASSIGN(
@@ -575,7 +548,7 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
   ASSERT_EQ(dst_arrays.size(), 1);
 
   const ArrayRef& dst_array = dst_arrays[0];
-  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
+  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding());
 
   // Verify that the destination array is created with the default layout.
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> dst_layout,
@@ -620,13 +593,11 @@ TEST_P(ReshardMemoryKindTest, Int4) {
 
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
                           client_->MakeDeviceList(client_->devices()));
-  ArraySpec dst_array_spec = {
-      /*dtype=*/src_array->dtype(),
-      /*shape=*/src_array->shape(),
-      /*sharding=*/
+  ArraySpec dst_array_spec(
+      src_array->dtype(), src_array->shape(),
       HloSharding::Create(dst_device_list, memory_kind,
                           xla::HloSharding::IotaTile({2, 4})),
-  };
+      /*layout=*/nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
@@ -635,7 +606,7 @@ TEST_P(ReshardMemoryKindTest, Int4) {
   ASSERT_EQ(dst_arrays.size(), 1);
 
   const ArrayRef& dst_array = dst_arrays[0];
-  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
+  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding());
   EXPECT_THAT(CopyArrayToLiteral(dst_array),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
@@ -709,11 +680,8 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
   {
     SCOPED_TRACE(absl::StrCat(*src_sharding, " -> ", *dst_sharding));
 
-    ArraySpec array_spec = {
-        /*dtype=*/src_array->dtype(),
-        /*shape=*/src_array->shape(),
-        /*sharding=*/dst_sharding,
-    };
+    ArraySpec array_spec(src_array->dtype(), src_array->shape(), dst_sharding,
+                         /*layout=*/nullptr);
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> dst_arrays,
         ReshardArrays(method, client_.get(), absl::MakeSpan(&src_array, 1),
@@ -721,7 +689,7 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
     ASSERT_EQ(dst_arrays.size(), 1);
     dst_array = std::move(dst_arrays[0]);
 
-    EXPECT_EQ(dst_array->sharding(), *array_spec.sharding);
+    EXPECT_EQ(dst_array->sharding(), *array_spec.sharding());
     EXPECT_THAT(CopyArrayToLiteral(dst_array),
                 absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
   }
@@ -730,11 +698,8 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
   {
     SCOPED_TRACE(absl::StrCat(*dst_sharding, " -> ", *src_sharding));
 
-    ArraySpec array_spec = {
-        /*dtype=*/dst_array->dtype(),
-        /*shape=*/dst_array->shape(),
-        /*sharding=*/src_sharding,
-    };
+    ArraySpec array_spec(dst_array->dtype(), dst_array->shape(), src_sharding,
+                         /*layout=*/nullptr);
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> src_arrays,
         ReshardArrays(method, client_.get(), absl::MakeSpan(&dst_array, 1),
@@ -742,7 +707,7 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
     ASSERT_EQ(src_arrays.size(), 1);
     src_array = std::move(src_arrays[0]);
 
-    EXPECT_EQ(src_array->sharding(), *array_spec.sharding);
+    EXPECT_EQ(src_array->sharding(), *array_spec.sharding());
     EXPECT_THAT(CopyArrayToLiteral(src_array),
                 absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
   }

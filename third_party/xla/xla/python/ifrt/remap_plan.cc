@@ -264,11 +264,13 @@ ComputeInputDevicesForOutputMap(Client* client,
           i, i, mapping.from.size(), mapping.to.size());
     }
     const int64_t in_shards_count = input_specs[mapping.in_array]
-                                        .sharding->devices()
+                                        .sharding()
+                                        ->devices()
                                         ->AddressableDeviceList()
                                         ->size();
     const int64_t out_shards_count = output_specs[mapping.out_array]
-                                         .sharding->devices()
+                                         .sharding()
+                                         ->devices()
                                          ->AddressableDeviceList()
                                          ->size();
     IntervalsAndCount& intervals =
@@ -287,13 +289,13 @@ ComputeInputDevicesForOutputMap(Client* client,
        output_to_inputs_and_intervals) {
     TF_RET_CHECK(out_array >= 0 && out_array < output_specs.size());
     const DeviceListRef& out_devices =
-        output_specs[out_array].sharding->devices();
+        output_specs[out_array].sharding()->devices();
     auto [it, inserted] = input_devices_for_output_map.insert({out_array, {}});
     TF_RET_CHECK(inserted);
     for (const auto& [in_array, intervals] : input_intervals) {
       TF_RET_CHECK(in_array >= 0 && in_array < input_specs.size());
       const DeviceListRef& in_devices =
-          input_specs[in_array].sharding->devices();
+          input_specs[in_array].sharding()->devices();
       TF_RET_CHECK(intervals.count >= 0 &&
                    intervals.count <= out_devices->size());
       TF_RET_CHECK(intervals.count >= 0 &&
@@ -336,14 +338,14 @@ class ShardShapeVector {
  public:
   static absl::StatusOr<ShardShapeVector> Create(const ArraySpec& spec) {
     // Fast path for even shardings.
-    if (absl::StatusOr<Shape> s = spec.sharding->GetShardShape(spec.shape);
+    if (absl::StatusOr<Shape> s = spec.sharding()->GetShardShape(spec.shape());
         s.ok()) {
       return ShardShapeVector(*std::move(s));
     }
 
     ABSL_ASSIGN_OR_RETURN(auto shards,
-                     spec.sharding->Disassemble(
-                         spec.shape, SingleDeviceShardSemantics::kAllShards));
+                     spec.sharding()->Disassemble(
+                         spec.shape(), SingleDeviceShardSemantics::kAllShards));
     std::vector<Shape> shapes;
     shapes.reserve(shards.size());
     for (auto& shard : shards) {
@@ -384,7 +386,8 @@ absl::Status RemapPlan::Validate() const {
   for (int i = 0; i < num_inputs; ++i) {
     in_used_buffers_list[i].resize(
         /*count=*/rep_->input_specs[i]
-            .sharding->devices()
+            .sharding()
+            ->devices()
             ->AddressableDeviceList()
             ->size(),
         /*value=*/false);
@@ -396,7 +399,8 @@ absl::Status RemapPlan::Validate() const {
   for (int i = 0; i < num_outputs; ++i) {
     out_assigned_devices_list[i].resize(
         /*n=*/rep_->output_specs[i]
-            .sharding->devices()
+            .sharding()
+            ->devices()
             ->AddressableDeviceList()
             ->size(),
         /*v=*/nullptr);
@@ -436,17 +440,18 @@ absl::Status RemapPlan::Validate() const {
     const ArraySpec& input_spec = rep_->input_specs[mapping.in_array];
     const ArraySpec& output_spec = rep_->output_specs[mapping.out_array];
 
-    if (input_spec.dtype != output_spec.dtype) {
+    if (input_spec.dtype() != output_spec.dtype()) {
       return InvalidArgument(
           "Input and output must have the same dtype: %v (input %d) vs. %v "
           "(output %d)",
-          input_spec.dtype, mapping.in_array, output_spec.dtype,
+          input_spec.dtype(), mapping.in_array, output_spec.dtype(),
           mapping.out_array);
     }
 
-    const std::shared_ptr<const xla::PjRtLayout>& in_layout = input_spec.layout;
+    const std::shared_ptr<const xla::PjRtLayout>& in_layout =
+        input_spec.layout();
     const std::shared_ptr<const xla::PjRtLayout>& out_layout =
-        output_spec.layout;
+        output_spec.layout();
     if (in_layout != out_layout &&
         (!in_layout || !out_layout || *in_layout != *out_layout)) {
       return InvalidArgument(
@@ -465,7 +470,8 @@ absl::Status RemapPlan::Validate() const {
 
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
     absl::Span<Device* const> in_devices = rep_->input_specs[mapping.in_array]
-                                               .sharding->devices()
+                                               .sharding()
+                                               ->devices()
                                                ->AddressableDeviceList()
                                                ->devices();
     absl::InlinedVector<Device*, 1>& out_assigned_devices =
@@ -578,7 +584,7 @@ absl::Status RemapPlan::Validate() const {
 
   for (int i = 0; i < num_outputs; ++i) {
     xla::ifrt::DeviceList* devices =
-        rep_->output_specs[i].sharding->devices()->AddressableDeviceList();
+        rep_->output_specs[i].sharding()->devices()->AddressableDeviceList();
     for (int out_shard = 0; out_shard < devices->size(); ++out_shard) {
       if (out_assigned_devices_list[i][out_shard] == nullptr) {
         return InvalidArgument(

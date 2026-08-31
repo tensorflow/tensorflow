@@ -169,11 +169,11 @@ TEST_P(AbstractArraySpecTest, ToArraySpecAndRoundTrip) {
   ASSERT_OK_AND_ASSIGN(ArraySpec array_spec,
                        abstract_array_spec.ToArraySpec(device_list));
 
-  EXPECT_EQ(array_spec.dtype, dtype);
-  EXPECT_EQ(array_spec.shape, shape);
-  EXPECT_EQ(*array_spec.sharding->devices(), *device_list);
-  EXPECT_EQ(array_spec.sharding->memory_kind(), memory_kind);
-  EXPECT_EQ(array_spec.layout, nullptr);
+  EXPECT_EQ(array_spec.dtype(), dtype);
+  EXPECT_EQ(array_spec.shape(), shape);
+  EXPECT_EQ(*array_spec.sharding()->devices(), *device_list);
+  EXPECT_EQ(array_spec.sharding()->memory_kind(), memory_kind);
+  EXPECT_EQ(array_spec.layout(), nullptr);
 
   ASSERT_OK_AND_ASSIGN(AbstractArraySpec roundtrip_abstract_array_spec,
                        array_spec.ToAbstractArraySpec());
@@ -190,7 +190,7 @@ TEST_P(AbstractArraySpecTest, ToCanonicalizedAbstractArraySpec) {
   ShardingRef sharding = ConcreteEvenSharding::Create(
       device_list, memory_kind, /*shape=*/shape, /*shard_shape=*/shard_shape);
 
-  ArraySpec array_spec = {dtype, shape, sharding};
+  ArraySpec array_spec(dtype, shape, sharding, /*layout=*/nullptr);
   ASSERT_OK_AND_ASSIGN(AbstractArraySpec abstract_array_spec,
                        array_spec.ToAbstractArraySpec());
 

@@ -948,7 +948,7 @@ TEST_P(IfrtBackendHandlerTest, BitcastArrays) {
   ShardingRef sharding(SingleDeviceSharding::Create(device, MemoryKind()));
 
   std::vector<ArraySpec> specs{
-      {DType(DType::Kind::kF32), shape2, sharding, layout2}};
+      ArraySpec(DType(DType::Kind::kF32), shape2, sharding, layout2)};
 
   EXPECT_CALL(*mock_client_, BitcastArrays(ElementsAreArray(src_arrays), _,
                                            ArrayCopySemantics::kDonateInput))
@@ -1000,7 +1000,8 @@ TEST_P(IfrtBackendHandlerTest, ReshardArrays) {
                           mock_client_->LookupDevice(DeviceId(0)));
   ShardingRef sharding(SingleDeviceSharding::Create(device, MemoryKind()));
 
-  std::vector<ArraySpec> specs{{DType(DType::kF32), shape, sharding, layout2}};
+  std::vector<ArraySpec> specs{
+      ArraySpec(DType(DType::kF32), shape, sharding, layout2)};
 
   EXPECT_CALL(*mock_client_, ReshardArrays(ElementsAreArray(src_arrays), _,
                                            ArrayCopySemantics::kAlwaysCopy))
