@@ -539,6 +539,7 @@ cc_library(
     name = "timestamp_utils",
     srcs = ["timestamp_utils.cc"],
     hdrs = ["timestamp_utils.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":xplane_builder",
         ":xplane_schema",
