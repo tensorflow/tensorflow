@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
 #include "xla/mosaic/serde.h"
 
@@ -761,6 +762,25 @@ void MosaicSerdePass::runOnOperation() {
     module.emitError("serialize option must be specified");
     return signalPassFailure();
   }
+
+  auto check_legality = [&](llvm::StringRef stage) -> LogicalResult {
+    const auto walk_result = module.walk([&](Operation* op) {
+      if (op->hasTrait<mlir::OpTrait::CompilerInternalOp>()) {
+        op->emitError() << op->getName()
+                        << " is compiler-internal and not allowed in " << stage
+                        << " module";
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    return success(!walk_result.wasInterrupted());
+  };
+
+  if (serialize && !allow_compiler_internal_ops &&
+      failed(check_legality("serialized"))) {
+    signalPassFailure();
+    return;
+  }
   int serialize_version = -1;
   if (serialize) {
     serialize_version = target_version.hasValue() ? target_version : kVersion;
@@ -773,6 +793,12 @@ void MosaicSerdePass::runOnOperation() {
            .serialize_version = serialize_version},
           /*keep_version_attr=*/keep_version_attr))) {
     signalPassFailure();
+    return;
+  }
+  if (!serialize && !allow_compiler_internal_ops &&
+      failed(check_legality("deserialized"))) {
+    signalPassFailure();
+    return;
   }
 }
 
