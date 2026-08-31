@@ -98,6 +98,8 @@ class HloSharding final
   static char ID;  // NOLINT
 
  private:
+  friend class HloShardingSpec;
+
   HloSharding(DeviceListRef devices, MemoryKind memory_kind,
               std::shared_ptr<const HloShardingSpec> sharding_spec);
 

@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -361,9 +362,8 @@ struct CallLoadedExecutableOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("Execute program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     ExecuteOptions options = execute_options;
@@ -376,8 +376,8 @@ struct CallLoadedExecutableOpState {
 
     std::vector<ArrayHandle> arrays_to_remove;
     {
-      std::vector<ArrayRef> non_donatable_pinned_host_inputs;
-      std::vector<ArrayHandle> non_donatable_pinned_host_inputs_handles;
+      std::vector<ArrayRef> to_copy_non_donatable_inputs;
+      std::vector<ArrayHandle> to_copy_non_donatable_inputs_handles;
       for (int idx = 0; idx < input_handles.size(); ++idx) {
         const ArrayHandle handle = input_handles[idx];
 
@@ -399,12 +399,17 @@ struct CallLoadedExecutableOpState {
                      "Input will not be donated. \n"
                   << pretty_print;
           // TODO(b/401105456): Do not special case pinned host arrays once
-          // non-donatable pinned host inputs are supported.
+          // non-donatable pinned host inputs are supported on non-CPU devices.
           if (!is_mpmd_reshard &&
               array_it->second.array->sharding().memory_kind() ==
-                  kPinnedHostMemoryKind) {
-            non_donatable_pinned_host_inputs.push_back(array_it->second.array);
-            non_donatable_pinned_host_inputs_handles.push_back(handle);
+                  kPinnedHostMemoryKind &&
+              array_it->second.array->sharding()
+                      .devices()
+                      ->devices()
+                      .front()
+                      ->PlatformName() != xla::CpuName()) {
+            to_copy_non_donatable_inputs.push_back(array_it->second.array);
+            to_copy_non_donatable_inputs_handles.push_back(handle);
           } else {
             options.non_donatable_input_indices.insert(idx);
           }
@@ -420,15 +425,15 @@ struct CallLoadedExecutableOpState {
 
       // TODO(b/401105456): Remove this CopyArrays call once non-donatable
       // pinned host inputs are supported.
-      if (!non_donatable_pinned_host_inputs.empty()) {
+      if (!to_copy_non_donatable_inputs.empty()) {
         ABSL_ASSIGN_OR_RETURN(
             std::vector<ArrayRef> copied_pinned_host_inputs,
-            env.client->CopyArrays(
-                absl::MakeSpan(non_donatable_pinned_host_inputs),
-                /*devices=*/std::nullopt,
-                /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+            env.client->CopyArrays(absl::MakeSpan(to_copy_non_donatable_inputs),
+                                   /*devices=*/std::nullopt,
+                                   /*memory_kind=*/std::nullopt,
+                                   ArrayCopySemantics::kAlwaysCopy));
         for (int idx = 0; idx < copied_pinned_host_inputs.size(); ++idx) {
-          env.handle_to_array[non_donatable_pinned_host_inputs_handles[idx]] =
+          env.handle_to_array[to_copy_non_donatable_inputs_handles[idx]] =
               ArrayState{
                   /*array=*/std::move(copied_pinned_host_inputs[idx]),
                   /*can_be_donated=*/false,
@@ -565,9 +570,8 @@ struct RemapArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("RemapArrays program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
@@ -738,9 +742,8 @@ struct BitcastArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("BitcastArrays program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
@@ -870,9 +873,8 @@ struct CopyArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("CopyArrays program op")
-            : ifrt::UserContextScope::current();
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create(pretty_print)
+                                 : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;

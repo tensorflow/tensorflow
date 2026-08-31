@@ -198,19 +198,12 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   xla::cpu::CpuAotCompilationOptions aot_opts(
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
-      xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic,
-      /*compile_copy_as_llvm_kernel=*/true);
+      xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   if (flags.sanitize_dataflow) {
     aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
     aot_opts.set_sanitize_abilists_dataflow(absl::StrSplit(
         flags.sanitize_abilists_dataflow, ',', absl::SkipEmpty()));
-  }
-
-  if (flags.sanitize_memory || flags.sanitize_memory_track_origins > 0) {
-    aot_opts.set_sanitize_memory(true);
-    aot_opts.set_sanitize_memory_track_origins(
-        flags.sanitize_memory_track_origins);
   }
 
   TF_RETURN_IF_ERROR(

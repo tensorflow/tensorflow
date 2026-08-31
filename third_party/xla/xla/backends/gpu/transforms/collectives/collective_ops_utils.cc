@@ -268,10 +268,10 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
     const se::GpuComputeCapability& gpu_version) {
   const bool is_supported_rocm =
       gpu_version.IsRocm() &&
-      gpu_version.rocm_compute_capability()->gfx9_mi350();
+      gpu_version.rocm_compute_capability()->gfx9_mi300_series();
   if (!gpu_version.IsCuda() && !is_supported_rocm) {
     return absl::FailedPreconditionError(
-        "Only CUDA and ROCm gfx950 (MI350) are supported.");
+        "Only CUDA and ROCm gfx942 (MI300) and gfx950 (MI350) are supported.");
   }
 
   if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {

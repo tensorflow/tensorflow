@@ -275,6 +275,76 @@ LogicalResult MemRefSliceOp::verify() {
   return success();
 }
 
+std::optional<bool> MemRefSliceOp::sliceStridesAcrossSourceTiles(
+    const int64_t source_size, const int64_t slice_size,
+    const int64_t source_tile_size, const int64_t result_tile_size,
+    Value offset) {
+  CHECK_EQ(source_tile_size % result_tile_size, 0);
+  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
+  const std::optional<int64_t> maybe_cst_offset =
+      offset ? getConstantIntValue(offset) : std::nullopt;
+  if (maybe_cst_offset && slice_size != ShapedType::kDynamic) {
+    // Fully static slice
+    return (*maybe_cst_offset + slice_size - 1) / source_tile_size !=
+           *maybe_cst_offset / source_tile_size;
+  }
+  if (slice_size != ShapedType::kDynamic && slice_size <= result_tile_size) {
+    // We never stride at all
+    return false;
+  }
+  if (source_size != ShapedType::kDynamic && source_size <= source_tile_size) {
+    // Source has only one tile
+    return false;
+  }
+  if (slice_size != ShapedType::kDynamic && slice_size > source_tile_size) {
+    // Slice is too big to be contained in a single source tile
+    return true;
+  }
+  // TODO(apaszke,tlongeri): Should we relax the requirement for the shape to
+  // be divisible by the slice size? We need to consider if accessing the last
+  // partial tile is allowed or not.
+  if (slice_size != ShapedType::kDynamic &&
+      source_tile_size % slice_size == 0 &&
+      source_size != ShapedType::kDynamic && source_size % slice_size == 0 &&
+      offset != nullptr && isGuaranteedDivisible(offset, slice_size)) {
+    // Slice is guaranteed to fit in a single source tile.
+    return false;
+  }
+  return std::nullopt;
+}
+
+std::optional<bool> MemRefSliceOp::sliceStridesWithinSourceTiles(
+    const int64_t source_size, const int64_t slice_size,
+    const int64_t source_tile_size, const int64_t result_tile_size,
+    Value offset) {
+  CHECK_EQ(source_tile_size % result_tile_size, 0);
+  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
+  if (source_tile_size == result_tile_size) {
+    // The source tile isn't subdivided into result tiles
+    return false;
+  }
+  if (slice_size != ShapedType::kDynamic) {
+    if (slice_size <= result_tile_size) {
+      // We never stride at all
+      return false;
+    }
+    if (slice_size > 2 * result_tile_size) {
+      // We stride more than once. We've checked that the result tile is smaller
+      // than the source tile, so we must stride within source tiles at least
+      // once.
+      return true;
+    }
+    // We stride exactly once. Is it within or across source tiles?
+    if (offset != nullptr) {
+      if (const std::optional<int64_t> rem =
+              getRemainder(offset, source_tile_size)) {
+        return *rem != source_tile_size - result_tile_size;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
     std::array<int64_t, 2> tc_target_shape, MemRefType source_type_override) {
   mlir::MemRefType source_ty = getMemRef().getType();
@@ -1431,13 +1501,13 @@ LogicalResult MaskCastOp::verify() {
 }
 
 LogicalResult ScanOp::verify() {
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  if (issuing_core != CoreType::kScVectorSubcore) {
-    return emitOpError("Scan is supported only on the SC vector subcore");
-  }
-
   VectorType input_ty = getInput().getType();
   VectorType output_ty = getOutput().getType();
+
+  const int64_t dimension = getDimension();
+  if (dimension < 0 || dimension >= input_ty.getRank()) {
+    return emitOpError("Dimension must be in [0, rank).");
+  }
 
   if (input_ty.getElementType().isInteger(1)) {
     if (!output_ty.getElementType().isInteger(32)) {
@@ -1456,10 +1526,6 @@ LogicalResult ScanOp::verify() {
            << output_ty.getShape() << ").";
   }
 
-  if (input_ty.getRank() > 2) {
-    return emitOpError("Input must be a rank 1 or 2 vector.");
-  }
-
   if (input_ty.getElementType().isInteger(1) &&
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
@@ -1476,13 +1542,12 @@ LogicalResult ScanOp::verify() {
   }
 
   VectorType mask_ty = getMask().getType();
-  if (mask_ty.getRank() != 1) {
-    return emitOpError("Mask must be a rank 1 vector.");
-  }
-  if (mask_ty.getShape()[0] != input_ty.getShape()[input_ty.getRank() - 1]) {
+  // Enforced via VectorOfRankAndType in .td declaration:
+  CHECK_EQ(mask_ty.getRank(), 1);
+  if (mask_ty.getDimSize(0) != input_ty.getDimSize(dimension)) {
     return emitOpError("Mask and input mismatch. Expected mask of length: ")
-           << input_ty.getShape()[input_ty.getRank() - 1] << ", but got "
-           << mask_ty.getShape()[0] << ".";
+           << input_ty.getDimSize(dimension) << ", but got "
+           << mask_ty.getDimSize(0) << ".";
   }
 
   return success();

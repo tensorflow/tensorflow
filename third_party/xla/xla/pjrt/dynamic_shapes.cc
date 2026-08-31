@@ -31,6 +31,32 @@ limitations under the License.
 
 namespace xla {
 
+PjRtDynamicShapeKind GetPjRtDynamicShapeKind(const xla::Shape& shape) {
+  if (shape.is_static()) {
+    return PjRtDynamicShapeKind::kNotSupported;
+  }
+  if (shape.has_layout() &&
+      shape.layout().dynamic_shape_metadata_prefix_bytes() > 0) {
+    return PjRtDynamicShapeKind::kPrefix;
+  }
+  return PjRtDynamicShapeKind::kSuffix;
+}
+
+// Compute on-device size for a fully-specified shape.
+absl::StatusOr<int64_t> PjRtGetOnDeviceBytesCount(const xla::Shape& shape,
+                                                  PjRtDynamicShapeKind kind) {
+  // PjRtShapeAndMetadataTransferRequirements::Get->ShapeUtil::ArraySize
+  // requires a layout.
+  if (!shape.IsToken() && !shape.has_layout()) {
+    return absl::FailedPreconditionError(
+        "Buffer's on-device shape has no layout. Cannot determine on-device "
+        "bytes count.");
+  }
+  auto requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
+  return static_cast<int64_t>(requirements.size);
+}
+
 PjRtShapeAndMetadataTransferRequirements
 PjRtShapeAndMetadataTransferRequirements::Get(const xla::Shape& shape,
                                               PjRtDynamicShapeKind kind) {

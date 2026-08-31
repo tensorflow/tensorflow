@@ -21,11 +21,12 @@ from typing import Any
 
 from absl import flags
 from absl import logging
+import immutabledict
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
 
 
 _USE_PROFILER = flags.DEFINE_bool(
@@ -33,6 +34,44 @@ _USE_PROFILER = flags.DEFINE_bool(
     True,
     "Whether to use the profiler to profile the kernel.",
 )
+
+
+STR_TO_DTYPE_MAPPING = immutabledict.immutabledict({
+    "bf16": jnp.bfloat16,
+    "f16": jnp.float16,
+    "f32": jnp.float32,
+    "f8e4m3fn": jnp.float8_e4m3fn,
+    "f8e5m2": jnp.float8_e5m2,
+    "s2": jnp.int2,
+    "s4": jnp.int4,
+    "s8": jnp.int8,
+    "s16": jnp.int16,
+    "s32": jnp.int32,
+    "u2": jnp.uint2,
+    "u4": jnp.uint4,
+    "u8": jnp.uint8,
+    "u16": jnp.uint16,
+    "u32": jnp.uint32,
+})
+
+
+def str_to_dtype(dtype_str: str) -> jnp.dtype:
+  """Converts a string to a JAX/NumPy dtype."""
+  if dtype_str not in STR_TO_DTYPE_MAPPING:
+    raise ValueError(f"Unsupported dtype: {dtype_str}")
+  return STR_TO_DTYPE_MAPPING[dtype_str]
+
+
+DTYPE_TO_STR_MAPPING = immutabledict.immutabledict(
+    {v: k for k, v in STR_TO_DTYPE_MAPPING.items()}
+)
+
+
+def dtype_to_str(dtype: Any) -> str:
+  """Converts a JAX/NumPy dtype to its string representation."""
+  if dtype in DTYPE_TO_STR_MAPPING:
+    return DTYPE_TO_STR_MAPPING[dtype]
+  return getattr(dtype, "name", str(dtype))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -197,3 +236,25 @@ class Benchmark(abc.ABC):
       profiler_results.append(profiler.result)
 
     return profiler_results
+
+
+@dataclasses.dataclass(frozen=True)
+class BenchmarkConfig(abc.ABC):
+  """Base class for benchmark configs."""
+
+  def as_dict(self) -> dict[str, Any]:
+    """Returns a dictionary representation of the config."""
+    return {
+        k: dtype_to_str(v) if isinstance(v, jnp.dtype) else v
+        for k, v in dataclasses.asdict(self).items()
+    }
+
+  def __repr__(self) -> str:
+    return (
+        f"{self.__class__.__name__}"
+        f"({', '.join(f'{k}={v!r}' for k, v in self.as_dict().items())})"
+    )
+
+  @abc.abstractmethod
+  def get_benchmark(self) -> Benchmark:
+    """Returns a Benchmark instance for this config."""

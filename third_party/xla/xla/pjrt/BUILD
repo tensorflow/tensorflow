@@ -206,6 +206,7 @@ cc_library(
         ":dynamic_shapes",
         ":host_callback",
         ":host_memory_spaces",
+        ":infer_dispatch_info",
         ":pjrt_client",
         ":pjrt_compiler",
         ":pjrt_executable",
@@ -272,8 +273,9 @@ cc_library(
         ":friends",
     ]),
     deps = [
-        ":common_pjrt_client",
+        ":dynamic_shapes",
         ":pjrt_client",
+        ":pjrt_compiler",
         ":pjrt_executable",
         ":pjrt_layout",
         ":utils",

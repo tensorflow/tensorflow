@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/constraint_state.h"
@@ -142,9 +143,9 @@ void SeedConstantInstruction(
 // the maximum finite representable value of that type.
 //
 // For any base b > 0 and exponent x:
-//   b^x = exp(x * ln(b)) <= max_val <=> x * ln(b) <= ln(max_val).
-// Therefore, x <= ln(max_val) / ln(b).
-double GetMaxLogForType(PrimitiveType type) {
+// Returns the theoretical maximum log (ln(max_val)) for a given type,
+// representing the limit of a single isolated exp(x) <= max_val.
+double GetTheoreticalMaxLogForType(PrimitiveType type) {
   switch (type) {
     // 64-bit IEEE 754 Floating Point (F64):
     //   max_val = 2^1024 * (1 - 2^-53) ≈ 1.7977e+308
@@ -211,6 +212,57 @@ double GetMaxLogForType(PrimitiveType type) {
   }
 }
 
+// Returns the safe base max log for exp(x), providing headroom against
+// post-multiplication (x * exp(x)) and operand differences (p0 - p1).
+double GetBaseMaxLogForType(PrimitiveType type) {
+  switch (type) {
+    case F64:
+      // exp(20) ≈ 4.85e8; leaves ample headroom for large products and sums.
+      return 20.0;
+    case F32:
+      // exp(4) ≈ 54.6; prevents x * exp(x) and multi-operand overflow.
+      return 4.0;
+    case F16:
+    case BF16:
+      // exp(2.5) ≈ 12.2; safely accommodates accumulation while preserving
+      // positive range.
+      return 2.5;
+    case S64:
+    case U64:
+      return 10.0;
+    case S32:
+    case U32:
+      return 5.0;
+    case S16:
+    case U16:
+      return 3.0;
+    case S8:
+    case U8:
+      return 1.5;
+    default:
+      return 2.5;
+  }
+}
+
+// Computes the safe max log bound for exp(x), dynamically scaling down
+// when x contributes to a downstream addition reduction of N elements.
+double GetMaxLogForType(PrimitiveType type, int64_t reduction_elements = 1) {
+  double base_max_log = GetBaseMaxLogForType(type);
+  if (reduction_elements <= 1) {
+    return base_max_log;
+  }
+
+  // Ensure N * exp(x) <= max_val with a safety margin of 2.0.
+  double theoretical_max = GetTheoreticalMaxLogForType(type);
+  double reduction_budget =
+      theoretical_max - std::log(static_cast<double>(reduction_elements)) - 2.0;
+
+  // A small positive floor ensures bounds never turn negative, guaranteeing
+  // test coverage for positive values and zero across all types.
+  constexpr double kMinPositiveFloor = 0.1;
+  return std::max(kMinPositiveFloor, std::min(base_max_log, reduction_budget));
+}
+
 // Seeds root constraints exclusively for 16-bit floating-point types (F16 and
 // BF16). Non-16-bit floating-point types (such as F32 or F64) are intentionally
 // not seeded.
@@ -231,6 +283,31 @@ void Seed16BitFloatingInstruction(
       Seed16BitFloatingInstruction(operand, states);
     }
   }
+}
+
+// Returns the finite representable range [lowest, max] for a given
+// PrimitiveType as a ConstraintInterval.
+std::optional<ConstraintInterval> GetTypeFiniteDomain(PrimitiveType type) {
+  if (type == BF16 || type == F16) {
+    // 65504.0 is the maximum finite value of FP16. We deliberately bound BF16
+    // to 65504.0 as in Seed16BitFloatingInstruction to prevent precision loss.
+    return ConstraintInterval{-65504.0, 65504.0, false};
+  }
+  return primitive_util::PrimitiveTypeSwitch<std::optional<ConstraintInterval>>(
+      [&](auto primitive_type_constant) -> std::optional<ConstraintInterval> {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant) ||
+                      primitive_util::IsIntegralType(primitive_type_constant) ||
+                      primitive_type_constant == PRED) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return ConstraintInterval{
+              static_cast<double>(std::numeric_limits<NativeT>::lowest()),
+              static_cast<double>(std::numeric_limits<NativeT>::max()),
+              /*exclude_zero=*/false};
+        }
+        return std::nullopt;
+      },
+      type);
 }
 
 // Finds the maximum magnitude M such that the symmetric interval [-M, M]
@@ -297,9 +374,25 @@ ConstraintPropagator::Run(
         get_index_known_zeroes) {
   ConstraintPropagator propagator(get_index_known_zeroes);
   auto computations = module.MakeComputationPostOrder();
+
+  // Phase 1: Seed constraints and ML patterns across all computations in the
+  // module.
   for (HloComputation* computation : computations) {
-    ABSL_RETURN_IF_ERROR(propagator.Propagate(computation));
+    ABSL_RETURN_IF_ERROR(propagator.SeedConstraints(computation));
+    ABSL_RETURN_IF_ERROR(propagator.SeedMLPatternsConstraints(computation));
+    ABSL_RETURN_IF_ERROR(propagator.PropagateSeedConstraints(computation));
   }
+
+  // Phase 2: Inter-procedural fixed-point propagation across all computations
+  // in the module. Post-order iteration ensures constraints propagate backward
+  // across fusion boundaries in each iteration until convergence.
+  absl::flat_hash_map<const HloInstruction*, ConstraintState> before;
+  do {
+    before = propagator.states_;
+    for (HloComputation* computation : computations) {
+      ABSL_RETURN_IF_ERROR(propagator.PropagateConstraints(computation));
+    }
+  } while (before != propagator.states_);
 
   // Extract only the parameters
   absl::flat_hash_map<const HloInstruction*, ConstraintState> result;
@@ -329,8 +422,77 @@ absl::Status ConstraintPropagator::Propagate(
   return absl::OkStatus();
 }
 
+void ConstraintPropagator::ComputeMaxAddReductionElementsPerExp(
+    const HloComputation* computation) {
+  // Tracks how many elements each instruction's output will be summed into
+  // across all downstream addition-reduction consumer paths.
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      add_reduced_elements_downstream;
+
+  auto instructions = computation->MakeInstructionPostOrder();
+  for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
+    const HloInstruction* instruction = *it;
+
+    // How many elements this instruction's output contributes to downstream
+    // sums.
+    int64_t consumer_add_reduction_elements = 1;
+    if (auto it = add_reduced_elements_downstream.find(instruction);
+        it != add_reduced_elements_downstream.end()) {
+      consumer_add_reduction_elements = it->second;
+    }
+
+    if (instruction->opcode() == HloOpcode::kExp) {
+      max_add_reduction_elements_per_exp_[instruction] =
+          consumer_add_reduction_elements;
+    }
+
+    if (instruction->opcode() == HloOpcode::kReduce &&
+        GetCanonicalReductionOpcode(*instruction->to_apply()) ==
+            HloOpcode::kAdd) {
+      int64_t elements_in_add_reduction = 1;
+      for (int64_t dim : instruction->dimensions()) {
+        elements_in_add_reduction *=
+            instruction->operand(0)->shape().dimensions(dim);
+      }
+
+      int64_t total_elements =
+          elements_in_add_reduction * consumer_add_reduction_elements;
+
+      // Only data operands feed the sum (init values do not).
+      int64_t num_data_operands = instruction->operand_count() / 2;
+      for (int64_t i = 0; i < num_data_operands; ++i) {
+        const HloInstruction* operand = instruction->operand(i);
+        int64_t& downstream_elements = add_reduced_elements_downstream[operand];
+        downstream_elements = std::max(downstream_elements, total_elements);
+      }
+    } else if (instruction->IsElementwise() ||
+               instruction->opcode() == HloOpcode::kCopy ||
+               instruction->opcode() == HloOpcode::kBitcast ||
+               instruction->opcode() == HloOpcode::kReshape) {
+      // Elementwise and shape-preserving ops maintain 1-to-1 correspondence
+      // between input and output elements; forward the downstream count.
+      for (const HloInstruction* operand : instruction->operands()) {
+        int64_t& downstream_elements = add_reduced_elements_downstream[operand];
+        downstream_elements =
+            std::max(downstream_elements, consumer_add_reduction_elements);
+      }
+    }
+  }
+}
+
+int64_t ConstraintPropagator::GetMaxAddReductionElementsForExp(
+    const HloInstruction* exp_instruction) const {
+  if (auto it = max_add_reduction_elements_per_exp_.find(exp_instruction);
+      it != max_add_reduction_elements_per_exp_.end()) {
+    return it->second;
+  }
+  return 1;
+}
+
 absl::Status ConstraintPropagator::SeedConstraints(
     const HloComputation* computation) {
+  ComputeMaxAddReductionElementsPerExp(computation);
+
   auto instructions = computation->MakeInstructionPostOrder();
 
   // First pass: Seed all constants so they are available in states_ when
@@ -365,7 +527,9 @@ absl::Status ConstraintPropagator::SeedConstraints(
         break;
       case HloOpcode::kExp: {
         // Safe domain [-max_log, max_log] prevents floating point overflow.
-        double max_log = GetMaxLogForType(inst->shape().element_type());
+        int64_t reduction_elements = GetMaxAddReductionElementsForExp(inst);
+        double max_log =
+            GetMaxLogForType(inst->shape().element_type(), reduction_elements);
         states_[inst->operand(0)].AddConstraint(
             ConstraintInterval{-max_log, max_log, false});
         break;
@@ -570,7 +734,7 @@ absl::Status ConstraintPropagator::SeedConstraints(
 //
 // ML Patterns Handled:
 // 1. Guarded Division / Gradient & Activation Threshold Clipping:
-//    In deep learning models (e.g. GemFuse, diffusion models, transformers),
+//    In deep learning models (e.g. diffusion models, transformers),
 //    gradients or activations are scaled down by a threshold tau > 0 when their
 //    norm/magnitude exceeds tau:
 //      scale(x) = where(x > tau, tau / x, 1.0)
@@ -700,6 +864,10 @@ absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
 
 absl::Status ConstraintPropagator::PropagateConstraintsExact(
     const HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    return PropagateFusionBoundary(instruction);
+  }
+
   ConstraintState output_state = states_[instruction];
   ConstraintInterval output_interval = output_state.GetConstraintInterval();
   StructuralConstraints output_structural =
@@ -740,8 +908,6 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
       break;
     }
     case HloOpcode::kBitcast:
-    case HloOpcode::kBitcastConvert:
-    case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReducePrecision:
@@ -749,6 +915,20 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
     case HloOpcode::kTranspose:
       states_[instruction->operand(0)].Merge(output_state);
       break;
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kConvert: {
+      PrimitiveType operand_type =
+          instruction->operand(0)->shape().element_type();
+      ConstraintState operand_state = output_state;
+      if (!output_state.GetConstraintInterval().IsUnconstrained()) {
+        if (std::optional<ConstraintInterval> type_bound =
+                GetTypeFiniteDomain(operand_type)) {
+          operand_state.AddConstraint(*type_bound);
+        }
+      }
+      states_[instruction->operand(0)].Merge(operand_state);
+      break;
+    }
     case HloOpcode::kReverse: {
       states_[instruction->operand(0)].AddConstraint(output_interval);
       StructuralConstraints sc = output_structural;
@@ -806,6 +986,46 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
     default:
       break;
   }
+  return absl::OkStatus();
+}
+
+absl::Status ConstraintPropagator::PropagateFusionBoundary(
+    const HloInstruction* fusion_instruction) {
+  const HloComputation* fused_comp =
+      fusion_instruction->fused_instructions_computation();
+  if (fused_comp == nullptr) {
+    return absl::OkStatus();
+  }
+
+  // 1. Output / Root binding:
+  const HloInstruction* fused_root =
+      fusion_instruction->fused_expression_root();
+  if (fused_root != nullptr) {
+    // Backward: outer constraint on fusion result flows into inner root.
+    ConstraintState fusion_state = states_[fusion_instruction];
+    states_[fused_root].Merge(fusion_state);
+    // Forward: internal constraint computed on root flows out to fusion result.
+    ConstraintState root_state = states_[fused_root];
+    states_[fusion_instruction].Merge(root_state);
+  }
+
+  // 2. Operands / Parameters binding:
+  for (int64_t i = 0; i < fusion_instruction->operand_count(); ++i) {
+    const HloInstruction* operand = fusion_instruction->operand(i);
+    const HloInstruction* fused_param = fusion_instruction->fused_parameter(i);
+    if (fused_param == nullptr) {
+      continue;
+    }
+    // Backward: constraints accumulated on the internal parameter flow out
+    // to the caller operand.
+    ConstraintState param_state = states_[fused_param];
+    states_[operand].Merge(param_state);
+    // Forward: constraints established on the caller operand flow into the
+    // internal parameter.
+    ConstraintState operand_state = states_[operand];
+    states_[fused_param].Merge(operand_state);
+  }
+
   return absl::OkStatus();
 }
 

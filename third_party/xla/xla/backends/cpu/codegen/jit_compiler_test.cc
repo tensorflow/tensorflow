@@ -87,18 +87,6 @@ static absl::StatusOr<llvm::orc::ThreadSafeModule> ParseModule(
   return llvm::orc::ThreadSafeModule(std::move(m), context);
 }
 
-// Creates an IrCompiler for testing. We explicitly disable MSan instrumentation
-// because unit tests in this file compile raw LLVM IR snippets without linking
-// the XLA CPU runtime or BuiltinDefinitionGenerator.
-static std::unique_ptr<IrCompiler> CreateTestIrCompiler() {
-  IrCompiler::Options options{/*opt_level=*/llvm::CodeGenOptLevel::None,
-                              /*optimize_for_size=*/false,
-                              TargetMachineOptions(GetDebugOptionsFromFlags())};
-  options.msan_enabled = false;
-  return IrCompiler::Create(llvm::TargetOptions(), std::move(options),
-                            IrCompiler::CompilationHooks());
-}
-
 TEST(JitCompilerTest, Compile) {
   auto context = std::make_unique<llvm::LLVMContext>();
   llvm::orc::ThreadSafeContext tsc(std::move(context));
@@ -114,7 +102,12 @@ TEST(JitCompilerTest, Compile) {
     thread_pool.Schedule(std::move(task));
   };
 
-  std::unique_ptr<IrCompiler> ir_compiler = CreateTestIrCompiler();
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
@@ -208,7 +201,12 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
     return std::make_unique<ExternalDefinitionGenerator>();
   };
 
-  std::unique_ptr<IrCompiler> ir_compiler = CreateTestIrCompiler();
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
@@ -302,7 +300,12 @@ TEST(JitCompilerTest, CompileWithHighAlignment) {
   llvm::orc::ThreadSafeContext tsc(std::move(context));
 
   JitCompiler::Options options;
-  std::unique_ptr<IrCompiler> ir_compiler = CreateTestIrCompiler();
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,

@@ -105,6 +105,15 @@ def DropVectorUnitDimsPass : Pass<"xtile-cpu-drop-vector-unit-dims"> {
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def UnrollVectorsPass : Pass<"xtile-cpu-unroll-vectors"> {
+  let summary = "Unroll multi-dimensional vectors to 1D vectors.";
+  let dependentDialects = [
+    "::mlir::affine::AffineDialect",
+    "::mlir::arith::ArithDialect",
+    "::mlir::vector::VectorDialect",
+  ];
+}
+
 
 def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"> {
   let summary = "Unpacks sub-byte vector writes.";

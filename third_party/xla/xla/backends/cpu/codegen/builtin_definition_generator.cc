@@ -28,24 +28,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"  // IWYU pragma: keep
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/AbsoluteSymbols.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/CoreContainers.h"
-#include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"  // IWYU pragma: keep (msan)
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
 #include "xla/backends/cpu/codegen/builtin_fp16.h"
 #include "xla/backends/cpu/codegen/builtin_pow.h"
-#include "xla/backends/cpu/runtime/msan_emulated_tls.h"
-#include "xla/service/cpu/cpu_runtime.h"
 
 namespace xla::cpu {
 
@@ -111,12 +106,12 @@ uint16_t __truncsfbf2(float);
 // Converts an F64 value to a BF16.
 uint16_t __truncdfbf2(double);
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__s390x__)
 // Converts an F32 value to a F16.
 uint16_t __truncsfhf2(float);
 
 float __extendhfsf2(uint16_t a);
-#endif  // __APPLE__
+#endif  // defined(__APPLE__) || defined(__s390x__)
 
 }  // extern "C"
 
@@ -245,9 +240,12 @@ static Registry CreateRegistry() {
 
 #undef REGISTER_LIBM_SYMBOL
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__s390x__)
   registry["__truncsfhf2"] = SymbolDef(__truncsfhf2);
   registry["__extendhfsf2"] = SymbolDef(__extendhfsf2);
+#endif
+
+#ifdef __APPLE__
   registry["__bzero"] = SymbolDef(bzero);
   registry["bzero"] = SymbolDef(bzero);
   registry["memset_pattern16"] = SymbolDef(memset_pattern16);
@@ -269,8 +267,9 @@ static Registry CreateRegistry() {
 
 #endif
 
-  registry[runtime::kMsanEmutlsGetAddressBridgeSymbolName] =
-      SymbolDef(__xla_cpu_runtime_emutls_get_address);
+#ifdef MEMORY_SANITIZER
+  registry["__msan_unpoison"] = SymbolDef(__msan_unpoison);
+#endif
 
   return registry;
 }
@@ -281,55 +280,22 @@ static Registry CreateRegistry() {
 
 BuiltinDefinitionGenerator::BuiltinDefinitionGenerator(
     llvm::DataLayout data_layout)
-    : data_layout_(std::move(data_layout)) {
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-  // Resolve MSan runtime functions (e.g. __msan_warning*) from the current
-  // process via dlsym. This is more future-proof than explicitly intercepting
-  // __msan_* functions; these functions do change between LLVM versions.
-  auto is_msan_symbol = [](const llvm::orc::SymbolStringPtr& name) {
-    return (*name).starts_with("__msan_");
-  };
-  auto generator =
-      llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-          data_layout_.getGlobalPrefix(), is_msan_symbol);
-  if (generator) {
-    process_generator_ = std::move(*generator);
-  } else {
-    LOG(WARNING) << "Failed to initialize dynamic library generator for MSan: "
-                 << llvm::toString(generator.takeError());
-  }
-#endif
-}
+    : data_layout_(std::move(data_layout)) {}
 
 llvm::Error BuiltinDefinitionGenerator::tryToGenerate(
-    llvm::orc::LookupState& ls, llvm::orc::LookupKind kind,
-    llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags flags,
+    llvm::orc::LookupState&, llvm::orc::LookupKind kind,
+    llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
     const llvm::orc::SymbolLookupSet& names) {
   llvm::orc::SymbolMap symbols;
   symbols.reserve(names.size());
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-  llvm::orc::SymbolLookupSet msan_names;
-#endif
 
-  for (const auto& [name, name_flags] : names) {
+  for (const auto& [name, flags] : names) {
     if (auto symbol = ResolveBuiltinSymbol(data_layout_, *name)) {
       symbols[name] = *symbol;
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-    } else if ((*name).starts_with("__msan_")) {
-      msan_names.add(name, name_flags);
-#endif
     }
   }
 
   cantFail(jit_dylib.define(llvm::orc::absoluteSymbols(std::move(symbols))));
-
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-  if (!msan_names.empty() && process_generator_) {
-    return process_generator_->tryToGenerate(ls, kind, jit_dylib, flags,
-                                             msan_names);
-  }
-#endif
-
   return llvm::Error::success();
 }
 

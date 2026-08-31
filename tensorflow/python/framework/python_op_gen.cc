@@ -199,9 +199,23 @@ std::string DataTypeToPython(DataType dtype, const std::string& dtype_module);
 class ParamNames {
  public:
   // Create param based on Arg.
+  //
+  // rename_to comes from ApiDef, a separate message from the OpDef
+  // arg/attr names. Both are spliced as a raw Python identifier (keyword
+  // argument name) below: prefer rename_to when it's a safe identifier,
+  // fall back to the original name when THAT is safe, and only sanitize
+  // as a last resort, since IsValidAttrOrArgName is not enforced at OpDef
+  // registration and a legitimately-registered op's argument name is not
+  // guaranteed to already be a safe identifier (e.g.
+  // TFLite_Detection_PostProcess's "raw_outputs/box_encodings").
   ParamNames(const std::string& name, const std::string& rename_to)
       : name_(name) {
-    rename_to_ = AvoidPythonReserved(rename_to);
+    const std::string& safe_rename_to =
+        tensorflow::IsValidAttrOrArgName(rename_to) ? rename_to
+        : tensorflow::IsValidAttrOrArgName(name)
+            ? name
+            : tensorflow::SanitizeToIdentifier(name);
+    rename_to_ = AvoidPythonReserved(safe_rename_to);
   }
 
   // Get original parameter name.

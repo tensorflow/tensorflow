@@ -626,7 +626,7 @@ func.func @test_extract_aligned(%arg0: memref<128xf32>, %arg1: index) -> tensor<
   %0 = xtile.extract %arg0[%c0] [8] [1] : memref<128xf32> -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
-// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8){{.*}}">
+// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8), domain: d0 in [0, 0]">
 // CHECK-LABEL: @test_extract_aligned
 // CHECK-DAG: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK-DAG: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
@@ -642,11 +642,12 @@ func.func @test_extract_aligned(%arg0: memref<128xf32>, %arg1: index) -> tensor<
 
 // -----
 
-func.func @test_extract_unaligned(%arg0: memref<128xf32>, %arg1: index) -> tensor<8xf32> {
+func.func @test_extract_unaligned(%arg0: memref<128xf32>,
+    %arg1: index {xla.range = [0 : index, 12 : index]}) -> tensor<8xf32> {
   %0 = xtile.extract %arg0[%arg1] [8] [1] : memref<128xf32> -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
-// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8){{.*}}">
+// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8), domain: d0 in [0, 12]">
 // CHECK-LABEL: @test_extract_unaligned
 // CHECK-DAG: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK-DAG: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
@@ -667,7 +668,7 @@ func.func @test_insert_aligned(%arg0: tensor<8xf32>, %arg1: memref<128xf32>) {
   xtile.insert %arg0 into %arg1[%c0] [8] [1] : tensor<8xf32> -> memref<128xf32>
   return
 }
-// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8){{.*}}">
+// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8), domain: d0 in [0, 0]">
 // CHECK-LABEL: @test_insert_aligned
 // CHECK: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
 // CHECK: %[[COND:.*]] = arith.cmpi sge, %[[INDEXING]], %{{.*}} : index
@@ -680,11 +681,12 @@ func.func @test_insert_aligned(%arg0: tensor<8xf32>, %arg1: memref<128xf32>) {
 
 // -----
 
-func.func @test_insert_unaligned(%arg0: tensor<8xf32>, %arg1: memref<128xf32>, %arg2: index) {
+func.func @test_insert_unaligned(%arg0: tensor<8xf32>, %arg1: memref<128xf32>,
+    %arg2: index {xla.range = [0 : index, 42 : index]}) {
   xtile.insert %arg0 into %arg1[%arg2] [8] [1] : tensor<8xf32> -> memref<128xf32>
   return
 }
-// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8){{.*}}">
+// CHECK: #indexing_map = #xla.indexing_map<"(d0) -> (-d0 + 128 - 8), domain: d0 in [0, 42]">
 // CHECK-LABEL: @test_insert_unaligned
 // CHECK: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
 // CHECK: %[[COND:.*]] = arith.cmpi sge, %[[INDEXING]], %{{.*}} : index

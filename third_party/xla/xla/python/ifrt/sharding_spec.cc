@@ -204,7 +204,14 @@ absl::StatusOr<ShardingRef> SingleDeviceShardingSpec::ToSharding(
         "SingleDeviceShardingSpec requires 1 device, but received %d devices",
         devices->size()));
   }
-  return SingleDeviceSharding::Create(devices->devices().front(), memory_kind);
+  std::shared_ptr<const SingleDeviceShardingSpec> spec =
+      std::static_pointer_cast<const SingleDeviceShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = SingleDeviceShardingSpec::Create();
+  }
+  return std::unique_ptr<SingleDeviceSharding>(new SingleDeviceSharding(
+      std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> SingleDeviceShardingSpec::GetShardShape(
@@ -261,7 +268,14 @@ absl::StatusOr<ShardingRef> OpaqueShardingSpec::ToSharding(
         "OpaqueShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  return OpaqueSharding::Create(std::move(devices), memory_kind);
+  std::shared_ptr<const OpaqueShardingSpec> spec =
+      std::static_pointer_cast<const OpaqueShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = OpaqueShardingSpec::Create(num_shards());
+  }
+  return std::unique_ptr<OpaqueSharding>(
+      new OpaqueSharding(std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> OpaqueShardingSpec::GetShardShape(
@@ -363,12 +377,20 @@ absl::StatusOr<ShardingRef> ConcreteShardingSpec::ToSharding(
         "ConcreteShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  if (has_static_shape()) {
-    return ConcreteSharding::Create(std::move(devices), memory_kind, shape(),
-                                    shard_shapes(), index_domains());
+  std::shared_ptr<const ConcreteShardingSpec> spec =
+      std::static_pointer_cast<const ConcreteShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    if (has_static_shape()) {
+      spec = ConcreteShardingSpec::Create(shape(), shard_shapes(),
+                                          index_domains());
+    } else {
+      spec =
+          ConcreteShardingSpec::Create(dynamic_shape(), shard_dynamic_shapes());
+    }
   }
-  return ConcreteSharding::Create(std::move(devices), memory_kind,
-                                  dynamic_shape(), shard_dynamic_shapes());
+  return std::unique_ptr<ConcreteSharding>(
+      new ConcreteSharding(std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> ConcreteShardingSpec::GetShardShape(
@@ -493,8 +515,15 @@ absl::StatusOr<ShardingRef> ConcreteEvenShardingSpec::ToSharding(
         "ConcreteEvenShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  return ConcreteEvenSharding::Create(std::move(devices), memory_kind, shape(),
-                                      shard_shape(), IsFullyReplicated());
+  std::shared_ptr<const ConcreteEvenShardingSpec> spec =
+      std::static_pointer_cast<const ConcreteEvenShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = ConcreteEvenShardingSpec::Create(num_shards(), shape(),
+                                            shard_shape(), IsFullyReplicated());
+  }
+  return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
+      std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> ConcreteEvenShardingSpec::GetShardShape(
@@ -589,8 +618,14 @@ absl::StatusOr<ShardingRef> ShardingParamShardingSpec::ToSharding(
         "devices",
         num_shards(), devices->size()));
   }
-  return ShardingParamSharding::Create(sharding_param(), std::move(devices),
-                                       memory_kind);
+  std::shared_ptr<const ShardingParamShardingSpec> spec =
+      std::static_pointer_cast<const ShardingParamShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = ShardingParamShardingSpec::Create(sharding_param());
+  }
+  return std::unique_ptr<ShardingParamSharding>(new ShardingParamSharding(
+      std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> ShardingParamShardingSpec::GetShardShape(

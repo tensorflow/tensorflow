@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/util.h"
@@ -74,6 +75,17 @@ namespace shlo = ::mlir::stablehlo;
 using ::mlir::Value;
 using ::mlir::ValueRange;
 
+std::vector<xla::IndexingMap::Variable> GetVars(ValueRange values) {
+  std::vector<xla::IndexingMap::Variable> vars;
+  vars.reserve(values.size());
+  for (Value offset : values) {
+    vars.push_back(xla::IndexingMap::Variable{GetRange(offset).value_or(
+        Interval{std::numeric_limits<int64_t>::min(),
+                 std::numeric_limits<int64_t>::max()})});
+  }
+  return vars;
+}
+
 xla::SymbolicMap GetBoundsCheckSymbolicMap(mlir::MLIRContext* ctx,
                                            llvm::ArrayRef<int64_t> memref_shape,
                                            llvm::ArrayRef<int64_t> tile_shape) {
@@ -92,17 +104,12 @@ Value GetIsInBoundsCondition(mlir::OpBuilder& builder, mlir::Location loc,
                              ValueRange offsets, Value memref,
                              llvm::ArrayRef<int64_t> tile_shape) {
   auto memref_shape = mlir::cast<mlir::MemRefType>(memref.getType()).getShape();
-  int rank = memref_shape.size();
 
   xla::SymbolicMap symbolic_map =
       GetBoundsCheckSymbolicMap(builder.getContext(), memref_shape, tile_shape);
 
-  std::vector<xla::IndexingMap::Variable> vars(
-      rank, xla::IndexingMap::Variable{std::numeric_limits<int64_t>::min(),
-                                       std::numeric_limits<int64_t>::max()});
-
   xla::IndexingMap indexing_map(symbolic_map,
-                                /*dimensions=*/std::move(vars),
+                                /*dimensions=*/GetVars(offsets),
                                 /*range_vars=*/{}, /*rt_vars=*/{});
 
   auto apply_indexing =

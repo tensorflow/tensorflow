@@ -590,6 +590,25 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           )
       )
 
+  def testScatterIntoExistingListRejectsUnrepresentableLength(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[]
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "list length that is not representable as int32",
+    ):
+      self.evaluate(
+          list_ops.tensor_list_scatter(
+              tensor=[1.0],
+              indices=constant_op.constant(
+                  [np.iinfo(np.int32).max], dtype=dtypes.int32
+              ),
+              element_shape=[],
+              input_handle=l,
+          )
+      )
+
   def testScatterFailsWithInvalidNumElements(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegex(

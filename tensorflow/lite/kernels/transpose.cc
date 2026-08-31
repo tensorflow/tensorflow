@@ -50,12 +50,26 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   // Ensure validity of the permutations tensor as a 1D tensor.
   TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->perm), 1);
   TF_LITE_ENSURE_EQ(context, op_context->perm->dims->data[0], dims);
+  // `perm` must be a permutation of [0, dims), not merely a set of in-range
+  // values: the output shape and the element offsets are both derived from it,
+  // and a repeated entry makes them disagree with the input extent.
+  // `dims` is bounded by kTransposeMaxDimensions, which Prepare() enforces
+  // before this function is reachable, so a 64-bit mask is sufficient and
+  // avoids a heap allocation in the kernel.
+  static_assert(kTransposeMaxDimensions <= 64,
+                "Permutation bitmask assumes at most 64 dimensions.");
+  uint64_t seen = 0;
   for (int idx = 0; idx < dims; ++idx) {
     TF_LITE_ENSURE_MSG(context,
                        (perm_data[idx] >= -dims && perm_data[idx] < dims),
                        "Transpose op permutations array is out of bounds.");
     new_perm_data[idx] = perm_data[idx];
     if (new_perm_data[idx] < 0) new_perm_data[idx] += dims;
+    const uint64_t bit = uint64_t{1} << new_perm_data[idx];
+    TF_LITE_ENSURE_MSG(
+        context, (seen & bit) == 0,
+        "Transpose op permutations array must not contain duplicate values.");
+    seen |= bit;
   }
 
   // Determine size of output tensor.
