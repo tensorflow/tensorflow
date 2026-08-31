@@ -207,15 +207,12 @@ bool handleFuncResultSharding(
 }
 
 // The sharding information is in the `kXlaShardingAttr` attribute.
-void convertShardyAttrsWithHloShardingV3(FuncOp funcOp,
-                                         mlir::sdy::MeshOp globalMeshOp) {
+void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
-      if (auto sdySharding =
-              convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                       mlir::sdy::getTensorRank(argType),
-                                       globalMeshOp, funcOp.getContext())) {
+      if (auto sdySharding = convertToSdyShardingAttr(
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
         funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
       }
     }
@@ -226,9 +223,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp,
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
       if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding),
-              mlir::sdy::getTensorRank(funcOp.getResultTypes()[resNum]),
-              globalMeshOp, funcOp.getContext())) {
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
         funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
       }
     }
@@ -265,7 +260,6 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp,
             op)) {
       op->setAttr(kShardingAttr,
                   convertToSdySharding(parseShardingFromString(shardingAttr),
-                                       op->getResultTypes(), globalMeshOp,
                                        op->getContext()));
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
@@ -275,7 +269,6 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp,
         customCallOp->setAttr(
             kShardingAttr,
             convertToSdySharding(parseShardingFromString(shardingAttr),
-                                 customCallOp->getResultTypes(), globalMeshOp,
                                  customCallOp->getContext()));
       }
     }
@@ -417,10 +410,9 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
 // This should happen after the meshes were created from the `ModuleOp` attrs
 // (see `SdyRoundTripImportShardyAttrsPass`).
 void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
-                        bool enableHloShardingV3,
-                        mlir::sdy::MeshOp globalMeshOp) {
+                        bool enableHloShardingV3) {
   if (enableHloShardingV3) {
-    convertShardyAttrsWithHloShardingV3(funcOp, globalMeshOp);
+    convertShardyAttrsWithHloShardingV3(funcOp);
   } else {
     convertShardyAttrsWithoutHloShardingV3(funcOp, rewriter);
   }
@@ -601,20 +593,22 @@ class SdyRoundTripImportShardyAttrsPass
     // sharding. If there is no `kMeshesRoundTripAttr, there were no meshes in
     // the original Shardy model.
 
-    // Insert the meshes before any functions.
-    rewriter.setInsertionPointToStart(moduleOp.getBody());
-    std::optional<DictionaryAttr> meshesAttr =
-        tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
-    mlir::ArrayRef<NamedAttribute> sdyMeshes =
-        meshesAttr.has_value() ? meshesAttr->getValue()
-                               : mlir::ArrayRef<NamedAttribute>();
+    if (!enableHloShardingV3) {
+      // Insert the meshes before any functions.
+      rewriter.setInsertionPointToStart(moduleOp.getBody());
+      std::optional<DictionaryAttr> meshesAttr =
+          tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
+      mlir::ArrayRef<NamedAttribute> sdyMeshes =
+          meshesAttr.has_value() ? meshesAttr->getValue()
+                                 : mlir::ArrayRef<NamedAttribute>();
 
-    for (NamedAttribute mesh : sdyMeshes) {
-      auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
-      symbolTable.insert(mlir::sdy::MeshOp::create(rewriter, moduleOp.getLoc(),
-                                                   mesh.getName(), meshAttr));
+      for (NamedAttribute mesh : sdyMeshes) {
+        auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
+        symbolTable.insert(mlir::sdy::MeshOp::create(
+            rewriter, moduleOp.getLoc(), mesh.getName(), meshAttr));
+      }
+      removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
     }
-    removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
 
     // TODO (b/485486745): Remove kInTupleShardings and kOutTupleShardings
     // frontend attributes added directly at tf2xla level
@@ -640,14 +634,8 @@ class SdyRoundTripImportShardyAttrsPass
       }
     }
 
-    mlir::sdy::MeshOp globalMeshOp = nullptr;
-    auto meshOps = moduleOp.getOps<mlir::sdy::MeshOp>();
-    if (meshOps.begin() != meshOps.end()) {
-      globalMeshOp = *meshOps.begin();
-    }
-
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      convertShardyAttrs(funcOp, rewriter, enableHloShardingV3, globalMeshOp);
+      convertShardyAttrs(funcOp, rewriter, enableHloShardingV3);
     }
 
     llvm::DenseSet<FuncOp> modifiedCallees;

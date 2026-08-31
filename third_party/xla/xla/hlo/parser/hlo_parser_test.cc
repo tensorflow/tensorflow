@@ -4743,7 +4743,7 @@ TEST_F(HloParserTest, ParseNamedShardingScalarUnreducedMax) {
   const std::string original = "{mesh['x'=2,'y'=2], unreduced=max{'x', 'y'}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_TRUE(sharding.UseNamedShardingLeaf());
-  EXPECT_EQ(sharding.ToString(), "{unreduced=max}");
+  EXPECT_EQ(sharding.ToString(), "{mesh['x'=2,'y'=2], unreduced=max}");
 }
 
 TEST_F(HloParserTest, ParseShardingPartialReplication) {
@@ -4832,13 +4832,13 @@ TEST_F(HloParserTest, ParseNamedShardingNonIotaMeshDeviceList) {
 TEST_F(HloParserTest, ParseNamedShardingEmptyMeshReplicated) {
   const std::string original = "{mesh[], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{replicated}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingFullyReplicated) {
   const std::string original = "{mesh['a'=2,'b'=4], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{replicated}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingReplicatedAxes) {
@@ -4864,7 +4864,7 @@ TEST_F(HloParserTest, ParseNamedShardingWithSpecialCharacters) {
 TEST_F(HloParserTest, ParseNamedShardingFullyUnreduced) {
   const std::string original = "{mesh['a'=2,'b'=4], unreduced}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{unreduced}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingUnreducedAxes) {
@@ -4901,8 +4901,7 @@ TEST_F(HloParserTest, ParseNamedShardingFullyReplicatedWithMetadata) {
   const std::string original =
       "{mesh['a'=2,'b'=4], replicated, metadata={{op_name=\"foo\"}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true),
-            "{replicated, metadata={{op_name=\"foo\"}}}");
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseNamedShardingTuple) {
@@ -4914,14 +4913,7 @@ TEST_F(HloParserTest, ParseNamedShardingTuple) {
       "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}], "
       "metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  const std::string expected =
-      "{{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}]}, "
-      "{replicated}, "
-      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], "
-      "[{'d':(2)2, 'b'}, {'a', ?}], unreduced={'c'}}, "
-      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}], "
-      "metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}}";
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), expected);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
 TEST_F(HloParserTest, ParseMixedShardingTuple1) {
@@ -4930,10 +4922,7 @@ TEST_F(HloParserTest, ParseMixedShardingTuple1) {
       "{maximal_mesh[device_id=5]}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
 
-  const std::string expected =
-      "{{replicated}, {replicated}, {maximal device=5}, "
-      "{maximal_mesh[device_id=5]}}";
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), expected);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
   EXPECT_TRUE(sharding.IsTuple());
   EXPECT_EQ(sharding.tuple_elements().size(), 4);
   EXPECT_FALSE(sharding.tuple_elements()[0].UseNamedShardingLeaf());
@@ -7324,6 +7313,71 @@ TEST_F(HloParserTest, SparsityConfig_Both) {
   EXPECT_EQ(config.rhs().num_non_zero(), 3);
   EXPECT_EQ(config.rhs().dimension(), 0);
   EXPECT_EQ(config.rhs().stride(), 1);
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_RHSOnly) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %scale = f32[2,1] parameter(2)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %scale), dim_labels=bf_io->bf,
+      block_scaling_config={rhs={scale_idx=2 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.rhs().scale_idx(), 2);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_Both) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %lhs_scale = f32[1,1] parameter(2)
+    %rhs_scale = f32[2,1] parameter(3)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), dim_labels=bf_io->bf,
+      block_scaling_config={lhs={scale_idx=2 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.lhs().scale_idx(), 2);
+  EXPECT_THAT(config.lhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.lhs().steps(), ::testing::ElementsAre(1, 1));
+  EXPECT_EQ(config.rhs().scale_idx(), 3);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_RoundTrip) {
+  const char* const hlo_string = R"(
+HloModule BlockScalingConfigModule
+ENTRY BlockScalingConfig {
+  %input = f32[1,2] parameter(0)
+  %filter = f32[2,2] parameter(1)
+  %lhs_scale = f32[1,1] parameter(2)
+  %rhs_scale = f32[2,1] parameter(3)
+  ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), window={size=1x1}, dim_labels=bf_io->bf, block_scaling_config={lhs={scale_idx=2 zero_idx=3 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto config_before =
+      module->entry_computation()->root_instruction()->block_scaling_config();
+  std::string printed = module->ToString();
+  ASSERT_OK_AND_ASSIGN(auto parsed_module,
+                       ParseAndReturnUnverifiedModule(printed));
+  auto config_after = parsed_module->entry_computation()
+                          ->root_instruction()
+                          ->block_scaling_config();
+  EXPECT_EQ(config_after.DebugString(), config_before.DebugString());
 }
 
 TEST_F(HloParserTest, DesugarParsingTest_DotStart) {

@@ -85,6 +85,9 @@ class HloPayloadDeduplicator;
 struct HloProtoOptions {
   bool deduplicate_backend_config = false;
   bool deduplicate_metadata = true;
+  // Minimum backend_config size (in bytes) to be eligible for deduplication.
+  // Configs smaller than this threshold are kept inline.
+  int64_t min_backend_config_size = 0;
   HloPayloadDeduplicator* payload_deduplicator = nullptr;
 };
 
@@ -437,6 +440,7 @@ class HloInstruction {
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
       const SparsityConfig& sparsity_config = SparsityConfig(),
+      const BlockScalingConfig& block_scaling_config = BlockScalingConfig(),
       ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Creates an FFT op, of the type indicated by fft_type.
@@ -2531,6 +2535,10 @@ class HloInstruction {
   const SparsityConfig& sparsity_config() const;
   void set_sparsity_config(const SparsityConfig& config);
 
+  // Delegates to HloConvolutionInstruction::block_scaling_config.
+  const BlockScalingConfig& block_scaling_config() const;
+  void set_block_scaling_config(const BlockScalingConfig& config);
+
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
   bool IsAsynchronous() const { return HloOpcodeIsAsync(opcode_); }
@@ -2954,6 +2962,9 @@ std::string RaggedDotDimensionNumbersToString(
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
+
+std::string BlockScalingConfigToString(
+    const BlockScalingConfig& block_scaling_config);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);

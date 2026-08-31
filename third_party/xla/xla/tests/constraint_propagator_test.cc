@@ -16,16 +16,33 @@ limitations under the License.
 #include "xla/tests/constraint_propagator.h"
 
 #include <cmath>
+#include <cstdint>
 
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/constraint_state.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
-namespace {
+class ConstraintPropagatorTest : public HloTestBase {
+ protected:
+  ConstraintPropagator CreatePropagator() {
+    return ConstraintPropagator(nullptr);
+  }
 
-class ConstraintPropagatorTest : public HloTestBase {};
+  void ComputeMaxAddReductionElementsPerExp(ConstraintPropagator& propagator,
+                                            const HloComputation* comp) {
+    propagator.ComputeMaxAddReductionElementsPerExp(comp);
+  }
+
+  int64_t GetMaxAddReductionElementsForExp(
+      const ConstraintPropagator& propagator, const HloInstruction* exp) {
+    return propagator.GetMaxAddReductionElementsForExp(exp);
+  }
+};
+
+namespace {
 
 TEST_F(ConstraintPropagatorTest, EmptyInterval) {
   ConstraintInterval a{0.0, 10.0, false};
@@ -1175,5 +1192,178 @@ ENTRY main {
   EXPECT_LE(p0_int.max, 150.0);
 }
 
+TEST_F(ConstraintPropagatorTest, GuardedOffsetLog) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = pred[8,128] parameter(0)
+  param_1 = s32[8,128] parameter(1)
+  param_2 = s32[8,128] parameter(2)
+  add_s32 = s32[8,128] add(param_1, param_2)
+  c_zero_s32 = s32[] constant(0)
+  b_zero_s32 = s32[8,128] broadcast(c_zero_s32), dimensions={}
+  select = s32[8,128] select(param_0, add_s32, b_zero_s32)
+  c_neg_one = s32[] constant(-1)
+  b_neg_one = s32[8,128] broadcast(c_neg_one), dimensions={}
+  sub = s32[8,128] add(select, b_neg_one)
+  conv = f32[8,128] convert(sub)
+  c_offset = f32[] constant(1024)
+  b_offset = f32[8,128] broadcast(c_offset), dimensions={}
+  add_f32 = f32[8,128] add(b_offset, conv)
+  ROOT log = f32[8,128] log(add_f32)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  auto p2_int = states[module->entry_computation()->parameter_instruction(2)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p1_int.IsPositive());
+  EXPECT_TRUE(p2_int.IsPositive());
+}
+
+TEST_F(ConstraintPropagatorTest,
+       MaxAddReductionElementsPerExpTracksDownstreamReductions) {
+  const char* hlo = R"(
+HloModule TestReductionExpModule
+
+%add_reducer (a: f32[], b: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %sum = f32[] add(%a, %b)
+}
+
+ENTRY %main {
+  %p0 = f32[2,256] parameter(0)
+  %exp_reduced = f32[2,256] exponential(%p0)
+  %mul = f32[2,256] multiply(%exp_reduced, %p0)
+  %c_zero = f32[] constant(0.0)
+  %reduce = f32[2] reduce(%mul, %c_zero), dimensions={1}, to_apply=%add_reducer
+
+  %p1 = f32[2,256] parameter(1)
+  %exp_unreduced = f32[2,256] exponential(%p1)
+
+  ROOT %tuple = (f32[2], f32[2,256]) tuple(%reduce, %exp_unreduced)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* entry = module->entry_computation();
+
+  ConstraintPropagator propagator = CreatePropagator();
+  ComputeMaxAddReductionElementsPerExp(propagator, entry);
+
+  const HloInstruction* exp_reduced = nullptr;
+  const HloInstruction* exp_unreduced = nullptr;
+  for (const HloInstruction* inst : entry->instructions()) {
+    if (inst->name() == "exp_reduced") {
+      exp_reduced = inst;
+    } else if (inst->name() == "exp_unreduced") {
+      exp_unreduced = inst;
+    }
+  }
+
+  ASSERT_NE(exp_reduced, nullptr);
+  ASSERT_NE(exp_unreduced, nullptr);
+  EXPECT_EQ(GetMaxAddReductionElementsForExp(propagator, exp_reduced), 256);
+  EXPECT_EQ(GetMaxAddReductionElementsForExp(propagator, exp_unreduced), 1);
+}
+
+TEST_F(ConstraintPropagatorTest, ConvertClampsIntervalToOperandTypeDomain) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  x = f8e4m3fn[] parameter(0)
+  ROOT root = bf16[] convert(x)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto x_int = states[module->entry_computation()->parameter_instruction(0)]
+                   .GetConstraintInterval();
+
+  // Root bf16 is seeded with [-65504.0, 65504.0].
+  // Backward propagation through convert must clamp to f8e4m3fn finite domain
+  // [-448.0, 448.0].
+  EXPECT_DOUBLE_EQ(x_int.min, -448.0);
+  EXPECT_DOUBLE_EQ(x_int.max, 448.0);
+}
+
+TEST_F(ConstraintPropagatorTest, ConvertClampsIntervalToIntegerTypeDomain) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  x = s8[] parameter(0)
+  ROOT root = bf16[] convert(x)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto x_int = states[module->entry_computation()->parameter_instruction(0)]
+                   .GetConstraintInterval();
+
+  // Root bf16 is seeded with [-65504.0, 65504.0].
+  // Backward propagation through convert must clamp to s8 domain [-128.0,
+  // 127.0].
+  EXPECT_DOUBLE_EQ(x_int.min, -128.0);
+  EXPECT_DOUBLE_EQ(x_int.max, 127.0);
+}
+TEST_F(ConstraintPropagatorTest,
+       FusionBoundaryPropagatesConstraintsToCallerOperands) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%inner_computation (inner_param: f32[8,128]) -> f32[8,128] {
+  %inner_param = f32[8,128] parameter(0)
+  ROOT %sqrt = f32[8,128] sqrt(%inner_param)
+}
+
+ENTRY main {
+  %param_0 = f32[8,128] parameter(0)
+  ROOT %fusion = f32[8,128] fusion(%param_0), kind=kLoop, calls=%inner_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositive());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest,
+       NestedFusionBoundaryPropagatesConstraintsAcrossMultipleLevels) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%innermost_computation (p: f32[8,128]) -> f32[8,128] {
+  %p = f32[8,128] parameter(0)
+  ROOT %sqrt = f32[8,128] sqrt(%p)
+}
+
+%outer_computation (p_outer: f32[8,128]) -> f32[8,128] {
+  %p_outer = f32[8,128] parameter(0)
+  ROOT %inner_fusion = f32[8,128] fusion(%p_outer), kind=kLoop, calls=%innermost_computation
+}
+
+ENTRY main {
+  %param_0 = f32[8,128] parameter(0)
+  ROOT %outer_fusion = f32[8,128] fusion(%param_0), kind=kOutput, calls=%outer_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositive());
+  EXPECT_GE(p0_int.min, 0.0);
+}
 }  // namespace
 }  // namespace xla

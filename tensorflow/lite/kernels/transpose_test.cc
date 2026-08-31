@@ -193,6 +193,23 @@ TEST(TransposeTest, TestPermOutOfBounds) {
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, 1, 2, 4}),
                "Transpose op permutations array is out of bounds.");
 }
+
+// `perm` must be a permutation of [0, dims). A repeated entry passes the range
+// check but makes the derived output shape disagree with the input extent, so
+// the kernel reads outside the input tensor.
+TEST(TransposeTest, TestPermDuplicateValues) {
+  EXPECT_DEATH(
+      TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, 1, 2, 2}),
+      "Transpose op permutations array must not contain duplicate values.");
+}
+
+// Duplicates must also be rejected after negative entries are normalised:
+// on a rank-2 input {0, -2} normalises to {0, 0}.
+TEST(TransposeTest, TestPermDuplicateValuesAfterNegativeNormalization) {
+  EXPECT_DEATH(
+      TransposeOpConstModel({2, 3}, {2}, {0, -2}),
+      "Transpose op permutations array must not contain duplicate values.");
+}
 #endif
 
 TEST(TransposeTest, TestInt41DInputConstTensor) {

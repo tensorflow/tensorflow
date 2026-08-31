@@ -373,6 +373,10 @@ xla_test(
 xla_test(
     name = "se_gpu_pjrt_client_test",
     srcs = ["se_gpu_pjrt_client_test.cc"],
+    args = [
+        # TODO(b/552357098): Fix flakiness and re-enable threadmanager_use_executor_impl
+        "--threadmanager_use_executor_impl=false",
+    ],
     backends = ["gpu"],
     shard_count = 3,
     tags = ["nofixdeps"],
@@ -739,6 +743,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:layout_mode",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
@@ -748,6 +753,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:utils",
+        "//xla/pjrt/se:pjrt_stream_executor_client",
         "//xla/pjrt/se:stream_executor_executable",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
@@ -773,6 +779,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ],
 )
 
@@ -861,6 +869,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ] + if_rocm([
         ":se_gpu_pjrt_compiler_rocm_registration",
     ]) + if_sycl([
@@ -898,6 +908,7 @@ xla_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
         "//xla/mlir_hlo",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mock_pjrt_client",
         "//xla/pjrt:pjrt_abi_version",
@@ -909,12 +920,14 @@ xla_test(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:gpu_topology",
+        "//xla/service:mock_compiled_module",
         "//xla/service:mock_compiler",
         "//xla/service:platform_util",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
@@ -940,6 +953,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/client:local_client",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

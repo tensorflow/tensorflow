@@ -312,6 +312,72 @@ TEST(MergeTest, TestProcessFieldReturnsErrorOnInvalidFieldNumber) {
               ::testing::HasSubstr("not found in message descriptor"));
 }
 
+TEST(MergeTest, TestMergeReturnsErrorOnInvalidRootChunkIndex) {
+  ::tensorflow::proto_splitter::ChunkedMessage chunked_message;
+  chunked_message.set_chunk_index(1);
+
+  std::vector<std::unique_ptr<tsl::protobuf::Message>> chunks;
+  chunks.push_back(
+      std::make_unique<::tensorflow::proto_splitter_testdata::ManyFields>());
+
+  ::tensorflow::proto_splitter_testdata::ManyFields merged;
+  absl::Status status = Merger::Merge(chunks, chunked_message, &merged);
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(std::string(status.message()),
+              ::testing::HasSubstr("Chunk index 1 is out of range"));
+}
+
+TEST(MergeTest, TestMergeReturnsErrorOnInvalidNestedChunkIndex) {
+  ::tensorflow::proto_splitter::ChunkedMessage chunked_message;
+  auto* chunk_field = chunked_message.add_chunked_fields();
+  auto* tag = chunk_field->add_field_tag();
+  tag->set_field(1);
+  chunk_field->mutable_message()->set_chunk_index(1);
+
+  std::vector<std::unique_ptr<tsl::protobuf::Message>> chunks;
+  chunks.push_back(
+      std::make_unique<::tensorflow::proto_splitter_testdata::ManyFields>());
+
+  ::tensorflow::proto_splitter_testdata::ManyFields merged;
+  absl::Status status = Merger::Merge(chunks, chunked_message, &merged);
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(std::string(status.message()),
+              ::testing::HasSubstr("Chunk index 1 is out of range"));
+}
+
+TEST(MergeTest, TestReadPartialReturnsErrorOnInvalidRootChunkIndex) {
+  const std::string path =
+      io::JoinPath(testing::TensorFlowSrcRoot(),
+                   "tools/proto_splitter/testdata", "many-field");
+  TF_ASSERT_OK_AND_ASSIGN(auto reader, tools::proto_splitter::GetRiegeliReader(
+                                           absl::StrCat(path, ".cpb")));
+
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    TF_ASSERT_OK(read_metadata.status());
+  }
+  reader.Close();
+
+  ::tensorflow::proto_splitter::ChunkMetadata chunk_metadata =
+      read_metadata.value();
+  chunk_metadata.mutable_message()->set_chunk_index(
+      chunk_metadata.chunks_size());
+
+  proto_splitter_testdata::ManyFields merged_many_fields;
+  absl::Status status =
+      Merger::ReadPartial(path, chunk_metadata, &merged_many_fields);
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(std::string(status.message()),
+              ::testing::HasSubstr("is out of range"));
+}
+
 }  // namespace
 
 }  // namespace tensorflow::tools::proto_splitter

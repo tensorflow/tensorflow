@@ -67,8 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
-namespace mlir {
-namespace TFL {
+namespace mlir::TFL {
 
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
@@ -79,24 +78,42 @@ constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
 
 ElementsAttr FlattenTo1D(Attribute a) {
-  auto elements = mlir::cast<DenseElementsAttr>(a);
-  const std::array<int64_t, 1> flattened_shape = {elements.getNumElements()};
-  auto new_type = RankedTensorType::get(flattened_shape,
-                                        elements.getType().getElementType());
-  return elements.reshape(new_type);
+  if (auto elements = mlir::dyn_cast_or_null<DenseElementsAttr>(a)) {
+    const std::array<int64_t, 1> flattened_shape = {elements.getNumElements()};
+    auto new_type =
+        RankedTensorType::get(flattened_shape, elements.getElementType());
+    return elements.reshape(new_type);
+  }
+  if (auto resource_attr =
+          mlir::dyn_cast_or_null<DenseResourceElementsAttr>(a)) {
+    const std::array<int64_t, 1> flattened_shape = {
+        resource_attr.getNumElements()};
+    auto new_type =
+        RankedTensorType::get(flattened_shape, resource_attr.getElementType());
+    return DenseResourceElementsAttr::get(new_type,
+                                          resource_attr.getRawHandle());
+  }
+  return {};
 }
 
 // This assumes that the bias is of shape NxCx1x1 and doesn't require transpose
 // Its corresponding constraint is optimize_patterns.td:IsBiasShape()
 ElementsAttr ReshapeNCHWBiasToNHWC(Value v, Attribute a) {
-  auto elements = mlir::cast<DenseElementsAttr>(a);
+  auto attr = mlir::dyn_cast_or_null<ElementsAttr>(a);
+  if (!attr) return {};
   auto shape = mlir::cast<ShapedType>(v.getType()).getShape();
-  if (shape.size() != 4 || shape[2] != 1 || shape[3] != 1) return elements;
+  if (shape.size() != 4 || shape[2] != 1 || shape[3] != 1) return attr;
   const std::array<int64_t, 4> new_shape = {shape[0], shape[2], shape[3],
                                             shape[1]};
-  auto new_type =
-      RankedTensorType::get(new_shape, elements.getType().getElementType());
-  return elements.reshape(new_type);
+  auto new_type = RankedTensorType::get(new_shape, attr.getElementType());
+  if (auto elements = mlir::dyn_cast<DenseElementsAttr>(attr)) {
+    return elements.reshape(new_type);
+  }
+  if (auto resource_attr = mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
+    return DenseResourceElementsAttr::get(new_type,
+                                          resource_attr.getRawHandle());
+  }
+  return {};
 }
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
@@ -393,11 +410,11 @@ bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
 
 bool CanFuseConvOrDepthwiseConv(Value filter, Attribute val,
                                 bool is_depthwise) {
-  const auto elements = mlir::dyn_cast<DenseElementsAttr>(val);
+  const auto elements = mlir::dyn_cast_or_null<ElementsAttr>(val);
   if (!elements) {
     return false;
   }
-  const auto elements_shape = elements.getType().getShape();
+  const auto elements_shape = elements.getShapedType().getShape();
   const auto filter_shape = mlir::cast<ShapedType>(filter.getType()).getShape();
   return CanFuseConvOrDepthwiseConvShapes(filter_shape, elements_shape,
                                           is_depthwise);
@@ -405,12 +422,12 @@ bool CanFuseConvOrDepthwiseConv(Value filter, Attribute val,
 
 bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
                                 bool is_depthwise) {
-  if (const auto elements = mlir::dyn_cast<DenseElementsAttr>(val)) {
+  if (const auto elements = mlir::dyn_cast_or_null<ElementsAttr>(val)) {
     if (const auto filter_elements =
-            mlir::dyn_cast<DenseElementsAttr>(filter)) {
+            mlir::dyn_cast_or_null<ElementsAttr>(filter)) {
       return CanFuseConvOrDepthwiseConvShapes(
-          filter_elements.getType().getShape(), elements.getType().getShape(),
-          is_depthwise);
+          filter_elements.getShapedType().getShape(),
+          elements.getShapedType().getShape(), is_depthwise);
     }
   }
   return false;
@@ -509,11 +526,11 @@ Value GetBiasMultiplier(OpBuilder& builder, Value binary_op,
 }
 
 bool HasOneTailUnitDimension(Attribute attr) {
-  auto elements = mlir::dyn_cast<DenseElementsAttr>(attr);
+  auto elements = mlir::dyn_cast_or_null<ElementsAttr>(attr);
   if (!elements) {
     return false;
   }
-  auto shape = elements.getType().getShape();
+  auto shape = elements.getShapedType().getShape();
   if (shape.empty()) {
     return true;
   }
@@ -524,24 +541,30 @@ bool HasOneTailUnitDimension(Attribute attr) {
 // Expand a given attribute to 4D with all 1s except 1 dimension.
 // The position of the non-1 dimension is specified by `output_channel_dim`.
 // Example: [1, 1, 5], 2 -> [1, 1, 5, 1]
-DenseElementsAttr ExpandTo4DForConvImpl(Attribute attr,
-                                        int output_channel_dim) {
+ElementsAttr ExpandTo4DForConvImpl(Attribute attr, int output_channel_dim) {
   assert(HasOneTailUnitDimension(attr));
-  auto elements = mlir::dyn_cast<DenseElementsAttr>(attr);
+  auto elements = mlir::dyn_cast_or_null<ElementsAttr>(attr);
+  if (!elements) return {};
   std::vector<int64_t> shape_data = {1, 1, 1, 1};
   const int vector_length = elements.getNumElements();
   shape_data[output_channel_dim] = vector_length;
-  auto new_shape =
-      RankedTensorType::get(shape_data, elements.getType().getElementType());
-  return elements.reshape(new_shape);
+  auto new_shape = RankedTensorType::get(shape_data, elements.getElementType());
+  if (auto dense_elements = mlir::dyn_cast<DenseElementsAttr>(elements)) {
+    return dense_elements.reshape(new_shape);
+  }
+  if (auto resource_attr =
+          mlir::dyn_cast<DenseResourceElementsAttr>(elements)) {
+    return DenseResourceElementsAttr::get(new_shape,
+                                          resource_attr.getRawHandle());
+  }
+  return {};
 }
 
-DenseElementsAttr ExpandTo4DForConv(Attribute attr,
-                                    int output_channel_dim = 0) {
+ElementsAttr ExpandTo4DForConv(Attribute attr, int output_channel_dim = 0) {
   return ExpandTo4DForConvImpl(attr, output_channel_dim);
 }
 
-DenseElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
+ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
   return ExpandTo4DForConvImpl(a, 3);
 }
 
@@ -1690,6 +1713,17 @@ struct FuseMulAndFullyConnected
       if (multiplier_shape.getShape().size() != 1) return failure();
     }
 
+    // FC(Mul(x, s), W) -> FC(x, Mul(W, s)) is only valid when Mul does not
+    // change the shape of x. Expanding broadcasts (e.g. [..., 1] * [K] ->
+    // [..., K]) change the FC input feature size; folding the scale into W
+    // while feeding the original x produces an invalid graph
+    // (tensorflow/tensorflow#124103).
+    if (mul_op.getLhs().getType() != mul_op.getType()) {
+      return rewriter.notifyMatchFailure(
+          fc_op,
+          "Mul changes LHS shape; cannot fold into FullyConnected filter");
+    }
+
     // We rely on constant folding, implemented only for F32. Check types.
     if (!IsF32Value(mul_op.getRhs()) || !IsF32Value(fc_op.getFilter())) {
       return failure();
@@ -2015,7 +2049,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     rewriter.setInsertionPoint(q_op);
     Location loc = affine_op.getLoc();
 
-    DenseElementsAttr broadcasted_gamma_attr =
+    ElementsAttr broadcasted_gamma_attr =
         ExpandTo4DForConv(gamma_cst, filter_output_dim);
     auto broadcasted_gamma =
         ConstOp::create(rewriter, loc, broadcasted_gamma_attr);
@@ -3373,5 +3407,4 @@ void OptimizePass::runOnOperation() {
   (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
 }
 
-}  // namespace TFL
-}  // namespace mlir
+}  // namespace mlir::TFL

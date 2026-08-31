@@ -580,6 +580,7 @@ std::string HloModule::ToString() const {
   print_options.set_print_inline_stack_frames(
       db_options.xla_hlo_print_inline_stack_frames());
   print_options.set_compact_gte(db_options.xla_dump_compact_gte());
+  print_options.set_sort_backend_config(true);
   return ToString(print_options);
 }
 

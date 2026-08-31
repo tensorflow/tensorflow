@@ -977,6 +977,7 @@ absl::StatusOr<HloInstruction*> PartitionGather(
           output_shape, operand.Replicate().hlo(), indices.Replicate().hlo(),
           gather->gather_dimension_numbers(), slice_sizes,
           gather->indices_are_sorted()));
+  new_gather->set_frontend_attributes(gather->frontend_attributes());
   new_gather->set_sharding(HloSharding::Replicate());
   new_gather = PartitionedHlo(new_gather, new_gather->shape(), operand.state())
                    .Reshard(output_sharding)
@@ -1020,6 +1021,7 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
         builder()->AddInstruction(HloInstruction::CreateGather(
             pshape, operand.hlo(), indices.hlo(), dnums, pslice_sizes,
             gather->indices_are_sorted()));
+    phlo->set_frontend_attributes(gather->frontend_attributes());
 
     SetPartitionedHlo(hlo, phlo);
     return absl::OkStatus();
@@ -1047,6 +1049,7 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
   HloInstruction* pgather = b->AddInstruction(HloInstruction::CreateGather(
       pshape, operand.hlo(), adjusted_indices_hlo, dnums, pslice_sizes,
       gather->indices_are_sorted()));
+  pgather->set_frontend_attributes(gather->frontend_attributes());
 
   const Shape filter_shape =
       ShapeUtil::ChangeElementType(indices.hlo()->shape(), PRED);
@@ -2007,6 +2010,7 @@ absl::StatusOr<HloInstruction*> PartitionScatter(
               scatter->to_apply()->Clone()),
           scatter->scatter_dimension_numbers(), scatter->indices_are_sorted(),
           scatter->unique_indices()));
+  new_scatter->set_frontend_attributes(scatter->frontend_attributes());
   new_scatter->set_sharding(
       HloSharding::Replicate().NormalizeTupleSharding(new_scatter->shape()));
   new_scatter =
@@ -2123,6 +2127,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
           scatter->to_apply()->Clone()),
       scatter->scatter_dimension_numbers(), scatter->indices_are_sorted(),
       scatter->unique_indices()));
+  pscatter->set_frontend_attributes(scatter->frontend_attributes());
   pscatter->set_sharding(HloSharding::Single(
       pscatter->shape(), hlo->sharding().IsTuple()
                              ? hlo->sharding().tuple_elements()[0]

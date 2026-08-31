@@ -2705,6 +2705,67 @@ class CheckpointReaderTest(test.TestCase):
                                   "v3 not found in checkpoint"):
         reader.get_tensor("v3")
 
+  def testConcurrentAccess(self):
+    import threading
+
+    v0 = variable_v1.VariableV1(
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=dtypes.float32, name="v0"
+    )
+    v1 = variable_v1.VariableV1(
+        [[[1.0], [2.0]], [[3.0], [4.0]], [[5.0], [6.0]]],
+        dtype=dtypes.float32,
+        name="v1",
+    )
+
+    init_all_op = variables.global_variables_initializer()
+    save = saver_module.Saver(
+        {"v0": v0, "v1": v1}, write_version=self._WRITE_VERSION
+    )
+
+    save_path = os.path.join(
+        self.get_temp_dir(), "ckpt_for_concurrent_" + str(self._WRITE_VERSION)
+    )
+
+    with self.cached_session() as sess:
+      self.evaluate(init_all_op)
+      save.save(sess, save_path)
+
+    reader = py_checkpoint_reader.NewCheckpointReader(save_path)
+
+    num_threads = 8
+    iterations_per_thread = 50
+    exceptions = []
+
+    def worker():
+      try:
+        for _ in range(iterations_per_thread):
+          self.assertTrue(reader.has_tensor("v0"))
+          self.assertTrue(reader.has_tensor("v1"))
+          self.assertFalse(reader.has_tensor("v_nonexistent"))
+
+          v0_tensor = reader.get_tensor("v0")
+          v1_tensor = reader.get_tensor("v1")
+
+          self.assertAllEqual([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], v0_tensor)
+          self.assertAllEqual(
+              [[[1.0], [2.0]], [[3.0], [4.0]], [[5.0], [6.0]]], v1_tensor
+          )
+
+          debug_str = reader.debug_string()
+          self.assertIn(compat.as_bytes("v0"), debug_str)
+      except Exception as e:
+        exceptions.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(num_threads)]
+
+    for t in threads:
+      t.start()
+
+    for t in threads:
+      t.join()
+
+    self.assertEmpty(exceptions)
+
   def testNonexistentPath(self):
     with self.assertRaisesRegex(errors.NotFoundError,
                                 "Unsuccessful TensorSliceReader"):

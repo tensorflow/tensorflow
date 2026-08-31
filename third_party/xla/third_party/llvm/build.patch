@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 index a7e652c..5b8ac5e 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
@@ -56,3 +70,16 @@ index a7e652c..5b8ac5e 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -110,6 +110,7 @@
+     # LLVM features
+     r'LTDL_SHLIB_EXT=\".dll\"',
+     r'LLVM_PLUGIN_EXT=\".dll\"',
++    "LLVM_ENABLE_THREADS=1",
+ ] + fenv_defines
+ 
+ # TODO: We should switch to platforms-based config settings to make this easier
+

@@ -303,6 +303,9 @@ class HloParserImpl : public HloParser {
   ParseCollectiveDeviceListBaseOnly();
   bool ParseSparsityConfig(SparsityConfig* result);
   bool ParseTensorSparsityConfig(SparsityConfig::TensorSparsityConfig* result);
+  bool ParseBlockScalingConfig(BlockScalingConfig* result);
+  bool ParseTensorBlockScalingConfig(
+      BlockScalingConfig::TensorBlockScalingConfig* result);
 
  private:
   // Types of attributes.
@@ -359,6 +362,7 @@ class HloParserImpl : public HloParser {
     kMode,
     kConvKind,
     kSparsityConfig,
+    kBlockScalingConfig,
     kDebugAttributesTable,
   };
 
@@ -2758,6 +2762,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<SparsityConfig> parsed_sparsity_config;
       attrs["sparsity_config"] = {/*required=*/false, AttrTy::kSparsityConfig,
                                   &parsed_sparsity_config};
+      optional<BlockScalingConfig> parsed_block_scaling_config;
+      attrs["block_scaling_config"] = {/*required=*/false,
+                                       AttrTy::kBlockScalingConfig,
+                                       &parsed_block_scaling_config};
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
@@ -2788,6 +2796,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       SparsityConfig sparsity_config =
           parsed_sparsity_config.value_or(SparsityConfig());
+      BlockScalingConfig block_scaling_config =
+          parsed_block_scaling_config.value_or(BlockScalingConfig());
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferConvolveShape(
                 operands[0]->shape(), operands[1]->shape(),
@@ -2800,7 +2810,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       return builder->AddInstruction(HloInstruction::CreateConvolve(
           *shape, operands, feature_group_count.value(),
           batch_group_count.value(), *window, *dnums, precision_config,
-          sparsity_config, kind));
+          sparsity_config, block_scaling_config, kind));
     }
     case HloOpcode::kFft: {
       optional<FftType> fft_type;
@@ -6014,6 +6024,7 @@ bool HloParserImpl::ParseAttributeHelper(
   AttrTy attr_type = attr_it->second.attr_type;
   void* attr_out_ptr = attr_it->second.result;
   bool success = [&] {
+    // Dispatch parsing logic based on the attribute type.
     LocTy attr_loc = lexer_.GetLoc();
     switch (attr_type) {
       case AttrTy::kBool: {
@@ -6473,13 +6484,22 @@ bool HloParserImpl::ParseAttributeHelper(
         static_cast<optional<SparsityConfig>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kBlockScalingConfig: {
+        BlockScalingConfig result;
+        if (!ParseBlockScalingConfig(&result)) {
+          return false;
+        }
+        static_cast<optional<BlockScalingConfig>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
     }
   }();
   if (!success) {
     return Error(loc, StrFormat("error parsing attribute %s", name));
   }
   return true;
-}
+}  // NOLINT(readability/fn_size)
 
 bool HloParserImpl::CopyAttributeToProtoMessage(
     absl::flat_hash_set<std::string> non_proto_attrs,
@@ -7686,6 +7706,92 @@ bool HloParserImpl::ParseTensorSparsityConfig(
   }
   return ParseToken(TokKind::kRbrace,
                     "expects '}' at the end of TensorSparsityConfig");
+}
+
+bool HloParserImpl::ParseBlockScalingConfig(BlockScalingConfig* result) {
+  VLOG(kDebugLevel) << "ParseBlockScalingConfig";
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start BlockScalingConfig")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+  } else {
+    do {
+      std::string attribute;
+      if (!ParseAttributeName(&attribute)) {
+        return false;
+      }
+      if (attribute == "lhs" || attribute == "rhs") {
+        BlockScalingConfig::TensorBlockScalingConfig* tensor_config;
+        if (attribute == "lhs") {
+          tensor_config = result->mutable_lhs();
+        } else {
+          tensor_config = result->mutable_rhs();
+        }
+        if (!ParseTensorBlockScalingConfig(tensor_config)) {
+          return false;
+        }
+      } else {
+        return Error(lexer_.GetLoc(), "unknown attribute");
+      }
+    } while (lexer_.GetKind() != TokKind::kRbrace);
+  }
+  return ParseToken(TokKind::kRbrace,
+                    "expects '}' at the end of BlockScalingConfig");
+}
+
+bool HloParserImpl::ParseTensorBlockScalingConfig(
+    BlockScalingConfig::TensorBlockScalingConfig* result) {
+  VLOG(kDebugLevel) << "ParseTensorBlockScalingConfig";
+  CHECK(result != nullptr);
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start TensorBlockScalingConfig")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+  } else {
+    do {
+      std::string attribute;
+      if (!ParseAttributeName(&attribute)) {
+        return false;
+      }
+      if (attribute == "scale_idx") {
+        int64_t scale_idx;
+        if (!ParseInt64(&scale_idx)) {
+          return Error(lexer_.GetLoc(), "expects int64_t");
+        }
+        result->set_scale_idx(scale_idx);
+      } else if (attribute == "zero_idx") {
+        int64_t zero_idx;
+        if (!ParseInt64(&zero_idx)) {
+          return Error(lexer_.GetLoc(), "expects int64_t");
+        }
+        result->set_zero_idx(zero_idx);
+      } else if (attribute == "strides") {
+        std::vector<int64_t> strides;
+        if (!ParseDxD("strides", &strides)) {
+          return Error(lexer_.GetLoc(), "expects strides in form NxMxK");
+        }
+        for (int64_t s : strides) {
+          result->add_strides(s);
+        }
+      } else if (attribute == "steps") {
+        std::vector<int64_t> steps;
+        if (!ParseDxD("steps", &steps)) {
+          return Error(lexer_.GetLoc(), "expects steps in form NxMxK");
+        }
+        for (int64_t s : steps) {
+          result->add_steps(s);
+        }
+      } else {
+        return Error(lexer_.GetLoc(), "unknown attribute");
+      }
+    } while (lexer_.GetKind() != TokKind::kRbrace);
+  }
+  return ParseToken(TokKind::kRbrace,
+                    "expects '}' at the end of TensorBlockScalingConfig");
 }
 
 bool HloParserImpl::ParseDxD(const std::string& name,

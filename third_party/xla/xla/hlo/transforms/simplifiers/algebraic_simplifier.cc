@@ -5382,6 +5382,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
     }
     used_elements[use->tuple_index()] = true;
   }
+  for (size_t i = 0; i < barrier->shape().tuple_shapes().size(); ++i) {
+    if (barrier->shape().tuple_shapes()[i].IsToken()) {
+      used_elements[i] = true;
+    }
+  }
 
   HloInstruction* operand = barrier->mutable_operand(0);
   if (operand->opcode() == HloOpcode::kTuple) {

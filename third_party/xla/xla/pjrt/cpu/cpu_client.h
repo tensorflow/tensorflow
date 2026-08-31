@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -180,6 +179,9 @@ class PjRtCpuRawClient : public PjRtRawClient {
       MaybeOwningMlirModule module, const CpuTopologyDescription& topology,
       int process_index, CompileOptions&& options);
 
+  tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
+      std::shared_ptr<PjRtExecutable> executable) const override;
+
  private:
   friend class PjRtCpuClient;
   friend class CpuExecutableLoadState;
@@ -268,48 +270,12 @@ class PjRtCpuClient final : public CommonPjRtClientImpl {
       std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
 
-  // TODO(b/403584258): PJRT wants to have just one simple Compile API. When the
-  // CPU runtime stops supporting the legacy runtime we will unify our compile
-  // paths better and this will be redundant.
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  CompileAheadOfTimeAndLoad(const XlaComputation& computation,
-                            CompileOptions options,
-                            const AotCompilationOptions& aot_options);
-
-  // For PjRtCpuClient, `options` is mandatory.
-  // This function returns an InvalidArgument error if `std::nullopt` is passed.
-  // TODO(b/237720161): make it actually optional
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(absl::string_view serialized,
-                           std::optional<CompileOptions> options,
-                           const LoadOptions& load_options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(const absl::Cord& serialized,
-                           std::optional<CompileOptions> options,
-                           const LoadOptions& load_options) override;
-
   bool IsOnCpu(PjRtMemorySpace* memory_space) override { return true; }
 
   const xla::CpuTopologyDescription& topology() const {
     return *absl::down_cast<const CpuTopologyDescription*>(
         &CommonPjRtClientImpl::topology());
   }
-
-  absl::StatusOr<int> GetMemorySpaceKindForShape(
-      const Shape& shape) const override;
-
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeHostBufferInto(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) override;
-
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeInto(
-      const LiteralSlice& literal, const xla::Shape& device_shape,
-      HostBufferSemantics host_buffer_semantics,
-      PjRtRawBufferRef raw_buffer) override;
 
   bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -332,11 +298,6 @@ class PjRtCpuClient final : public CommonPjRtClientImpl {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::shared_ptr<PjRtCpuExecutable> cpu_executable,
       std::shared_ptr<DeviceAssignment> device_assignment);
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutableInternal(google::protobuf::io::ZeroCopyInputStream* stream,
-                                   std::optional<CompileOptions> options,
-                                   const LoadOptions& load_options);
 };
 
 class PjRtCpuLoadedExecutable;
@@ -412,10 +373,8 @@ class PjRtCpuExecutable final : public PjRtExecutable {
     return cpu_executable_->SizeOfGeneratedCodeInBytes();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override {
-    return std::vector<std::shared_ptr<HloModule>>{
-        cpu_executable_->shared_module()};
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override {
+    return cpu_executable_->shared_module();
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
@@ -443,6 +402,11 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   }
 
   const CompileOptions& compile_options() const { return compile_options_; }
+
+  static absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>> Deserialize(
+      riegeli::Any<riegeli::Reader*> reader,
+      const xla::CpuTopologyDescription& topology,
+      std::optional<CompileOptions>&& options);
 
  private:
   friend class PjRtCpuClient;

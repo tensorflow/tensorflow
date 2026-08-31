@@ -2068,6 +2068,7 @@ class HloConvolutionInstruction : public HloInstruction {
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
       const SparsityConfig& sparsity_config,
+      const BlockScalingConfig& block_scaling_config,
       ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
@@ -2110,6 +2111,13 @@ class HloConvolutionInstruction : public HloInstruction {
     sparsity_config_ = sparsity_config;
   }
 
+  const BlockScalingConfig& block_scaling_config() const {
+    return block_scaling_config_;
+  }
+  void set_block_scaling_config(const BlockScalingConfig& config) {
+    block_scaling_config_ = config;
+  }
+
   std::string ToCategory() const override;
   void ToProto(HloInstructionProto* proto) const override;
 
@@ -2143,6 +2151,7 @@ class HloConvolutionInstruction : public HloInstruction {
   // The sparsity configuration used for the convolution.
   SparsityConfig sparsity_config_;
   // Convolution block scaling config.
+  BlockScalingConfig block_scaling_config_;
   // Conv type (fprop, dgrad, wgrad)
   ConvolutionKind convolution_kind_ = CONVOLUTION_KIND_UNSET;
 };

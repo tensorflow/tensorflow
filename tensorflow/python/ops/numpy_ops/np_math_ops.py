@@ -56,6 +56,15 @@ tf_export.tf_export('experimental.numpy.inf', v1=[]).export_constant(
     __name__, 'inf'
 )
 
+# Floating-point types mapped to an integer type of the same size, so their
+# IEEE-754 sign bit can be checked with an integer comparison.
+_SIGN_BITCAST_DTYPES = {
+    dtypes.bfloat16: dtypes.int16,
+    dtypes.float16: dtypes.int16,
+    dtypes.float32: dtypes.int32,
+    dtypes.float64: dtypes.int64,
+}
+
 
 @tf_export.tf_export('experimental.numpy.dot', v1=[])
 @np_utils.np_doc_only('dot')
@@ -744,7 +753,10 @@ def _scalar(tf_fn, x, promote_to_float=False):
   """
   x = np_array_ops.asarray(x)
   if promote_to_float and not np.issubdtype(x.dtype.as_numpy_dtype, np.inexact):
-    x = x.astype(np_utils.result_type(float))
+    # `Tensor.astype` only exists once `enable_numpy_methods_on_tensor()` has
+    # been called, and is an alias of `math_ops.cast`; calling `cast` directly
+    # keeps these functions working without that opt-in.
+    x = math_ops.cast(x, np_utils.result_type(float))
   return tf_fn(x)
 
 
@@ -781,7 +793,9 @@ def absolute(x):
 @tf_export.tf_export('experimental.numpy.fabs', v1=[])
 @np_utils.np_doc('fabs')
 def fabs(x):
-  return abs(x)
+  # Unlike `absolute`, `fabs` always produces a floating point result,
+  # so an integer argument has to be promoted first.
+  return _scalar(math_ops.abs, x, True)
 
 
 @tf_export.tf_export('experimental.numpy.ceil', v1=[])
@@ -820,6 +834,11 @@ def signbit(x):
   def f(x):
     if x.dtype == dtypes.bool:
       return array_ops.fill(array_ops.shape(x), False)
+    if x.dtype in _SIGN_BITCAST_DTYPES:
+      # Check the IEEE-754 sign bit instead of comparing with zero, which
+      # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
+      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+      return math_ops.less(bits, 0)
     return x < 0
 
   return _scalar(f, x)
@@ -1065,25 +1084,28 @@ def isfinite(x):
 @tf_export.tf_export('experimental.numpy.isinf', v1=[])
 @np_utils.np_doc('isinf')
 def isinf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return _scalar(math_ops.is_inf, x, True)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isneginf', v1=[])
 @np_utils.np_doc('isneginf')
 def isneginf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, -np.inf)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isposinf', v1=[])
 @np_utils.np_doc('isposinf')
 def isposinf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, np.inf)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.log2', v1=[])
@@ -1147,7 +1169,7 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
       )
     if n < 0:
       raise ValueError(
-          f'Argument `order` must be a non-negative integer. Received: axis={n}'
+          f'Argument `n` must be a non-negative integer. Received: n={n}'
       )
     slice1 = [slice(None)] * nd
     slice2 = [slice(None)] * nd

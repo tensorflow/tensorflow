@@ -1090,6 +1090,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/gpu:ffi_collectives",
         "//xla/ffi",
         "//xla/ffi:attribute_map",
         "//xla/ffi:call_frame",
@@ -1594,9 +1595,11 @@ xla_test(
 )
 
 cuda_library(
-    name = "select_k_exec_raft",
-    srcs = ["select_k_exec_raft.cc"],
-    hdrs = ["select_k_exec.h"],
+    name = "select_k_exec_raft_impl",
+    hdrs = [
+        "select_k_exec.h",
+        "select_k_exec_raft_impl.h",
+    ],
     copts = [
         "-fexceptions",
         "-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
@@ -1604,13 +1607,9 @@ cuda_library(
     tags = ["cuda-only"],
     deps = [
         "//xla:status_macros",
-        "//xla:types",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1619,6 +1618,79 @@ cuda_library(
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
         "@raft//:raft_matrix",
+    ],
+)
+
+cuda_library(
+    name = "select_k_exec_raft_float",
+    srcs = ["select_k_exec_raft_float.cc"],
+    hdrs = ["select_k_exec.h"],
+    copts = [
+        "-fexceptions",
+        "-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
+    ],
+    tags = ["cuda-only"],
+    deps = [
+        ":select_k_exec_raft_impl",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cuda_library(
+    name = "select_k_exec_raft_bfloat16",
+    srcs = ["select_k_exec_raft_bfloat16.cc"],
+    hdrs = ["select_k_exec.h"],
+    copts = [
+        "-fexceptions",
+        "-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
+    ],
+    tags = ["cuda-only"],
+    deps = [
+        ":select_k_exec_raft_impl",
+        "//xla:types",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cuda_library(
+    name = "select_k_exec_raft_uint64",
+    srcs = ["select_k_exec_raft_uint64.cc"],
+    hdrs = ["select_k_exec.h"],
+    copts = [
+        "-fexceptions",
+        "-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
+    ],
+    tags = ["cuda-only"],
+    deps = [
+        ":select_k_exec_raft_impl",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "select_k_exec_raft",
+    hdrs = ["select_k_exec.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":select_k_exec_raft_bfloat16",
+        ":select_k_exec_raft_float",
+        ":select_k_exec_raft_uint64",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1653,8 +1725,8 @@ xla_test(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
@@ -2249,7 +2321,7 @@ xla_test(
         "//xla/core/collectives:reduction_kind",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:platform_util",
         "//xla/service:service_executable_run_options",
         "//xla/service:shaped_slice",
@@ -2632,7 +2704,7 @@ xla_test(
         "//xla/runtime:device_id",
         "//xla/service:backend",
         "//xla/service:buffer_assignment",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
@@ -4583,6 +4655,7 @@ cc_library(
         "//xla/core/host_offloading:host_offloading_nanort_executable",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "//xla/service:shaped_slice_proto_cc",
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:memory_space",
@@ -4591,6 +4664,7 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:env",
+        "//xla/tsl/util:unique_any",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -4631,6 +4705,7 @@ xla_test(
         "//xla/service:compiled_module",
         "//xla/service:executable",
         "//xla/service:platform_util",
+        "//xla/service:shaped_slice",
         "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:device_address",
@@ -4638,18 +4713,21 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 

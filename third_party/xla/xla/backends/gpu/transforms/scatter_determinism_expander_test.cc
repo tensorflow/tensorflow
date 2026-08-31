@@ -15,24 +15,47 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/scatter_determinism_expander.h"
 
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/substitute.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/shape_util.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
 class ScatterDeterminismExpanderTest
     : public HloTestBase,
-      public ::testing::WithParamInterface<PrimitiveType> {};
+      public ::testing::WithParamInterface<PrimitiveType> {
+ protected:
+  absl::StatusOr<bool> RunScatterDeterminismExpander(HloModule* module) {
+    ScatterDeterminismExpander scatter_determinism_expander;
+    ABSL_ASSIGN_OR_RETURN(bool result,
+                     RunHloPass(&scatter_determinism_expander, module));
+
+    // Check that expander pass didn't introduce zero element arrays.
+    for (HloComputation* comp : module->computations()) {
+      for (HloInstruction* instruction : comp->instructions()) {
+        if (ShapeUtil::IsZeroElementArray(instruction->shape())) {
+          return absl::InternalError(
+              "Zero element array found in HLO module: " + module->ToString());
+        }
+      }
+    }
+
+    return result;
+  }
+};
 
 TEST_F(ScatterDeterminismExpanderTest,
        DoNotEliminateScatterWithAssociativeCombiner) {
@@ -55,12 +78,10 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -88,11 +109,10 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -120,11 +140,10 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -149,12 +168,10 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -178,12 +195,10 @@ TEST_F(ScatterDeterminismExpanderTest, DoNotEliminateScatterWithOneUpdate) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -210,20 +225,18 @@ TEST_P(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -255,20 +268,18 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -300,20 +311,18 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -345,19 +354,18 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
+  LOG(ERROR) << "module after pass: " << module->ToString();
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -389,19 +397,17 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -433,19 +439,17 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -477,20 +481,18 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -522,20 +524,18 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -567,20 +567,18 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -612,20 +610,18 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -665,21 +661,19 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -719,21 +713,19 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -773,21 +765,19 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -827,21 +817,19 @@ TEST_P(ScatterDeterminismExpanderTest,
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -869,11 +857,10 @@ TEST_P(ScatterDeterminismExpanderTest, ComplicatedMultiDimensionalScatterTest) {
   )";
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -996,17 +983,16 @@ TEST_P(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal first_result_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal first_result_literal,
+                       Execute(std::move(cloned_module), {}));
   auto first_result_span = first_result_literal.data<float>();
   std::vector<float> first_result(first_result_span.begin(),
                                   first_result_span.end());
@@ -1017,8 +1003,8 @@ TEST_P(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
   for (int i = 0; i < num_trials; ++i) {
     auto cloned_module = module->Clone();
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                            Execute(std::move(cloned_module), {}));
+    ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                         Execute(std::move(cloned_module), {}));
 
     auto result_data = result_literal.data<float>();
     std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -1071,17 +1057,16 @@ TEST_P(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
 
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
 
   EXPECT_TRUE(result);
 
   auto cloned_module = module->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(Literal first_result_literal,
-                          Execute(std::move(cloned_module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal first_result_literal,
+                       Execute(std::move(cloned_module), {}));
   auto first_result_span = first_result_literal.data<float>();
   std::vector<float> first_result(first_result_span.begin(),
                                   first_result_span.end());
@@ -1092,8 +1077,8 @@ TEST_P(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
   for (int i = 0; i < num_trials; ++i) {
     auto cloned_module = module->Clone();
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                            Execute(std::move(cloned_module), {}));
+    ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                         Execute(std::move(cloned_module), {}));
 
     auto result_data = result_literal.data<float>();
     std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -1126,11 +1111,10 @@ TEST_P(ScatterDeterminismExpanderTest, ScalarUpdateChangesVectorDim) {
   )";
   const std::string hlo = absl::Substitute(
       kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -1155,12 +1139,10 @@ TEST_F(ScatterDeterminismExpanderTest, UnsupportedScatterIndicesType) {
           index_vector_dim=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -1190,12 +1172,10 @@ TEST_F(ScatterDeterminismExpanderTest, UnsupportedVariadicScatter) {
           index_vector_dim=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
-  ScatterDeterminismExpander scatter_determinism_expander;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
   EXPECT_FALSE(result);
 }
 

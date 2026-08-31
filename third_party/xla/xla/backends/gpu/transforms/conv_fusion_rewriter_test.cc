@@ -2416,6 +2416,42 @@ TEST_F(ConvFusionRewriterIntegrationTest,
       )");
 }
 
+TEST_F(ConvFusionRewriterUnitTest, EpilogueNotFusedOnPreAmpere) {
+  const char* const hlo_string = R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f16[1,16,16,16] parameter(0)
+      filter = f16[3,3,16,32] parameter(1)
+      conv = f16[1,16,16,32] convolution(input, filter),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=b01f_01io->b01f
+      bias = f16[32] parameter(2)
+      bcast = f16[1,16,16,32] broadcast(bias), dimensions={3}
+      ROOT add = f16[1,16,16,32] add(conv, bcast)
+    })";
+
+  se::DeviceDescription volta_device;
+  volta_device.set_gpu_compute_capability(se::CudaComputeCapability::Volta());
+
+  // On Volta (SM70), epilogue should NOT be fused into the custom fusion.
+  RunAndMatch(hlo_string,
+              m::Add(m::Fusion(m::Parameter(0), m::Parameter(1))
+                         .WithFusionKind(HloInstruction::FusionKind::kCustom),
+                     m::Broadcast(m::Parameter(2))),
+              /*run_algebraic_simplifier=*/false, volta_device);
+
+  se::DeviceDescription ampere_device;
+  ampere_device.set_gpu_compute_capability(se::CudaComputeCapability::Ampere());
+
+  // On Ampere+ (SM80+), epilogue SHOULD be fused into the custom fusion.
+  RunAndMatch(hlo_string,
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2))
+                  .WithFusionKind(HloInstruction::FusionKind::kCustom)
+                  .WithShape(F16, {1, 16, 16, 32}),
+              /*run_algebraic_simplifier=*/false, ampere_device);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

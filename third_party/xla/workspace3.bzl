@@ -22,12 +22,11 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def workspace():
     tf_http_archive(
         name = "rules_proto",
-        sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
-        strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
+        sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
+        strip_prefix = "rules_proto-7.1.0",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+            "https://github.com/bazelbuild/rules_proto/archive/refs/tags/7.1.0.tar.gz",
         ),
-        patch_file = ["//third_party:rules_proto.patch"],
     )
 
     # https://github.com/bazelbuild/bazel-skylib/releases

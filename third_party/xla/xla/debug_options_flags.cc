@@ -265,7 +265,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_xnnpack(true);
-  opts.set_xla_cpu_use_new_xtile_lowering(false);
+  opts.set_xla_cpu_use_new_xtile_lowering(true);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.add_xla_cpu_experimental_ynn_fusion_type(
@@ -367,7 +367,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_padding_bytes(8 * 1024 * 1024);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_dump_latency_hiding_schedule(false);
-  opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_enable_analytical_latency_estimator(false);
   opts.set_xla_gpu_enable_analytical_sol_latency_estimator(true);
   auto* sol_estimator_defaults =
@@ -480,7 +479,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
-  opts.set_xla_gpu_use_new_autotune_cache_format(false);
+  opts.set_xla_gpu_use_new_autotune_cache_format(true);
 
   opts.set_xla_compile_all_supported_configs(false);
 
@@ -513,7 +512,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_gpu_experimental_enable_conv_fusion(true);
+  opts.set_xla_gpu_experimental_enable_conv_fusion(false);
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);

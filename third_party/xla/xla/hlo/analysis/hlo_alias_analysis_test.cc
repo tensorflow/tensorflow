@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
@@ -1374,6 +1376,46 @@ ENTRY main {
   // 6. tc_operand0 should not share the same buffer as tc_operand1
   EXPECT_NE(analysis.GetUniqueBufferAt(tc_operand0),
             analysis.GetUniqueBufferAt(tc_operand1));
+}
+
+TEST_F(HloAliasAnalysisTest, CallOutputToOperandAliasing) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+callme {
+  sub_p0 = f32[16] parameter(0)
+  sub_p1 = f32[16] parameter(1)
+  add0 = f32[16] add(sub_p0, sub_p1)
+  add1 = f32[16] add(sub_p0, sub_p0)
+  ROOT tuple = (f32[16], f32[16]) tuple(add0, add1)
+}
+
+ENTRY main {
+  entry_p0 = f32[16] parameter(0)
+  entry_p1 = f32[16] parameter(1)
+  ROOT call = (f32[16], f32[16]) call(entry_p0, entry_p1), to_apply=callme
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  auto* call = Cast<HloCallInstruction>(
+      module_->entry_computation()->GetInstructionWithName("call"));
+  call->set_output_to_operand_aliasing({{{0}, {0, {}}}, {{1}, {1, {}}}});
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* entry_p0 =
+      module_->entry_computation()->GetInstructionWithName("entry_p0");
+  const HloInstruction* entry_p1 =
+      module_->entry_computation()->GetInstructionWithName("entry_p1");
+
+  ASSERT_NE(entry_p0, nullptr);
+  ASSERT_NE(entry_p1, nullptr);
+  ASSERT_NE(call, nullptr);
+
+  EXPECT_EQ(analysis.GetUniqueBufferAt(entry_p0),
+            analysis.GetUniqueBufferAt(call, {0}));
+  EXPECT_EQ(analysis.GetUniqueBufferAt(entry_p1),
+            analysis.GetUniqueBufferAt(call, {1}));
 }
 
 }  // namespace

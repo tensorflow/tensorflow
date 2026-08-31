@@ -22,6 +22,10 @@ load(
     "if_google",
     "internal_visibility",
 )
+load(
+    "//xla/tsl:tsl.default.bzl",
+    "get_compatible_with_portable",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured", "if_cuda_newer_than")
 
@@ -585,12 +589,12 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -616,13 +620,17 @@ xla_cc_test(
         ":rocm_tracer",
         ":rocm_tracer_utils",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env_time",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocprofiler_sdk_roctx",  # buildcleaner: keep
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -642,6 +650,7 @@ xla_cc_test(
         ":rocm_collector",
         ":rocm_tracer_utils",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "//xla/tsl/profiler/utils:xplane_utils",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
@@ -991,5 +1000,26 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
+    name = "cuda_graph_topology_mapper",
+    srcs = ["cuda_graph_topology_mapper.cc"],
+    hdrs = ["cuda_graph_topology_mapper.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "cuda_graph_topology_mapper_test",
+    srcs = ["cuda_graph_topology_mapper_test.cc"],
+    deps = [
+        ":cuda_graph_topology_mapper",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )

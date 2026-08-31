@@ -303,36 +303,66 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
+  auto check_idx_in_range = [&](int32_t idx, int32_t low, int32_t high,
+                                absl::string_view desc) -> absl::Status {
+    if (idx < low || idx >= high) {
+      return InvalidArgument("%s %d out of bounds", desc, idx);
+    }
+    return absl::OkStatus();
+  };
+
   if (convolution->sparsity_config().has_lhs()) {
-    int32_t idx = convolution->sparsity_config().lhs().idx();
-    if (idx < 2 || idx >= convolution->operand_count()) {
-      return InvalidArgument("Sparsity idx %d out of bounds for lhs", idx);
-    }
-    if (!convolution->operand(idx)->shape().IsArray()) {
-      return InvalidArgument(
-          "Expected array argument for lhs sparsity at index %d, but got %s",
-          idx, ShapeUtil::HumanString(convolution->operand(idx)->shape()));
-    }
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->sparsity_config().lhs().idx(), 2,
+        convolution->operand_count(), "Sparsity idx for lhs"));
   }
   if (convolution->sparsity_config().has_rhs()) {
-    int32_t idx = convolution->sparsity_config().rhs().idx();
-    if (idx < 2 || idx >= convolution->operand_count()) {
-      return InvalidArgument("Sparsity idx %d out of bounds for rhs", idx);
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->sparsity_config().rhs().idx(), 2,
+        convolution->operand_count(), "Sparsity idx for rhs"));
+  }
+  if (convolution->block_scaling_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->block_scaling_config().lhs().scale_idx(), 2,
+        convolution->operand_count(), "Block scaling scale_idx for lhs"));
+    if (convolution->block_scaling_config().lhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx_in_range(
+          convolution->block_scaling_config().lhs().zero_idx(), 2,
+          convolution->operand_count(), "Block scaling zero_idx for lhs"));
+      if (convolution->block_scaling_config().lhs().scale_idx() ==
+          convolution->block_scaling_config().lhs().zero_idx()) {
+        return InvalidArgument(
+            "LHS block scaling scale_idx and zero_idx cannot be the same (%d)",
+            convolution->block_scaling_config().lhs().scale_idx());
+      }
     }
-    if (!convolution->operand(idx)->shape().IsArray()) {
+  }
+  if (convolution->block_scaling_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->block_scaling_config().rhs().scale_idx(), 2,
+        convolution->operand_count(), "Block scaling scale_idx for rhs"));
+    if (convolution->block_scaling_config().rhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx_in_range(
+          convolution->block_scaling_config().rhs().zero_idx(), 2,
+          convolution->operand_count(), "Block scaling zero_idx for rhs"));
+      if (convolution->block_scaling_config().rhs().scale_idx() ==
+          convolution->block_scaling_config().rhs().zero_idx()) {
+        return InvalidArgument(
+            "RHS block scaling scale_idx and zero_idx cannot be the same (%d)",
+            convolution->block_scaling_config().rhs().scale_idx());
+      }
+    }
+  }
+  if (convolution->block_scaling_config().has_lhs() &&
+      convolution->block_scaling_config().has_rhs()) {
+    if (convolution->block_scaling_config().lhs().scale_idx() ==
+        convolution->block_scaling_config().rhs().scale_idx()) {
       return InvalidArgument(
-          "Expected array argument for rhs sparsity at index %d, but got %s",
-          idx, ShapeUtil::HumanString(convolution->operand(idx)->shape()));
+          "LHS and RHS block scaling scale_idx cannot be the same (%d)",
+          convolution->block_scaling_config().lhs().scale_idx());
     }
   }
-  if (convolution->sparsity_config().has_lhs() &&
-      convolution->sparsity_config().has_rhs()) {
-    if (convolution->sparsity_config().lhs().idx() ==
-        convolution->sparsity_config().rhs().idx()) {
-      return InvalidArgument("LHS and RHS sparsity idx cannot be the same (%d)",
-                             convolution->sparsity_config().lhs().idx());
-    }
-  }
+
   ABSL_ASSIGN_OR_RETURN(
       Shape expected,
       ShapeInference::InferConvolveShape(
@@ -1687,40 +1717,46 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   return absl::OkStatus();
 }
 
+absl::Status ShapeVerifier::CheckCompositeCall(const HloInstruction* call) {
+  if (!call->is_composite()) {
+    return absl::OkStatus();
+  }
+  TF_RET_CHECK(call->has_frontend_attributes())
+      << "A composite call op must have frontend attributes";
+  auto map = call->frontend_attributes().map();
+  if (auto name = map.find("composite.name");
+      name == map.end() || name->second.empty()) {
+    return InvalidArgument(
+        "A composite call op must have frontend attributes with key "
+        "composite.name whose value is non-empty");
+  }
+  if (auto attributes = map.find("composite.attributes");
+      attributes != map.end() && attributes->second.empty()) {
+    return InvalidArgument(
+        "A composite call op must have frontend attributes with key "
+        "composite.attributes whose value is default: {} or non-empty");
+  }
+  if (auto version_str = map.find("composite.version");
+      version_str != map.end()) {
+    int64_t version = 0;
+    if (!absl::SimpleAtoi(version_str->second, &version) || version < 0) {
+      return InvalidArgument(
+          "A composite call op must have frontend attributes with a "
+          "composite.version whose value is a non-negative integer but got: "
+          "%s",
+          version_str->second);
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ShapeVerifier::HandleCall(HloInstruction* call) {
   ABSL_RETURN_IF_ERROR(
       CheckParameterCount(call, call->to_apply(), call->operand_count()));
   for (int64_t i = 0; i < call->to_apply()->num_parameters(); ++i) {
     ABSL_RETURN_IF_ERROR(CheckOperandAndParameter(call, i, call->to_apply(), i));
   }
-  if (call->is_composite()) {
-    TF_RET_CHECK(call->has_frontend_attributes())
-        << "A composite call op must have frontend attributes";
-    auto map = call->frontend_attributes().map();
-    if (auto name = map.find("composite.name");
-        name == map.end() || name->second.empty()) {
-      return InvalidArgument(
-          "A composite call op must have frontend attributes with key "
-          "composite.name whose value is non-empty");
-    }
-    if (auto attributes = map.find("composite.attributes");
-        attributes != map.end() && attributes->second.empty()) {
-      return InvalidArgument(
-          "A composite call op must have frontend attributes with key "
-          "composite.attributes whose value is default: {} or non-empty");
-    }
-    if (auto version_str = map.find("composite.version");
-        version_str != map.end()) {
-      int64_t version = 0;
-      if (!absl::SimpleAtoi(version_str->second, &version) || version < 0) {
-        return InvalidArgument(
-            "A composite call op must have frontend attributes with a "
-            "composite.version whose value is a non-negative integer but got: "
-            "%s",
-            version_str->second);
-      }
-    }
-  }
+  ABSL_RETURN_IF_ERROR(CheckCompositeCall(call));
   // The shape of kCall should match the shape of the computation it calls.
   return CheckShape(call, call->to_apply()->root_instruction()->shape());
 }
@@ -4387,17 +4423,35 @@ absl::Status InstructionVerifier::HandleWhile(HloInstruction* xla_while) {
 
 absl::Status InstructionVerifier::HandleCall(HloInstruction* call) {
   if (opts_.verify_call_nested_computation_thread_name) {
-    return CheckCallableInstructionThreadName(call);
+    ABSL_RETURN_IF_ERROR(CheckCallableInstructionThreadName(call));
   }
-
-  // As opposed to other callable instructions, nothing respects input/output
-  // aliasing for call instructions, so make sure it's not set.
-  const HloCallableInstruction* callable =
-      DynCast<const HloCallableInstruction>(call);
-  TF_RET_CHECK(callable != nullptr);
-  TF_RET_CHECK(callable->output_to_operand_aliasing().empty())
-      << "Call instruction " << call->ToString()
-      << " may not have an output-to-operand aliasing set.";
+  const auto* callable = Cast<const HloCallableInstruction>(call);
+  for (const auto& pair : callable->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < callable->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        callable->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(callable->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(callable->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        callable->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(operand_subshape,
+                                                           output_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
+    } else {
+      TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(
+          operand_subshape, output_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/false) << " vs "
+          << output_subshape.ToString(/*print_layout=*/false);
+    }
+  }
   return absl::OkStatus();
 }
 
