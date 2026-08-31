@@ -58,20 +58,33 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
                                         const TfLiteTensor* begin,
                                         const TfLiteTensor* size,
                                         std::vector<int>* output_shape_vector) {
-  for (int idx = 0; idx < NumDimensions(input); ++idx) {
+  const int input_dims = NumDimensions(input);
+  // `begin` and `size` are indexed by input dimension below. Prepare() only
+  // checks that they agree with each other, which does not bound them against
+  // the input rank, so establish that here before either is dereferenced.
+  TF_LITE_ENSURE_EQ(context, NumElements(begin), input_dims);
+  TF_LITE_ENSURE_EQ(context, NumElements(size), input_dims);
+  for (int idx = 0; idx < input_dims; ++idx) {
+    const T dim_value = static_cast<T>(SizeOfDimension(input, idx));
+    const T begin_value = GetTensorData<T>(begin)[idx];
     T size_value = GetTensorData<T>(size)[idx];
+    // Reject an out-of-range `begin` before it is used in any arithmetic, so
+    // the bounds comparison below cannot be reached with a wrapped value.
+    if (begin_value < 0 || begin_value > dim_value) {
+      TF_LITE_KERNEL_LOG(context, "Invalid begin.");
+      return kTfLiteError;
+    }
     if (size_value < 0) {
       if (size_value != -1) {
         TF_LITE_KERNEL_LOG(context, "Invalid size.");
         return kTfLiteError;
       }
-      size_value = SizeOfDimension(input, idx) - GetTensorData<T>(begin)[idx];
-    } else {
-      if (SizeOfDimension(input, idx) <
-          GetTensorData<T>(begin)[idx] + size_value) {
-        TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
-        return kTfLiteError;
-      }
+      size_value = dim_value - begin_value;
+    } else if (size_value > dim_value - begin_value) {
+      // Written as a subtraction rather than `begin_value + size_value >
+      // dim_value` so that the comparison cannot overflow.
+      TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
+      return kTfLiteError;
     }
     output_shape_vector->push_back(static_cast<int>(size_value));
   }
@@ -113,6 +126,39 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
   return context->ResizeTensor(context, output, output_shape);
 }
 
+// Validates the slice window against the input's current extent and confirms
+// that the resulting shape matches an output that was already allocated in
+// Prepare(). It deliberately does not resize the output or change its
+// allocation type, so a statically allocated output stays statically
+// allocated and arena planning is unaffected.
+TfLiteStatus ValidateSliceAgainstOutput(TfLiteContext* context,
+                                        const TfLiteTensor* input,
+                                        const TfLiteTensor* begin,
+                                        const TfLiteTensor* size,
+                                        const TfLiteTensor* output) {
+  std::vector<int> output_shape_vector;
+
+  if (begin->type == kTfLiteInt32) {
+    TF_LITE_ENSURE_STATUS(CalculateOutputShapeVector<int32_t>(
+        context, input, begin, size, &output_shape_vector));
+  } else if (begin->type == kTfLiteInt64) {
+    TF_LITE_ENSURE_STATUS(CalculateOutputShapeVector<int64_t>(
+        context, input, begin, size, &output_shape_vector));
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Type %d is currently not supported by Slice.",
+                       begin->type);
+    return kTfLiteError;
+  }
+
+  TF_LITE_ENSURE_EQ(context, static_cast<int>(output_shape_vector.size()),
+                    NumDimensions(output));
+  for (int idx = 0; idx < NumDimensions(output); ++idx) {
+    TF_LITE_ENSURE_EQ(context, output_shape_vector[idx],
+                      SizeOfDimension(output, idx));
+  }
+  return kTfLiteOk;
+}
+
 bool ShapeHasRank(const TfLiteIntArray* shape) {
   // Note that we consider scalar as false here because there is
   // no differentiation between scalar and dynamic properly supported.
@@ -146,6 +192,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // If the shape of output is fully specified then resize even if
   // the input shape is not staticly defined.
   if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
+    // The output keeps its static allocation. When the input extent and both
+    // index tensors are already known, validate the window now; otherwise the
+    // check is deferred to Eval(), which validates without resizing.
+    if (ShapeHasRank(input->dims) && !HasUnspecifiedDimension(input) &&
+        IsConstantOrPersistentTensor(begin) &&
+        IsConstantOrPersistentTensor(size)) {
+      TF_LITE_ENSURE_OK(context, ValidateSliceAgainstOutput(context, input,
+                                                            begin, size,
+                                                            output));
+    }
     return kTfLiteOk;
   }
   // Postpone allocation of output if any of the indexing tensors is not
@@ -175,6 +231,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
                       ResizeOutputShape(context, input, begin, size, output));
+  } else {
+    // The output was allocated statically in Prepare(). Validate the window
+    // against the input's actual extent without resizing it or changing its
+    // allocation type.
+    TF_LITE_ENSURE_OK(
+        context, ValidateSliceAgainstOutput(context, input, begin, size,
+                                            output));
   }
 
   const int input_dims = NumDimensions(input);

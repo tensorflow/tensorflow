@@ -408,6 +408,64 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
 }
 
+// A statically shaped output must keep its static allocation. Prepare() returns
+// early for such an output; this asserts that validating it does not convert it
+// to a dynamic tensor, which would change arena planning for valid models.
+TEST(SliceOpTest, StaticOutputKeepsStaticAllocation) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {1}, {1}, {2}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kConst, {2});
+  m.SetInput({1, 2, 3, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_NE(m.GetOutputTensor()->allocation_type, kTfLiteDynamic);
+}
+
+// `begin` and `size` supplied at run time are not visible to Prepare(), which
+// returns early because the output shape is fully specified. Without validation
+// in Eval() the kernel reads past the end of the input: begin 3 + size 2 exceeds
+// the input extent of 4.
+TEST(SliceOpTest, RuntimeIndicesOutOfBoundsWithStaticOutput) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {3}, {1}, {2}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kDynamic, {2});
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+// The same case with int64 indices, so both supported index widths are covered.
+TEST(SliceOpTest, RuntimeIndicesOutOfBoundsWithStaticOutputInt64) {
+  SliceOpModel<float, int64_t> m({4}, {1}, {3}, {1}, {2}, TensorType_INT64,
+                                 TensorType_FLOAT32, TestType::kDynamic, {2});
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+// A negative `begin` is rejected before it is used in the bounds arithmetic.
+TEST(SliceOpTest, NegativeBeginWithStaticOutput) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {-1}, {1}, {2}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kDynamic, {2});
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+// CalculateOutputShapeVector() indexes `begin` and `size` by input dimension.
+// Prepare() only checks the two against each other, so an index vector shorter
+// than the input rank is rejected here rather than read out of bounds.
+TEST(SliceOpTest, IndexVectorShorterThanInputRank) {
+  SliceOpModel<float, int32_t> m({2, 3}, {1}, {0}, {1}, {1}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kDynamic, {1, 1});
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+// A valid window whose computed shape disagrees with the declared static output
+// must fail cleanly rather than write into a mismatched buffer.
+TEST(SliceOpTest, ComputedShapeMustMatchDeclaredStaticOutput) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {0}, {1}, {3}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kDynamic, {2});
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
