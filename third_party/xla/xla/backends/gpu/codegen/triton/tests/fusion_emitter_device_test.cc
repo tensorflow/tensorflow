@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/codegen/triton/xtile_test_base.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -123,6 +125,21 @@ class TritonEmitterTest
     debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
         EnableTilingPropagation());
     return debug_options;
+  }
+
+  ::testing::AssertionResult RunAndCompareWithAutotuning(
+      absl::string_view hlo_string,
+      const std::optional<ErrorSpec>& error = std::nullopt) {
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.mutable_debug_options().set_xla_gpu_autotune_level(4);
+    absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+        ParseAndReturnVerifiedModule(hlo_string, config);
+    if (!module.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error while parsing HLO text format: "
+             << module.status().ToString();
+    }
+    return RunAndCompare(std::move(*module), error);
   }
 
   const stream_executor::GpuComputeCapability& GpuComputeCapability() {
@@ -2194,7 +2211,10 @@ TEST_P(TritonEmitterTestWithTilingParam,
     }
   )";
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  // TODO(b/446870267): Disable autotuning once we can provide better default
+  // configs for scaled-dot.
+  EXPECT_TRUE(RunAndCompareWithAutotuning(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_P(TritonEmitterTestWithTilingParam, RocmWarpSizeIsSetCorrectly) {
