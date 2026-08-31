@@ -1,3 +1,17 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 """Compiles the embedded Metal shader source through the Metal runtime.
 
 clang never sees this source: it is a string in metal_shader_library.mm that
@@ -13,7 +27,8 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "src/tensorflow/core/common_runtime/metal/kernels/metal_shader_library.mm"
+SOURCE = (ROOT / "src/tensorflow/core/common_runtime/metal/kernels" /
+          "metal_shader_library.mm")
 
 
 def extract_shader_source(text: str) -> str:
@@ -57,7 +72,8 @@ def main() -> int:
   msg.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
   options = ctypes.c_void_p(
       msg(ctypes.c_void_p(msg(options_class,
-                              ctypes.c_void_p(objc.sel_registerName(b"alloc")))),
+                              ctypes.c_void_p(
+                                  objc.sel_registerName(b"alloc")))),
           ctypes.c_void_p(objc.sel_registerName(b"init"))))
   set_version = ctypes.c_void_p(
       objc.sel_registerName(b"setLanguageVersion:"))
@@ -65,7 +81,8 @@ def main() -> int:
   msg(options, set_version, (3 << 16) | 0)
 
   error = ctypes.c_void_p(0)
-  sel = ctypes.c_void_p(objc.sel_registerName(b"newLibraryWithSource:options:error:"))
+  sel = ctypes.c_void_p(
+      objc.sel_registerName(b"newLibraryWithSource:options:error:"))
   msg.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
                   ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
   library = msg(ctypes.c_void_p(device), sel, source, options,

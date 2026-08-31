@@ -1,3 +1,17 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 """On-device checks for the plugin, against the TensorFlow it loads into.
 
 Every numeric check compares a GPU result to the CPU kernel for the same op
@@ -228,7 +242,9 @@ def main():
   # error.
   import glob  # pylint: disable=g-import-not-at-top
   import tempfile  # pylint: disable=g-import-not-at-top
-  from tensorflow.tsl.profiler.protobuf import xplane_pb2  # pylint: disable=g-import-not-at-top
+  # pylint: disable=g-import-not-at-top
+  from tensorflow.tsl.profiler.protobuf import xplane_pb2
+  # pylint: enable=g-import-not-at-top
 
   # Writing to a resource variable, which is where a host-side kernel and a
   # GPU in flight race. Only reachable on a TensorFlow that exports the
@@ -341,7 +357,9 @@ def main():
     on_cpu = fusable(image).numpy()
   close("a fused block matches the CPU", on_gpu, on_cpu)
 
-  print(f"\n{'all checks passed' if _failures == 0 else str(_failures) + ' FAILED'}")
+  verdict = ("all checks passed" if _failures == 0
+             else f"{_failures} FAILED")
+  print(f"\n{verdict}")
   return 0 if _failures == 0 else 1
 
 
