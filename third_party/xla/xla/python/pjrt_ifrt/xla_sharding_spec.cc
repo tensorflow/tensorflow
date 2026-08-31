@@ -115,8 +115,13 @@ absl::StatusOr<ShardingRef> HloShardingSpec::ToSharding(
         "HloShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  return HloSharding::Create(std::move(devices), memory_kind,
-                             xla_hlo_sharding());
+  std::shared_ptr<const HloShardingSpec> spec =
+      std::static_pointer_cast<const HloShardingSpec>(weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = HloShardingSpec::Create(num_shards(), xla_hlo_sharding());
+  }
+  return std::unique_ptr<HloSharding>(
+      new HloSharding(std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> HloShardingSpec::GetShardShape(const Shape& shape) const {

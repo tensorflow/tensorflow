@@ -18,7 +18,7 @@ from absl.testing import absltest
 import jax
 import jax.numpy as jnp
 
-from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
 
 
 class JaxProfilerUtilsTest(absltest.TestCase):

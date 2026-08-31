@@ -487,7 +487,6 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
@@ -1926,7 +1925,6 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service",
-        "//xla/service:computation_placer",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
@@ -3485,13 +3483,13 @@ xla_test(
     name = "batch_norm_training_test",
     srcs = ["batch_norm_training_test.cc"],
     deps = [
-        ":hlo_test_base",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:literal_util",
         "//xla/hlo/testlib:test",
         "//xla/tests:xla_test_backend_predicates",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest",
     ],
 )
 

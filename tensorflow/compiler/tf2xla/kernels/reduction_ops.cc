@@ -123,11 +123,25 @@ class MaxOp : public XlaReductionOp {
 REGISTER_XLA_OP(Name("Max").CompileTimeConstantInput("reduction_indices"),
                 MaxOp);
 
+// Mean divides the accumulated sum by the number of reduced elements, so an
+// accumulator that wraps does not merely produce a wrapped sum the way Sum
+// does, it produces a quotient that is wrong in both sign and magnitude. That
+// is why Mean needs a wider accumulator than the other reductions:
+// `SumAccumulationType` already widens the 8 and 16 bit integer types to avoid
+// overflow, but leaves the 32 bit ones alone, so reducing int32 or uint32 gave
+// a negative mean for strictly positive inputs and disagreed with the eager
+// kernel. The 64 bit types have nothing wider to accumulate in and keep
+// wrapping, which is what the eager kernel does for them as well.
+DataType MeanAccumulationType(const DataType& dtype) {
+  if (dtype == DT_INT32) return DT_INT64;
+  if (dtype == DT_UINT32) return DT_UINT64;
+  return XlaHelpers::SumAccumulationType(dtype);
+}
+
 class MeanOp : public XlaReductionOp {
  public:
   explicit MeanOp(OpKernelConstruction* ctx)
-      : XlaReductionOp(ctx,
-                       XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+      : XlaReductionOp(ctx, MeanAccumulationType(ctx->input_type(0))) {}
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::Zero(builder, xla_reduction_type_);

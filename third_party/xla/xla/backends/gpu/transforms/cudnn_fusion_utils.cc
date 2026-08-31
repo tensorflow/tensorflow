@@ -87,6 +87,14 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
   if (is_nchw) {
     return false;
   }
+
+  // cuDNN only supports epilogues on Ampere and above.
+  const se::CudaComputeCapability* cuda_cc =
+      device_info.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
+    return false;
+  }
+
   const HloOpcode opcode = hlo.opcode();
   // Do not fuse chained converts (a convert whose operand is already a
   // convert). Note: Fusing chained converts could steal a convert from an

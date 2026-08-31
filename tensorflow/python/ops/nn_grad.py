@@ -492,6 +492,20 @@ def _SoftsignGrad(op: ops.Operation, grad):
   return gen_nn_ops.softsign_grad(grad, op.inputs[0])
 
 
+@ops.RegisterGradient("SoftsignGrad")
+def _SoftsignGradGrad(op: ops.Operation, grad):
+  x = op.inputs[1]
+  denominator = 1.0 + math_ops.abs(x)
+  return (
+      gen_nn_ops.softsign_grad(grad, x),
+      -2.0
+      * grad
+      * op.inputs[0]
+      * math_ops.sign(x)
+      / (denominator * denominator * denominator),
+  )
+
+
 @ops.RegisterGradient("ReluGrad")
 def _ReluGradGrad(op: ops.Operation, grad):
   x = op.inputs[1]

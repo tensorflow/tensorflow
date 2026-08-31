@@ -101,6 +101,46 @@ LogicalResult dynamic_gather_downgrade(Operation* op, int version, bool&) {
   return success();
 }
 
+LogicalResult scan_upgrade(Operation* op, int version, bool&) {
+  if (version < 17) {
+    if (op->getNumOperands() == 0) {
+      return op->emitError("Missing input operand for scan operation");
+    }
+    const auto input_type = dyn_cast<VectorType>(op->getOperand(0).getType());
+    if (!input_type) {
+      return op->emitError("Invalid input type for scan operation");
+    }
+    const Attribute dimension_attr = IntegerAttr::get(
+        IntegerType::get(op->getContext(), 64), input_type.getRank() - 1);
+    op->setAttr("dimension", dimension_attr);
+  }
+  return success();
+}
+
+LogicalResult scan_downgrade(Operation* op, int version, bool&) {
+  if (version < 17) {
+    if (op->getNumOperands() == 0) {
+      return op->emitError("Missing input operand for scan operation");
+    }
+    const auto input_type = dyn_cast<VectorType>(op->getOperand(0).getType());
+    if (!input_type) {
+      return op->emitError("Invalid input type for scan operation");
+    }
+    auto dimension_attr = op->getAttrOfType<IntegerAttr>("dimension");
+    if (!dimension_attr) {
+      return op->emitError("Missing or invalid dimensions attribute");
+    }
+    const int64_t dimension = dimension_attr.getInt();
+    if (dimension != input_type.getRank() - 1) {
+      return op->emitError(
+          "Can only downgrade below version 16 when dimension is the last "
+          "dimension");
+    }
+    op->removeAttr("dimension");
+  }
+  return success();
+}
+
 // Upgrades an operation from a version without subcore_id (v13) to HEAD (v14+)
 // by delinearizing a single core_id into separate core_id and subcore_id.
 // This runs during deserialization (`serialize = false`), where operations have
@@ -681,6 +721,7 @@ const llvm::StringMap<SerdeRuleType>& upgrade_rules() {
       {WaitDMA2Op::getOperationName(), wait_dma2_upgrade},
       {WaitDMAOp::getOperationName(), wait_dma_upgrade},
       {DynamicGatherOp::getOperationName(), dynamic_gather_upgrade},
+      {ScanOp::getOperationName(), scan_upgrade},
       {IotaOp::getOperationName(), iota_upgrade},
       {SemaphoreSignalOp::getOperationName(), semaphore_signal_upgrade},
       {vector::MultiDimReductionOp::getOperationName(),
@@ -699,6 +740,7 @@ const llvm::StringMap<SerdeRuleType>& downgrade_rules() {
       {WaitDMA2Op::getOperationName(), wait_dma2_downgrade},
       {WaitDMAOp::getOperationName(), wait_dma_downgrade},
       {DynamicGatherOp::getOperationName(), dynamic_gather_downgrade},
+      {ScanOp::getOperationName(), scan_downgrade},
       {IotaOp::getOperationName(), iota_downgrade},
       {SemaphoreSignalOp::getOperationName(), semaphore_signal_downgrade},
       {StoreOp::getOperationName(), store_downgrade},

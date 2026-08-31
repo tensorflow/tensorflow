@@ -206,7 +206,8 @@ void PerDeviceCollector::CreateXEvent(const RocmTracerEvent& event,
   VLOG(7) << "Adding event to line=" << line->Id();
   xevent.SetTimestampNs(event.start_time_ns);
   xevent.SetEndTimestampNs(event.end_time_ns);
-  if (event.source == RocmTracerEventSource::ApiCallback) {
+  if (event.source == RocmTracerEventSource::ApiCallback &&
+      event.device_id != RocmTracerEvent::kInvalidDeviceId) {
     xevent.AddStatValue(
         *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kDeviceId)),
         event.device_id);
@@ -221,10 +222,20 @@ void PerDeviceCollector::CreateXEvent(const RocmTracerEvent& event,
                             GetStatTypeStr(StatType::kScopeRangeId)),
                         event.scope_range_id);
   }
-  if (!event.roctx_range.empty()) {
+  // Two sources for the same stat, by event type:
+  //   Generic (a ROCTX marker) owns its label in `name`.
+  //   Kernel / HIP-API events carry a view into AnnotationMap's pool, set from
+  //   the ROCTX range that was active when the call was made.
+  // Markers deliberately do not populate roctx_range: a view into their own
+  // `name` would dangle as soon as the event is moved, and interning them
+  // elsewhere would duplicate bytes `name` already owns.
+  const absl::string_view roctx_label =
+      event.type == RocmTracerEventType::Generic ? absl::string_view(event.name)
+                                                 : event.roctx_range;
+  if (!roctx_label.empty()) {
     xevent.AddStatValue(
         *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kNVTXRange)),
-        *plane->GetOrCreateStatMetadata(event.roctx_range));
+        *plane->GetOrCreateStatMetadata(roctx_label));
   }
 
   if (event.type == RocmTracerEventType::Kernel &&
@@ -362,6 +373,7 @@ void PerDeviceCollector::Export(uint64_t start_walltime_ns,
                                 uint64_t start_gputime_ns,
                                 uint64_t end_gputime_ns,
                                 XPlaneBuilder* device_plane,
+                                XPlaneBuilder* marker_plane,
                                 XPlaneBuilder* host_plane) {
   int host_ev_cnt = 0, dev_ev_cnt = 0;
   absl::MutexLock lock(events_mutex_);
@@ -406,7 +418,14 @@ void PerDeviceCollector::Export(uint64_t start_walltime_ns,
       continue;
     }
     auto* plane = is_host_event ? host_plane : device_plane;
-    VLOG(9) << "Event" << " type=" << static_cast<int>(event.type)
+    // Generic events (ROCTX markers) are always host-side; the is_host_event
+    // guard is redundant here but made explicit to document the assumption.
+    if (event.type == RocmTracerEventType::Generic && is_host_event &&
+        marker_plane != nullptr) {
+      plane = marker_plane;
+    }
+    VLOG(9) << "Event"
+            << " type=" << static_cast<int>(event.type)
             << " line_id=" << line_id
             << (is_host_event ? " host plane=" : " device plane=")
             << plane->Name();
@@ -423,6 +442,17 @@ void PerDeviceCollector::Export(uint64_t start_walltime_ns,
   host_plane->ForEachLine([&](XLineBuilder line) {
     line.SetName(absl::StrCat("Host Threads/", line.Id()));
   });
+  if (marker_plane != nullptr) {
+    // "Host Threads/<tid>/ROCTX", matching CUPTI's "Host Threads/<tid>/NVTX"
+    // (cupti_collector.cc). Line names are sorted after the merge into
+    // /host:CPU, so this form places each marker track directly beneath the
+    // host thread that produced it. The former "ROCTX Threads/<tid>" sorted
+    // into a separate alphabetical block, divorcing every marker track from
+    // its thread. The line name -- not the plane name -- is what a user sees.
+    marker_plane->ForEachLine([&](XLineBuilder line) {
+      line.SetName(absl::StrCat("Host Threads/", line.Id(), "/ROCTX"));
+    });
+  }
   events_.clear();
 }
 
@@ -526,6 +556,34 @@ void RocmTraceCollectorImpl::AddEvent(RocmTracerEvent&& event,
                                       bool is_auxiliary) {
   absl::MutexLock lock(event_maps_mutex_);
 
+  // Generic events (e.g. ROCTX/NVTX markers) have no GPU-side activity
+  // counterpart. Route them directly to standalone_events_ so they bypass
+  // ApiActivityInfoExchange and are flushed straight to per_device_collector_.
+  // Check this BEFORE the source-based branching below.
+  //
+  // The cap is enforced here rather than inherited from the branch below,
+  // because that branch is unreachable for Generic events. Marker volume is
+  // driven by application code -- a per-op roctx hook can emit millions of
+  // ranges a second -- and standalone_events_ is only drained in Flush() at
+  // Disable(), so without this guard a long capture retains every marker for
+  // the whole session and can exhaust memory in the process being profiled.
+  // Counting them in num_callback_events_ also keeps the VLOG(3) summary and
+  // the documented XLA_FLAGS=--xla_gpu_rocm_max_trace_events knob honest;
+  // both silently ignored this path before.
+  if (event.type == RocmTracerEventType::Generic) {
+    if (num_callback_events_ >= options_.max_callback_api_events) {
+      OnEventsDropped(
+          "ROCTX marker event dropped: max_callback_api_events "
+          "reached. To collect more, set "
+          "XLA_FLAGS=--xla_gpu_rocm_max_trace_events=X",
+          event.correlation_id);
+      return;
+    }
+    num_callback_events_++;
+    standalone_events_.push_back(std::move(event));
+    return;
+  }
+
   if (event.source == RocmTracerEventSource::ApiCallback) {
     if (!is_auxiliary) {
       if (num_callback_events_ >= options_.max_callback_api_events) {
@@ -601,6 +659,26 @@ void RocmTraceCollectorImpl::Flush() {
     }
   }
 
+  // Flush standalone events (e.g. ROCTX markers) directly — they have no
+  // GPU-side activity counterpart and bypass ApiActivityInfoExchange.
+  // All standalone events are bucketed into slot [0] regardless of which
+  // thread produced them; ROCTX markers are host-side and have no per-device
+  // meaning. If num_gpus_ is zero (e.g. a CI node where rocprofiler reports
+  // no GPU agents), per_device_collector_[0] is never exported by Export(),
+  // so we drop rather than silently lose events into an unexported slot.
+  if (!standalone_events_.empty()) {
+    if (num_gpus_ == 0) {
+      LOG(WARNING) << "Dropping " << standalone_events_.size()
+                   << " standalone ROCTX events: no GPUs reported by "
+                      "rocprofiler, so no device plane exists to export them.";
+    } else {
+      for (auto& event : standalone_events_) {
+        per_device_collector_[0].AddEvent(std::move(event));
+      }
+    }
+    standalone_events_.clear();
+  }
+
   activity_ops_events_map_.clear();
   api_events_map_.clear();
   auxiliary_api_events_map_.clear();
@@ -622,6 +700,15 @@ void RocmTraceCollectorImpl::Export(XSpace* space) {
   uint64_t end_gputime_ns = get_timestamp();
   XPlaneBuilder host_plane(FindOrAddMutablePlaneWithName(
       space, tsl::profiler::kRoctracerApiPlaneName));
+  // ROCTX markers go into the same plane CUDA uses for NVTX. The plane is a
+  // transient routing token: PostProcessSingleHostXSpace merges it into
+  // /host:CPU and deletes it, and nothing downstream reads a plane name. Using
+  // the existing constant means the already-shipped NVTX merge block handles
+  // ROCm unchanged -- which matters across the PJRT plugin boundary, where the
+  // collector XSpace is serialized without post-processing and a plane name the
+  // host does not recognise would leak into the viewer unmerged.
+  XPlaneBuilder marker_plane(FindOrAddMutablePlaneWithName(
+      space, tsl::profiler::kCuptiActivityNvtxPlaneName));
 
   VLOG(3) << "Calling RocmTraceCollectorImpl::Export num_gpus " << num_gpus_;
 
@@ -635,10 +722,11 @@ void RocmTraceCollectorImpl::Export(XSpace* space) {
     }
     per_device_collector_[id].Export(start_walltime_ns_, start_gputime_ns_,
                                      end_gputime_ns, &device_plane,
-                                     &host_plane);
+                                     &marker_plane, &host_plane);
     NormalizeTimeStamps(&device_plane, start_walltime_ns_);
   }
   NormalizeTimeStamps(&host_plane, start_walltime_ns_);
+  NormalizeTimeStamps(&marker_plane, start_walltime_ns_);
   ExportScopeRangeIdTree(space);
 }
 

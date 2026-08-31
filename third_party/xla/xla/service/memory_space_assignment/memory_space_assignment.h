@@ -166,7 +166,7 @@ Useful logging and error messages
     prefetch a buffer to alternate memory, according to some heuristic and not
     based on limited copy resource.
     * If the CostAnalysisPrefetchIntervalPicker is used, which is the default,
-      live range too long is governed by the picker's
+      live range too short is governed by the picker's
       min_overlap_to_async_copy_ratio argument.
 
   - "Finding allocation for": Magical logging phrase indicating the point in
@@ -206,13 +206,13 @@ Useful logging and error messages
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/layout.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
-#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {

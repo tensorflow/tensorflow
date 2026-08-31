@@ -3023,6 +3023,7 @@ tf_cc_test(
     srcs = ["process_util_test.cc"],
     deps = [
         ":process_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

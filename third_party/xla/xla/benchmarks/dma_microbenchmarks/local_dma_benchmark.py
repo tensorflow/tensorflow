@@ -20,7 +20,7 @@ import jax
 import jax.experimental.pallas as pl
 import jax.experimental.pallas.tpu as pltpu
 import jax.numpy as jnp
-from xla.benchmarks.dma_microbenchmarks import memory_base  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.dma_microbenchmarks import memory_base
 
 
 _VMEM_DMA_SIZE_KIB = flags.DEFINE_integer(

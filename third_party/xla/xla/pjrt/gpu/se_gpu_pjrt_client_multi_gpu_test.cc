@@ -313,7 +313,7 @@ TEST(StreamExecutorGpuClientTest,
         }
         std::unique_ptr<PjRtClient>& client = *client_status;
         auto* gpu_client =
-            tsl::down_cast<StreamExecutorGpuClient*>(client.get());
+            absl::down_cast<StreamExecutorGpuClient*>(client.get());
         const gpu::GpuExecutableRunOptions* run_options =
             gpu_client->gpu_run_options();
         if (run_options == nullptr ||
@@ -345,7 +345,7 @@ TEST(StreamExecutorGpuClientTest,
   options.abort_collectives_on_failure = true;
   ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
-  auto* gpu_client = tsl::down_cast<StreamExecutorGpuClient*>(client.get());
+  auto* gpu_client = absl::down_cast<StreamExecutorGpuClient*>(client.get());
   const gpu::GpuExecutableRunOptions* run_options =
       gpu_client->gpu_run_options();
   ASSERT_NE(run_options, nullptr);
@@ -415,7 +415,7 @@ TEST(StreamExecutorGpuClientTest,
   }
 
   auto* gpu_client0 =
-      tsl::down_cast<StreamExecutorGpuClient*>(pjrt_clients[0].get());
+      absl::down_cast<StreamExecutorGpuClient*>(pjrt_clients[0].get());
   const gpu::GpuExecutableRunOptions* run_options =
       gpu_client0->gpu_run_options();
   ASSERT_NE(run_options, nullptr);
@@ -1676,7 +1676,7 @@ absl::Status InterProcessCollectiveInitTestBody(int rank_id) {
   // executor's collective memory allocator into the selected collectives
   // backend (e.g. MORI ShmemMalloc). With inert backend stubs the allocation
   // may return null; we only log the outcome and do not fail the test.
-  auto* se_device = tsl::down_cast<PjRtStreamExecutorDevice*>(
+  auto* se_device = absl::down_cast<PjRtStreamExecutorDevice*>(
       client->addressable_devices()[0]);
   TF_RET_CHECK(se_device != nullptr);
   LocalDeviceState* local_device_state = se_device->local_device_state();

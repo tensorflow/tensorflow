@@ -56,6 +56,7 @@ limitations under the License.
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SwapByteOrder.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
@@ -559,10 +561,10 @@ struct SignatureDefData {
   // Note, we are using maps here to make order deterministic
   // for easily testing only.
 
-  // Inputs defined in the signature def mapped to tensor names.
-  std::map<std::string, std::string> inputs;
-  // Outputs defined in the signature def mapped to tensor names.
-  std::map<std::string, std::string> outputs;
+  // Inputs defined in the signature def mapped to tensor index.
+  std::map<std::string, uint32_t> inputs;
+  // Outputs defined in the signature def mapped to tensor index.
+  std::map<std::string, uint32_t> outputs;
   // Signature key.
   std::string signature_key;
   // Subgraph index.
@@ -824,10 +826,10 @@ class Translator {
 
   // Returns list of offsets for the passed 'items' in TensorMap structure
   // inside the flatbuffer.
-  // 'items' is a map from tensor name in signatureDef to tensor name in
-  // the subgraph, specified by the 'subgraph_index' argument.
+  // 'items' is a map from tensor name in signatureDef to tensor index in
+  // the subgraph.
   std::vector<BufferOffset<tflite::TensorMap>> GetList(
-      int subgraph_index, const std::map<std::string, std::string>& items);
+      const std::map<std::string, uint32_t>& items);
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
@@ -949,6 +951,10 @@ class Translator {
   // Maps subgraph index and tensor name in the graph to the tensor index.
   absl::flat_hash_map<int, absl::flat_hash_map<std::string, int>>
       tensor_index_map_;
+
+  // Stores input and output tensor indices for each subgraph.
+  std::vector<std::vector<int32_t>> subgraph_inputs_;
+  std::vector<std::vector<int32_t>> subgraph_outputs_;
 
   // Maps op name to index of the corresponding OperatorCode in opcodes_ vector.
   absl::flat_hash_map<std::string, uint32_t> opcode_index_map_;
@@ -1107,6 +1113,93 @@ Translator::BuildExternalBuffer(mlir::Value value,
   return external_buffer;
 }
 
+static mlir::AsmResourceBlob* GetBlob(
+    mlir::DenseResourceElementsAttr resource_attr) {
+  mlir::AsmResourceBlob* blob = resource_attr.getRawHandle().getBlob();
+  if (!blob && resource_attr.getRawHandle().getResource()) {
+    blob = resource_attr.getRawHandle().getResource()->getBlob();
+  }
+  return blob;
+}
+
+static uint64_t GetPhysicalBufferHash(mlir::ElementsAttr attr) {
+  if (auto resource_attr =
+          mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+    mlir::AsmResourceBlob* blob = GetBlob(resource_attr);
+    uint64_t h = 0;
+    if (blob && !blob->getData().empty()) {
+      h = llvm::xxh3_64bits(
+          reinterpret_cast<const uint8_t*>(blob->getData().data()),
+          blob->getData().size());
+    } else {
+      h = llvm::hash_value(resource_attr.getRawHandle().getKey().str());
+    }
+    return llvm::hash_combine(h, mlir::hash_value(resource_attr.getType()));
+  }
+  return mlir::hash_value(attr);
+}
+
+static int GetLowBitWidth(tflite::TensorType type) {
+  switch (type) {
+    case tflite::TensorType_INT4:
+    case tflite::TensorType_UINT4:
+      return 4;
+    case tflite::TensorType_INT2:
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+static absl::Status PackLowBitElementsAttr(
+    mlir::Attribute attr, int bit_width,
+    absl::FunctionRef<absl::Status(absl::string_view)> apply) {
+  std::optional<absl::string_view> raw_data;
+  size_t num_elements = 0;
+
+  if (auto res_attr = mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+    if (auto* blob = GetBlob(res_attr); blob && !blob->getData().empty()) {
+      raw_data = absl::string_view(
+          reinterpret_cast<const char*>(blob->getData().data()),
+          blob->getData().size());
+      num_elements = res_attr.getNumElements();
+    }
+  } else if (auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+    if (!dense_attr.isSplat() && !dense_attr.getRawData().empty()) {
+      raw_data = absl::string_view(dense_attr.getRawData().data(),
+                                   dense_attr.getRawData().size());
+      num_elements = dense_attr.getNumElements();
+    }
+  }
+
+  // 1. Raw byte buffer path (Resource blobs or DenseElementsAttr)
+  if (raw_data.has_value()) {
+    if (raw_data->size() == num_elements) {
+      if (bit_width == 4) {
+        return tflite::StreamPackLowBitValues8Bit</*kBitWidth=*/4>(*raw_data,
+                                                                   apply);
+      } else if (bit_width == 2) {
+        return tflite::StreamPackLowBitValues8Bit</*kBitWidth=*/2>(*raw_data,
+                                                                   apply);
+      }
+    }
+    return apply(*raw_data);
+  }
+
+  // 2. Fallback for splat DenseElementsAttr (e.g., dense<3> : tensor<128xi4>)
+  if (auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+    if (bit_width == 4) {
+      return tflite::StreamPackLowBitValues</*kBitWidth=*/4>(
+          dense_attr.getValues<mlir::APInt>(), apply);
+    } else if (bit_width == 2) {
+      return tflite::StreamPackLowBitValues</*kBitWidth=*/2>(
+          dense_attr.getValues<mlir::APInt>(), apply);
+    }
+  }
+
+  return apply(absl::string_view());
+}
+
 std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     mlir::Value value, bool can_be_deduplicated, int& index) {
   can_be_deduplicated = can_be_deduplicated && !disable_buffer_deduping_;
@@ -1159,37 +1252,14 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
       GetTFLiteType(type.getElementType()).value();
 
   // Default appliers
-  if (tflite_element_type == tflite::TensorType_INT4 ||
-      tflite_element_type == tflite::TensorType_UINT4 ||
-      tflite_element_type == tflite::TensorType_INT2) {
+  int low_bit_width = GetLowBitWidth(tflite_element_type);
+  if (low_bit_width > 0) {
     applier =
-        [tflite_element_type](
+        [low_bit_width](
             const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
             auto apply) {
-          auto attr = mlir::cast<mlir::DenseElementsAttr>(attr_and_inst.first);
-          bool is_8bit_raw_data =
-              !attr.isSplat() &&
-              attr.getNumElements() == attr.getRawData().size();
-          bool is_4bit_data = tflite_element_type == tflite::TensorType_INT4 ||
-                              tflite_element_type == tflite::TensorType_UINT4;
-
-          if (is_8bit_raw_data) {
-            if (is_4bit_data) {
-              return tflite::StreamPackLowBitValues8Bit</*kBitWidth=*/4>(
-                  attr.getRawData(), apply);
-            } else {
-              return tflite::StreamPackLowBitValues8Bit</*kBitWidth=*/2>(
-                  attr.getRawData(), apply);
-            }
-          } else {
-            if (is_4bit_data) {
-              return tflite::StreamPackLowBitValues</*kBitWidth=*/4>(
-                  attr.getValues<mlir::APInt>(), apply);
-            } else {
-              return tflite::StreamPackLowBitValues</*kBitWidth=*/2>(
-                  attr.getValues<mlir::APInt>(), apply);
-            }
-          }
+          return PackLowBitElementsAttr(attr_and_inst.first, low_bit_width,
+                                        apply);
         };
   } else {
     applier =
@@ -1204,7 +1274,9 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
           // is big endian, rely on the TensorFlow path below to reverse the
           // byte order.
           if (llvm::sys::IsLittleEndianHost && shaped_type &&
-              shaped_type.getElementType().isIntOrFloat()) {
+              (shaped_type.getElementType().isIntOrFloat() ||
+               mlir::isa<mlir::quant::QuantizedType>(
+                   shaped_type.getElementType()))) {
             int64_t expected_size = mlir::TFL::GetSizeInBytes(shaped_type);
 
             // DenseElementsAttr
@@ -1222,13 +1294,11 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
             // DenseResourceElementsAttr
             if (auto res_attr =
                     mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
-              if (auto blob =
-                      res_attr.getRawHandle().getResource()->getBlob()) {
-                auto data = blob->getData();
-                if (data.size() == expected_size) {
-                  return apply(absl::string_view(
-                      reinterpret_cast<const char*>(data.data()), data.size()));
-                }
+              mlir::AsmResourceBlob* blob = GetBlob(res_attr);
+              if (blob && blob->getData().size() == expected_size) {
+                return apply(absl::string_view(
+                    reinterpret_cast<const char*>(blob->getData().data()),
+                    blob->getData().size()));
               }
             }
           }
@@ -1291,9 +1361,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     // string and computing the hash of the string, but can be reliable in some
     // cases where the MLIR attributes are not deduped properly (e.g. when two
     // consts of the same value are held in different attribute types).
+    uint64_t h = GetPhysicalBufferHash(attr);
     const_buffer_storage_.Insert(
         index, std::make_pair(attr, inst), std::move(applier),
-        /*hash=*/mlir::hash_value(attr),
+        /*hash=*/h,
         /*byte_size_hint=*/mlir::TFL::GetSizeInBytes(type));
     return tflite::CreateBuffer(builder_, 0, 1, 1);
   } else {
@@ -3640,6 +3711,12 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   for (auto result : bb.getTerminator()->getOperands()) {
     outputs.push_back(tensor_index_map[result]);
   }
+  if (index >= subgraph_inputs_.size()) {
+    subgraph_inputs_.resize(index + 1);
+    subgraph_outputs_.resize(index + 1);
+  }
+  subgraph_inputs_[index] = inputs;
+  subgraph_outputs_[index] = outputs;
   for (const auto& [from, to] : control_edges) {
     for (int what : {from, to}) {
       if (operation_index_to_operator_index.count(what) == 0) {
@@ -3987,7 +4064,9 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 
 std::vector<SignatureDefData> BuildSignaturedef(
     FuncOp main_op, const std::string& saved_model_tag,
-    const uint32_t subgraph_index, tensorflow::OpOrArgNameMapper& name_mapper) {
+    const uint32_t subgraph_index,
+    const std::vector<int32_t>& input_tensor_indices,
+    const std::vector<int32_t>& output_tensor_indices) {
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   // Fetch inputs and outputs from the signature.
@@ -4050,14 +4129,10 @@ std::vector<SignatureDefData> BuildSignaturedef(
   // We create vector of size 1 as TFLite now supports only 1 signatureDef.
   std::vector<SignatureDefData> result(1);
   for (int i = 0; i < input_names.size(); ++i) {
-    result[0].inputs[sig_def_inputs[i]] = input_names[i].str();
+    result[0].inputs[sig_def_inputs[i]] = input_tensor_indices[i];
   }
   for (int i = 0; i < output_names.size(); ++i) {
-    // Fetch the name from the actual operand and not rely on names from
-    // outputs as deduping can make them invalid after conversion.
-    auto& operand = term->getOpOperand(i);
-    auto unique_name = std::string(name_mapper.GetUniqueName(operand.get()));
-    result[0].outputs[sig_def_outputs[i]] = unique_name;
+    result[0].outputs[sig_def_outputs[i]] = output_tensor_indices[i];
   }
   if (auto name_attr = mlir::dyn_cast_or_null<StringAttr>(exported_name[0]))
     result[0].signature_key = name_attr.getValue().str();
@@ -4066,14 +4141,13 @@ std::vector<SignatureDefData> BuildSignaturedef(
 }
 
 std::vector<BufferOffset<tflite::TensorMap>> Translator::GetList(
-    const int subgraph_index, const std::map<std::string, std::string>& items) {
+    const std::map<std::string, uint32_t>& items) {
   std::vector<BufferOffset<tflite::TensorMap>> result;
   for (const auto& item : items) {
     auto name_buf = builder_.CreateString(item.first);
     tflite::TensorMapBuilder tensor_map_builder(builder_);
     tensor_map_builder.add_name(name_buf);
-    tensor_map_builder.add_tensor_index(
-        tensor_index_map_[subgraph_index][item.second]);
+    tensor_map_builder.add_tensor_index(item.second);
     result.push_back(tensor_map_builder.Finish());
   }
   return result;
@@ -4083,14 +4157,9 @@ std::optional<VectorBufferOffset<BufferOffset<tflite::SignatureDef>>>
 Translator::CreateSignatureDefs(
     const std::vector<SignatureDefData>& signature_defs) {
   std::vector<BufferOffset<tflite::SignatureDef>> signature_defs_buffer;
-  // When we export each function in the module op, intentionally, we export
-  // the entry functions at the beginning of the subgraph list and the
-  // subgraph_index is the index in entry functions and at the same, is the
-  // index in the subgraph list.
-  int subgraph_index = 0;
   for (const auto& signature_def_data : signature_defs) {
-    auto inputs = GetList(subgraph_index, signature_def_data.inputs);
-    auto outputs = GetList(subgraph_index, signature_def_data.outputs);
+    auto inputs = GetList(signature_def_data.inputs);
+    auto outputs = GetList(signature_def_data.outputs);
     auto inputs_buf = builder_.CreateVector(inputs);
     auto outputs_buf = builder_.CreateVector(outputs);
     auto signature_key_buf =
@@ -4101,7 +4170,6 @@ Translator::CreateSignatureDefs(
     sig_def_builder.add_signature_key(signature_key_buf);
     sig_def_builder.add_subgraph_index(signature_def_data.subgraph_index);
     signature_defs_buffer.push_back(sig_def_builder.Finish());
-    ++subgraph_index;
   }
 
   return builder_.CreateVector(signature_defs_buffer);
@@ -4144,9 +4212,11 @@ absl::Status Translator::Translate(
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   }
   if (!UpdateEntryFunction(module)) {
+    LOG(ERROR) << "No entry function found in the module.";
     return absl::InvalidArgumentError("No entry function found.");
   }
   if (!IsValidTFLiteMlirModule(module)) {
+    LOG(ERROR) << "Invalid TFLite MLIR module.";
     return absl::InvalidArgumentError("Invalid TFLite MLIR module.");
   }
 
@@ -4369,7 +4439,8 @@ absl::Status Translator::TranslateInternal() {
   for (auto fn : entry_functions) {
     auto signature_defs = BuildSignaturedef(
         fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin(),
-        subgraph_index, name_mapper_);
+        subgraph_index, subgraph_inputs_[subgraph_index],
+        subgraph_outputs_[subgraph_index]);
     for (const auto& signature_def : signature_defs) {
       signature_defs_vec.push_back(signature_def);
     }
@@ -4721,6 +4792,7 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
   }
 
   if (!status.ok()) {
+    LOG(ERROR) << "Flatbuffer export failed: " << status.message();
     return false;
   }
   serialized_flatbuffer->assign(buffer.data(), buffer.size());

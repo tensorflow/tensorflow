@@ -20,9 +20,7 @@ from absl import logging
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
-from xla.benchmarks.core import flag_utils
-from xla.benchmarks.core import platform_info
-from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
+from xla.benchmarks.core import benchmark
 from xla.benchmarks.pallas_microbenchmarks import dense_matmul_lib
 
 _DIM = flags.DEFINE_list(
@@ -90,33 +88,12 @@ FLAGS = flags.FLAGS
 FLAGS.mark_as_parsed()
 
 
-_KERNEL_NAME_TEMPLATE = "matmul_{m}_{k}_{n}_{lhs_dtype}_{rhs_dtype}_{out_dtype}"
-
-
-_DTYPE_MAPPING = {
-    "f32": jnp.float32,
-    "bf16": jnp.bfloat16,
-    "f8e4m3fn": jnp.float8_e4m3fn,
-    "f8e5m2": jnp.float8_e5m2,
-    "f4e2m1fn": jnp.float4_e2m1fn,
-    "s32": jnp.int32,
-    "s8": jnp.int8,
-    "s4": jnp.int4,
-}
-
-
-def _parse_dtype(dtype_str: str) -> jnp.dtype:
-  if dtype_str not in _DTYPE_MAPPING:
-    raise ValueError(f"Unsupported dtype: {dtype_str}")
-  return _DTYPE_MAPPING[dtype_str]
-
-
 def main(_):
   if len(_FMT.value) != 3:
     raise ValueError(f"Expected 3 formats, got {len(_FMT.value)}")
-  lhs_dtype = _parse_dtype(_FMT.value[0])
-  rhs_dtype = _parse_dtype(_FMT.value[1])
-  out_dtype = _parse_dtype(_FMT.value[2])
+  lhs_dtype = benchmark.str_to_dtype(_FMT.value[0])
+  rhs_dtype = benchmark.str_to_dtype(_FMT.value[1])
+  out_dtype = benchmark.str_to_dtype(_FMT.value[2])
   acc_dtype = jnp.float32
 
   if len(_DIM.value) != 4:
@@ -142,33 +119,12 @@ def main(_):
 
   subblock_m = _SUBBLOCK_M.value
   if subblock_m is None:
-    # Choose a subblock size that utilizes all accumulators.
-    pinfo = platform_info.get_platform_info()
-    num_accumulators = pinfo.num_accumulators
-    if num_accumulators > 0:
-      # Each accumulator can hold `num_sublanes` rows of results.
-      num_sublanes, _ = pinfo.vreg_size
-      subblock_m = num_sublanes * num_accumulators
+    subblock_m = dense_matmul_lib.get_default_subblock_m()
+    if subblock_m is not None:
       logging.info("Using subblock_m size: %s", subblock_m)
 
-  internal_scratch_in_bytes = (
-      platform_info.get_default_internal_scratch_bytes()
-  )
   if _WINDOW.value is None:
-    vmem_limit_kib = flag_utils.get_flag_value(
-        "xla_tpu_scoped_vmem_limit_kib", default=-1, flag_type=int
-    )
-    if vmem_limit_kib == -1:
-      vmem_limit_kib = platform_info.get_default_vmem_limit_kib()
-    vmem_limit_bytes = vmem_limit_kib * 1024 - internal_scratch_in_bytes
-
-    p_state = flag_utils.get_flag_value(
-        "xla_tpu_dvfs_p_state", default=None, flag_type=int
-    )
-    if p_state == -1:
-      # Cost model will use the default P-state for the platform.
-      p_state = None
-    block_m, block_k, block_n = pallas_cost_model.CostModel(
+    block_m, block_k, block_n = dense_matmul_lib.select_window(
         m,
         k,
         n,
@@ -180,9 +136,6 @@ def main(_):
         out_dtype,
         acc_dtype,
         subblock_m=subblock_m,
-    ).select_window(
-        vmem_limit_bytes,
-        p_state,
     )
     logging.info(
         "Selected window size from Pallas cost model: %s, %s, %s",
@@ -201,15 +154,6 @@ def main(_):
   if _RUNS.value < 1:
     raise ValueError("Runs must be at least 1.")
 
-  kernel_name = _KERNEL_NAME_TEMPLATE.format(
-      m=m,
-      k=k,
-      n=n,
-      lhs_dtype=_FMT.value[0],
-      rhs_dtype=_FMT.value[1],
-      out_dtype=_FMT.value[2],
-  )
-
   cfg = dense_matmul_lib.DenseMatmulConfig(
       m=m,
       k=k,
@@ -226,11 +170,7 @@ def main(_):
       acc_dtype=acc_dtype,
       subblock_m=subblock_m,
   )
-  bm = dense_matmul_lib.DenseMatmulBenchmark(
-      cfg,
-      internal_scratch_in_bytes,
-      kernel_name,
-  )
+  bm = cfg.get_benchmark()
   bm.run(
       repeat=_REPEAT.value,
       runs=_RUNS.value,
