@@ -710,6 +710,51 @@ TEST_F(MemorySpaceAssignmentTest, ViewExtendedUseTimeWalksTransitiveReaders) {
       schedule.at(viewbc));
 }
 
+TEST_F(MemorySpaceAssignmentTest, ViewUsePrefetchDeadlineClampedToViewTime) {
+  // A view use extends the allocation end time through the view's transitive
+  // readers (`consumer` below), but a prefetched copy is materialized right
+  // before the view instruction itself. The prefetch deadline must therefore
+  // be the view's own time, not the extended reader time: with the extended
+  // deadline the picker may place the copy interval entirely after the
+  // c0/c1/c2 chain below has freed the heap, while the copy instructions
+  // actually run before `view`, inside the chain's live range, and the
+  // verifier fails with a chunk overlap.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[8]{0} parameter(0)
+    p1 = f32[32]{0} parameter(1)
+    c0 = f32[32]{0} negate(p1)
+    view = f32[8]{0:S(5)} custom-call(p0), custom_call_target="tpu_get_view"
+    viewbc = f32[8]{0:S(5)} bitcast(view)
+    c1 = f32[32]{0} negate(c0)
+    c2 = f32[32]{0} negate(c1)
+    cs = f32[8]{0} slice(c2), slice={[0:8]}
+    d0 = f32[8]{0} negate(cs)
+    d1 = f32[8]{0} negate(d0)
+    d2 = f32[8]{0} negate(d1)
+    consumer = f32[8]{0} add(viewbc, d2)
+    ROOT t = (f32[8]{0}, f32[8]{0}) tuple(consumer, d2)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.dus_view_color = 5;
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+      /*min_overlap_count=*/2, /*max_overlap_count=*/10);
+  ASSERT_OK(AssignMemorySpaceAndReturnStatus(module.get(), std::move(options),
+                                             /*buffer_interval_compare=*/{},
+                                             &prefetch_interval_picker)
+                .status());
+  // The c0/c1/c2 chain keeps the whole heap busy across `view`, so no legal
+  // prefetch window exists: the base must stay in default memory.
+  HloInstruction* view = FindInstruction(module.get(), "view");
+  ASSERT_NE(view, nullptr);
+  EXPECT_THAT(view->operand(0), op::Parameter(0));
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        SyncDynamicSliceReplacementWithLateIndexOperand) {
   absl::string_view hlo_string = R"hlo(

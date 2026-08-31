@@ -6175,7 +6175,15 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   // TODO(b/318886791):  Rename boundary variables (here and other places)
   // like `latest_prefetch_time` and `earliest_prefetch_time` indicate
   // whether they are exclusive or inclusive boundaries.
-  int64_t latest_prefetch_time = use_time;
+  // A view use extends `use_time` through the view's transitive readers so
+  // the buffer stays reserved while they read through the view, but a
+  // prefetched copy is materialized right before the view instruction
+  // itself. Bound the prefetch deadline by the actual use time; otherwise
+  // the copy is reserved over (extended_start, extended_end) while it
+  // actually runs at the view's position, and the unreserved gap in between
+  // lets other buffers land on the same offsets (verifier chunk overlap).
+  int64_t latest_prefetch_time =
+      hlo_live_range_.instruction_schedule().at(hlo_use.instruction);
 
   // Control flow  calls include kWhile, kCall, and kConditional opcodes.
   bool is_sequential_call =
