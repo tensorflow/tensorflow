@@ -859,11 +859,16 @@ if(TFLITE_ENABLE_INSTALL)
   )
 
   foreach(hdr ${_ALL_TFLITE_HDRS})
-    get_filename_component(dir ${hdr} DIRECTORY)
-    file(RELATIVE_PATH dir ${CMAKE_CURRENT_SOURCE_DIR} ${dir})
+    string(FIND "${hdr}" "${_TFLITE_GENERATED_FBS_ROOT}" _hdr_is_generated)
+    if(_hdr_is_generated EQUAL 0)
+      file(RELATIVE_PATH _hdr_rel "${_TFLITE_GENERATED_FBS_ROOT}" "${hdr}")
+    else()
+      file(RELATIVE_PATH _hdr_rel "${TENSORFLOW_SOURCE_DIR}" "${hdr}")
+    endif()
+    get_filename_component(_hdr_dir "${_hdr_rel}" DIRECTORY)
     install(
-      FILES ${hdr}
-      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/tensorflow/lite/${dir}"
+      FILES "${hdr}"
+      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${_hdr_dir}"
     )
   endforeach()
 
