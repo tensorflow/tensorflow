@@ -41,4 +41,5 @@ set(CPUINFO_BUILD_BENCHMARKS OFF CACHE BOOL "Disable cpuinfo micro-benchmarks")
 add_subdirectory(
   "${cpuinfo_SOURCE_DIR}"
   "${cpuinfo_BINARY_DIR}"
+  EXCLUDE_FROM_ALL
 )
