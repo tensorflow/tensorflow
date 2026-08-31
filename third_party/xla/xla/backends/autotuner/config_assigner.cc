@@ -174,49 +174,57 @@ absl::Status ConfigAssigner::AssignConfigs(
     return absl::OkStatus();
   }
 
-  // 2. Shard and get configs for instructions in the current shard.
-  const size_t bucket_size = tsl::MathUtil::CeilOfRatio<size_t>(
-      all_instruction_groups.size(), static_cast<size_t>(total_shards));
-  const size_t start =
-      std::min(bucket_size * my_shard_index, all_instruction_groups.size());
-  const size_t end =
-      std::min(start + bucket_size, all_instruction_groups.size());
-  std::vector<EquivalentInstructions> instruction_groups;
-  instruction_groups.reserve(end - start);
-  for (size_t i = start; i < end; ++i) {
-    instruction_groups.push_back(all_instruction_groups[i]);
-  }
-
-  // 3. Autotune instructions for this shard. Use cached configs if available,
-  // otherwise get and cache the best config.
-  VLOG(1) << "Shard " << my_shard_index << "/" << total_shards
-          << ": finding configs for " << instruction_groups.size() << "/"
-          << all_instruction_groups.size() << " unique instructions ";
-
-  ABSL_ASSIGN_OR_RETURN(std::vector<Config> configs,
-                   GetConfigsForAll(instruction_groups));
-
-  std::vector<const HloInstruction*> autotuned_instructions;
-  autotuned_instructions.reserve(instruction_groups.size());
-  for (int i = 0; i < instruction_groups.size(); ++i) {
-    autotuned_instructions.push_back(instruction_groups[i][0]);
-  }
-  if (autotuner_ != nullptr) {
-    ABSL_RETURN_IF_ERROR(autotuner_->DumpTuningLogs());
-  }
-
-  // 4. Store the results for this shard as a serialized string to the KV store.
   KeyValueStoreInterface& kv_store = *sharding_kv_store.key_value_store;
   const std::string local_key =
       GetKvStoreKey(module, my_shard_index, orchestrator_->codegen_backends(),
                     options_.use_new_cache_format);
-  std::string local_results;
-  if (!autotuned_instructions.empty()) {
-    ABSL_ASSIGN_OR_RETURN(local_results,
-                     optimal_config_cache_->Serialize(autotuned_instructions));
-  }
+
   absl::StatusOr<std::string> stored_result = kv_store.TryGet(local_key);
-  if (stored_result.status().code() == absl::StatusCode::kNotFound) {
+  if (stored_result.ok()) {
+    VLOG(2) << "Results already exist for " << local_key
+            << ", skipping local tuning.";
+    if (!stored_result->empty()) {
+      ABSL_RETURN_IF_ERROR(optimal_config_cache_->Deserialize(*stored_result));
+    }
+  } else if (stored_result.status().code() == absl::StatusCode::kNotFound) {
+    // 2. Shard and get configs for instructions in the current shard.
+    const size_t bucket_size = tsl::MathUtil::CeilOfRatio<size_t>(
+        all_instruction_groups.size(), static_cast<size_t>(total_shards));
+    const size_t start =
+        std::min(bucket_size * my_shard_index, all_instruction_groups.size());
+    const size_t end =
+        std::min(start + bucket_size, all_instruction_groups.size());
+    std::vector<EquivalentInstructions> instruction_groups;
+    instruction_groups.reserve(end - start);
+    for (size_t i = start; i < end; ++i) {
+      instruction_groups.push_back(all_instruction_groups[i]);
+    }
+
+    // 3. Autotune instructions for this shard. Use cached configs if available,
+    // otherwise get and cache the best config.
+    VLOG(1) << "Shard " << my_shard_index << "/" << total_shards
+            << ": finding configs for " << instruction_groups.size() << "/"
+            << all_instruction_groups.size() << " unique instructions ";
+
+    ABSL_ASSIGN_OR_RETURN(std::vector<Config> configs,
+                     GetConfigsForAll(instruction_groups));
+
+    std::vector<const HloInstruction*> autotuned_instructions;
+    autotuned_instructions.reserve(instruction_groups.size());
+    for (int i = 0; i < instruction_groups.size(); ++i) {
+      autotuned_instructions.push_back(instruction_groups[i][0]);
+    }
+    if (autotuner_ != nullptr) {
+      ABSL_RETURN_IF_ERROR(autotuner_->DumpTuningLogs());
+    }
+
+    // 4. Store the results for this shard as a serialized string to the KV
+    // store.
+    std::string local_results;
+    if (!autotuned_instructions.empty()) {
+      ABSL_ASSIGN_OR_RETURN(local_results, optimal_config_cache_->Serialize(
+                                          autotuned_instructions));
+    }
     VLOG(2) << "Storing results for " << local_key;
     absl::Status set_result = kv_store.Set(local_key, local_results);
     if (absl::IsAlreadyExists(set_result)) {
@@ -228,10 +236,8 @@ absl::Status ConfigAssigner::AssignConfigs(
       VLOG(2) << "Shard " << my_shard_index << " stored results at "
               << local_key;
     }
-  } else if (!stored_result.ok()) {
-    return stored_result.status();
   } else {
-    VLOG(2) << "Results already exist for " << local_key << ", skipping store.";
+    return stored_result.status();
   }
 
   // 5. Load the autotune results of other shards from the KV store and update
