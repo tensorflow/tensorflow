@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/transforms/simplifiers/conv_operand_swapper.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
@@ -5422,6 +5423,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
       operand->AddInstruction(HloInstruction::CreateTuple(operands));
   ABSL_RETURN_IF_ERROR(barrier->ReplaceOperandWithDifferentShape(0, new_operand));
   *barrier->mutable_shape() = new_operand->shape();
+  CopyOriginalValue(barrier, barrier, index_map);
+  CopyOriginalValue(operand, new_operand, index_map);
   for (auto use : barrier->users()) {
     CHECK_EQ(use->opcode(), HloOpcode::kGetTupleElement);
     use->set_tuple_index(index_map[use->tuple_index()]);

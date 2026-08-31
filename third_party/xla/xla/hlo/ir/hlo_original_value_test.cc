@@ -500,5 +500,35 @@ TEST_F(OriginalValueHloTest, CopyOriginalValueWithMap) {
               Optional(Eq(OriginalArray{"instA", {0}})));
 }
 
+TEST_F(OriginalValueHloTest, CopyOriginalValueWithVector) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  ROOT tuple = (f32[], f32[], f32[]) tuple(p0, p1, p2), origin={({"p0"}, {"p1"}, {"p2"})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* dest =
+      module->entry_computation()->AddInstruction(HloInstruction::CreateTuple(
+          {root->mutable_operand(2), root->mutable_operand(0)}));
+
+  // Index 0 -> 1, Index 1 is pruned (-1), Index 2 -> 0.
+  std::vector<int64_t> old_to_new_tuple_idx = {1, -1, 0};
+
+  CopyOriginalValue(root, dest, old_to_new_tuple_idx);
+
+  ASSERT_NE(dest->original_value(), nullptr);
+  EXPECT_THAT(dest->original_value()->original_array({0}),
+              Optional(Eq(OriginalArray{"p2"})));
+  EXPECT_THAT(dest->original_value()->original_array({1}),
+              Optional(Eq(OriginalArray{"p0"})));
+}
+
 }  // namespace
 }  // namespace xla
