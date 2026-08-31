@@ -95,6 +95,15 @@ LogicalResult specializeMemorySpace(TypedValue<MemRefType> value,
 // vector ops. This functions inverts the layout erasure applied to the value.
 MemRefType getMemRefType(Value value);
 
+// Expands a shape according to the tiles list, with optional alignment checks.
+FailureOr<SmallVector<int64_t>> getExpandedShape(
+    ArrayRef<int64_t> untiled_shape, ArrayRef<xla::Tile> tiles,
+    bool require_alignment = false);
+
+// Evaluates the expanded strides for the given tiles and tile strides.
+FailureOr<SmallVector<int64_t>> getExpandedStrides(
+    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides);
+
 // Returns the remainder of the given value when divided by the given divisor.
 // Returns nullopt if the remainder is not known.
 std::optional<int64_t> getRemainder(Value val, int64_t divisor,
