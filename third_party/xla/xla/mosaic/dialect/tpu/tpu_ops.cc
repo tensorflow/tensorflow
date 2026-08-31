@@ -591,7 +591,9 @@ struct MemRefSqueezeFoldCast : public OpRewritePattern<MemRefSqueezeOp> {
     }
     for (auto [source_dim, result_dim] :
          llvm::zip(cast_source_type.getShape(), cast_result_type.getShape())) {
-      if (source_dim == result_dim) continue;
+      if (source_dim == result_dim) {
+        continue;
+      }
       if (ShapedType::isDynamic(source_dim) &&
           !ShapedType::isDynamic(result_dim)) {
         // The result type must be more dynamic than the source type.
@@ -847,6 +849,16 @@ LogicalResult StridedLoadOp::verify() {
                                         /*min_stride=*/0);
 }
 
+OpFoldResult StridedLoadOp::fold(FoldAdaptor adaptor) {
+  if (llvm::all_of(getStrides(), [](int32_t s) { return s == 1; })) {
+    OpBuilder builder(*this);
+    return tpu::VectorLoadOp::create(builder, getLoc(), getType(), getBase(),
+                                     getIndices())
+        .getResult();
+  }
+  return nullptr;
+}
+
 LogicalResult StridedStoreOp::verify() {
   return verifyStridedOp<StridedStoreOp>(*this, getBase().getType(),
                                          getValueToStore().getType(),
@@ -869,10 +881,11 @@ LogicalResult verifyStoreOp(Op op) {
       return op.emitError(
           "Not implemented: masked store with non-32-bit element type");
     }
-    if (value_ty.getShape() != op.getMask().getType().getShape())
+    if (value_ty.getShape() != op.getMask().getType().getShape()) {
       return op.emitOpError("Expected mask shape to match result shape: (")
              << value_ty.getShape() << "). Got: ("
              << op.getMask().getType().getShape() << ").";
+    }
   }
   return success();
 }
@@ -1529,15 +1542,16 @@ LogicalResult ScanOp::verify() {
   if (input_ty.getElementType().isInteger(1) &&
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
-  } else if (getKind() != ReductionKind::kSum &&
-             getKind() != ReductionKind::kMax &&
-             getKind() != ReductionKind::kMin) {
+  }
+  if (getKind() != ReductionKind::kSum && getKind() != ReductionKind::kMax &&
+      getKind() != ReductionKind::kMin) {
     return emitOpError("Only sum, max and min reductions are supported.");
   }
 
   if (getMask() == nullptr) {
     return success();
-  } else if (input_ty.getElementType().isInteger(1)) {
+  }
+  if (input_ty.getElementType().isInteger(1)) {
     return emitOpError("Mask is not supported for i1 vector inputs.");
   }
 
@@ -1798,11 +1812,11 @@ LogicalResult EnqueueIndirectDMAOp::verify() {
   if (is_gather) {
     return verifyGather(getOperation(), /*operand_shape=*/source_ty.getShape(),
                         /*offsets_shape=*/offsets_shape,
-                        /*results_memory_space=*/target_ty.getShape());
+                        /*result_shape=*/target_ty.getShape());
   }
-  return verifyScatter(getOperation(), /*updates_ty=*/source_ty.getShape(),
+  return verifyScatter(getOperation(), /*updates_shape=*/source_ty.getShape(),
                        /*offsets_shape=*/offsets_shape,
-                       /*operand_ty=*/target_ty.getShape());
+                       /*operand_shape=*/target_ty.getShape());
 }
 
 void WaitDMA2Op::build(OpBuilder& builder, OperationState& state,
