@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
