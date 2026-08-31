@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1326,7 +1327,17 @@ class TensorArraySplitOp : public OpKernel {
     cumulative_lengths.reserve(num_tensors);
     int64_t total_length = 0;
     for (int i = 0; i < num_tensors; ++i) {
-      total_length += tensor_lengths_t(i);
+      const int64_t length = tensor_lengths_t(i);
+      OP_REQUIRES(ctx, length >= 0,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Expected lengths to be non-negative, but found ",
+                      length, " at index ", i)));
+      const int64_t next_total_length =
+          AddWithoutOverflow(total_length, length);
+      OP_REQUIRES(ctx, next_total_length >= 0,
+                  absl::InvalidArgumentError(
+                      "TensorArraySplit lengths overflowed"));
+      total_length = next_total_length;
       cumulative_lengths.push_back(total_length);
     }
 
