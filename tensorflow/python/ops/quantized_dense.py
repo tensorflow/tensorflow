@@ -50,6 +50,7 @@ class QuantizedDense(module.Module):
             "The last dimension of the inputs to `QuantizedDense` should be"
             " defined."
         )
+      last_dim = int(last_dim)
       # Initialize weights with glorot uniform
       limit = math_ops.sqrt(6.0 / (last_dim + self.units))
       self.kernel = variables.Variable(
