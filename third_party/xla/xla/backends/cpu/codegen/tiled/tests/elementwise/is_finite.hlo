@@ -31,7 +31,7 @@
 // CHECK-VECTOR-SAME:     %[[OUT:[^:]+]]: memref<1x9xi8>,
 // CHECK-VECTOR-SAME:     %[[PID:[^:]+]]: index)
 // CHECK-VECTOR:        %[[ALLOCA_ARG:.*]] = memref.alloca() : memref<1x16xf16>
-// CHECK-VECTOR:        %[[ALLOCA_OUT:.*]] = memref.alloca() {{{.*}}} : memref<1x16xi8>
+// CHECK-VECTOR:        %[[ALLOCA_OUT:.*]] = memref.alloca() alignment = 64 : memref<1x16xi8>
 // CHECK-VECTOR:        memref.copy %[[ARG]],
 // CHECK-VECTOR:        scf.for
 // CHECK-VECTOR:          %[[READ:.*]] = vector.transfer_read %[[ALLOCA_ARG]]{{.*}} : memref<1x16xf16>, vector<8xf16>
