@@ -16,10 +16,10 @@ limitations under the License.
 
 #include <Python.h>
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -517,8 +517,20 @@ std::vector<std::string> RetrieveCollectedErrors() {
 }
 
 std::string FlatBufferFileToMlir(const std::string& model,
-                                 bool input_is_filepath) {
-  return ::tensorflow::FlatBufferFileToMlir(model, input_is_filepath);
+                                 bool input_is_filepath, bool bytecode,
+                                 const std::vector<std::string>& cl_options) {
+  return ::tensorflow::FlatBufferFileToMlir(model, input_is_filepath, bytecode,
+                                            cl_options);
+}
+
+std::string MlirToFlatBufferFile(const std::string& mlir,
+                                 bool input_is_filepath,
+                                 bool emit_builtin_tflite_ops,
+                                 bool emit_select_tf_ops, bool emit_custom_ops,
+                                 bool emit_stablehlo_ops) {
+  return ::tensorflow::MlirToFlatBufferFile(
+      mlir, input_is_filepath, emit_builtin_tflite_ops, emit_select_tf_ops,
+      emit_custom_ops, emit_stablehlo_ops);
 }
 
 PyObject* ConvertMlirBytecode(PyObject* converter_flags_proto_txt_raw,
