@@ -672,7 +672,7 @@ void StreamExecutorGpuRawClient::ScheduleTransfersOnLocalDevice(
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
         absl::StrFormat(
-            "[%v] StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice",
+            "[%v] StreamExecutorGpuRawClient::ScheduleTransfersOnLocalDevice",
             local_device_state->local_device_id()),
         {{"num_buffers", transfer_specs.size()}});
   });
@@ -1887,7 +1887,7 @@ const int StreamExecutorGpuHbmMemorySpace::kKindId = []() {
   return static_cast<int>(kind_id);
 }();
 
-std::unique_ptr<StreamExecutorGpuClient> MakeStreamExecutorGpuClient(
+std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
     std::string platform_name,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
@@ -1900,7 +1900,7 @@ std::unique_ptr<StreamExecutorGpuClient> MakeStreamExecutorGpuClient(
   attrs.pjrt_c_api_minor_version = 0;
   attrs.attributes["serialize_with_sdy"] = true;
   attrs.attributes["supports_cross_host_transfers"] = PjRtValueType(true);
-  auto result = std::make_unique<StreamExecutorGpuClient>(
+  auto result = std::make_unique<PjRtStreamExecutorClient>(
       tsl::Fingerprint64(platform_name), platform_name, platform_version,
       process_index, std::move(topology), std::move(raw_client),
       std::move(kv_store), std::move(attrs));

@@ -31,6 +31,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -65,6 +66,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/device_assignment.h"
 #include "xla/shape.h"
@@ -968,10 +970,11 @@ TEST(PjrtCApiGpuExtensionTest,
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_EQ(error, nullptr) << GetErrorMessage(error, api);
 
-  xla::PjRtClient* cpp_client = create_arg.client->client.get();
-  auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
+  auto* gpu_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+      absl::down_cast<xla::CommonPjRtClient*>(create_arg.client->client.get())
+          ->raw_client());
   std::vector<float> data(4, 0.0f);
-  EXPECT_TRUE(gpu_client->raw_client()->ShouldStageHostToDeviceTransfers(
+  EXPECT_TRUE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
@@ -1008,10 +1011,11 @@ TEST(PjrtCApiGpuExtensionTest,
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_EQ(error, nullptr) << GetErrorMessage(error, api);
 
-  xla::PjRtClient* cpp_client = create_arg.client->client.get();
-  auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
+  auto* gpu_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+      absl::down_cast<xla::CommonPjRtClient*>(create_arg.client->client.get())
+          ->raw_client());
   std::vector<float> data(4, 0.0f);
-  EXPECT_FALSE(gpu_client->raw_client()->ShouldStageHostToDeviceTransfers(
+  EXPECT_FALSE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
