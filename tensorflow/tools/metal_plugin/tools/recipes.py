@@ -1,3 +1,17 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 """Calls for the ops whose inputs are too structured to guess.
 
 Every recipe is a dict of keyword arguments for tf.raw_ops. The sweep runs the
@@ -377,7 +391,9 @@ def _more():
   f = lambda *s: tf.constant(RNG.standard_normal(s, dtype=np.float32))
   u = lambda *s: tf.constant(RNG.random(s).astype(np.float32) * 0.9 + 0.05)
   small = u(6, 5)
-  square = tf.constant(RNG.random((5, 5)).astype(np.float32) + np.eye(5, dtype=np.float32) * 4)
+  # Diagonally dominant, so the factorisations have something to find.
+  square = tf.constant(RNG.random((5, 5)).astype(np.float32) +
+                       np.eye(5, dtype=np.float32) * 4)
   symmetric = tf.constant(((square + tf.transpose(square)) / 2).numpy())
   complex_1d = tf.complex(f(2, 8), f(2, 8))
   complex_2d = tf.complex(f(2, 4, 8), f(2, 4, 8))
@@ -761,9 +777,10 @@ def cudnn_rnn_checks():
     biases = [f(units) for _ in range(8)]
     sequence = f(steps, batch, inputs)
     state = f(layers, batch, units)
-  size = 4 * units * inputs * 4 + 4 * units * units * 4 + 8 * units
-  size = len(weights[0].numpy().ravel()) * 4 + len(weights[4].numpy().ravel()) * 4 \
-      + sum(len(b.numpy()) for b in biases)
+  # Four input matrices, four recurrent ones, and every bias.
+  size = (len(weights[0].numpy().ravel()) * 4 +
+          len(weights[4].numpy().ravel()) * 4 +
+          sum(len(b.numpy()) for b in biases))
   with tf.device("/GPU:0"):
     params = tf.raw_ops.CudnnRNNCanonicalToParams(
         num_layers=layers, num_units=units, input_size=inputs,

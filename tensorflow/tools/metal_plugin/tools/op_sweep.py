@@ -1,3 +1,17 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 """Runs every op the backend registers and compares it to the CPU kernel.
 
 The point is the difference between registered and working. A kernel that
@@ -16,7 +30,6 @@ bad recipes as bugs is worse than no sweep.
 import argparse
 import os
 import sys
-import traceback
 
 import collections
 
@@ -126,8 +139,8 @@ BY_SIGNATURE = {
     ("input", "diagonal"): lambda d: {"input": tf.constant(SAFE[:5, :5]),
                                       "diagonal": tf.constant(SAFE[0][:5])},
     ("matrix", "rhs"): lambda d: {
-        "matrix": tf.constant(np.tril(SAFE[:5, :5]) + 2.0 * np.eye(5,
-                                                                   dtype=np.float32)),
+        "matrix": tf.constant(np.tril(SAFE[:5, :5]) +
+                              2.0 * np.eye(5, dtype=np.float32)),
         "rhs": tf.constant(SAFE[:5, :3])},
     ("t", "clip_value_min", "clip_value_max"): lambda d: {
         "t": tf.constant(SIGNED), "clip_value_min": -0.5,
@@ -136,7 +149,8 @@ BY_SIGNATURE = {
         "condition": tf.constant(BOOL), "t": tf.constant(SAFE),
         "e": tf.constant(SAFE2)},
     ("data", "segment_ids"): lambda d: {
-        "data": tf.constant(SAFE), "segment_ids": tf.constant([0, 0, 1, 1, 2, 2])},
+        "data": tf.constant(SAFE),
+        "segment_ids": tf.constant([0, 0, 1, 1, 2, 2])},
     ("data", "segment_ids", "num_segments"): lambda d: {
         "data": tf.constant(SAFE),
         "segment_ids": tf.constant([0, 0, 1, 1, 2, 2]), "num_segments": 3},
@@ -335,7 +349,8 @@ def check_cudnn_rnn(name, kwargs, outputs):
     return int(first) == expected, f"{int(first)} floats, as the layout implies"
   if "CanonicalToParams" in name:
     expected = kwargs.pop("_expected_size")
-    return int(first.shape[0]) == expected, f"packs {int(first.shape[0])} floats"
+    return (int(first.shape[0]) == expected,
+            f"packs {int(first.shape[0])} floats")
   if "ParamsToCanonical" in name:
     original = kwargs.pop("_canonical")
     got = flatten_deep(outputs)
@@ -572,7 +587,8 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument("--ops", default=os.path.join(HERE, "metal_ops.txt"))
   parser.add_argument("--plugin",
-                      default=os.path.join(ROOT, "build", "libmetal_plugin.dylib"))
+                      default=os.path.join(ROOT, "build",
+                                           "libmetal_plugin.dylib"))
   parser.add_argument("--only", default=None)
   args = parser.parse_args()
 
