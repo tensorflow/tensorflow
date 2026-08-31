@@ -946,6 +946,70 @@ TEST_F(HloVerifierTest, ConvNegativeBaseDilationNotAllowed) {
               HasSubstr("non-positive base area dilation factor"));
 }
 
+TEST_F(HloVerifierTest, ConvBlockScalingConfigScaleIdxOutOfBoundsNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kConvHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_rhs()->set_scale_idx(5);
+  conv->set_block_scaling_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Block scaling scale_idx for rhs 5 out of bounds"));
+}
+
+TEST_F(HloVerifierTest, ConvBlockScalingConfigScaleIdxZeroNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kConvHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_lhs()->set_scale_idx(0);
+  conv->set_block_scaling_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Block scaling scale_idx for lhs 0 out of bounds"));
+}
+
+static const char* const kConvWith4OperandsHloString = R"(
+HloModule module
+ENTRY entry_computation {
+  param0 = f16[128,128,56,56] parameter(0)
+  param1 = f16[3,3,128,128] parameter(1)
+  param2 = f8e8m0fnu[128,128,56,56] parameter(2)
+  param3 = f8e8m0fnu[3,3,128,128] parameter(3)
+  ROOT conv = f16[128,128,28,28] convolution(param0, param1, param2, param3),
+    window={size=3x3 stride=2x2}, dim_labels=bf01_01io->bf01
+})";
+
+TEST_F(HloVerifierTest, ConvBlockScalingConfigSameScaleAndZeroIdxNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kConvWith4OperandsHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_lhs()->set_scale_idx(2);
+  config.mutable_lhs()->set_zero_idx(2);
+  conv->set_block_scaling_config(config);
+
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().message(),
+      HasSubstr(
+          "LHS block scaling scale_idx and zero_idx cannot be the same (2)"));
+}
+
+TEST_F(HloVerifierTest, ConvBlockScalingConfigLhsAndRhsSameScaleIdxNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kConvWith4OperandsHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_lhs()->set_scale_idx(2);
+  config.mutable_rhs()->set_scale_idx(2);
+  conv->set_block_scaling_config(config);
+
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().message(),
+      HasSubstr("LHS and RHS block scaling scale_idx cannot be the same (2)"));
+}
+
 static const char* const kAddWithLayoutChangeHlo = R"(
    HloModule AddWithLayoutChange
     ENTRY AddWithLayoutChange {

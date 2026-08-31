@@ -150,6 +150,60 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
       R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %lhs_indices, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1 idx=2} rhs={sparsity=1x4 dimension=0 stride=1 idx=3}})");
 }
 
+TEST_F(HloInstructionTest, BlockScalingConfigToString) {
+  {
+    BlockScalingConfig config;
+    EXPECT_EQ(BlockScalingConfigToString(config), "");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    // Unpopulated zero_idx, strides, steps
+    EXPECT_EQ(BlockScalingConfigToString(config), "lhs={scale_idx=2}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(0);
+    // zero_idx set to 0 should be printed when has_zero_idx() is true.
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "lhs={scale_idx=2 zero_idx=0}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(3);
+    config.mutable_lhs()->add_strides(1);
+    config.mutable_lhs()->add_strides(4);
+    config.mutable_lhs()->add_steps(1);
+    config.mutable_lhs()->add_steps(2);
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "lhs={scale_idx=2 zero_idx=3 strides=1x4 steps=1x2}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_rhs()->set_scale_idx(3);
+    config.mutable_rhs()->add_strides(2);
+    config.mutable_rhs()->add_strides(4);
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "rhs={scale_idx=3 strides=2x4}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(0);
+    config.mutable_lhs()->add_strides(1);
+    config.mutable_rhs()->set_scale_idx(3);
+    config.mutable_rhs()->set_zero_idx(1);
+    config.mutable_rhs()->add_strides(2);
+    config.mutable_rhs()->add_steps(4);
+    EXPECT_EQ(
+        BlockScalingConfigToString(config),
+        "lhs={scale_idx=2 zero_idx=0 strides=1} rhs={scale_idx=3 zero_idx=1 "
+        "strides=2 steps=4}");
+  }
+}
+
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder("main");

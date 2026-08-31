@@ -128,7 +128,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 101
+// Next ID: 102
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -436,6 +436,9 @@ message HloInstructionProto {
   // For collective-broadcast: indicates the last operand is a scalar
   // root rank index rather than a data tensor to broadcast.
   bool has_dynamic_root = 100;
+
+  // Convolution block scaling config.
+  BlockScalingConfig block_scaling_config = 101;
 }
 
 // Serialization of HloComputation.

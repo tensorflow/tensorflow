@@ -7315,6 +7315,71 @@ TEST_F(HloParserTest, SparsityConfig_Both) {
   EXPECT_EQ(config.rhs().stride(), 1);
 }
 
+TEST_F(HloParserTest, BlockScalingConfig_RHSOnly) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %scale = f32[2,1] parameter(2)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %scale), dim_labels=bf_io->bf,
+      block_scaling_config={rhs={scale_idx=2 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.rhs().scale_idx(), 2);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_Both) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %lhs_scale = f32[1,1] parameter(2)
+    %rhs_scale = f32[2,1] parameter(3)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), dim_labels=bf_io->bf,
+      block_scaling_config={lhs={scale_idx=2 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.lhs().scale_idx(), 2);
+  EXPECT_THAT(config.lhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.lhs().steps(), ::testing::ElementsAre(1, 1));
+  EXPECT_EQ(config.rhs().scale_idx(), 3);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_RoundTrip) {
+  const char* const hlo_string = R"(
+HloModule BlockScalingConfigModule
+ENTRY BlockScalingConfig {
+  %input = f32[1,2] parameter(0)
+  %filter = f32[2,2] parameter(1)
+  %lhs_scale = f32[1,1] parameter(2)
+  %rhs_scale = f32[2,1] parameter(3)
+  ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), window={size=1x1}, dim_labels=bf_io->bf, block_scaling_config={lhs={scale_idx=2 zero_idx=3 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto config_before =
+      module->entry_computation()->root_instruction()->block_scaling_config();
+  std::string printed = module->ToString();
+  ASSERT_OK_AND_ASSIGN(auto parsed_module,
+                       ParseAndReturnUnverifiedModule(printed));
+  auto config_after = parsed_module->entry_computation()
+                          ->root_instruction()
+                          ->block_scaling_config();
+  EXPECT_EQ(config_after.DebugString(), config_before.DebugString());
+}
+
 TEST_F(HloParserTest, DesugarParsingTest_DotStart) {
   const char* const hlo = R"(
 HloModule async_dot_example

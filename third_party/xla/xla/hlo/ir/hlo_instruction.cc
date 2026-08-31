@@ -1022,12 +1022,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction = CreateConvolve(
-          shape, all_operands(),
-          std::max<int64_t>(proto.feature_group_count(), 1),
-          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
-          proto.convolution_dimension_numbers(), precision_config,
-          proto.sparsity_config(), proto.conv_kind());
+      instruction =
+          CreateConvolve(shape, all_operands(),
+                         std::max<int64_t>(proto.feature_group_count(), 1),
+                         std::max<int64_t>(proto.batch_group_count(), 1),
+                         proto.window(), proto.convolution_dimension_numbers(),
+                         precision_config, proto.sparsity_config(),
+                         proto.block_scaling_config(), proto.conv_kind());
       break;
     }
     case HloOpcode::kReduceWindow:
@@ -1685,10 +1686,13 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind) {
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config,
+    ConvolutionKind convolution_kind) {
   return std::make_unique<HloConvolutionInstruction>(
       shape, operands, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config, sparsity_config, convolution_kind);
+      dimension_numbers, precision_config, sparsity_config,
+      block_scaling_config, convolution_kind);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -5726,6 +5730,46 @@ std::string SparsityConfigToString(const SparsityConfig& sparsity_config) {
   return StrJoin(result, " ");
 }
 
+std::string BlockScalingConfigToString(
+    const BlockScalingConfig& block_scaling_config) {
+  std::vector<std::string> result;
+  if (block_scaling_config.has_lhs()) {
+    std::string lhs_str =
+        StrCat("lhs={scale_idx=", block_scaling_config.lhs().scale_idx());
+    if (block_scaling_config.lhs().has_zero_idx()) {
+      StrAppend(&lhs_str, " zero_idx=", block_scaling_config.lhs().zero_idx());
+    }
+    if (!block_scaling_config.lhs().strides().empty()) {
+      StrAppend(&lhs_str, " strides=",
+                StrJoin(block_scaling_config.lhs().strides(), "x"));
+    }
+    if (!block_scaling_config.lhs().steps().empty()) {
+      StrAppend(&lhs_str,
+                " steps=", StrJoin(block_scaling_config.lhs().steps(), "x"));
+    }
+    StrAppend(&lhs_str, "}");
+    result.push_back(lhs_str);
+  }
+  if (block_scaling_config.has_rhs()) {
+    std::string rhs_str =
+        StrCat("rhs={scale_idx=", block_scaling_config.rhs().scale_idx());
+    if (block_scaling_config.rhs().has_zero_idx()) {
+      StrAppend(&rhs_str, " zero_idx=", block_scaling_config.rhs().zero_idx());
+    }
+    if (!block_scaling_config.rhs().strides().empty()) {
+      StrAppend(&rhs_str, " strides=",
+                StrJoin(block_scaling_config.rhs().strides(), "x"));
+    }
+    if (!block_scaling_config.rhs().steps().empty()) {
+      StrAppend(&rhs_str,
+                " steps=", StrJoin(block_scaling_config.rhs().steps(), "x"));
+    }
+    StrAppend(&rhs_str, "}");
+    result.push_back(rhs_str);
+  }
+  return StrJoin(result, " ");
+}
+
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
   auto len_required = [](int64_t a, int64_t b, absl::Span<const int64_t> cs) {
@@ -6377,6 +6421,16 @@ const SparsityConfig& HloInstruction::sparsity_config() const {
 void HloInstruction::set_sparsity_config(
     const SparsityConfig& sparsity_config) {
   Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
+}
+
+const BlockScalingConfig& HloInstruction::block_scaling_config() const {
+  return Cast<HloConvolutionInstruction>(this)->block_scaling_config();
+}
+
+void HloInstruction::set_block_scaling_config(
+    const BlockScalingConfig& block_scaling_config) {
+  Cast<HloConvolutionInstruction>(this)->set_block_scaling_config(
+      block_scaling_config);
 }
 
 const DomainMetadata& HloInstruction::operand_side_metadata() const {
