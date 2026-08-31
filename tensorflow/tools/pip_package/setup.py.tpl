@@ -107,7 +107,6 @@ REQUIRED_PACKAGES = [
     'packaging',
     'protobuf >= 6.31.1, < 8.0.0',
     'requests >= 2.21.0, < 3',
-    'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
