@@ -478,6 +478,7 @@ if(TFLITE_ENABLE_GPU)
     )
     add_library(metal_delegate STATIC
       ${TFLITE_DELEGATES_METAL_SRCS}
+      "${_TFLITE_GENERATED_FBS_ROOT}/tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
     )
     target_include_directories(metal_delegate PUBLIC
       ${CMAKE_BINARY_DIR}/abseil-cpp
