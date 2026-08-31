@@ -423,6 +423,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
     )
     self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
 
+  def testDiffErrorMessage(self):
+    # Verify the error message for negative n mentions the parameter correctly.
+    x = np_array_ops.array([1, 2, 3])
+    with self.assertRaisesRegex(
+        ValueError,
+        r'Argument `n` must be a non-negative integer\. Received: n=-1',
+    ):
+      np_math_ops.diff(x, n=-1)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
