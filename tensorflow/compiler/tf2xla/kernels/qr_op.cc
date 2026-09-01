@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/qr.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace {
@@ -29,6 +32,14 @@ class QROp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("full_matrices", &full_matrices_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
+    // The rank is only known at compile time when the graph-level shape
+    // inference saw an unknown rank, so it must be validated here before
+    // QrExplicit reads the trailing two dimensions.
+    const TensorShape input_shape = ctx->InputShape(0);
+    OP_REQUIRES(ctx, input_shape.dims() >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input must have rank >= 2, got shape ",
+                                 input_shape.DebugString())));
     xla::XlaOp q, r;
     xla::QrExplicit(ctx->Input(0), full_matrices_, q, r);
     ctx->SetOutput(0, q);
