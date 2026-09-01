@@ -216,6 +216,13 @@ class TensorScatterOp : public ScatterOpBase<Device> {
 
     const int64_t outer_dims = indices.shape().dims() - 1;
 
+    OP_REQUIRES(
+        c, updates.shape().dims() >= outer_dims,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Outer dimensions of indices and update must match. "
+            "Indices shape: ", indices.shape().DebugString(),
+            ", updates shape: ", updates.shape().DebugString())));
+
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
                   absl::InvalidArgumentError(absl::StrCat(
