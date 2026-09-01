@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,7 +56,9 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -87,9 +88,9 @@ HloInstruction* GetNonBitcastRoot(const HloComputation* computation) {
   return root;
 }
 
-class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+class TritonTestBase : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
-  TritonTest() = default;
+  TritonTestBase() = default;
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
@@ -134,6 +135,16 @@ class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
   mlir::MLIRContext mlir_context_;
 };
 
+class TritonTest : public TritonTestBase,
+                   public ::testing::WithParamInterface<bool> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_gemm_fusion_v2(GetParam());
+    return debug_options;
+  }
+};
+
 class TritonGemmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -158,7 +169,16 @@ class TritonGemmTest : public TritonTest {
   }
 };
 
-TEST_F(TritonTest, TestGemmWithTrivialNonContractingDimension) {
+std::string GemmFusionVersionName(const ::testing::TestParamInfo<bool>& info) {
+  return info.param ? "GemmFusionV2" : "GemmFusionV1";
+}
+
+INSTANTIATE_TEST_SUITE_P(All, TritonTest, ::testing::Bool(),
+                         GemmFusionVersionName);
+INSTANTIATE_TEST_SUITE_P(All, TritonGemmTest, ::testing::Bool(),
+                         GemmFusionVersionName);
+
+TEST_P(TritonTest, TestGemmWithTrivialNonContractingDimension) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -189,7 +209,7 @@ CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x16xf32> -> tensor<16x16xf32
 )"));
 }
 
-TEST_F(TritonTest, PredParametersAreTruncatedToI1) {
+TEST_P(TritonTest, PredParametersAreTruncatedToI1) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -233,7 +253,7 @@ CHECK: %{{.*}} = arith.andi %[[CMPI]], %{{.*}} : tensor<16x16xi1>
 )"));
 }
 
-TEST_F(TritonTest, CodegenBatchedDotWithConcatenationWithCorrectBatchStride) {
+TEST_P(TritonTest, CodegenBatchedDotWithConcatenationWithCorrectBatchStride) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -270,7 +290,7 @@ CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonTest, DISABLED_CodegenDynamicSliceWithCorrectOffsets) {
+TEST_P(TritonTest, DISABLED_CodegenDynamicSliceWithCorrectOffsets) {
   // TODO(b/417172838): we now should support non-majormost dimensions, port
   // this test to fusion_emitter_device_test with that support.
 
@@ -325,7 +345,7 @@ ENTRY e {
   )"));
 }
 
-TEST_F(TritonGemmTest, DoNotUseTensorCoresWithHighestPrecision) {
+TEST_P(TritonGemmTest, DoNotUseTensorCoresWithHighestPrecision) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
@@ -355,7 +375,7 @@ CHECK-NOT: mma
 )");
 }
 
-TEST_F(TritonGemmTest, UseTensorCoresWithHighPrecision) {
+TEST_P(TritonGemmTest, UseTensorCoresWithHighPrecision) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
@@ -385,7 +405,7 @@ CHECK: mma
 )");
 }
 
-TEST_F(TritonGemmTest, DebugOptionsArePropagated) {
+TEST_P(TritonGemmTest, DebugOptionsArePropagated) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[30,30] parameter(0)
@@ -423,7 +443,7 @@ ENTRY e {
   EXPECT_GT(file_size, 10);
 }
 
-TEST_F(TritonGemmTest, DotWithPredFromCompareProducesCorrectResult) {
+TEST_P(TritonGemmTest, DotWithPredFromCompareProducesCorrectResult) {
   constexpr absl::string_view kHloText = R"(
 triton_dot {
   parameter_0 = s32[4,128]{1,0} parameter(0)
@@ -449,7 +469,7 @@ ENTRY main {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
+TEST_P(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = f16[80,15]{1,0} parameter(0)
@@ -479,7 +499,7 @@ CHECK: mma
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
-TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
+TEST_P(TritonGemmTest, FailIfTooMuchShmem) {
   auto cc = se::CudaComputeCapability::Ampere();
   const se::DeviceDescription device_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -536,7 +556,7 @@ ENTRY entry {
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
 
-TEST_F(TritonGemmTest, MultipleDims) {
+TEST_P(TritonGemmTest, MultipleDims) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -559,7 +579,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, MultipleBatchDimensions) {
+TEST_P(TritonGemmTest, MultipleBatchDimensions) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -593,7 +613,7 @@ ENTRY e {
       std::move(module), ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
 
-TEST_F(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
+TEST_P(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
   constexpr absl::string_view kHloText = R"(
 triton_dot {
   p0 = pred[8,640]{1,0} parameter(0)
@@ -622,7 +642,7 @@ ENTRY e {
 // TODO: b/422676780 - Enable the tests once the indexing maps-based tiling is
 // deprecated. The test is disabled after we remove TransposeDimensionGrouper
 // pass, because the infra currently requires grouping of adjacent dimensions.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontractingTransposeRhs) {
+TEST_P(TritonGemmTest, DISABLED_SplitLhsNoncontractingTransposeRhs) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -650,7 +670,7 @@ ENTRY e {
 // TODO: b/422676780 - Enable the tests once the indexing maps-based tiling is
 // deprecated. The test is disabled after we remove TransposeDimensionGrouper
 // pass, because the infra currently requires grouping of adjacent dimensions.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontracting) {
+TEST_P(TritonGemmTest, DISABLED_SplitLhsNoncontracting) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[72,72] parameter(0)
@@ -677,7 +697,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, SplitAndTransposeLhsExecutesCorrectly) {
+TEST_P(TritonGemmTest, SplitAndTransposeLhsExecutesCorrectly) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -710,7 +730,7 @@ ENTRY e {
 // TODO(b/393299275): it's not clear that this test is actually testing what it
 // claims to be testing. It should either be rewritten to start from
 // post-optimization HLO, or hoisted out to test the fusion logic specifically.
-TEST_F(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
+TEST_P(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
   constexpr absl::string_view kHloText = R"(
 ENTRY r {
   p1 = f16[3,10,128]{2,1,0} parameter(1)
@@ -723,10 +743,10 @@ ENTRY r {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
+; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter
 ; CHECK: %[[cv:.*]] = f32[10,3,128]{2,0,1} convert(%[[p0]])
 ; CHECK: %[[tr:.*]] = f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
-; CHECK: %[[p1:.*]] = f32[3,10,123]{2,1,0} parameter(1)
+; CHECK: %[[p1:.*]] = f32[3,10,123]{2,1,0} parameter
 ; CHECK: f32[3,128,123]{2,1,0} dot(%[[tr]], %[[p1]])
 )");
 
@@ -735,7 +755,7 @@ ENTRY r {
 
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
 // a separate, fusion-specific, deviceless test.
-TEST_F(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
+TEST_P(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -761,7 +781,7 @@ ENTRY e {
 
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
 // a separate, fusion-specific, deviceless test.
-TEST_F(TritonGemmTest, DoNotFuseSplitLhsContractingTranspose) {
+TEST_P(TritonGemmTest, DoNotFuseSplitLhsContractingTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -788,7 +808,7 @@ ENTRY e {
 // TODO(b/393299275): this test should be rewritten to start from
 // post-optimization HLO. (Though I'm not entirely sure it's even worth keeping
 // it.)
-TEST_F(TritonGemmTest, NonMajorMostInputBatchWorksCorrectly) {
+TEST_P(TritonGemmTest, NonMajorMostInputBatchWorksCorrectly) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -815,7 +835,7 @@ ENTRY e {
 
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
 // a separate, fusion-specific, deviceless test.
-TEST_F(TritonGemmTest, DoNotFuseArbitraryReshape) {
+TEST_P(TritonGemmTest, DoNotFuseArbitraryReshape) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -838,36 +858,12 @@ ENTRY e {
 )");
 }
 
-TEST_F(TritonGemmTest, MultipleBatchRequireSeparateTranspose) {
-  constexpr absl::string_view kHloText = R"(
-HloModule m
-
-ENTRY e {
-  Arg_0 = f16[3,4,2,5,4] parameter(0)
-  c = f32[3,4,2,5,4] convert(Arg_0)
-  Arg_1 = f32[5,3,4,3,2] parameter(1)
-  ROOT dot.3 = f32[5,3,4,4,3] dot(c, Arg_1),
-    lhs_batch_dims={3,0,1}, lhs_contracting_dims={2},
-    rhs_batch_dims={0,1,2}, rhs_contracting_dims={4}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ROOT
-; CHECK: transpose(
-; CHECK: bitcast(
-; CHECK: kCustom
-; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
-}
-
 // This tests the complexity heuristics in TritonWrapper.
 // TODO(b/393299275): this is not worth keeping as a codegen test. Really, we
 // should not reject tilings that are slow/spill in codegen. If this has use in
 // autotuning, then this should be tested/called in the autotuner.
 // The generic Triton emitter does not want to deal with this.
-TEST_F(TritonGemmTest, DISABLED_FailForTooComplexTiling) {
+TEST_P(TritonGemmTest, DISABLED_FailForTooComplexTiling) {
   auto cc = se::CudaComputeCapability::Ampere();
   const se::DeviceDescription device_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -928,7 +924,7 @@ ENTRY entry {
 // TODO(b/393299275): this test may have some value while Triton tiling
 // propagation is being replaced, but has little worth as a codegen test.
 // Consider moving this.
-TEST_F(TritonGemmTest,
+TEST_P(TritonGemmTest,
        BroadcastsOfTriviallySizedNonContractingDimensionsAreSupported) {
   constexpr absl::string_view kHloText = R"(
 f {
@@ -963,7 +959,7 @@ e {
 // TODO(b/393299275): this test may have some value while Triton tiling
 // propagation is being replaced, but has little worth as a codegen test.
 // Consider moving this.
-TEST_F(TritonGemmTest,
+TEST_P(TritonGemmTest,
        BroadcastsOfTriviallySizedContractingDimensionsAreSupported) {
   constexpr absl::string_view kHloText = R"(
 f {
@@ -994,7 +990,7 @@ e {
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
+TEST_P(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
   // is not strictly needed, because we also support clamping the indices.
@@ -1029,7 +1025,7 @@ ENTRY e {
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInRhs) {
+TEST_P(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInRhs) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
@@ -1067,7 +1063,7 @@ ENTRY e {
 }
 
 class TritonGemmDynamicSliceClampingTest
-    : public TritonTest,
+    : public TritonTestBase,
       public ::testing::WithParamInterface<int> {};
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
@@ -1122,7 +1118,7 @@ INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
                          ::testing::Values(-100, 3, 999), OffsetParamToString);
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest,
+TEST_P(TritonGemmTest,
        DISABLED_DynamicSliceOfMajormostContractingDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is contracted.
@@ -1163,7 +1159,7 @@ ENTRY e {
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceOfMajormostBatchDimIsSupported) {
+TEST_P(TritonGemmTest, DISABLED_DynamicSliceOfMajormostBatchDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is a batch.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1208,7 +1204,7 @@ ENTRY e {
 }
 
 // TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest,
+TEST_P(TritonGemmTest,
        DISABLED_DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // This directly tests the targeted use case (b/307922364) of iterating over
   // layer weights and extracting them with dynamic slice.
@@ -1253,7 +1249,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, DoNotFuseConcatenationOfSplitNonContractingDimension) {
+TEST_P(TritonGemmTest, DoNotFuseConcatenationOfSplitNonContractingDimension) {
   if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
@@ -1283,7 +1279,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, BinaryOperationWithSmallInputsIsFused) {
+TEST_P(TritonGemmTest, BinaryOperationWithSmallInputsIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1307,7 +1303,7 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
-TEST_F(TritonGemmTest, BinaryOperationWithLargeInputsIsNotFused) {
+TEST_P(TritonGemmTest, BinaryOperationWithLargeInputsIsNotFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1336,7 +1332,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(TritonGemmTest, ParametersWithDifferentLayoutsAreSupportedInOneScope) {
+TEST_P(TritonGemmTest, ParametersWithDifferentLayoutsAreSupportedInOneScope) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = s8[5,3] parameter(0)
@@ -1357,7 +1353,7 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
-TEST_F(TritonGemmTest, BinaryOperationOnLargeParametersIsFused) {
+TEST_P(TritonGemmTest, BinaryOperationOnLargeParametersIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1380,45 +1376,55 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
-TEST_F(TritonGemmTest, LinkingLibdeviceTwiceWorks) {
-  // TODO(b/393299275): This test looks weird. It's testing the whole
-  // optimization pipeline end-to-end to check that linking libdevice twice
-  // works? rewrite this to just use post-optimization HLO
+TEST_P(TritonGemmTest, LinkingLibdeviceTwiceWorks) {
   constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_dot_0 {
+  p0 = s8[7,3]{1,0} parameter(0)
+  c0 = f32[7,3]{1,0} convert(p0)
+  p1 = f32[3,16]{1,0} parameter(1)
+  e1 = f32[3,16]{1,0} exponential(p1)
+  ROOT d0 = f32[7,16]{1,0} dot(c0, e1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+triton_dot_1 {
+  p0 = s8[7,3]{1,0} parameter(0)
+  c0 = f32[7,3]{1,0} convert(p0)
+  e0 = f32[7,3]{1,0} exponential(c0)
+  p1 = f32[3,16]{1,0} parameter(1)
+  ROOT d1 = f32[7,16]{1,0} dot(e0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
 ENTRY e {
-  p0 = s8[7,3] parameter(0)
-  c0 = f32[7,3] convert(p0)
-  p1 = f32[3,16] parameter(1)
-  e1 = f32[3,16] exponential(p1)
-  d0 = f32[7,16] dot(c0, e1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  p2 = s8[7,3] parameter(2)
-  c2 = f32[7,3] convert(p2)
-  e2 = f32[7,3] exponential(c2)
-  p3 = f32[3,16] parameter(3)
-  d1 = f32[7,16] dot(e2, p3),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT a = f32[7,16] add(d0, d1)
+  p0 = s8[7,3]{1,0} parameter(0)
+  p1 = f32[3,16]{1,0} parameter(1)
+  p2 = s8[7,3]{1,0} parameter(2)
+  p3 = f32[3,16]{1,0} parameter(3)
+  f0 = f32[7,16]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot_0,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config: {"block_m":16,"block_n":16,"block_k":16,"num_stages":1,"num_warps":2,"num_ctas":1}}}
+  f1 = f32[7,16]{1,0} fusion(p2, p3), kind=kCustom, calls=triton_dot_1,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config: {"block_m":16,"block_n":16,"block_k":16,"num_stages":1,"num_warps":2,"num_ctas":1}}}
+  ROOT a = f32[7,16]{1,0} add(f0, f1)
 })";
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       GetOptimizedModule(kHloText));
-
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Fusion(m::Fusion(m::Parameter(), m::Parameter())
-                        .WithFusionKind(HloInstruction::FusionKind::kCustom),
-                    m::Fusion(m::Parameter(), m::Parameter())
-                        .WithFusionKind(HloInstruction::FusionKind::kCustom))
-              .WithFusionKind(HloInstruction::FusionKind::kLoop)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(bool converted, ConvertTritonGemmConfig(
+                                           device_description(), &mlir_context_)
+                                           .Run(module.get()));
+  EXPECT_TRUE(converted);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, BroadcastOfScalarParameterIsFused) {
+TEST_P(TritonGemmTest, BroadcastOfScalarParameterIsFused) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[64,256] parameter(0)
@@ -1439,7 +1445,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, BroadcastOfScalarConstantIsFused) {
+TEST_P(TritonGemmTest, BroadcastOfScalarConstantIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1462,7 +1468,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, DoubleBroadcastOfScalarConstantIsFused) {
+TEST_P(TritonGemmTest, DoubleBroadcastOfScalarConstantIsFused) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   c = s32[] constant(1)
@@ -1486,7 +1492,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, BroadcastOfVectorConstantIsFused) {
+TEST_P(TritonGemmTest, BroadcastOfVectorConstantIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1508,7 +1514,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, AlwaysFuseScalarConstantAtBroadcastInput) {
+TEST_P(TritonGemmTest, AlwaysFuseScalarConstantAtBroadcastInput) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = bf16[2,3,3]{2,1,0} parameter(0)
@@ -1536,7 +1542,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, FuseConcatenation) {
+TEST_P(TritonGemmTest, FuseConcatenation) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -1566,7 +1572,7 @@ e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, SineOutputIsFused) {
+TEST_P(TritonGemmTest, SineOutputIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1589,7 +1595,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, SliceInputIsFused) {
+TEST_P(TritonGemmTest, SliceInputIsFused) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[97,121] parameter(0)
@@ -1610,7 +1616,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, SliceInputWithReshapeIsFused) {
+TEST_P(TritonGemmTest, SliceInputWithReshapeIsFused) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[363,1536] parameter(0)
@@ -1635,7 +1641,7 @@ ENTRY e {
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory. From the point of view of codegen, this is purely
 // about compositionality.
-TEST_F(TritonGemmTest, NestedSlicingWorks) {
+TEST_P(TritonGemmTest, NestedSlicingWorks) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p1 = f32[6,24] parameter(1)
@@ -1657,7 +1663,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, SlicedBatchDimensionIsSupported) {
+TEST_P(TritonGemmTest, SlicedBatchDimensionIsSupported) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[3,3,256] parameter(0)
@@ -1681,7 +1687,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, BatchMajorSlicedBatchDimensionProducesCorrectResults) {
+TEST_P(TritonGemmTest, BatchMajorSlicedBatchDimensionProducesCorrectResults) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[4,32,256] parameter(0)
@@ -1694,7 +1700,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DegenerateBatchDimensionProducesCorrectResults) {
+TEST_P(TritonGemmTest, DegenerateBatchDimensionProducesCorrectResults) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[1,32,256] parameter(0)
@@ -1709,7 +1715,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, NarrowingConvertOutputIsFused) {
+TEST_P(TritonGemmTest, NarrowingConvertOutputIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1732,7 +1738,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, ParameterAfterDotIsFused) {
+TEST_P(TritonGemmTest, ParameterAfterDotIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -1764,7 +1770,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
 
-TEST_F(TritonGemmTest, OutputFusionExecutesCorrectly) {
+TEST_P(TritonGemmTest, OutputFusionExecutesCorrectly) {
   // TODO(b/393299275): it this test useful?
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
@@ -1803,7 +1809,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-TEST_F(TritonGemmTest, SplitLHSOutputTransposeAloneIsNotFused) {
+TEST_P(TritonGemmTest, SplitLHSOutputTransposeAloneIsNotFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -1843,7 +1849,7 @@ ENTRY e {
 // time, the `bitcast` we need to hoist needs to be hoisted *upwards* but is
 // located after the dot (it collapses two consecutive non-contracting
 // dimensions together).
-TEST_F(TritonGemmTest, DISABLED_SplitLHSInputOutputIsFused) {
+TEST_P(TritonGemmTest, DISABLED_SplitLHSInputOutputIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -1874,7 +1880,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, SupportPredParametersUsedInExpressions) {
+TEST_P(TritonGemmTest, SupportPredParametersUsedInExpressions) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p = pred[2,2]{1,0} parameter(0)
@@ -1904,7 +1910,7 @@ ENTRY e {
 // Triton emitter. This should probably be a fusion test.
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
-TEST_F(TritonGemmTest, LowerDotWithLhsWithoutNonContractingDimThroughTriton) {
+TEST_P(TritonGemmTest, LowerDotWithLhsWithoutNonContractingDimThroughTriton) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   parameter_0 = f32[1,40] parameter(0)
@@ -1927,7 +1933,7 @@ ENTRY e {
 // Triton emitter. This should probably be a fusion test.
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
-TEST_F(TritonGemmTest, LowerDotWithRhsWithoutNonContractingDimThroughTriton) {
+TEST_P(TritonGemmTest, LowerDotWithRhsWithoutNonContractingDimThroughTriton) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   parameter_0 = f32[1,40,250000] parameter(0)
@@ -1948,8 +1954,10 @@ ENTRY e {
 // This group of tests compares GPU results of dots already rewritten
 // into Triton fusions.
 using CompareTest = TritonGemmTest;
+INSTANTIATE_TEST_SUITE_P(All, CompareTest, ::testing::Bool(),
+                         GemmFusionVersionName);
 
-TEST_F(CompareTest, F32WithTrivialNonContractingDimension) {
+TEST_P(CompareTest, F32WithTrivialNonContractingDimension) {
   constexpr absl::string_view kHloTextRef = R"(
 HloModule r
 
@@ -2001,7 +2009,7 @@ ENTRY e {
 // runs across every possible chip that is supported by Triton. The test should
 // probably be made deviceless and repurposed to test that opt-in shared memory
 // is used only.
-TEST_F(CompareTest, UsingOptinSharedMemoryProducesSameResult) {
+TEST_P(CompareTest, UsingOptinSharedMemoryProducesSameResult) {
   if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "No Optin Shared Memory on AMD.";
   }
@@ -2099,7 +2107,7 @@ ENTRY e {
                               /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, NonMajorMostOutputBatchWorksCorrectly) {
+TEST_P(CompareTest, NonMajorMostOutputBatchWorksCorrectly) {
   const std::string kHloTextTest = R"(
 HloModule m
 
@@ -2167,7 +2175,7 @@ ENTRY e {
                               /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, TritonDotFusionCanHaveOnlyRHSParameter) {
+TEST_P(CompareTest, TritonDotFusionCanHaveOnlyRHSParameter) {
   const std::string kHloTextTest = R"(
 HloModule m, is_scheduled=true
 
@@ -2215,7 +2223,7 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, TritonDotFusionCanHaveNoParametersAtAll) {
+TEST_P(CompareTest, TritonDotFusionCanHaveNoParametersAtAll) {
   const std::string kHloTextTest = R"(
 HloModule m, is_scheduled=true
 
@@ -2264,7 +2272,7 @@ ENTRY triton_gemm___computation {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, TritonDotFusionCanHaveManyParameters) {
+TEST_P(CompareTest, TritonDotFusionCanHaveManyParameters) {
   const std::string kHloTextTest = R"(
 HloModule m
 
@@ -2388,7 +2396,7 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, PredToBF16ConversionWorks) {
+TEST_P(CompareTest, PredToBF16ConversionWorks) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -2459,7 +2467,7 @@ ENTRY e {
 // the two transposes in the fusion allows hoisting the final bitcast (`b1`).
 // I'm not sure if this is even required, since now we canonicalize transposes
 // before fusing.
-TEST_F(CompareTest, DISABLED_DifferentLayoutsAreSupportedInOneScope) {
+TEST_P(CompareTest, DISABLED_DifferentLayoutsAreSupportedInOneScope) {
   const std::string kHloTextTest = R"(
 triton_dot {
   p1 = f16[3,3,2,16]{1,3,2,0} parameter(1)
@@ -2524,7 +2532,7 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(TritonTest, UseTF32For8BitOrLessWithF32) {
+TEST_P(TritonTest, UseTF32For8BitOrLessWithF32) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -2565,7 +2573,7 @@ CHECK:      inputPrecision = tf32
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, S8ToF16DotWithSmallTileDoesNotCrash) {
+TEST_P(TritonGemmTest, S8ToF16DotWithSmallTileDoesNotCrash) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -2593,7 +2601,7 @@ ENTRY e {
                   /*run_hlo_passes=*/false));
 }
 
-TEST_F(TritonGemmTest, S8ToF32DotWithManyWarpsDoesNotCrash) {
+TEST_P(TritonGemmTest, S8ToF32DotWithManyWarpsDoesNotCrash) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -2621,7 +2629,7 @@ ENTRY e {
                   /*run_hlo_passes=*/false));
 }
 
-TEST_F(TritonGemmTest, Fp8DotWithSmallTileDoesNotCrash) {
+TEST_P(TritonGemmTest, Fp8DotWithSmallTileDoesNotCrash) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
@@ -2652,7 +2660,7 @@ ENTRY e {
                   /*run_hlo_passes=*/false));
 }
 
-TEST_F(TritonGemmTest, MixedF8DotExecutesCorrectly) {
+TEST_P(TritonGemmTest, MixedF8DotExecutesCorrectly) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Requires a Hopper+ GPU";
   }
@@ -2693,7 +2701,7 @@ e {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(TritonGemmTest, Fp8DotWithManyWarpsDoesNotCrash) {
+TEST_P(TritonGemmTest, Fp8DotWithManyWarpsDoesNotCrash) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
@@ -2726,7 +2734,7 @@ ENTRY e {
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
-TEST_F(TritonGemmTest, WgmmaIsUsedForMemBoundShape) {
+TEST_P(TritonGemmTest, WgmmaIsUsedForMemBoundShape) {
   if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
     GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
@@ -2764,7 +2772,7 @@ CHECK: wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16
 //
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
-TEST_F(TritonGemmTest, TestNoAutotuner) {
+TEST_P(TritonGemmTest, TestNoAutotuner) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[30,30] parameter(0)
