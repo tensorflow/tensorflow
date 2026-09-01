@@ -735,6 +735,29 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
                                HasSubstr("does not reference that device")));
   }
 
+  {
+    std::vector<ArraySpec> multi_output_specs = {dummy_spec, dummy_spec};
+    std::vector<RemapPlan::Mapping> multi_mappings = {
+        RemapPlan::Mapping{/*in_array=*/0,
+                           /*out_array=*/0,
+                           /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                           /*to=*/{RemapPlan::Interval{0, 2, 1}}},
+        RemapPlan::Mapping{/*in_array=*/1,
+                           /*out_array=*/1,
+                           /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                           /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
+    absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+        input_devices_for_output_map;
+    input_devices_for_output_map.insert(
+        {0, {{0, dummy_spec.sharding->devices()}}});
+    RemapPlan plan(input_specs, multi_output_specs, multi_mappings,
+                   std::move(input_devices_for_output_map));
+    EXPECT_THAT(plan.Validate(),
+                absl_testing::StatusIs(
+                    absl::StatusCode::kInvalidArgument,
+                    HasSubstr("has 1 outputs, but expected 2 outputs")));
+  }
+
   ASSERT_OK(RemapPlan::CreateOptimized(client(), std::move(input_specs),
                                        std::move(output_specs),
                                        std::move(mappings))

@@ -576,6 +576,14 @@ absl::Status RemapPlan::Validate() const {
     }
   }
 
+  if (!rep_->input_devices_for_output_map.empty() &&
+      rep_->input_devices_for_output_map.size() != num_outputs) {
+    return InvalidArgument(
+        "`input_devices_for_output_map` has %d outputs, but expected %d "
+        "outputs",
+        rep_->input_devices_for_output_map.size(), num_outputs);
+  }
+
   for (int i = 0; i < num_outputs; ++i) {
     xla::ifrt::DeviceList* devices =
         rep_->output_specs[i].sharding->devices()->AddressableDeviceList();
