@@ -1593,6 +1593,13 @@ pywrap_library(
     common_lib_filters = {
         "tensorflow/tensorflow_framework": select({
             "//tensorflow:windows": [],
+            "//tensorflow:macos": [
+                "//tensorflow:tensorflow_framework_pywrap_filter",
+                "@com_google_absl//absl/debugging:leak_check",
+                "@com_google_absl//absl/flags:flag",
+                "@com_google_absl//absl/log:die_if_null",
+                "@com_google_absl//absl/random",
+            ],
             "//conditions:default": [
                 "//tensorflow:tensorflow_framework_pywrap_filter",
                 ":_cuda_deps_filter",
