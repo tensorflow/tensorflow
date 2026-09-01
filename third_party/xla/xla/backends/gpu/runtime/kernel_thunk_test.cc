@@ -509,18 +509,17 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
                                .value()
                                .ptx;
   CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams initialize_params;
-  initialize_params.executor = executor;
-  initialize_params.src = executable_source;
-  initialize_params.stream = stream.get();
   BufferAllocations buffer_allocations(
       /*buffers=*/{executor->Allocate(allocations_[0].size())},
       /*device_ordinal=*/0,
       /*memory_allocator=*/nullptr);
 
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
+  initialize_params.executor = executor;
+  initialize_params.src = executable_source;
   initialize_params.buffer_allocations = &buffer_allocations;
+  initialize_params.stream = stream.get();
   initialize_params.persistent_alloc_indices.emplace();
-  initialize_params.command_buffer_requests = &command_buffer_requests;
 
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
@@ -688,14 +687,14 @@ TEST(KernelThunkTest, ExecuteOnStreamZeroed) {
   // Initialize the thunk (loads kernel PTX).
   Thunk::ExecutableSource src;
   src.text = se::gpu::GetAddI32PtxKernelSpec().cuda_ptx_in_memory().value().ptx;
-  Thunk::InitializeParams init_params;
-  init_params.executor = executor;
-  init_params.src = src;
-  init_params.stream = stream.get();
-
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({a_dev, b_dev, c_dev}, 0, &allocator);
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
+  init_params.executor = executor;
+  init_params.src = src;
   init_params.buffer_allocations = &buffer_allocations;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   ServiceExecutableRunOptions run_options;
@@ -740,14 +739,14 @@ TEST(KernelThunkTest, RecordCommandBufferZeroed) {
   // Initialize the thunk (loads kernel PTX).
   Thunk::ExecutableSource src;
   src.text = se::gpu::GetAddI32PtxKernelSpec().cuda_ptx_in_memory().value().ptx;
-  Thunk::InitializeParams init_params;
-  init_params.executor = executor;
-  init_params.src = src;
-  init_params.stream = stream.get();
-
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({a_dev, b_dev, c_dev}, 0, &allocator);
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
+  init_params.executor = executor;
+  init_params.src = src;
   init_params.buffer_allocations = &buffer_allocations;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   ServiceExecutableRunOptions run_options;
@@ -806,14 +805,14 @@ TEST(KernelThunkTest, RecordCommandBufferUpdateZeroed) {
 
   Thunk::ExecutableSource src;
   src.text = se::gpu::GetAddI32PtxKernelSpec().cuda_ptx_in_memory().value().ptx;
-  Thunk::InitializeParams init_params;
-  init_params.executor = executor;
-  init_params.src = src;
-  init_params.stream = stream.get();
-
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({a_dev, b_dev, c_dev}, 0, &allocator);
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
+  init_params.executor = executor;
+  init_params.src = src;
   init_params.buffer_allocations = &buffer_allocations;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   ServiceExecutableRunOptions run_options;
@@ -931,11 +930,12 @@ TEST(KernelThunkTest, RecordCommandBufferTwoRecordingsZeroed) {
   BufferAllocations allocations_1_new({second.a_dev, b1_new, second.c_dev}, 0,
                                       &allocator);
 
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.src = src;
-  init_params.stream = stream.get();
   init_params.buffer_allocations = &allocations_0;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   ServiceExecutableRunOptions run_options;
@@ -1025,14 +1025,14 @@ TEST(KernelThunkTest, RecordCommandBuffer) {
   // Initialize the thunk (loads kernel PTX).
   Thunk::ExecutableSource src;
   src.text = se::gpu::GetAddI32PtxKernelSpec().cuda_ptx_in_memory().value().ptx;
-  Thunk::InitializeParams init_params;
-  init_params.executor = executor;
-  init_params.src = src;
-  init_params.stream = stream.get();
-
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({a_dev, b_dev, c_dev}, 0, &allocator);
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
+  init_params.executor = executor;
+  init_params.src = src;
   init_params.buffer_allocations = &buffer_allocations;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   ServiceExecutableRunOptions run_options;
@@ -1082,14 +1082,14 @@ TEST(KernelThunkTest, RecordCommandBufferUpdate) {
 
   Thunk::ExecutableSource src;
   src.text = se::gpu::GetAddI32PtxKernelSpec().cuda_ptx_in_memory().value().ptx;
-  Thunk::InitializeParams init_params;
-  init_params.executor = executor;
-  init_params.src = src;
-  init_params.stream = stream.get();
-
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({a_dev, b_dev, c_dev}, 0, &allocator);
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
+  init_params.executor = executor;
+  init_params.src = src;
   init_params.buffer_allocations = &buffer_allocations;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   ServiceExecutableRunOptions run_options;
@@ -1160,11 +1160,12 @@ TEST(KernelThunkTest, RecordCommandBufferUpdateWithNewOutputBuffer) {
 
   // Initialize and run with c_dev as output.
   BufferAllocations alloc1({a_dev, b_dev, c_dev}, 0, &allocator);
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.src = src;
-  init_params.stream = stream.get();
   init_params.buffer_allocations = &alloc1;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   ServiceExecutableRunOptions run_options;

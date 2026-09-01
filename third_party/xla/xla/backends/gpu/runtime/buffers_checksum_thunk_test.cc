@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -165,7 +166,8 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   ASSERT_OK(stream_->Memcpy(&inputs1_mem, zeros.data(), zeros.size()));
 
   // Setup parameters for Initialize/Prepare/ExecuteOnStream
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor_;
   init_params.stream = stream_.get();
 
@@ -177,9 +179,15 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
                                LocalDeviceId(executor_->device_ordinal())));
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests, executor_,
-                                      &allocations};
+  Thunk::PrepareParams prepare_params{
+      /*collective_params=*/&collective_params,
+      /*collective_clique_requests=*/&clique_requests,
+      /*collective_memory_requests=*/&memory_requests,
+      /*executor=*/executor_,
+      /*buffer_allocations=*/&allocations,
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),
@@ -277,8 +285,14 @@ TEST_F(BuffersDebugChecksumThunkTest,
   // a kernel on the wrong device will fail with CUDA_ERROR_INVALID_HANDLE. The
   // error may be reported from the next operation on the stream, so assert on
   // BlockHostUntilDone as well.
-  ASSERT_OK(
-      thunk.Initialize(Thunk::InitializeParams{/*executor=*/device0.executor}));
+  CommandBufferRequests command_buffer_requests;
+  ASSERT_OK(thunk.Initialize(Thunk::InitializeParams{
+      /*executor=*/device0.executor,
+      /*src=*/{},
+      /*buffer_allocations=*/nullptr,
+      /*stream=*/nullptr,
+      /*command_buffer_trace_stream=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests}));
   ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), device0.allocations, device0.stream.get(),
       /*command_buffer_trace_stream=*/device0.stream.get(),
@@ -286,8 +300,13 @@ TEST_F(BuffersDebugChecksumThunkTest,
       /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr)));
   ASSERT_OK(device0.stream->BlockHostUntilDone());
 
-  ASSERT_OK(
-      thunk.Initialize(Thunk::InitializeParams{/*executor=*/device1.executor}));
+  ASSERT_OK(thunk.Initialize(Thunk::InitializeParams{
+      /*executor=*/device1.executor,
+      /*src=*/{},
+      /*buffer_allocations=*/nullptr,
+      /*stream=*/nullptr,
+      /*command_buffer_trace_stream=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests}));
   ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), device1.allocations, device1.stream.get(),
       /*command_buffer_trace_stream=*/device1.stream.get(),

@@ -19,13 +19,15 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -33,9 +35,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -115,8 +117,8 @@ LogicalResult NormalizeIndexVector(Operation* parent_op, Value& indices,
     new_start_indices_shape.push_back(1);
     indices_type = RankedTensorType::get(new_start_indices_shape,
                                          indices_type.getElementType());
-    indices = mhlo::ReshapeOp::create(rewriter, parent_op->getLoc(),
-                                      indices_type, indices);
+    indices = stablehlo::ReshapeOp::create(rewriter, parent_op->getLoc(),
+                                           indices_type, indices);
   } else if (index_vector_dim != indices_type.getRank() - 1) {
     // If index_vector_dim isn't the last dimension in indices then it isn't
     // supported yet.
@@ -136,7 +138,7 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function) {
   Block& body = function.front();
   if (body.getNumArguments() != 2) return failure();
 
-  mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
+  stablehlo::ReturnOp return_op = dyn_cast<stablehlo::ReturnOp>(body.back());
   if (!return_op) return failure();
   if (return_op.getNumOperands() != 1) return failure();
   if (return_op.getOperands().front() != body.getArgument(1)) return failure();
@@ -197,8 +199,10 @@ Value InsertTranspose(Value value, int batch_dim, int feature_dim,
                                     default_batch_dim, default_feature_dim,
                                     default_spatial_dim_start, num_spatial_dims,
                                     type, rewriter);
-  return mhlo::TransposeOp::create(rewriter, value.getLoc(), type, value,
-                                   permutation);
+  return stablehlo::TransposeOp::create(
+      rewriter, value.getLoc(), type, value,
+      rewriter.getDenseI64ArrayAttr(
+          llvm::to_vector(permutation.getValues<int64_t>())));
 }
 
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
@@ -222,6 +226,39 @@ void ReplaceTerminatorWithYield(Region& region, PatternRewriter& rewriter) {
     rewriter.replaceOpWithNewOp<TFL::YieldOp>(terminator,
                                               terminator->getOperands());
   }
+}
+
+Value TransposeUnlessIdentity(OpBuilder& builder, Location loc,
+                              Type result_type, Value operand,
+                              ArrayRef<int64_t> permutation) {
+  if (llvm::equal(permutation, llvm::seq<int64_t>(0, permutation.size()))) {
+    return operand;
+  }
+  return stablehlo::TransposeOp::create(
+      builder, loc, result_type, operand,
+      builder.getDenseI64ArrayAttr(permutation));
+}
+
+Value ReshapeUnlessIdentity(OpBuilder& builder, Location loc, Type result_type,
+                            Value operand) {
+  if (operand.getType() == result_type) return operand;
+  assert(mlir::cast<ShapedType>(result_type).hasStaticShape() &&
+         "stablehlo.reshape requires a statically shaped result");
+  return stablehlo::ReshapeOp::create(builder, loc, result_type, operand);
+}
+
+LogicalResult FoldSplatBroadcastInDim(stablehlo::BroadcastInDimOp op,
+                                      PatternRewriter& rewriter) {
+  SplatElementsAttr splat;
+  if (!op.getType().hasStaticShape() ||
+      !matchPattern(op.getOperand(), m_Constant(&splat)) ||
+      splat.getElementType() != op.getType().getElementType()) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<stablehlo::ConstantOp>(
+      op,
+      SplatElementsAttr::get(op.getType(), splat.getSplatValue<Attribute>()));
+  return success();
 }
 
 }  // namespace odml
