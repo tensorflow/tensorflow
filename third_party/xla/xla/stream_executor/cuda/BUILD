@@ -676,7 +676,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
     ],
@@ -824,7 +824,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
@@ -845,7 +845,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
@@ -871,7 +871,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -959,7 +959,7 @@ xla_cc_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1116,7 +1116,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
@@ -1681,7 +1681,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1914,7 +1914,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -2000,7 +2000,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2089,7 +2089,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -2205,7 +2205,7 @@ xla_cc_test(
         ":subprocess_compilation",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
@@ -2226,7 +2226,7 @@ xla_cc_test(
         "//xla/stream_executor:semantic_version",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
     ],
@@ -2363,7 +2363,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -2481,7 +2481,7 @@ xla_cc_test(
         ":mock_compilation_provider",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:test",
@@ -2588,7 +2588,7 @@ xla_cc_test(
         ":mock_compilation_provider",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2682,7 +2682,7 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:cuda_root_path",
@@ -2756,7 +2756,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -3078,6 +3078,7 @@ xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

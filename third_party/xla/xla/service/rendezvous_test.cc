@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,9 +28,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -45,7 +44,7 @@ tsl::thread::ThreadPool CreateThreadPool(int32_t size) {
 }
 
 TEST(RendezvousTest, OneParticipant) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<int32_t> result,
       Rendezvous<int32_t>("rendezvous_test", 0, 1, [] { return 42; }));
   ASSERT_EQ(*result, 42);
@@ -57,7 +56,7 @@ TEST(RendezvousTest, TwoParticipants) {
 
   auto task = [&](int32_t id) {
     return [&, id] {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           results[id],
           Rendezvous<int32_t>("rendezvous_test", 0, 2, [] { return 42; }));
       counter.DecrementCount();
@@ -85,7 +84,7 @@ TEST(RendezvousTest, TwoParticipantsWithValues) {
 
   auto task = [&](int32_t id) {
     return [&, id]() mutable {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           results[id],
           Rendezvous<int32_t>("rendezvous_test", 0, id, 2, accumulate));
       counter.DecrementCount();
@@ -108,7 +107,7 @@ TEST(RendezvousTest, RepeatRendezvous) {
     absl::BlockingCounter counter(2);
 
     auto task = [&] {
-      TF_ASSERT_OK(Rendezvous<int32_t>(
+      ASSERT_OK(Rendezvous<int32_t>(
           "rendezvous_test", /*key=*/0, /*num_threads=*/2, [] { return 42; },
           Timeout(), Terminate()));
       counter.DecrementCount();
@@ -130,7 +129,7 @@ TEST(RendezvousTest, BackToBackRendezvous) {
   // rendezvous do not step on each other and execute correctly.
   auto task = [&] {
     for (int32_t i = 0; i < 10; ++i) {
-      TF_ASSERT_OK(Rendezvous<int32_t>(
+      ASSERT_OK(Rendezvous<int32_t>(
           "rendezvous_test", /*key=*/0, /*num_threads=*/2, [] { return 42; },
           Timeout(), Terminate()));
     }
@@ -148,7 +147,7 @@ TEST(RendezvousTest, ReturningStatusOr) {
 
   auto task = [&](int32_t id) {
     return [&, id] {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           results[id],
           Rendezvous<int32_t>("rendezvous_test", 0, 2,
                               []() -> absl::StatusOr<int32_t> { return 42; }));
@@ -199,7 +198,7 @@ TEST(RendezvousTest, RendezvousFlag) {
 
   auto task = [&](absl::BlockingCounter& counter) {
     return [&] {
-      TF_ASSERT_OK(Rendezvous<int32_t>(
+      ASSERT_OK(Rendezvous<int32_t>(
           flag, "rendezvous_test", 0, 2, [&] { return ++num_executed; },
           Timeout(), Terminate()));
       counter.DecrementCount();
@@ -232,8 +231,8 @@ TEST(RendezvousTest, RendezvousFlagRace) {
 
   auto task = [&](int32_t key) {
     return [&, key] {
-      TF_ASSERT_OK(Rendezvous(flag, "key: " + std::to_string(key), key,
-                              kNumThreads, Timeout(), Terminate()));
+      ASSERT_OK(Rendezvous(flag, "key: " + std::to_string(key), key,
+                           kNumThreads, Timeout(), Terminate()));
     };
   };
 
@@ -262,8 +261,8 @@ TEST(RendezvousTest, RendezvousFlagRaceWithBarriers) {
     return [&, key] {
       participants_ready.DecrementCount();
       participants_notification.WaitForNotification();
-      TF_ASSERT_OK(Rendezvous(flag, "key: " + std::to_string(key), key,
-                              kNumThreads, Timeout(), Terminate()));
+      ASSERT_OK(Rendezvous(flag, "key: " + std::to_string(key), key,
+                           kNumThreads, Timeout(), Terminate()));
       participants_done.DecrementCount();
     };
   };
