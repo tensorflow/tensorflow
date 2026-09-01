@@ -1827,7 +1827,12 @@ message DebugOptions {
   // Gives more compilation test coverage but might increase compilation time.
   optional bool xla_compile_all_supported_configs = 539;
 
-  // Next id: 541
+  // Internal debug/testing flag to enable cross-host one-shot kernel for
+  // collective operations.
+  repeated CollectiveOpType xla_gpu_unsupported_use_cross_host_one_shot_kernel =
+      541;
+
+  // Next id: 542
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -2234,6 +2234,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "command buffer. Default is ALLCOLLECTIVES."));
 
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_use_cross_host_one_shot_kernel",
+      SetterForRepeatedEnum<DebugOptions::CollectiveOpType>(
+          "xla_gpu_unsupported_use_cross_host_one_shot_kernel",
+          /*enum_prefix=*/"",
+          [](absl::string_view s, DebugOptions::CollectiveOpType* v) {
+            return DebugOptions::CollectiveOpType_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options
+                ->mutable_xla_gpu_unsupported_use_cross_host_one_shot_kernel();
+          }),
+      collective_op_types_to_string(
+          debug_options->xla_gpu_unsupported_use_cross_host_one_shot_kernel()),
+      "Enable cross-host one-shot kernel for specified collectives."));
+
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_min_graph_size",
       int32_setter_for(&DebugOptions::set_xla_gpu_graph_min_graph_size),
       debug_options->xla_gpu_graph_min_graph_size(),

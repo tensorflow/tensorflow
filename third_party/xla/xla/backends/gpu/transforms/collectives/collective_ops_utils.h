@@ -88,6 +88,12 @@ bool IsGPUSyncCollective(const HloInstruction& instr);
 // Returns true if all devices are within the same NVLink domain (slice).
 bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size);
 
+// Returns true if xla_gpu_unsupported_use_cross_host_one_shot_kernel is enabled
+// for the given collective op type.
+bool IsCrossHostOneShotKernelEnabled(
+    const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type);
+
 // Returns true if all replicas in every replica group of the collective
 // are located on the same host (node).
 bool IsAllReplicasLocal(int64_t gpus_per_host,
