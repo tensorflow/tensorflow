@@ -27,21 +27,21 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
 
-// Converts a MHLO::GetDimensionSizeOP to TFL ops.
+// Converts a StableHLO::GetDimensionSizeOP to TFL ops.
 class LeagalizeDimensionSizeOp
-    : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
+    : public OpConversionPattern<stablehlo::GetDimensionSizeOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::GetDimensionSizeOp op, OpAdaptor adaptor,
+      stablehlo::GetDimensionSizeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     auto operand_type = llvm::cast<ShapedType>(op.getOperand().getType());
@@ -81,7 +81,7 @@ class LeagalizeDimensionSizeOp
 void PopulateGetDimensionSizePatterns(MLIRContext* ctx,
                                       RewritePatternSet& patterns,
                                       ConversionTarget& target) {
-  target.addIllegalOp<mhlo::GetDimensionSizeOp>();
+  target.addIllegalOp<stablehlo::GetDimensionSizeOp>();
   patterns.add<LeagalizeDimensionSizeOp>(ctx);
 }
 
