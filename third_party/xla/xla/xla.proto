@@ -1832,7 +1832,12 @@ message DebugOptions {
   repeated CollectiveOpType xla_gpu_unsupported_use_cross_host_one_shot_kernel =
       541;
 
-  // Next id: 542
+  // Minimum backend_config size (in bytes) to be eligible for deduplication
+  // into payloads during serialization. Configs smaller than this threshold are
+  // kept inline. Default is MAX_INT (deduplication disabled).
+  optional int64 xla_deduplicate_backend_configs_min_size = 542;
+
+  // Next id: 543
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

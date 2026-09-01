@@ -483,6 +483,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_use_new_autotune_cache_format(true);
 
   opts.set_xla_compile_all_supported_configs(false);
+  opts.set_xla_deduplicate_backend_configs_min_size(
+      std::numeric_limits<int64_t>::max());
 
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
@@ -3050,6 +3052,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_compile_all_supported_configs(),
       "When autotuning is disabled, if true, compiles all supported configs"
       " in parallel before returning the first successful one."));
+  flag_list->push_back(tsl::Flag(
+      "xla_deduplicate_backend_configs_min_size",
+      int64_setter_for(
+          &DebugOptions::set_xla_deduplicate_backend_configs_min_size),
+      debug_options->xla_deduplicate_backend_configs_min_size(),
+      "Minimum backend_config size (in bytes) to be eligible for deduplication "
+      "into payloads during serialization. Configs smaller than this threshold "
+      "are kept inline. Default is MAX_INT (feature disabled)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_autotune_backends",
       SetterForRepeatedEnum<autotuner::Backend>(
