@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_API_H_
-#define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_API_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_MULTI_GPU_BARRIER_H_
+#define XLA_BACKENDS_GPU_RUNTIME_MULTI_GPU_BARRIER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -27,12 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
-
-// This file contains collective kernels related method shared between XLA and
-// Mosaic. Be careful when changing the API.
-//
-// Collective kernels are kernels which are launched simultaneously on multiple
-// devices, and have an access to each other device's memory.
 
 // Launches a cross-GPU barrier synchronization.
 absl::Status LaunchMultiGpuBarrier(
@@ -57,4 +51,4 @@ size_t GetMultiGpuBarrierSignalValueSize();
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_API_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_MULTI_GPU_BARRIER_H_
