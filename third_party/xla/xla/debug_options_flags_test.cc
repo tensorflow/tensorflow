@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/debug_options_flags.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -460,6 +462,22 @@ TEST(DebugOptions, DisableHloPassesRejectsMalformedEntries) {
   EXPECT_FALSE(ParseDisableHloPassesFlag("@notanumber").first);
   EXPECT_FALSE(ParseDisableHloPassesFlag("algsimp:notanumber").first);
   EXPECT_FALSE(ParseEnableHloPassesOnlyFlag("@").first);
+}
+
+TEST(DebugOptions, DeduplicateBackendConfigsMinSizeDefaultIsMaxInt) {
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_EQ(opts.xla_deduplicate_backend_configs_min_size(),
+            std::numeric_limits<int64_t>::max());
+}
+
+TEST(DebugOptions, DeduplicateBackendConfigsMinSizeFlagsParsing) {
+  DebugOptions opts;
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  std::vector<std::string> flag_args = {
+      "--xla_deduplicate_backend_configs_min_size=128"};
+  EXPECT_TRUE(tsl::Flags::Parse(flag_args, flags));
+  EXPECT_EQ(opts.xla_deduplicate_backend_configs_min_size(), 128);
 }
 
 }  // namespace
