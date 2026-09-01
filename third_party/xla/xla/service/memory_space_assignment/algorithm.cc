@@ -322,17 +322,25 @@ bool LooksLikeAnActivation(const HloInstruction* inst, bool permissive_mode) {
 // Returns true if the use value does not live out of the module. The value
 // lives out if it is the root or it aliases with another value that lives out.
 // We recurse to detect the latter case.
-bool UseDoesNotLiveOut(const HloUse& use,
-                       const HloAliasAnalysis& alias_analysis,
-                       const AliasInfo* alias_info,
-                       const HloInstruction* root_instruction) {
+bool UseDoesNotLiveOut(
+    const HloUse& use, const HloAliasAnalysis& alias_analysis,
+    const AliasInfo* alias_info, const HloInstruction* root_instruction,
+    absl::flat_hash_map<HloUse, bool>& use_to_does_not_live_out) {
   if (use.instruction == root_instruction &&
       (use.instruction->opcode() == HloOpcode::kTuple ||
        use.instruction->opcode() == HloOpcode::kBitcast)) {
     return false;
   }
+  // If already evaluated or on the current recursion stack, return the result.
+  auto it = use_to_does_not_live_out.find(use);
+  if (it != use_to_does_not_live_out.end()) {
+    return it->second;
+  }
+  // Mark this use as in-progress (defaulting to true) to break in-place
+  // aliasing cycles (e.g. async start <-> done).
+  use_to_does_not_live_out[use] = true;
   auto in_place_pairs = alias_info->GetInPlaceInputOutputPairs(use.instruction);
-  return absl::c_all_of(
+  bool does_not_live_out = absl::c_all_of(
       in_place_pairs,
       [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
         if (in_place_pair.first.operand_number == use.operand_number &&
@@ -346,13 +354,17 @@ bool UseDoesNotLiveOut(const HloUse& use,
                    .GetUses()) {
             if (nested_use != use &&
                 !UseDoesNotLiveOut(nested_use, alias_analysis, alias_info,
-                                   root_instruction)) {
+                                   root_instruction,
+                                   use_to_does_not_live_out)) {
               return false;
             }
           }
         }
         return true;
       });
+  // Update the map with the finalized result.
+  use_to_does_not_live_out[use] = does_not_live_out;
+  return does_not_live_out;
 }
 
 // Filters out buffer uses that cannot use the cross-program prefetch due to
@@ -370,11 +382,13 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
                                                ->entry_computation()
                                                ->root_instruction();
 
-  absl::c_copy_if(buffer_uses, std::back_inserter(uses),
-                  [&](const HloUse& use) {
-                    return UseDoesNotLiveOut(use, alias_analysis, alias_info,
-                                             root_instruction);
-                  });
+  absl::flat_hash_map<HloUse, bool> use_to_does_not_live_out;
+  for (const HloUse& use : buffer_uses) {
+    if (UseDoesNotLiveOut(use, alias_analysis, alias_info, root_instruction,
+                          use_to_does_not_live_out)) {
+      uses.push_back(use);
+    }
+  }
   return uses;
 }
 

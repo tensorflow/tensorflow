@@ -19562,6 +19562,57 @@ ENTRY main {
       },
       preset_assignments.get(), alias_analysis.get()));
 }
+
+TEST_F(MemorySpaceAssignmentTest, AsyncBarrierAliasingCycle) {
+  absl::string_view hlo_string = R"hlo(
+HloModule sc_async_barrier_aliasing, is_scheduled=true
+
+  sc_custom_call_comp {
+    ROOT %custom_call = (f32[32,128,8]{1,2,0}, u32[], u32[]) custom-call(),
+      custom_call_target="SparseCoreBarrierStart",
+      custom_call_has_side_effect=true
+  }
+
+  sc_main {
+    %input = f32[32,128,8]{1,2,0} parameter(0)
+    %output = f32[32,128,8]{1,2,0} parameter(1)
+    %send_sflag = u32[] parameter(2)
+    %recv_sflag = u32[] parameter(3)
+    ROOT %a2a-result = f32[32,128,8]{1,2,0} custom-call(%input, %output, %send_sflag, %recv_sflag),
+      custom_call_target="SparseCoreBarrierDoneAndCollective",
+      output_to_operand_aliasing={{}: (1, {})}
+  }
+
+ENTRY %Comp_spmd {
+  %p0 = f32[32,128,8]{1,2,0} parameter(0)
+  %p1 = f32[32,128,8]{1,2,0} parameter(1)
+
+  %sc_custom_call_start = ((), (f32[32,128,8]{1,2,0}, u32[], u32[]), s32[]) call-start(),
+    to_apply=%sc_custom_call_comp
+  %sc_custom_call_done = (f32[32,128,8]{1,2,0}, u32[], u32[]) call-done(%sc_custom_call_start)
+  %send_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=1
+  %recv_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=2
+
+  %sc_start = ((f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}, u32[], u32[]), f32[32,128,8]{1,2,0}, s32[])
+    call-start(%p0, %p1, %send_sflag, %recv_sflag),
+      to_apply=%sc_main,
+      output_to_operand_aliasing={
+        {0,1}: (1, {}), // update output buffer at {0,0}
+        {0,2}: (2, {}), // update send_sflag
+        {0,3}: (3, {}), // update recv_sflag
+        {1}: (1, {})}   // update output buffer at {1}
+  %sc_output = f32[32,128,8]{1,2,0} call-done(%sc_start)
+  %neg = f32[32,128,8]{1,2,0} negate(%sc_output)
+
+  ROOT %root = (f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}) tuple(%neg, %p0)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
+}
+
 }  // namespace
 
 }  // namespace memory_space_assignment
