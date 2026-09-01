@@ -370,6 +370,35 @@ cc_library(
     ],
 )
 
+tf_cc_binary(
+    name = "litert-reduce",
+    testonly = True,
+    deps = [
+        ":litert_mlir_reduce_main",
+    ],
+)
+
+cc_library(
+    name = "litert_mlir_reduce_main",
+    testonly = True,
+    srcs = ["litert_mlir_reduce_main.cc"],
+    deps = [
+        ":lift_tflite_flex_ops",  # buildcleaner:keep
+        ":register_lite_dialects",
+        ":tensorflow_lite",
+        ":tf_tfl_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirReduceLib",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "utils",
     hdrs = ["utils/utils.h"],
@@ -1786,6 +1815,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1797,6 +1827,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@eigen_archive//:eigen3",
         "@flatbuffers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

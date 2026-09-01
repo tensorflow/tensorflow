@@ -55,6 +55,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -80,10 +81,40 @@ cc_library(
 )
 
 cc_library(
-    name = "stablehlo_tfl_pipeline",
-    srcs = ["stablehlo_tfl_pipeline.cc"],
-    hdrs = ["stablehlo_tfl_pipeline.h"],
+    name = "conversion_failure_reporter",
+    srcs = [
+        "conversion_failure_reporter.cc",
+        "pass_debug_instrumentation.cc",
+    ],
+    hdrs = [
+        "conversion_failure_reporter.h",
+        "pass_debug_instrumentation.h",
+    ],
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@xla//xla/mlir/utils:error_util",
+        "@xla//xla/tsl/platform:env",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_tfl_pipeline",
+    srcs = [
+        "stablehlo_tfl_pipeline.cc",
+    ],
+    hdrs = [
+        "stablehlo_tfl_pipeline.h",
+    ],
+    deps = [
+        ":conversion_failure_reporter",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:flatbuffer_export",
@@ -97,8 +128,11 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:unfold_splat_constant_pass",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
@@ -112,9 +146,25 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:vhlo_ops",
+        "@xla//xla/mlir/utils:error_util",
         "@xla//xla/mlir_hlo",
         "@xla//xla/mlir_hlo:mhlo_passes",
         "@xla//xla/mlir_hlo:stablehlo_extension_passes",
+        "@xla//xla/tsl/platform:env",
+    ],
+)
+
+tf_cc_test(
+    name = "conversion_failure_reporter_test",
+    srcs = ["conversion_failure_reporter_test.cc"],
+    deps = [
+        ":conversion_failure_reporter",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -177,6 +227,7 @@ cc_library(
     hdrs = ["slim_model_importer.h"],
     deps = [
         "//tensorflow/compiler/mlir/lite/stablehlo:drop_shape_assertions",
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_vhlo_quant_custom_calls",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -186,6 +237,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",

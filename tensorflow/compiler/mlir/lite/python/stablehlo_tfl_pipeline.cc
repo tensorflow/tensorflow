@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/stablehlo_tfl_pipeline.h"
 
-#include <unistd.h>
-
+#include <cstdint>
+#include <fstream>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -32,6 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/Timing.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
@@ -42,6 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/python/conversion_failure_reporter.h"
+#include "tensorflow/compiler/mlir/lite/python/pass_debug_instrumentation.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cast_bf16_ops_to_f32_pass.h"
@@ -50,21 +57,31 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
+#include "xla/tsl/platform/env.h"
 
 namespace mlir::TFL {
 
-void AddSkipToTflitePasses(mlir::OpPassManager& pass_manager) {
+void AddPipelinePasses(mlir::OpPassManager& pass_manager,
+                       const mlir::TFL::PassConfig& pass_config) {
+  // =========================================================================
+  // 1. Skip-to-TFLite & Pre-Lowering Passes
+  // =========================================================================
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreateLegalizeChloToTflPass());
+  // Inline private functions before lowering quant annotations to eliminate
+  // func.call boundaries that cause func.call result type mismatches when
+  // quantized types are introduced.
   pass_manager.addPass(mlir::createInlinerPass());
   pass_manager.addPass(mlir::TFL::CreateLowerQuantAnnotationsPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
-}
 
-void AddHloOptimizationPasses(mlir::OpPassManager& pass_manager) {
+  // =========================================================================
+  // 2. HLO Optimization & Canonicalization Passes
+  // =========================================================================
   // Drop shape assertion custom calls before VHLO legalization
   pass_manager.addPass(mlir::odml::CreateDropShapeAssertionsPass());
 
@@ -129,16 +146,16 @@ void AddHloOptimizationPasses(mlir::OpPassManager& pass_manager) {
       mlir::createCanonicalizerPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
-  // Undo the MHLO::BroadcastInDimOp folding pattern on splat constants.
-  pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
-}
-
-void AddHloToTfLiteLegalizationPasses(mlir::OpPassManager& pass_manager) {
+  // =========================================================================
+  // 3. HLO to TFLite Legalization Passes
+  // =========================================================================
   // HLO -> TFLite legalization
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreateUniformQuantizedStableHloToTflPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreatePrepareHloPass());
+  // This pass must be added right before the legalization because pattern
+  // rewriter driver applies folding by default.
   pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
   pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
 
@@ -146,10 +163,10 @@ void AddHloToTfLiteLegalizationPasses(mlir::OpPassManager& pass_manager) {
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createLegalizeCompositeToCustomOpPass());
-}
 
-void AddTfLiteOptimizationPasses(mlir::OpPassManager& pass_manager,
-                                 const mlir::TFL::PassConfig& pass_config) {
+  // =========================================================================
+  // 4. TFLite Optimization & Quantization Passes
+  // =========================================================================
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateCastBf16OpsToF32Pass());
 
@@ -201,6 +218,69 @@ void AddTfLiteOptimizationPasses(mlir::OpPassManager& pass_manager,
   pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 
+static absl::Status VerifyInputModule(mlir::ModuleOp module,
+                                      absl::string_view debug_dir,
+                                      bool enable_debug,
+                                      int64_t elide_elements_larger_than = 8) {
+  mlir::MLIRContext* context = module->getContext();
+  mlir::StatusScopedDiagnosticHandler initial_status_handler(
+      context,
+      /*propagate=*/false);
+  bool verification_failed = mlir::failed(module.verify());
+  absl::Status initial_status = initial_status_handler.ConsumeStatus();
+  if (verification_failed) {
+    std::string err_msg =
+        initial_status.ok()
+            ? "Input MLIR module verification failed."
+            : absl::StrCat("Input MLIR module verification failed: ",
+                           initial_status.message());
+    std::string status_code =
+        initial_status.ok() ? "INVALID_ARGUMENT"
+                            : absl::StatusCodeToString(initial_status.code());
+    ConversionFailureReporter::WriteFailureJson(
+        debug_dir, module, err_msg, "JAX_Export_Module_Verification",
+        status_code, /*failing_pass=*/"", /*failing_pass_arg=*/"",
+        /*write_module_artifacts=*/enable_debug, /*failing_function=*/"",
+        elide_elements_larger_than);
+    return absl::InvalidArgumentError(err_msg);
+  }
+  return absl::OkStatus();
+}
+
+struct PassTimingSession {
+  std::unique_ptr<std::ofstream> file_stream;
+  std::unique_ptr<llvm::raw_os_ostream> timing_stream;
+};
+
+static PassTimingSession CreatePassTimingSession(absl::string_view debug_dir) {
+  PassTimingSession session;
+  if (!tsl::Env::Default()->RecursivelyCreateDir(std::string(debug_dir)).ok()) {
+    return session;
+  }
+  std::string main_path = absl::StrCat(debug_dir, "/mlir_pass_timing.log");
+  auto file = std::make_unique<std::ofstream>(main_path);
+  if (file->is_open()) {
+    session.timing_stream = std::make_unique<llvm::raw_os_ostream>(*file);
+    session.file_stream = std::move(file);
+  }
+  return session;
+}
+
+static void AttachPassTiming(mlir::PassManager& pm,
+                             PassTimingSession& session) {
+  auto timing_manager = std::make_unique<mlir::DefaultTimingManager>();
+  timing_manager->setEnabled(true);
+  timing_manager->setDisplayMode(mlir::DefaultTimingManager::DisplayMode::List);
+
+  if (session.timing_stream) {
+    timing_manager->setOutput(mlir::createOutputStrategy(
+        mlir::DefaultTimingManager::OutputFormat::Text,
+        *session.timing_stream));
+  }
+
+  pm.enableTiming(std::move(timing_manager));
+}
+
 absl::Status ConvertStableHloToTFLite(
     mlir::ModuleOp module, const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
@@ -215,29 +295,74 @@ absl::Status ConvertStableHloToTFLite(
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
 
+  bool enable_debug = converter_flags.enable_debug();
+  std::string debug_dir = ConversionFailureReporter::GetOrCreateDebugDir(
+      converter_flags.debug_dir());
+
+  int64_t elide_elements_larger_than =
+      converter_flags.debug_options().has_elide_elementsattrs_if_larger()
+          ? converter_flags.debug_options().elide_elementsattrs_if_larger()
+          : 8;
+
+  if (auto status = VerifyInputModule(module, debug_dir, enable_debug,
+                                      elide_elements_larger_than);
+      !status.ok()) {
+    return status;
+  }
+
   mlir::PassManager pm(context);
-  tensorflow::InitPassManager(pm, converter_flags.debug_options(),
-                              llvm::errs());
+  PassTimingSession timing_session;
+  if (enable_debug) {
+    timing_session = CreatePassTimingSession(debug_dir);
+    AttachPassTiming(pm, timing_session);
+  }
 
-  AddSkipToTflitePasses(pm);
-  AddHloOptimizationPasses(pm);
-  AddHloToTfLiteLegalizationPasses(pm);
-  AddTfLiteOptimizationPasses(pm, pass_config);
+  tensorflow::converter::DebugOptions debug_options =
+      converter_flags.debug_options();
+  if (enable_debug) {
+    pm.getContext()->disableMultithreading();
+    debug_options.clear_print_ir_before();
+    debug_options.clear_print_ir_after();
+  }
+  tensorflow::InitPassManager(pm, debug_options, llvm::nulls());
 
-  if (mlir::failed(pm.run(module))) {
-    return absl::InvalidArgumentError("StableHLO to TFLite pipeline failed.");
+  AddPipelinePasses(pm, pass_config);
+
+  PipelineFailureCoordinator failure_coordinator(debug_dir, enable_debug,
+                                                 elide_elements_larger_than);
+  pm.addInstrumentation(failure_coordinator.CreateInstrumentation(
+      converter_flags.debug_options().print_ir_before(),
+      converter_flags.debug_options().print_ir_after()));
+
+  mlir::StatusScopedDiagnosticHandler status_handler(context,
+                                                     /*propagate=*/false);
+  bool pass_failed = mlir::failed(pm.run(module));
+  absl::Status pass_status = status_handler.ConsumeStatus();
+
+  if (timing_session.timing_stream) {
+    timing_session.timing_stream->flush();
+  }
+  if (timing_session.file_stream) {
+    timing_session.file_stream->flush();
+  }
+
+  if (pass_failed) {
+    return failure_coordinator.ReportFailure(module, pass_status);
   }
 
   tflite::FlatbufferExportOptions options;
   options.converter_flags.set_allow_custom_ops(true);
   options.converter_flags.set_use_buffer_offset(true);
 
+  std::string diag_errors;
+  SerializationDiagHandler diag_handler(module.getContext(), &diag_errors);
+
   auto status =
       tflite::MlirToFlatBufferTranslateFunction(module, options, export_stream);
 
   if (!status.ok()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Failed to serialize to FlatBuffer: ", status.message()));
+    return failure_coordinator.ReportSerializationFailure(module, status,
+                                                          diag_errors);
   }
 
   return absl::OkStatus();
