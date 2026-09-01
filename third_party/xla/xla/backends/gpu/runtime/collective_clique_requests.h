@@ -42,19 +42,24 @@ class CollectiveCliqueRequests {
   struct BarrierRequirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const BarrierRequirements& reqs) {
-      absl::Format(&sink, "{use_cross_device_barrier: %d}",
-                   reqs.use_cross_device_barrier);
+      absl::Format(
+          &sink, "{use_cross_device_barrier: %d, clique_semaphores_count: %d}",
+          reqs.use_cross_device_barrier, reqs.clique_semaphores_count);
     }
 
     bool operator==(const BarrierRequirements& other) const {
-      return other.use_cross_device_barrier == use_cross_device_barrier;
+      return other.use_cross_device_barrier == use_cross_device_barrier &&
+             other.clique_semaphores_count == clique_semaphores_count;
     }
 
     bool operator<(const BarrierRequirements& other) const {
-      return use_cross_device_barrier < other.use_cross_device_barrier;
+      return std::tie(use_cross_device_barrier, clique_semaphores_count) <
+             std::tie(other.use_cross_device_barrier,
+                      other.clique_semaphores_count);
     }
 
     bool use_cross_device_barrier = false;
+    int64_t clique_semaphores_count = 0;
   };
 
   // For each requested clique key, we also assign a monotonically increasing
@@ -109,6 +114,7 @@ class CollectiveCliqueRequests {
 
     // Requirements for barriers.
     bool use_cross_device_barrier_requested = false;
+    int64_t clique_semaphores_count = 0;
   };
 
   // An extra set of requirements for the collective clique. When XLA runtime
@@ -154,7 +160,6 @@ class CollectiveCliqueRequests {
   std::vector<CliqueRequest> OrderedRequestedCliques() const;
 
   size_t size() const { return cliques_.size(); }
-
 
  private:
   absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;
