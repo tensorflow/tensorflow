@@ -20,14 +20,16 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-#ifdef _WIN32
-#define DECL_DLL_EXPORT __declspec(dllexport)
-#else
-#define DECL_DLL_EXPORT
-#endif
-// DLL imported variables cannot be initialized on Windows. This file is
-// included only on DLL exports.
-DECL_DLL_EXPORT std::atomic<bool> g_enable_source_location(true);
+static std::atomic<bool> g_enable_source_location(true);
+
+bool TraceMeGlobalFlags::IsSourceLocationEnabled() {
+  return g_enable_source_location.load(std::memory_order_relaxed);
+}
+
+void TraceMeGlobalFlags::SetSourceLocationEnabled(bool enable_source_location) {
+  g_enable_source_location.store(enable_source_location,
+                                 std::memory_order_relaxed);
+}
 
 }  // namespace profiler
 }  // namespace tsl

@@ -1,0 +1,164 @@
+diff --git a/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper b/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
+index 2cfb314..8d71022 100755
+--- a/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
++++ b/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
+@@ -103,6 +103,7 @@ def get_host_compiler_options(argv):
+   parser.add_argument('-nostdinc', action='store_true')
+   parser.add_argument('-nostdlib', action='store_true')
+   parser.add_argument('-nodefaultlibs', action='store_true')
++  parser.add_argument('-include', nargs=1, action='append')
+ 
+   args, _ = parser.parse_known_args(argv)
+ 
+@@ -111,13 +112,25 @@ def get_host_compiler_options(argv):
+   if args.iquote:
+     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
+   if args.isystem:
+-    for arg in sum(args.isystem, []):
++    isystem_args = sum(args.isystem, [])
++    i = 0
++    while i < len(isystem_args):
++      arg = isystem_args[i]
++      if arg == '-include':
++        opts += ' -include ' + isystem_args[i+1]
++        i += 2
++        continue
++      if arg.startswith('-include '):
++        opts += ' ' + arg
++        i += 1
++        continue
+       if arg.startswith('-isystem'):
+         opts += ' ' + arg
+       elif arg.startswith("'-isystem") and arg.endswith("'"):
+         opts += ' ' + arg[1:len(arg) - 1]
+       else:
+         opts += ' -isystem ' + arg
++      i += 1
+   if args.g:
+     opts += ' -g' + ' -g'.join(sum(args.g, []))
+   if args.fno_canonical_system_headers:
+@@ -132,6 +145,8 @@ def get_host_compiler_options(argv):
+     opts += ' -nostdlib'
+   if args.nodefaultlibs:
+     opts += ' -nodefaultlibs'
++  if args.include:
++    opts += ''.join([' -include ' + arg[0] for arg in args.include])
+ 
+   return opts
+ 
+@@ -201,7 +216,7 @@ def invoke_nvcc(argv, cuda_log=False):
+   out_file = get_option_value(argv, '-o')
+   depfiles = get_option_value(argv, '-MF')
+   defines = get_option_value(argv, '-D')
+-  defines = ''.join([' -D' + define for define in defines])
++  defines = ''.join([' ' + shlex.quote('-D' + define) for define in defines])
+   undefines = get_option_value(argv, '-U')
+   undefines = ''.join([' -U' + define for define in undefines])
+   std_options = get_option_value(argv, '-std')
+@@ -214,6 +229,7 @@ def invoke_nvcc(argv, cuda_log=False):
+   std_options = ''.join([' -std=' +
+       (nvcc_std_map[define] if define in nvcc_std_map else define)
+       for define in std_options if define in nvcc_allowed_std_options][-1:])
++  host_compiler_options += std_options
+   fatbin_options = ''.join([' --fatbin-options=' + option
+       for option in get_option_value(argv, '-Xcuda-fatbinary')])
+ 
+@@ -322,7 +338,7 @@ def normalize_flag(flag):
+     return [flag]
+ 
+ def is_cuda_flag(flag):
+-  return flag.startswith('--cuda') or flag.startswith('-nocudainc')
++  return flag.startswith('--cuda') or flag.startswith('-nocudainc') or flag.startswith('-Xcuda-') or flag == '--compress-all' or flag == '-Xcompiler' or flag.startswith('-nvcc_options')
+ 
+ def main():
+   if TMPDIR and not USE_CLANG_COMPILER:
+@@ -335,7 +351,6 @@ def main():
+ 
+   if args.x and args.x[0] == 'cuda':
+     if args.cuda_log: log('-x cuda')
+-    leftover = [shlex.quote(s) for s in leftover]
+     if args.cuda_log: log('using nvcc')
+     return invoke_nvcc(leftover, cuda_log=args.cuda_log)
+ 
+diff --git a/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper b/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
+index 2cfb314..8d71022 100755
+--- a/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
++++ b/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
+@@ -103,6 +103,7 @@ def get_host_compiler_options(argv):
+   parser.add_argument('-nostdinc', action='store_true')
+   parser.add_argument('-nostdlib', action='store_true')
+   parser.add_argument('-nodefaultlibs', action='store_true')
++  parser.add_argument('-include', nargs=1, action='append')
+ 
+   args, _ = parser.parse_known_args(argv)
+ 
+@@ -111,13 +112,25 @@ def get_host_compiler_options(argv):
+   if args.iquote:
+     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
+   if args.isystem:
+-    for arg in sum(args.isystem, []):
++    isystem_args = sum(args.isystem, [])
++    i = 0
++    while i < len(isystem_args):
++      arg = isystem_args[i]
++      if arg == '-include':
++        opts += ' -include ' + isystem_args[i+1]
++        i += 2
++        continue
++      if arg.startswith('-include '):
++        opts += ' ' + arg
++        i += 1
++        continue
+       if arg.startswith('-isystem'):
+         opts += ' ' + arg
+       elif arg.startswith("'-isystem") and arg.endswith("'"):
+         opts += ' ' + arg[1:len(arg) - 1]
+       else:
+         opts += ' -isystem ' + arg
++      i += 1
+   if args.g:
+     opts += ' -g' + ' -g'.join(sum(args.g, []))
+   if args.fno_canonical_system_headers:
+@@ -132,6 +145,8 @@ def get_host_compiler_options(argv):
+     opts += ' -nostdlib'
+   if args.nodefaultlibs:
+     opts += ' -nodefaultlibs'
++  if args.include:
++    opts += ''.join([' -include ' + arg[0] for arg in args.include])
+ 
+   return opts
+ 
+@@ -201,7 +216,7 @@ def invoke_nvcc(argv, cuda_log=False):
+   out_file = get_option_value(argv, '-o')
+   depfiles = get_option_value(argv, '-MF')
+   defines = get_option_value(argv, '-D')
+-  defines = ''.join([' -D' + define for define in defines])
++  defines = ''.join([' ' + shlex.quote('-D' + define) for define in defines])
+   undefines = get_option_value(argv, '-U')
+   undefines = ''.join([' -U' + define for define in undefines])
+   std_options = get_option_value(argv, '-std')
+@@ -214,6 +229,7 @@ def invoke_nvcc(argv, cuda_log=False):
+   std_options = ''.join([' -std=' +
+       (nvcc_std_map[define] if define in nvcc_std_map else define)
+       for define in std_options if define in nvcc_allowed_std_options][-1:])
++  host_compiler_options += std_options
+   fatbin_options = ''.join([' --fatbin-options=' + option
+       for option in get_option_value(argv, '-Xcuda-fatbinary')])
+ 
+@@ -322,7 +338,7 @@ def normalize_flag(flag):
+     return [flag]
+ 
+ def is_cuda_flag(flag):
+-  return flag.startswith('--cuda') or flag.startswith('-nocudainc')
++  return flag.startswith('--cuda') or flag.startswith('-nocudainc') or flag.startswith('-Xcuda-') or flag == '--compress-all' or flag == '-Xcompiler' or flag.startswith('-nvcc_options')
+ 
+ def main():
+   if TMPDIR and not USE_CLANG_COMPILER:
+@@ -335,7 +351,6 @@ def main():
+ 
+   if args.x and args.x[0] == 'cuda':
+     if args.cuda_log: log('-x cuda')
+-    leftover = [shlex.quote(s) for s in leftover]
+     if args.cuda_log: log('using nvcc')
+     return invoke_nvcc(leftover, cuda_log=args.cuda_log)
+ 

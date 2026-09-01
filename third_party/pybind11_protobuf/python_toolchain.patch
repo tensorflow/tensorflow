@@ -1,0 +1,39 @@
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -17,36 +17,3 @@
+ bazel_dep(name = "protobuf", version = "29.2", repo_name = "com_google_protobuf")
+ bazel_dep(name = "grpc", version = "1.56.3.bcr.1", repo_name = "com_github_grpc_grpc")
+ 
+-SUPPORTED_PYTHON_VERSIONS = [
+-    "3.12",
+-    "3.11",
+-    "3.10",
+-    "3.9",
+-]
+-
+-DEFAULT_PYTHON = "3.12"
+-
+-python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+-
+-[
+-    python.toolchain(
+-        is_default = version == DEFAULT_PYTHON,
+-        python_version = version,
+-    )
+-    for version in SUPPORTED_PYTHON_VERSIONS
+-]
+-
+-use_repo(python, python = "python_versions")
+-
+-pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+-
+-[
+-    pip.parse(
+-        hub_name = "pybind11_protobuf_py_deps",
+-        python_version = version,
+-        requirements_lock = "//pybind11_protobuf/requirements:requirements_lock_" + version.replace(".", "_") + ".txt",
+-    )
+-    for version in SUPPORTED_PYTHON_VERSIONS
+-]
+-
+-use_repo(pip, pypi = "pybind11_protobuf_py_deps")

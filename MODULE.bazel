@@ -5,7 +5,7 @@ module(
     repo_name = "org_tensorflow",
 )
 
-bazel_dep(name = "bazel_features", version = "1.36.0")
+bazel_dep(name = "bazel_features", version = "1.43.0")
 bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 single_version_override(
     module_name = "abseil-cpp",
@@ -13,15 +13,18 @@ single_version_override(
     patches = [
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
+        "//third_party/xla/third_party/absl:btree.patch",
+        "//third_party/xla/third_party/absl:raw_hash_set.patch",
     ],
+    version = "20260526.0",
 )
 
 bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1", repo_name = "nlohmann_json_lib")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
-bazel_dep(name = "rules_python", version = "1.6.1")
-bazel_dep(name = "rules_shell", version = "0.6.1")
-bazel_dep(name = "bazel_skylib", version = "1.8.1")
-bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_python", version = "2.2.0")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
 bazel_dep(name = "rules_java", version = "8.16.1")
@@ -29,51 +32,78 @@ bazel_dep(name = "rules_jvm_external", version = "6.8")
 bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
 single_version_override(
     module_name = "protobuf",
+    patch_strip = 1,
+    patches = [
+        "//third_party/xla/third_party/protobuf:protobuf.patch",
+        "//third_party/xla/third_party/protobuf:protobuf_arena.patch",
+    ],
     version = "31.1",
 )
 
 bazel_dep(name = "google_cloud_cpp", version = "3.0.0-rc1", repo_name = "com_github_googlecloudplatform_google_cloud_cpp")
 bazel_dep(name = "crc32c", version = "1.1.0", repo_name = "com_github_google_crc32c")
 bazel_dep(name = "brotli", version = "1.1.0", repo_name = "org_brotli")
-bazel_dep(name = "rules_cc", version = "0.2.11")
-bazel_dep(name = "curl", version = "8.11.0.bcr.5")
+bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "curl", version = "8.12.0.bcr.1")
+single_version_override(
+    module_name = "curl",
+    patch_strip = 1,
+    patches = ["//third_party:curl.patch"],
+    version = "8.12.0.bcr.1",
+)
 bazel_dep(name = "rules_webtesting", version = "0.4.1", repo_name = "io_bazel_rules_webtesting")
 bazel_dep(name = "rules_closure", version = "0.15.0", repo_name = "io_bazel_rules_closure")
-bazel_dep(name = "grpc", version = "1.78.0")
+bazel_dep(name = "grpc", version = "1.81.0")
 single_version_override(
     module_name = "grpc",
     patch_strip = 1,
     patches = ["//third_party:grpc.patch"],
-    version = "1.78.0",
+    version = "1.81.0",
 )
 
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "rules_apple", version = "4.3.3", repo_name = "build_bazel_rules_apple")
-bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
+bazel_dep(name = "google_benchmark", version = "1.9.4", repo_name = "com_google_benchmark")
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "zstd", version = "1.5.7", repo_name = "net_zstd")
-bazel_dep(name = "pybind11_bazel", version = "2.13.6")
+bazel_dep(name = "pybind11_bazel", version = "3.0.0")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
+single_version_override(
+    module_name = "pybind11_protobuf",
+    patch_strip = 1,
+    patches = [
+        "//third_party/pybind11_protobuf:python_toolchain.patch",
+    ],
+    version = "0.0.0-20250210-f02a2b7",
+)
 
 # NOTE: This is a newer version compared to what was used in WORKSPACE
 # and it breaks wheel tests.
 # TODO: Fix the incompatibility with wheel tests.
 bazel_dep(name = "pybind11_abseil", version = "202402.0")
+single_version_override(
+    module_name = "pybind11_abseil",
+    patch_strip = 1,
+    patches = [
+        "//third_party/xla/third_party/pybind11_abseil:python_toolchain.patch",
+    ],
+    version = "202402.0",
+)
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
-bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
+bazel_dep(name = "re2", version = "2025-11-05.bcr.1", repo_name = "com_googlesource_code_re2")
 bazel_dep(name = "rules_android", version = "0.6.6", repo_name = "build_bazel_rules_android")
 bazel_dep(name = "rules_android_ndk", version = "0.1.3")
-bazel_dep(name = "apple_support", version = "1.23.1", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "apple_support", version = "1.24.2", repo_name = "build_bazel_apple_support")
 bazel_dep(name = "rules_swift", version = "2.4.0")
-bazel_dep(name = "googletest", version = "1.17.0.bcr.1", repo_name = "com_google_googletest")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2", repo_name = "com_google_googletest")
 bazel_dep(name = "fuzztest", version = "20250805.0", repo_name = "com_google_fuzztest")
 bazel_dep(name = "gflags", version = "2.2.2", repo_name = "com_github_gflags_gflags")
 bazel_dep(name = "snappy", version = "1.2.2.bcr.1")
-bazel_dep(name = "zlib", version = "1.3.1.bcr.7")
+bazel_dep(name = "zlib", version = "1.3.2")
 bazel_dep(name = "libpng", version = "1.6.50.bcr.1", repo_name = "png")
 bazel_dep(name = "boringssl", version = "0.20250818.0")
-bazel_dep(name = "highway", version = "1.3.0")
+bazel_dep(name = "highway", version = "1.4.0")
 single_version_override(
     module_name = "highway",
     patch_strip = 1,
@@ -87,6 +117,10 @@ bazel_dep(name = "rules_ml_toolchain")
 archive_override(
     module_name = "rules_ml_toolchain",
     integrity = "sha256-izPVqzV2I7ox7EYzRzcRY6ogeLcHUr4LRP2xMrkWh6A=",
+    patch_strip = 1,
+    patches = [
+        "//third_party:rules_ml_toolchain.patch",
+    ],
     strip_prefix = "rules_ml_toolchain-236a498d8624bef88e35ce2518a833204b0db19f",
     urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/236a498d8624bef88e35ce2518a833204b0db19f.tar.gz"],
 )
@@ -130,9 +164,12 @@ use_repo(
     "mpitrampoline",
     "nanobind",
     "nasm",
+    "nccl_archive",
     "nvshmem",
+    "nvtx_archive",
     "onednn",
     "onednn_async",
+    "org_sqlite",
     "pthreadpool",
     "raft",
     "riegeli",
@@ -170,12 +207,9 @@ use_repo(
     "linenoise",
     "mobile_multibox",
     "mobile_ssd",
-    "nccl_archive",
-    "nvtx_archive",
     "opencl_headers",
     "org_checkerframework_qual",
     "org_hamcrest_core",
-    "org_sqlite",
     "org_xprof",
     "person_detect_data",
     "ruy",
@@ -228,6 +262,13 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
     hub_name = "tf_pypi",
     python_version = python_version,
     requirements_lock = "//:requirements_lock_{}.txt".format(python_version.replace(".", "_")),
+    target_platforms = [
+        "linux_x86_64",
+        "linux_aarch64",
+        "osx_x86_64",
+        "osx_aarch64",
+        "windows_x86_64",
+    ],
     whl_modifications = {
         "@pypi_mods//:numpy.json": "numpy",  # @pypi_mods is defined in XLA's MODULE.bazel
     },
@@ -239,6 +280,11 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 ]]
 
 use_repo(pip, "pypi_mods", pypi = "tf_pypi")
+
+override_repo(
+    pip,
+    xla_pypi = "pypi",
+)
 
 python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
 use_repo(python_version_ext, "python_version_repo")
@@ -268,6 +314,15 @@ use_repo(cuda_configure, "local_config_cuda")
 nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
 use_repo(nccl_configure, "local_config_nccl")
 
+nccl_redist = use_extension("//third_party/nccl:nccl_redist_extension.bzl", "nccl_redist_ext")
+use_repo(nccl_redist, "cuda_nccl")
+
+nccl_redist_xla = use_extension("@rules_ml_toolchain//extensions:nccl_redist.bzl", "nccl_redist_ext")
+override_repo(
+    nccl_redist_xla,
+    cuda_nccl = "cuda_nccl",
+)
+
 sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "local_config_sycl")
 
@@ -277,7 +332,6 @@ use_repo(local_clang_configure, "local_config_clang")
 cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(
     cuda_redist_init_ext,
-    "cuda_cccl",
     "cuda_cublas",
     "cuda_cudart",
     "cuda_cudnn",
@@ -288,11 +342,28 @@ use_repo(
     "cuda_cusparse",
     "cuda_driver",
     "cuda_nvcc",
+    "cuda_nvdisasm",
     "cuda_nvjitlink",
     "cuda_nvml",
     "cuda_nvrtc",
     "cuda_nvtx",
+    "cuda_nvvm",
 )
+
+# Override cuda_cccl to use a newer version defined in the cccl_extension.
+cccl_extension = use_extension("@xla//third_party/cccl:cccl_extension.bzl", "cccl_extension")
+use_repo(cccl_extension, "cuda_cccl")
+
+override_repo(
+    cuda_redist_init_ext,
+    cuda_cccl = "cuda_cccl",
+)
+
+nvshmem_redist = use_extension("@rules_ml_toolchain//extensions:nvshmem_redist.bzl", "nvshmem_redist_ext")
+use_repo(nvshmem_redist, "nvidia_nvshmem")
+
+toolchain_ext = use_extension("@rules_ml_toolchain//extensions:toolchain.bzl", "toolchain_ext")
+use_repo(toolchain_ext, "llvm18_linux_x86_64", "llvm_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
@@ -304,7 +375,7 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 ### Other local config repos
 rocm_configure = use_extension("@xla//third_party/extensions:rocm_configure.bzl", "rocm_configure_ext")
-use_repo(rocm_configure, "local_config_rocm")
+use_repo(rocm_configure, "config_rocm_hipcc", "local_config_rocm")
 
 tensorrt_configure = use_extension("@xla//third_party/extensions:tensorrt_configure.bzl", "tensorrt_configure_ext")
 use_repo(tensorrt_configure, "local_config_tensorrt")
