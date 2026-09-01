@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
@@ -275,6 +276,14 @@ class NcclCommunicator : public GpuCommunicator {
     return is_cross_device_barrier_initiated_;
   }
 
+  stream_executor::DeviceAddressBase GetCliqueSemaphore(int device) const final;
+
+  void InitializeCliqueSemaphore(
+      int device, tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory, RankId rank) final;
+
+  bool IsCliqueSemaphoreInitialized(int device) const final;
+
   // Executes f on executor_, or calls f directly if executor_ is null.
   Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
@@ -335,6 +344,14 @@ class NcclCommunicator : public GpuCommunicator {
       ABSL_GUARDED_BY(barrier_mu_);
   tsl::TiedRef<SymmetricMemory> tied_cross_device_barrier_symmetric_memory_
       ABSL_GUARDED_BY(barrier_mu_);
+
+  mutable absl::Mutex semaphore_mu_;
+  absl::flat_hash_map<int, tsl::TiedRef<se::MemoryAllocation>>
+      tied_clique_semaphores_ ABSL_GUARDED_BY(semaphore_mu_);
+  absl::flat_hash_map<int, tsl::TiedRef<SymmetricMemory>>
+      tied_clique_symmetric_memories_ ABSL_GUARDED_BY(semaphore_mu_);
+  absl::flat_hash_map<int, RankId> device_to_rank_
+      ABSL_GUARDED_BY(semaphore_mu_);
 };
 
 //===----------------------------------------------------------------------===//
