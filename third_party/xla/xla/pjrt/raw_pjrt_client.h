@@ -183,6 +183,9 @@ class PjRtRawClient {
     return absl::UnimplementedError("DmaUnmap is not supported.");
   }
 
+  // Returns the required byte alignment for host memory when performing DMA.
+  virtual size_t GetDmaHostAlignment() const { return 1; }
+
   virtual void UpdateGlobalProcessInfo(
       absl::Span<xla::coordination::TaskInfo> infos) {
     LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";

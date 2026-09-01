@@ -3867,12 +3867,15 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
           PjRtDeviceEventRefVector definition_events)
           -> absl::StatusOr<PjRtDeviceEventRef> {
         auto ds_kind = client()->GetDynamicShapeKind(memory_space()->kind_id());
+        size_t host_alignment_bytes =
+            buf_client->raw_client()->GetDmaHostAlignment();
         PjRtDeviceEventSpan deps_span(definition_events);
         xla::ExecuteWhenReady(
             deps_span, buf_client->async_work_runner(),
             [definition_events = std::move(definition_events),
              raw_buffer = raw_buffer, output_shape = output_shape,
-             device_shape = std::move(device_shape), ds_kind]() mutable {
+             device_shape = std::move(device_shape), ds_kind,
+             host_alignment_bytes]() mutable {
               tsl::profiler::TraceMe traceme("D2H Read Shape Metadata");
               absl::Status status = xla::GetErrors(definition_events);
               if (!status.ok()) {
@@ -3883,7 +3886,7 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
                 return;
               }
               xla::ReadDynamicShape(raw_buffer, output_shape, device_shape,
-                                    ds_kind);
+                                    ds_kind, host_alignment_bytes);
             });
         tsl::BlockUntilReady(output_shape.CopyRCRef().get());
         if (auto* error = output_shape.GetErrorIfPresent()) {
