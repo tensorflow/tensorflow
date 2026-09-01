@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cast_bf16_ops_to_f32_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/large_constant_fold_pass.h"
@@ -56,7 +59,7 @@ namespace mlir::TFL {
 void AddSkipToTflitePasses(mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreateLegalizeChloToTflPass());
-  pass_manager.addPass(mlir::odml::CreateCompositeLoweringPass());
+  pass_manager.addPass(mlir::createInlinerPass());
   pass_manager.addPass(mlir::TFL::CreateLowerQuantAnnotationsPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
 }
@@ -64,6 +67,10 @@ void AddSkipToTflitePasses(mlir::OpPassManager& pass_manager) {
 void AddHloOptimizationPasses(mlir::OpPassManager& pass_manager) {
   // Drop shape assertion custom calls before VHLO legalization
   pass_manager.addPass(mlir::odml::CreateDropShapeAssertionsPass());
+
+  // Legalize VHLO quant custom calls to StableHLO custom calls before VHLO
+  // legalization
+  pass_manager.addPass(mlir::odml::CreateLegalizeVhloQuantCustomCallsPass());
 
   // VHLO -> StableHLO
   pass_manager.addPass(mlir::stablehlo::createVhloLegalizeToStablehloPass());
@@ -108,6 +115,10 @@ void AddHloOptimizationPasses(mlir::OpPassManager& pass_manager) {
   // StableHLO -> MHLO bridge
   pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
 
+  // Composite lowering when IR is in MHLO
+  pass_manager.addPass(mlir::odml::CreateCompositeLoweringPass());
+  pass_manager.addPass(mlir::createSymbolDCEPass());
+
   // MHLO algebraic optimizations
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeEinsumToDotGeneralPass());
@@ -128,7 +139,13 @@ void AddHloToTfLiteLegalizationPasses(mlir::OpPassManager& pass_manager) {
       mlir::odml::CreateUniformQuantizedStableHloToTflPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreatePrepareHloPass());
+  pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
   pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
+
+  // Legalize remaining MHLO ops to StableHLO
+  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::createLegalizeCompositeToCustomOpPass());
 }
 
 void AddTfLiteOptimizationPasses(mlir::OpPassManager& pass_manager,
@@ -148,18 +165,22 @@ void AddTfLiteOptimizationPasses(mlir::OpPassManager& pass_manager,
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizePass());
 
-  // Quantization
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreatePrepareQuantizePass(pass_config.quant_specs));
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateQuantizePass(pass_config.quant_specs));
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
-
   if (!pass_config.unfold_batch_matmul) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizeBatchMatmulPass());
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateOptimizePass());
   }
+
+  // Quantization
+  pass_manager.addPass(mlir::TFL::CreatePropagateQParamsPass());
+  pass_manager.addPass(mlir::TFL::CreateBiasQuantizerPass());
+  pass_manager.addPass(mlir::TFL::CreateFuseQDQPass());
+
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::createCanonicalizerPass());
 
   // Some optimizations need to happen on the quantized graph.
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -176,6 +197,8 @@ void AddTfLiteOptimizationPasses(mlir::OpPassManager& pass_manager,
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+  pass_manager.addPass(mlir::TFL::CreateCleanupOptimizationBarrierPass());
+  pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 
 absl::Status ConvertStableHloToTFLite(
@@ -185,8 +208,10 @@ absl::Status ConvertStableHloToTFLite(
   mlir::MLIRContext* context = module->getContext();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
-  registry.insert<mlir::TFL::TFLDialect, mlir::mhlo::MhloDialect,
-                  mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
+  registry.insert<mlir::TFL::TensorFlowLiteDialect, mlir::mhlo::MhloDialect,
+                  mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
+                  mlir::quant::QuantDialect,
+                  mlir::quantfork::QuantizationForkDialect>();
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
 
