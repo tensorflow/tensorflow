@@ -104,6 +104,11 @@ class BiasOp : public BinaryOp<T> {
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         input.shape()));
+    OP_REQUIRES(
+        context, data_format_ != FORMAT_NCHW || input.shape().dims() >= 3,
+        errors::InvalidArgument(
+            "NCHW format requires input tensor to be at least 3D: ",
+            input.shape()));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 errors::InvalidArgument("Biases must be 1D: ", bias.shape()));
 
@@ -174,6 +179,13 @@ class BiasGradOp : public OpKernel {
                 TensorShapeUtils::IsMatrixOrHigher(output_backprop.shape()),
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         output_backprop.shape()));
+
+    OP_REQUIRES(
+        context,
+        data_format_ != FORMAT_NCHW || output_backprop.shape().dims() >= 3,
+        errors::InvalidArgument(
+            "NCHW format requires input tensor to be at least 3D: ",
+            output_backprop.shape()));
 
     OP_REQUIRES(context,
                 FastBoundsCheck(output_backprop.NumElements(),
@@ -254,6 +266,11 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
                 absl::InvalidArgumentError(
                     absl::StrCat("Input tensor must be at least 2D: ",
                                  input.shape().DebugString())));
+    OP_REQUIRES(
+        context, data_format_ != FORMAT_NCHW || input.shape().dims() >= 3,
+        absl::InvalidArgumentError(absl::StrCat(
+            "NCHW format requires input tensor to be at least 3D: ",
+            input.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Biases must be 1D: ", bias.shape().DebugString())));
@@ -448,6 +465,12 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("Input tensor must be at least 2D: ",
                                  output_backprop.shape().DebugString())));
+    OP_REQUIRES(
+        context,
+        data_format_ != FORMAT_NCHW || output_backprop.shape().dims() >= 3,
+        absl::InvalidArgumentError(absl::StrCat(
+            "NCHW format requires input tensor to be at least 3D: ",
+            output_backprop.shape().DebugString())));
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
