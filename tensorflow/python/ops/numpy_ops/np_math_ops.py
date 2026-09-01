@@ -558,7 +558,7 @@ def logaddexp2(x1, x2):
     return np_array_ops.where(
         isnan(delta),
         x1 + x2,  # NaNs or infinities of the same sign.
-        amax + log1p(exp2(-abs(delta))) / np.log(2),
+        amax + log1p(exp2(-abs(delta))) / math_ops.cast(np.log(2), x1.dtype),
     )
 
   return _bin_op(f, x1, x2)
