@@ -1501,6 +1501,19 @@ pybind_extension(
     pywrap_only = True,
     deps = [
         ":_pywrap_library_dependency_enforcer",
+        # The kernel C API for resource variables has no caller inside
+        # TensorFlow: it exists so that a PluggableDevice can implement the ops
+        # that read and write variables. It is a root of :tensorflow_framework,
+        # but a pywrap filter only partitions the linker inputs a link already
+        # has, so being a root does not make it reachable. It used to be
+        # reachable through pywrap_tensorflow_macro, which discards its deps
+        # under the pywrap rules, and since 2.20.0 no shipped binary has
+        # defined the fourteen entry points it exports. Naming it here restores
+        # the edge; the framework filter then places it in
+        # libtensorflow_framework, where the rest of the C API already lives,
+        # rather than duplicating //tensorflow/core:framework_internal_impl
+        # into the common library. See #126374.
+        "//tensorflow/c:kernels_experimental",
         "@pybind11",
     ],
 )
@@ -1645,17 +1658,6 @@ pywrap_library(
             ],
         }),
     },
-    # The kernel C API for resource variables has no caller inside TensorFlow:
-    # it exists so that a PluggableDevice can implement the ops that read and
-    # write variables. Nothing therefore pulls kernels_experimental.cc into the
-    # link, and the fourteen entry points it defines have been absent from
-    # every shipped binary since 2.20.0, while the headers still declare them.
-    # Naming it here puts it in the common library, which is where the rest of
-    # the C API already lives. See #126374.
-    extra_deps = [
-        "@pybind11//:pybind11",
-        "//tensorflow/c:kernels_experimental",
-    ],
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_version_scripts = {
