@@ -133,6 +133,10 @@ class TilingSpace {
   static absl::StatusOr<std::unique_ptr<TilingSpace>> Create(
       const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
+  // Creates an independent deep copy of the TilingSpace, with all internal
+  // pointer maps and root tiles re-bound to the new instance.
+  std::unique_ptr<TilingSpace> Clone() const;
+
   std::string ToString() const;
 
   // This allows GUnit to print the tile.
