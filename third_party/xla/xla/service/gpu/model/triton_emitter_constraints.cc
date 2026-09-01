@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/decision.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
@@ -73,6 +74,18 @@ llvm::SmallVector<int64_t> GetPaddedTileSizes(
     result.push_back(llvm::PowerOf2Ceil(value));
   }
   return result;
+}
+
+// Returns a conservative estimate (in bytes) of the memory required to stage a
+// tile whose sizes are `tile_sizes` for an instruction whose element type
+// occupies `element_byte_size` bytes.
+int64_t GetPaddedTileSizeInBytes(absl::Span<const int64_t> tile_sizes,
+                                 int64_t element_byte_size) {
+  int64_t padded_tile_elements = 1;
+  for (int64_t size : tile_sizes) {
+    padded_tile_elements *= llvm::PowerOf2Ceil(size);
+  }
+  return padded_tile_elements * element_byte_size;
 }
 
 }  // namespace
@@ -120,6 +133,7 @@ TritonEmitterConstraints::GetBuilder(
              const HloFusionAdaptor& fusion_adaptor) {
     absl::flat_hash_set<SymbolicMap> unique_tile_size_maps;
     llvm::SmallVector<RootTileInfo, 2> root_infos;
+    llvm::SmallVector<TransposeTileInfo, 2> transpose_infos;
     auto roots = fusion_adaptor.GetRoots();
     for (const auto& tiled_hlo_instruction : instructions) {
       unique_tile_size_maps.insert(
@@ -133,6 +147,17 @@ TritonEmitterConstraints::GetBuilder(
             RootTileInfo{tiled_hlo_instruction->symbolic_tile().size_map(),
                          shape.IsArray() ? SpanToVector(shape.dimensions())
                                          : std::vector<int64_t>()});
+      }
+      // A transpose stages its operand tile in shared memory to perform the
+      // layout conversion, so record the info needed to estimate that usage.
+      const HloInstruction* hlo = tiled_hlo_instruction->hlo();
+      if (hlo->opcode() == HloOpcode::kTranspose &&
+          fusion_adaptor.ContainsInstruction(hlo)) {
+        const auto& operand = tiled_hlo_instruction->operands().front();
+        transpose_infos.push_back(
+            TransposeTileInfo{operand->symbolic_tile().size_map(),
+                              ShapeUtil::ByteSizeOfPrimitiveType(
+                                  operand->hlo()->shape().element_type())});
       }
     }
 
@@ -148,7 +173,7 @@ TritonEmitterConstraints::GetBuilder(
     return std::unique_ptr<TritonEmitterConstraints>(
         absl::WrapUnique(new TritonEmitterConstraints(
             std::move(tile_size_maps), std::move(root_infos),
-            std::move(custom_constraints),
+            std::move(transpose_infos), std::move(custom_constraints),
             /*root_shape=*/instructions.back()->hlo()->shape(),
             device_description, std::move(tiled_emitter_constraints))));
   };
@@ -258,6 +283,27 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
     }
   }
 
+  // Verify that no transpose op would require more shared memory than the
+  // device provides. A transpose stages its (padded) operand tile in shared
+  // memory to perform the layout conversion, so estimate that usage and reject
+  // tiles that would exceed the device shared memory limit. This lets the tile
+  // search fall back to a smaller tile instead of failing later with a
+  // RESOURCE_EXHAUSTED error during Triton compilation.
+  const int64_t shared_memory_limit =
+      device_info_.shared_memory_per_block_optin();
+  for (const auto& transpose : transposes_) {
+    llvm::SmallVector<int64_t> operand_tile_sizes =
+        transpose.operand_size_map.Evaluate(tile_parameters);
+    if (GetPaddedTileSizeInBytes(operand_tile_sizes,
+                                 transpose.element_byte_size) >
+        shared_memory_limit) {
+      VLOG(2) << "Found a transpose whose operand tile would exceed the shared "
+                 "memory limit of "
+              << shared_memory_limit << " bytes. Bailing out.";
+      return false;
+    }
+  }
+
   return tiled_emitter_constraints_->ParametersSatisfyConstraints(
       tile_parameters);
 }
@@ -346,6 +392,44 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
           }
         }
       }
+    }
+  }
+
+  // 3. Transpose Shared Memory Limit.
+  // A transpose op stages its (padded) operand tile in shared memory to perform
+  // the layout conversion (the classic shared-memory transpose that avoids
+  // uncoalesced global memory accesses). Estimate that shared-memory usage as
+  // the product of the power-of-2-padded operand tile sizes multiplied by the
+  // element byte size, and reject tiles that would exceed the device shared
+  // memory limit. This lets the tile search fall back to a smaller tile instead
+  // of failing later with a RESOURCE_EXHAUSTED error during Triton compilation.
+  const int64_t shared_memory_limit =
+      device_info.shared_memory_per_block_optin();
+  for (const TiledHloInstruction* inst : all_instructions) {
+    if (inst->hlo()->opcode() != HloOpcode::kTranspose) {
+      continue;
+    }
+    // The transposed operand (operand 0) is the tile that is staged in shared
+    // memory.
+    CHECK_EQ(inst->operands().size(), 1)
+        << "Transpose " << inst->hlo()->name() << " should have exactly one "
+        << "operand, but has " << inst->operands().size() << ".";
+    const TiledHloInstruction* operand = inst->operands().front();
+    auto operand_tile_sizes_or = operand->tile().GetStaticTileSizes();
+    if (!operand_tile_sizes_or.ok()) {
+      return Decision(operand_tile_sizes_or.status());
+    }
+
+    const int64_t shared_memory_bytes = GetPaddedTileSizeInBytes(
+        *operand_tile_sizes_or, ShapeUtil::ByteSizeOfPrimitiveType(
+                                    operand->hlo()->shape().element_type()));
+    if (shared_memory_bytes > shared_memory_limit) {
+      return Decision::Forbid(absl::StrCat(
+          "Transpose instruction ", inst->hlo()->name(),
+          " has an operand tile that requires an estimated ",
+          shared_memory_bytes,
+          " bytes of shared memory, which exceeds the device limit of ",
+          shared_memory_limit, " bytes."));
     }
   }
 
