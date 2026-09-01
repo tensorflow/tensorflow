@@ -274,6 +274,39 @@ ENTRY cluster_13361217111314620287__.11 {
   }
 }
 
+TEST_F(TestUtilsTest, MakeDataflowConstrainedArgumentsForTupleParam) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule cluster_tuple_gather, entry_computation_layout={((s32[10], bf16[100,256]))->(bf16[10,256])}
+
+ENTRY cluster {
+  arg_tuple.1 = (s32[10], bf16[100,256]) parameter(0)
+  get-tuple-element.0 = s32[10] get-tuple-element(arg_tuple.1), index=0
+  get-tuple-element.1 = bf16[100,256] get-tuple-element(arg_tuple.1), index=1
+  gather.2 = bf16[10,256] gather(get-tuple-element.1, get-tuple-element.0),
+    offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={1,256}
+  ROOT tuple.3 = (bf16[10,256]) tuple(gather.2)
+}
+)")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeDataflowConstrainedArguments(module.get()));
+  ASSERT_EQ(args.size(), 1);
+  ASSERT_TRUE(args[0].shape().IsTuple());
+  ASSERT_EQ(args[0].shape().tuple_shapes().size(), 2);
+
+  const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
+  EXPECT_TRUE(ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10})))
+      << ShapeUtil::HumanString(indices_shape);
+  const std::vector<Literal> results = args[0].DecomposeTuple();
+  auto indices = results[0].data<int32_t>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, 0);
+    EXPECT_LE(index, 99);
+  }
+}
+
 TEST_F(TestUtilsTest, MakeFakeArgumentsForScatter) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule Test

@@ -394,13 +394,7 @@ ConstraintPropagator::Run(
     }
   } while (before != propagator.states_);
 
-  // Extract only the parameters
-  absl::flat_hash_map<const HloInstruction*, ConstraintState> result;
-  for (const HloInstruction* param :
-       module.entry_computation()->parameter_instructions()) {
-    result[param] = propagator.states_[param];
-  }
-  return result;
+  return propagator.states_;
 }
 
 // Accurately modeling full relational semantics across multi-branch graphs

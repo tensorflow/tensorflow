@@ -422,31 +422,17 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
   ABSL_ASSIGN_OR_RETURN(auto constraint_states,
                    ConstraintPropagator::Run(*module, get_index_known_zeroes));
 
-  const auto params = module->entry_computation()->parameter_instructions();
-  std::vector<Literal> arguments(params.size());
-  for (int i = 0; i < params.size(); ++i) {
-    const HloModuleConfig& module_config = module->config();
-    const Shape& param_shape = (module_config.has_entry_computation_layout() &&
-                                module_config.entry_computation_layout()
-                                    .parameter_layout(i)
-                                    .shape()
-                                    .is_static())
-                                   ? module_config.entry_computation_layout()
-                                         .parameter_layout(i)
-                                         .shape()
-                                   : params[i]->shape();
-
-    const ConstraintState& state = constraint_states[params[i]];
+  auto make_literal_for_state =
+      [&](const Shape& shape, const ConstraintState& state,
+          absl::string_view target_name) -> absl::StatusOr<Literal> {
     ConstraintInterval interval = state.GetConstraintInterval();
     StructuralConstraints structure = state.GetStructuralConstraints();
-
     if (!generate_aligned_ds_indices) {
       structure.alignment = std::nullopt;
     }
-
     std::optional<std::pair<int64_t, int64_t>> limit = std::nullopt;
-    if (ShapeUtil::ElementIsIntegral(param_shape) &&
-        !interval.IsUnconstrained() && !interval.IsEmpty()) {
+    if (ShapeUtil::ElementIsIntegral(shape) && !interval.IsUnconstrained() &&
+        !interval.IsEmpty()) {
       // Use exact hexadecimal floating-point literals 0x1.0p63 (2^63) and
       // -0x1.0p63 (-2^63) for boundary comparisons. INT64_MAX (2^63 - 1)
       // cannot be exactly represented in a 53-bit mantissa double and rounds
@@ -476,20 +462,66 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
             "Unsatisfiable integer constraint interval [%f, %f]%s for "
             "parameter %s: collapsed to empty discrete range [%d, %d].",
             interval.min, interval.max,
-            interval.exclude_zero ? " (excl 0)" : "", params[i]->name(),
-            min_val, max_val);
+            interval.exclude_zero ? " (excl 0)" : "", target_name, min_val,
+            max_val);
       }
 
       limit = {min_val, max_val};
     }
+    return MakeFakeLiteral(shape, engine, limit, structure.needs_sorted_indices,
+                           structure.no_duplicates, use_large_range,
+                           max_bits_of_precision, structure.alignment,
+                           structure.known_zeroes_mask,
+                           /*float_generator=*/nullptr, interval);
+  };
 
-    ABSL_ASSIGN_OR_RETURN(
-        arguments[i],
-        MakeFakeLiteral(param_shape, engine, limit,
-                        structure.needs_sorted_indices, structure.no_duplicates,
-                        use_large_range, max_bits_of_precision,
-                        structure.alignment, structure.known_zeroes_mask,
-                        /*float_generator=*/nullptr, interval));
+  const auto params = module->entry_computation()->parameter_instructions();
+  const HloModuleConfig& module_config = module->config();
+  auto get_param_shape = [&](int i) -> const Shape& {
+    if (module_config.has_entry_computation_layout() &&
+        module_config.entry_computation_layout()
+            .parameter_layout(i)
+            .shape()
+            .is_static()) {
+      return module_config.entry_computation_layout()
+          .parameter_layout(i)
+          .shape();
+    }
+    return params[i]->shape();
+  };
+
+  std::vector<Literal> arguments(params.size());
+  for (int i = 0; i < params.size(); ++i) {
+    const Shape& param_shape = get_param_shape(i);
+
+    if (param_shape.IsTuple()) {
+      std::vector<Literal> elements;
+      elements.reserve(param_shape.tuple_shapes().size());
+      for (int64_t j = 0; j < param_shape.tuple_shapes().size(); ++j) {
+        ConstraintState elem_state;
+        for (const HloInstruction* user : params[i]->users()) {
+          if (user->opcode() == HloOpcode::kGetTupleElement &&
+              user->tuple_index() == j) {
+            auto it = constraint_states.find(user);
+            if (it != constraint_states.end()) {
+              elem_state.Merge(it->second);
+            }
+          }
+        }
+        ABSL_ASSIGN_OR_RETURN(
+            Literal elem_lit,
+            make_literal_for_state(
+                param_shape.tuple_shapes(j), elem_state,
+                absl::StrFormat("%s (element %d)", params[i]->name(), j)));
+        elements.push_back(std::move(elem_lit));
+      }
+      arguments[i] = LiteralUtil::MakeTupleOwned(std::move(elements));
+    } else {
+      ABSL_ASSIGN_OR_RETURN(
+          arguments[i],
+          make_literal_for_state(param_shape, constraint_states[params[i]],
+                                 params[i]->name()));
+    }
   }
   return std::move(arguments);
 }
