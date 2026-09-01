@@ -42,7 +42,7 @@ struct TensorData {
 - (bool)cleanup;
 
 @property MLModel* model API_AVAILABLE(ios(11));
-@property NSString* mlModelFilePath;
-@property NSString* compiledModelFilePath;
+@property(copy) NSString* mlModelFilePath;
+@property(copy) NSString* compiledModelFilePath;
 @property(nonatomic, readonly) int coreMlVersion;
 @end

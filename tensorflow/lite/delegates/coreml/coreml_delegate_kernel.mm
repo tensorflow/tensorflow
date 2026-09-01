@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 #import "tensorflow/lite/delegates/coreml/coreml_executor.h"
 
@@ -262,7 +263,15 @@ TfLiteStatus CoreMlDelegateKernel::Invoke(TfLiteContext* context, TfLiteNode* no
   }
 }
 
-CoreMlDelegateKernel::~CoreMlDelegateKernel() { [executor_ cleanup]; }
+CoreMlDelegateKernel::~CoreMlDelegateKernel() {
+  @try {
+    [executor_ cleanup];
+  } @catch (NSException* exception) {
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "Exception during CoreML cleanup: %s",
+                    [exception.reason UTF8String]);
+  }
+}
 
 }  // namespace coreml
 }  // namespace delegates

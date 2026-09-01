@@ -165,15 +165,20 @@ NSURL* createTemporaryFile() {
 
 - (bool)cleanup {
   NSError* error = nil;
-  [[NSFileManager defaultManager] removeItemAtPath:_mlModelFilePath error:&error];
-  if (error != nil) {
-    NSLog(@"Failed cleaning up model: %@", [error localizedDescription]);
-    return NO;
+  NSFileManager* fileManager = [NSFileManager defaultManager];
+  if (_mlModelFilePath.length > 0 && [fileManager fileExistsAtPath:_mlModelFilePath]) {
+    [fileManager removeItemAtPath:_mlModelFilePath error:&error];
+    if (error != nil) {
+      NSLog(@"Failed cleaning up model: %@", [error localizedDescription]);
+      return NO;
+    }
   }
-  [[NSFileManager defaultManager] removeItemAtPath:_compiledModelFilePath error:&error];
-  if (error != nil) {
-    NSLog(@"Failed cleaning up compiled model: %@", [error localizedDescription]);
-    return NO;
+  if (_compiledModelFilePath.length > 0 && [fileManager fileExistsAtPath:_compiledModelFilePath]) {
+    [fileManager removeItemAtPath:_compiledModelFilePath error:&error];
+    if (error != nil) {
+      NSLog(@"Failed cleaning up compiled model: %@", [error localizedDescription]);
+      return NO;
+    }
   }
   return YES;
 }
@@ -181,6 +186,7 @@ NSURL* createTemporaryFile() {
 - (NSURL*)saveModel:(CoreML::Specification::Model*)model {
   NSURL* modelUrl = createTemporaryFile();
   NSString* modelPath = [modelUrl path];
+  _mlModelFilePath = modelPath;
   if (model->specificationversion() == 3) {
     _coreMlVersion = 2;
   } else if (model->specificationversion() == 4) {
