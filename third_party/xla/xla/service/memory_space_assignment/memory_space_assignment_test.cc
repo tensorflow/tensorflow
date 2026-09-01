@@ -17968,6 +17968,92 @@ ENTRY entry {
 }
 
 TEST_F(MemorySpaceAssignmentTest,
+       TestColoringWithContiguousBuffersAcrossAsyncChain) {
+  // * The value defined by the wrapped kernel inside the async computation
+  //   is forwarded by async-start/async-done without a new definition, and
+  //   consumer aliases it in place.
+  // * The wrapped kernel and async-start positions require contiguous
+  //   allocation, but the forwarding async-done position does not (it has no
+  //   own allocation).
+  // * Coloring the buffer at the definition and at the use site must place
+  //   the buffer in alternate memory across the whole async chain: the chain
+  //   internal async-done use, reached through a forwarding position, must
+  //   count towards the defining position's contiguous live range, so the
+  //   coloring at the definition covers the range from the definition
+  //   through async-done instead of a single time unit.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_comp {
+  p0 = f32[2,3] parameter(0)
+  ROOT wrapped_kernel = f32[2,3] custom-call(p0), custom_call_target="tpu_custom_call"
+}, execution_thread="sparsecore"
+
+ENTRY entry {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[2,3], u32[]) async-start(p0), async_execution_thread="sparsecore", calls=async_comp
+  negate0 = f32[2,3] negate(p0)
+  negate1 = f32[2,3] negate(negate0)
+  negate2 = f32[2,3] negate(negate1)
+  negate3 = f32[2,3] negate(negate2)
+  negate4 = f32[2,3] negate(negate3)
+  async-done = f32[2,3] async-done(async-start), async_execution_thread="sparsecore", calls=async_comp
+  consumer = f32[2,3] custom-call(async-done, negate4), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  ROOT copy0 = f32[2,3] copy(consumer)
+})hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.verify = true;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        // Mirror the production predicate: async custom call buffers cannot
+        // move while the async operation may be writing them, but the
+        // forwarding async-done position carries no own allocation.
+        return position.instruction->opcode() == HloOpcode::kAsyncStart ||
+               position.instruction->opcode() == HloOpcode::kAsyncUpdate ||
+               position.instruction->opcode() == HloOpcode::kCustomCall;
+      };
+  // The async chain is only placed in alternate memory when the coloring
+  // requires it, like in the production configuration.
+  memory_space_options.is_position_allowed_in_alternate_mem_fn =
+      [](const HloPosition& position) {
+        return position.instruction->opcode() != HloOpcode::kAsyncStart &&
+               position.instruction->opcode() != HloOpcode::kAsyncDone &&
+               position.instruction->parent()->IsMainThread();
+      };
+  HloPosition wrapped_kernel_position{
+      FindInstruction(module.get(), "wrapped_kernel"), {}};
+  HloUse consumer_use_of_async_done{
+      FindInstruction(module.get(), "consumer"), 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {wrapped_kernel_position, kAlternateMemorySpace},
+      {consumer_use_of_async_done, kAlternateMemorySpace},
+  };
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // The buffer stays in alternate memory across the whole async chain and
+  // through the aliased use: no copy is inserted between async-done and its
+  // use, and the async destination buffer, the forwarded value at
+  // async-done, and the aliased consumer output all live in alternate
+  // memory.
+  HloInstruction* consumer = FindInstruction(module.get(), "consumer");
+  ASSERT_THAT(consumer->operand(0), op::AsyncDone());
+  EXPECT_EQ(consumer->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(consumer->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* async_start =
+      FindInstruction(module.get(), "async-start");
+  EXPECT_EQ(
+      ShapeUtil::GetSubshape(async_start->shape(), {1}).layout().memory_space(),
+      kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
        ConditionalAliasedInputOutputAllocatedInAlternateMemory) {
   // Conditional outputs and inputs alias with each other, and the outputs are
   // first in the sort order. They should all get alternate memory allocations.
