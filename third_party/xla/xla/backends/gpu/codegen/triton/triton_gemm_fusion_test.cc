@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
-#include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -112,7 +111,6 @@ class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
-    ABSL_RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
     ABSL_ASSIGN_OR_RETURN(bool converted, ConvertTritonGemmConfig(
                                          device_description(), &mlir_context_)
                                          .Run(module.get()));
@@ -2533,22 +2531,19 @@ TEST_F(TritonTest, UseTF32For8BitOrLessWithF32) {
 HloModule t
 
 triton_dot {
-  parameter_0 = s32[11,24]{1,0} parameter(0)
-  broadcast = s32[11,24,128]{2,1,0} broadcast(parameter_0),
-  dimensions={0,1}
-  parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
-  compare = pred[11,24,128]{2,1,0} compare(broadcast, parameter_1),
-      direction=EQ
-  bitcast = pred[264,128]{1,0} bitcast(compare)
-  convert = f32[264,128]{1,0} convert(bitcast)
+  parameter_0 = s32[264]{0} parameter(0)
+  broadcast = s32[264,128]{1,0} broadcast(parameter_0), dimensions={0}
+  parameter_1 = s32[264,128]{1,0} parameter(1)
+  compare = pred[264,128]{1,0} compare(broadcast, parameter_1), direction=EQ
+  convert = f32[264,128]{1,0} convert(compare)
   parameter_2 = f32[128,8]{1,0} parameter(2)
   ROOT dot = f32[264,8]{1,0} dot(convert, parameter_2),
       lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
-  p0 = s32[11,24]{1,0} parameter(0)
-  p1 = s32[11,24,128]{2,1,0} parameter(1)
+  p0 = s32[264]{0} parameter(0)
+  p1 = s32[264,128]{1,0} parameter(1)
   p2 = f32[128,8]{1,0} parameter(2)
   ROOT _ = f32[264,8] fusion(p0, p1, p2), kind=kCustom, calls=triton_dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",

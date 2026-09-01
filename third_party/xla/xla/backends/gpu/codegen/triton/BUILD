@@ -365,7 +365,6 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
-        "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
