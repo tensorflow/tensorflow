@@ -1432,21 +1432,47 @@ LogicalResult ConvOp::verify() {
     return emitOpError("Expected window attributes size to match spatial dims");
   }
 
+  const int64_t feature_group_count = getFeatureGroupCount();
+  const int64_t batch_group_count = getBatchGroupCount();
+  if (feature_group_count <= 0) {
+    return emitOpError("Expected feature_group_count to be positive");
+  }
+  if (batch_group_count <= 0) {
+    return emitOpError("Expected batch_group_count to be positive");
+  }
+  if (feature_group_count > 1 && batch_group_count > 1) {
+    return emitOpError(
+        "At most one of batch_group_count and feature_group_count may be > 1");
+  }
+
   // Contracting feature dimension size match
   const int64_t in_feat = lhs_ty.getDimSize(dnums.getInputFeatureDimension());
   const int64_t kernel_in_feat =
       rhs_ty.getDimSize(dnums.getKernelInputFeatureDimension());
-  if (in_feat != kernel_in_feat) {
+  if (in_feat % feature_group_count != 0) {
+    return emitOpError(
+        absl::StrFormat("LHS feature dimension size (%d) must be divisible by "
+                        "feature_group_count (%d)",
+                        in_feat, feature_group_count));
+  }
+  if (in_feat / feature_group_count != kernel_in_feat) {
     return emitOpError(absl::StrFormat(
-        "LHS feature dimension size (%d) must match kernel input feature "
-        "dimension size (%d)",
-        in_feat, kernel_in_feat));
+        "LHS feature dimension size divided by feature_group_count "
+        "(%d / %d = %d) must match kernel input feature dimension size (%d)",
+        in_feat, feature_group_count, in_feat / feature_group_count,
+        kernel_in_feat));
   }
 
   // Output feature dimension size match
   const int64_t out_feat = acc_ty.getDimSize(dnums.getOutputFeatureDimension());
   const int64_t kernel_out_feat =
       rhs_ty.getDimSize(dnums.getKernelOutputFeatureDimension());
+  if (kernel_out_feat % (feature_group_count * batch_group_count) != 0) {
+    return emitOpError(absl::StrFormat(
+        "Kernel output feature dimension size (%d) must be divisible by "
+        "feature_group_count * batch_group_count (%d)",
+        kernel_out_feat, feature_group_count * batch_group_count));
+  }
   if (out_feat != kernel_out_feat) {
     return emitOpError(absl::StrFormat(
         "ACC output feature dimension size (%d) must match kernel output "
@@ -1457,11 +1483,17 @@ LogicalResult ConvOp::verify() {
   // Batch dimension size match
   const int64_t in_batch = lhs_ty.getDimSize(dnums.getInputBatchDimension());
   const int64_t out_batch = acc_ty.getDimSize(dnums.getOutputBatchDimension());
-  if (in_batch != out_batch) {
+  if (in_batch % batch_group_count != 0) {
+    return emitOpError(
+        absl::StrFormat("LHS batch dimension size (%d) must be divisible by "
+                        "batch_group_count (%d)",
+                        in_batch, batch_group_count));
+  }
+  if (in_batch / batch_group_count != out_batch) {
     return emitOpError(absl::StrFormat(
-        "LHS batch dimension size (%d) must match ACC output batch dimension "
-        "size (%d)",
-        in_batch, out_batch));
+        "LHS batch dimension size divided by batch_group_count (%d / %d = %d) "
+        "must match ACC output batch dimension size (%d)",
+        in_batch, batch_group_count, in_batch / batch_group_count, out_batch));
   }
 
   // Spatial dimension output size formula matching
