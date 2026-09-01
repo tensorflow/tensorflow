@@ -207,6 +207,30 @@ class MathTest(test.TestCase, parameterized.TestCase):
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
 
+  def testLogaddexp(self):
+    self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
+    self._testBinaryOp(np_math_ops.logaddexp2, np.logaddexp2, 'logaddexp2')
+
+  def testLogaddexpNonFloatInputs(self):
+    int_args = [
+        ([1, 2, 3], [4, 5, 6]),
+        (np.array([1, 2], dtype=np.int32), np.array([3, 4], dtype=np.int32)),
+        (np.array([1, 2], dtype=np.int64), np.array([3, 4], dtype=np.int64)),
+        (1, 2),
+        ([1.0, 2.0], [3.0, 4.0]),
+    ]
+    for x1, x2 in int_args:
+      self.match(
+          np_math_ops.logaddexp(x1, x2),
+          np.logaddexp(np.asarray(x1), np.asarray(x2)),
+          msg='logaddexp({}, {})'.format(x1, x2),
+      )
+      self.match(
+          np_math_ops.logaddexp2(x1, x2),
+          np.logaddexp2(np.asarray(x1), np.asarray(x2)),
+          msg='logaddexp2({}, {})'.format(x1, x2),
+      )
+
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
     if check_dtype:
