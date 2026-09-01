@@ -2712,7 +2712,7 @@ func.func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 func.func @random_shuffle_float_vector(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: "mhlo.sort"
   // CHECK: ^bb0([[KEY_LHS:%.*]]: tensor<i32>, [[KEY_RHS:%.*]]: tensor<i32>, {{.*}}: tensor<f32>, {{.*}}: tensor<f32>):
-  // CHECK: mhlo.compare  LT, [[KEY_LHS]], [[KEY_RHS]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK: mhlo.compare  LT, [[KEY_LHS]], [[KEY_RHS]], TOTALORDER : (tensor<i32>, tensor<i32>) -> tensor<i1>
   %0 = "tf.RandomShuffle"(%arg0) {seed = 1 : i64, seed2 = 2 : i64} : (tensor<2xf32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
 }
