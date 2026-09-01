@@ -56,7 +56,7 @@ class GrpcDataServerBase {
   void Stop();
 
   // Blocks until the server stops.
-  absl::Status Join();
+  void Join();
 
   // Returns the port bound by the server. Only valid after calling Start().
   int BoundPort();

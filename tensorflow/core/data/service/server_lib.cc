@@ -103,14 +103,11 @@ void GrpcDataServerBase::Stop() {
   stopped_ = true;
 }
 
-absl::Status GrpcDataServerBase::Join() {
+void GrpcDataServerBase::Join() {
   if (!server_) {
-    return absl::FailedPreconditionError(
-        "Server cannot be joined before it has been started. "
-        "Call `start()` before `join()`.");
+    return;
   }
   server_->Wait();
-  return absl::OkStatus();
 }
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
