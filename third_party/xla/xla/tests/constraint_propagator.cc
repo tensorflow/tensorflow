@@ -706,6 +706,15 @@ absl::Status ConstraintPropagator::SeedConstraints(
             states_[fused_computation->parameter_instruction(i)];
         states_[inst->operand(i)].Merge(source_state);
       }
+    } else if (inst->opcode() == HloOpcode::kCall) {
+      const HloComputation* called_computation = inst->to_apply();
+      if (called_computation != nullptr) {
+        for (int i = 0; i < inst->operand_count(); ++i) {
+          ConstraintState source_state =
+              states_[called_computation->parameter_instruction(i)];
+          states_[inst->operand(i)].Merge(source_state);
+        }
+      }
     }
   }
   return absl::OkStatus();
@@ -865,7 +874,11 @@ absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
 absl::Status ConstraintPropagator::PropagateConstraintsExact(
     const HloInstruction* instruction) {
   if (instruction->opcode() == HloOpcode::kFusion) {
-    return PropagateFusionBoundary(instruction);
+    return PropagateComputationBoundary(
+        instruction, instruction->fused_instructions_computation());
+  }
+  if (instruction->opcode() == HloOpcode::kCall) {
+    return PropagateComputationBoundary(instruction, instruction->to_apply());
   }
 
   ConstraintState output_state = states_[instruction];
@@ -989,41 +1002,40 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
   return absl::OkStatus();
 }
 
-absl::Status ConstraintPropagator::PropagateFusionBoundary(
-    const HloInstruction* fusion_instruction) {
-  const HloComputation* fused_comp =
-      fusion_instruction->fused_instructions_computation();
-  if (fused_comp == nullptr) {
+absl::Status ConstraintPropagator::PropagateComputationBoundary(
+    const HloInstruction* caller_instruction,
+    const HloComputation* callee_computation) {
+  if (callee_computation == nullptr) {
     return absl::OkStatus();
   }
 
   // 1. Output / Root binding:
-  const HloInstruction* fused_root =
-      fusion_instruction->fused_expression_root();
-  if (fused_root != nullptr) {
-    ConstraintState fusion_state = states_[fusion_instruction];
-    ConstraintState root_state = states_[fused_root];
-    // Backward: outer constraint on fusion result flows into inner root.
-    states_[fused_root].Merge(fusion_state);
-    // Forward: internal constraint computed on root flows out to fusion result.
-    states_[fusion_instruction].Merge(root_state);
+  const HloInstruction* callee_root = callee_computation->root_instruction();
+  if (callee_root != nullptr) {
+    ConstraintState caller_state = states_[caller_instruction];
+    ConstraintState root_state = states_[callee_root];
+    // Backward: outer constraint on caller result flows into inner root.
+    states_[callee_root].Merge(caller_state);
+    // Forward: internal constraint computed on root flows out to caller result.
+    states_[caller_instruction].Merge(root_state);
   }
 
   // 2. Operands / Parameters binding:
-  for (int64_t i = 0; i < fusion_instruction->operand_count(); ++i) {
-    const HloInstruction* operand = fusion_instruction->operand(i);
-    const HloInstruction* fused_param = fusion_instruction->fused_parameter(i);
-    if (fused_param == nullptr) {
+  for (int64_t i = 0; i < caller_instruction->operand_count(); ++i) {
+    const HloInstruction* operand = caller_instruction->operand(i);
+    const HloInstruction* callee_param =
+        callee_computation->parameter_instruction(i);
+    if (callee_param == nullptr) {
       continue;
     }
     ConstraintState operand_state = states_[operand];
-    ConstraintState param_state = states_[fused_param];
+    ConstraintState param_state = states_[callee_param];
     // Backward: constraints accumulated on the internal parameter flow out
     // to the caller operand.
     states_[operand].Merge(param_state);
     // Forward: constraints established on the caller operand flow into the
     // internal parameter.
-    states_[fused_param].Merge(operand_state);
+    states_[callee_param].Merge(operand_state);
   }
 
   return absl::OkStatus();

@@ -1365,5 +1365,34 @@ ENTRY main {
   EXPECT_TRUE(p0_int.IsPositive());
   EXPECT_GE(p0_int.min, 0.0);
 }
+
+TEST_F(ConstraintPropagatorTest, CallPropagates) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%sc_gather_comp (operand: f32[32,128], indices: s32[256]) -> f32[256,128] {
+  %operand = f32[32,128] parameter(0)
+  %indices = s32[256] parameter(1)
+  ROOT %gather = f32[256,128] gather(%operand, %indices),
+    offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={1,128}
+}
+
+ENTRY main {
+  %operand = f32[32,128] parameter(0)
+  %indices = s32[256] parameter(1)
+  ROOT %call = f32[256,128] call(%operand, %indices), to_apply=%sc_gather_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto indices_int =
+      states[module->entry_computation()->parameter_instruction(1)]
+          .GetConstraintInterval();
+  EXPECT_FALSE(indices_int.IsEmpty());
+  EXPECT_DOUBLE_EQ(indices_int.min, 0.0);
+  EXPECT_DOUBLE_EQ(indices_int.max, 31.0);
+}
 }  // namespace
 }  // namespace xla
