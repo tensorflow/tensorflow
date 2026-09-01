@@ -83,6 +83,7 @@ cc_library(
         "//xla/python/ifrt/ir:version",
         "//xla/python/ifrt/ir:vifrt",
         "//xla/python/ifrt/ir/support:sharding_conversions",
+        "//xla/python/ifrt/mlir:fingerprint_utils",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:hlo_proto_cc",
@@ -151,7 +152,6 @@ cc_library(
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:device_assignment",
         "//xla/service/spmd/shardy:utils",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -165,7 +165,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
