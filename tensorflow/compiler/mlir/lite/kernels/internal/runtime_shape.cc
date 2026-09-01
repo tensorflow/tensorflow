@@ -69,6 +69,7 @@ int32_t RuntimeShape::Dims(int i) const {
 }
 
 void RuntimeShape::ReplaceWith(int dimensions_count, const int32_t* dims_data) {
+  TFLITE_DCHECK_GE(dimensions_count, 0);
 #ifndef TF_LITE_STATIC_MEMORY
   Resize(dimensions_count);
   int32_t* dst_dims = DimsData();

@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -300,7 +302,9 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
       core::RefCountPtr<Var> v;
-      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      ResourceHandle handle;
+      OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+      OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
       DoCompute(c);
@@ -327,7 +331,9 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
 
     if (dtype_ == DT_RESOURCE) {
       core::RefCountPtr<Var> v;
-      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      ResourceHandle handle;
+      OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+      OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       Tensor* t = v->tensor();
       params = *t;
       params_shape = params.shape();

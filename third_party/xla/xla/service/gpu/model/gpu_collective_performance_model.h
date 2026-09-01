@@ -35,8 +35,14 @@ class GpuPerformanceWithCollectiveModel : public GpuPerformanceModelBase {
       const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info);
 
+  // Returns the unidirectional ICI bandwidth per lane (GB/s) for the given
+  // device.  Values come from CudaBandwidthSettings / RocmBandwidthSettings
+  // so they are consistent with the NCCL cost model.
+  static absl::StatusOr<double> GetIciBandwidthPerLaneGbps(
+      const se::DeviceDescription& gpu_device_info);
+
  private:
-  static absl::Duration ComputeAllreduceTime(
+  static absl::Duration ComputeCollectiveTimeForRing(
       const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info);
 };

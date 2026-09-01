@@ -40,6 +40,14 @@ CApiRuntimeAbiVersionFromProto(const xla::PjRtRuntimeAbiVersionProto& proto,
     return absl::UnimplementedError(
         "AbiVersion extension not implemented in this PJRT plugin.");
   }
+  if (extension->base.struct_size <
+          PJRT_STRUCT_SIZE(PJRT_AbiVersion_Extension,
+                           runtime_abi_version_from_proto) ||
+      extension->runtime_abi_version_from_proto == nullptr) {
+    return absl::UnimplementedError(
+        "AbiVersion extension does not implement "
+        "runtime_abi_version_from_proto.");
+  }
   std::string serialized_proto = proto.SerializeAsString();
   PJRT_RuntimeAbiVersion_FromProto_Args args;
   args.struct_size = PJRT_RuntimeAbiVersion_FromProto_Args_STRUCT_SIZE;
@@ -60,6 +68,14 @@ CApiExecutableAbiVersionFromProto(
   if (extension == nullptr) {
     return absl::UnimplementedError(
         "AbiVersion extension not implemented in this PJRT plugin.");
+  }
+  if (extension->base.struct_size <
+          PJRT_STRUCT_SIZE(PJRT_AbiVersion_Extension,
+                           executable_abi_version_from_proto) ||
+      extension->executable_abi_version_from_proto == nullptr) {
+    return absl::UnimplementedError(
+        "AbiVersion extension does not implement "
+        "executable_abi_version_from_proto.");
   }
   std::string serialized_proto = proto.SerializeAsString();
   PJRT_ExecutableAbiVersion_FromProto_Args args;

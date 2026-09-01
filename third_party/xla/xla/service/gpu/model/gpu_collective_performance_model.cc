@@ -24,10 +24,12 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/time/time.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -281,7 +283,7 @@ int GetNumThreads(int warp_size, int min_num_threads, int max_num_threads,
 }
 
 template <typename GpuBandwidthSettings>
-absl::Duration ComputeAllreduceTimeImpl(
+absl::Duration ComputeCollectiveTimeImpl(
     const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
     const se::DeviceDescription& gpu_device_info,
     const GpuBandwidthSettings& bandwidth_settings) {
@@ -356,17 +358,17 @@ RocmBandwidthSettings CreateSettings(
 }  // namespace
 
 /*static*/ absl::Duration
-GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
+GpuPerformanceWithCollectiveModel::ComputeCollectiveTimeForRing(
     const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
     const se::DeviceDescription& gpu_device_info) {
   // We use nccl group call to launch multiple allreduces so launch overhead
   // only occurs once.
   if (auto ptr =
           gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
-    return ComputeAllreduceTimeImpl(instr, cost_analysis, gpu_device_info,
-                                    CreateSettings(*ptr));
+    return ComputeCollectiveTimeImpl(instr, cost_analysis, gpu_device_info,
+                                     CreateSettings(*ptr));
   }
-  return ComputeAllreduceTimeImpl(
+  return ComputeCollectiveTimeImpl(
       instr, cost_analysis, gpu_device_info,
       CreateSettings(
           *gpu_device_info.gpu_compute_capability().rocm_compute_capability()));
@@ -388,7 +390,25 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
   switch (instr.opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
-      return ComputeAllreduceTime(instr, cost_analysis, gpu_device_info);
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kReduceScatter:
+      return ComputeCollectiveTimeForRing(instr, cost_analysis,
+                                          gpu_device_info);
+    case HloOpcode::kAsyncStart: {
+      auto* async_start = Cast<HloAsyncStartInstruction>(&instr);
+      switch (async_start->async_wrapped_opcode()) {
+        case HloOpcode::kReduceScatter:
+          return ComputeCollectiveTimeForRing(instr, cost_analysis,
+                                              gpu_device_info);
+        default:
+          break;
+      }
+      LOG(WARNING)
+          << "Runtime estimate for " << instr.name()
+          << " not implemented. Returning only the kernel launch time.";
+      return kNcclKernelLaunchOverhead;
+    }
     default: {
       LOG(WARNING)
           << "Runtime estimate for " << instr.name()
@@ -396,6 +416,22 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
       return kNcclKernelLaunchOverhead;
     }
   }
+}
+
+/*static*/ absl::StatusOr<double>
+GpuPerformanceWithCollectiveModel::GetIciBandwidthPerLaneGbps(
+    const se::DeviceDescription& gpu_device_info) {
+  if (const auto* cuda_cc =
+          gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
+    return CreateSettings(*cuda_cc).GetNvlinkBw();
+  }
+  if (const auto* rocm_cc =
+          gpu_device_info.gpu_compute_capability().rocm_compute_capability()) {
+    return CreateSettings(*rocm_cc).GetNvlinkBw();
+  }
+  return absl::InvalidArgumentError(
+      "GetIciBandwidthPerLaneGbps: unsupported compute capability "
+      "(neither CUDA nor ROCm)");
 }
 
 }  // namespace gpu

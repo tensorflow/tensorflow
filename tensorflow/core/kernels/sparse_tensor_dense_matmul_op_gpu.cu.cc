@@ -50,16 +50,18 @@ __global__ void SparseTensorDenseMatMulKernel(
   // out_{ij} = sum_k {a_ik b_kj}
   // out = A * B', out_{ij} = sum_k {a_ik (b')_kj}; b'_{kj} = b_{jk}
   const int n = (ADJ_B) ? b_cols : b_rows;
-  GPU_1D_KERNEL_LOOP(index, nnz * p) {
-    const int a_ix = index / p;
+  GPU_1D_KERNEL_LOOP(index, static_cast<int64_t>(nnz) * p) {
+    const int64_t a_ix = index / p;
     const int j = index % p;
-    const int i = ldg(a_indices + 2 * a_ix + ((ADJ_A) ? 1 : 0));
-    const int k = ldg(a_indices + 2 * a_ix + ((ADJ_A) ? 0 : 1));
+    const Tindices i =
+        ldg(a_indices + static_cast<int64_t>(2) * a_ix + ((ADJ_A) ? 1 : 0));
+    const Tindices k =
+        ldg(a_indices + static_cast<int64_t>(2) * a_ix + ((ADJ_A) ? 0 : 1));
     if (!FastBoundsCheck(i, m)) {
       continue;  // Nowhere to signal an error :(
     }
     // out[i, j]
-    Tsum* out_location = out + i * p + j;
+    Tsum* out_location = out + static_cast<int64_t>(i) * p + j;
     if (!FastBoundsCheck(k, n)) {
       GpuAtomicAdd(out_location, OutOfBoundsValue<Tsum>::value());
       continue;
@@ -70,7 +72,8 @@ __global__ void SparseTensorDenseMatMulKernel(
     const T a_value = ADJ_A ? Eigen::numext::conj(a_input) : a_input;
 
     // b_value == (ADJ_B) ? conj(b[j, k]) : b[k, j]
-    const T b_input = ldg(b + ((ADJ_B) ? j * b_cols + k : k * b_cols + j));
+    const T b_input = ldg(b + ((ADJ_B) ? static_cast<int64_t>(j) * b_cols + k
+                                       : static_cast<int64_t>(k) * b_cols + j));
     const T b_value = ADJ_B ? Eigen::numext::conj(b_input) : b_input;
     GpuAtomicAdd(out_location,
                  static_cast<Tsum>(a_value) * static_cast<Tsum>(b_value));
@@ -81,11 +84,11 @@ namespace functor {
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
-  static EIGEN_ALWAYS_INLINE Status
-  Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out,
-          typename TTypes<Tindices>::ConstMatrix a_indices,
-          typename TTypes<T>::ConstVec a_values,
-          typename TTypes<T>::ConstMatrix b) {
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
+      OpKernelContext* ctx, typename TTypes<T>::Matrix out,
+      typename TTypes<Tindices>::ConstMatrix a_indices,
+      typename TTypes<T>::ConstVec a_values,
+      typename TTypes<T>::ConstMatrix b) {
     int nnz = a_values.size();
     // out = A * B, A is [m x n] and B is [n x p], out is [m x p]
     int m = out.dimension(0);
@@ -114,10 +117,11 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 
     // TODO(ebrevdo): Should this be alpha * nnz instead of
     // out.size()?  Perhaps p * nnz ?
-    GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(static_cast<int64_t>(p) * nnz, d);
 
     if (OpDeterminismRequired()) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "A deterministic GPU implementation of "
           "SparseTensorDenseMatmulOp is not currently available.");
     }
@@ -132,7 +136,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
       out.device(d) = temp_out_t.matrix<Tsum>().template cast<T>();
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

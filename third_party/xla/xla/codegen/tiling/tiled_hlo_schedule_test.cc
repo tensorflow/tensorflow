@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
@@ -51,6 +52,14 @@ using ::testing::HasSubstr;
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
   TiledHloScheduleTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // TODO: b/514293537 - drop the test altogether but consider migrating some
+    // of the test cases to the new tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
   mlir::MLIRContext mlir_context_;
 };
 
@@ -90,11 +99,11 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   //     parameter iteration space (i.e. the map may only reorder how the
   //     results are generated, but may not change the results themselves);
   EXPECT_EQ(scheduled_indexing, *ParseIndexingMap(R"(
-    (pid_0) -> (pid_0 floordiv 21, pid_0 mod 7), domain: pid_0 in [0, 104]
+    (pid_0) -> (pid_0 / 21, pid_0 mod 7), domain: pid_0 in [0, 104]
   )",
                                                   &mlir_context_));
 
-  // `pid_0 floordiv 21` has the same upper bound as `d2`.
+  // `pid_0 / 21` has the same upper bound as `d2`.
   EXPECT_EQ(iteration_space_size / 21, bound(2));
   // `pid_0 mod 7` has the same upper bound as `d3`.
   EXPECT_EQ(7, bound(3));

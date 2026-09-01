@@ -353,10 +353,10 @@ class StreamingRPCState : public UntypedStreamingRPCState {
 
     absl::Status s = FromGrpcStatus(call_status_);
     if (s.ok() && !ok) {
-      s.Update(
-          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
-                           "not.  This should never happen.",
-                           context_->debug_error_string()));
+      s.Update(absl::InternalError(
+          absl::StrCat("GRPC status is okay but CompletionQueueStatus is "
+                       "not.  This should never happen.",
+                       context_->debug_error_string())));
     }
     // unlocks mu_
     MarkDoneAndCompleteExchanges(s);
@@ -495,7 +495,7 @@ class StreamingRPCDispatcher {
     is_call_alive = state_->SendNextRequest(request, response, done);
     if (!is_call_alive) {
       // Consider retrying to create and start a call few more times.
-      done(errors::Unknown("gRPC call failed right after it was created"));
+      done(absl::UnknownError("gRPC call failed right after it was created"));
     }
   }
 

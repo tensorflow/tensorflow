@@ -22,9 +22,12 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -38,27 +41,37 @@ limitations under the License.
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
 
 /*static*/ absl::StatusOr<std::unique_ptr<CostAnalysis>> CostAnalysis::Create(
     OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
-    const AliasInfo* alias_info, const HloModule& module) {
-  TF_ASSIGN_OR_RETURN(auto alias_analysis,
-                      HloAliasAnalysis::Run(&module, alias_info));
-  TF_ASSIGN_OR_RETURN(auto hlo_live_range,
-                      HloLiveRange::Run(module.schedule(), *alias_analysis,
-                                        module.entry_computation()));
+    const AliasInfo* alias_info, const HloModule& module,
+    HloAliasAnalysis* alias_analysis) {
+  ABSL_ASSIGN_OR_RETURN(auto hlo_live_range,
+                   HloLiveRange::Run(module.schedule(), *alias_analysis,
+                                     module.entry_computation()));
   auto call_graph = CallGraph::Build(&module);
   // Using `new` to access a non-public constructor.
   return absl::WrapUnique(
-      new CostAnalysis(op_cost_manager, options, std::move(alias_analysis),
+      new CostAnalysis(op_cost_manager, options, alias_analysis,
                        std::move(hlo_live_range), std::move(call_graph)));
 }
+
+CostAnalysis::CostAnalysis(OpCostManager& op_cost_manager,
+                           const CostAnalysisOptions& options,
+                           HloAliasAnalysis* alias_analysis,
+                           std::unique_ptr<HloLiveRange> hlo_live_range,
+                           std::unique_ptr<CallGraph> call_graph)
+    : op_cost_manager_(op_cost_manager),
+      options_(options),
+      alias_analysis_(alias_analysis),
+      hlo_live_range_(std::move(hlo_live_range)),
+      call_graph_(std::move(call_graph)) {}
 
 int64_t CostAnalysis::GetShapeSizeBytes(const Shape& shape) const {
   return options_.shape_size_bytes_fn(shape);
@@ -332,8 +345,12 @@ namespace {
 // Returns true on async instructions since we assume they are already
 // efficiently scheduled such that they are not in the critical path and appear
 // to take no time.
-bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
-  return instruction.opcode() == HloOpcode::kAllGatherStart ||
+bool ExcludeInstructionFromElapsed(
+    const HloInstruction& instruction,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return !MemorySpaceAssignmentUtils::IsInstructionOnConfiguredExecThread(
+             instruction, execution_threads) ||
+         instruction.opcode() == HloOpcode::kAllGatherStart ||
          instruction.opcode() == HloOpcode::kAllGatherDone ||
          instruction.opcode() == HloOpcode::kAllReduceStart ||
          instruction.opcode() == HloOpcode::kAllReduceDone ||
@@ -348,7 +365,7 @@ bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
 
 float CostAnalysis::GetInstructionElapsedDueToCompute(
     const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   return op_cost_manager_.ComputeSeconds(instruction);
@@ -358,7 +375,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float total_bytes_accessed = op_cost_manager_.TotalBytesAccessed(instruction);
@@ -387,7 +404,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
 float CostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float total_bytes_accessed = op_cost_manager_.TotalBytesAccessed(instruction);
@@ -437,7 +454,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
 
 float CostAnalysis::GetInstructionElapsed(
     const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float overhead = GetDefaultMemoryAccessOverhead(instruction);
@@ -449,7 +466,7 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float overhead = GetDefaultMemoryAccessOverhead(
@@ -464,7 +481,7 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
 float CostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   return std::max(

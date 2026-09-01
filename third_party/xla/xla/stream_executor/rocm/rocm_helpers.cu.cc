@@ -198,13 +198,16 @@ template <typename T>
 __launch_bounds__(BLOCK_SIZE) __global__
     void SetUserArgsKernelRaggedInNonContractingDim(
         hipblaslt_ext::UserArguments* dest_args, const void* a, const void* b,
-        void* d, const void* group_sizes, uint8_t log2_byte_width_elem_a,
-        uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_d,
-        uint32_t stride_a, uint32_t stride_b, uint32_t output_stride_ragged_dim,
-        bool must_swap_operands, uint32_t m, uint32_t n, uint32_t k,
-        uint32_t batch, uint32_t strideA1, uint32_t strideA2, uint32_t strideB1,
-        uint32_t strideB2, uint32_t strideD1, uint32_t strideD2,
-        uint32_t num_gemms) {
+        const void* c, void* d, const void* bias, const void* group_sizes,
+        uint8_t log2_byte_width_elem_a, uint8_t log2_byte_width_elem_b,
+        uint8_t log2_byte_width_elem_c, uint8_t log2_byte_width_elem_d,
+        uint32_t stride_a, uint32_t stride_b, uint32_t c_stride_ragged_dim,
+        uint32_t output_stride_ragged_dim, bool must_swap_operands, uint32_t m,
+        uint32_t n, uint32_t k, uint32_t batch, uint32_t strideA1,
+        uint32_t strideA2, uint32_t strideB1, uint32_t strideB2,
+        uint32_t strideC1, uint32_t strideC2, uint32_t strideD1,
+        uint32_t strideD2, uint32_t num_gemms, int32_t activation_type,
+        int8_t bias_type, bool has_matrix_bias) {
   __builtin_assume(num_gemms != 0);
   const T* typed_group_sizes = static_cast<const T*>(group_sizes);
 
@@ -275,49 +278,55 @@ __launch_bounds__(BLOCK_SIZE) __global__
             static_cast<const uint8_t*>(b) +
             (static_cast<intptr_t>(idx * stride_b) << log2_byte_width_elem_b)));
       }
+
+      arg.c = const_cast<void*>(static_cast<const void*>(
+          static_cast<const uint8_t*>(c) +
+          (static_cast<intptr_t>(offset_group * c_stride_ragged_dim)
+           << log2_byte_width_elem_c)));
       arg.d = static_cast<void*>(
           static_cast<uint8_t*>(d) +
           (static_cast<intptr_t>(offset_group * output_stride_ragged_dim)
            << log2_byte_width_elem_d));
-      // We only support C = D
-      arg.c = arg.d;
       arg.k = k;
       arg.batch = batch;
       arg.strideA1 = strideA1;
       arg.strideA2 = strideA2;
       arg.strideB1 = strideB1;
       arg.strideB2 = strideB2;
-      // We only support C = D
-      arg.strideC1 = strideD1;
-      arg.strideC2 = strideD2;
+      arg.strideC1 = strideC1;
+      arg.strideC2 = strideC2;
       arg.strideD1 = strideD1;
       arg.strideD2 = strideD2;
       arg.strideE1 = 0;
       arg.strideE2 = 0;
-      // Set alpha to float(1) and beta to float(0).
-      // As these values are imposed in the gemm_rewriter pass anyway.
+      // Set alpha and beta from hipBLASLt defaults
       for (int8_t i = 0; i < 16; i++) {
         arg.alpha[i] = 0;
         arg.beta[i] = 0;
       }
+      // Alpha is always 1.0 (represented as -128, 63 in packed format)
       arg.alpha[2] = -128;
       arg.alpha[3] = 63;
+      // Beta is 0.0 (0, 0) for no matrix bias or 1.0 (-128, 63) for matrix bias
+      arg.beta[2] = has_matrix_bias ? -128 : 0;
+      arg.beta[3] = has_matrix_bias ? 63 : 0;
       arg.scaleA = nullptr;
       arg.scaleB = nullptr;
       arg.scaleC = nullptr;
       arg.scaleD = nullptr;
       arg.scaleAlphaVec = nullptr;
-      arg.bias = nullptr;
-      arg.biasType = 0;
+      arg.bias = const_cast<void*>(bias);
+      arg.biasType = bias_type;
       arg.e = nullptr;
-      arg.act0 = 0.0;
-      arg.act1 = 0.0;
-      arg.activationType = 0;
+      // Use activation parameters (always 0.0 from hipBLASLt defaults)
+      arg.act0 = 0.0f;
+      arg.act1 = 0.0f;
+      arg.activationType = activation_type;
     }
 
     __barrier(__CLK_LOCAL_MEM_FENCE);
 
-    // Last active thread updates cumulative offset for next batch
+    // Last thread updates cumulative offset for next batch
     if (threadIdx.x == batch_size - 1) {
       cumulative_offset += offset_in_batch + group_size;
     }
@@ -334,13 +343,16 @@ template <typename T>
 __launch_bounds__(BLOCK_SIZE) __global__
     void SetUserArgsKernelRaggedInContractingDim(
         hipblaslt_ext::UserArguments* dest_args, const void* a, const void* b,
-        void* d, const void* group_sizes, uint8_t log2_byte_width_elem_a,
-        uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_d,
-        uint32_t stride_a, uint32_t stride_b, uint32_t output_stride_ragged_dim,
-        bool must_swap_operands, uint32_t m, uint32_t n, uint32_t k,
-        uint32_t batch, uint32_t strideA1, uint32_t strideA2, uint32_t strideB1,
-        uint32_t strideB2, uint32_t strideD1, uint32_t strideD2,
-        uint32_t num_gemms) {
+        const void* c, void* d, const void* bias, const void* group_sizes,
+        uint8_t log2_byte_width_elem_a, uint8_t log2_byte_width_elem_b,
+        uint8_t log2_byte_width_elem_c, uint8_t log2_byte_width_elem_d,
+        uint32_t stride_a, uint32_t stride_b, uint32_t c_stride_ragged_dim,
+        uint32_t output_stride_ragged_dim, bool must_swap_operands, uint32_t m,
+        uint32_t n, uint32_t k, uint32_t batch, uint32_t strideA1,
+        uint32_t strideA2, uint32_t strideB1, uint32_t strideB2,
+        uint32_t strideC1, uint32_t strideC2, uint32_t strideD1,
+        uint32_t strideD2, uint32_t num_gemms, int32_t activation_type,
+        int8_t bias_type, bool has_matrix_bias) {
   __builtin_assume(num_gemms != 0);
   const T* typed_group_sizes = static_cast<const T*>(group_sizes);
 
@@ -399,44 +411,49 @@ __launch_bounds__(BLOCK_SIZE) __global__
           static_cast<const uint8_t*>(b) +
           (static_cast<intptr_t>(offset_group * stride_b)
            << log2_byte_width_elem_b)));
+      arg.c = const_cast<void*>(static_cast<const void*>(
+          static_cast<const uint8_t*>(c) +
+          (static_cast<intptr_t>(idx * c_stride_ragged_dim)
+           << log2_byte_width_elem_c)));
       arg.d = const_cast<void*>(static_cast<void*>(
           static_cast<uint8_t*>(d) +
           (static_cast<intptr_t>(idx * output_stride_ragged_dim)
            << log2_byte_width_elem_d)));
-      // We only support C = D
-      arg.c = arg.d;
       arg.k = typed_group_sizes[idx];
       arg.batch = batch;
       arg.strideA1 = strideA1;
       arg.strideA2 = strideA2;
       arg.strideB1 = strideB1;
       arg.strideB2 = strideB2;
-      // We only support C = D
-      arg.strideC1 = strideD1;
-      arg.strideC2 = strideD2;
+      arg.strideC1 = strideC1;
+      arg.strideC2 = strideC2;
       arg.strideD1 = strideD1;
       arg.strideD2 = strideD2;
       arg.strideE1 = 0;
       arg.strideE2 = 0;
-      // Set alpha to float(1) and beta to float(0).
-      // As these values are imposed in the gemm_rewriter pass anyway.
+      // Set alpha and beta from hipBLASLt defaults
       for (int8_t i = 0; i < 16; i++) {
         arg.alpha[i] = 0;
         arg.beta[i] = 0;
       }
+      // Alpha is always 1.0 (represented as -128, 63 in packed format)
       arg.alpha[2] = -128;
       arg.alpha[3] = 63;
+      // Beta is 0.0 (0, 0) for no matrix bias or 1.0 (-128, 63) for matrix bias
+      arg.beta[2] = has_matrix_bias ? -128 : 0;
+      arg.beta[3] = has_matrix_bias ? 63 : 0;
       arg.scaleA = nullptr;
       arg.scaleB = nullptr;
       arg.scaleC = nullptr;
       arg.scaleD = nullptr;
       arg.scaleAlphaVec = nullptr;
-      arg.bias = nullptr;
-      arg.biasType = 0;
+      arg.bias = const_cast<void*>(bias);
+      arg.biasType = bias_type;
       arg.e = nullptr;
-      arg.act0 = 0.0;
-      arg.act1 = 0.0;
-      arg.activationType = 0;
+      // Use activation parameters (always 0.0 from hipBLASLt defaults)
+      arg.act0 = 0.0f;
+      arg.act1 = 0.0f;
+      arg.activationType = activation_type;
     }
 
     __barrier(__CLK_LOCAL_MEM_FENCE);
@@ -457,12 +474,15 @@ __launch_bounds__(BLOCK_SIZE) __global__
 template <typename T>
 __launch_bounds__(BLOCK_SIZE) __global__ void SetUserArgsKernelRaggedInBatchDim(
     hipblaslt_ext::UserArguments* dest_args, const void* a, const void* b,
-    void* d, const void* group_sizes, uint8_t log2_byte_width_elem_a,
-    uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_d,
-    uint32_t stride_a, uint32_t stride_b, uint32_t output_stride_ragged_dim,
-    bool must_swap_operands, uint32_t m, uint32_t n, uint32_t k, uint32_t batch,
-    uint32_t strideA1, uint32_t strideA2, uint32_t strideB1, uint32_t strideB2,
-    uint32_t strideD1, uint32_t strideD2, uint32_t num_gemms) {
+    const void* c, void* d, const void* bias, const void* group_sizes,
+    uint8_t log2_byte_width_elem_a, uint8_t log2_byte_width_elem_b,
+    uint8_t log2_byte_width_elem_c, uint8_t log2_byte_width_elem_d,
+    uint32_t stride_a, uint32_t stride_b, uint32_t c_stride_ragged_dim,
+    uint32_t output_stride_ragged_dim, bool must_swap_operands, uint32_t m,
+    uint32_t n, uint32_t k, uint32_t batch, uint32_t strideA1,
+    uint32_t strideA2, uint32_t strideB1, uint32_t strideB2, uint32_t strideC1,
+    uint32_t strideC2, uint32_t strideD1, uint32_t strideD2, uint32_t num_gemms,
+    int32_t activation_type, int8_t bias_type, bool has_matrix_bias) {
   __builtin_assume(num_gemms != 0);
   const T* typed_group_sizes = static_cast<const T*>(group_sizes);
 
@@ -521,49 +541,54 @@ __launch_bounds__(BLOCK_SIZE) __global__ void SetUserArgsKernelRaggedInBatchDim(
           static_cast<const uint8_t*>(b) +
           (static_cast<intptr_t>(offset_group * stride_b)
            << log2_byte_width_elem_b)));
+      arg.c = const_cast<void*>(static_cast<const void*>(
+          static_cast<const uint8_t*>(c) +
+          (static_cast<intptr_t>(offset_group * c_stride_ragged_dim)
+           << log2_byte_width_elem_c)));
       arg.d = static_cast<void*>(
           static_cast<uint8_t*>(d) +
           (static_cast<intptr_t>(offset_group * output_stride_ragged_dim)
            << log2_byte_width_elem_d));
-      // We only support C = D
-      arg.c = arg.d;
       arg.k = k;
       arg.batch = typed_group_sizes[idx];
       arg.strideA1 = strideA1;
       arg.strideA2 = strideA2;
       arg.strideB1 = strideB1;
       arg.strideB2 = strideB2;
-      // We only support C = D
-      arg.strideC1 = strideD1;
-      arg.strideC2 = strideD2;
+      arg.strideC1 = strideC1;
+      arg.strideC2 = strideC2;
       arg.strideD1 = strideD1;
       arg.strideD2 = strideD2;
       arg.strideE1 = 0;
       arg.strideE2 = 0;
-      // Set alpha to float(1) and beta to float(0).
-      // As these values are imposed in the gemm_rewriter pass anyway.
+      // Set alpha and beta from hipBLASLt defaults
       for (int8_t i = 0; i < 16; i++) {
         arg.alpha[i] = 0;
         arg.beta[i] = 0;
       }
+      // Alpha is always 1.0 (represented as -128, 63 in packed format)
       arg.alpha[2] = -128;
       arg.alpha[3] = 63;
+      // Beta is 0.0 (0, 0) for no matrix bias or 1.0 (-128, 63) for matrix bias
+      arg.beta[2] = has_matrix_bias ? -128 : 0;
+      arg.beta[3] = has_matrix_bias ? 63 : 0;
       arg.scaleA = nullptr;
       arg.scaleB = nullptr;
       arg.scaleC = nullptr;
       arg.scaleD = nullptr;
       arg.scaleAlphaVec = nullptr;
-      arg.bias = nullptr;
-      arg.biasType = 0;
+      arg.bias = const_cast<void*>(bias);
+      arg.biasType = bias_type;
       arg.e = nullptr;
-      arg.act0 = 0.0;
-      arg.act1 = 0.0;
-      arg.activationType = 0;
+      // Use activation parameters (always 0.0 from hipBLASLt defaults)
+      arg.act0 = 0.0f;
+      arg.act1 = 0.0f;
+      arg.activationType = activation_type;
     }
 
     __barrier(__CLK_LOCAL_MEM_FENCE);
 
-    // Last active thread updates cumulative offset for next batch
+    // Last thread updates cumulative offset for next batch
     if (threadIdx.x == batch_size - 1) {
       cumulative_offset += offset_in_batch + group_size;
     }
@@ -577,15 +602,19 @@ __launch_bounds__(BLOCK_SIZE) __global__ void SetUserArgsKernelRaggedInBatchDim(
 }
 
 void GroupGemmUpdateArgs(
-    hipStream_t stream, DeviceMemoryBase args, DeviceMemoryBase a,
-    DeviceMemoryBase b, DeviceMemoryBase d, DeviceMemoryBase group_sizes,
+    hipStream_t stream, DeviceAddressBase args, DeviceAddressBase a,
+    DeviceAddressBase b, DeviceAddressBase c, DeviceAddressBase d,
+    DeviceAddressBase bias, DeviceAddressBase group_sizes,
     uint8_t group_size_bytewidth, uint8_t log2_byte_width_elem_a,
-    uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_d,
-    uint32_t stride_ragged_dim, uint32_t stride_group_dim,
+    uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_c,
+    uint8_t log2_byte_width_elem_d, uint32_t stride_ragged_dim,
+    uint32_t stride_group_dim, uint32_t c_stride_ragged_dim,
     uint32_t output_stride_ragged_dim, bool must_swap_operands, uint32_t m,
     uint32_t n, uint32_t k, uint32_t batch, uint32_t strideA1,
-    uint32_t strideA2, uint32_t strideB1, uint32_t strideB2, uint32_t strideD1,
-    uint32_t strideD2, gpu::RaggedDotMode ragged_mode, uint32_t num_gemms) {
+    uint32_t strideA2, uint32_t strideB1, uint32_t strideB2, uint32_t strideC1,
+    uint32_t strideC2, uint32_t strideD1, uint32_t strideD2,
+    gpu::RaggedDotMode ragged_mode, uint32_t num_gemms, int32_t activation_type,
+    int8_t bias_type, bool has_matrix_bias) {
   const uint32_t block_sz = BLOCK_SIZE;
   auto kernel = SetUserArgsKernelRaggedInNonContractingDim<uint64_t>;
   switch (ragged_mode) {
@@ -623,10 +652,12 @@ void GroupGemmUpdateArgs(
   hipLaunchKernelGGL(
       kernel, dim3(1), dim3(block_sz), shared_mem_size, stream,
       static_cast<hipblaslt_ext::UserArguments*>(args.opaque()), a.opaque(),
-      b.opaque(), d.opaque(), group_sizes.opaque(), log2_byte_width_elem_a,
-      log2_byte_width_elem_b, log2_byte_width_elem_d, stride_a, stride_b,
+      b.opaque(), c.opaque(), d.opaque(), bias.opaque(), group_sizes.opaque(),
+      log2_byte_width_elem_a, log2_byte_width_elem_b, log2_byte_width_elem_c,
+      log2_byte_width_elem_d, stride_a, stride_b, c_stride_ragged_dim,
       output_stride_ragged_dim, must_swap_operands, m, n, k, batch, strideA1,
-      strideA2, strideB1, strideB2, strideD1, strideD2, num_gemms);
+      strideA2, strideB1, strideB2, strideC1, strideC2, strideD1, strideD2,
+      num_gemms, activation_type, bias_type, has_matrix_bias);
 }
 };  // namespace rocm
 

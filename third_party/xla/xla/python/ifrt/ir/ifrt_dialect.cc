@@ -215,6 +215,11 @@ mlir::LogicalResult IfrtArrayType::verify(
     mlir::RankedTensorType shape, IfrtShardingAttrInterface sharding_attr,
     IfrtDevicesAttr devices_attr, mlir::StringAttr memory_kind_attr,
     mlir::StringAttr layout_attr) {
+  if (llvm::isa<IfrtTokenType>(shape.getElementType())) {
+    if (!shape.getShape().empty()) {
+      return emitError() << "Token type cannot have non-empty shape";
+    }
+  }
   if (layout_attr) {
     auto layout_mode = xla::LayoutMode::FromString(layout_attr.str());
     if (!layout_mode.ok()) {

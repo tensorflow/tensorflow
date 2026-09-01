@@ -18,12 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -121,6 +119,9 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
                                   ->config()
                                   .debug_options()
                                   .xla_gpu_exhaustive_tiling_search();
+  has_concatenate_ = HloBfsAnyOf({dot}, [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kConcatenate;
+  });
 }
 
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
@@ -556,8 +557,12 @@ void TritonDotFusionSearchSpace::AddWarpSpecializationParameter(
   // > 2 also run into address misalignment issues. It might be more precise to
   // also check for a broadcast consumer, but that would complicate the code
   // here.
-  if (config.config.is_tma_allowed && config.config.num_warps <= 16 &&
-      config.config.num_warps % 4 == 0 && config.config.num_stages != 2) {
+  // - No concatenate operation in the module due to b/483385760. A
+  // CUDA_ERROR_ILLEGAL_ADDRESS error occurs due to a bug in Triton for this
+  // category of GEMMs.
+  if (!has_concatenate_ && config.config.is_tma_allowed &&
+      config.config.num_warps <= 16 && config.config.num_warps % 4 == 0 &&
+      config.config.num_stages != 2) {
     new_config.config.is_warp_specialization_allowed = true;
     VLOG(10) << "Adding warp specialization parameter: config = "
              << new_config.ToString();

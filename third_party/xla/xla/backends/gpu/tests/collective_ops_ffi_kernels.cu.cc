@@ -24,15 +24,10 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
-
-#if NCCL_VERSION_CODE >= 22800
-// Device initiated collective operations were added in NCCL 2.28.0.
 #include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
 
 namespace xla::gpu {
 
-#if NCCL_VERSION_CODE >= 22800
 template <typename T>
 static __global__ void NcclDevAllReduce(ncclDevComm dev_comm,
                                         ncclWindow_t src_win,
@@ -62,16 +57,6 @@ static __global__ void NcclDevAllReduce(ncclDevComm dev_comm,
 
   bar.sync(ncclCoopCta(), cuda::memory_order_release);
 }
-#else
-template <typename T>
-static __global__ void NcclDevAllReduce(void* dev_comm, ncclWindow_t src_win,
-                                        ncclWindow_t dst_win, size_t src_offset,
-                                        size_t dst_offset, size_t count) {
-  // If device-initiated collectives are not supported, all reduce becomes a
-  // no-op kernel. It's up to the caller to check that GPU communicator supports
-  // device-initiated collective operations.
-}
-#endif
 
 // A trivial all-reduce for S32 data type that uses multimem instructions.
 //
@@ -85,9 +70,9 @@ static __global__ void MulticastAllReduce(uint32_t* src_mmem, uint32_t* dst,
 
   for (int64_t i = offset; i < count; i += stride) {
     uint32_t data = 0;
-    asm volatile("multimem.ld_reduce.relaxed.sys.global.add.u32 %0, [%1];"
+    asm volatile("multimem.ld_reduce.acquire.sys.global.add.u32 %0, [%1];"
                  : "=r"(data)
-                 : "l"(src_mmem + src_offset + offset)
+                 : "l"(src_mmem + src_offset + i)
                  : "memory");
     dst[i] = data;
   }

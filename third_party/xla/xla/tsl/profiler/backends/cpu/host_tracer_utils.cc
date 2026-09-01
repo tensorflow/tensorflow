@@ -47,7 +47,9 @@ void ConvertCompleteEventsToXPlane(uint64_t start_timestamp_ns,
   for (auto& thread : events) {
     XLineBuilder xline = xplane.GetOrCreateLine(thread.thread.tid);
     xline.SetName(thread.thread.name);
-    xline.SetTimestampNs(start_timestamp_ns);
+    if (xline.TimestampNs() == 0) {
+      xline.SetTimestampNs(start_timestamp_ns);
+    }
     xline.ReserveEvents(thread.events.size());
     while (!thread.events.empty()) {
       auto event = std::move(thread.events.front());

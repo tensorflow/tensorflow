@@ -1,3 +1,4 @@
+
 numpy >= 2.0.0, < 2.2.0 ; python_version <= "3.13"
 numpy>=2.2.6 ; python_version == "3.14"
 wheel ~= 0.41.2
@@ -33,7 +34,7 @@ portpicker == 1.6.0
 scipy >= 1.13.0, < 1.15.0 ; python_version <= "3.13"
 scipy >=1.15.0 ; python_version == "3.14"
 requests >= 2.31.0
-packaging==23.2
+packaging==24.2
 setuptools==78.1.1
 jax==0.4.7
 zstandard==0.25.0

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.python.framework.python_api_parameter_converter."""
+"""Tests for python_api_parameter_converter, validating conversion of Python types to TensorFlow types."""
 
 from absl.testing import parameterized
 
@@ -183,12 +183,29 @@ class PythonAPIWrapperTest(test_util.TensorFlowTestCase,
     self.assertIsInstance(params[2], float)
 
   @parameterized.named_parameters([
-      ("StringFromInt", "string", 5, "Foo argument x: Failed to convert value "
-       "of type 'int' to type 'string'."),
-      ("IntFromNone", "int", None, "Foo argument x: Failed to convert value "
-       "of type 'NoneType' to type 'int'."),
-      ("BoolFromInt", "bool", 0,
-       "Foo argument x: Failed to convert value of type 'int' to type 'bool'."),
+      (
+          "StringFromInt",
+          "string",
+          5,
+          "Foo argument x: Failed to convert value "
+          + "of type 'int' to type 'string'.",
+      ),
+      (
+          "IntFromNone",
+          "int",
+          None,
+          "Foo argument x: Failed to convert value "
+          + "of type 'NoneType' to type 'int'.",
+      ),
+      (
+          "BoolFromInt",
+          "bool",
+          0,
+          (
+              "Foo argument x: Failed to convert value of type 'int' to type"
+              " 'bool'."
+          ),
+      ),
   ])
   def testConvertAttributeError(self, attr_type, attr_val, message):
     api_info = self.makeApiInfoFromParamSpecs("Foo", ["x"], {},
@@ -453,15 +470,34 @@ class PythonAPIWrapperTest(test_util.TensorFlowTestCase,
           input_specs=dict(x="float"),
           attr_specs={},
           inputs=lambda: [constant_op.constant(1)],
-          message="TestFunc argument x: Expected DT_FLOAT but got DT_INT32"),
+          message="TestFunc argument x: Expected DT_FLOAT but got DT_INT32",
+      ),
       dict(
           testcase_name="AddIntTensorAndFloatTensor",
           param_names=["x", "y"],
           input_specs=dict(x="T", y="T"),
           attr_specs=dict(T="{float, int32, int64}"),
-          inputs=lambda: [constant_op.constant(1),
-                          constant_op.constant(2.0)],
-          message="TestFunc argument y: Expected DT_INT32 but got DT_FLOAT"),
+          inputs=lambda: [constant_op.constant(1), constant_op.constant(2.0)],
+          message="TestFunc argument y: Expected DT_INT32 but got DT_FLOAT",
+      ),
+      dict(
+          testcase_name="ShortParamSequence",
+          param_names=["x", "y"],
+          input_specs=dict(x="float", y="float"),
+          attr_specs={},
+          inputs=lambda: [1.0],
+          message="Parameters span size is smaller than expected",
+          exception=ValueError,
+      ),
+      dict(
+          testcase_name="NonIterableInput",
+          param_names=["x"],
+          input_specs=dict(x="float"),
+          attr_specs={},
+          inputs=lambda: 123,
+          message="has no len",
+          exception=TypeError,
+      ),
   ])
   def testConvertError(self,
                        param_names,
@@ -476,6 +512,16 @@ class PythonAPIWrapperTest(test_util.TensorFlowTestCase,
     param_values = inputs()
     with self.assertRaisesRegex(exception, message):
       Convert(api_info, tensor_converter, param_values)
+
+  def testConvertTupleNoMutation(self):
+    api_info = self.makeApiInfoFromParamSpecs(
+        "TestFunc", ["x", "y"], dict(x="int32", y="float32"), {}
+    )
+    tensor_converter = self.makeTensorConverter()
+    param_values = (1, 2)
+    actual_inferred = Convert(api_info, tensor_converter, param_values)
+    self.assertEqual(actual_inferred.types, [])
+    self.assertEqual(param_values, (1, 2))
 
 
 if __name__ == "__main__":

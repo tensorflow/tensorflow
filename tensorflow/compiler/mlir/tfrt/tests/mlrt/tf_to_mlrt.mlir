@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -tf-to-mlrt %s | FileCheck %s
 
 // CHECK-LABEL: @main_stream_0
@@ -551,6 +565,51 @@ func.func @async_ifrt_call_test(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: tf_mlrt.await [[FUTURE]]
   %0 = "tf.AsyncIfrtCall"(%arg0) {program_id = 123 : i64, variable_arg_indices = [], __op_key = 0 : i32, operandSegmentSizes = array<i32: 1, 0>} : (tensor<i32>) -> tensor<i32>
   return %0 : tensor<i32>
+}
+
+// -----
+
+// Test lowering of tf.PartitionedCall and tf.StatefulPartitionedCall to func.call
+
+// CHECK-LABEL: func private @callee
+// CHECK-SAME: (%arg0: !tf_mlrt.tensor) -> !tf_mlrt.tensor
+func.func private @callee(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @test_call_ops
+// CHECK-SAME: ([[ARG:%.*]]: !tf_mlrt.tensor) -> (!tf_mlrt.tensor, !tf_mlrt.tensor)
+func.func @test_call_ops(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  // CHECK: [[RES1:%.*]] = call @callee([[ARG]]) : (!tf_mlrt.tensor) -> !tf_mlrt.tensor
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<i32>) -> tensor<i32>
+  
+  // CHECK: [[RES2:%.*]] = call @callee([[ARG]]) : (!tf_mlrt.tensor) -> !tf_mlrt.tensor
+  %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<i32>) -> tensor<i32>
+  
+  // CHECK: return [[RES1]], [[RES2]] : !tf_mlrt.tensor, !tf_mlrt.tensor
+  return %0, %1 : tensor<i32>, tensor<i32>
+}
+
+// -----
+
+// Test lowering of tf.PartitionedCall with a future input (should insert await)
+
+// CHECK-LABEL: func private @callee_future
+// CHECK-SAME: (%arg0: !tf_mlrt.tensor) -> !tf_mlrt.tensor
+func.func private @callee_future(%arg0: tensor<3x1xf32>) -> tensor<3x1xf32> {
+  return %arg0 : tensor<3x1xf32>
+}
+
+// CHECK-LABEL: func @test_call_with_future
+// CHECK-SAME: ([[ARG0:%.*]]: !tf_mlrt.tensor, [[ARG1:%.*]]: !tf_mlrt.tensor, [[ARG2:%.*]]: !tf_mlrt.tensor, [[ARG3:%.*]]: !tf_mlrt.tensor) -> !tf_mlrt.tensor
+func.func @test_call_with_future(%arg0: tensor<!tf_type.string>, %arg1: tensor<1x!tf_type.string>, %arg2: tensor<1x!tf_type.string>, %arg3: tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32> {
+  // CHECK: [[FUTURE:%.*]] = "tf_mlrt.ifrt_restore_variable"([[ARG0]], [[ARG1]], [[ARG2]], [[ARG3]])
+  %result = "tf.IfrtRestoreVariableOp"(%arg0, %arg1, %arg2, %arg3) {restored_dtypes = [f32], returned_tensor_names = ["y"], truncate_in_cast = array<i1: true>} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
+  // CHECK-NEXT: [[AWAITED:%.*]] = tf_mlrt.await [[FUTURE]]
+  // CHECK-NEXT: [[RESULT:%.*]] = call @callee_future([[AWAITED]]) : (!tf_mlrt.tensor) -> !tf_mlrt.tensor
+  %0 = "tf.PartitionedCall"(%result) {config = "", config_proto = "", executor_type = "", f = @callee_future} : (tensor<3x1xf32>) -> tensor<3x1xf32>
+  // CHECK: return [[RESULT]] : !tf_mlrt.tensor
+  return %0 : tensor<3x1xf32>
 }
 
 

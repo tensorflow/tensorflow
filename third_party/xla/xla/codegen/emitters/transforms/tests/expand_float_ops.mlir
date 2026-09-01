@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-expand-float-ops -canonicalize | FileCheck %s
 // RUN: emitters_opt %s -split-input-file -xla-expand-float-ops="approximate_tanh=false" -canonicalize
 // RUN | FileCheck %s -check-prefixes=CHECK-NO-APPROX-TANH
@@ -179,3 +193,29 @@ module {
 // CHECK-LABEL: @e8m0_abs
 // CHECK-NOT: math.absf
 // CHECK: return %arg0
+
+// -----
+
+module {
+  func.func @maximumf_f8(%arg0: f8E4M3FN, %arg1: f8E4M3FN) -> f8E4M3FN {
+    %ret = arith.maximumf %arg0, %arg1 : f8E4M3FN
+    return %ret : f8E4M3FN
+  }
+}
+
+// CHECK-LABEL: @maximumf_f8
+// CHECK-NOT: arith.maximumf {{.*}}f8E4M3FN
+// CHECK: arith.maximumf {{.*}} : f32
+
+// -----
+
+module {
+  func.func @minimumf_f8(%arg0: f8E4M3FN, %arg1: f8E4M3FN) -> f8E4M3FN {
+    %ret = arith.minimumf %arg0, %arg1 : f8E4M3FN
+    return %ret : f8E4M3FN
+  }
+}
+
+// CHECK-LABEL: @minimumf_f8
+// CHECK-NOT: arith.minimumf {{.*}}f8E4M3FN
+// CHECK: arith.minimumf {{.*}} : f32

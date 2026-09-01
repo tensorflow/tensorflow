@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -177,9 +178,9 @@ int32_t GetCollectiveKeyBase(
   const llvm::SmallVector<int32_t, 4> group_key_offsets =
       GetGroupKeyOffsets(group_assignment, &group_size);
 
+  tensorflow::mutex_lock lock(*mtx);
   const auto iter =
       mesh_to_key_base->find({mesh.ToString(), group_key_offsets});
-  tensorflow::mutex_lock lock(*mtx);
   if (iter != mesh_to_key_base->end()) {
     return iter->second;
   }
@@ -735,7 +736,7 @@ StatusOr<const mlir::DenseIntElementsAttr> GetGroupAssignment(
   const int32_t num_partitions = all_partitions.size();
   for (auto& p : all_partitions) {
     if (p.second.size() != all_partitions.begin()->second.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "partitions had different sizes -- "
           "this is not supported in MLIR.");
     }
@@ -751,7 +752,7 @@ StatusOr<const mlir::DenseIntElementsAttr> GetGroupAssignment(
   const mlir::DenseIntElementsAttr group_assignment =
       mlir::DenseIntElementsAttr::get(shaped_type, partitions_flat);
   if (group_assignment.getType().getRank() != 2) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "group_assignment should have two dimensions.");
   }
   return group_assignment;

@@ -24,19 +24,19 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/vmm_device_address_allocator.h"
 
 namespace stream_executor::gpu {
 
 // CUDA implementation of DeviceAddressVmmAllocator.
 //
 // Uses cuMemCreate/cuMemAddressReserve for physical and virtual memory
-// management, and cuStreamWriteValue64 for GPU timeline-based deferred
+// management, and cuStreamWriteValue64 for batched GPU timeline-based deferred
 // deallocation. Requires compute capability >= 7.0 (Volta and later) for
 // cuStreamWriteValue64 support.
 //
@@ -44,6 +44,8 @@ namespace stream_executor::gpu {
 // the device does not meet the compute capability requirement.
 class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
  public:
+  ~CudaDeviceAddressVmmAllocator() override;
+
   // Creates an allocator supporting multiple devices.
   //
   // Returns an error if any device does not support cuStreamWriteValue64
@@ -51,7 +53,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   //
   // Precondition: all entries in `devices` have distinct device ordinals.
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
-      const Platform* platform, absl::Span<const DeviceConfig> devices);
+      const Platform* platform, absl::Span<const DeviceConfig> devices,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Creates an allocator supporting multiple devices, computing the pa_budget
   // for each device by querying DeviceMemoryUsage and applying memory_fraction.
@@ -61,7 +64,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
       const Platform* platform, double memory_fraction,
       std::optional<int64_t> gpu_system_memory_size,
-      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices);
+      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Creates an allocator for a single device.
   //
@@ -70,14 +74,15 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   //
   // Parameters:
   //   executor:  StreamExecutor for this device. Must outlive the allocator.
-  //   stream:    Stream used for deferred deallocation. Must outlive the
-  //              allocator. This should typically be the main compute stream
-  //              from ServiceExecutableRunOptions.
+  //   stream:    Stream used for deferred deallocation. Must remain valid for
+  //              allocator operations other than destruction. This should
+  //              typically be the main compute stream from
+  //              ServiceExecutableRunOptions.
   //   pa_budget: Maximum bytes of physical memory that may be simultaneously
   //              allocated on this device. Defaults to unlimited.
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
-      StreamExecutor* executor, Stream* stream,
-      uint64_t pa_budget = UINT64_MAX);
+      StreamExecutor* executor, Stream* stream, uint64_t pa_budget = UINT64_MAX,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
  protected:
   // Verifies compute capability >= 7.0, allocates the pinned timeline counter
@@ -95,12 +100,14 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
       StreamExecutor* executor, uint64_t size) override;
 
   // Enqueues a cuStreamWriteValue64 on the device's stream to write `seqno`
-  // to the pinned timeline when the GPU reaches this point in the stream.
+  // to the pinned timeline when the GPU reaches this batched deallocation point
+  // in the stream.
   absl::Status EnqueueDeferredDeallocation(PerDeviceState& state,
                                            uint64_t seqno) override;
 
- private:
-  explicit CudaDeviceAddressVmmAllocator(const Platform* platform);
+  explicit CudaDeviceAddressVmmAllocator(
+      const Platform* platform,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 };
 
 }  // namespace stream_executor::gpu

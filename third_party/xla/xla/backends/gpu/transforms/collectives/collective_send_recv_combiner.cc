@@ -19,19 +19,23 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-namespace xla {
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 
+namespace xla {
 
 // WrapMultipleSendRecvInstructions is a side-effecting function that
 // creates a single computation that wraps all the send/recv instructions.
@@ -67,12 +71,12 @@ static HloComputation* WrapMultipleSendRecvInstructions(
 static absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction) {
   for (HloInstruction* predecessor : old_instruction->control_predecessors()) {
-    TF_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
-    TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
+    ABSL_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
+    ABSL_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
   }
   for (HloInstruction* successor : old_instruction->control_successors()) {
-    TF_RETURN_IF_ERROR(old_instruction->RemoveControlDependencyTo(successor));
-    TF_RETURN_IF_ERROR(new_instruction->AddControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(old_instruction->RemoveControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(new_instruction->AddControlDependencyTo(successor));
   }
   return absl::OkStatus();
 }
@@ -93,9 +97,14 @@ static absl::Status CreateAsyncStartAndAsyncDone(
   HloInstruction* async_start =
       computation->AddInstruction(HloInstruction::CreateAsyncStart(
           async_start_shape, async_start_inputs, async_computation));
+  module->SetAndUniquifyInstrName(
+      async_start, absl::StrCat(async_computation->name(), ".start"));
+  async_start->set_frontend_attribute(kCollectiveGroupMarkerAttr, "");
   HloInstruction* async_done =
       computation->AddInstruction(HloInstruction::CreateAsyncDone(
           async_computation->root_instruction()->shape(), async_start));
+  module->SetAndUniquifyInstrName(
+      async_done, absl::StrCat(async_computation->name(), ".done"));
   HloInstruction* replacement_async_done = nullptr;
   int async_done_gte_index = 0;
   for (HloInstruction* instruction : send_recv_instructions) {
@@ -130,16 +139,16 @@ static absl::Status CreateAsyncStartAndAsyncDone(
     for (HloInstruction* instruction_user : instruction->users()) {
       if (HloPredicateIsOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
               instruction_user)) {
-        TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
-        TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
-                                                     replacement_async_done));
-        TF_RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
+        ABSL_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
+                                                  replacement_async_done));
+        ABSL_RETURN_IF_ERROR(
             instruction_user->ReplaceAllUsesWith(replacement_async_done));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction_user));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction_user));
         changed = true;
       }
     }
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
   }
   return absl::OkStatus();
 }
@@ -160,6 +169,13 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::RunImpl(
               instruction)) {
         continue;
       }
+
+      // Host transfers use host-handler completion events and cannot be
+      // represented by a grouped collective async start/done pair.
+      if (Cast<HloSendRecvInstruction>(instruction)->is_host_transfer()) {
+        continue;
+      }
+
       if (instruction->users().size() != 1 ||
           HloPredicateIsNotOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
               instruction->users()[0])) {
@@ -173,13 +189,13 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::RunImpl(
     // Create a new computation that wraps the send/recv instructions.
     ++wrapped_computation_index;
     HloComputation::Builder builder = HloComputation::Builder(
-        absl::StrCat("wrapped_send_recv_", wrapped_computation_index));
+        absl::StrCat("send_recv_group_", wrapped_computation_index));
     std::vector<HloInstruction*> async_start_inputs;
     std::vector<Shape> async_start_input_shapes;
     HloComputation* async_computation = WrapMultipleSendRecvInstructions(
         send_recv_instructions, async_start_inputs, async_start_input_shapes,
         builder, module);
-    TF_RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
+    ABSL_RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
         send_recv_instructions, async_computation, computation, module,
         async_start_inputs, async_start_input_shapes, changed));
   }

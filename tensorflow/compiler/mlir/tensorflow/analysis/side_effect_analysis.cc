@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -738,7 +739,8 @@ void SideEffectAnalysisInfo::UpdateAccess(ResourceId resource_id,
       }
     } else {
       // Unknown write.
-      for (auto& [id, info] : per_resource_access_info_) {
+      per_resource_access_info_.remove_if([&](auto &entry) {
+        auto& [id, info] = entry;
         if (op_side_effect_collector_.IsOnlySelfDependent(id)) {
           // For self-dependent-only ID, clear unknown access tracking (the new
           // unknown write is not tracked by any other access). Note that we
@@ -749,13 +751,14 @@ void SideEffectAnalysisInfo::UpdateAccess(ResourceId resource_id,
           info.are_last_unknown_reads_tracked = false;
           info.is_last_unknown_write_tracked = false;
           info.is_last_unknown_write_tracked_by_write = false;
+          return false;
         } else {
           // For other IDs, we can delete access info completely (the unknown
           // write acts as a barrier for those IDs).
           VLOG(4) << "      Clearing resource access info for ID " << id;
-          per_resource_access_info_.erase(id);
+          return true;
         }
-      }
+      });
     }
   }
   // Now update access info for `resource_id`.

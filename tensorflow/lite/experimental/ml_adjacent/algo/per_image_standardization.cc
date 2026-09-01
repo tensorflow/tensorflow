@@ -32,12 +32,15 @@ using ::ml_adj::data::MutableDataRef;
 inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
                                     dim_t num_channels, const float* input_data,
                                     float* output_data) {
-  const dim_t num_pixels_per_image = height * width * num_channels;
+  const ind_t num_pixels_per_image =
+      static_cast<ind_t>(height) * width * num_channels;
+
+  if (batches == 0 || num_pixels_per_image == 0) return;
 
   const float inv_num_pixels_per_image = 1.0f / num_pixels_per_image;
 
   for (ind_t b = 0; b < batches; ++b) {
-    const dim_t offset = b * num_pixels_per_image;
+    const ind_t offset = b * num_pixels_per_image;
     const float* input_ptr = input_data + offset;
     float* output_ptr = output_data + offset;
 
@@ -60,8 +63,10 @@ inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
     }
 
     // Divide output by adjusted stddev.
-    const float inv_adjusted_stddev =
-        fmin(num_pixels_per_image, 1.0f / sqrt(variance));
+    const float adjusted_stddev =
+        std::fmax(std::sqrt(variance),
+                  1.0f / std::sqrt(static_cast<float>(num_pixels_per_image)));
+    const float inv_adjusted_stddev = 1.0f / adjusted_stddev;
     for (ind_t i = 0; i < num_pixels_per_image; ++i) {
       output_ptr[i] *= inv_adjusted_stddev;
     }
@@ -72,19 +77,26 @@ inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
 // float datatype.
 void ComputePerImageStandardization(const InputPack& inputs,
                                     const OutputPack& outputs) {
-  TFLITE_DCHECK(inputs.size() == 1);
-  TFLITE_DCHECK(outputs.size() == 1);
+  TFLITE_CHECK_EQ(inputs.size(), 1);
+  TFLITE_CHECK_EQ(outputs.size(), 1);
 
   // Extract input image data.
   const DataRef* img = inputs[0];
+  TFLITE_CHECK_EQ(img->Dims().size(), 4);
+  MutableDataRef* output = outputs[0];
+
+  TFLITE_CHECK_EQ(img->Type(), etype_t::f32);
+  TFLITE_CHECK_EQ(output->Type(), etype_t::f32);
+
   const float* img_data = reinterpret_cast<const float*>(img->Data());
   const dim_t img_num_batches = img->Dims()[0];
   const dim_t img_height = img->Dims()[1];
   const dim_t img_width = img->Dims()[2];
   const dim_t img_num_channels = img->Dims()[3];
 
+  if (img_num_batches == 0 || img_height == 0 || img_width == 0) return;
+
   // Resize output buffer for resized image.
-  MutableDataRef* output = outputs[0];
   output->Resize({img_num_batches, img_height, img_width, img_num_channels});
   float* output_data = reinterpret_cast<float*>(output->Data());
 
@@ -95,9 +107,9 @@ void ComputePerImageStandardization(const InputPack& inputs,
 }  // namespace
 
 const Algo* Impl_PerImageStandardization() {
-  static const Algo per_image_standardization = {
+  static constexpr Algo kPerImageStandardization = {
       &ComputePerImageStandardization, nullptr};
-  return &per_image_standardization;
+  return &kPerImageStandardization;
 }
 
 }  // namespace per_image_standardization

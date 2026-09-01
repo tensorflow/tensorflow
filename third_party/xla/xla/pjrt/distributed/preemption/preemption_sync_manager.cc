@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -82,7 +83,7 @@ absl::Status PreemptionSyncManager::Initialize(
 absl::Status PreemptionSyncManager::Initialize(
     CoordinationServiceAgent* agent,
     const std::string& preemption_notifier_type) {
-  TF_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
+  ABSL_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
   return Initialize(agent, PreemptionNotifier::CreatePreemptionNotifier(
                                preemption_notifier_type, env));
 }
@@ -95,7 +96,7 @@ absl::Status PreemptionSyncManager::Initialize(
     CHECK(!shut_down_);
   }
 
-  TF_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
+  ABSL_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
   env_ = env;
   agent_ = agent;
   preemption_notifier_ = std::move(notifier);

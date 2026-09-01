@@ -36,9 +36,8 @@ namespace {
 template <class>
 constexpr bool dependent_false = false;
 
-class ComplexUnaryOpTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class ComplexUnaryOpTest : public ClientLibraryTestRunnerMixin<
+                               HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   // Disable constant folding to ensure we test the actual backend
   // implementation. Otherwise, constant folding pre-computes results using

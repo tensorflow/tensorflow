@@ -153,22 +153,18 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   void PushComputeFunction(const std::string& function_name,
                            llvm::Function::LinkageTypes linkage,
                            const HloModuleConfig& module_config,
-                           llvm::Module* llvm_module,
-                           int64_t num_dynamic_loop_bounds) {
+                           llvm::Module* llvm_module) {
     compute_function_.emplace(function_name, linkage, module_config,
-                              llvm_module, b(), num_dynamic_loop_bounds);
+                              llvm_module, b());
   }
 
   // Used by IrEmitter2
   void PushComputeFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
-                           int64_t num_dynamic_loop_bounds,
                            llvm::Function* function,
-                           llvm::Value* dynamic_loop_bounds_arg,
                            llvm::BasicBlock* return_block) {
     function->getEntryBlock().getTerminator()->eraseFromParent();
     b->SetInsertPoint(&function->getEntryBlock());
-    compute_function_.emplace(b, llvm_module, num_dynamic_loop_bounds, function,
-                              dynamic_loop_bounds_arg, return_block);
+    compute_function_.emplace(b, llvm_module, function, return_block);
   }
 
   void PopComputeFunction() {
@@ -679,18 +675,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   llvm_ir::AliasAnalysis alias_analysis_;
 
-  // The number of outer dimensions of the root instruction's shape that
-  // will be partitioned when emitting parallel loops. (See
-  // ParallelLoopEmitter).
-  int64_t num_dynamic_loop_bounds_ = 0;
 
-  // Returns whether the given instruction should be emitted as a parallel loop.
-  bool ShouldEmitParallelLoopFor(const HloInstruction& op) const {
-    // Emit parallel loop for root instruction if dynamic outer-dimension loop
-    // bounds were specified.
-    return num_dynamic_loop_bounds_ > 0 &&
-           op.parent()->root_instruction() == &op;
-  }
 
   // This struct contains all the state needed to emit instructions for
   // profiling a computation.

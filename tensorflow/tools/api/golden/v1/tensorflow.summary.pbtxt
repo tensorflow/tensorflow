@@ -6,11 +6,11 @@ tf_module {
   }
   member {
     name: "FileWriter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "FileWriterCache"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "SessionLog"

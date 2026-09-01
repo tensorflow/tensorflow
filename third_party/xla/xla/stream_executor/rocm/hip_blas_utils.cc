@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 
+#include <string>
+
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"
-
-#if TF_HIPBLASLT
 
 namespace stream_executor {
 namespace rocm {
@@ -41,33 +42,16 @@ hipDataType AsHipblasDataType(blas::DataType type) {
     case blas::DataType::kF8E8M0FNU:
       LOG(FATAL) << "hipblaslt does not support F8E4M3, F8E3M4, and F8E8M0FNU "
                     "as matrix data types";
-#if TF_ROCM_VERSION >= 70000
     case blas::DataType::kF4E2M1FN:
       return HIP_R_4F_E2M1;
-#else
-    case blas::DataType::kF4E2M1FN:
-      LOG(FATAL) << "hipblaslt only supports F4E2M1FN in ROCm 7.0 and above";
-#endif
-#if TF_ROCM_VERSION >= 60000
     case blas::DataType::kF8E5M2FNUZ:
       return HIP_R_8F_E5M2_FNUZ;
     case blas::DataType::kF8E4M3FNUZ:
       return HIP_R_8F_E4M3_FNUZ;
-#else
-    case blas::DataType::kF8E5M2FNUZ:
-    case blas::DataType::kF8E4M3FNUZ:
-      LOG(FATAL) << "hipblaslt only supports nanoo F8 in ROCm 6.0 and above";
-#endif
-#if TF_ROCM_VERSION >= 60300
     case blas::DataType::kF8E5M2:
       return HIP_R_8F_E5M2;
     case blas::DataType::kF8E4M3FN:
       return HIP_R_8F_E4M3;
-#else
-    case blas::DataType::kF8E5M2:
-    case blas::DataType::kF8E4M3FN:
-      LOG(FATAL) << "hipblaslt only supports OCP F8 in ROCm 6.3 and above";
-#endif
     case blas::DataType::kHalf:
       return HIP_R_16F;
     case blas::DataType::kBF16:
@@ -118,5 +102,3 @@ hipblasOperation_t AsHipblasOperation(blas::Transpose trans) {
 
 }  // namespace rocm
 }  // namespace stream_executor
-
-#endif  // #TF_HIPBLASLT

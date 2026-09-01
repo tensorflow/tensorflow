@@ -19,7 +19,15 @@ from tensorflow.python.data.util import random_seed
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_dataset_ops
+
+# Sanity limit on the number of elements in the shuffle buffer. The C++
+# kernel eagerly allocates a slot for every element up to `buffer_size` when
+# the iterator is created, so a pathologically large value (e.g.
+# `sys.maxsize`) reaches that allocation and crashes the process instead of
+# raising a catchable error.
+_MAX_SHUFFLE_BUFFER_SIZE_ELEMENTS = 1 << 30  # ~1 billion elements
 
 
 def _shuffle(  # pylint: disable=unused-private-name
@@ -48,6 +56,18 @@ class _ShuffleDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
+    constant_buffer_size = tensor_util.constant_value(self._buffer_size)
+    if (
+        constant_buffer_size is not None
+        and constant_buffer_size > _MAX_SHUFFLE_BUFFER_SIZE_ELEMENTS
+    ):
+      raise ValueError(
+          "`buffer_size` must not exceed "
+          f"{_MAX_SHUFFLE_BUFFER_SIZE_ELEMENTS} elements, but got "
+          f"{constant_buffer_size}. Requesting a shuffle buffer this large "
+          "would cause the dataset to abort the process instead of raising "
+          "a catchable error."
+      )
     self._seed, self._seed2 = random_seed.get_seed(seed)
     self._reshuffle_each_iteration = reshuffle_each_iteration
     self._name = name

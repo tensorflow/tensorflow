@@ -2,11 +2,11 @@ path: "tensorflow.experimental.dtensor"
 tf_module {
   member {
     name: "DTensorCheckpoint"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "DTensorDataset"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "DVariable"
@@ -18,7 +18,7 @@ tf_module {
   }
   member {
     name: "MATCH"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "Mesh"
@@ -26,7 +26,7 @@ tf_module {
   }
   member {
     name: "UNSHARDED"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member_method {
     name: "barrier"

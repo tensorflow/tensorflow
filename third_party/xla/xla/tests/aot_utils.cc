@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
 #include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/service/hlo_runner.h"
 
 namespace xla {
 namespace {
@@ -95,7 +94,7 @@ std::optional<absl::string_view> GetAotDir() {
 }
 }  // namespace
 
-std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtAotAware(
+std::unique_ptr<HloRunner> MakeAotAwareHloRunner(
     std::unique_ptr<PjRtClient> client) {
   const AotMode mode = GetAotMode();
   absl::string_view artifact_dir;
@@ -109,18 +108,18 @@ std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtAotAware(
 
   switch (mode) {
     case AotMode::kDisabled:
-      return std::make_unique<HloRunnerPjRt>(std::move(client));
+      return std::make_unique<HloRunner>(std::move(client));
     case AotMode::kCompile:
-      return std::make_unique<CompilePhaseHloRunnerPjRt>(
-          std::move(client), std::move(artifact_dir));
+      return std::make_unique<CompilePhaseHloRunner>(std::move(client),
+                                                     std::move(artifact_dir));
     case AotMode::kExecute:
-      return std::make_unique<ExecutePhaseHloRunnerPjRt>(
-          std::move(client), std::move(artifact_dir));
+      return std::make_unique<ExecutePhaseHloRunner>(std::move(client),
+                                                     std::move(artifact_dir));
   }
   return nullptr;  // Should not reach here.
 }
 
-std::unique_ptr<InterpreterClient> MakeInterpreterClientAotAware(
+std::unique_ptr<InterpreterClient> MakeAotAwareInterpreterClient(
     absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
         hlo_evaluator_factory) {
   const AotMode mode = GetAotMode();

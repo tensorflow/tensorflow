@@ -201,6 +201,63 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
   EXPECT_EQ("^gradients/BN1Grad", recompute_trigger_c->input(0));
 }
 
+TEST_F(RecomputeSubgraphTest, DynamicHeuristicRecomputation) {
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
+    Output b = ops::Identity(s.WithOpName("b"), a);
+    Output c = ops::AddN(s.WithOpName("gradients/c"), {b});
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    MemoryOptimizer optimizer(RewriterConfig::RECOMPUTATION_HEURISTICS);
+    GraphDef output;
+    TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    NodeMap post_transform_node_map(&output);
+    EXPECT_EQ(post_transform_node_map.GetNode("Recomputed/b"), nullptr);
+  }
+
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
+    Output b = ops::Identity(s.WithOpName("b"), a);
+    Output c = ops::AddN(s.WithOpName("gradients/c"), {b});
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    NodeMap pre_transform_node_map(&item.graph);
+    pre_transform_node_map.GetNode("b")->set_op("Relu");
+
+    MemoryOptimizer optimizer(RewriterConfig::RECOMPUTATION_HEURISTICS);
+    GraphDef output;
+    TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    NodeMap post_transform_node_map(&output);
+    EXPECT_NE(post_transform_node_map.GetNode("Recomputed/b"), nullptr);
+  }
+
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Variable(s.WithOpName("a"), {1000, 1000}, DT_FLOAT);
+    Output b = ops::Identity(s.WithOpName("b"), a);
+    Output c = ops::AddN(s.WithOpName("gradients/c"), {b});
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    NodeMap pre_transform_node_map(&item.graph);
+    pre_transform_node_map.GetNode("b")->set_op("Relu");
+
+    MemoryOptimizer optimizer(RewriterConfig::RECOMPUTATION_HEURISTICS);
+    GraphDef output;
+    TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    NodeMap post_transform_node_map(&output);
+    EXPECT_EQ(post_transform_node_map.GetNode("Recomputed/b"), nullptr);
+  }
+}
+
 class MemoryOptimizerTest : public GrapplerTest {
  public:
   static std::unique_ptr<VirtualCluster> CreateVirtualCluster() {

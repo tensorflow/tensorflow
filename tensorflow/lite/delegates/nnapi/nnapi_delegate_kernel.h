@@ -16,12 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_KERNEL_H_
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_KERNEL_H_
 
+// WARNING: this header file is DEPRECATED.
+// See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+
 #include <cstddef>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -120,6 +125,8 @@ class NNMemory {
   static std::unique_ptr<NNMemory> Create(const NnApi* nnapi, const char* name,
                                           size_t size);
   ~NNMemory();
+  NNMemory(const NNMemory&) = delete;
+  void operator=(const NNMemory&) = delete;
 
   ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
   uint8_t* get_data_ptr() { return data_ptr_; }
@@ -128,12 +135,22 @@ class NNMemory {
  private:
   // Private constructor. Use Create() to create an instance.
   NNMemory(const NnApi* nnapi, int fd, size_t byte_size, uint8_t* data_ptr,
-           ANeuralNetworksMemory* nn_memory_handle)
+           ANeuralNetworksMemory* nn_memory_handle
+#ifndef __ANDROID__
+           ,
+           const std::string& shm_region_name
+#endif
+           )
       : nnapi_(nnapi),
         fd_(fd),
         byte_size_(byte_size),
         data_ptr_(data_ptr),
-        nn_memory_handle_(nn_memory_handle) {};
+        nn_memory_handle_(nn_memory_handle)
+#ifndef __ANDROID__
+        ,
+        shm_region_name_(shm_region_name)
+#endif
+  {};
 
   // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;

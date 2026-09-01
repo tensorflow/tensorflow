@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
 #include "llvm/ADT/APInt.h"
@@ -55,10 +56,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_VECTORIZELOADSANDSTORESPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::Value;
 
@@ -257,13 +259,20 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
       ->getResult(0);
 }
 
+bool IsSubByteIntOrFloatType(mlir::Type type) {
+  return type.isIntOrFloat() && type.getIntOrFloatBitWidth() < 8;
+}
+
 bool IsConflictFree(mlir::tensor::ExtractOp op) {
   return op.getTensor().getParentRegion()->isProperAncestor(
       op->getParentRegion());
 }
 
 struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
-  using OpRewritePattern::OpRewritePattern;
+ public:
+  VectorizeLoad(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::tensor::ExtractOp>(context),
+        device_spec_(device_spec) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::ExtractOp op,
@@ -281,6 +290,30 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
     if (!vector_type) {
       return rewriter.notifyMatchFailure(op, "not a vectorizable loop");
     }
+    // Prevent vectorization when a (possibly transitive) user of the extract op
+    // truncates to a sub-byte type. The LLVM's InstCombine pass folds trunc op.
+    // For example,
+    // trunc (extractelement <4 x i8> %X, i64 0) to i2 ->
+    // extractelement <16 x i2> (bitcast <4 x i8> %X to <16 x i2>), i64 0. The
+    // sub-byte vector types are not supported in the LLVM SPIR-V backend.
+    std::function<bool(mlir::Operation*)> has_sub_byte_trunc_user =
+        [&](mlir::Operation* op) {
+          return absl::c_any_of(op->getUsers(), [&](mlir::Operation* user) {
+            auto trunc = mlir::dyn_cast<mlir::arith::TruncIOp>(user);
+            if (trunc && IsSubByteIntOrFloatType(trunc.getResult().getType()))
+              return true;
+            return llvm::all_of(
+                       user->getResultTypes(),
+                       [](mlir::Type t) { return t.isIntOrFloat(); }) &&
+                   has_sub_byte_trunc_user(user);
+          });
+        };
+    auto element_type = vector_type.getElementType();
+    if (device_spec_.IsIntelGpu() && (IsSubByteIntOrFloatType(element_type) ||
+                                      has_sub_byte_trunc_user(op))) {
+      return rewriter.notifyMatchFailure(
+          op, "sub-byte types are not supported for vector loads on Intel GPU");
+    }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(loop);
@@ -297,6 +330,9 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
         op, loaded_vector, loop.getInductionVar());
     return mlir::success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 // Verifies that the insertions happening in the loop can all safely be batched
@@ -398,7 +434,10 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
 };
 
 struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
-  using OpRewritePattern::OpRewritePattern;
+ public:
+  VectorizeStore(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::tensor::InsertOp>(context),
+        device_spec_(device_spec) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::InsertOp op,
@@ -413,6 +452,17 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     auto vector_type = GetVectorType(op.getDest().getType(), loop);
     if (!vector_type) {
       return rewriter.notifyMatchFailure(op, "loop is not vectorizable");
+    }
+
+    // Disable vectorization for the data types that result in sub-byte vector
+    // loads and stores in the optimized LLVM IR on Intel GPUs. These
+    // types are packed (e.g., 2 int4s per byte) and are currently not
+    // supported in the LLVM SPIR-V backend as vector store operations.
+    auto element_type = vector_type.getElementType();
+    if (device_spec_.IsIntelGpu() && IsSubByteIntOrFloatType(element_type)) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "sub-byte types are not supported for vector stores on Intel GPU");
     }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -452,6 +502,9 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
 
     return mlir::success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 struct FoldVectorInsertExtractPairs
@@ -551,6 +604,8 @@ class VectorizeLoadsAndStoresPass
     : public impl::VectorizeLoadsAndStoresPassBase<
           VectorizeLoadsAndStoresPass> {
  public:
+  VectorizeLoadsAndStoresPass() = default;
+
   explicit VectorizeLoadsAndStoresPass(
       const VectorizeLoadsAndStoresPassOptions& options)
       : VectorizeLoadsAndStoresPassBase(options) {}
@@ -574,8 +629,8 @@ class VectorizeLoadsAndStoresPass
     }
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<VectorizeLoad, VectorizeStore, FoldVectorInsertExtractPairs>(
-        mlir_context);
+    patterns.add<VectorizeLoad, VectorizeStore>(mlir_context, device_spec_);
+    patterns.add<FoldVectorInsertExtractPairs>(mlir_context);
     patterns.add<VectorizeAtomicRMW>(mlir_context, device_spec_);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -588,15 +643,7 @@ class VectorizeLoadsAndStoresPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateVectorizeLoadsAndStoresPass(
-    const std::string& target_type, const std::string& gpu_device_info) {
-  VectorizeLoadsAndStoresPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  options.target_type_ = target_type;
-  return std::make_unique<VectorizeLoadsAndStoresPass>(options);
-}
-
-std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
+std::unique_ptr<mlir::Pass> createVectorizeLoadsAndStoresPass(
     const se::DeviceDescription& device_description) {
   return std::make_unique<VectorizeLoadsAndStoresPass>(device_description);
 }

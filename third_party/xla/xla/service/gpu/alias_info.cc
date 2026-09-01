@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -217,6 +218,12 @@ std::optional<bool> FusionCanShareBufferHint(
   return found_path_to_output;
 }
 }  // namespace
+
+bool GpuAliasInfo::IsNoOpForAliasAnalysis(
+    const HloInstruction* instruction) const {
+  return AliasInfo::IsNoOpForAliasAnalysis(instruction) ||
+         instruction->opcode() == HloOpcode::kReshape;
+}
 
 std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
                                            const ShapeIndex& operand_index,

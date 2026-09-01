@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -258,7 +259,8 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
   for (size_t i = 0; i < 4; ++i) {
     auto init_res = factory->InitBulkTransport();
     bulk_transporta = std::move(init_res.bulk_transport);
-    auto recv_res = factory2->RecvBulkTransport(init_res.request);
+    ASSERT_OK_AND_ASSIGN(auto recv_res,
+                         factory2->RecvBulkTransport(init_res.request));
     bulk_transportb = std::move(recv_res.bulk_transport);
     std::move(init_res.start_bulk_transport)(recv_res.request);
   }

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -47,8 +48,15 @@ namespace mlir {
 class DialectRegistry;
 }  // namespace mlir
 
+namespace tsl {
+class Executor;
+}  // namespace tsl
+
 namespace xla {
 namespace cpu {
+
+// Returns a global (per-process) thread pool for XLA CPU compilation tasks.
+tsl::Executor* GetCpuCompilationThreadPool();
 
 // CPU-targeting implementation of the XLA Compiler interface.
 //
@@ -89,8 +97,7 @@ class CpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<CompiledModule>> LoadAotCompilationResult(
       const std::string& serialized_aot_result) override;
 
-  absl::StatusOr<HloSchedule> CreateHloSchedule(
-      const HloModule& hlo_module) const;
+  absl::StatusOr<HloSchedule> CreateHloSchedule(HloModule& hlo_module) const;
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateBufferAssignment(
       const HloModule& module) const;

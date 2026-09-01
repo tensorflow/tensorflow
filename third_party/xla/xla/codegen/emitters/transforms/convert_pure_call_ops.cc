@@ -9,7 +9,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -21,10 +20,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_CONVERTPURECALLOPSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 struct RewriteCall : mlir::OpRewritePattern<PureCallOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -52,10 +52,6 @@ class ConvertPureCallOpsPass
 };
 
 }  // namespace
-
-std::unique_ptr<::mlir::Pass> CreateConvertPureCallOpsPass() {
-  return std::make_unique<ConvertPureCallOpsPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

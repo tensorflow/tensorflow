@@ -727,7 +727,7 @@ class OpKernelContext {
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
   // Stack trace of where the op was defined (if defined in eager mode).
-  const absl::optional<ManagedStackTrace>& stack_trace() const {
+  const std::optional<ManagedStackTrace>& stack_trace() const {
     return params_->stack_trace;
   }
 

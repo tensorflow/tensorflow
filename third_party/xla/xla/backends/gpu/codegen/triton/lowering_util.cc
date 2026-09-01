@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -70,7 +73,7 @@ absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
   if (!num_warps_attr) {
     return absl::InternalError("ttg.num-warps attribute not found.");
   }
-  // AMD/ROCm Triton backend does not support warp specialization.
+  // AMD/ROCm and Intel XPU Triton backends do not support warp specialization.
   // Consequently, `ttg.total-num-warps` and  `nvvm.reqntid` are not added
   // to triton module/function.
   // ThreadDim is therefore calculated from the Module attributes and not
@@ -79,7 +82,8 @@ absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
   if (!target) {
     return absl::InternalError("ttg.target attribute not found.");
   }
-  if (target.getValue().find("gfx") != std::string::npos) {
+  if (target.getValue().find("gfx") != std::string::npos ||
+      target.getValue().find("xpu") != std::string::npos) {
     stream_executor::ThreadDim thread_dims(
         num_warps_attr.getInt() * threads_per_warp_attr.getInt(), 1, 1);
     return thread_dims;
@@ -133,7 +137,7 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
     if (auto attr =
             func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
                 idx, "tt.tma_descriptor")) {
-      TF_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto tma_desc,
           CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
                               attr.getTileStrides(), attr.getLayout(),
@@ -169,6 +173,30 @@ llvm::SmallVector<int64_t> ComputeStrides(llvm::ArrayRef<int64_t> shape,
     stride *= shape[dim];
   }
   return result;
+}
+
+bool IsMajorToMinorLayout(llvm::ArrayRef<int64_t> layout) {
+  for (auto [i, value] : llvm::enumerate(layout)) {
+    if (value != layout.size() - 1 - i) {
+      return false;
+    }
+  }
+  return true;
+}
+
+llvm::SmallVector<mlir::Value> GetMajorToMinorOrder(
+    mlir::ValueRange values, llvm::ArrayRef<int64_t> layout) {
+  return GetMajorToMinorOrder(
+      llvm::ArrayRef<mlir::Value>(llvm::to_vector(values)), layout);
+}
+
+llvm::SmallVector<int32_t> GetInverseLayoutPermutation(
+    llvm::ArrayRef<int64_t> layout) {
+  auto reversed_layout = llvm::to_vector(layout);
+  std::reverse(reversed_layout.begin(), reversed_layout.end());
+  auto permutation =
+      llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
+  return llvm::SmallVector<int32_t>(permutation.begin(), permutation.end());
 }
 
 llvm::SmallVector<unsigned> GetRetainedDims(
@@ -302,8 +330,17 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
       upper_bound =
           arith::SubIOp::create(builder, upper_bound, cast_offsets[dim]);
       upper_bound = ttir::SplatOp::create(builder, i64_tile_type, upper_bound);
-      mlir::Value mask = arith::CmpIOp::create(
+      mlir::Value mask_right = arith::CmpIOp::create(
           builder, arith::CmpIPredicate::slt, range, upper_bound);
+
+      mlir::Value lower_bound =
+          arith::ConstantIntOp::create(builder, i64_type, 0);
+      lower_bound =
+          arith::SubIOp::create(builder, lower_bound, cast_offsets[dim]);
+      lower_bound = ttir::SplatOp::create(builder, i64_tile_type, lower_bound);
+      mlir::Value mask_left = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::sge, range, lower_bound);
+      mlir::Value mask = arith::AndIOp::create(builder, mask_left, mask_right);
 
       // Combine mask with previous iteration.
       mask_tile = add_if(arith::AndIOp(), mask, mask_tile);

@@ -31,8 +31,8 @@ template <typename Device, typename T>
 struct StatelessRandomGammaFunctor {
   static absl::Status Fill(OpKernelContext* ctx, const T* alpha_flat,
                            int64_t num_samples, int64_t num_alphas,
-                           int64_t samples_per_alpha, const uint64* key,
-                           const uint64* counter,
+                           int64_t samples_per_alpha, const uint64_t* key,
+                           const uint64_t* counter,
                            const random::PhiloxRandom& random, T* samples_flat);
 };
 

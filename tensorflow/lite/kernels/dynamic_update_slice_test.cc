@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "Eigen/Core"  // from @eigen_archive
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
@@ -67,6 +68,21 @@ class DynamicUpdateSliceOpModel : public SingleOpModel {
 
   template <typename T>
   void SetStartIndices(std::initializer_list<T> data) {
+    PopulateTensor<T>(start_indices_, data);
+  }
+
+  template <typename T>
+  void SetInput(const std::vector<T>& data) {
+    PopulateTensor<T>(input_, data);
+  }
+
+  template <typename T>
+  void SetUpdate(const std::vector<T>& data) {
+    PopulateTensor<T>(update_, data);
+  }
+
+  template <typename T>
+  void SetStartIndices(const std::vector<T>& data) {
     PopulateTensor<T>(start_indices_, data);
   }
 
@@ -156,6 +172,33 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestF16InPlaceInput) {
               ElementsAreArray(
                   ArrayFloatNear({half(1), half(2), half(3), half(4), half(-1),
                                   half(6), half(7), half(-2), half(9)})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(DynamicUpdateSliceOpTest, SimpleTestBF16) {
+  DynamicUpdateSliceOpModel m({TensorType_BFLOAT16, {3, 3}},
+                              {TensorType_BFLOAT16, {2, 1}},
+                              {TensorType_INT32, {2}});
+  m.SetInput<Eigen::bfloat16>(
+      {Eigen::bfloat16(1.0f), Eigen::bfloat16(2.0f), Eigen::bfloat16(3.0f),
+       Eigen::bfloat16(4.0f), Eigen::bfloat16(5.0f), Eigen::bfloat16(6.0f),
+       Eigen::bfloat16(7.0f), Eigen::bfloat16(8.0f), Eigen::bfloat16(9.0f)});
+  m.SetUpdate<Eigen::bfloat16>(
+      {Eigen::bfloat16(-1.0f), Eigen::bfloat16(-2.0f)});
+  m.SetStartIndices<int32_t>({1, 1});
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput<Eigen::bfloat16>(),
+      ElementsAreArray(ArrayFloatNear(
+          {Eigen::bfloat16(1.0f), Eigen::bfloat16(2.0f), Eigen::bfloat16(3.0f),
+           Eigen::bfloat16(4.0f), Eigen::bfloat16(-1.0f), Eigen::bfloat16(6.0f),
+           Eigen::bfloat16(7.0f), Eigen::bfloat16(-2.0f),
+           Eigen::bfloat16(9.0f)})));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
@@ -422,3 +465,29 @@ TEST(DynamicUpdateSliceOpTest, OnlyShareBufferForASingleConsumer) {
 
 }  // namespace
 }  // namespace tflite
+
+void BM_DynamicUpdateSlice(benchmark::State& state) {
+  const int batch = state.range(0);
+  const int seq_len = state.range(1);
+  const int hidden_size = state.range(2);
+  const int update_len = state.range(3);
+
+  tflite::DynamicUpdateSliceOpModel m(
+      {tflite::TensorType_FLOAT32, {batch, seq_len, hidden_size}},
+      {tflite::TensorType_FLOAT32, {batch, update_len, hidden_size}},
+      {tflite::TensorType_INT32, {3}});
+
+  std::vector<float> input_data(batch * seq_len * hidden_size, 1.0f);
+  std::vector<float> update_data(batch * update_len * hidden_size, 2.0f);
+  m.SetInput(input_data);
+  m.SetUpdate(update_data);
+  m.SetStartIndices<int32_t>({0, seq_len / 2, 0});
+
+  for (auto _ : state) {
+    m.Invoke();
+  }
+}
+BENCHMARK(BM_DynamicUpdateSlice)
+    ->Args({1, 384, 1024, 1})
+    ->Args({1, 384, 1024, 10})
+    ->Args({1, 384, 1024, 100});

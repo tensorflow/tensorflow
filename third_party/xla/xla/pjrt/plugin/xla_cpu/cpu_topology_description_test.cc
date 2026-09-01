@@ -23,10 +23,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/layout.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -131,6 +134,85 @@ TEST(CpuTopologyDescriptionTest,
   auto [device_coords, core_id] = std::move(device_core);
   ASSERT_EQ(device_coords, (PjRtDeviceDimensions{0, 0, 1}));
   ASSERT_EQ(core_id, 0);
+}
+
+TEST(CpuTopologyDescriptionTest, KindIdToKind) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      absl::string_view pinned_host_kind,
+      topology.KindIdToKind(PinnedHostMemorySpace::kKindId));
+  EXPECT_EQ(pinned_host_kind, "pinned_host");
+
+  TF_ASSERT_OK_AND_ASSIGN(absl::string_view device_kind,
+                          topology.KindIdToKind(CpuDeviceMemorySpace::kKindId));
+  EXPECT_EQ(device_kind, "device");
+
+  EXPECT_FALSE(topology.KindIdToKind(-1).ok());
+}
+
+TEST(CpuTopologyDescriptionTest, MemorySpaceKindIds) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  EXPECT_THAT(
+      topology.GetMemorySpaceKindIds(),
+      ElementsAre(CpuDeviceMemorySpace::kKindId, PinnedHostMemorySpace::kKindId,
+                  UnpinnedHostMemorySpace::kKindId));
+  EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(),
+            CpuDeviceMemorySpace::kKindId);
+}
+
+TEST(CpuTopologyDescriptionTest, ProcessIdAndIndexOnProcess) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {
+      {0, 0}, {0, 1}, {1, 0}, {1, 1}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto process_and_index,
+      topology.ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+          GlobalDeviceId(2)));
+  EXPECT_EQ(process_and_index.first, ProcessId(1));
+  EXPECT_EQ(process_and_index.second, 0);
+
+  EXPECT_FALSE(topology
+                   .ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+                       GlobalDeviceId(10))
+                   .ok());
+}
+
+TEST(CpuTopologyDescriptionTest, GetDefaultLayout) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  for (PrimitiveType element_type : {S4, S32}) {
+    const Shape shape = ShapeUtil::MakeShape(element_type, {2, 3});
+    ASSERT_OK_AND_ASSIGN(
+        Layout default_layout,
+        topology.GetDefaultLayout(shape.element_type(), shape.dimensions()));
+    ASSERT_OK_AND_ASSIGN(
+        Shape canonical_shape,
+        topology.MakeCanonicalShapeForMemorySpace(CpuDeviceMemorySpace::kKindId,
+                                                  shape, /*layout=*/nullptr));
+    EXPECT_EQ(default_layout, canonical_shape.layout());
+  }
 }
 
 }  // namespace

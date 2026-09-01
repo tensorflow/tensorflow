@@ -2,7 +2,7 @@ path: "tensorflow.train.experimental.PythonState"
 tf_class {
   is_instance: "<class \'tensorflow.python.trackable.python_state.PythonState\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }

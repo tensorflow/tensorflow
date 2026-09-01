@@ -30,16 +30,16 @@ REGISTER_SYSTEM_OP("_Arg")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       const AttrValue* dtype_attr = context->GetAttr("T");
       if (!dtype_attr) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "_Arg node does not have attribute \"T\"");
       }
 
       const AttrValue* shape_attr = context->GetAttr("_output_shapes");
       if (shape_attr && shape_attr->has_list()) {
         if (shape_attr->list().shape().empty()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Invalid \"_output_shapes\" attribute value for _Arg node: ",
-              shape_attr->DebugString());
+              shape_attr->DebugString()));
         }
         const TensorShapeProto& shape_proto = shape_attr->list().shape(0);
         shape_inference::ShapeHandle shape_handle;
@@ -65,14 +65,14 @@ REGISTER_SYSTEM_OP("_Arg")
       }
 
       if (dtype_attr->list().type().empty()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid \"_handle_dtypes\" attribute value for _Arg node: ",
-            dtype_attr->DebugString());
+            dtype_attr->DebugString()));
       }
       if (shape_attr->list().shape().empty()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid \"_handle_shapes\" attribute value for _Arg node: ",
-            shape_attr->DebugString());
+            shape_attr->DebugString()));
       }
       DataType dtype = dtype_attr->list().type(0);
       const TensorShapeProto& shape_proto = shape_attr->list().shape(0);

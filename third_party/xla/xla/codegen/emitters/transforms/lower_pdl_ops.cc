@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -27,10 +26,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_LOWERPDLWAITPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 struct LowerPdlWaitPattern
     : public mlir::OpRewritePattern<xla::gpu::PdlWaitOp> {
@@ -44,11 +44,25 @@ struct LowerPdlWaitPattern
   }
 };
 
+struct LowerPdlLaunchDependentsPattern
+    : public mlir::OpRewritePattern<xla::gpu::PdlLaunchDependentsOp> {
+  using OpRewritePattern<xla::gpu::PdlLaunchDependentsOp>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      xla::gpu::PdlLaunchDependentsOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<mlir::NVVM::GriddepcontrolOp>(
+        op, mlir::NVVM::GridDepActionKind::launch_dependents);
+    return mlir::success();
+  }
+};
+
 class LowerPdlWaitPass : public impl::LowerPdlWaitPassBase<LowerPdlWaitPass> {
  public:
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<LowerPdlWaitPattern>(&getContext());
+    patterns.add<LowerPdlLaunchDependentsPattern, LowerPdlWaitPattern>(
+        &getContext());
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
@@ -57,10 +71,6 @@ class LowerPdlWaitPass : public impl::LowerPdlWaitPassBase<LowerPdlWaitPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLowerPdlWaitPass() {
-  return std::make_unique<LowerPdlWaitPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

@@ -1,10 +1,10 @@
 path: "tensorflow.train.MonitoredSession.StepContext"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.monitored_session.StepContext\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "session"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

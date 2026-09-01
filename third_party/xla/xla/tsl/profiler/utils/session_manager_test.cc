@@ -60,6 +60,30 @@ TEST(SessionManagerTest, MultiHostDefaultDelayTest) {
   EXPECT_EQ(options.delay_ms(), 3000);
 }
 
+TEST(SessionManagerTest, UseSystemHostnameTest) {
+  absl::string_view logdir = "/tmp/logdir";
+  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>> opts =
+      {{"use_system_hostname", true}};
+  RemoteProfilerSessionManagerOptions options =
+      GetRemoteSessionManagerOptionsLocked(logdir, opts);
+  const auto& config = options.profiler_options().advanced_configuration();
+  auto it = config.find("use_system_hostname");
+  ASSERT_NE(it, config.end());
+  EXPECT_TRUE(it->second.bool_value());
+}
+
+TEST(SessionManagerTest, UseSystemHostnameFalseTest) {
+  absl::string_view logdir = "/tmp/logdir";
+  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>> opts =
+      {{"use_system_hostname", false}};
+  RemoteProfilerSessionManagerOptions options =
+      GetRemoteSessionManagerOptionsLocked(logdir, opts);
+  const auto& config = options.profiler_options().advanced_configuration();
+  auto it = config.find("use_system_hostname");
+  ASSERT_NE(it, config.end());
+  EXPECT_FALSE(it->second.bool_value());
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

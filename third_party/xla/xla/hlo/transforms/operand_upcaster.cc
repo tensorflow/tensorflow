@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,8 +47,7 @@ absl::StatusOr<std::optional<Shape>> MaybeInferShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
           instruction->feature_group_count(), instruction->batch_group_count(),
           instruction->window(), instruction->convolution_dimension_numbers(),
-          instruction->sparsity_config(),
-          /*preferred_element_type=*/std::nullopt);
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt);
     default:
       return std::optional<Shape>(std::nullopt);
   }
@@ -85,7 +85,7 @@ absl::StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
     upcast_shape.set_element_type(type);
     auto* convert_inst = instruction->AddInstruction(
         HloInstruction::CreateConvert(upcast_shape, operand));
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->ReplaceOperandWithDifferentShape(i, convert_inst));
   }
   return nullptr;

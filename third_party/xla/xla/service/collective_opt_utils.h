@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -244,6 +245,25 @@ const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo);
 // Returns true if the instruction is a pipelined P2P send/recv with frontend
 // attribute.
 bool IsPipelinedP2P(const HloInstruction* instruction);
+
+// Analyzes the dynamic-slice offset pattern following an all-reduce and
+// constructs two sets of replica groups for DS-aware two-stage reduce-scatter
+// decomposition. Returns a pair of (outer_groups, inner_groups):
+//   - outer_groups (size=ds_factor): one device from each shard bucket,
+//     used for the first RS which scatters across shards.
+//   - inner_groups (size=local_group_size/ds_factor): all devices wanting
+//     the same shard, used for the second RS/AG within each shard bucket.
+//     Empty if inner_group_size == 1 (no second RS/AG needed).
+// Returns nullopt if the offset pattern cannot be resolved or if the
+// shard map is inconsistent with the replica groups.
+std::optional<std::pair<std::vector<ReplicaGroup>, std::vector<ReplicaGroup>>>
+BuildDSSplitReplicaGroups(
+    const HloChannelInstruction* instruction,
+    const HloInstruction* dynamic_slice, int64_t split_dim, int64_t ds_factor,
+    const std::vector<ReplicaGroup>& ici_replica_groups, int64_t num_partitions,
+    int64_t num_replicas, bool is_cross_module, bool use_global_device_ids,
+    HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
+    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>);
 
 }  // namespace xla
 

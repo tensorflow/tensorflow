@@ -118,29 +118,6 @@ void RunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
       rhs_layout_cols, dst_layout_rows, dst_layout_cols);
 }
 
-// Begin template specializations.
-template <>
-inline void Unpack<4, 1>(float* output_ptr, const int32_t* dst, int batch_size,
-                         int num_units, const float* scaling_factors,
-                         const float* filter_scales, int dst_layout_rows,
-                         int dst_layout_cols) {
-  ReferenceUnpack<4, 1>(output_ptr, dst, batch_size, num_units, scaling_factors,
-                        filter_scales, dst_layout_rows, dst_layout_cols);
-}
-
-template <>
-inline void RunKernel<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
-                                int32_t* dst, int lhs_layout_rows,
-                                int lhs_layout_cols, int rhs_layout_rows,
-                                int rhs_layout_cols, int dst_layout_rows,
-                                int dst_layout_cols) {
-  ReferenceRunKernel<4, 1, 32>(lhs, rhs, dst, lhs_layout_rows, lhs_layout_cols,
-                               rhs_layout_rows, rhs_layout_cols,
-                               dst_layout_rows, dst_layout_cols);
-}
-
-// End template specializations.
-
 // Compute sum of lhs * rhs columnwise and write output to output_ptr.
 inline void RunAndUnpack(int rhs_width, const uint8_t* lhs, const int8_t* rhs,
                          int32_t* dst, int output_depth, int batch_size,

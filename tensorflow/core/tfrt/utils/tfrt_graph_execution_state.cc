@@ -348,8 +348,9 @@ absl::StatusOr<const NodeDef*> FindLoopCondFromExitNode(
   for (const std::string& tensor_name : exit_node.input()) {
     const std::string node_name = grappler::NodeName(tensor_name);
     if (!name_to_node.contains(node_name)) {
-      return errors::InvalidArgument("Graph does not contain input ", node_name,
-                                     " of exit node ", exit_node.name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Graph does not contain input ", node_name,
+                       " of exit node ", exit_node.name()));
     }
     const NodeDef* node = name_to_node.at(node_name);
     if (node->op() == "Switch") {
@@ -358,15 +359,16 @@ absl::StatusOr<const NodeDef*> FindLoopCondFromExitNode(
     }
   }
   if (switch_node == nullptr) {
-    return errors::InvalidArgument("Exit node ", exit_node.name(),
-                                   " does not have a Switch node as its ",
-                                   "predecessor.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Exit node ", exit_node.name(),
+                     " does not have a Switch node as its ", "predecessor."));
   }
   for (const std::string& tensor_name : switch_node->input()) {
     const std::string node_name = grappler::NodeName(tensor_name);
     if (!name_to_node.contains(node_name)) {
-      return errors::InvalidArgument("Graph does not contain input ", node_name,
-                                     " of switch node ", switch_node->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Graph does not contain input ", node_name,
+                       " of switch node ", switch_node->name()));
     }
 
     const NodeDef* node = name_to_node.at(node_name);
@@ -375,9 +377,9 @@ absl::StatusOr<const NodeDef*> FindLoopCondFromExitNode(
     }
   }
 
-  return errors::InvalidArgument("Switch node ", switch_node->name(),
-                                 " does not have a LoopCond node as its ",
-                                 "predecessor.");
+  return absl::InvalidArgumentError(
+      absl::StrCat("Switch node ", switch_node->name(),
+                   " does not have a LoopCond node as its ", "predecessor."));
 }
 
 }  // namespace
@@ -396,7 +398,7 @@ absl::Status PruneGraphDef(GraphDef& graph_def,
 
     // TODO(tfrt-devs): Add support for _Send and _Recv ops.
     if (node.op() == "_Send" || node.op() == "_Recv") {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "TFRT prune graphdef cannot handle graphs contains _Send and _Recv "
           "ops.");
     }
@@ -421,8 +423,8 @@ absl::Status PruneGraphDef(GraphDef& graph_def,
   for (const std::string& tensor_name : callable_options.fetch()) {
     const NodeDef* node = name_to_node[grappler::NodeName(tensor_name)];
     if (!node) {
-      return errors::InvalidArgument("Graph does not contain fetch node ",
-                                     tensor_name, ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Graph does not contain fetch node ", tensor_name, "."));
     }
     queue.push_back(node);
     fetch_node_names.insert(node->name());
@@ -432,8 +434,8 @@ absl::Status PruneGraphDef(GraphDef& graph_def,
   for (const std::string& tensor_name : callable_options.target()) {
     const NodeDef* node = name_to_node[grappler::NodeName(tensor_name)];
     if (!node) {
-      return errors::InvalidArgument("Graph does not contain target node ",
-                                     tensor_name, ".");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Graph does not contain target node ", tensor_name, "."));
     }
     queue.push_back(node);
     fetch_node_names.insert(node->name());
@@ -446,8 +448,8 @@ absl::Status PruneGraphDef(GraphDef& graph_def,
   for (const std::string& tensor_name : callable_options.feed()) {
     NodeDef* node = name_to_node[grappler::NodeName(tensor_name)];
     if (!node) {
-      return errors::InvalidArgument("Graph does not contain feed node ",
-                                     tensor_name, ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Graph does not contain feed node ", tensor_name, "."));
     }
 
     // If a feed node is a Const, we don't need its inputs at all.
@@ -484,9 +486,9 @@ absl::Status PruneGraphDef(GraphDef& graph_def,
     for (const std::string& tensor_name : node->input()) {
       const NodeDef* in = name_to_node[grappler::NodeName(tensor_name)];
       if (!in) {
-        return errors::InvalidArgument("Graph does not contain input ",
-                                       grappler::NodeName(tensor_name),
-                                       " of node ", node->name(), ".");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Graph does not contain input ", grappler::NodeName(tensor_name),
+            " of node ", node->name(), "."));
       }
       queue.push_back(in);
     }
@@ -536,15 +538,15 @@ absl::Status EliminateRefVariablesFromV1ControlFlow(
     if (node.op() == "RefEnter") {
       node.set_op("Enter");
       if (node.input_size() != 1) {
-        return errors::InvalidArgument("RefEnter node ", node.name(),
-                                       " does not have exactly 1 input.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "RefEnter node ", node.name(), " does not have exactly 1 input."));
       }
       ref_input_name = node.mutable_input(0);
     } else if (node.op() == "RefSwitch") {
       node.set_op("Switch");
       if (node.input_size() != 2) {
-        return errors::InvalidArgument("RefSwitch node", node.name(),
-                                       " does not have exactly 2 inputs.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "RefSwitch node", node.name(), " does not have exactly 2 inputs."));
       }
       ref_input_name = node.mutable_input(0);
     } else {
@@ -565,10 +567,10 @@ absl::Status EliminateRefVariablesFromV1ControlFlow(
         // TODO(tfrt-devs): How to match input_args to input names in NodeDef?
         for (const auto& input_arg : op_def->input_arg()) {
           if (input_arg.is_ref()) {
-            return errors::Unimplemented(
-                "Cannot in-place update ref node ", ref_input,
-                " to the non-ref counterpart since its user node ", node.name(),
-                " requires its input to be refs.");
+            return absl::UnimplementedError(
+                absl::StrCat("Cannot in-place update ref node ", ref_input,
+                             " to the non-ref counterpart since its user node ",
+                             node.name(), " requires its input to be refs."));
           }
         }
       }

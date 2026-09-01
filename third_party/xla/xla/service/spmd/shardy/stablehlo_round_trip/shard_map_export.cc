@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
@@ -67,6 +68,7 @@ namespace sdy {
 namespace {
 
 using ::mlir::ArrayRef;
+using ::mlir::Attribute;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::Operation;
@@ -130,25 +132,45 @@ TensorShardingAttr getFirstSharding(ManualComputationOp op) {
   return *inOutShardings.begin();
 }
 
-void setFullyClosedShardingsIfMissing(Operation* op, StringRef meshName) {
+// Builds a closed `TensorSharding` for each type in `types` locally to avoid
+// depending on Shardy's Attribute overload which might not be rolled yet.
+SmallVector<TensorShardingAttr> getFullyClosedShardings(MLIRContext* context,
+                                                        mlir::TypeRange types,
+                                                        Attribute meshOrRef) {
+  SmallVector<TensorShardingAttr> shardings;
+  shardings.reserve(types.size());
+  for (mlir::Type type : types) {
+    int64_t rank = 0;
+    if (auto tensorType = mlir::dyn_cast<mlir::ShapedType>(type)) {
+      if (tensorType.hasRank()) {
+        rank = tensorType.getRank();
+      }
+    }
+    shardings.push_back(TensorShardingAttr::getFullyReplicated(
+        context, rank, meshOrRef, /*isClosed=*/true));
+  }
+  return shardings;
+}
+
+void setFullyClosedShardingsIfMissing(Operation* op, Attribute meshOrRef) {
   MLIRContext* context = op->getContext();
   if (!op->hasAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
     SmallVector<TensorShardingAttr> shardings =
-        sdy::getFullyClosedShardings(context, op->getResultTypes(), meshName);
+        getFullyClosedShardings(context, op->getResultTypes(), meshOrRef);
     if (shardings.empty() && !op->hasTrait<mlir::OpTrait::IsTerminator>()) {
       shardings = {TensorShardingAttr::getFullyReplicated(
-          context, /*rank=*/0, meshName, /*isClosed=*/true)};
+          context, /*rank=*/0, meshOrRef, /*isClosed=*/true)};
     }
     sdy::setShardings(op, shardings);
   }
 }
 
 void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
-                     StringRef meshName) {
+                     Attribute meshOrRef) {
   // TODO(b/415378067). Polish how we handle shardings with different meshes.
   bool hasOtherMesh = false;
   for (TensorShardingAttr opSharding : sdy::getShardings(op)) {
-    if (opSharding.getMeshName() != meshName) {
+    if (opSharding.getMeshOrRef() != meshOrRef) {
       hasOtherMesh = true;
       MeshAttr otherMesh = opSharding.getMesh(op);
       CHECK(otherMesh.getAxes().empty() || otherMesh.isMaximal());
@@ -158,16 +180,16 @@ void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
     op->removeAttr(kShardingAttr);
   }
 
-  setFullyClosedShardingsIfMissing(op, meshName);
+  setFullyClosedShardingsIfMissing(op, meshOrRef);
   op->setAttr(kManualAxes, manualAxes);
 }
 
 void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  StringRef meshName,
+                                  Attribute meshOrRef,
                                   const mlir::SymbolTable& symbolTable);
 
 mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
-                               StringRef meshName,
+                               Attribute meshOrRef,
                                const mlir::SymbolTable& symbolTable) {
   if (mlir::isa<ManualComputationOp>(op)) {
     // Skip `ManualComputationOp`s and their nested operations, they will
@@ -175,48 +197,60 @@ mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
     return mlir::WalkResult::skip();
   }
   if (!mlir::isa<FuncOp, mlir::func::ReturnOp>(op)) {
-    setOpManualAxes(op, manualAxes, meshName);
+    setOpManualAxes(op, manualAxes, meshOrRef);
   }
   if (CallOp callOp = mlir::dyn_cast<CallOp>(op)) {
     FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
     CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    setFuncManualAxesRecursively(funcOp, manualAxes, meshName, symbolTable);
+    setFuncManualAxesRecursively(funcOp, manualAxes, meshOrRef, symbolTable);
   }
   return mlir::WalkResult::advance();
 }
 
 void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  StringRef meshName,
+                                  Attribute meshOrRef,
                                   const mlir::SymbolTable& symbolTable) {
-  funcOp->setAttr(kManualAxes, manualAxes);
+  llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
+  funcArgAttrs.reserve(funcOp.getNumArguments());
   for (int argNum = 0; argNum < funcOp.getNumArguments(); argNum++) {
-    if (!funcOp.getArgAttrOfType<TensorShardingAttr>(argNum, kShardingAttr)) {
-      funcOp.setArgAttr(
-          argNum, kShardingAttr,
+    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(argNum));
+    if (!attrs.get(kShardingAttr)) {
+      attrs.set(
+          kShardingAttr,
           TensorShardingAttr::getFullyReplicated(
               funcOp->getContext(),
-              mlir::sdy::getTensorRank(funcOp.getArgument(argNum)), meshName,
+              mlir::sdy::getTensorRank(funcOp.getArgument(argNum)), meshOrRef,
               /*isClosed=*/true));
     }
-    funcOp.setArgAttr(argNum, kManualAxes, manualAxes);
+    attrs.set(kManualAxes, manualAxes);
+    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllArgAttrs(funcArgAttrs);
+
+  // TODO(b/510714593): Create a shardy utility to modify func arg/result
+  // attributes as below but in a more general way and re-use it.
+  llvm::SmallVector<mlir::DictionaryAttr> newResultAttrs;
+  newResultAttrs.reserve(funcOp.getNumResults());
   for (int resNum = 0; resNum < funcOp.getNumResults(); resNum++) {
-    if (!funcOp.getResultAttrOfType<TensorShardingAttr>(resNum,
-                                                        kShardingAttr)) {
-      funcOp.setResultAttr(
-          resNum, kShardingAttr,
-          TensorShardingAttr::getFullyReplicated(
-              funcOp->getContext(),
-              mlir::sdy::getTensorRank(funcOp.getResultTypes()[resNum]),
-              meshName,
-              /*isClosed=*/true));
+    mlir::NamedAttrList attrs(funcOp.getResultAttrDict(resNum));
+    if (!attrs.get(kShardingAttr)) {
+      attrs.set(kShardingAttr,
+                TensorShardingAttr::getFullyReplicated(
+                    funcOp->getContext(),
+                    mlir::sdy::getTensorRank(funcOp.getResultTypes()[resNum]),
+                    meshOrRef,
+                    /*isClosed=*/true));
     }
-    funcOp.setResultAttr(resNum, kManualAxes, manualAxes);
+    if (attrs.get(kManualAxes) != manualAxes) {
+      attrs.set(kManualAxes, manualAxes);
+    }
+    newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllResultAttrs(newResultAttrs);
 
   // Walk in preorder of blocks in order to stop walks on manual computations.
   funcOp->walk([&](Operation* op) {
-    return setManualAxes(op, manualAxes, meshName, symbolTable);
+    return setManualAxes(op, manualAxes, meshOrRef, symbolTable);
   });
 }
 
@@ -239,34 +273,20 @@ void setManualAxesForOpsInBody(
   }
 
   MLIRContext* context = op.getContext();
-  StringRef meshName = sharding.getMeshName();
+  Attribute meshOrRef = sharding.getMeshOrRef();
   ManualAxesAttr manualAxesAttr =
       ManualAxesAttr::get(context, manualAxes.region);
 
   // Set the manual axes of all operations in the body.
   op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
       [&](Operation* opInBody) {
-        return setManualAxes(opInBody, manualAxesAttr, meshName, symbolTable);
+        return setManualAxes(opInBody, manualAxesAttr, meshOrRef, symbolTable);
       });
 }
 
 void setNonEmptyManualAxes(Operation* op, ManualAxesAttr manualAxesAttr) {
   if (!manualAxesAttr.empty()) {
     op->setAttr(kManualAxes, manualAxesAttr);
-  }
-}
-
-void setBlockArgManualAxes(FuncOp funcOp, mlir::BlockArgument blockArg,
-                           ManualAxesAttr manualAxesAttr) {
-  if (!manualAxesAttr.empty()) {
-    funcOp.setArgAttr(blockArg.getArgNumber(), kManualAxes, manualAxesAttr);
-  }
-}
-
-void setFuncResultManualAxes(FuncOp funcOp, int64_t resultIndex,
-                             ManualAxesAttr manualAxesAttr) {
-  if (!manualAxesAttr.empty()) {
-    funcOp.setResultAttr(resultIndex, kManualAxes, manualAxesAttr);
   }
 }
 
@@ -370,21 +390,42 @@ void convertManualComputationOp(
   setNonEmptyManualAxes(callOp, regionManualAxesAttr);
   sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
       op.getBody(), funcOp.getBody());
+  // TODO(b/5107145930): Use a shardy utility to batch set argument attributes.
+  llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
+  funcArgAttrs.reserve(funcOp.getNumArguments());
+  bool anyChanged = false;
   for (auto [blockArg, sharding] : llvm::zip_equal(
            funcOp.getArguments(), op.getInShardings().getShardings())) {
+    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(blockArg.getArgNumber()));
     if (sharding) {
-      setSharding(blockArg, eraseManualAxes(sharding, manualAxes.region));
-      setBlockArgManualAxes(funcOp, blockArg, regionManualAxesAttr);
+      attrs.set(kShardingAttr, eraseManualAxes(sharding, manualAxes.region));
+      if (!regionManualAxesAttr.empty()) {
+        attrs.set(kManualAxes, regionManualAxesAttr);
+      }
+      anyChanged = true;
     }
+    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  if (anyChanged) {
+    funcOp.setAllArgAttrs(funcArgAttrs);
+  }
+
+  // TODO(b/510714593): Create a shardy utility to modify func arg/result
+  // attributes as below but in a more general way and re-use it.
+  llvm::SmallVector<mlir::DictionaryAttr> newResultAttrs;
+  newResultAttrs.reserve(op.getNumResults());
   for (auto [i, sharding] :
        llvm::enumerate(op.getOutShardings().getShardings())) {
+    mlir::NamedAttrList attrs;
     if (sharding) {
-      sdy::setFuncResultSharding(funcOp, i,
-                                 eraseManualAxes(sharding, manualAxes.region));
-      setFuncResultManualAxes(funcOp, i, regionManualAxesAttr);
+      attrs.set(kShardingAttr, eraseManualAxes(sharding, manualAxes.region));
+      if (!regionManualAxesAttr.empty()) {
+        attrs.set(kManualAxes, regionManualAxesAttr);
+      }
     }
+    newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllResultAttrs(newResultAttrs);
 
   SmallVector<TensorShardingAttr> erasedManualAxisOutShardings;
   erasedManualAxisOutShardings.reserve(op.getNumResults());

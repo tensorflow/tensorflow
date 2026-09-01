@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -173,7 +174,7 @@ absl::Status ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index,
   fc_op->outputs = matmul_op->outputs;
 
   // Insert the newly constructed FullyConnectedOperator.
-  model->operators.emplace(matmul_it, fc_op) + 1;
+  model->operators.emplace(matmul_it, fc_op);
 
   // Find the op producing the array passed to this MatMul
   auto previous_op_it = model->operators.begin();
@@ -226,7 +227,6 @@ absl::Status ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index,
     AddMessageF("Replacing %s by a FullyConnected operator",
                 LogName(*matmul_op));
   }
-
 
   // erase the MatMul operator
   model->operators.erase(matmul_it);

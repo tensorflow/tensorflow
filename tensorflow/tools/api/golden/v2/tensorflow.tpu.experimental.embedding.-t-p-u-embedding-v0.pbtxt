@@ -4,10 +4,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_base.TPUEmbeddingBase\'>"
   is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "embedding_tables"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'features\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "__init__"

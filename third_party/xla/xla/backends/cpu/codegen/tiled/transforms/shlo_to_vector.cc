@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -57,73 +56,6 @@ namespace xla::cpu {
 
 namespace {
 
-mlir::AffineMapAttr GetOperandIndexingMap(
-    mlir::OpBuilder& builder, int64_t iterator_count, int64_t rank,
-    llvm::ArrayRef<int64_t> batch_dims,
-    llvm::ArrayRef<int64_t> contracting_dims, int64_t free_dim_offset) {
-  llvm::SmallVector<unsigned> targets(rank, -1);
-  unsigned idx = 0;
-  for (int64_t dim : batch_dims) {
-    targets[dim] = idx++;
-  }
-  for (int64_t dim : contracting_dims) {
-    targets[dim] = idx++;
-  }
-  for (unsigned& target : targets) {
-    if (target == -1) {
-      target = free_dim_offset + idx++;
-    }
-  }
-  auto affine_map = mlir::AffineMap::getMultiDimMapWithTargets(
-      iterator_count, targets, builder.getContext());
-
-  return mlir::AffineMapAttr::get(affine_map);
-}
-
-mlir::AffineMapAttr GetOutputIndexingMap(mlir::OpBuilder& builder,
-                                         int64_t iterator_count,
-                                         int64_t batch_dim_count,
-                                         int64_t contracting_dim_count) {
-  llvm::SmallVector<unsigned> targets(iterator_count - contracting_dim_count);
-  unsigned idx = 0;
-  for (int64_t dim = 0; dim != batch_dim_count; ++dim) {
-    targets[dim] = idx++;
-  }
-  idx += contracting_dim_count;
-  int64_t total_free_dims =
-      iterator_count - batch_dim_count - contracting_dim_count;
-  for (int64_t dim = 0; dim != total_free_dims; ++dim) {
-    targets[batch_dim_count + dim] = idx++;
-  }
-  auto affine_map = mlir::AffineMap::getMultiDimMapWithTargets(
-      iterator_count, targets, builder.getContext());
-
-  return mlir::AffineMapAttr::get(affine_map);
-}
-
-mlir::ArrayAttr GetIteratorTypes(mlir::OpBuilder& builder,
-                                 int64_t iterator_count,
-                                 int64_t batch_dim_count,
-                                 int64_t contracting_dim_count) {
-  llvm::SmallVector<mlir::Attribute> iterator_types;
-  iterator_types.reserve(iterator_count);
-  for (int64_t dim = 0; dim != batch_dim_count; ++dim) {
-    iterator_types.push_back(builder.getAttr<mlir::vector::IteratorTypeAttr>(
-        mlir::vector::IteratorType::parallel));
-  }
-  for (int64_t dim = 0; dim != contracting_dim_count; ++dim) {
-    iterator_types.push_back(builder.getAttr<mlir::vector::IteratorTypeAttr>(
-        mlir::vector::IteratorType::reduction));
-  }
-  int64_t free_dims = iterator_count - batch_dim_count - contracting_dim_count;
-  for (int64_t dim = 0; dim != free_dims; ++dim) {
-    iterator_types.push_back(builder.getAttr<mlir::vector::IteratorTypeAttr>(
-        mlir::vector::IteratorType::parallel));
-  }
-
-  return mlir::ArrayAttr::get(builder.getContext(), iterator_types);
-}
-
 // Lowers from stablehlo.dot_general to vector.contract.
 // The vector contract is very general as described here:
 // https://mlir.llvm.org/docs/Dialects/Vector/#vectorcontract-vectorcontractionop
@@ -136,6 +68,10 @@ struct LowerDotGeneral : mlir::OpRewritePattern<mlir::stablehlo::DotGeneralOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::DotGeneralOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     auto lhs_vector = ReadTensorToVector(rewriter, op.getLhs());
     auto lhs_rank = lhs_vector.getType().getRank();
 
@@ -212,6 +148,10 @@ struct LowerTranspose : mlir::OpRewritePattern<mlir::stablehlo::TransposeOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::TransposeOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     mlir::Value source_vector = ReadTensorToVector(rewriter, op.getOperand());
 
     mlir::TypedValue<mlir::VectorType> dest_vector =
@@ -238,6 +178,11 @@ struct LowerReduce : mlir::OpRewritePattern<mlir::stablehlo::ReduceOp> {
 
     auto source_tensor = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
         op.getInputs().front());
+    if (mlir::isa<mlir::ComplexType>(
+            source_tensor.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     mlir::Value result_tensor = op.getResult(0);
     auto result_type =
         mlir::cast<mlir::RankedTensorType>(result_tensor.getType());
@@ -268,6 +213,10 @@ struct LowerBroadcastInDim
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::BroadcastInDimOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     auto source_vector = ReadTensorToVector(rewriter, op.getOperand());
     auto result_vector_type = GetVectorType(op.getType());
 
@@ -303,6 +252,10 @@ struct LowerIota : mlir::OpRewritePattern<mlir::stablehlo::IotaOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::IotaOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     if (op.getType().getRank() != 1) {
       return rewriter.notifyMatchFailure(
           op, "iota op with rank != 1 is not supported");
@@ -344,9 +297,4 @@ class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateShloToVectorPass() {
-  return std::make_unique<ShloToVectorPass>();
-}
-
 }  // namespace xla::cpu

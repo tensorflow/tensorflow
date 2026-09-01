@@ -16,6 +16,11 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 
 #include "tensorflow/core/kernels/bucketize_op.h"
+
+#include <algorithm>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -56,7 +61,7 @@ class BucketizeOp : public OpKernel {
   explicit BucketizeOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("boundaries", &boundaries_));
     OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
-                errors::InvalidArgument("Expected sorted boundaries"));
+                absl::InvalidArgumentError("Expected sorted boundaries"));
   }
 
   void Compute(OpKernelContext* context) override {

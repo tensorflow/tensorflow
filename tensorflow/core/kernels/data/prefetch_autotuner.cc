@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/model.h"
 

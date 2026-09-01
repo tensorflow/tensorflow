@@ -146,7 +146,9 @@ tsl::mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input,
                                      Var** maybe_resource) {
   *maybe_resource = nullptr;
   if (ctx->input_dtype(input) == DT_RESOURCE) {
-    if (LookupResource(ctx, HandleFromInput(ctx, input), maybe_resource).ok()) {
+    ResourceHandle handle;
+    if (HandleFromInput(ctx, input, &handle).ok() &&
+        LookupResource(ctx, handle, maybe_resource).ok()) {
       return (*maybe_resource)->mu();
     } else {
       ctx->CtxFailureWithWarning(
@@ -280,7 +282,9 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
                                         Tensor* out) {
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     core::RefCountPtr<Var> var;
-    TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
+    TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
     if (sparse) {
       var->mu()->assert_held_shared();
       *out = *var->tensor();

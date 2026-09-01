@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/codegen/kernel_definition.h"
@@ -64,7 +65,7 @@ class KernelEmitter : public KernelEmitterBase {
  private:
   absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
   EmitKernelDefinitionBase() final {
-    TF_ASSIGN_OR_RETURN(auto kernel_definition, EmitKernelDefinition());
+    ABSL_ASSIGN_OR_RETURN(auto kernel_definition, EmitKernelDefinition());
     return std::make_unique<KernelDefinition>(std::move(kernel_definition));
   }
 };

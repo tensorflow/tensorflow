@@ -58,6 +58,12 @@ class HloEvaluatorInterface {
   // will be provided evaluated literals for all operands and is expected to
   // return an output literal of the appropriate shape.
   virtual void set_custom_call_handler(CustomCallHandler handler) = 0;
+
+  using EvalLiteralHandler = std::function<void(const HloInstruction* hlo,
+                                                const LiteralSlice& literal)>;
+
+  // Sets a handler that is called during evaluation for each literal.
+  virtual void set_eval_literal_handler(EvalLiteralHandler handler) {}
 };
 }  // namespace xla
 

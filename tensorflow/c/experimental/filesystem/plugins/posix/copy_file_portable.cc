@@ -43,7 +43,7 @@ int CopyFileContents(int dst_fd, int src_fd, off_t size) {
     int total_write = 0;
     int total_read = rc;
     while (total_write < total_read && rc > 0) {
-      rc = write(dst_fd, buffer.get() + total_write, chunk - total_write);
+      rc = write(dst_fd, buffer.get() + total_write, total_read - total_write);
       if (rc < 0) return -1;
 
       total_write += rc;

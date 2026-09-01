@@ -40,10 +40,10 @@ namespace graph_transforms {
 absl::Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
                              Tensor* values_tensor) {
   if (tensor.dims() != 2 || tensor.dim_size(1) != 1) {
-    return tensorflow::errors::FailedPrecondition(
-        "Transform only applicable to subgraph with 'Const' with "
-        "tensor of shape [N, 1]. But instead get shape ",
-        tensor.shape().DebugString(), ".");
+    return absl::FailedPreconditionError(
+        absl::StrCat("Transform only applicable to subgraph with 'Const' with "
+                     "tensor of shape [N, 1]. But instead get shape ",
+                     tensor.shape().DebugString(), "."));
   }
 
   auto flat = tensor.flat<float>();
@@ -136,8 +136,8 @@ absl::Status ObtainTensorSlice(const GraphDef& input_graph_def,
     }
   }
   if (offset == -1) {
-    return errors::Internal("Unable to find RestoreV2 entry for variable: ",
-                            target_name);
+    return absl::InternalError(absl::StrCat(
+        "Unable to find RestoreV2 entry for variable: ", target_name));
   }
   for (const auto& node : input_graph_def.node()) {
     if (node.name() == shape_and_slices_node) {
@@ -149,7 +149,8 @@ absl::Status ObtainTensorSlice(const GraphDef& input_graph_def,
       return absl::OkStatus();
     }
   }
-  return errors::Internal("Unable to find slice for variable: ", target_name);
+  return absl::InternalError(
+      absl::StrCat("Unable to find slice for variable: ", target_name));
 }
 
 absl::Status ReadTensorFromCheckpoint(
@@ -177,7 +178,7 @@ absl::Status ReadTensorFromCheckpoint(
     }
     return absl::OkStatus();
   }
-  return errors::Internal("Checkpoint reader was not initialized. ");
+  return absl::InternalError("Checkpoint reader was not initialized. ");
 }
 
 absl::Status InitializeCheckpointReader(
@@ -313,15 +314,15 @@ absl::Status SparsifyGatherInternal(
             } else if (axis_t.dtype() == DT_INT64) {
               axis = axis_t.scalar<int64_t>()();
             } else {
-              return tensorflow::errors::FailedPrecondition(
+              return absl::FailedPreconditionError(
                   "Gather axis was not int32 or int64.");
             }
 
             if (axis != 0) {
-              return tensorflow::errors::FailedPrecondition(
+              return absl::FailedPreconditionError(absl::StrCat(
                   "Transform only applicable to subgraph with GatherV2 over "
                   "axis 0. Found axis ",
-                  axis, ".");
+                  axis, "."));
             }
           }
 
@@ -330,12 +331,12 @@ absl::Status SparsifyGatherInternal(
           DataType data_type;
           TF_RETURN_IF_ERROR(GetNodeAttr(weights_node, "dtype", &data_type));
           if (data_type != DT_FLOAT) {
-            return tensorflow::errors::FailedPrecondition(
+            return absl::FailedPreconditionError(absl::StrCat(
                 "Transform only applicable to subgraph with 'Const',"
                 "'Variable', or 'VariableV2' of dtype "
                 "'DT_FLOAT'. Found '" +
                     weights_node.op() + "' with name '",
-                weights_node.name(), "' and dtype '", data_type, "'.");
+                weights_node.name(), "' and dtype '", data_type, "'."));
           }
 
           Tensor weight;
@@ -532,7 +533,7 @@ absl::Status SparsifyGatherInternal(
                           replaced_graph_def.mutable_node(i));
             } else if (replaced_graph_def.node(i).input_size() == 2) {
               if (refs[replaced_graph_def.node(i).input(1)] != 1) {
-                return errors::Internal(
+                return absl::InternalError(
                     "Expect axis tensor of ConcatV2 node to only be referenced "
                     "once.");
               }
@@ -542,7 +543,7 @@ absl::Status SparsifyGatherInternal(
               replaced_graph_def.mutable_node(i)->mutable_attr()->erase("N");
               replaced_graph_def.mutable_node(i)->set_op("Identity");
             } else {
-              return errors::Internal(
+              return absl::InternalError(
                   "ConcatV2 should have at least two elements");
             }
           }

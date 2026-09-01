@@ -25,7 +25,7 @@ namespace tensorflow {
 
 absl::Status BackEdgeHelper::Remove(Graph* graph) {
   if (graph_ != nullptr) {
-    return errors::Internal("BackEdgeHelper duplicate call to Remove.");
+    return absl::InternalError("BackEdgeHelper duplicate call to Remove.");
   }
   graph_ = graph;
   for (Node* n : graph_->nodes()) {
@@ -51,10 +51,10 @@ const std::vector<BackEdgeHelper::BackEdge>& BackEdgeHelper::RemovedEdges()
 
 absl::Status BackEdgeHelper::Replace() {
   if (graph_ == nullptr) {
-    return errors::Internal("BackEdgeHelper Replace called before Remove.");
+    return absl::InternalError("BackEdgeHelper Replace called before Remove.");
   }
   if (replaced_) {
-    return errors::Internal("BackEdgeHelper Replace called more than once.");
+    return absl::InternalError("BackEdgeHelper Replace called more than once.");
   }
   replaced_ = true;
   for (const BackEdge& be : back_edges_) {

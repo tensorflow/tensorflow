@@ -47,14 +47,14 @@ class SqlDatasetOp : public DatasetOpKernel {
                   dt == DT_STRING || dt == DT_INT8 || dt == DT_INT16 ||
                       dt == DT_INT32 || dt == DT_INT64 || dt == DT_UINT8 ||
                       dt == DT_UINT16 || dt == DT_BOOL || dt == DT_DOUBLE,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Each element of `output_types_` must be one of: "
                       "DT_STRING, DT_INT8, DT_INT16, DT_INT32, DT_INT64, "
                       "DT_UINT8, DT_UINT16, DT_BOOL, DT_DOUBLE "));
     }
     for (const PartialTensorShape& pts : output_shapes_) {
       OP_REQUIRES(ctx, pts.dims() == 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Each element of `output_shapes_` must be a scalar."));
     }
   }
@@ -73,7 +73,7 @@ class SqlDatasetOp : public DatasetOpKernel {
     // TODO(b/64276826) Change this check when we add support for other
     // databases.
     OP_REQUIRES(ctx, driver_name == "sqlite",
-                errors::InvalidArgument(absl::StrFormat(
+                absl::InvalidArgumentError(absl::StrFormat(
                     "The database type, %s, is not supported by SqlDataset. "
                     "The set of supported databases is: {'sqlite'}.",
                     driver_name.c_str())));
@@ -143,7 +143,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
       ~Iterator() override {
-        if (query_connection_initialized_) {
+        if (query_connection_initialized_ && query_connection_ != nullptr) {
           absl::Status s = query_connection_->Close();
           if (!s.ok()) {
             LOG(WARNING) << "Failed to close query connection: " << s;
@@ -191,6 +191,11 @@ class SqlDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("next_calls"), &next_calls_));
+          if (next_calls_ < 0) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Restored SqlDataset `next_calls` should be >= 0. Got: ",
+                next_calls_, "."));
+          }
           int64_t rem_next_calls = next_calls_;
           std::vector<Tensor> out_tensors;
           end_of_sequence_ = false;
@@ -198,6 +203,9 @@ class SqlDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(query_connection_->GetNext(ctx, &out_tensors,
                                                           &end_of_sequence_));
             out_tensors.clear();
+            if (end_of_sequence_) {
+              break;
+            }
           }
         } else {
           query_connection_initialized_ = false;
@@ -209,7 +217,6 @@ class SqlDatasetOp : public DatasetOpKernel {
      private:
       absl::Status InitializeQueryConnection()
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        query_connection_initialized_ = true;
         end_of_sequence_ = false;
         query_connection_ =
             sql::DriverManager::CreateQueryConnection(dataset()->driver_name_);
@@ -221,6 +228,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           LOG(WARNING) << "Failed to connect to database: " << s;
           return s;
         }
+        query_connection_initialized_ = true;
         return absl::OkStatus();
       }
 

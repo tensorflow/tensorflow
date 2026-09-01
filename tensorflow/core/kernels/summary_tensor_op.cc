@@ -33,13 +33,14 @@ class SummaryTensorOpV2 : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const Tensor& tag = c->input(0);
     OP_REQUIRES(c, TensorShapeUtils::IsScalar(tag.shape()),
-                errors::InvalidArgument("tag must be scalar"));
+                absl::InvalidArgumentError("tag must be scalar"));
     const Tensor& tensor = c->input(1);
     const Tensor& serialized_summary_metadata_tensor = c->input(2);
     OP_REQUIRES(
         c,
         TensorShapeUtils::IsScalar(serialized_summary_metadata_tensor.shape()),
-        errors::InvalidArgument("serialized_summary_metadata must be scalar"));
+        absl::InvalidArgumentError(
+            "serialized_summary_metadata must be scalar"));
 
     Summary s;
     Summary::Value* v = s.add_value();

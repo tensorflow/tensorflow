@@ -217,7 +217,7 @@ def numpy_text(tensor, is_repr=False) -> str:
     if is_repr:
       if np.isscalar(tensor_numpy) and not isinstance(tensor_numpy, bytes):
         # .item() converts the numpy scalars to python items.
-        text = repr(tensor_numpy.item())
+        text = repr(tensor_numpy.item())  # pyrefly: ignore[missing-attribute]
       else:
         text = repr(tensor_numpy)
     else:
@@ -253,7 +253,7 @@ def value_text(tensor, is_repr=False) -> AnyStr:
     text = numpy_text(tensor, is_repr=is_repr)
     if is_repr:
       text = "numpy=" + text
-  return text
+  return text  # pyrefly: ignore[bad-return]
 
 
 @tf_export("__internal__.SymbolicTensor")
@@ -272,6 +272,62 @@ class SymbolicTensor(pywrap_tf_session.PyTensor, tensor_lib.Tensor):
     result = cls.__new__(cls, self.op, self.value_index, self.dtype, self._id)
     result.__dict__.update(self.__dict__)
     return result
+
+  def __index__(self) -> int:
+    constant_value = tensor_util.constant_value(self)
+    if constant_value is not None:
+      try:
+        return constant_value.__index__()
+      except (AttributeError, TypeError):
+        if (
+            isinstance(constant_value, np.ndarray)
+            and constant_value.shape == ()
+        ):
+          try:
+            return constant_value.item().__index__()
+          except (AttributeError, TypeError, ValueError):
+            pass
+
+    if self.op.type == "StridedSlice":
+      try:
+        begin = tensor_util.constant_value(self.op.inputs[1])
+        end = tensor_util.constant_value(self.op.inputs[2])
+        strides = tensor_util.constant_value(self.op.inputs[3])
+        if begin is not None and end is not None and strides is not None:
+          begin = begin[0]
+          end = end[0]
+          strides = strides[0]
+          input_shape = tensor_util.constant_value_as_shape(self.op.inputs[0])
+          begin_mask = self.op.get_attr("begin_mask")
+          end_mask = self.op.get_attr("end_mask")
+          ellipsis_mask = self.op.get_attr("ellipsis_mask")
+          new_axis_mask = self.op.get_attr("new_axis_mask")
+          shrink_axis_mask = self.op.get_attr("shrink_axis_mask")
+          valid_attributes = (
+              not ellipsis_mask
+              and not new_axis_mask
+              and shrink_axis_mask == 1
+              and not begin_mask
+              and not end_mask
+          )
+          if valid_attributes and strides == 1 and end == begin + 1:
+            if begin >= 0:
+              axis = int(begin)
+            else:
+              rank = input_shape.rank
+              if rank is None or begin + rank < 0:
+                raise IndexError
+              axis = (int(begin) + rank) % rank
+            dimension = input_shape[axis]
+            dimension_value = getattr(dimension, "value", dimension)
+            if dimension_value is not None:
+              return dimension_value.__index__()
+      except (AttributeError, TypeError, ValueError, IndexError):
+        pass
+
+    raise TypeError(
+        f"'{type(self).__name__}' object cannot be interpreted as an integer"
+    )
 
 
 def _create_graph_constant(
@@ -306,13 +362,13 @@ class _EagerTensorBase(
   # __complex__, __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
   def __complex__(self) -> complex:
-    return complex(self._numpy())
+    return complex(self._numpy())  # pyrefly: ignore[no-matching-overload]
 
   def __int__(self) -> int:
-    return int(self._numpy())
+    return int(self._numpy())  # pyrefly: ignore[bad-argument-type]
 
   def __float__(self) -> float:
-    return float(self._numpy())
+    return float(self._numpy())  # pyrefly: ignore[bad-argument-type]
 
   def __index__(self) -> int:
     return cast(np.ndarray, self._numpy()).__index__()
@@ -526,7 +582,7 @@ class _EagerTensorBase(
     new_tensor = self._copy_nograd(ctx, device_name)
     # Record the copy on tape and define backprop copy as well.
     if context.executing_eagerly():
-      self_device = self.device
+      self_device = self.device  # pyrefly: ignore[missing-attribute]
 
       def grad_fun(dresult):
         return [
@@ -679,7 +735,7 @@ def _add_error_prefix(msg: str, *, name: Optional[str] = None) -> str:
   return msg if name is None else f"{name}: {msg}"
 
 
-def pack_eager_tensors(tensors, ctx=None) -> EagerTensor:
+def pack_eager_tensors(tensors, ctx=None) -> EagerTensor:  # pyrefly: ignore[invalid-annotation]
   """Pack multiple `EagerTensor`s of the same dtype and shape.
 
   Args:
@@ -750,7 +806,7 @@ def convert_to_tensor(
     # TODO(b/268347915): Remove argument.
     ctx=None,  # pylint: disable=unused-argument
     accepted_result_types=(tensor_lib.Tensor,),
-) -> Union[EagerTensor, SymbolicTensor]:
+) -> Union[EagerTensor, SymbolicTensor]:  # pyrefly: ignore[invalid-annotation]
   """Implementation of the public convert_to_tensor."""
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
@@ -760,7 +816,7 @@ def convert_to_tensor(
 
 
 internal_convert_to_tensor: Callable[
-    ..., Union[EagerTensor, SymbolicTensor]] = convert_to_tensor
+    ..., Union[EagerTensor, SymbolicTensor]] = convert_to_tensor  # pyrefly: ignore[invalid-annotation]
 
 
 def internal_convert_n_to_tensor(
@@ -770,7 +826,7 @@ def internal_convert_n_to_tensor(
     as_ref=False,
     preferred_dtype=None,
     # TODO(b/268347915): Remove argument.
-    ctx=None) -> list[Union[EagerTensor, SymbolicTensor]]:  # pylint: disable=unused-argument
+    ctx=None) -> list[Union[EagerTensor, SymbolicTensor]]:  # pylint: disable=unused-argument  # pyrefly: ignore[invalid-annotation]
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -812,7 +868,7 @@ def internal_convert_n_to_tensor(
 
 def convert_n_to_tensor(
     values, dtype=None, name=None, preferred_dtype=None
-) ->  list[Union[EagerTensor, SymbolicTensor]]:
+) ->  list[Union[EagerTensor, SymbolicTensor]]:  # pyrefly: ignore[invalid-annotation]
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -845,7 +901,7 @@ def convert_n_to_tensor(
 
 def convert_to_tensor_or_composite(
     value, dtype=None, name=None
-) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:
+) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:  # pyrefly: ignore[invalid-annotation]
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified. Otherwise, it
@@ -872,7 +928,7 @@ def internal_convert_to_tensor_or_composite(
     value, dtype=None,
     name=None,
     as_ref=False
-) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:
+) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:  # pyrefly: ignore[invalid-annotation]
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified.  Otherwise, it
@@ -915,7 +971,7 @@ def internal_convert_n_to_tensor_or_composite(
     name=None,
     as_ref=False
 ) -> list[Union[
-    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
+    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:  # pyrefly: ignore[invalid-annotation]
   """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
@@ -955,7 +1011,7 @@ def internal_convert_n_to_tensor_or_composite(
 def convert_n_to_tensor_or_composite(
     values, dtype=None, name=None
 ) -> list[Union[
-    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
+    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:  # pyrefly: ignore[invalid-annotation]
   """Converts `values` to a list of `Output` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
@@ -1227,7 +1283,7 @@ class Operation(pywrap_tf_session.PyOperation):
     # Post process for control flows.
     self._control_flow_post_processing(input_tensors=inputs)
 
-    return self
+    return self  # pyrefly: ignore[bad-return]
 
   @classmethod
   def _from_c_op(cls: type[OperationType], c_op, g) -> OperationType:
@@ -1246,7 +1302,7 @@ class Operation(pywrap_tf_session.PyOperation):
     """
     self = Operation(c_op, SymbolicTensor)
     self._init(g)
-    return self
+    return self  # pyrefly: ignore[bad-return]
 
   def _init(self, graph: "Graph") -> None:
     """Initializes Operation from a TF_Operation."""
@@ -3599,7 +3655,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
       # Reset the colocation stack if requested.
       if ignore_existing:
-        self._colocation_stack = current_stack
+        self._colocation_stack = current_stack  # pyrefly: ignore[unbound-name]
 
   def _add_device_to_stack(
       self, device_name_or_function, offset=0,
@@ -4621,7 +4677,7 @@ def control_dependencies(
       for control in control_inputs:
         if callable(control):
           control()
-    return NullContextmanager()
+    return NullContextmanager()  # pyrefly: ignore[bad-return]
   else:
     return get_default_graph().control_dependencies(control_inputs)
 
@@ -5106,7 +5162,7 @@ def eager_run(main=None, argv=None) -> NoReturn:
     argv: the arguments to pass to it.
   """
   enable_eager_execution()
-  app.run(main, argv)
+  app.run(main, argv)  # pyrefly: ignore[bad-argument-type]
 
 
 @tf_export(v1=["reset_default_graph"])
@@ -5823,7 +5879,7 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       self._exit_fns.append(scope.__exit__)
     return scope_name
 
-  def __exit__(
+  def __exit__(  # pyrefly: ignore[bad-override]
       self, type_arg: None, value_arg: None, traceback_arg: None,
   ) -> bool:
     self._exit_fns.pop()(type_arg, value_arg, traceback_arg)
@@ -5987,8 +6043,8 @@ def _op_to_colocate_with(
   # import dependency is acceptable.
   if hasattr(v, "handle") and isinstance(v.handle, tensor_lib.Tensor):
     device_only_candidate = lambda: None
-    device_only_candidate.device = v.device
-    device_only_candidate.name = v.name
+    device_only_candidate.device = v.device  # pyrefly: ignore[missing-attribute]
+    device_only_candidate.name = v.name  # pyrefly: ignore[missing-attribute]
     if graph.building_function:
       return graph.capture(v.handle).op, device_only_candidate
     else:
@@ -6104,10 +6160,10 @@ def _reconstruct_sequence_inputs(
 # SAFE mode disallows “risky” promotions that can result in dtype widening or
 # potential precision loss.
 class PromoMode(enum.Enum):
-  OFF: int = 0
-  LEGACY: int = 1
-  SAFE: int = 2
-  ALL: int = 3
+  OFF: int = 0  # pyrefly: ignore[invalid-annotation]
+  LEGACY: int = 1  # pyrefly: ignore[invalid-annotation]
+  SAFE: int = 2  # pyrefly: ignore[invalid-annotation]
+  ALL: int = 3  # pyrefly: ignore[invalid-annotation]
 
 
 _dtype_conversion_mode: PromoMode = PromoMode.OFF

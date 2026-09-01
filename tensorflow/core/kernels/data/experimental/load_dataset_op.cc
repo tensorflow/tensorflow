@@ -203,7 +203,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(instantiated_captured_reader_func_->Run(
           ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
       if (reader_output.size() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "reader_func returns more than one argument.");
       }
       TF_RETURN_IF_ERROR(
@@ -252,7 +252,8 @@ void LoadDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
                                                       &nondistributed_metadata,
                                                       &metadata_file_exists));
   OP_REQUIRES(ctx, metadata_file_exists,
-              errors::NotFound("Could not find metadata file [", path, "]"));
+              absl::NotFoundError(
+                  absl::StrCat("Could not find metadata file [", path, "]")));
   *output = new Dataset(ctx, path, std::move(nondistributed_metadata),
                         compression_, std::move(captured_reader_func),
                         output_types_, output_shapes_);

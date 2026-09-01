@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/make_deterministic.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -173,8 +174,8 @@ absl::Status ConvertMapOrInterleave(const std::string& node_name,
 
   auto Targuments = node->attr().find("Targuments");
   if (Targuments == node->attr().end()) {
-    return errors::Internal("Failed to find Targuments attribute for node ",
-                            node_name);
+    return absl::InternalError(absl::StrCat(
+        "Failed to find Targuments attribute for node ", node_name));
   }
 
   int num_inputs_after_rewrite;
@@ -202,9 +203,9 @@ absl::Status ConvertMapOrInterleave(const std::string& node_name,
     inputs_processed++;
   }
   if (inputs_processed < num_inputs_after_rewrite) {
-    return errors::Internal("Found only ", inputs_processed, " inputs to node ",
-                            node_name, ", but expected to find at least ",
-                            num_inputs_after_rewrite);
+    return absl::InternalError(absl::StrCat(
+        "Found only ", inputs_processed, " inputs to node ", node_name,
+        ", but expected to find at least ", num_inputs_after_rewrite));
   }
 
   // Remove extra attributes not in Interleave or Map.
@@ -264,8 +265,9 @@ absl::Status SplitMap(
   NameAttrList func = map_node->attr().at("f").func();
   const FunctionDef* function_def = library.Find(func.name());
   if (!function_def) {
-    return errors::Internal("Could not look up function ", func.name(),
-                            " in FunctionLibraryDefinition");
+    return absl::InternalError(absl::StrCat("Could not look up function ",
+                                            func.name(),
+                                            " in FunctionLibraryDefinition"));
   }
 
   absl::flat_hash_set<absl::string_view> nodes_to_move =
@@ -274,8 +276,12 @@ absl::Status SplitMap(
   VLOG(2) << "Will move nodes to nonparallel function: "
           << absl::StrJoin(nodes_to_move, ", ");
 
-  int64_t num_captured_arguments =
-      map_node->attr().find("Targuments")->second.list().type_size();
+  auto targuments_iter = map_node->attr().find("Targuments");
+  if (targuments_iter == map_node->attr().end()) {
+    return absl::InternalError(absl::StrCat(
+        "Failed to find Targuments attribute for node ", map_node_name));
+  }
+  int64_t num_captured_arguments = targuments_iter->second.list().type_size();
 
   TF_ASSIGN_OR_RETURN(
       split_utils::SplitResults split_results,
@@ -284,7 +290,7 @@ absl::Status SplitMap(
 
   if (split_results.first_function_output_types.empty()) {
     // Map datasets require there to be at least one output.
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "The case where the first function has no outputs is unimplemented.");
   }
 
@@ -408,8 +414,8 @@ absl::Status ConvertMapAndBatch(const std::string& node_name,
 
   auto Targuments = orig_node.attr().find("Targuments");
   if (Targuments == orig_node.attr().end()) {
-    return errors::Internal("Failed to find Targuments attribute for node ",
-                            node_name);
+    return absl::InternalError(absl::StrCat(
+        "Failed to find Targuments attribute for node ", node_name));
   }
 
   // Create map node
@@ -437,8 +443,8 @@ absl::Status ConvertMapAndBatch(const std::string& node_name,
   }
   auto orig_output_shapes = orig_node.attr().find("output_shapes");
   if (orig_output_shapes == orig_node.attr().end()) {
-    return errors::Internal("Failed to find output_shapes attribute for node ",
-                            node_name);
+    return absl::InternalError(absl::StrCat(
+        "Failed to find output_shapes attribute for node ", node_name));
   }
 
   // Set "output_shapes" attr of Map to be "output_shapes" of MapAndBatch with
@@ -451,7 +457,7 @@ absl::Status ConvertMapAndBatch(const std::string& node_name,
     if (orig_shape.unknown_rank()) {
       new_shape->set_unknown_rank(true);
     } else if (orig_shape.dim_size() == 0) {
-      return errors::Internal(
+      return absl::InternalError(
           "Output shape of MapAndBatch node cannot be scalar");
     } else {
       for (int i = 1; i < orig_shape.dim_size(); i++) {

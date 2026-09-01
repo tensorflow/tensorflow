@@ -14,10 +14,10 @@
 # ==============================================================================
 """BUILD target helpers."""
 
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 def reference_test(name, additional_deps = [], tags = [], shard_count = 1):
-    py_strict_test(
+    py_test(
         name = name,
         srcs = [name + ".py"],
         deps = [

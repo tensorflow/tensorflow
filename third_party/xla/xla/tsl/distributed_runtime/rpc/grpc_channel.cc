@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -147,7 +148,7 @@ absl::Status NewHostPortGrpcChannel(const std::string& target,
                                     const RPCOptions* rpc_options,
                                     SharedGrpcChannelPtr* channel_pointer) {
   // Minimally ensure that the target is valid
-  TF_RETURN_IF_ERROR(ValidateHostPortPair(target));
+  ABSL_RETURN_IF_ERROR(ValidateHostPortPair(target));
 
   ::grpc::ChannelArguments args = GetChannelArguments(rpc_options);
   *channel_pointer = ::grpc::CreateCustomChannel(
@@ -178,7 +179,7 @@ absl::Status GrpcChannelSpec::AddHostPortsJob(
         absl::StrCat("Duplicate job ID in cluster specification: ", job_id));
   }
   for (const auto& id_host_port : host_ports) {
-    TF_RETURN_IF_ERROR(ValidateHostPortPair(id_host_port.second));
+    ABSL_RETURN_IF_ERROR(ValidateHostPortPair(id_host_port.second));
   }
   host_ports_jobs_.emplace_back(job_id, host_ports);
   return absl::OkStatus();

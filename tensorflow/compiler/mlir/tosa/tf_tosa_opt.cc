@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
-#include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 int main(int argc, char** argv) {
@@ -58,7 +57,6 @@ int main(int argc, char** argv) {
   tensorflow::tf2xla::internal::registerTFXLABridgeClusteringPasses();
   tensorflow::tf2xla::internal::registerTFXLABridgeMlirToGraphPasses();
   mlir::tf_test::registerTensorFlowTestPasses();
-  mlir::xla_framework::registerXlaFrameworkPasses();
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();
   tensorflow::RegisterMlProgramPasses();

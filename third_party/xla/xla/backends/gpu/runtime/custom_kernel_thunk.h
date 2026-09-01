@@ -40,13 +40,12 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // CustomKernelThunk loads and executes kernels defined by a custom kernel
 // (which in practice means hand written CUDA C++ kernel), instead of a kernel
@@ -57,7 +56,9 @@ class CustomKernelThunk : public Command {
  public:
   CustomKernelThunk(Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
                     const emitters::KernelArguments& kernel_arguments,
-                    bool use_pdl = false);
+                    bool use_pdl = false,
+                    std::vector<int64_t> zeroed_output_buffer_indices = {},
+                    stream_executor::gpu::TmaMetadata tma_metadata = {});
 
   std::string ToString(int indent) const override;
 
@@ -99,12 +100,14 @@ class CustomKernelThunk : public Command {
   // Private constructor for deserialization.
   CustomKernelThunk(Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
                     std::vector<ShapedSlice> args, std::vector<bool> written,
+                    std::vector<int64_t> zeroed_output_buffer_indices,
+                    stream_executor::gpu::TmaMetadata tma_metadata,
                     bool use_pdl);
 
   // Holds the loaded kernel and the device addresses of its arguments.
   struct KernelWithArgs {
     se::Kernel* kernel;
-    absl::InlinedVector<se::DeviceAddressBase, 4> buffer_args;
+    absl::InlinedVector<se::KernelArg, 4> buffer_args;
   };
 
   // Looks up the loaded kernel for the given executor and resolves the device
@@ -127,11 +130,17 @@ class CustomKernelThunk : public Command {
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
       kernel_cache_ ABSL_GUARDED_BY(mutex_);
 
+  // Buffer indices that should be zeroed before the kernel is launched.
+  std::vector<int64_t> zeroed_output_buffer_indices_;
+
+  // Map of argument index to TmaDescriptor used to create arguments to the
+  // kernel.
+  stream_executor::gpu::TmaMetadata tma_metadata_;
+
   // Programmatic Dependent Launch.
   bool use_pdl_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_CUSTOM_KERNEL_THUNK_H_

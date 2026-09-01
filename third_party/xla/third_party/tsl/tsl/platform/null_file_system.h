@@ -41,34 +41,34 @@ class NullFileSystem : public FileSystem {
   absl::Status NewRandomAccessFile(
       const std::string& fname,
       std::unique_ptr<RandomAccessFile>* result) override {
-    return errors::Unimplemented("NewRandomAccessFile unimplemented");
+    return absl::UnimplementedError("NewRandomAccessFile unimplemented");
   }
 
   absl::Status NewWritableFile(const std::string& fname,
                                std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewWritableFile unimplemented");
+    return absl::UnimplementedError("NewWritableFile unimplemented");
   }
 
   absl::Status NewAppendableFile(
       const std::string& fname,
       std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewAppendableFile unimplemented");
+    return absl::UnimplementedError("NewAppendableFile unimplemented");
   }
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }
 
   absl::Status FileExists(absl::string_view fname) override {
-    return errors::Unimplemented("FileExists unimplemented");
+    return absl::UnimplementedError("FileExists unimplemented");
   }
 
   absl::Status GetChildren(const std::string& dir,
                            std::vector<std::string>* result) override {
-    return errors::Unimplemented("GetChildren unimplemented");
+    return absl::UnimplementedError("GetChildren unimplemented");
   }
 
   absl::Status GetMatchingPaths(const std::string& pattern,
@@ -77,29 +77,29 @@ class NullFileSystem : public FileSystem {
   }
 
   absl::Status DeleteFile(const std::string& fname) override {
-    return errors::Unimplemented("DeleteFile unimplemented");
+    return absl::UnimplementedError("DeleteFile unimplemented");
   }
 
   absl::Status CreateDir(const std::string& dirname) override {
-    return errors::Unimplemented("CreateDir unimplemented");
+    return absl::UnimplementedError("CreateDir unimplemented");
   }
 
   absl::Status DeleteDir(const std::string& dirname) override {
-    return errors::Unimplemented("DeleteDir unimplemented");
+    return absl::UnimplementedError("DeleteDir unimplemented");
   }
 
   absl::Status GetFileSize(const std::string& fname,
                            uint64_t* file_size) override {
-    return errors::Unimplemented("GetFileSize unimplemented");
+    return absl::UnimplementedError("GetFileSize unimplemented");
   }
 
   absl::Status RenameFile(const std::string& src,
                           const std::string& target) override {
-    return errors::Unimplemented("RenameFile unimplemented");
+    return absl::UnimplementedError("RenameFile unimplemented");
   }
 
   absl::Status Stat(const std::string& fname, FileStatistics* stat) override {
-    return errors::Unimplemented("Stat unimplemented");
+    return absl::UnimplementedError("Stat unimplemented");
   }
 };
 #endif

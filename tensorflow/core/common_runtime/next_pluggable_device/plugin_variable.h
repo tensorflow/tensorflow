@@ -24,9 +24,9 @@ class Tensor;
 
 // A helper base class that wraps tensorflow::VariableInfo for the convenience
 // of passing between plugin and tensorflow. Similar to `PluginOpKernelContext`,
-// the implementations can accomodate for "Internal build" and "External build",
-// meaning the plugin is built with TensorFlow either together or separately. In
-// repsective build modes, the implementations can either include
+// the implementations can accommodate for "Internal build" and "External
+// build", meaning the plugin is built with TensorFlow either together or
+// separately. In repsective build modes, the implementations can either include
 // tensorflow::VariableInfo and use C++ API directly, or include the C structure
 // `TF_VariableInfo` and use the corresponding C API.
 class PluginVariable {

@@ -370,7 +370,7 @@ absl::StatusOr<ElementsAttr> ConvertTensorProto(
 
   Tensor t;
   if (!t.FromProto(input_tensor))
-    return InvalidArgument("Failed to parse input_tensor.");
+    return absl::InvalidArgumentError("Failed to parse input_tensor.");
   return ConvertTensor(t, builder, convert_to_dense_resource);
 }
 
@@ -463,12 +463,12 @@ absl::Status ConvertComplexElementsAttr(const mlir::ElementsAttr elem_attr,
   auto complex_elem_ty =
       llvm::cast<mlir::ComplexType>(elementType).getElementType();
   if (complex_elem_ty.isF32()) {
-    for (const auto& val : attr.getValues<std::complex<mlir::APFloat>>()) {
+    for (const auto& val : attr.getValues<mlir::Complex<mlir::APFloat>>()) {
       output->Add(val.real().convertToFloat());
       output->Add(val.imag().convertToFloat());
     }
   } else if (complex_elem_ty.isF64()) {
-    for (const auto& val : attr.getValues<std::complex<mlir::APFloat>>()) {
+    for (const auto& val : attr.getValues<mlir::Complex<mlir::APFloat>>()) {
       output->Add(val.real().convertToDouble());
       output->Add(val.imag().convertToDouble());
     }
@@ -792,7 +792,8 @@ absl::Status ConvertToTensor(const mlir::ElementsAttr attr,
   TensorProto tensor_proto;
   TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor_proto));
   if (!output_tensor->FromProto(tensor_proto)) {
-    return InvalidArgument("Couldn't convert tensor proto to tensor.");
+    return absl::InvalidArgumentError(
+        "Couldn't convert tensor proto to tensor.");
   }
   return absl::OkStatus();
 }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/partial_program_utils.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -74,12 +76,12 @@ static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
                                             args->compile_options_size)));
 
   if (args->phase_compiler == nullptr) {
-    return new PJRT_Error{absl::InternalError(
-        "PJRT_PhaseCompile_Run_Phase: phase compiler is null")};
+    return StatusToPjRtError(absl::InternalError(
+        "PJRT_PhaseCompile_Run_Phase: phase compiler is null"));
   }
   PJRT_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> programs_out,
                         args->phase_compiler->compiler->RunPhases(
-                            options, programs_in_protos,
+                            options, std::move(programs_in_protos),
                             *args->topology->topology, phases_to_run));
 
   PJRT_ASSIGN_OR_RETURN(args->output_programs,
@@ -97,8 +99,8 @@ static PJRT_Error* PJRT_PhaseCompile_Get_Phase_Names(
       PJRT_PhaseCompile_Get_PhaseNames_Args_STRUCT_SIZE, args->struct_size));
 
   if (args->phase_compiler == nullptr) {
-    return new PJRT_Error{absl::InternalError(
-        "PJRT_PhaseCompile_Get_Phase_Names: phase compiler is null")};
+    return StatusToPjRtError(absl::InternalError(
+        "PJRT_PhaseCompile_Get_Phase_Names: phase compiler is null"));
   }
   PJRT_ASSIGN_OR_RETURN(std::vector<std::string> phase_names,
                         args->phase_compiler->compiler->GetPhaseNames());

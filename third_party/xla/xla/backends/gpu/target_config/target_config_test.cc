@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -70,6 +71,7 @@ INSTANTIATE_TEST_SUITE_P(
         {"BMG_G21", GpuModel::BMG_G21, true},
         {"H100_PCIE", GpuModel::H100_PCIE, true},
         {"H100_SXM", GpuModel::H100_SXM, true},
+        {"H200", GpuModel::H200, true},
         {"MI200", GpuModel::MI200, true},
         {"P100", GpuModel::P100, true},
         {"PVC", GpuModel::PVC, true},
@@ -86,7 +88,6 @@ TEST(TargetConfigTest, CompareEqualFromSameProto) {
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         platform_name: "platform"
-        dnn_version_info { major: 2 }
         runtime_version { major: 12 }
         gpu_device_info { threads_per_block_limit: 5 }
         device_description_str: "foo"

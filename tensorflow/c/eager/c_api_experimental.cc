@@ -739,7 +739,7 @@ TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
       // One of the inputs we're trying to pack is on a custom device. We'll let
       // the first custom device we see handle all of the packing.
       auto* custom_device_handle =
-          tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
+          absl::down_cast<tensorflow::CustomDeviceTensorHandle*>(
               unwrapped_handle);
       tensorflow::ImmediateExecutionTensorHandle* result;
       status->status = custom_device_handle->device()->Pack(
@@ -832,8 +832,8 @@ void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
   status->status =
       tensorflow::DeviceFactory::AddCpuDevices(sess_options, prefix, &devices);
 
-  // Remove the device that has the host device name since host device is alreay
-  // in an initialized context.
+  // Remove the device that has the host device name since host device is
+  // already in an initialized context.
   for (auto d = devices.begin(); d != devices.end();) {
     if (absl::StrContains(d->get()->name(), "CPU:0")) {
       d = devices.erase(d);

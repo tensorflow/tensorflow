@@ -55,6 +55,7 @@ IdentityElementType GetReductionIdentityElementType(
 //   between operands are simplified into independent constraints to keep
 //   computation scalable.
 //
+class ConstraintPropagatorTest;
 // Limitations:
 // - Does not handle control flow.
 // - Uses weak heuristics for accumulation-intensive operations.
@@ -67,10 +68,21 @@ class ConstraintPropagator {
           get_index_known_zeroes = nullptr);
 
  private:
+  friend class ConstraintPropagatorTest;
+
   explicit ConstraintPropagator(
       std::function<std::optional<uint64_t>(const HloInstruction*, int64_t)>
           get_index_known_zeroes)
       : get_index_known_zeroes_(get_index_known_zeroes) {}
+
+  // Populates max_add_reduction_elements_per_exp_ by analyzing downstream
+  // addition-reduction chains across the computation.
+  void ComputeMaxAddReductionElementsPerExp(const HloComputation* computation);
+
+  // Returns the maximum number of downstream addition-reduction elements for
+  // the given kExp instruction, or 1 if unreduced or not found.
+  int64_t GetMaxAddReductionElementsForExp(
+      const HloInstruction* exp_instruction) const;
 
   // Propagates constraints in post-order throughout the given computation.
   absl::Status Propagate(const HloComputation* computation);
@@ -78,6 +90,10 @@ class ConstraintPropagator {
   // Seeds constraints from ops like sqrt, log, etc on their operands. eg.
   // sqrt(x) => x >= 0
   absl::Status SeedConstraints(const HloComputation* computation);
+
+  // Seeds constraints from domain-specific high-level ML patterns and idioms
+  // (e.g. guarded division for gradient/activation threshold clipping).
+  absl::Status SeedMLPatternsConstraints(const HloComputation* computation);
 
   // Propagates constraints from the seed constraints backwards with exact
   // propagation to avoid introducing approximations.
@@ -92,11 +108,50 @@ class ConstraintPropagator {
   // formatting can simply propagate the exact constraints to their operands.
   absl::Status PropagateConstraintsExact(const HloInstruction* instruction);
 
+  // Propagates constraints bidirectionally across a kFusion instruction
+  // boundary, mapping caller operands to callee fused parameters and caller
+  // result to the fused expression root.
+  absl::Status PropagateFusionBoundary(
+      const HloInstruction* fusion_instruction);
+
   // Propagates constraints from the output of an instruction to its operands.
   // This is approximate and introduces approximations for ops like add, sub,
   // etc. These approximations can reduce the valid search space for an input
   // and also result in empty constraints.
   absl::Status PropagateConstraintsApprox(const HloInstruction* instruction);
+
+  // Opcode-specific approximate constraint propagation helpers.
+  void PropagateAddApprox(const HloInstruction* instruction,
+                          const ConstraintInterval& output_interval);
+  void PropagateSubtractApprox(const HloInstruction* instruction,
+                               const ConstraintInterval& output_interval);
+  void PropagateMultiplyApprox(const HloInstruction* instruction,
+                               const ConstraintInterval& output_interval);
+  void PropagateReduceApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateContractingProductApprox(
+      const HloInstruction* instruction,
+      const ConstraintInterval& output_interval);
+  void PropagateDivideApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateMinMaxApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateExpApprox(const HloInstruction* instruction,
+                          const ConstraintInterval& output_interval);
+  void PropagatePowerApprox(const HloInstruction* instruction,
+                            const ConstraintInterval& output_interval);
+
+  // Attempts to apply constraint_0 to inst_0 AND constraint_1 to inst_1.
+  // Applies BOTH constraints ONLY IF neither instruction's state becomes Empty.
+  // Returns true if both constraints were applied, false otherwise.
+  bool TryAddDualConstraints(const HloInstruction* inst_0,
+                             const ConstraintInterval& constraint_0,
+                             const HloInstruction* inst_1,
+                             const ConstraintInterval& constraint_1);
+
+  // Returns the constant scalar value (or broadcast of constant scalar) if
+  // available in states_, or std::nullopt otherwise.
+  std::optional<double> GetConstantValue(const HloInstruction* inst) const;
 
   // Function that extracts known zeroes bitmask for the given dimension of a
   // DynamicSlice or DynamicUpdateSlice instruction.
@@ -105,6 +160,11 @@ class ConstraintPropagator {
 
   // Constraint states for each instruction in the module.
   absl::flat_hash_map<const HloInstruction*, ConstraintState> states_;
+
+  // Maps each kExp instruction to the maximum number of elements summed
+  // downstream across any addition reduction path.
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      max_add_reduction_elements_per_exp_;
 };
 
 }  // namespace xla

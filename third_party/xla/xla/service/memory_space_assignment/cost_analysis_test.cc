@@ -18,11 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cost_modelling/op_cost.h"
@@ -30,8 +34,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -66,9 +70,12 @@ class MemorySpaceAssignmentCostAnalysisTest
             "HloCostAnalysis",
             CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
             /*enable_cache=*/false));
-    TF_ASSIGN_OR_RETURN(cost_analysis_,
-                        CostAnalysis::Create(*op_cost_manager_, options_,
-                                             &alias_info_, *module));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                     HloAliasAnalysis::Run(module, &alias_info_));
+    ABSL_ASSIGN_OR_RETURN(
+        cost_analysis_,
+        CostAnalysis::Create(*op_cost_manager_, options_, &alias_info_, *module,
+                             alias_analysis.get()));
     return absl::OkStatus();
   }
 
@@ -253,6 +260,42 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, LatencyBoundCompute) {
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add), 1.0f);
+}
+
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, ExcludeNonMainThreadComputation) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  async_computation {
+    param0.1 = f32[2,4] parameter(0)
+    param1.1 = f32[2,4] parameter(1)
+    ROOT add.1 = f32[2,4] add(param0.1, param1.1)
+  }, execution_thread="sparse"
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    ROOT add = f32[2,4] add(param0, param1)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK(Initialize(module.get()));
+
+  const HloInstruction* main_add =
+      module->entry_computation()->root_instruction();
+  EXPECT_GT(cost_analysis_->GetInstructionElapsedDueToCompute(*main_add), 0.0f);
+
+  const HloComputation* async_comp =
+      module->GetComputationWithName("async_computation");
+  ASSERT_NE(async_comp, nullptr);
+  const HloInstruction* async_add = async_comp->root_instruction();
+  EXPECT_FALSE(async_add->parent()->IsMainThread());
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsed(*async_add), 0.0f);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*async_add),
+            0.0f);
+  EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(
+                *async_add, {{0, {}}, {1, {}}}, {{}}),
+            0.0f);
 }
 
 }  // namespace

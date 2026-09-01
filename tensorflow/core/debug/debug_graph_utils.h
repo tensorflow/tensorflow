@@ -82,20 +82,19 @@ class DebugNodeInserter {
   static void DeparallelizeWhileLoops(Graph* graph, Device* device);
 
   // Get canonical name of a copy node.
-  static const std::string GetCopyNodeName(const std::string& node_name,
-                                           const int output_slot);
+  static std::string GetCopyNodeName(const std::string& node_name,
+                                     int output_slot);
 
   // Get canonical name of a debug node.
-  static const std::string GetDebugNodeName(const std::string& tensor_name,
-                                            const int debug_op_num,
-                                            const std::string& debug_op_name);
+  static std::string GetDebugNodeName(const std::string& tensor_name,
+                                      int debug_op_num,
+                                      const std::string& debug_op_name);
 
  private:
   static absl::Status CreateCopyNode(
-      Graph* graph, const DeviceType device_type, const bool is_host_memory,
-      const std::string& src_node_name, const int src_output,
-      const DataType src_dt, const std::string& tensor_name,
-      const std::vector<std::string>& debug_ops,
+      Graph* graph, DeviceType device_type, bool is_host_memory,
+      const std::string& src_node_name, int src_output, DataType src_dt,
+      const std::string& tensor_name, const std::vector<std::string>& debug_ops,
       const std::vector<std::string>& debug_urls, Node** copy_node);
 
   // Parse the debug_op_name string to extract proper op name and attributes.
@@ -114,8 +113,8 @@ class DebugNodeInserter {
 
   static absl::Status CreateDebugNode(
       Graph* graph, const Device& device, const std::string& src_copy_node_name,
-      const DataType src_dt, const std::string& tensor_name,
-      const std::vector<std::string>& debug_urls, const int debug_op_num,
+      DataType src_dt, const std::string& tensor_name,
+      const std::vector<std::string>& debug_urls, int debug_op_num,
       const std::string& debug_op_name, Node** debug_node);
   // TODO(cais): Cut down the number of args to this method.
 

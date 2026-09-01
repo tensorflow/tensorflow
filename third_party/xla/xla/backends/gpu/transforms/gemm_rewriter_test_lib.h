@@ -38,6 +38,8 @@ class GemmRewriteTestBase : public HloPjRtGpuTestBase {
 
   bool IsRocm() const;
 
+  bool IsSycl() const;
+
   bool IsBlackwell() const;
 
   stream_executor::GpuComputeCapability CudaHopperOrRocmCapability();

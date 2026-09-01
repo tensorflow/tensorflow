@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
@@ -61,7 +62,7 @@ absl::StatusOr<std::string> ConvertHloToStablehlo(
     xla::HloModule const& hlo_module, bool emit_bytecode) {
   mlir::MLIRContext context;
   LoadHloDialects(context);
-  TF_ASSIGN_OR_RETURN(auto module, ConvertHloToStablehlo(context, &hlo_module));
+  ABSL_ASSIGN_OR_RETURN(auto module, ConvertHloToStablehlo(context, &hlo_module));
   if (emit_bytecode) return SerializeUsingBytecode(*module);
   return PrintModule(*module);
 }

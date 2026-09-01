@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-import-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s
 
 // CHECK-LABEL: module @module_1
@@ -30,6 +44,21 @@ module @module_1 {
         tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"}) {
     // CHECK-NEXT: return %arg0, %arg1, %arg0, %arg1, %arg1, %arg2
     return %arg0, %arg1, %arg0, %arg1, %arg1, %arg2 : tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>
+  }
+
+  // CHECK-LABEL: func @x64_combine(%arg0: tensor<16xi64>)
+  // CHECK-SAME:    -> (tensor<16xi64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) {
+  func.func @x64_combine(
+    %arg0: tensor<16xi64>) -> (tensor<16xi64> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"}) {
+    // CHECK-NEXT: %[[SPLIT_LOW:.*]] = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[SPLIT_HIGH:.*]] = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[COMBINE:.*]] = stablehlo.custom_call @X64Combine(%[[SPLIT_LOW]], %[[SPLIT_HIGH]])
+    // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}]>]>} : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    // CHECK-NEXT: return %[[COMBINE]]
+    %0 = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %1 = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %6 = stablehlo.custom_call @X64Combine(%0, %1) {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"} : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    return %6 : tensor<16xi64>
   }
 
   // CHECK-LABEL: func @while_with_free_variables
@@ -189,6 +218,23 @@ module @maximal_sharding_module {
       api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
       has_side_effect = true,
       mhlo.sharding = "{maximal_mesh[device_id=0]}",
+      operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
+    } : (tensor<2xi64>) -> tuple<>
+    return %arg0 : tensor<2xi64>
+  }
+
+  // CHECK-LABEL: @maximal_tuple_sharding_empty_tuple
+  func.func @maximal_tuple_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+    // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+    // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+    // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME: } : (tensor<2xi64>) -> ()
+    // CHECK-NEXT: return %arg0 : tensor<2xi64>
+    %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+      api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+      has_side_effect = true,
+      mhlo.sharding = "{{maximal_mesh[device_id=0]}}",
       operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>

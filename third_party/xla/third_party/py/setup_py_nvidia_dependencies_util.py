@@ -58,12 +58,18 @@ def get_setup_py_content_with_nvidia_wheel_versions(
         nvidia_wheel_versions[version][wheel_name] = match.group(2).strip()
         break
 
+  if not cuda_version:
+    cuda_version = "12"
   setup_py_content = setup_py_content.replace(
       "cuda_version = 0  # placeholder", f"cuda_version = {cuda_version}"
   )
   setup_py_content = setup_py_content.replace(
       "cuda_wheel_suffix = ''  # placeholder",
       "cuda_wheel_suffix = '-cu12'" if cuda_version == "12" else "cuda_wheel_suffix = ''",
+  )
+  setup_py_content = setup_py_content.replace(
+      "cuda_major_version = '12'  # placeholder",
+      f"cuda_major_version = '{cuda_version}'",
   )
   for version_name, version_value in nvidia_wheel_versions[
       str(cuda_version)

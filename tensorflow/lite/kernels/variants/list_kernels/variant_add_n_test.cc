@@ -164,12 +164,39 @@ TYPED_TEST_P(ListAddNTest, TwoInputs_SomeItemsPresent_UsesElementShape) {
                                 FilledWith<TypeParam>(1)));
 }
 
+TYPED_TEST_P(ListAddNTest, MultipleInputsWithThreads) {
+  TfLiteType tfl_type = typeToTfLiteType<TypeParam>();
+  std::optional<TensorType> tensor_type = TflToTensorType(tfl_type);
+  ASSERT_TRUE(tensor_type.has_value());
+
+  ListAddNModel m(4);
+  m.SetNumThreads(4);
+  for (int i = 0; i < 4; ++i) {
+    const int list_ind = m.GetIndOfInput(i);
+    m.PopulateListTensor(list_ind, {}, 2, tfl_type);
+    m.ListSetItem(list_ind, 0, {2, 2}, tfl_type,
+                  std::vector<TypeParam>(4, 1).data());
+    m.ListSetItem(list_ind, 1, {2, 2}, tfl_type,
+                  std::vector<TypeParam>(4, 1).data());
+  }
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  const TensorArray* const arr = m.GetOutput();
+  ASSERT_EQ(arr->NumElements(), 2);
+  ASSERT_EQ(arr->ElementType(), tfl_type);
+  EXPECT_THAT(arr->At(0), AllOf(IsAllocatedAs(tfl_type), DimsAre({2, 2}),
+                                FilledWith<TypeParam>(4)));
+  EXPECT_THAT(arr->At(1), AllOf(IsAllocatedAs(tfl_type), DimsAre({2, 2}),
+                                FilledWith<TypeParam>(4)));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(ListAddNTest,
                             TwoInputs_AllItemsPresent_AllSameShape,
                             TwoInputs_AllItemsPresent_ListsContainMixedShapes,
                             TwoInputs_NoItemsPresent_ListShapesMerge,
                             TwoInputs_SomeItemsPresent_UsesElementShape,
-                            TwoInputs_NoItemsPresent_ListShapesUndefinedError);
+                            TwoInputs_NoItemsPresent_ListShapesUndefinedError,
+                            MultipleInputsWithThreads);
 
 using ValidTypes = ::testing::Types<int, float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(ListAddNTests, ListAddNTest, ValidTypes);

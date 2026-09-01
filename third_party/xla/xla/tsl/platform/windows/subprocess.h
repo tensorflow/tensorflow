@@ -97,6 +97,13 @@ class SubProcess {
   virtual int Communicate(const string* stdin_input, string* stdout_output,
                           string* stderr_output);
 
+  // GetArgv()
+  //    Return the argv passed to SetProgram().
+  virtual const char* const* GetArgv() const {
+    absl::MutexLock lock(&data_mu_);
+    return exec_argv_;
+  }
+
  private:
   static const int kNFds = 3;
   static bool chan_valid(int chan) { return ((chan >= 0) && (chan < kNFds)); }

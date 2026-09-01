@@ -857,4 +857,54 @@ std::unique_ptr<OpCostCalculator> CreateCalculatorWithDefaultTotalBytesAccessed(
       std::move(initial_calculator));
 }
 
+namespace {
+
+class OpcodeMetricOverrideMetricCalculator : public MetricCalculator {
+ public:
+  OpcodeMetricOverrideMetricCalculator(
+      HloOpcode opcode, const std::vector<OpcodeMetricOverrideRule>& rules)
+      : opcode_(opcode), rules_(rules) {}
+
+  ~OpcodeMetricOverrideMetricCalculator() override = default;
+
+  CostValue Calculate(const CostMetricId& metric_id) override {
+    for (const auto& rule : rules_) {
+      if (rule.opcodes.contains(opcode_) &&
+          rule.metric_types.contains(metric_id.type())) {
+        return CostValue::MakeValue(rule.override_value);
+      }
+    }
+    return CostValue::MakeNotFound();
+  }
+
+ private:
+  HloOpcode opcode_;
+  const std::vector<OpcodeMetricOverrideRule>& rules_;
+};
+
+class OpcodeMetricOverrideCalculator : public OpCostCalculator {
+ public:
+  explicit OpcodeMetricOverrideCalculator(
+      std::vector<OpcodeMetricOverrideRule> rules)
+      : rules_(std::move(rules)) {}
+
+  ~OpcodeMetricOverrideCalculator() override = default;
+
+  std::unique_ptr<MetricCalculator> CreateMetricCalculator(
+      const HloInstruction& instruction) override {
+    return std::make_unique<OpcodeMetricOverrideMetricCalculator>(
+        instruction.opcode(), rules_);
+  }
+
+ private:
+  std::vector<OpcodeMetricOverrideRule> rules_;
+};
+
+}  // namespace
+
+std::unique_ptr<OpCostCalculator> CreateOpcodeMetricOverrideCalculator(
+    std::vector<OpcodeMetricOverrideRule> rules) {
+  return std::make_unique<OpcodeMetricOverrideCalculator>(std::move(rules));
+}
+
 }  // namespace xla

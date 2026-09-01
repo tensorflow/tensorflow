@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/service/xla_debug_info_manager.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 
@@ -30,7 +30,7 @@ namespace xla {
 
 void XlaDebugInfoManager::RegisterModule(
     std::shared_ptr<const HloModule> hlo_module,
-    std::shared_ptr<const BufferAssignment> buffer_assignment) {
+    std::optional<BufferAssignmentProto> buffer_assignment_proto) {
   CHECK(hlo_module != nullptr);
   absl::MutexLock lock(mutex_);
   auto result = modules_.try_emplace(hlo_module->unique_id());
@@ -38,7 +38,7 @@ void XlaDebugInfoManager::RegisterModule(
                        << " is already registered.";
   XlaModuleEntry& m = result.first->second;
   m.hlo_module = std::move(hlo_module);
-  m.buffer_assignment = std::move(buffer_assignment);
+  m.buffer_assignment_proto = std::move(buffer_assignment_proto);
   m.active = true;
 }
 
@@ -89,9 +89,8 @@ void XlaDebugInfoManager::StopTracing(
     module_debug_info->clear();
     for (const auto& m : modules_to_serialize) {
       auto hlo_proto = std::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
-      if (m.buffer_assignment != nullptr) {
-        *hlo_proto->mutable_buffer_assignment() =
-            m.buffer_assignment->ToProto();
+      if (m.buffer_assignment_proto.has_value()) {
+        *hlo_proto->mutable_buffer_assignment() = *m.buffer_assignment_proto;
       }
       module_debug_info->emplace_back(std::move(hlo_proto));
     }

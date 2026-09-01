@@ -15,6 +15,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -56,16 +59,17 @@ class AdjustSaturationOpBase : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& scale = context->input(1);
     OP_REQUIRES(context, input.dims() >= 3,
-                errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be at least 3-D, got shape",
+                                 input.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(scale.shape()),
-                errors::InvalidArgument("scale must be scalar: ",
-                                        scale.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "scale must be scalar: ", scale.shape().DebugString())));
     auto channels = input.dim_size(input.dims() - 1);
-    OP_REQUIRES(
-        context, channels == 3,
-        errors::InvalidArgument("input must have 3 channels but instead has ",
-                                channels, " channels."));
+    OP_REQUIRES(context, channels == 3,
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must have 3 channels but instead has ",
+                                 channels, " channels.")));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -232,7 +236,8 @@ class AdjustSaturationOp<GPUDevice, T> : public AdjustSaturationOpBase {
     const int64_t number_of_elements = input->NumElements();
     GPUDevice device = context->eigen_gpu_device();
     const auto stream = device.stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available."));
     if (number_of_elements > 0) {
       const T* input_data = input->flat<T>().data();
       const float* scale_data = scale->flat<float>().data();

@@ -19,12 +19,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -38,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -79,10 +81,9 @@ absl::StatusOr<DotContext> Dot(int b, int m, int n, int k,
        lhs_contracting_dims={2}, rhs_contracting_dims={1},
        lhs_batch_dims={0}, rhs_batch_dims={0}
     })";
-  TF_ASSIGN_OR_RETURN(
-      auto module,
-      ParseAndReturnUnverifiedModule(absl::Substitute(
-          kTemplate, b, m, k, n, lhs_type, rhs_type, result_type)));
+  ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(absl::Substitute(
+                                    kTemplate, b, m, k, n, lhs_type, rhs_type,
+                                    result_type)));
   return DotContext{
       /*dot=*/module->entry_computation()->root_instruction(),
       /*module=*/std::move(module),
@@ -138,9 +139,9 @@ class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
       absl::Span<const DotSpec> specs) {
     HloInstructionProfileList list;
     for (DotSpec spec : specs) {
-      TF_ASSIGN_OR_RETURN(DotContext dot_context,
-                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
-                              spec.rhs_type, spec.result_type));
+      ABSL_ASSIGN_OR_RETURN(DotContext dot_context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
       AddProfileEntry(std::move(dot_context), spec.clock_cycles, list);
     }
     return list;
@@ -212,8 +213,8 @@ class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
 TEST_P(MatmulInterpolatorParamTest,
        MatmulInteprolatorNextNeighbourInterpolation) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context, Dot(spec.b, spec.m, spec.n,
-                                                  spec.k, "f32", "f32", "f32"));
+  ASSERT_OK_AND_ASSIGN(DotContext context, Dot(spec.b, spec.m, spec.n, spec.k,
+                                               "f32", "f32", "f32"));
   EXPECT_EQ(absl::Trunc(*interpolator().EstimatedRuntime(*context.dot),
                         absl::Milliseconds(1)),
             expected_duration);
@@ -331,14 +332,22 @@ class MatmulInterpolatorDefaultTableTest
   std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorB200() {
     return GetMatmulInterpolator(TestGpuDeviceInfo::B200SXMDeviceInfo());
   }
+
+  std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorGfx942() {
+    return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI300DeviceInfo());
+  }
+
+  std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorGfx950() {
+    return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI350DeviceInfo());
+  }
 };
 
 using H100BF16Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(H100BF16Test, EstimatesRuntimeForBF16) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotBF16(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotBF16(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
@@ -423,8 +432,8 @@ using B200BF16Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(B200BF16Test, EstimatesRuntimeForBF16) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotBF16(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotBF16(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorB200()->EstimatedRuntime(*context.dot),
@@ -463,8 +472,8 @@ using H100S8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(H100S8Test, EstimatesRuntimeForS8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotS8(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotS8(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
@@ -519,8 +528,8 @@ using B200S8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(B200S8Test, EstimatesRuntimeForS8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotS8(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotS8(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorB200()->EstimatedRuntime(*context.dot),
@@ -559,9 +568,9 @@ using H100F8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(H100F8Test, EstimatesRuntimeForF8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
-                              spec.rhs_type, spec.result_type));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
@@ -604,9 +613,9 @@ using B200F8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(B200F8Test, EstimatesRuntimeForF8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
-                              spec.rhs_type, spec.result_type));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorB200()->EstimatedRuntime(*context.dot),
@@ -640,6 +649,202 @@ INSTANTIATE_TEST_SUITE_P(
     }),
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
            info) { return info.param.test_name; });
+
+using Gfx942DefaultTableTest = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(Gfx942DefaultTableTest, EstimatesExactRuntime) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
+  std::unique_ptr<MatmulInterpolator> interpolator =
+      GetMatmulInterpolatorGfx942();
+  std::optional<absl::Duration> runtime =
+      interpolator->EstimatedRuntime(*context.dot);
+  ASSERT_TRUE(runtime.has_value());
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(*runtime),
+              absl::ToDoubleNanoseconds(expected_duration), 1.0);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiationGfx942,
+    Gfx942DefaultTableTest,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"bf16_bf16_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"bf16",
+             /*rhs_type=*/"bf16",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(18387),
+        },
+        {
+            /*test_name=*/"f16_f16_f16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f16",
+             /*rhs_type=*/"f16",
+             /*result_type=*/"f16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(15724),
+        },
+        {
+            /*test_name=*/"f32_f32_f32",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f32",
+             /*rhs_type=*/"f32",
+             /*result_type=*/"f32",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(38197),
+        },
+        {
+            /*test_name=*/"f8e4m3fnuz_f8e4m3fnuz_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e4m3fnuz",
+             /*rhs_type=*/"f8e4m3fnuz",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(19309),
+        },
+        {
+            /*test_name=*/"f8e4m3fnuz_f8e4m3fnuz_f8e4m3fnuz",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e4m3fnuz",
+             /*rhs_type=*/"f8e4m3fnuz",
+             /*result_type=*/"f8e4m3fnuz",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(19169),
+        },
+        {
+            /*test_name=*/"f8e5m2fnuz_f8e4m3fnuz_f32",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e5m2fnuz",
+             /*rhs_type=*/"f8e4m3fnuz",
+             /*result_type=*/"f32",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(10656),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
+
+TEST(DefaultMatmulPerfTableTest, Gfx942InterpolatesBetweenGridPoints) {
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MatmulInterpolator> interpolator,
+                       MatmulInterpolator::Create(device_info));
+  ASSERT_OK_AND_ASSIGN(
+      DotContext context,
+      Dot(/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/768, /*lhs_type=*/"bf16",
+          /*rhs_type=*/"bf16", /*result_type=*/"bf16"));
+  ASSERT_TRUE(interpolator->EstimatedRuntime(*context.dot).has_value());
+  absl::Duration runtime = *interpolator->EstimatedRuntime(*context.dot);
+  EXPECT_GT(runtime, absl::Nanoseconds(18387));
+  EXPECT_LT(runtime, absl::Nanoseconds(25497));
+}
+
+using Gfx950DefaultTableTest = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(Gfx950DefaultTableTest, EstimatesExactRuntime) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
+  std::unique_ptr<MatmulInterpolator> interpolator =
+      GetMatmulInterpolatorGfx950();
+  std::optional<absl::Duration> runtime =
+      interpolator->EstimatedRuntime(*context.dot);
+  ASSERT_TRUE(runtime.has_value());
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(*runtime),
+              absl::ToDoubleNanoseconds(expected_duration), 1.0);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiationGfx950,
+    Gfx950DefaultTableTest,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"bf16_bf16_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"bf16",
+             /*rhs_type=*/"bf16",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(11180),
+        },
+        {
+            /*test_name=*/"f16_f16_f16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f16",
+             /*rhs_type=*/"f16",
+             /*result_type=*/"f16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(11980),
+        },
+        {
+            /*test_name=*/"f32_f32_f32",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f32",
+             /*rhs_type=*/"f32",
+             /*result_type=*/"f32",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(39301),
+        },
+        {
+            /*test_name=*/"f8e4m3fn_f8e4m3fn_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e4m3fn",
+             /*rhs_type=*/"f8e4m3fn",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(7980),
+        },
+        {
+            /*test_name=*/"f8e4m3fn_f8e4m3fn_f8e4m3fn",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e4m3fn",
+             /*rhs_type=*/"f8e4m3fn",
+             /*result_type=*/"f8e4m3fn",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(9201),
+        },
+        {
+            /*test_name=*/"f8e5m2_f8e4m3fn_f32",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e5m2",
+             /*rhs_type=*/"f8e4m3fn",
+             /*result_type=*/"f32",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(8400),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
+
+TEST(DefaultMatmulPerfTableTest, Gfx950InterpolatesBetweenGridPoints) {
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI350DeviceInfo();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MatmulInterpolator> interpolator,
+                       MatmulInterpolator::Create(device_info));
+  ASSERT_OK_AND_ASSIGN(
+      DotContext context,
+      Dot(/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/768, /*lhs_type=*/"bf16",
+          /*rhs_type=*/"bf16", /*result_type=*/"bf16"));
+  ASSERT_TRUE(interpolator->EstimatedRuntime(*context.dot).has_value());
+  absl::Duration runtime = *interpolator->EstimatedRuntime(*context.dot);
+  EXPECT_GT(runtime, absl::Nanoseconds(11180));
+  EXPECT_LT(runtime, absl::Nanoseconds(16640));
+}
 
 class MatmulInterpolatorTest : public Test {
  public:
@@ -725,7 +930,7 @@ TEST_F(MatmulInterpolatorTest, SupportsCublasCustomCalls) {
         }
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   const HloInstruction& custom_call =
       *module->entry_computation()->root_instruction();
   EXPECT_EQ(*interpolator().EstimatedRuntime(custom_call), absl::Seconds(1));
@@ -762,7 +967,42 @@ TEST_F(MatmulInterpolatorTest, SupportsDotTritonFusion) {
         }
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  const HloInstruction& custom_call =
+      *module->entry_computation()->root_instruction();
+  EXPECT_EQ(*interpolator().EstimatedRuntime(custom_call), absl::Seconds(1));
+}
+
+TEST_F(MatmulInterpolatorTest, SupportsDotTritonNestedGemmFusion) {
+  absl::string_view hlo = R"(
+    HloModule m
+
+    comp {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT dot = bf16[1024,1024] dot(p0,p1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+
+    ENTRY e {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT _ =  bf16[1024,1024] fusion(p0,p1),
+        kind=kCustom,
+        calls=comp,
+        backend_config={
+          "fusion_backend_config": {
+            "kind":"__triton_nested_gemm_fusion",
+            "block_level_fusion_config":{
+              "output_tiles":[{"sizes":["64","32"]}],
+              "num_stages":"2",
+              "num_warps":"8",
+              "num_ctas":"1"
+            }
+          }
+        }
+    }
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   const HloInstruction& custom_call =
       *module->entry_computation()->root_instruction();
   EXPECT_EQ(*interpolator().EstimatedRuntime(custom_call), absl::Seconds(1));

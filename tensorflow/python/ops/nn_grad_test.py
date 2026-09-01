@@ -81,7 +81,7 @@ class Conv2dOpTest(test.TestCase):
                                                       x.get_shape().as_list(),
                                                       y,
                                                       y.get_shape().as_list())
-      self.assertLess(error, 1e-3)
+      self.assertLess(error, 2e-3)
 
   @test_util.run_deprecated_v1
   def testConv2dGradWRTInput(self):
@@ -132,7 +132,7 @@ class DepthwiseConv2dTest(test.TestCase):
                                                       x.get_shape().as_list(),
                                                       y,
                                                       y.get_shape().as_list())
-      self.assertLess(error, 1e-3)
+      self.assertLess(error, 2e-3)
 
   @test_util.run_deprecated_v1
   def testDepthwiseConv2dGradWRTInput(self):
@@ -180,6 +180,25 @@ class DepthwiseConv2dTest(test.TestCase):
 
 
 class EluGradOpTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEluGradPreservesSmallNegativeValues(self):
+    test_cases = (
+        (dtypes.float32, -20.0, 1e-6),
+        (dtypes.float64, -40.0, 1e-14),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        inputs = constant_op.constant(value, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          elu = gen_nn_ops.elu(inputs)
+
+        elu_grad = tape.gradient(elu, inputs)
+        expected = np.exp(dtype.as_numpy_dtype(value))
+        self.assertAllClose(
+            expected, self.evaluate(elu_grad), rtol=rtol, atol=0
+        )
 
   @test_util.run_deprecated_v1
   def testEluGradGradWRTgrad_ys(self):

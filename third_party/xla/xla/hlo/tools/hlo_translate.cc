@@ -110,7 +110,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOText(
 
   auto hlo_module = std::move(hlo_text.value());
 
-  // For emitting StableHLO, use new APIs by defualt.
+  // For emitting StableHLO, use new APIs by default.
   if (!emit_mhlo) {
     return xla::ConvertHloToStablehlo(*context, hlo_module.get());
   }
@@ -134,7 +134,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOProto(
     return absl::InvalidArgumentError(kLoadHloError);
   }
 
-  // For emitting StableHLO, use new APIs by defualt.
+  // For emitting StableHLO, use new APIs by default.
   if (!emit_mhlo) {
     return xla::ConvertHloToStablehlo(*context, hlo_proto.mutable_hlo_module());
   }
@@ -184,7 +184,7 @@ mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
   if (module_from_proto.ok()) {
     return std::move(module_from_proto).value();
   }
-  if (module_from_text.status().message().rfind(kLoadHloError, 0) != 0) {
+  if (module_from_proto.status().message().rfind(kLoadHloError, 0) != 0) {
     emitError() << "Failed to convert HLO to MLIR: "
                 << module_from_proto.status().message();
     return nullptr;

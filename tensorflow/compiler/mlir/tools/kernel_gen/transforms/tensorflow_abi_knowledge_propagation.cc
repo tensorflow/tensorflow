@@ -17,6 +17,7 @@ limitations under the License.
 // functions such that information about alignment, aliasing and zero offsets
 // steming from the tf_framework uses is propagated.
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 

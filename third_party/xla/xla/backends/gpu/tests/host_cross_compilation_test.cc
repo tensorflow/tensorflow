@@ -22,11 +22,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/target_config/target_config.h"
@@ -39,13 +39,14 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform_id.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 using ::absl_testing::StatusIs;
 
 absl::StatusOr<std::unique_ptr<Compiler>> GetGpuCompiler() {
-  ASSIGN_OR_RETURN(stream_executor::PlatformId platform_id,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::PlatformId platform_id,
                    PlatformUtil::GetPlatformIdFromCanonicalName("CUDA"));
   return Compiler::GetForPlatform(platform_id);
 }
@@ -62,7 +63,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetHloModule() {
     )"};
   auto hlo_module = std::make_unique<VerifiedHloModule>("m", HloModuleConfig(),
                                                         false, false, nullptr);
-  RETURN_IF_ERROR(hlo_module->ParseHloStringAndVerifyModule(hlo_text));
+  ABSL_RETURN_IF_ERROR(hlo_module->ParseHloStringAndVerifyModule(hlo_text));
   return hlo_module;
 }
 
@@ -268,10 +269,6 @@ TEST(HostCrossCompilationTest,
   passes_cpu_target_machine_options_instantiate_called = false;
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
-  DebugOptions debug_options = hlo_module->config().debug_options();
-  debug_options.set_xla_gpu_experimental_aot_compiled_thunks(true);
-  hlo_module->mutable_config().set_debug_options(debug_options);
-
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
       GetGpuTargetConfig(GpuModel::A6000));
@@ -298,10 +295,6 @@ TEST(HostCrossCompilationTest,
   passes_cpu_target_machine_options_instantiate_called = false;
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
-  DebugOptions debug_options = hlo_module->config().debug_options();
-  debug_options.set_xla_gpu_experimental_aot_compiled_thunks(true);
-  hlo_module->mutable_config().set_debug_options(debug_options);
-
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
       GetGpuTargetConfig(GpuModel::A6000));

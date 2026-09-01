@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@bazel_skylib//:bzl_library.bzl",
     "bzl_library",
@@ -134,6 +149,7 @@ filegroup(
         "ram_file_system.h",
         "resource.h",
         "stack_frame.h",
+        "status.h",
         "statusor.h",
         "subprocess.h",
     ],
@@ -169,29 +185,11 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "byte_order.h",
-        "criticality.h",
-        "dynamic_annotations.h",
         "env.cc",
-        "env.h",
-        "env_time.h",
         "errors.cc",
-        "errors.h",
-        "file_statistics.h",
         "file_system.cc",
-        "file_system.h",
-        "file_system_helper.h",
-        "intrusive_ptr.h",
-        "macros.h",
-        "prefetch.h",
-        "ram_file_system.h",
-        "resource.h",
         "status.cc",
-        "status.h",
-        "statusor.h",
         "threadpool.cc",
-        "threadpool.h",
-        "threadpool_interface.h",
     ] + select({
         "//xla/tsl:fuchsia": [],
         "//conditions:default": [
@@ -202,7 +200,32 @@ filegroup(
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "byte_order.h",
+        "criticality.h",
+        "dynamic_annotations.h",
+        "env.h",
+        "env_time.h",
+        "errors.h",
+        "file_statistics.h",
+        "file_system.h",
+        "file_system_helper.h",
+        "intrusive_ptr.h",
+        "macros.h",
+        "prefetch.h",
+        "ram_file_system.h",
+        "resource.h",
+        "status.h",
+        "statusor.h",
+        "threadpool.h",
+        "threadpool_interface.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
     srcs = [] + if_not_fuchsia(["subprocess.h"]),
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -399,6 +422,7 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -465,6 +489,7 @@ tsl_cc_test(
         ":errors",
         ":test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -483,6 +508,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -603,7 +629,7 @@ cc_library(
         "@tsl//tsl/platform:str_util",
         "@tsl//tsl/platform:strcat",
         "@tsl//tsl/platform:thread_annotations",
-    ] + tf_platform_deps("status"),
+    ],
 )
 
 tsl_cc_test(
@@ -647,9 +673,11 @@ cc_library(
         ":status",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/protobuf:status_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
-    ] + tf_platform_deps("status"),
+        "@com_google_absl//absl/types:source_location",
+    ],
 )
 
 cc_library(
@@ -661,12 +689,13 @@ cc_library(
         ":macros",
         ":status",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform",
-    ] + tf_platform_deps("statusor"),
+    ],
 )
 
 tsl_cc_test(
@@ -680,6 +709,7 @@ tsl_cc_test(
         ":test_benchmark",
         ":test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -772,16 +802,6 @@ cc_library(
         "@tsl//tsl/platform:tstring",
     ] + tf_platform_deps("types"),
 )
-
-# copybara:comment_begin(oss-only)
-cc_library(
-    name = "status_macros",
-    hdrs = ["status_macros.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility([]),  # The header should be used only in OSS.
-    deps = [":statusor"],
-)
-# copybara:comment_end
 
 cc_library(
     name = "byte_order",
@@ -970,6 +990,33 @@ tsl_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "sha256",
+    srcs = ["sha256.cc"],
+    hdrs = ["sha256.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "@boringssl//:crypto",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform",
+    ],
+)
+
+tsl_cc_test(
+    name = "sha256_test",
+    srcs = ["sha256_test.cc"],
+    deps = [
+        ":sha256",
+        ":test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

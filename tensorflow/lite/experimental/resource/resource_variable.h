@@ -37,6 +37,10 @@ class ResourceVariable : public ResourceBase {
 
   ~ResourceVariable() override;
 
+  ResourceType GetResourceType() const override {
+    return ResourceType::kResourceVariable;
+  }
+
   // Assigns data from a tensor. Copies its type, shape and data over.
   TfLiteStatus AssignFrom(const TfLiteTensor* tensor);
 
@@ -62,10 +66,11 @@ class ResourceVariable : public ResourceBase {
 };
 
 // Creates a resource variable, shared among all the subgraphs with the given
-// resource id if there is an existing one.
+// resource id if there is an existing one. Returns kTfLiteError if the given
+// resource id is already used by a resource of a different type.
 // WARNING: Experimental interface, subject to change.
-void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
-                                          int resource_id);
+TfLiteStatus CreateResourceVariableIfNotAvailable(ResourceMap* resources,
+                                                  int resource_id);
 
 // Returns the corresponding resource variable, or nullptr if none.
 // WARNING: Experimental interface, subject to change.

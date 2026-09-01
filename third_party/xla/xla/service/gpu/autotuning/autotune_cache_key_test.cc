@@ -99,7 +99,7 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
 
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
                 device_description("bmg_g21.txtpb")),
-            "oneAPI: BMG, Cores: 20, GPU clock: 2.85 GHz, Memory "
+            "oneAPI: BMG_G21, Cores: 20, GPU clock: 2.85 GHz, Memory "
             "bandwidth: 456 GB/s, L2 cache: 18 MB, DNN version: 0.0.0");
 
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(

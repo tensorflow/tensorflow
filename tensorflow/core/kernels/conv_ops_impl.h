@@ -563,16 +563,16 @@ struct LaunchConv2DOp<CPUDevice, T> {
                   const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
-      ctx->SetStatus(errors::Unimplemented(
+      ctx->SetStatus(absl::UnimplementedError(absl::StrCat(
           "The Conv2D op currently only supports the NHWC tensor format on the "
           "CPU. The op was given the format: ",
-          ToString(data_format)));
+          ToString(data_format))));
       return;
     }
 
     for (int64_t explicit_padding : explicit_paddings) {
       if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
-        ctx->SetStatus(errors::InvalidArgument("filter too large"));
+        ctx->SetStatus(absl::InvalidArgumentError("filter too large"));
         return;
       }
     }
@@ -582,33 +582,33 @@ struct LaunchConv2DOp<CPUDevice, T> {
     const int64_t patch_depth = filter.dim_size(2);
 
     if (patch_depth <= 0) {
-      ctx->SetStatus(errors::InvalidArgument(
-          "filter depth must be stricly positive, got ", patch_depth));
+      ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+          "filter depth must be stricly positive, got ", patch_depth)));
       return;
     }
     if (in_depth % patch_depth != 0) {
-      ctx->SetStatus(errors::InvalidArgument(
+      ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
           "input depth must be evenly divisible by filter depth: ", in_depth,
-          " vs ", patch_depth));
+          " vs ", patch_depth)));
       return;
     }
     if (filter.NumElements() <= 0) {
       ctx->SetStatus(
-          errors::InvalidArgument("filter must not have zero elements "
-                                  "(i.e. all dimensions must be non-zero)"));
+          absl::InvalidArgumentError("filter must not have zero elements "
+                                     "(i.e. all dimensions must be non-zero)"));
       return;
     }
 
     const int64_t num_groups = in_depth / patch_depth;
     if (num_groups <= 0) {
-      ctx->SetStatus(errors::InvalidArgument(
-          "number of groups must be stricly positive, got ", num_groups));
+      ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+          "number of groups must be stricly positive, got ", num_groups)));
       return;
     }
     if (out_depth % num_groups != 0 || out_depth < num_groups) {
-      ctx->SetStatus(errors::InvalidArgument(
+      ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
           "output depth must be evenly divisible by number of groups: ",
-          out_depth, " vs ", num_groups));
+          out_depth, " vs ", num_groups)));
       return;
     }
 
@@ -627,7 +627,7 @@ extern template struct LaunchConv2DOp<CPUDevice, Eigen::bfloat16>;
 extern template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DOp<CPUDevice, float>;
 extern template struct LaunchConv2DOp<CPUDevice, double>;
-extern template struct LaunchConv2DOp<CPUDevice, int32>;
+extern template struct LaunchConv2DOp<CPUDevice, int32_t>;
 
 template <typename Device, typename T>
 class LaunchDeepConvOp {
@@ -736,7 +736,7 @@ extern template struct Conv2DOp<CPUDevice, Eigen::bfloat16>;
 extern template struct Conv2DOp<CPUDevice, Eigen::half>;
 extern template struct Conv2DOp<CPUDevice, float>;
 extern template struct Conv2DOp<CPUDevice, double>;
-extern template struct Conv2DOp<CPUDevice, int32>;
+extern template struct Conv2DOp<CPUDevice, int32_t>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>

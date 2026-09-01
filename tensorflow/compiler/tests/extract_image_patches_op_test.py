@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -139,6 +140,24 @@ class ExtractImagePatches(xla_test.XLATestCase):
         rates=[1, 1],
         padding="VALID",
         patches=patches)
+
+  def testInvalidKernelSize(self):
+    """Test that zero kernel size raises an error in XLA mode."""
+    with self.session():
+      image_placeholder = array_ops.placeholder(dtypes.float32)
+      with self.test_scope():
+        out_tensor = array_ops.extract_image_patches(
+            image_placeholder,
+            ksizes=[1, 0, 2, 1],
+            strides=[1, 1, 1, 1],
+            rates=[1, 1, 1, 1],
+            padding="VALID",
+        )
+      feed_dict = {image_placeholder: np.zeros([1, 4, 4, 1])}
+      with self.assertRaisesRegex(
+          errors_impl.OutOfRangeError, "Kernel size values must be positive"
+      ):
+        out_tensor.eval(feed_dict=feed_dict)
 
 
 if __name__ == "__main__":

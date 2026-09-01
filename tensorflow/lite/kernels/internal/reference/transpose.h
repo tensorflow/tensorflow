@@ -176,6 +176,9 @@ template <typename T, int N = kTransposeMaxDimensions>
 void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
                const T* input_data, const RuntimeShape& output_shape,
                T* output_data) {
+  if (input_shape.FlatSize() == 0) {
+    return;
+  }
   using transpose_internal::SetupTransposeStrides;
   using transpose_internal::TransposeImpl;
   using transpose_internal::TransposeStorageType;

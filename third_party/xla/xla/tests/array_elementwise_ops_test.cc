@@ -93,7 +93,7 @@ std::pair<std::vector<T>, std::vector<T>> AllSignedPairs(
 template <typename T>
 void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   values.reserve(values.size() * 2);
-  if (!has_zero_v<T>) {
+  if (!has_positive_or_negative_zero_v<T>) {
     values.erase(values.begin());
   }
   for (size_t i = 0, n = values.size(); i < n; ++i) {
@@ -104,9 +104,8 @@ void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   }
 }
 
-class ArrayElementwiseOpTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class ArrayElementwiseOpTest : public ClientLibraryTestRunnerMixin<
+                                   HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
@@ -215,18 +214,66 @@ TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
-TEST_F(ArrayElementwiseOpTest, IntPow) {
+TEST_F(ArrayElementwiseOpTest, IntPowConst) {
   XlaBuilder builder(TestName());
-  XlaOp lhs =
-      ConstantR1<int32_t>(&builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1});
-  XlaOp rhs =
-      ConstantR1<int32_t>(&builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2});
+  XlaOp lhs = ConstantR1<int32_t>(
+      &builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  XlaOp rhs = ConstantR1<int32_t>(
+      &builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
   Pow(lhs, rhs);
 
-  std::vector<int32_t> expected = {1, 1,  8, 27,      64, 125,
-                                   1, -8, 9, 9765625, 0,  1};
+  std::vector<int32_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
 
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
+}
+
+TEST_F(ArrayElementwiseOpTest, Int64PowConst) {
+  XlaBuilder builder(TestName());
+  XlaOp lhs = ConstantR1<int64_t>(
+      &builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  XlaOp rhs = ConstantR1<int64_t>(
+      &builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int64_t>(&builder, expected, {});
+}
+
+TEST_F(ArrayElementwiseOpTest, IntPow) {
+  XlaBuilder b(this->TestName());
+
+  const Literal lhs_literal = LiteralUtil::CreateR1<int32_t>(
+      {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  auto lhs = Parameter(&b, 0, lhs_literal.shape(), "lhs");
+  Literal rhs_literal = LiteralUtil::CreateR1<int32_t>(
+      {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  auto rhs = Parameter(&b, 1, rhs_literal.shape(), "rhs");
+  Pow(lhs, rhs);
+
+  std::vector<int32_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int32_t>(&b, expected, {&lhs_literal, &rhs_literal});
+}
+
+TEST_F(ArrayElementwiseOpTest, Int64Pow) {
+  XlaBuilder b(this->TestName());
+
+  const Literal lhs_literal = LiteralUtil::CreateR1<int64_t>(
+      {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  auto lhs = Parameter(&b, 0, lhs_literal.shape(), "lhs");
+  Literal rhs_literal = LiteralUtil::CreateR1<int64_t>(
+      {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  auto rhs = Parameter(&b, 1, rhs_literal.shape(), "rhs");
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int64_t>(&b, expected, {&lhs_literal, &rhs_literal});
 }
 
 TEST_F(ArrayElementwiseOpTest, IntPowLarge) {
@@ -1342,7 +1389,7 @@ TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
 
 template <typename T>
 class TotalOrderTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   void DoIt(ComparisonDirection direction) {
     this->SetFastMathDisabled(true);
@@ -1415,13 +1462,6 @@ class TotalOrderTest : public ClientLibraryTestRunnerMixin<
 
  protected:
   void SetUp() override {
-    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
-         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
-        test::DeviceTypeIs(test::kTpu)) {
-      // TODO(b/385004399): Run tests on these types on TPU.
-      GTEST_SKIP();
-    }
-
     if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
       GTEST_SKIP();
     }
@@ -2807,6 +2847,26 @@ TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   Atan2(y, x);
 
   ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+// Regression test for https://github.com/openxla/xla/issues/44705. The two
+// compares are distinct instructions (as emitted by the frontend in the
+// issue, before CSE), their xor is always false, and the converted zeros
+// only become constants during compilation; atan2(0, 0) must still be 0,
+// not NaN.
+TEST_F(ArrayElementwiseOpTest, Atan2ZerosFromXorSelf) {
+  XlaBuilder builder(TestName());
+  XlaOp a;
+  auto a_data =
+      CreateR1Parameter<int32_t>({0, 1, 2, 3, 4}, 0, "a", &builder, &a);
+  auto zero = Broadcast(ConstantR0<int32_t>(&builder, 0), {5});
+  auto ne1 = Ne(a, zero);
+  auto ne2 = Ne(a, zero);
+  auto zeros = ConvertElementType(Xor(ne1, ne2), F32);
+  Atan2(zeros, zeros);
+
+  ComputeAndCompareR1<float>(&builder, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+                             {&a_data}, error_spec_);
 }
 
 TEST_F(ArrayElementwiseOpTest, ErfF32s) {

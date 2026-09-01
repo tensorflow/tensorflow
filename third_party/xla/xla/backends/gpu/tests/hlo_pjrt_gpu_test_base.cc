@@ -47,7 +47,7 @@ std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
   return *std::move(client);
 }
 
-HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
+HloRunnerAgnosticTestBaseOptions BuildOptions(HloTestBaseOptions options) {
   HloRunnerAgnosticTestBaseOptions new_options;
   new_options.verifier_layout_sensitive = options.verifier_layout_sensitive;
   new_options.allow_mixed_precision_in_hlo_verifier =
@@ -72,12 +72,12 @@ std::unique_ptr<Compiler> GetGpuCompiler() {
 }
 }  // namespace
 
-HloPjRtGpuTestBase::HloPjRtGpuTestBase(HloPjRtTestBaseOptions options)
+HloPjRtGpuTestBase::HloPjRtGpuTestBase(HloTestBaseOptions options)
     : HloPjRtGpuTestBase(GetPjRtClientForTest().release(), std::move(options)) {
 }
 
 HloPjRtGpuTestBase::HloPjRtGpuTestBase(PjRtClient* client,
-                                       HloPjRtTestBaseOptions options)
+                                       HloTestBaseOptions options)
     : HloPjRtGpuTestBase(
           GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
               client),
@@ -88,8 +88,8 @@ HloPjRtGpuTestBase::HloPjRtGpuTestBase(PjRtClient* client,
 HloPjRtGpuTestBase::HloPjRtGpuTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,
     DeviceShapeSizeFn device_shape_size_fn, GpuTargetConfig gpu_target_config,
-    std::unique_ptr<PjRtClient> client, HloPjRtTestBaseOptions options)
-    : HloRunnerAgnosticTestBase(MakeHloRunnerPjRtAotAware(std::move(client)),
+    std::unique_ptr<PjRtClient> client, HloTestBaseOptions options)
+    : HloRunnerAgnosticTestBase(MakeAotAwareHloRunner(std::move(client)),
                                 std::move(device_shape_representation_fn),
                                 std::move(device_shape_size_fn),
                                 BuildOptions(std::move(options))),

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support_test_base.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -56,6 +56,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::xla::xtile::BlockLevelParameters;
 
 se::GpuComputeCapability GetComputeCapability() {
   return se::CudaComputeCapability::Ampere();
@@ -79,7 +81,7 @@ bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
 class DotTest : public SupportTestBase,
                 public ::testing::WithParamInterface<
                     std::tuple<PrimitiveType, HloOpcode>>,
-                public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+                public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DotTest()
       : SupportTestBase(
@@ -156,7 +158,7 @@ ENTRY e {
       EXPECT_THAT(
           TritonWrapper("test_fn", ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, target_triple_,
-                        data_layout_, llvm_ctx_, mlir_context_),
+                        data_layout_, mlir_context_),
           absl_testing::StatusIs(
               absl::StatusCode::kInternal,
               ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -221,7 +223,7 @@ std::string DynamicSliceTestParamToString(
 class DynamicSliceTest
     : public SupportTestBase,
       public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType>,
-      public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+      public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   DynamicSliceTest()
       : SupportTestBase(
@@ -292,11 +294,11 @@ ENTRY e {
   const bool is_supported_instruction =
       legacy_triton::IsTritonSupportedInstruction(*dynamic_slice,
                                                   GetComputeCapability())
-          .CanFuse();
+          .IsAllowed();
   const bool is_supported_dynamic_slice =
       legacy_triton::IsTritonSupportedDynamicSlice(
           *Cast<HloDynamicSliceInstruction>(dynamic_slice))
-          .CanFuse();
+          .IsAllowed();
   EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
 
   if (is_supported_instruction) {
@@ -456,10 +458,9 @@ ENTRY e {
               .backend_config<GpuBackendConfig>()
               ->fusion_backend_config()
               .block_level_fusion_config());
-  TF_EXPECT_OK(TritonWrapper("test_fn", ti.TritonFusion(),
-                             GetComputeCapability(), dev_info,
-                             block_level_parameters, target_triple_,
-                             data_layout_, llvm_ctx_, mlir_context_));
+  TF_EXPECT_OK(TritonWrapper(
+      "test_fn", ti.TritonFusion(), GetComputeCapability(), dev_info,
+      block_level_parameters, target_triple_, data_layout_, mlir_context_));
 }
 
 TEST_F(SupportLegacyTest,

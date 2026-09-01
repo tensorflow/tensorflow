@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -20,14 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -52,22 +56,27 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
+#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/random.h"
 
 namespace xla {
@@ -86,6 +95,8 @@ class IfrtCompileAtomProgramPass
           compile_options_overrides,
       std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map)
       : atom_program_compiler_(std::move(compiler)),
+        hlo_program_context_(std::make_shared<mlir::MLIRContext>(
+            mlir::MLIRContext::Threading::DISABLED)),
         compile_options_overrides_(std::move(compile_options_overrides)),
         atom_executable_future_map_(std::move(atom_executable_future_map)),
         user_context_(UserContextScope::current()) {}
@@ -122,8 +133,12 @@ class IfrtCompileAtomProgramPass
       CallOp call_op, mlir::ModuleOp module_op);
 
   // Gets the XLA compile options for the given atom program module.
-  absl::StatusOr<xla::CompileOptions> GetXlaCompileOptions(
+  absl::StatusOr<XlaCompileOptions*> GetXlaCompileOptions(
       CallOp call_op, mlir::ModuleOp module_op);
+
+  // Get the xla::CompileOptions for the given atom program module.
+  xla::CompileOptions GetCompileOptions(CallOp call_op,
+                                        XlaCompileOptions* xla_compile_options);
 
   // Compiles an atom XLA program.
   // Returns a future of a AtomProgramCompileResult for the compiled module.
@@ -139,6 +154,8 @@ class IfrtCompileAtomProgramPass
 
   std::shared_ptr<AtomProgramCompiler> atom_program_compiler_;
 
+  std::shared_ptr<mlir::MLIRContext> hlo_program_context_;
+
   std::shared_ptr<
       absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
       compile_options_overrides_;
@@ -150,51 +167,111 @@ class IfrtCompileAtomProgramPass
   UserContextRef user_context_;
 };
 
-absl::StatusOr<xla::CompileOptions>
+absl::StatusOr<XlaCompileOptions*>
 IfrtCompileAtomProgramPass::GetXlaCompileOptions(CallOp call_op,
                                                  mlir::ModuleOp module_op) {
   // If the CallOp has a compile options key, then try to use the provided
   // compile options.
   if (auto compile_options_key =
           call_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey)) {
-    TF_ASSIGN_OR_RETURN(
-        std::optional<xla::CompileOptions> compile_options_override,
-        GetModuleXlaCompileOverrides(compile_options_key,
-                                     compile_options_overrides_));
+    ABSL_ASSIGN_OR_RETURN(XlaCompileOptions * compile_options_override,
+                     GetModuleXlaCompileOverrides(compile_options_key,
+                                                  compile_options_overrides_));
 
-    if (compile_options_override.has_value()) {
-      return *compile_options_override;
+    if (compile_options_override != nullptr) {
+      return compile_options_override;
     }
   }
 
+  return nullptr;
+}
+
+xla::CompileOptions IfrtCompileAtomProgramPass::GetCompileOptions(
+    CallOp call_op, XlaCompileOptions* xla_compile_options) {
+  if (xla_compile_options != nullptr) {
+    return xla_compile_options->compile_options;
+  }
   return GetDefaultCompileOptions(call_op,
                                   /*enable_sharding_propagation=*/false,
                                   /*enable_parameter_tupling=*/false);
 }
 
+absl::flat_hash_set<int64_t> GetUsedChannelIds(mlir::ModuleOp module_op) {
+  absl::flat_hash_set<int64_t> channel_ids;
+  module_op.walk([&](mlir::Operation* op) {
+    llvm::TypeSwitch<mlir::Operation*>(op)
+        .Case<mlir::stablehlo::SendOp, mlir::stablehlo::RecvOp>([&](auto op) {
+          channel_ids.insert(op.getChannelHandle().getHandle());
+        });
+  });
+  return channel_ids;
+}
+
+std::vector<tsl::RCReference<LoadedHostCallback>> GetAtomProgramCallbacks(
+    mlir::ModuleOp module_op, XlaCompileOptions* xla_compile_options) {
+  std::vector<tsl::RCReference<LoadedHostCallback>> filtered_callbacks;
+  if (xla_compile_options &&
+      !xla_compile_options->loaded_host_callbacks.empty()) {
+    absl::flat_hash_set<int64_t> used_channels = GetUsedChannelIds(module_op);
+    for (const auto& loaded_host_callback :
+         xla_compile_options->loaded_host_callbacks) {
+      if (auto* pjrt_callback =
+              xla::ifrt::dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(
+                  loaded_host_callback.get())) {
+        const xla::HostCallback& xla_callback = pjrt_callback->host_callback();
+        bool used = false;
+        for (const auto& operand : xla_callback.operands) {
+          if (used_channels.contains(operand.channel_id)) {
+            used = true;
+            break;
+          }
+        }
+        if (!used) {
+          for (const auto& result : xla_callback.results) {
+            if (used_channels.contains(result.channel_id)) {
+              used = true;
+              break;
+            }
+          }
+        }
+        if (used) {
+          filtered_callbacks.push_back(loaded_host_callback);
+        }
+      }
+    }
+  }
+  return filtered_callbacks;
+}
+
 absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
     CallOp call_op, mlir::ModuleOp module_op) {
-  TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
-                      GetXlaCompileOptions(call_op, module_op));
+  ABSL_ASSIGN_OR_RETURN(XlaCompileOptions * xla_compile_options,
+                   GetXlaCompileOptions(call_op, module_op));
+
+  std::vector<tsl::RCReference<LoadedHostCallback>> filtered_callbacks =
+      GetAtomProgramCallbacks(module_op, xla_compile_options);
+
+  xla::CompileOptions compile_options =
+      GetCompileOptions(call_op, xla_compile_options);
   // In order to be able to compile multiple XLA computations in parallel, we
   // need to:
-  // 1. Create a new MLIR context with threading disabled to ensure MLIR doesn't
-  // create too many threads when compiling many XLA computations in parallel.
+  // 1. Use an MLIR context with threading disabled to ensure MLIR doesn't
+  //    create too many threads when compiling many XLA computations in
+  //    parallel.
   // 2. Clone the module into this new context. This cloning is necessary
-  // because MLIR printing takes different paths depending on if a ModuleOp has
-  // a parent or not. Thus, by cloning the module we ensure that the module's
-  // string representation is maintained.
-  auto context = std::make_unique<mlir::MLIRContext>(
-      mlir::MLIRContext::Threading::DISABLED);
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
-                      CloneModuleIntoContext(module_op, *context));
-  auto hlo_program = std::make_unique<HloProgram>(std::move(context),
+  //    because MLIR printing takes different paths depending on if a ModuleOp
+  //    has a parent or not. Thus, by cloning the module we ensure that the
+  //    module's string representation is maintained.
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+                   CloneModuleIntoContext(module_op, *hlo_program_context_));
+  auto hlo_program = std::make_unique<HloProgram>(hlo_program_context_,
                                                   std::move(cloned_module));
   AtomProgramCompileResult result;
   result.name =
       absl::StrCat(hlo_program->name(), ".", tsl::random::ThreadLocalNew64());
   result.executable = atom_program_compiler_->CompileXla(
-      std::move(hlo_program), std::move(compile_options));
+      std::move(hlo_program), std::move(compile_options),
+      std::move(filtered_callbacks));
   return result;
 }
 
@@ -216,8 +293,8 @@ IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
   out_arrays_types.reserve(main_func.getResultTypes().size());
   for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
     IfrtArrayType array_type = GetArrayType(arg_type);
-    TF_ASSIGN_OR_RETURN(DType dtype,
-                        ToIfrtDType(array_type.getShape().getElementType()));
+    ABSL_ASSIGN_OR_RETURN(DType dtype,
+                     ToIfrtDType(array_type.getShape().getElementType()));
     dtypes.push_back(std::move(dtype));
     shapes.push_back(Shape(array_type.getShape().getShape()));
     in_arrays_types.push_back(array_type);

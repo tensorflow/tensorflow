@@ -93,6 +93,10 @@ class PluggableDeviceProcessState {
                               const std::string& platform_name);
   virtual ~PluggableDeviceProcessState() = default;
 
+  // Helper method for unit tests to reset the ProcessState singleton by
+  // cleaning up everything. Never use in production.
+  virtual void TestOnlyReset();
+
   ProcessState::MDMap* mem_desc_map() {
     if (process_state_) return &process_state_->mem_desc_map_;
     return nullptr;

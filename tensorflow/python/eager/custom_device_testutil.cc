@@ -17,24 +17,14 @@ limitations under the License.
 
 #include "Python.h"
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/safe_ptr.h"
-#include "tensorflow/c/tf_status.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/python/util/util.h"
 
 namespace py = pybind11;
-
-void CallDelete_Flag(PyObject* capsule) {
-  delete reinterpret_cast<bool*>(PyCapsule_GetPointer(capsule, "flag"));
-}
 
 void CallDelete_Device(PyObject* capsule) {
   delete reinterpret_cast<TFE_CustomDevice*>(
@@ -44,6 +34,8 @@ void CallDelete_Device(PyObject* capsule) {
 void CallDelete_DeviceInfo(PyObject* capsule) {
   PyErr_SetString(PyExc_AssertionError,
                   "Capsule should be consumed by TFE_Py_RegisterCustomDevice");
+  DeleteLoggingDevice(
+      PyCapsule_GetPointer(capsule, "TFE_CustomDevice_DeviceInfo"));
 }
 
 PYBIND11_MODULE(custom_device_testutil, m) {
@@ -53,9 +45,9 @@ PYBIND11_MODULE(custom_device_testutil, m) {
     *arrived_flag = false;
     *executed_flag = false;
     tensorflow::Safe_PyObjectPtr arrived_capsule(
-        PyCapsule_New(arrived_flag, "flag", &CallDelete_Flag));
+        PyCapsule_New(arrived_flag, "flag", nullptr));
     tensorflow::Safe_PyObjectPtr executed_capsule(
-        PyCapsule_New(executed_flag, "flag", &CallDelete_Flag));
+        PyCapsule_New(executed_flag, "flag", nullptr));
     TFE_CustomDevice* device;
     void* device_info;
     AllocateLoggingDevice(name, arrived_flag, executed_flag, &device,

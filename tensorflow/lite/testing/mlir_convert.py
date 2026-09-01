@@ -14,6 +14,8 @@
 # ==============================================================================
 """Converts a model's graph def into a tflite model with MLIR-based conversion."""
 import os
+import shlex
+import subprocess
 import tempfile
 
 import numpy as np
@@ -76,6 +78,11 @@ def mlir_convert(
 
   if options.experimental_low_bit_qat:
     converter._experimental_low_bit_qat = (   # pylint: disable=protected-access
+        True
+    )
+
+  if options.experimental_unsafe_single_batch_rank_reduction:
+    converter._experimental_unsafe_single_batch_rank_reduction = (  # pylint: disable=protected-access
         True
     )
 
@@ -159,10 +166,14 @@ def mlir_convert_file(graph_def_filename,
     or None, log_txt if it did not convert properly.
   """
   bin_path = resource_loader.get_path_to_datafile(
-      "../../../../compiler/mlir/lite/tf_tfl_translate")
+      "../../compiler/mlir/lite/tf_tfl_translate"
+  )
+  if not os.path.exists(bin_path):
+    bin_path = resource_loader.get_path_to_datafile(
+        "../../../../compiler/mlir/lite/tf_tfl_translate"
+    )
 
-  with tempfile.NamedTemporaryFile() as output_file, \
-       tempfile.NamedTemporaryFile("w+") as stdout_file:
+  with tempfile.NamedTemporaryFile() as output_file:
     input_shapes = []
     for input_tensor in input_tensors:
       shape = input_tensor[1]
@@ -171,28 +182,53 @@ def mlir_convert_file(graph_def_filename,
 
     input_types = ",".join([x[2] for x in input_tensors])
 
-    quant_flags = ""
+    cmd_list = [
+        bin_path,
+        "-tf-input-arrays=" + ",".join([x[0] for x in input_tensors]),
+        "-tf-input-data-types=" + input_types,
+        "-tf-input-shapes=" + input_shapes_str,
+        "-tf-output-arrays=" + ",".join(output_tensors),
+    ]
     if quantization_params is not None:
       min_vals = ",".join([str(val) for val in quantization_params[1]])
       max_vals = ",".join([str(val) for val in quantization_params[2]])
-      quant_flags = ("-tf-inference-type=" + quantization_params[0] +
-                     " -tf-input-min-values='" + min_vals +
-                     "' -tf-input-max-values='" + max_vals + "' " +
-                     "-emit-quant-adaptor-ops ")
-    cmd = ("%s -tf-input-arrays=%s -tf-input-data-types=%s -tf-input-shapes=%s "
-           "-tf-output-arrays=%s " + quant_flags + additional_flags +
-           "%s -o %s")
-    cmd = cmd % (
-        bin_path,
-        ",".join([x[0] for x in input_tensors]),
-        input_types,
-        input_shapes_str,
-        ",".join(output_tensors),
-        graph_def_filename,
-        output_file.name,
-    )
-    exit_code = os.system(cmd)
+      cmd_list.extend([
+          "-tf-inference-type=" + quantization_params[0],
+          "-tf-input-min-values=" + min_vals,
+          "-tf-input-max-values=" + max_vals,
+          "-emit-quant-adaptor-ops",
+      ])
+
+    if additional_flags:
+      cmd_list.extend(shlex.split(additional_flags))
+
+    cmd_list.extend([graph_def_filename, "-o", output_file.name])
+
+    try:
+      with tempfile.NamedTemporaryFile() as stdout_file:
+        with tempfile.NamedTemporaryFile() as stderr_file:
+          result = subprocess.run(
+              cmd_list, stdout=stdout_file, stderr=stderr_file, check=False
+          )
+          exit_code = result.returncode
+          stdout_file.seek(0)
+          stderr_file.seek(0)
+          stdout = stdout_file.read().decode("utf-8", errors="replace")
+          stderr = stderr_file.read().decode("utf-8", errors="replace")
+    except FileNotFoundError:
+      exit_code = 127
+      stdout = ""
+      stderr = "Command not found: " + bin_path
+    except PermissionError:
+      exit_code = 126
+      stdout = ""
+      stderr = "Permission denied: " + bin_path
+
     log = (
-        cmd + "exited with code %d" % exit_code + "\n------------------\n" +
-        stdout_file.read())
+        " ".join(cmd_list)
+        + " exited with code %d" % exit_code
+        + "\n------------------\n"
+        + stdout
+        + stderr
+    )
     return (None if exit_code != 0 else output_file.read()), log

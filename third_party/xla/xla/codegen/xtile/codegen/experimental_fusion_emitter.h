@@ -28,8 +28,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -49,7 +47,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
     mlir::MLIRContext& mlir_context,
     absl::Span<mlir::Type> opaque_args_types = {},
-    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {});
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {},
+    int num_tiles_per_pid = 1);
 
 }  // namespace xla::xtile
 

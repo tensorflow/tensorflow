@@ -33,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class TriangularExpanderTest : public HloPjRtTestBase,
+class TriangularExpanderTest : public HloTestBase,
                                public ::testing::WithParamInterface<int32_t> {};
 
 TEST_P(TriangularExpanderTest, TestBlockSize) {

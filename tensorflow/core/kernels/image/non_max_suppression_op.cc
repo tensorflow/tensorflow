@@ -15,6 +15,14 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
+#include <algorithm>
+#include <deque>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/image/non_max_suppression_op.h"
@@ -34,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace {
@@ -479,9 +488,16 @@ void BatchedNonMaxSuppressionOp(
   int boxes_per_batch = num_boxes * q * 4;
   int scores_per_batch = num_boxes * num_classes;
   const int size_per_class = std::min(max_size_per_class, num_boxes);
+  const int64_t result_candidate_vec_size = MultiplyWithoutOverflow(
+      static_cast<int64_t>(size_per_class), static_cast<int64_t>(num_classes));
+  OP_REQUIRES(context,
+              result_candidate_vec_size >= 0 &&
+                  result_candidate_vec_size <= std::numeric_limits<int>::max(),
+              absl::InvalidArgumentError(
+                  "size_per_class * num_classes causes overflow"));
   std::vector<std::vector<ResultCandidate>> result_candidate_vec(
       num_batches,
-      std::vector<ResultCandidate>(size_per_class * num_classes,
+      std::vector<ResultCandidate>(result_candidate_vec_size,
                                    {-1, -1.0, -1, {0.0, 0.0, 0.0, 0.0}}));
 
   // [num_batches, per_batch_size * 4]

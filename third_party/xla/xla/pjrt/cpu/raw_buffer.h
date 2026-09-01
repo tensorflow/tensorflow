@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -52,7 +52,9 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
       tsl::RCReference<tsl::IndirectAsyncValue> av)
       : av_(av) {}
 
-  tsl::AsyncValue* async_value() const override { return av_.get(); }
+  PjRtDeviceEventPtr event() const override {
+    return PjRtDeviceEventPtr(tsl::AsyncValuePtr<CpuEvent>(av_.get()));
+  }
 
   void Set(PjRtDeviceEventRef event) override;
 
@@ -69,27 +71,7 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
 tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
     absl::Span<const PjRtDeviceEventRef> events);
 
-class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
- public:
-  explicit CpuTrackedDeviceEventSet(size_t reservation) {
-    events_.reserve(reservation);
-  }
-
-  void AddEvent(tsl::RCReference<tsl::AsyncValue> event) {
-    events_.push_back(std::move(event));
-  }
-
-  absl::Span<const tsl::RCReference<tsl::AsyncValue>> events() const {
-    return events_;
-  }
-
-  std::vector<tsl::RCReference<tsl::AsyncValue>> Consume() && {
-    return std::move(events_);
-  }
-
- private:
-  std::vector<tsl::RCReference<tsl::AsyncValue>> events_;
-};
+PjRtDeviceEventRef ToCpuEvent(tsl::Future<void> future);
 
 class CpuRawBuffer : public CommonPjRtRawBufferImpl {
  public:
@@ -133,42 +115,26 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
 
   bool is_mutable() const final { return is_mutable_; }
 
+  absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
+
   absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
-      const void* src, int64_t offset, int64_t transfer_size) override;
+      const void* src, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
-      void* dst, int64_t offset, int64_t transfer_size) override;
-
-  absl::StatusOr<PjRtDeviceEventRef> CopyFromLiteral(
-      const LiteralSlice& literal, const xla::Layout& layout,
-      AsyncWorkRunner* async_work_runner);
+      void* dst, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) override;
 
   absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
 
-  absl::StatusOr<PjRtDeviceEventRef> CopyFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      PjRtClient::HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const Shape& shape, AsyncWorkRunner* async_work_runner,
-      tsl::thread::ThreadPool* thread_pool, int max_transpose_threads);
+  void CopyTo(
+      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
 
-  void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
-                        xla::Shape shape) override;
-
-  void CopyToLiteralAsync(
-      Promise<> promise,
-      tsl::RCReference<PjRtDeviceEventPromise> device_promise,
-      MutableLiteralBase* literal, xla::Shape shape) override;
-
-  void CopyTo(tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
-              tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-              tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
-              ::tsl::AsyncValueRef<bool> allocation_event) override;
-
-  absl::StatusOr<tsl::RCReference<tsl::AsyncValue>> GetRawBufferAsyncValue()
-      override {
-    return buffer_.CopyRCRef();
+  PjRtDeviceEventPtr GetRawBufferAsyncValue() override {
+    return PjRtDeviceEventPtr::FromAsyncValue(buffer_.GetAsyncValue());
   }
 
  private:
@@ -177,9 +143,6 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
   size_t buffer_size_;
   bool is_mutable_;
 };
-
-absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,
-                                                     const xla::Layout* layout);
 
 }  // namespace xla
 

@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
@@ -181,7 +182,10 @@ module @multiple_calls_of_same_module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
   TF_ASSERT_OK_AND_ASSIGN(serialized,
                           Serialize(*initial_program, std::move(options)));
@@ -226,7 +230,10 @@ module @multiple_calls_of_same_module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
   TF_ASSERT_OK_AND_ASSIGN(serialized,
                           Serialize(*initial_program, std::move(options)));
@@ -270,7 +277,10 @@ module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString());
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString());
   EXPECT_THAT(
       Serialize(*initial_program, std::move(options)),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,

@@ -1,5 +1,21 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -30,6 +46,8 @@ cc_library(
     srcs = ["tf_tfl_flatbuffer_helpers.cc"],
     hdrs = ["tf_tfl_flatbuffer_helpers.h"],
     deps = [
+        ":slim_model_importer",
+        ":stablehlo_tfl_pipeline",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
@@ -47,8 +65,56 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_tfl_pipeline",
+    srcs = ["stablehlo_tfl_pipeline.cc"],
+    hdrs = ["stablehlo_tfl_pipeline.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:common",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_export",
+        "//tensorflow/compiler/mlir/lite:optimize_broadcast_like_pass_options",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/core:macros",
+        "//tensorflow/compiler/mlir/lite/debug",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/stablehlo:drop_shape_assertions",
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_vhlo_quant_custom_calls",
+        "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
+        "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",
+        "//tensorflow/compiler/mlir/lite/stablehlo:unfold_splat_constant_pass",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:vhlo_ops",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:stablehlo_extension_passes",
     ],
 )
 
@@ -106,6 +172,44 @@ cc_library(
 )
 
 cc_library(
+    name = "slim_model_importer",
+    srcs = ["slim_model_importer.cc"],
+    hdrs = ["slim_model_importer.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/stablehlo:drop_shape_assertions",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
+    ],
+)
+
+tf_cc_test(
+    name = "slim_model_importer_test",
+    srcs = ["slim_model_importer_test.cc"],
+    deps = [
+        ":slim_model_importer",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+        "@xla//xla/tsl/platform:env",
+    ],
+)
+
+cc_library(
     name = "jax_to_tfl_flatbuffer",
     srcs = ["jax_to_tfl_flatbuffer.cc"],
     hdrs = [
@@ -124,7 +228,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/utility",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -204,6 +307,8 @@ cc_library(
         ":graphdef_to_tfl_flatbuffer",
         ":jax_to_tfl_flatbuffer",
         ":saved_model_to_tfl_flatbuffer",
+        ":slim_model_importer",
+        ":tf_tfl_flatbuffer_helpers",
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
@@ -225,6 +330,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
         "@com_google_protobuf//:protobuf_headers",
         "@flatbuffers//:runtime_cc",
@@ -253,9 +359,10 @@ tf_python_pybind_extension(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":converter_python_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
-    ] + if_pywrap([":converter_python_api"]),
+    ],
 )

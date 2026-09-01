@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/transforms/toposort/pass.h"
 #include "tensorflow/core/util/device_name_utils.h"
 

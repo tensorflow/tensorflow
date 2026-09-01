@@ -42,9 +42,10 @@ const int kFirstIsolatedUid = 99000;
 const int kLastIsolatedUid = 99999;
 const int kFirstAppZygoteIsolatedUid = 90000;
 const int kLastAppZygoteIsolatedUid = 98999;
+const int kPerUserRange = 100000;
 
 bool IsIsolatedProcess() {
-  int uid = getuid();
+  int uid = getuid() % kPerUserRange;
   return (uid >= kFirstIsolatedUid && uid <= kLastIsolatedUid) ||
          (uid >= kFirstAppZygoteIsolatedUid &&
           uid <= kLastAppZygoteIsolatedUid);
@@ -91,7 +92,7 @@ int ASharedMemory_create(const char* name, size_t size) {
 
   // Make sure new shared memory region is created: shm_open return an error if
   // shm object with given name already exists (O_CREAT | O_EXCL)
-  int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0644);
+  int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
   if (fd < 0) {
     return fd;
   }

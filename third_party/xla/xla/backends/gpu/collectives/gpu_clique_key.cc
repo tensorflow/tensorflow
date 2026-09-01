@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -65,7 +66,7 @@ GpuCliqueKey::GpuCliqueKey(std::vector<GlobalDeviceId> devices,
       incarnations_(std::move(incarnations)) {}
 
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
-  auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
+  auto* other_gpu = absl::down_cast<const GpuCliqueKey*>(&other);
   if (other_gpu == nullptr) {
     return false;
   }

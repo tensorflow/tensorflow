@@ -94,7 +94,11 @@ class DatasetRandomAccessCache {
                           GetIteratorResourceFromDataset(ctx, input_));
       TF_RETURN_IF_ERROR(iter_resource_->SetIteratorFromDataset(ctx, input_));
     }
-    if (index >= cache_.size()) {
+    if (index < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected index >= 0; Received index: ", index));
+    }
+    if (index >= static_cast<int64_t>(cache_.size())) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
     }
     *out_tensors = cache_.at(index);
@@ -107,13 +111,13 @@ class DatasetRandomAccessCache {
  private:
   absl::Status ExtendTempCacheToIndex(int64_t index, OpKernelContext* ctx) {
     bool end_of_sequence;
-    while (cache_.size() <= index) {
+    while (static_cast<int64_t>(cache_.size()) <= index) {
       std::vector<Tensor> out_tensors;
       TF_RETURN_IF_ERROR(
           iter_resource_->GetNext(ctx, &out_tensors, &end_of_sequence));
       if (end_of_sequence) {
-        return tensorflow::errors::OutOfRange("Index out of range [0, ",
-                                              cache_.size(), "):", index);
+        return absl::OutOfRangeError(absl::StrCat("Index out of range [0, ",
+                                                  cache_.size(), "):", index));
       }
       cache_.push_back(out_tensors);
     }
@@ -147,15 +151,22 @@ class IteratorRandomAccessCache {
   explicit IteratorRandomAccessCache(const DatasetBase* input)
       : input_(input) {}
 
-  absl::Status Get(AnyContext ctx, size_t element_position,
+  absl::Status Get(AnyContext ctx, int64_t element_position,
                    std::vector<Tensor>* out_tensors) {
-    if (element_position < cache_.size() && !cache_[element_position].empty()) {
+    if (element_position < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Element position must be non-negative; Received: ",
+                       element_position));
+    }
+
+    if (element_position < static_cast<int64_t>(cache_.size()) &&
+        !cache_[element_position].empty()) {
       *out_tensors = cache_[element_position];
       return absl::OkStatus();
     }
 
     TF_RETURN_IF_ERROR(input_->Get(ctx, element_position, out_tensors));
-    if (element_position >= cache_.size()) {
+    if (element_position >= static_cast<int64_t>(cache_.size())) {
       cache_.resize(element_position + 1);
     }
     cache_[element_position] = *out_tensors;
@@ -367,9 +378,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           if (!s.ok()) {
             LOG(ERROR) << s;
           }
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Upstream iterator is producing more than ", kMaxItems,
-              " items, which is more than the cache limit.");
+              " items, which is more than the cache limit."));
         }
 
         TF_RETURN_IF_ERROR(
@@ -380,10 +391,10 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           return absl::OkStatus();
         }
         if (out_tensors->size() != dataset()->num_tensors_) {
-          return errors::Internal(
+          return absl::InternalError(absl::StrCat(
               "Upstream iterator returned invalid number of tensors. "
               "Expected ",
-              dataset()->num_tensors_, " got: ", out_tensors->size());
+              dataset()->num_tensors_, " got: ", out_tensors->size()));
         }
         size_t tensor_index = 0;
         for (const Tensor& t : *out_tensors) {
@@ -451,7 +462,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
-            return errors::Internal("Invalid value for cur_index ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for cur_index ", temp));
           }
         }
 
@@ -468,7 +480,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kShardId, &temp));
           shard_id_ = static_cast<size_t>(temp);
           if (shard_id_ != temp) {
-            return errors::Internal("Invalid value for shard_id ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for shard_id ", temp));
           }
         }
         filename_ = absl::StrCat(dataset()->filename_, "_", shard_id_);
@@ -655,11 +668,12 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
               iterator_state_reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
-            return errors::Internal("Invalid value for cur_index ", temp);
+            return absl::InternalError(
+                absl::StrCat("Invalid value for cur_index ", temp));
           }
         }
         if (!reader_.Valid()) {
-          return errors::Internal("Error initializing BundleReader.");
+          return absl::InternalError("Error initializing BundleReader.");
         }
         reader_.Seek(dataset()->FormatName(cur_index_, 0));
         iterator_restored_ = true;
@@ -804,10 +818,11 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
     int64_t cardinality = Cardinality(options);
 
-    if (cardinality != kUnknownCardinality &&
-        cardinality != kInfiniteCardinality && index >= cardinality) {
-      return errors::OutOfRange("Index out of range [0, ", cardinality,
-                                "):", index);
+    if (index < 0 ||
+        (cardinality != kUnknownCardinality &&
+         cardinality != kInfiniteCardinality && index >= cardinality)) {
+      return absl::OutOfRangeError(
+          absl::StrCat("Index out of range [0, ", cardinality, "):", index));
     }
     if (!dataset_random_access_cache_) {
       dataset_random_access_cache_ =
@@ -818,6 +833,16 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
   absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
+    CardinalityOptions options;
+    options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
+    int64_t cardinality = Cardinality(options);
+
+    if (index < 0 ||
+        (cardinality != kUnknownCardinality &&
+         cardinality != kInfiniteCardinality && index >= cardinality)) {
+      return absl::OutOfRangeError(
+          absl::StrCat("Index out of range [0, ", cardinality, "):", index));
+    }
     mutex_lock l(mu_);
     if (!iterator_random_access_cache_) {
       iterator_random_access_cache_ =
@@ -1189,7 +1214,8 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     if (op_version_ == 2) {
       bool owns_resource = false;
       MemoryCacheManager* manager = nullptr;
-      auto handle = HandleFromInput(ctx, 2);
+      ResourceHandle handle;
+      OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 2, &handle));
       absl::Status s = ctx->resource_manager()->Lookup<MemoryCacheManager>(
           handle.container(), handle.name(), &manager);
       if (absl::IsNotFound(s)) {

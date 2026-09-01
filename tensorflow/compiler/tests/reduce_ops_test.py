@@ -160,6 +160,25 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
                         self.NONEMPTY_COMPLEX_DATA, index_dtype)
 
+  def testReduceMeanIntegerOverflow(self, index_dtype):
+    # Regression test for GitHub issue 125978. Mean accumulated in the element
+    # type, so a sum that overflowed wrapped before the division was applied
+    # and the mean of two copies of the largest value came back as -1 for
+    # int32, disagreeing with the eager kernel. The 8 and 16 bit types were
+    # already widened, so only the 32 bit ones were affected.
+    for dtype in (np.int32, np.uint32):
+      if dtype not in self.all_types:
+        continue
+      max_value = np.iinfo(dtype).max
+      test_input = np.array([[max_value, max_value]], dtype=dtype)
+      with self.session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtype)
+          index = array_ops.placeholder(index_dtype)
+          out = math_ops.reduce_mean(a, index)
+        result = sess.run(out, {a: test_input, index: [1]})
+      self.assertAllEqual([max_value], result)
+
   def testReduceAll(self, index_dtype):
     self._testReduction(math_ops.reduce_all, np.all, np.bool_, self.BOOL_DATA,
                         index_dtype)
@@ -182,6 +201,32 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
+
+  def testChainedReduceSumF32(self):
+    """Tests that chained large reductions do not accumulate excessive error."""
+
+    if self.device != 'XLA_CPU':
+      self.skipTest('This test covers the CPU reduction implementation.')
+
+    shape = (20, 32, 24, 38)
+    values = (3.14, 2.72, 2.07, 0.58)
+    inputs = [np.full(shape, value, dtype=np.float32) for value in values]
+
+    with self.session() as sess:
+      with self.test_scope():
+        placeholders = [
+            array_ops.placeholder(dtypes.float32, shape=shape) for _ in values
+        ]
+        sums = [math_ops.reduce_sum(value) for value in placeholders]
+        result = (sums[0] + sums[1]) + (sums[2] + sums[3])
+
+      actual = sess.run(result, dict(zip(placeholders, inputs)))
+
+    element_count = np.prod(shape, dtype=np.int64)
+    expected = sum(
+        np.float64(np.float32(value)) * element_count for value in values
+    )
+    self.assertAllClose(actual, expected, rtol=1e-5, atol=1e-4)
 
   def _testReduceSum(self,
                      expected_result,

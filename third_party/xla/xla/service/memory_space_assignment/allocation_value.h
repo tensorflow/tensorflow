@@ -71,7 +71,7 @@ namespace memory_space_assignment {
 //  while {0}
 //  get-tuple-element.5
 // uses:
-//  add.1, operand 0
+//  tuple.1, operand 0
 //  tuple, operand 0
 //  while, operand 0 {0}
 //  add.5, operand 0
@@ -291,6 +291,13 @@ struct AllocationRequest {
   // Indicates if the AllocationRequest end time (use time) has a default
   // memory color requirement.
   bool require_end_colored_in_default_memory = false;
+  // If true, forces the prefetch to start at the exact preferred_prefetch_time
+  // without searching outwards.
+  bool strict_timing = false;
+  // If true, any failure to satisfy this override results in a fatal error.
+  bool fail_on_unsatisfied_override = false;
+  // Indicates if this request has a prefetch override.
+  bool is_prefetch_override = false;
 
   std::string ToString() const;
 };

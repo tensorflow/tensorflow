@@ -83,7 +83,7 @@ TEST_F(SymbolicMapSerializationTest, PrintSymbolicExprOperatorPrecedence) {
 
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprAndPrint) {
   const std::string kStringContainingAllOperators =
-      "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2) mod 5";
+      "((((v0 + 42) * max(min(v1, 2), 0)) / 2) ceildiv 2) mod 5";
   SymbolicExpr parsed_expr =
       ParseSymbolicExpr(kStringContainingAllOperators, &ctx);
   ASSERT_NE(parsed_expr, nullptr);
@@ -139,6 +139,9 @@ TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprWithVariableMap) {
   // Purposely use a variable name that starts with a 'd' to test that the
   // dim/symbol parsing is not triggered when the variable map is provided.
   variable_map["dim_bar"] = v1;
+
+  EXPECT_EQ(ParseSymbolicExpr("foo + dim_bar * 2", &ctx, variable_map),
+            v0 + v1 * 2);
 
   absl::string_view expr_str = "foo + dim_bar * 2";
   SymbolicExpr expr =

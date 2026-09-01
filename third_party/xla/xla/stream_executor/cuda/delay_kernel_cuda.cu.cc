@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <utility>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 
 namespace stream_executor::gpu {
@@ -53,12 +56,15 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
   StreamExecutor* executor = stream->parent();
 
   // Allocate a semaphore value that will be used to signal to the delay
-  // kernel that it may exit.
-  TF_ASSIGN_OR_RETURN(auto semaphore, GpuSemaphore::Create(executor));
+  // kernel that it may exit. Pinned host memory is readable and writable by
+  // both host and device here.
+  ABSL_ASSIGN_OR_RETURN(auto allocation,
+                   executor->HostMemoryAllocate(sizeof(GpuSemaphoreState)));
+  GpuSemaphore semaphore = GpuSemaphore::Create(std::move(allocation));
   *semaphore = GpuSemaphoreState::kHold;
   // In principle the kernel could be loaded lazily and shared across
   // multiple GpuTimer objects.
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto kernel,
       (TypedKernelFactory<DeviceAddress<GpuSemaphoreState>,
                           GpuSemaphoreState>::Create(executor, "DelayKernel",
@@ -67,9 +73,9 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
   // Launch a delay kernel into this stream, which will spin until
   // GetElapsedDuration() is called, the timer is destroyed, or the timeout
   // in the kernel is reached.
-  TF_RETURN_IF_ERROR(kernel.Launch(ThreadDim(1, 1, 1), BlockDim(1, 1, 1),
-                                   stream, semaphore.device(),
-                                   GpuSemaphoreState::kRelease));
+  ABSL_RETURN_IF_ERROR(kernel.Launch(ThreadDim(1, 1, 1), BlockDim(1, 1, 1), stream,
+                                semaphore.device(),
+                                GpuSemaphoreState::kRelease));
 
   return semaphore;
 }

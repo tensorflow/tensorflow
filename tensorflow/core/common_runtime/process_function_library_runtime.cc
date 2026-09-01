@@ -628,7 +628,7 @@ absl::Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
                // NOLINTNEXTLINE
                ? absl::make_optional<std::string>(it->second)
                // NOLINTNEXTLINE
-               : absl::nullopt;
+               : std::nullopt;
   };
 
   auto data = std::make_unique<MultiDeviceFunctionData>(

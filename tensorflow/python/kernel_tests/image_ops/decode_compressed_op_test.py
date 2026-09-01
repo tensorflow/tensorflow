@@ -21,6 +21,7 @@ import zlib
 import zstandard as zstd
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
@@ -78,6 +79,25 @@ class DecodeCompressedOpTest(test.TestCase):
 
         self.assertAllEqual(
             [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
+
+  def testDecompressLargeZstdSize(self):
+    # Construct a ZSTD frame header specifying a 2GB uncompressed size.
+    # Magic Number (4 bytes): \x28\xb5\x2f\xfd
+    # Frame_Header_Descriptor (1 byte): \xe0
+    # Frame_Content_Size (8B): 2GB = 2147483648
+    # = \x00\x00\x00\x80\x00\x00\x00\x00
+    invalid_zstd_header = (
+        b"\x28\xb5\x2f\xfd\xe0\x00\x00\x00\x80\x00\x00\x00\x00"
+    )
+    with self.cached_session():
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Decompressed size exceeds 1GB limit"
+      ):
+        self.evaluate(
+            parsing_ops.decode_compressed(
+                invalid_zstd_header, compression_type="ZSTD"
+            )
+        )
 
 
 if __name__ == "__main__":

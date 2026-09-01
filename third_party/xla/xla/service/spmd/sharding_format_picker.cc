@@ -99,32 +99,39 @@ bool PermutePermHelper(absl::Span<int64_t> dims, absl::Span<int32_t> perm,
   return false;
 }
 
+// Helper to apply a conversion function to tuple elements.
+template <typename F>
+std::unique_ptr<HloSharding> MaybeConvertTuple(const HloSharding& sharding,
+                                               F&& convert_fn) {
+  std::vector<std::unique_ptr<HloSharding>> new_element_ptrs;
+  new_element_ptrs.reserve(sharding.tuple_elements().size());
+  bool changed = false;
+  for (const auto& element : sharding.tuple_elements()) {
+    new_element_ptrs.push_back(convert_fn(element));
+    changed |= (new_element_ptrs.back() != nullptr);
+  }
+  if (!changed) {
+    return nullptr;
+  }
+  std::vector<HloSharding> new_elements;
+  new_elements.reserve(new_element_ptrs.size());
+  for (int64_t i = 0; i < new_element_ptrs.size(); ++i) {
+    if (new_element_ptrs[i]) {
+      new_elements.push_back(*new_element_ptrs[i]);
+    } else {
+      new_elements.push_back(sharding.tuple_elements()[i]);
+    }
+  }
+  return HloShardingTestHelper::Tuple(new_elements);
+}
+
 // Performs a brute force search to see if the sharding can be converted to V2.
 // Returns the converted sharding if such transformation is possible and the
 // sharding is not already V2.
 std::unique_ptr<HloSharding> MaybeConvertToV2(const HloSharding& sharding) {
   if (sharding.IsTuple()) {
-    std::vector<std::unique_ptr<HloSharding>> new_element_ptrs;
-    new_element_ptrs.reserve(sharding.tuple_elements().size());
-    bool changed = false;
-    for (auto& element : sharding.tuple_elements()) {
-      new_element_ptrs.push_back(MaybeConvertToV2(element));
-      changed |= (new_element_ptrs.back() != nullptr);
-    }
-    if (!changed) {
-      return nullptr;
-    }
-    std::vector<HloSharding> new_elements;
-    new_elements.reserve(new_element_ptrs.size());
-    for (int i = 0; i < new_element_ptrs.size(); ++i) {
-      auto& ptr = new_element_ptrs[i];
-      if (ptr) {
-        new_elements.push_back(*ptr);
-      } else {
-        new_elements.push_back(sharding.tuple_elements()[i]);
-      }
-    }
-    return HloShardingTestHelper::Tuple(new_elements);
+    return MaybeConvertTuple(
+        sharding, [](const HloSharding& s) { return MaybeConvertToV2(s); });
   }
   auto& tile = sharding.tile_assignment();
   if (tile.iota() || sharding.IsReplicatedOrSingleDevice() ||
@@ -161,6 +168,10 @@ std::unique_ptr<HloSharding> MaybeConvertToV2(const HloSharding& sharding) {
 
 // Converts the sharding to V1 if it's not already V1, nullptr otherwise.
 std::unique_ptr<HloSharding> MaybeConvertToV1(const HloSharding& sharding) {
+  if (sharding.IsTuple()) {
+    return MaybeConvertTuple(
+        sharding, [](const HloSharding& s) { return MaybeConvertToV1(s); });
+  }
   auto& tile = sharding.tile_assignment();
   if (!tile.iota()) {
     return nullptr;
@@ -173,27 +184,9 @@ std::unique_ptr<HloSharding> MaybeConvertToV1(const HloSharding& sharding) {
 std::unique_ptr<HloSharding> MaybeConvertToNamed(const HloSharding& sharding,
                                                  int64_t num_devices) {
   if (sharding.IsTuple()) {
-    std::vector<std::unique_ptr<HloSharding>> new_element_ptrs;
-    new_element_ptrs.reserve(sharding.tuple_elements().size());
-    bool changed = false;
-    for (const HloSharding& element : sharding.tuple_elements()) {
-      new_element_ptrs.push_back(MaybeConvertToNamed(element, num_devices));
-      changed |= (new_element_ptrs.back() != nullptr);
-    }
-    if (!changed) {
-      return nullptr;
-    }
-    std::vector<HloSharding> new_elements;
-    new_elements.reserve(new_element_ptrs.size());
-    for (int i = 0; i < new_element_ptrs.size(); ++i) {
-      auto& ptr = new_element_ptrs[i];
-      if (ptr) {
-        new_elements.push_back(*ptr);
-      } else {
-        new_elements.push_back(sharding.tuple_elements()[i]);
-      }
-    }
-    return HloShardingTestHelper::Tuple(new_elements);
+    return MaybeConvertTuple(sharding, [num_devices](const HloSharding& s) {
+      return MaybeConvertToNamed(s, num_devices);
+    });
   }
   if (sharding.UseNamedShardingLeaf()) {
     return nullptr;

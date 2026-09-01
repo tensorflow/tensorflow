@@ -99,7 +99,17 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateClient(
     factory = it->second;
   }
 
-  return factory(address, options);
+  ClientConnectionOptions actual_options = options;
+  if (GetGlobalClientFlags()->crash_on_disconnect) {
+    actual_options.on_disconnect = [](absl::Status s) {
+      QCHECK(false)
+          << "Connection to IFRT proxy server failed and the client is "
+          << "configured to crash on disconnect. Connection failure status: "
+          << s;
+    };
+  }
+
+  return factory(address, actual_options);
 }
 
 }  // namespace proxy

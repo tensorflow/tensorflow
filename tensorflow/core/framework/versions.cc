@@ -26,8 +26,9 @@ absl::Status CheckVersions(const VersionDef& versions, int consumer,
                            const char* lower_name) {
   // Guard against the caller misordering the arguments
   if (consumer < min_producer) {
-    return errors::Internal(upper_name, " version check has consumer ",
-                            consumer, " < min_producer ", min_producer, ".");
+    return absl::InternalError(
+        absl::StrCat(upper_name, " version check has consumer ", consumer,
+                     " < min_producer ", min_producer, "."));
   }
 
   // Check versions
@@ -45,9 +46,9 @@ absl::Status CheckVersions(const VersionDef& versions, int consumer,
   }
   for (const int bad_consumer : versions.bad_consumers()) {
     if (bad_consumer == consumer) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           upper_name, " disallows consumer version ", bad_consumer,
-          ".  Please upgrade TensorFlow: this version is likely buggy.");
+          ".  Please upgrade TensorFlow: this version is likely buggy."));
     }
   }
 

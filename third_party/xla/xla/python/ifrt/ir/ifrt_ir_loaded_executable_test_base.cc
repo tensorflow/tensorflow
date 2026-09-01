@@ -19,10 +19,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,12 +38,14 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -51,7 +56,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -63,7 +67,7 @@ IfrtIrLoadedExecutableTestBase::IfrtIrLoadedExecutableTestBase() {
 }
 
 void IfrtIrLoadedExecutableTestBase::SetUp() {
-  TF_ASSERT_OK_AND_ASSIGN(client_, GetClient());
+  ASSERT_OK_AND_ASSIGN(client_, GetClient());
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
@@ -78,17 +82,18 @@ IfrtIrLoadedExecutableTestBase::LoadFromSource(absl::string_view source) {
   return op_ref;
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-IfrtIrLoadedExecutableTestBase::LoadFromFile(absl::string_view file_path) {
-  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&mlir_context_);
-  auto op_ref =
-      mlir::parseSourceFile<mlir::ModuleOp>(file_path, &mlir_context_);
-  if (!op_ref) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Failed to parse IFRT IR module file: %s",
-                        diagnostic_handler.ConsumeStatus().message()));
-  }
-  return op_ref;
+absl::StatusOr<LoadedExecutableRef>
+IfrtIrLoadedExecutableTestBase::CompileProgram(absl::string_view source,
+                                               DeviceListRef devices) {
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                   xla::ifrt::support::ParseMlirModuleString(source, *context));
+  return client_->GetDefaultCompiler()
+      ->CompileAndLoad(std::make_unique<xla::ifrt::IfrtIRProgram>(
+                           std::move(context), std::move(mlir_module)),
+                       std::make_unique<xla::ifrt::IfrtIRCompileOptions>(
+                           xla::ifrt::GetDeviceIds(devices)))
+      .Await();
 }
 
 absl::StatusOr<std::unique_ptr<IfrtIRProgram>>
@@ -97,31 +102,73 @@ IfrtIrLoadedExecutableTestBase::SerDeRoundTrip(
     Version::CompatibilityRequirement compatibility_requirement) {
   // Ensure the atom programs are outlined to modules. If the atom programs are
   // already outlined, this pipeline will do nothing.
-  mlir::PassManager pm(program->mlir_module.getContext());
-  createIfrtToOutlinedAtomProgramsPipeline(pm);
-  mlir::BaseScopedDiagnosticHandler diag_handler(
-      program->mlir_module.getContext());
-  if (mlir::failed(pm.run(program->mlir_module))) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Failed to outline IFRT IR program: ",
-                     diag_handler.ConsumeStatus().message()));
+  {
+    mlir::PassManager pm(program->mlir_module.getContext());
+    createIfrtToOutlinedAtomProgramsPipeline(pm);
+    mlir::BaseScopedDiagnosticHandler diag_handler(
+        program->mlir_module.getContext());
+    if (mlir::failed(pm.run(program->mlir_module))) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to outline IFRT IR program: ",
+                       diag_handler.ConsumeStatus().message()));
+    }
   }
 
   // Serialize IFRT IR program with the given compatibility requirement, and the
   // atom programs at the current VHLO version.
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto serialized,
       Serialize(
           *program,
           std::make_unique<SerializeIfrtIRProgramOptions>(
               Version::fromCompatibilityRequirement(compatibility_requirement)
                   .toString(),
-              mlir::vhlo::Version::getCurrentVersion().toString())));
+              mlir::vhlo::Version::getCurrentVersion().toString(),
+              mlir::sdy::SdyDialectVersion::getCurrentVersion().toString())));
 
   // Deserialize the versioned IFRT IR program.
-  TF_ASSIGN_OR_RETURN(
-      program, Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
+  ABSL_ASSIGN_OR_RETURN(program,
+                   Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
   return program;
+}
+
+absl::StatusOr<LoadedExecutableRef>
+IfrtIrLoadedExecutableTestBase::CompileProgramWithSerDe(
+    absl::string_view source, DeviceListRef devices,
+    Version::CompatibilityRequirement compatibility_requirement) {
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                   xla::ifrt::support::ParseMlirModuleString(source, *context));
+  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(
+      std::move(context), std::move(mlir_module));
+  ABSL_ASSIGN_OR_RETURN(
+      program, SerDeRoundTrip(std::move(program), compatibility_requirement));
+  return client_->GetDefaultCompiler()
+      ->CompileAndLoad(std::move(program),
+                       std::make_unique<xla::ifrt::IfrtIRCompileOptions>(
+                           xla::ifrt::GetDeviceIds(devices)))
+      .Await();
+}
+
+ExecuteOptions IfrtIrLoadedExecutableTestBase::ExecuteOptionsWithFillStatus()
+    const {
+  ExecuteOptions options;
+  options.fill_status = true;
+  return options;
+}
+
+absl::StatusOr<LoadedExecutable::ExecuteResult>
+IfrtIrLoadedExecutableTestBase::Execute(LoadedExecutableRef executable,
+                                        absl::Span<ArrayRef> args,
+                                        std::optional<DeviceListRef> devices,
+                                        std::optional<ExecuteOptions> options) {
+  if (executable == nullptr) {
+    return absl::InvalidArgumentError("executable must not be null");
+  }
+  ExecuteOptions exec_options = options.has_value()
+                                    ? *std::move(options)
+                                    : ExecuteOptionsWithFillStatus();
+  return executable->Execute(args, std::move(exec_options), std::move(devices));
 }
 
 absl::StatusOr<ArrayRef> IfrtIrLoadedExecutableTestBase::CreateArray(
@@ -134,7 +181,7 @@ absl::StatusOr<ArrayRef> IfrtIrLoadedExecutableTestBase::CreateArray(
   ShardingRef sharding = ConcreteEvenSharding::Create(
       device_list, memory_kind.value_or(MemoryKind()), shape, shard_shape,
       /*is_fully_replicated=*/shape == shard_shape);
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto per_shard,
       sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
   // All shards have the same shape. Just pick 0.
@@ -142,7 +189,7 @@ absl::StatusOr<ArrayRef> IfrtIrLoadedExecutableTestBase::CreateArray(
   std::vector<ArrayRef> per_shard_arrays;
   per_shard_arrays.reserve(per_shard_data.size());
   for (int i = 0; i < per_shard_data.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         ArrayRef per_shard_array,
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,

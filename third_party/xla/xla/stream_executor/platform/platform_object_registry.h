@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
@@ -79,8 +80,8 @@ class PlatformObjectRegistry {
   template <typename Trait>
   absl::StatusOr<std::reference_wrapper<const typename Trait::Type>> FindObject(
       Platform::Id platform_id) {
-    TF_ASSIGN_OR_RETURN(const Container& obj,
-                        FindObject(typeid(Trait), platform_id));
+    ABSL_ASSIGN_OR_RETURN(const Container& obj,
+                     FindObject(typeid(Trait), platform_id));
     return std::any_cast<const typename Trait::Type&>(obj.element);
   }
 

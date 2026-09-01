@@ -14,8 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/graph/collective_order.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <numeric>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/graph/algorithm.h"
 
 namespace tensorflow {
@@ -73,13 +83,29 @@ absl::Status CreateControlDependencies(
     const std::vector<int32_t>& instance_keys,
     absl::flat_hash_map<Node*, absl::flat_hash_set<int32_t>>* data_dependencies,
     absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>>* dependency_edges) {
-  // If there exists some path a -> ... -> b then `all_paths[a]` contains `b`
-  absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>> all_paths;
+  const int num_collectives = collective_nodes.size();
+  // Reachability over `collective_nodes`, indexed by position, as a dense bit
+  // matrix: bit (a, b) is set iff there is a path a -> ... -> b. One bit per
+  // ordered pair replaces a `flat_hash_set<Node*>` per node.
+  const int words_per_row = (num_collectives + 63) / 64;
+  std::vector<uint64_t> reaches(
+      static_cast<size_t>(num_collectives) * words_per_row, 0);
+  const auto set_reaches = [&](int a, int b) {
+    reaches[static_cast<size_t>(a) * words_per_row + b / 64] |= uint64_t{1}
+                                                                << (b % 64);
+  };
+  absl::flat_hash_map<Node*, int> collective_index;
+  collective_index.reserve(num_collectives);
+  for (int i = 0; i < num_collectives; ++i) {
+    collective_index[collective_nodes[i]] = i;
+  }
+  // Successors by index, mirroring `dependency_edges`.
+  std::vector<std::vector<int>> successors(num_collectives);
   for (int i = 0; i < collective_nodes.size() - 1; i++) {
     if (!collective_nodes[i]->IsCollective() ||
         collective_nodes[i]->type_string() != "CollectiveReduce") {
-      return errors::Internal("Unexpected node ",
-                              collective_nodes[i]->DebugString());
+      return absl::InternalError(
+          absl::StrCat("Unexpected node ", collective_nodes[i]->DebugString()));
     }
     const auto& deps_i = (*data_dependencies)[collective_nodes[i]];
     for (int j = i + 1; j < collective_nodes.size(); j++) {
@@ -88,10 +114,10 @@ absl::Status CreateControlDependencies(
         continue;
       }
       if (instance_keys[i] == instance_keys[j]) {
-        return errors::Internal("Unexpected same instance_key ",
-                                instance_keys[i],
-                                " on 2 nodes with the same device ",
-                                collective_nodes[i]->requested_device());
+        return absl::InternalError(
+            absl::StrCat("Unexpected same instance_key ", instance_keys[i],
+                         " on 2 nodes with the same device ",
+                         collective_nodes[i]->requested_device()));
       }
       const auto& deps_j = (*data_dependencies)[collective_nodes[j]];
       if (deps_i.find(instance_keys[j]) == deps_i.end() &&
@@ -104,11 +130,27 @@ absl::Status CreateControlDependencies(
                 << " instance " << instance_keys[src_idx] << " to node "
                 << dst_node->name() << " instance " << instance_keys[dst_idx];
         (*dependency_edges)[src_node].insert(dst_node);
-        auto& src_paths = all_paths[src_node];
-        src_paths.insert(dst_node);
-        for (Node* downstream_node : all_paths[dst_node]) {
-          src_paths.insert(downstream_node);
-        }
+        successors[src_idx].push_back(dst_idx);
+      }
+    }
+  }
+
+  // Close `reaches` transitively. Every edge runs from a higher instance key to
+  // a lower one, so instance keys strictly decrease along any path and
+  // ascending instance key is a reverse topological order: when a node is
+  // processed, all of its successors are already closed, so one pass suffices.
+  std::vector<int> by_ascending_key(num_collectives);
+  std::iota(by_ascending_key.begin(), by_ascending_key.end(), 0);
+  absl::c_stable_sort(by_ascending_key, [&](int a, int b) {
+    return instance_keys[a] < instance_keys[b];
+  });
+  for (int idx : by_ascending_key) {
+    for (int succ : successors[idx]) {
+      set_reaches(idx, succ);
+      const size_t src_row = static_cast<size_t>(idx) * words_per_row;
+      const size_t succ_row = static_cast<size_t>(succ) * words_per_row;
+      for (int w = 0; w < words_per_row; ++w) {
+        reaches[src_row + w] |= reaches[succ_row + w];
       }
     }
   }
@@ -116,27 +158,48 @@ absl::Status CreateControlDependencies(
   // Prune dependency edges so that if there are edges a -> b, b -> c, and a ->
   // c, then remove a -> c.  This dependency would be handled naturally during
   // op scheduling.
-  for (int i = 0; i < collective_nodes.size(); ++i) {
-    Node* node = collective_nodes[i];
-    auto& neighbor_set = (*dependency_edges)[node];
-    std::vector<Node*> neighbor_list(neighbor_set.begin(), neighbor_set.end());
-    // For all n1, n2 in `neighbor_list` if there is a path from n1 -> n2 then
-    // eliminate n2 from `neighbor_set` and `neighbor_list`.  We remove from
-    // `neighbor_list` by replacing with a `nullptr`, hence the `nullptr` checks
-    // below.
-    for (int j = 0; j < neighbor_list.size(); ++j) {
-      Node* n1 = neighbor_list[j];
-      if (n1 == nullptr) continue;
-      auto& n1_paths = all_paths[n1];
-      for (int k = 0; k < neighbor_list.size(); ++k) {
-        Node* n2 = neighbor_list[k];
-        if (j == k || n2 == nullptr) continue;
-        if (n1_paths.find(n2) != n1_paths.end()) {
-          neighbor_set.erase(n2);
-          neighbor_list[k] = nullptr;
-        }
+  //
+  // This is the transitive reduction of `dependency_edges`, which is unique for
+  // a DAG: edge u -> v survives iff no other successor of u reaches v. Deciding
+  // each edge independently against the closed `reaches` makes the surviving
+  // set a function of the graph alone, so it no longer depends on the iteration
+  // order of `neighbor_set`, which is keyed by `Node*`.
+  std::vector<Node*> redundant;
+  std::vector<std::pair<Node*, int>> neighbors;
+  std::vector<uint64_t> combined_reach(words_per_row, 0);
+  for (int i = 0; i < num_collectives; ++i) {
+    auto edges_it = dependency_edges->find(collective_nodes[i]);
+    if (edges_it == dependency_edges->end()) continue;
+    absl::flat_hash_set<Node*>& neighbor_set = edges_it->second;
+    // Resolve each neighbour's index once. The test below is quadratic in the
+    // number of neighbours, so looking indices up inside it would make the hash
+    // lookups quadratic as well.
+    neighbors.clear();
+    neighbors.reserve(neighbor_set.size());
+    for (Node* v : neighbor_set) {
+      neighbors.emplace_back(v, collective_index[v]);
+    }
+    // Union of everything this node's successors can reach. A successor that
+    // lies in that union is reachable from another successor, so the direct
+    // edge to it is implied. Every edge runs from a higher instance key to a
+    // lower one, so the graph is acyclic and `reaches[v]` never contains `v`
+    // itself; no self-exclusion is needed. Taking the union costs
+    // O(|neighbours| * words_per_row) against the O(|neighbours|^2) of testing
+    // every ordered pair.
+    std::fill(combined_reach.begin(), combined_reach.end(), 0);
+    for (const auto& [v, v_idx] : neighbors) {
+      const size_t v_row = static_cast<size_t>(v_idx) * words_per_row;
+      for (int w = 0; w < words_per_row; ++w) {
+        combined_reach[w] |= reaches[v_row + w];
       }
     }
+    redundant.clear();
+    for (const auto& [v, v_idx] : neighbors) {
+      if ((combined_reach[v_idx / 64] >> (v_idx % 64)) & 1) {
+        redundant.push_back(v);
+      }
+    }
+    for (Node* v : redundant) neighbor_set.erase(v);
   }
 
   return absl::OkStatus();
@@ -175,8 +238,8 @@ absl::Status InsertControlDependencies(
       pair.first->AddAttr("wait_for", wait_for_list);
     }
   } else {
-    return errors::Internal("Unexpected GraphCollectiveOrder type ",
-                            static_cast<int>(order_type));
+    return absl::InternalError(absl::StrCat(
+        "Unexpected GraphCollectiveOrder type ", static_cast<int>(order_type)));
   }
   return absl::OkStatus();
 }

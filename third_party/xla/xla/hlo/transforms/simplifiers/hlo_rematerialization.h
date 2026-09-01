@@ -27,6 +27,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -207,7 +208,11 @@ class HloRematerialization : public HloPassInterface {
 
   // Get the peak memory for the computation.
   int64_t ComputationPeakMemory(const HloComputation* computation) const {
-    return computation_peak_memory_.at(computation);
+    if (auto it = computation_peak_memory_.find(computation);
+        it != computation_peak_memory_.end()) {
+      return it->second;
+    }
+    return 0;
   }
 
   HloRematerialization::RematAlgorithm remat_algorithm() const {
@@ -220,6 +225,11 @@ class HloRematerialization : public HloPassInterface {
   }
 
   int64_t GetBlockSizeLimit() const { return options_.block_size_limit; }
+
+  // Sets points to analysis to stale. Used by Peak Priority algorithm to
+  // indicate that the points to analysis should be updated before the next
+  // rematerialization subpass.
+  void SetPointsToAnalysisStale();
 
   // Holds references to data structures and some constants that are used during
   // rematerialization. This struct is used to avoid long function signatures.
@@ -273,6 +283,13 @@ class HloRematerialization : public HloPassInterface {
     return absl::OkStatus();
   }
 
+  // Only Peak priority requires constant update of points to analysis.
+  void on_block_rematerialized(int remat_count) {
+    if (remat_count > 0 && remat_algorithm() == RematAlgorithm::kPeakPriority) {
+      SetPointsToAnalysisStale();
+    }
+  }
+
  protected:
   // Updates the schedule to mirror the provided instruction sequence. This is
   // used to update the schedule after each rematerialization due to the memory
@@ -282,6 +299,9 @@ class HloRematerialization : public HloPassInterface {
       HloComputation* computation, HloSchedule* schedule,
       const HloInstructionSequence& sequence,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Updates points to analysis if it is stale.
+  absl::Status UpdatePointsToAnalysis(HloModule* module);
 
   // Cleans up dead rematerialized instructions out of the module. Basically
   // runs DCE and updates the schedule.
@@ -359,6 +379,14 @@ class HloRematerialization : public HloPassInterface {
   absl::StatusOr<int64_t> CalledComputationsMemoryUsage(
       const HloInstruction* instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+
+  // Checks if rematerialization has taken too long and sets a status variable
+  // to warn the user if so.
+  void CheckTimeLimit();
+
+  absl::Time start_time_;
+  bool warned_too_long_ = false;
+  bool warned_too_little_progress_ = false;
 
   const Options options_;
 

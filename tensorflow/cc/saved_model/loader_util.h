@@ -27,9 +27,9 @@ namespace internal {
 // A SavedModel may store the name of the initialization op to run in the
 // in the SignatureDef (v2) or a collection (v1). If an init_op collection
 // exists, then the collection must contain exactly one op.
-absl::Status GetInitOp(const string& export_dir,
+absl::Status GetInitOp(const std::string& export_dir,
                        const MetaGraphDef& meta_graph_def,
-                       string* init_op_name);
+                       std::string* init_op_name);
 
 absl::Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
                               std::vector<AssetFileDef>* asset_file_defs);

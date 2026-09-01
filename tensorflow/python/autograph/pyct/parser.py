@@ -26,7 +26,6 @@ import sys
 import textwrap
 import tokenize
 
-import astunparse
 import gast
 
 from tensorflow.python.autograph.pyct import errors
@@ -38,9 +37,6 @@ PY2_PREAMBLE = textwrap.dedent("""
 """)
 PY3_PREAMBLE = ''
 MAX_SIZE = 0
-
-if sys.version_info >= (3, 9):
-  astunparse = ast
 
 if sys.version_info >= (3,):
   STANDARD_PREAMBLE = PY3_PREAMBLE
@@ -389,8 +385,7 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     else:
       ast_n = n
 
-    if astunparse is ast:
-      ast.fix_missing_locations(ast_n)  # Only ast needs to call this.
-    codes.append(astunparse.unparse(ast_n).strip())
+    ast.fix_missing_locations(ast_n)
+    codes.append(ast.unparse(ast_n).strip())
 
   return '\n'.join(codes)

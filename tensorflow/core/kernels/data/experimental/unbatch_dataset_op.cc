@@ -217,16 +217,16 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           if (!*end_of_sequence) {
             for (size_t i = 0; i < tensors_.size(); ++i) {
               if (tensors_[i].dims() == 0) {
-                return errors::InvalidArgument(
+                return absl::InvalidArgumentError(
                     "Input element must have a non-scalar value in each "
                     "component.");
               }
               if (tensors_[i].dim_size(0) != tensors_[0].dim_size(0)) {
-                return errors::InvalidArgument(
+                return absl::InvalidArgumentError(absl::StrCat(
                     "Input element must have the same batch size in each "
                     "component. Component 0 had size ",
                     tensors_[0].dim_size(0), " but component ", i,
-                    " had size, ", tensors_[i].dim_size(0), ".");
+                    " had size, ", tensors_[i].dim_size(0), "."));
               }
               shapes_[i] = tensors_[i].shape();
               shapes_[i].RemoveDim(0);
@@ -310,7 +310,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
                                                   &end_of_sequence));
           input_ckpt_->Merge(input_ctx->checkpoint());
           if (end_of_sequence) {
-            return errors::FailedPrecondition(
+            return absl::FailedPreconditionError(
                 "Unexpected end of sequence while symbolically restoring "
                 " UnbatchDataset. Please verify that the input produces data "
                 " deterministically.");

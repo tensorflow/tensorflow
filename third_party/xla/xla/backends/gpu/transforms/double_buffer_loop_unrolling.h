@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_DOUBLE_BUFFER_LOOP_UNROLLING_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_DOUBLE_BUFFER_LOOP_UNROLLING_H_
 
+#include <cstdint>
+#include <variant>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -45,9 +49,24 @@ namespace gpu {
 //
 // Note that this pass will flatten the call graph if any loop has been
 // unrolled.
+//
+// If a DS/DUS in the loop body has a DynamicSliceConfig, loop unrolling must
+// update that metadata together with the loop shape. A peeled iteration, or
+// each copy created by full unrolling, corresponds to one concrete original
+// iteration and therefore becomes loop-independent. The two halves left inside
+// a double-buffered loop still depend on the loop iteration, but their offset
+// stride is multiplied by the unroll factor.
 class DoubleBufferLoopUnrolling : public HloModulePass {
  public:
-  enum class UnrollStrategy { kDoubleBuffer, kFullUnroll, kAuto };
+  enum class UnrollStrategy {
+    kDoubleBuffer,
+    kFullUnroll,
+    kAuto,
+    kManual,
+  };
+  static constexpr absl::string_view kManualUnrollFull = "full";
+  static constexpr absl::string_view kManualUnrollDoubleBuffer =
+      "double-buffer";
 
   explicit DoubleBufferLoopUnrolling(
       UnrollStrategy unroll_strategy = UnrollStrategy::kDoubleBuffer)
@@ -57,6 +76,35 @@ class DoubleBufferLoopUnrolling : public HloModulePass {
   absl::string_view name() const override {
     return "loop-double-buffer-transformer";
   }
+
+  // Describes which original loop iteration a duplicated instruction
+  // represents. Some instructions are moved to a concrete iteration, while
+  // instructions that stay in an unrolled loop still depend on that loop's new
+  // induction value.
+  struct StaticLoopIteration {
+    int64_t iteration;
+  };
+
+  // Represents an affine mapping from a transformed loop iteration to the
+  // original loop iteration executed by this instruction. For new loop
+  // iteration `j`, the instruction corresponds to original iteration:
+  //
+  //   start_iteration + j * iteration_stride
+  //
+  // For double buffering, the original loop body is duplicated twice, so the
+  // two mappings are `peeled_iterations + 0 + j * 2` and
+  // `peeled_iterations + 1 + j * 2`.
+  struct DynamicLoopIteration {
+    int64_t start_iteration;
+    int64_t iteration_stride;
+  };
+
+  using LoopIteration = std::variant<StaticLoopIteration, DynamicLoopIteration>;
+
+  // Returns a config adjusted according to either static or dynamic loop
+  // iteration metadata.
+  static DynamicSliceConfig MakeConfigForLoopIteration(
+      const DynamicSliceConfig& config, const LoopIteration& loop_iteration);
 
  protected:
   absl::StatusOr<bool> RunImpl(

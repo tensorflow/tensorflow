@@ -39,19 +39,19 @@ FileCopyAllocation::FileCopyAllocation(const char* filename,
     error_reporter_->Report("Could not open '%s'.", filename);
     return;
   }
-  struct stat sb;
-
-// support usage of msvc's posix-like fileno symbol
+// Use 64-bit stat on Windows so that files larger than 2GB report a correct
+// size. MSVC's `struct stat`/`fstat` use a 32-bit `st_size` and fail for such
+// files; `_stat64`/`_fstat64` provide a 64-bit `st_size`.
 #ifdef _WIN32
-#define FILENO(_x) _fileno(_x)
+  struct _stat64 sb;
+  if (_fstat64(_fileno(file.get()), &sb) != 0) {
 #else
-#define FILENO(_x) fileno(_x)
+  struct stat sb;
+  if (fstat(fileno(file.get()), &sb) != 0) {
 #endif
-  if (fstat(FILENO(file.get()), &sb) != 0) {
     error_reporter_->Report("Failed to get file size of '%s'.", filename);
     return;
   }
-#undef FILENO
   buffer_size_bytes_ = sb.st_size;
   std::unique_ptr<char[]> buffer(new char[buffer_size_bytes_]);
   if (!buffer) {

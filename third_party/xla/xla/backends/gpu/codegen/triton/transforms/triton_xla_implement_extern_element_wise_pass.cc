@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// CUDA-specific implementation of extern_elementwise atomic functions.
-// This pass runs in the Triton CUDA pipeline and inlines the implementations
+// GPU-specific implementation of extern_elementwise atomic functions.
+// This pass runs in the Triton GPU pipeline and inlines the implementations
 // of custom atomic functions by replacing llvm.call operations with LLVM
-// intrinsics.
+// intrinsics. Supports both CUDA and ROCM backends.
 
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -35,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/extern_function_helper.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 
 namespace mlir::triton::xla {
 
@@ -46,7 +46,8 @@ namespace {
 // Pattern to rewrite llvm.call operations to XLA extern functions
 class RewriteExternCallPattern : public OpRewritePattern<LLVM::CallOp> {
  public:
-  using OpRewritePattern<LLVM::CallOp>::OpRewritePattern;
+  explicit RewriteExternCallPattern(MLIRContext* context, TargetBackend target)
+      : OpRewritePattern<LLVM::CallOp>(context), target_(target) {}
 
   LogicalResult matchAndRewrite(LLVM::CallOp call_op,
                                 PatternRewriter& rewriter) const override {
@@ -78,7 +79,7 @@ class RewriteExternCallPattern : public OpRewritePattern<LLVM::CallOp> {
 
     LLVMOpCreationParams params{/*.builder=*/rewriter,
                                 /*.loc=*/call_op.getLoc(),
-                                /*.target=*/TargetBackend::CUDA,
+                                /*.target=*/target_,
                                 /*.operands=*/call_op.getOperands()};
 
     mlir::Value result = CreateLLVMOpsForInstruction(*parsed, params);
@@ -94,6 +95,9 @@ class RewriteExternCallPattern : public OpRewritePattern<LLVM::CallOp> {
     }
     return success();
   }
+
+ private:
+  TargetBackend target_;
 };
 
 // MLIR pass that inlines extern function calls with LLVM intrinsics
@@ -101,15 +105,18 @@ class TritonXLAImplementExternElementWisePass
     : public impl::TritonXLAImplementExternElementWisePassBase<
           TritonXLAImplementExternElementWisePass> {
  public:
-  using Base::Base;
+  using impl::TritonXLAImplementExternElementWisePassBase<
+      TritonXLAImplementExternElementWisePass>::
+      TritonXLAImplementExternElementWisePassBase;
 
  private:
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     mlir::MLIRContext* context = &getContext();
 
+    // Apply rewrite patterns
     RewritePatternSet patterns(context);
-    patterns.add<RewriteExternCallPattern>(context);
+    patterns.add<RewriteExternCallPattern>(context, target_);
 
     if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       return signalPassFailure();
@@ -119,8 +126,5 @@ class TritonXLAImplementExternElementWisePass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAImplementExternElementWisePass() {
-  return std::make_unique<TritonXLAImplementExternElementWisePass>();
-}
-
 }  // namespace mlir::triton::xla
+

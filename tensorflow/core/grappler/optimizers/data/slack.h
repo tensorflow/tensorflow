@@ -37,13 +37,14 @@ class Slack : public TFDataOptimizerBase {
 
   absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    if (!config) return errors::InvalidArgument("Config parameter required.");
+    if (!config)
+      return absl::InvalidArgumentError("Config parameter required.");
 
     const std::string& slack_period_param =
         config->parameter_map().at("slack_period").s();
     if (!absl::SimpleAtoi(slack_period_param, &slack_period_)) {
-      return errors::InvalidArgument("Invalid `slack_period` parameter: ",
-                                     slack_period_param);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid `slack_period` parameter: ", slack_period_param));
     }
     return absl::OkStatus();
   }

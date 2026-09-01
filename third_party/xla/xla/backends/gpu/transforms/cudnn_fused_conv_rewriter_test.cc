@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
 
 #include <array>
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -30,13 +31,15 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -46,24 +49,24 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/hlo_test_base_legacy.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 // TODO(b/210165681): The tests in this file are fragile to HLO op names.
@@ -72,35 +75,27 @@ namespace m = match;
 
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::testing::NotNull;
 
 static const std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
                                                                  "f64"};
 static const std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
 
-class CudnnFusedConvRewriterHloTest : public HloTestBaseLegacy {
+class CudnnFusedConvRewriterHloTest : public HloPjRtGpuTestBase {
  public:
   bool IsCuda() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability()
-        .IsCuda();
+    return device_description().gpu_compute_capability().IsCuda();
   }
   se::CudaComputeCapability GetCudaComputeCapability() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    return GetDnnVersionInfoOrDefault(backend().default_stream_executor());
+    return stream_executor::dnn::VersionInfo(
+        gpu_target_config().device_description.dnn_version());
   }
 
   se::SemanticVersion GetToolkitVersion() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .runtime_version();
+    return device_description().runtime_version();
   }
 
   ConvRewriter GetConvRewriter() const {
@@ -112,43 +107,43 @@ class CudnnFusedConvRewriterHloTest : public HloTestBaseLegacy {
                                   GetToolkitVersion());
   }
 
-  CudnnFusedConvRewriterHloTest()
-      : HloTestBaseLegacy(/*verifier_layout_sensitive=*/false,
-                          /*allow_mixed_precision_in_hlo_verifier=*/false,
-                          /*instruction_can_change_layout_func=*/{}) {}
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_use_runtime_fusion(true);
+    debug_options.set_xla_gpu_experimental_enable_conv_fusion(false);
+    return debug_options;
+  }
+
+  CudnnFusedConvRewriterHloTest() = default;
 };
 
-class CudnnFusedConvRewriterTest : public GpuCodegenTest {
+class CudnnFusedConvRewriterTest
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   bool IsCuda() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability()
-        .IsCuda();
+    return device_description().gpu_compute_capability().IsCuda();
   }
   bool IsRocm() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability()
-        .IsRocm();
+    return device_description().gpu_compute_capability().IsRocm();
   }
   se::CudaComputeCapability GetCudaComputeCapability() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    return GetDnnVersionInfoOrDefault(backend().default_stream_executor());
+    return stream_executor::dnn::VersionInfo(
+        gpu_target_config().device_description.dnn_version());
   }
 
   stream_executor::SemanticVersion GetToolkitVersion() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .runtime_version();
+    return device_description().runtime_version();
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
+        GpuPjRtCodegenTest>::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_use_runtime_fusion(true);
+    debug_options.set_xla_gpu_experimental_enable_conv_fusion(false);
+    return debug_options;
   }
 
  protected:
@@ -161,12 +156,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions debug_opts = config.debug_options();
     debug_opts.add_xla_disable_hlo_passes("cudnn_vectorize_convolutions");
-    debug_opts.set_xla_gpu_use_runtime_fusion(true);
     config.set_debug_options(debug_opts);
 
-    auto result = backend().compiler()->RunHloPasses(
-        ParseAndReturnVerifiedModule(hlo_string, config).value(),
-        backend().default_stream_executor(), backend().memory_allocator());
+    auto result = GetOptimizedModule(hlo_string, config);
     if (!result.status().ok()) {
       EXPECT_OK(result.status())
           << "HLO compilation failed: " << result.status();
@@ -189,26 +181,23 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       EXPECT_THAT(optimized_hlo_string,
                   HasSubstr("cudnn-conv-bias-activation."));
 
-      TF_ASSERT_OK_AND_ASSIGN(auto module,
-                              ParseAndReturnVerifiedModule(hlo_with_new_type));
-      DebugOptions debug_opts = module->config().debug_options();
-      debug_opts.set_xla_gpu_use_runtime_fusion(true);
-      module->mutable_config().set_debug_options(debug_opts);
+      ASSERT_OK_AND_ASSIGN(auto module,
+                           ParseAndReturnVerifiedModule(hlo_with_new_type));
       EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
   }
 
   void TestClamp(absl::string_view pre_hlo_string,
-                 absl::string_view post_hlo_string) {
-    std::string alpha_conv_scalar, alpha_side_input_scalar;
-    std::string elementwise_type;
-
+                 absl::string_view post_hlo_string,
+                 bool allow_integer_rounding = false) {
     std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
     EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
     EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
-    EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.01}))
-        << pre_hlo_string;
+
+    ErrorSpec error_spec{0.01};
+    error_spec.allow_integer_rounding_difference = allow_integer_rounding;
+    EXPECT_TRUE(RunAndCompare(pre_hlo_string, error_spec)) << pre_hlo_string;
 
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_hlo_string, post_hlo_string);
@@ -266,9 +255,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       p0 = custom_call_string.find(", dim_labels");
       custom_call_string.erase(p0);
 
-      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                              ParseAndReturnVerifiedModule(pre_hlo_string));
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                           ParseAndReturnVerifiedModule(pre_hlo_string));
+      ASSERT_OK_AND_ASSIGN(
           bool changed, RunHloPass(ConvRewriter(se::CudaComputeCapability{
                                        se::CudaComputeCapability::kHopper, 0}),
                                    module.get()));
@@ -861,18 +850,14 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
       ROOT relu = f32[1,32,9,9] maximum(zeros, conv)
     })";
 
-  const std::string optimized_hlo_string =
-      backend()
-          .compiler()
-          ->RunHloPasses(
-              ParseAndReturnVerifiedModule(kHloString, GetModuleConfigForTest())
-                  .value(),
-              backend().default_stream_executor(), backend().memory_allocator())
-          .value()
-          ->ToString();
-  EXPECT_THAT(optimized_hlo_string,
-              ::testing::ContainsRegex(
-                  R"(custom-call.*metadata=\{op_type="foo" op_name="bar"\})"));
+  ASSERT_OK_AND_ASSIGN(
+      auto optimized_module,
+      GetOptimizedModule(kHloString, GetModuleConfigForTest()));
+  const HloInstruction* custom_call = hlo_query::GetFirstInstructionWithOpcode(
+      *optimized_module->entry_computation(), HloOpcode::kCustomCall);
+  ASSERT_THAT(custom_call, NotNull()) << optimized_module->ToString();
+  EXPECT_EQ(custom_call->metadata().op_type(), "foo");
+  EXPECT_EQ(custom_call->metadata().op_name(), "bar");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
@@ -1646,7 +1631,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloat) {
 
       ROOT convert = f32[1,32,9,9] convert(conv)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1679,7 +1664,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToInt8BiasSideInput) {
                                              add(add(conv_f32, bias), side_input),
                                              f32[1,32,9,9] broadcast(f32[] constant(127))))
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1719,7 +1704,7 @@ TEST_F(CudnnFusedConvRewriterHloTest,
       conv_f32 = f32[1,32,9,9] convert(conv)
       ROOT root = s8[1,32,9,9] convert(add(add(conv_f32, bias), side_input))
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1759,7 +1744,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
       zeros = s8[1,32,9,9] broadcast(s8[] constant(0)), dimensions={}
       ROOT root = s8[1,32,9,9] maximum(conv_s8, zeros)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1784,8 +1769,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
                       m::ConstantEffectiveScalar(0).WithElementType(F32))),
               0)
               .WithShape(S8, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kRelu);
 }
@@ -1812,7 +1797,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloatBiasSideInput) {
       sum1 = add(conv_f32, bias_broadcast)
       ROOT sum2 = add(sum1, side_input_f32)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1857,7 +1842,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
                                              add(add(f32[1,32,9,9] convert(conv), bias), side_input),
                                              f32[1,32,9,9] broadcast(f32[] constant(127))))
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1885,8 +1870,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
                   m::Reshape(m::Parameter(3)).WithShape(S8, {1, 32, 9, 9})),
               0)
               .WithShape(S8, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.conv_result_scale(), 1);
   EXPECT_EQ(config.side_input_scale(), 0.25);
@@ -1911,7 +1896,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseAlpha) {
       convert = f32[1,32,9,9] convert(conv)
       ROOT root = multiply(convert, alpha_broadcast)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1927,8 +1912,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseAlpha) {
               m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget}),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.conv_result_scale(), 42);
 }
@@ -1950,7 +1935,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu) {
       sum = add(conv, bias_broadcast)
       ROOT relu = maximum(sum, zeros)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1967,8 +1952,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu) {
                             m::Parameter(0), m::Parameter(1), m::Parameter(2)),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kRelu);
 }
@@ -1990,7 +1975,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
       not_relu = minimum(sum, zeros)
       ROOT root = tuple(relu, not_relu)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2011,8 +1996,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
                   0)
                   .WithShape(F32, {1, 32, 9, 9})),
           m::Minimum())));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
@@ -2036,10 +2021,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
       expm1 = exponential-minus-one(sum)
       ROOT elu = select(cmp, sum, expm1)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2058,8 +2040,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
                             m::Parameter(0), m::Parameter(1), m::Parameter(2)),
               0)
               .WithShape(F16, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kElu);
 }
@@ -2085,10 +2067,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
       not_elu = minimum(sum, zeros)
       ROOT root = tuple(elu, not_elu)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2114,8 +2093,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
                         .WithPredicate(HloPredicateIsOp<HloOpcode::kExpm1>)
                         .WithOperand(0, gte_pattern)),
           m::Minimum())));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
@@ -2137,10 +2116,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
       sum = add(conv, bias_broadcast)
       ROOT relu = clamp(zeros, sum, sixes)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2158,8 +2134,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
                             m::Parameter(0), m::Parameter(1), m::Parameter(2)),
               0)
               .WithShape(F16, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kRelu6);
 }
@@ -2181,10 +2157,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
       not_relu = minimum(sum, zeros)
       ROOT root = tuple(relu, not_relu)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2205,8 +2178,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
                        .WithShape(F16, {1, 32, 9, 9}),
                    m::Broadcast(m::ConstantEffectiveScalar(6))),
           m::Minimum())));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
@@ -2228,10 +2201,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
       mul = multiply(sum, alphas)
       ROOT leaky_relu = select(cmp, sum, mul)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2250,8 +2220,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
                             m::Parameter(0), m::Parameter(1), m::Parameter(2)),
               0)
               .WithShape(F16, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kLeakyRelu);
 }
@@ -2275,10 +2245,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
       not_leaky_relu = minimum(sum, zeros)
       ROOT root = tuple(leaky_relu, not_leaky_relu)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2304,8 +2271,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
                     m::Multiply(gte_pattern,
                                 m::Broadcast(m::ConstantEffectiveScalar()))),
           m::Minimum())));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
@@ -2325,7 +2292,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseAlphaIfMultipleUsers) {
       sum = add(multiply(alpha, conv), bias)
       ROOT root = tuple(conv, sum)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2344,8 +2311,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseAlphaIfMultipleUsers) {
                              m::Broadcast(m::Parameter(3)),
                              m::GetTupleElement(m::CustomCall(&conv2), 0))))));
   EXPECT_EQ(conv1, conv2);
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv1->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv1->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.conv_result_scale(), 1);
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
@@ -2364,7 +2331,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasIfMultipleUsers) {
                dim_labels=bf01_01io->bf01
       ROOT root = tuple(conv, add(conv, bias))
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2381,8 +2348,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasIfMultipleUsers) {
           m::AddAnyOrder(m::Broadcast(m::Parameter(2)),
                          m::GetTupleElement(m::CustomCall(&conv2), 0)))));
   EXPECT_EQ(conv1, conv2);
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv1->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv1->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.conv_result_scale(), 1);
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
@@ -2402,7 +2369,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputThroughRelu) {
       relu = maximum(conv, f32[1,32,9,9] broadcast(f32[] constant(0)))
       ROOT root = add(relu, side_input)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2419,8 +2386,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputThroughRelu) {
               m::CustomCall(&conv, m::Parameter(0), m::Parameter(1),
                             m::Broadcast(m::ConstantEffectiveScalar(0))),
               0))));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.conv_result_scale(), 1);
   EXPECT_EQ(config.activation_mode(), se::dnn::kRelu);
@@ -2440,7 +2407,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasThroughRelu) {
       relu = maximum(conv, f32[1,32,9,9] broadcast(f32[] constant(0)))
       ROOT root = add(relu, bias)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2455,8 +2422,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasThroughRelu) {
                   m::GetTupleElement(m::CustomCall(
                       &conv, m::Parameter(0), m::Parameter(1),
                       m::Broadcast(m::ConstantEffectiveScalar(0)))))));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.conv_result_scale(), 1);
   EXPECT_EQ(config.activation_mode(), se::dnn::kRelu);
@@ -2475,7 +2442,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputIfMultipleUsers) {
                dim_labels=bf01_01io->bf01
       ROOT root = tuple(conv, add(conv, side_input))
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2492,8 +2459,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputIfMultipleUsers) {
           m::AddAnyOrder(m::Parameter(2),
                          m::GetTupleElement(m::CustomCall(&conv2), 0)))));
   EXPECT_EQ(conv1, conv2);
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv1->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv1->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.conv_result_scale(), 1);
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
@@ -2511,7 +2478,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseConvertToF16IfMultipleUsers) {
                dim_labels=bf01_01io->bf01
       ROOT root = tuple(conv, f16[1,32,9,9] convert(conv))
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2544,7 +2511,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
                   f32[1,32,9,9] broadcast(f32[] constant(127))))
       ROOT root = tuple(conv, conv_s8)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2577,7 +2544,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
       ROOT ret = multiply(f32[1, 32, 9, 9] convert(conv), mult_op)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
@@ -2603,7 +2570,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
       ROOT ret = multiply(f32[1, 32, 9, 9] convert(conv), mult_op)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
@@ -2629,7 +2596,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
       ROOT ret = multiply(s8[1, 32, 9, 9] convert(conv), mult_op)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
@@ -2656,7 +2623,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontRemoveConvertDuetoMultpleUser) {
       ROOT ret = multiply(s8[1, 32, 9, 9] convert(conv), mult_op)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
@@ -2684,7 +2651,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBias) {
                dim_labels=bf01_01io->bf01
       ROOT root = add(conv, bias_broadcast)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2715,7 +2682,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseSideInput) {
                dim_labels=bf01_01io->bf01
       ROOT root = add(conv, side_input)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2735,8 +2702,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseSideInput) {
                             m::Parameter(2)),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 1);
 }
@@ -2757,7 +2724,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseScaledSideInput) {
                dim_labels=bf01_01io->bf01
       ROOT root = add(conv, side_input_product)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2777,8 +2744,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseScaledSideInput) {
                             m::Parameter(2)),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 42);
 }
@@ -2799,7 +2766,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBiasAndSideInput) {
       sum = add(conv, side_input)
       ROOT sum2 = add(sum, bias_broadcast)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2817,8 +2784,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBiasAndSideInput) {
                             m::Parameter(3)),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 1);
 }
@@ -2836,7 +2803,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, EffectiveScalarBias) {
                dim_labels=bf01_01io->bf01
       ROOT root = add(conv, bias)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2878,7 +2845,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, StrengthReduceF32ToF16) {
       sum2 = add(sum, bias_broadcast)
       ROOT conv_f16 = f16[1,32,9,9] convert(sum2)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2900,8 +2867,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, StrengthReduceF32ToF16) {
                             m::Parameter(3)),
               0)
               .WithShape(F16, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 1);
 }
@@ -2924,7 +2891,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BroadcastReshapeTransposeAfterConvert) {
       conv_f16 = f16[1,32,9,9] convert(conv_f32)
       ROOT root = f16[1,32,9,9] add(add(conv_f16, side_input), bias)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2949,8 +2916,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, BroadcastReshapeTransposeAfterConvert) {
                          m::Parameter(2), m::Reshape(m::Parameter(3))),
                      0)
                      .WithShape(F16, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 1);
 }
@@ -2976,7 +2943,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, NoStrengthReduceF32ToF16IfBiasIsF32) {
       sum2 = add(sum, bias_broadcast)
       ROOT conv_f16 = f16[1,32,9,9] convert(sum2)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -3003,8 +2970,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, NoStrengthReduceF32ToF16IfBiasIsF32) {
                              m::Convert(m::Parameter(3)).WithElementType(F32)),
                          0))
               .WithShape(F16, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 1);
 }
@@ -3031,7 +2998,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32Constants) {
       sum2 = add(sum, bias_broadcast)
       ROOT conv_f16 = f16[1,2,2,2] convert(sum2)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -3056,8 +3023,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32Constants) {
                          m::Parameter(1), m::Constant().WithElementType(F16)),
                      0)
                      .WithShape(F16, {1, 2, 2, 2})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 1);
 }
@@ -3084,7 +3051,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32ConstantsNotLosslesslyConvertible) {
       sum2 = add(sum, bias_broadcast)
       ROOT conv_f16 = f16[1,2,2,2] convert(sum2)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -3115,8 +3082,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32ConstantsNotLosslesslyConvertible) {
                          0)
                          .WithShape(F32, {1, 2, 2, 2}))
               .WithElementType(F16)));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.side_input_scale(), 1);
 }
@@ -3147,7 +3114,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
 
     ROOT convert = s8[1,32,9,9] convert(clamp)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -3171,8 +3138,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
                                 .WithShape(F32, {32})),
               0)
               .WithShape(S8, {1, 32, 9, 9})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          conv->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       conv->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& config = gpu_config.cudnn_conv_backend_config();
   EXPECT_EQ(config.activation_mode(), se::dnn::kRelu);
 }
@@ -3189,7 +3156,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BiasTypeMatchesConvTypeIfFp) {
     conv = f64[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
     ROOT root = f64[1,32,9,9] add(conv, bias)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -3252,7 +3219,84 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
       // post_hlo
       R"(
 // CHECK: [[cudnn_conv_bias_activation_7_0:%[^ ]+]] = (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[input_1:%[^ ]+]], [[transpose_2:%[^ ]+]], [[bias_3:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward"
-      )");
+      )",
+      /*allow_integer_rounding=*/true);
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8RoundingDifference) {
+  MAYBE_SKIP_TEST("I8");
+  // Demonstrates the difference between standard round-to-zero (truncation)
+  // semantics in reference evaluation and round-to-nearest in cuDNN fused conv.
+  //
+  // When integer outputs are produced by converting clamped float activations,
+  // cuDNN fused convolution rounds to nearest (e.g. 1.0 + 2.9 = 3.9 -> 4),
+  // whereas the un-fused reference computation truncates towards zero
+  // (e.g. 1.0 + 2.9 = 3.9 -> 3).
+  //
+  // Strict integer comparison (default ErrorSpec) fails due to this off-by-one
+  // discrepancy, while ErrorSpec with allow_integer_rounding_difference = true
+  // accounts for it and succeeds.
+  constexpr absl::string_view kHlo = R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = f32[] constant(0)
+      zeros = f32[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = s8[1,3,3,64] parameter(0)
+      filter = s8[3,3,64,64] parameter(1)
+      bias = f32[64] parameter(2)
+
+      inputs32 = s32[1,3,3,64] convert(input)
+      filters32 = s32[3,3,64,64] convert(filter)
+
+      conv = s32[1,3,3,64] convolution(inputs32, filters32), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+
+      convfloat = f32[1,3,3,64] convert(conv)
+      broadcasted_bias = f32[1,3,3,64] broadcast(bias), dimensions={3}
+      add1 = f32[1,3,3,64] add(convfloat, broadcasted_bias)
+      relu = f32[1,3,3,64] maximum(zeros, add1)
+
+      lower = f32[] constant(-128)
+      lowers = f32[1,3,3,64] broadcast(lower), dimensions={}
+      upper = f32[] constant(127)
+      uppers = f32[1,3,3,64] broadcast(upper), dimensions={}
+
+      clamp = f32[1,3,3,64] clamp(lowers, relu, uppers)
+
+      ROOT convert = s8[1,3,3,64] convert(clamp)
+    })";
+
+  // Explicit inputs: input = 1, filter has a single 1 at center, bias[0] = 2.9.
+  // The activation sum is 1.0 + 2.9 = 3.9.
+  // Reference un-fused convert truncates to 3; cuDNN fused conv rounds to 4.
+  ASSERT_OK_AND_ASSIGN(
+      Literal input,
+      LiteralUtil::CreateR1<int8_t>(std::vector<int8_t>(1 * 3 * 3 * 64, 1))
+          .Reshape({1, 3, 3, 64}));
+  ASSERT_OK_AND_ASSIGN(
+      Literal filter,
+      LiteralUtil::CreateR1<int8_t>(std::vector<int8_t>(3 * 3 * 64 * 64, 0))
+          .Reshape({3, 3, 64, 64}));
+  filter.Set<int8_t>({1, 1, 0, 0}, 1);
+
+  std::vector<float> bias_vec(64, 0.0f);
+  bias_vec[0] = 2.9f;
+  Literal bias = LiteralUtil::CreateR1<float>(bias_vec);
+
+  std::vector<const Literal*> args = {&input, &filter, &bias};
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  // 1. Strict ErrorSpec rejects the off-by-one difference between GPU cuDNN
+  // (round-to-nearest) and reference interpreter (round-to-zero / truncation).
+  ErrorSpec strict_spec{0.01};
+  EXPECT_FALSE(RunAndCompare(module->Clone(), args, strict_spec));
+
+  // 2. ErrorSpec with allow_integer_rounding_difference accepts the difference.
+  ErrorSpec relaxed_spec{0.01};
+  relaxed_spec.allow_integer_rounding_difference = true;
+  EXPECT_TRUE(RunAndCompare(std::move(module), args, relaxed_spec));
 }
 
 // Disabled per b/190854862 or nvbugs/3326122.
@@ -3340,7 +3384,8 @@ TEST_F(CudnnFusedConvRewriterTest,
       // post_hlo
       R"(
 // CHECK: [[cudnn_conv_bias_activation_11_0:%[^ ]+]] = (s8[1,3,3,64]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[input_1:%[^ ]+]], [[transpose_2:%[^ ]+]], [[bias_3:%[^ ]+]], [[side_input_4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward"
-      )");
+      )",
+      /*allow_integer_rounding=*/true);
 }
 
 TEST_F(CudnnFusedConvRewriterTest,
@@ -3466,7 +3511,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
       convert = s8[1,32,9,9]{3,2,1,0} convert(s32[1,32,9,9]{3,2,1,0} get-tuple-element)
       ROOT relu = s8[1,32,9,9]{3,2,1,0} maximum(s8[1,32,9,9]{3,2,1,0} zeros, s8[1,32,9,9]{3,2,1,0} convert)
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ASSERT_FALSE(CudnnFusedConvRewriter(GetCudaComputeCapability(),
                                       GetDnnVersion(), GetToolkitVersion())
@@ -3494,7 +3539,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
       convert = s8[1,32,9,9]{3,2,1,0} convert(s32[1,32,9,9]{3,2,1,0} get-tuple-element)
       ROOT relu = s8[1,32,9,9]{3,2,1,0} maximum(s8[1,32,9,9]{3,2,1,0} zeros, s8[1,32,9,9]{3,2,1,0} convert)
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ASSERT_FALSE(CudnnFusedConvRewriter(GetCudaComputeCapability(),
                                       GetDnnVersion(), GetToolkitVersion())
@@ -3503,8 +3548,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 int main(int argc, char* argv[]) {
   std::vector<tsl::Flag> flag_list;

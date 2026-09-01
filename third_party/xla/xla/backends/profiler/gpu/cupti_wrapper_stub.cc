@@ -16,9 +16,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
@@ -42,6 +45,12 @@ CUptiResult CuptiWrapperStub::ActivityGetNextRecord(
   return CUPTI_ERROR_MAX_LIMIT_REACHED;
 }
 
+CUptiResult CuptiWrapperStub::ActivityGetNextRecordV2(
+    CUpti_SubscriberHandle /*subscriber*/, uint8_t* /*buffer*/,
+    size_t /*valid_buffer_size_bytes*/, CUpti_Activity** /*record*/) {
+  return CUPTI_ERROR_MAX_LIMIT_REACHED;
+}
+
 CUptiResult CuptiWrapperStub::ActivityGetNumDroppedRecords(CUcontext context,
                                                            uint32_t stream_id,
                                                            size_t* dropped) {
@@ -57,6 +66,40 @@ CUptiResult CuptiWrapperStub::ActivityConfigureUnifiedMemoryCounter(
 CUptiResult CuptiWrapperStub::ActivityRegisterCallbacks(
     CUpti_BuffersCallbackRequestFunc func_buffer_requested,
     CUpti_BuffersCallbackCompleteFunc func_buffer_completed) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityRegisterCallbacksV2(
+    CUpti_SubscriberHandle /*subscriber*/,
+    CuptiBuffersCallbackRequestFuncV2 /*func_buffer_requested*/,
+    CuptiBuffersCallbackCompleteFuncV2 /*func_buffer_completed*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityEnableV2(
+    CUpti_SubscriberHandle /*subscriber*/, CUpti_ActivityKind /*kind*/,
+    void* /*cfg*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityDisableV2(
+    CUpti_SubscriberHandle /*subscriber*/, CUpti_ActivityKind /*kind*/,
+    void* /*cfg*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivitySetAttributeV2(
+    CUpti_SubscriberHandle /*subscriber*/, CUpti_ActivityAttribute /*attr*/,
+    size_t* /*valueSize*/, void* /*value*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityUseSystemThreadIdV2(
+    CUpti_SubscriberHandle /*subscriber*/) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivityUsePerThreadBufferV2() {
   return CUPTI_SUCCESS;
 }
 
@@ -77,6 +120,11 @@ CUptiResult CuptiWrapperStub::GetTimestamp(uint64_t* timestamp) {
   return cuptiGetTimestamp(timestamp);
 }
 
+CUptiResult CuptiWrapperStub::GetTimestampV2(
+    CUpti_SubscriberHandle /*subscriber*/, uint64_t* timestamp) {
+  return GetTimestamp(timestamp);
+}
+
 CUptiResult CuptiWrapperStub::Finalize() { return CUPTI_SUCCESS; }
 
 CUptiResult CuptiWrapperStub::EnableCallback(uint32_t enable,
@@ -95,6 +143,12 @@ CUptiResult CuptiWrapperStub::EnableDomain(uint32_t enable,
 CUptiResult CuptiWrapperStub::Subscribe(CUpti_SubscriberHandle* subscriber,
                                         CUpti_CallbackFunc callback,
                                         void* userdata) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::SubscribeV2(CUpti_SubscriberHandle* subscriber,
+                                          CUpti_CallbackFunc callback,
+                                          void* userdata) {
   return CUPTI_SUCCESS;
 }
 

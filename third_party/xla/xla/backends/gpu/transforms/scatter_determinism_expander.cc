@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -53,10 +54,10 @@ static absl::StatusOr<std::vector<HloInstruction*>> CanonicalizeScatterUpdates(
   std::vector<HloInstruction*> adjusted_updates;
   adjusted_updates.reserve(scatter_updates.size());
   for (HloInstruction* update : scatter_updates) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * canonical_update,
         PermuteScatterAndWindowDims(update, dim_numbers.update_window_dims()));
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * adjusted_update,
         AdjustScatterDims(scatter_indices->shape(), canonical_update,
                           dim_numbers.index_vector_dim()));
@@ -368,11 +369,7 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
         shifted_indices_shape, indices, start_indices, end_indices, strides));
     // Use the total size of the operand tensor as out-of-bounds value
     // This matches how FlattenIndices works - it uses the total tensor size
-    int64_t total_size = 1;
-    for (int64_t dim : operand_dims) {
-      total_size *= dim;
-    }
-    int64_t out_of_bounds_value = total_size;
+    int64_t out_of_bounds_value = xla::Product(operand_dims);
     auto* padding_indices =
         parent->AddInstruction(HloInstruction::CreateBroadcast(
             padding_indices_shape,
@@ -393,8 +390,8 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
         concatenated_indices, ComparisonDirection::kEq));
     std::vector<HloInstruction*> map_operands = {current_updates,
                                                  concatenated_updates};
-    TF_ASSIGN_OR_RETURN(HloInstruction * reduced_updates,
-                        MakeMapHlo(map_operands, to_apply));
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * reduced_updates,
+                     MakeMapHlo(map_operands, to_apply));
     current_updates = parent->AddInstruction(HloInstruction::CreateTernary(
         updates_shape, HloOpcode::kSelect, indices_mask, reduced_updates,
         current_updates));
@@ -409,10 +406,10 @@ absl::StatusOr<std::vector<HloInstruction*>> ComputePrefixScan(
   std::vector<HloInstruction*> prefix_scans(sorted_updates.size());
   HloInstruction* prefix_scan_update = nullptr;
   for (int i = 0; i < sorted_updates.size(); i++) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloComputation * to_apply,
         CallComputationAndGetIthOutputWithBinaryParams(scatter->to_apply(), i));
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         prefix_scan_update,
         CreateScanWithIndices(parent, sorted_updates[i], sorted_scalar_indices,
                               to_apply, operand_dims));
@@ -595,7 +592,7 @@ absl::StatusOr<HloInstruction*> CheckValidIndices(
       init_reduce_value, {1}, reduce_computation));
   // 2. Check last indices <= [bounds...]
   // Check if the index is OOB w.r.t. the operand dimensions and window sizes.
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * max_valid_index_constant,
       CreateBoundTensor(parent, indices, operand_dims,
                         full_index_to_operand_dims, false, window_sizes));
@@ -626,23 +623,32 @@ absl::StatusOr<HloInstruction*> AddImplicitDimensionsToIndices(
     int64_t operand_rank, absl::Span<const int64_t> indices_to_operand_map,
     HloInstruction* indices) {
   const Shape& indices_shape = indices->shape();
-  HloComputation* computation = indices->parent();
 
   // Get the batch size (N) and S (number of dimensions in index_vector)
   int64_t batch_size = indices_shape.dimensions(0);
   int64_t num_indices_dims = indices_to_operand_map.size();
 
+  // If the operand rank is the same as the number of indices dimensions, we
+  // don't need to pad the indices.
+  if (operand_rank == num_indices_dims) {
+    return indices;
+  }
+
+  HloComputation* computation = indices->parent();
+
   // Create a tensor of zeros with the target shape [N, operand_rank]
   Shape expanded_shape = ShapeUtil::MakeShape(indices_shape.element_type(),
                                               {batch_size, operand_rank});
+  Shape padding_shape =
+      ShapeUtil::MakeShape(indices_shape.element_type(),
+                           {batch_size, operand_rank - num_indices_dims});
 
-  HloInstruction* zero_filled_tensor =
+  HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          indices->shape().element_type() == S64
-              ? LiteralUtil::CreateR2FromArray2D<int64_t>(Array2D<int64_t>(
-                    batch_size, operand_rank - num_indices_dims, 0))
-              : LiteralUtil::CreateR2FromArray2D<int32_t>(Array2D<int32_t>(
-                    batch_size, operand_rank - num_indices_dims, 0))));
+          LiteralUtil::Zero(indices_shape.element_type())));
+  HloInstruction* zero_filled_tensor = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(padding_shape, zero, {}));
+
   // Concatenate the zero-filled tensor with the index_vector
   HloInstruction* expanded_indices =
       computation->AddInstruction(HloInstruction::CreateConcatenate(
@@ -701,9 +707,9 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
   // Canonicalize the scatter_indices, after which the size of its most-major
   // dimension must be same as the while loop trip count.
   HloInstruction* original_scatter_indices = scatter_indices;
-  TF_ASSIGN_OR_RETURN(scatter_indices,
-                      CanonicalizeScatterIndices(
-                          scatter_indices, dim_numbers.index_vector_dim()));
+  ABSL_ASSIGN_OR_RETURN(scatter_indices,
+                   CanonicalizeScatterIndices(scatter_indices,
+                                              dim_numbers.index_vector_dim()));
   CHECK_EQ(scatter_indices_count, scatter_indices->shape().dimensions(0));
   // We compromise for maintainability and make the scatter_indices always 2D,
   // so that the implementation could be easier, as we do not need to maintain
@@ -720,7 +726,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
 
   // Canonicalize the updates, after which the size of their most-major
   // dimensions must be same as the while loop trip count.
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       scatter_updates,
       CanonicalizeScatterUpdates(scatter_updates, original_scatter_indices,
                                  dim_numbers, scatter_indices_count));
@@ -742,7 +748,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
   std::vector<int64_t> full_index_to_operand_dims =
       ComputeFullIndexToOperandDims(scatter_operands[0]->shape(), dim_numbers);
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * out_of_bound_tensor,
       CreateBoundTensor(parent, scatter_indices, scatter->shape().dimensions(),
                         dim_numbers.scatter_dims_to_operand_dims()));
@@ -775,7 +781,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
                   full_index_to_operand_dims, actual_update_window_dims);
 
     // Map scatter_indices into operand space
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         scatter_indices,
         AddImplicitDimensionsToIndices(
             scatter_operands[0]->shape().dimensions().size(),
@@ -783,7 +789,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     CHECK(scatter_indices->shape().dimensions(0) == scatter_indices_count);
 
     // Add implicit dimensions to OOB constant, if needed.
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         out_of_bound_tensor,
         AddImplicitDimensionsToIndices(
             scatter_operands[0]->shape().dimensions().size(),
@@ -791,7 +797,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
 
     // If any updates are out of bound, we change the corresponding indices to
     // be oob_tensor values
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * oob_check_mask,
         CheckValidIndices(scatter->parent(), scatter_indices,
                           scatter_operands[0]->shape().dimensions(),
@@ -861,14 +867,14 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     sorted_indices = sorted_tensors[sorted_tensors.size() - 1];
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<HloInstruction*> prefix_scan_updates,
       ComputePrefixScan(sorted_updates, sorted_scalar_indices, scatter, parent,
                         scatter_operands[0]->shape().dimensions()));
   if (non_scalar_update) {
     // As the indices are expanded, we need to recompute out-of-bound tensor
     // with the same shape
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         out_of_bound_tensor,
         CreateBoundTensor(parent, sorted_indices,
                           scatter_operands[0]->shape().dimensions(),

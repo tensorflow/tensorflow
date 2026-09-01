@@ -18,6 +18,9 @@ limitations under the License.
 
 // Place `<locale>` before <Python.h> to avoid build failure in macOS.
 #include <locale>
+#include <string>
+#include <tuple>
+#include <utility>
 
 // The empty line above is on purpose as otherwise clang-format will
 // automatically move <Python.h> before <locale>.
@@ -30,6 +33,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -39,68 +43,106 @@ namespace tensorflow {
 // Note that unlike Safe_PyObjectPtr this class does not steal a
 // reference to a Python object. The caller is responsible for doing
 // Py_INCREF/Py_DECREF.
-struct PyObjectPtr {
+class PyObjectPtr {
+ public:
   template <typename H>
   friend H AbslHashValue(H h, const PyObjectPtr& obj) {
-    return H::combine(std::move(h), PyObject_Hash(obj.ptr));
+    Py_hash_t hash = PyObject_Hash(obj.ptr_);
+    CHECK_NE(hash, -1);        // Crash OK
+    CHECK(!PyErr_Occurred());  // Crash OK
+    return H::combine(std::move(h), hash);
   }
 
-  explicit PyObjectPtr(PyObject* ptr) : ptr(ptr) {}
+  explicit PyObjectPtr(PyObject* ptr) : ptr_(ptr) {}
 
-  explicit inline operator PyObject*() const { return ptr; }
+  explicit operator PyObject*() const { return ptr_; }
 
-  inline bool operator==(const PyObjectPtr& other) const {
+  bool operator==(const PyObjectPtr& other) const {
     // We require exact type equality to account for 0 == 0.0 == False.
-    if (Py_TYPE(ptr) != Py_TYPE(other.ptr)) {
+    if (Py_TYPE(ptr_) != Py_TYPE(other.ptr_)) {
       return false;
     }
 
-    bool result = PyObject_RichCompareBool(ptr, other.ptr, Py_EQ) > 0;
-    CHECK(!PyErr_Occurred());
+    bool result = PyObject_RichCompareBool(ptr_, other.ptr_, Py_EQ) > 0;
+    CHECK(!PyErr_Occurred());  // Crash OK
     return result;
   }
 
  private:
-  PyObject* ptr;
+  PyObject* ptr_;
 };
 
 // Cache mapping PyObject* to the corresponding on-device TFE_TensorHandles.
 // Used to speed up ConvertToEagerTensor for scalars.
-// TODO(slebedev): move ConvertToEagerTensor here.
-struct TFE_TensorHandleCache {
+// TODO: b/169790439 - move ConvertToEagerTensor here.
+class TFE_TensorHandleCache {
+ public:
   static TFE_TensorHandleCache* Get();
 
-  TFE_TensorHandleCache() { cache.reserve(64); }
-  ~TFE_TensorHandleCache() {
-#ifdef Py_GIL_DISABLED
-    absl::MutexLock lock(&mu_);
-#endif  // Py_GIL_DISABLED
+  TFE_TensorHandleCache() { cache_.reserve(64); }
 
-    DecrefUnrefAll();
-  }
+  TFE_TensorHandleCache(const TFE_TensorHandleCache&) = delete;
+  TFE_TensorHandleCache& operator=(const TFE_TensorHandleCache&) = delete;
 
-  TFE_TensorHandle* Lookup(PyObject* value, tensorflow::DataType dtype,
-                           TFE_Context* ctx,
+  ~TFE_TensorHandleCache() { DecrefUnrefAll(); }
+
+  TFE_TensorHandle* Lookup(PyObject* value, DataType dtype, TFE_Context* ctx,
                            absl::string_view device_name) const;
 
-  void Insert(PyObject* value, tensorflow::DataType dtype, TFE_Context* ctx,
+  void Insert(PyObject* value, DataType dtype, TFE_Context* ctx,
               absl::string_view device_name, TFE_TensorHandle* h);
 
   void Clear();
 
- private:
-  // TODO(kkb): Instead of `TFE_Context*` key, ideally Python's context object
-  // should have TFE_TensorHandleCache instance. Migrate once we Python context
-  // object is backed by C++ data structure. b/169790439
-  using Key = std::tuple<PyObjectPtr, tensorflow::DataType, TFE_Context*,
-                         absl::string_view>;
+  // Maximum number of entries before the cache is cleared. Prevents unbounded
+  // growth when many distinct scalar values are created in a loop.
+  static constexpr size_t kMaxCacheSize = 1024;
 
-  void DecrefUnrefAll() {
-    for (const auto& p : cache) {
-      Py_DECREF(static_cast<PyObject*>(std::get<0>(p.first)));
-      TFE_DeleteTensorHandle(p.second);
+ private:
+  // TODO: b/169790439 - Instead of `TFE_Context*` key, ideally Python's context
+  // object should have TFE_TensorHandleCache instance. Migrate once Python
+  // context object is backed by C++ data structure.
+  using Key = std::tuple<PyObjectPtr, DataType, TFE_Context*, std::string>;
+  using LookupKey =
+      std::tuple<PyObjectPtr, DataType, TFE_Context*, absl::string_view>;
+
+  struct KeyHash {
+    using is_transparent = void;
+
+    template <typename Tuple>
+    size_t operator()(const Tuple& t) const {
+      return absl::Hash<Tuple>{}(t);
+    }
+  };
+
+  struct KeyEqual {
+    using is_transparent = void;
+
+    template <typename Tuple1, typename Tuple2>
+    bool operator()(const Tuple1& lhs, const Tuple2& rhs) const {
+      return lhs == rhs;
+    }
+  };
+
+  using Cache = absl::flat_hash_map<Key, TFE_TensorHandle*, KeyHash, KeyEqual>;
+
+  Cache ExtractCache() {
+#ifdef Py_GIL_DISABLED
+    absl::MutexLock lock(mu_);
+#endif  // Py_GIL_DISABLED
+    Cache temp_cache = std::move(cache_);
+    cache_.clear();
+    return temp_cache;
+  }
+
+  static void DecrefUnrefAll(Cache temp_cache) {
+    for (const auto& [key, value] : temp_cache) {
+      Py_DECREF(static_cast<PyObject*>(std::get<0>(key)));
+      TFE_DeleteTensorHandle(value);
     }
   }
+
+  void DecrefUnrefAll() { DecrefUnrefAll(ExtractCache()); }
 
 #ifdef Py_GIL_DISABLED
   mutable absl::Mutex mu_;
@@ -108,7 +150,7 @@ struct TFE_TensorHandleCache {
 
   // Under a GIL-enabled Python, guarded by the GIL. Under a no-GIL Python,
   // guarded by mu_.
-  absl::flat_hash_map<Key, TFE_TensorHandle*> cache;
+  Cache cache_;
 };
 
 }  // namespace tensorflow

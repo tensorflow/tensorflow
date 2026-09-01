@@ -243,11 +243,12 @@ absl::Status MemmappedFileSystem::InitializeFromFile(
   uint64_t prev_element_offset = directory_offset;
   for (auto element_iter = proto_directory.element().rbegin();
        element_iter != proto_directory.element().rend(); ++element_iter) {
-    // Check that the element offset is in the right range.
-    if (element_iter->offset() >= prev_element_offset) {
+    // Check that the element offset and length are in the right range.
+    if (element_iter->offset() >= prev_element_offset ||
+        element_iter->length() > prev_element_offset - element_iter->offset()) {
       return absl::DataLossError(
           absl::StrCat("Corrupted memmapped model file: ", filename,
-                       " Invalid offset of internal component"));
+                       " Invalid offset or length of internal component"));
     }
     if (!directory_
              .insert(std::make_pair(

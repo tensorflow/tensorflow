@@ -277,6 +277,57 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
                             math_ops.unsorted_segment_sum, data, indices,
                             num_segments))
 
+  def testUnsortedSegmentSumBoundedDynamicPrefixDimension(self):
+    # Slicing by a run-time size gives a bounded-dynamic leading dimension.
+    # The kernel read that dimension as its upper bound and rejected it
+    # against the other operand's smaller size, even though the two are equal
+    # at run time.
+    for dtype in self.numeric_types:
+      with self.session() as sess, self.test_scope():
+        mask = array_ops.placeholder(np.bool_, shape=[3])
+        count = math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32))
+
+        # Dynamic indices (bound 3, run-time 2) against static data (2).
+        data = array_ops.placeholder(dtype, shape=[2])
+        all_indices = array_ops.placeholder(np.int32, shape=[3])
+        y0 = math_ops.unsorted_segment_sum(
+            data, array_ops.slice(all_indices, [0], [count]), 3
+        )
+
+        # Dynamic data (bound 3, run-time 2) against static indices (2).
+        all_data = array_ops.placeholder(dtype, shape=[3])
+        indices = array_ops.placeholder(np.int32, shape=[2])
+        y1 = math_ops.unsorted_segment_sum(
+            array_ops.slice(all_data, [0], [count]), indices, 3
+        )
+
+        # Both sides dynamic, with different bounds. This is where the kernel
+        # slices the larger side while cwise_ops.cc pads instead.
+        pair_data = array_ops.placeholder(dtype, shape=[5])
+        pair_indices = array_ops.placeholder(np.int32, shape=[2])
+        y2 = math_ops.unsorted_segment_sum(
+            array_ops.slice(pair_data, [0], [count]),
+            array_ops.slice(pair_indices, [0], [count]),
+            3,
+        )
+
+        r0, r1, r2 = sess.run(
+            [y0, y1, y2],
+            {
+                mask: np.array([True, False, True]),
+                data: np.array([1, 2], dtype=dtype),
+                all_indices: np.array([0, 2, 1], dtype=np.int32),
+                all_data: np.array([1, 2, 9], dtype=dtype),
+                indices: np.array([0, 2], dtype=np.int32),
+                pair_data: np.array([1, 2, 7, 8, 9], dtype=dtype),
+                pair_indices: np.array([0, 2], dtype=np.int32),
+            },
+        )
+
+      self.assertAllClose(np.array([1, 0, 2], dtype=dtype), r0)
+      self.assertAllClose(np.array([1, 0, 2], dtype=dtype), r1)
+      self.assertAllClose(np.array([1, 0, 2], dtype=dtype), r2)
+
   def testUnsortedSegmentOps1DIndices1DDataNegativeIndices(self):
     """Tests for min, max, and prod ops.
 
@@ -304,6 +355,34 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
           self._unsortedSegmentMax(
               np.array([0, 1, 2, 3, 4, 5, 6], dtype=dtype),
               np.array([3, -1, 0, 1, 0, -1, 3], dtype=np.int32), 4))
+
+  def testNaNHandling(self):
+    for dtype in self.float_types:
+      hi = dtypes.as_dtype(dtype).max
+      lo = dtypes.as_dtype(dtype).min
+      if self.device == "TPU" and dtype == np.float64:
+        hi = np.inf
+        lo = -np.inf
+      self.assertAllClose(
+          np.array([1.0], dtype=dtype),
+          self._unsortedSegmentMin(
+              np.array([1.0, np.nan, 3.0], dtype=dtype),
+              np.array([0, 0, 0], dtype=np.int32), 1))
+      self.assertAllClose(
+          np.array([3.0], dtype=dtype),
+          self._unsortedSegmentMax(
+              np.array([np.nan, 1.0, 3.0], dtype=dtype),
+              np.array([0, 0, 0], dtype=np.int32), 1))
+      self.assertAllClose(
+          np.array([hi], dtype=dtype),
+          self._unsortedSegmentMin(
+              np.array([np.nan, np.nan], dtype=dtype),
+              np.array([0, 0], dtype=np.int32), 1))
+      self.assertAllClose(
+          np.array([lo], dtype=dtype),
+          self._unsortedSegmentMax(
+              np.array([np.nan, np.nan], dtype=dtype),
+              np.array([0, 0], dtype=np.int32), 1))
 
 
 if __name__ == "__main__":

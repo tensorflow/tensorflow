@@ -44,7 +44,7 @@ TapeOperation* TapeContext::CreateOperation() {
 absl::Status TapeContext::RegisterFunction(AbstractFunction* f) {
   return parent_ctx_->RegisterFunction(f);
 }
-absl::Status TapeContext::RemoveFunction(const string& func) {
+absl::Status TapeContext::RemoveFunction(const std::string& func) {
   return parent_ctx_->RemoveFunction(func);
 }
 

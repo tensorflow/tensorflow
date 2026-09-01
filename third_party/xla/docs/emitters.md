@@ -94,8 +94,8 @@ reuse XLA's [indexing_analysis](https://openxla.org/xla/indexing), which has
 functions to produce the output to input mapping for an instruction.
 
 For example, for a `transpose` from `[20,40]` to `[40,20]`, it will produce the
-following indexing map (one affine expression per input dimension; d0 and d1 are
-the output dimensions):
+following indexing map (one symbolic expression per input dimension; d0 and d1
+are the output dimensions):
 
 ```
   (d0, d1) -> d1

@@ -54,11 +54,9 @@ inline void ScaleDepthwise(const float* input_ptr, int32_t depth, float scale,
 }
 
 // Calculates 1D pixel offset in NHWC data.
-inline int Offset(const int32_t* dims_data, int32_t dims_num, int32_t i0,
-                  int32_t i1, int32_t i2, int32_t i3) {
-#ifndef NDEBUG
+inline int64_t Offset(const int32_t* dims_data, int32_t dims_num, int64_t i0,
+                      int64_t i1, int64_t i2, int64_t i3) {
   TFLITE_CHECK_EQ(dims_num, 3);
-#endif
   return ((i0 * dims_data[0] + i1) * dims_data[1] + i2) * dims_data[2] + i3;
 }
 
@@ -69,11 +67,12 @@ inline void ResizeBilinear(int32_t batches, int32_t input_height,
                            float height_scale, float width_scale,
                            const float* input_data, float* output_data) {
   memset(output_data, 0,
-         batches * output_height * output_width * depth * sizeof(float));
+         static_cast<size_t>(batches) * output_height * output_width * depth *
+             sizeof(float));
   const int dims_data[] = {input_height, input_width, depth};
   const int dims_num = sizeof(dims_data) / sizeof(dims_data[0]);
 
-  int32_t output_offset = 0;
+  int64_t output_offset = 0;
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
       float input_y = 0.0f;
@@ -90,7 +89,7 @@ inline void ResizeBilinear(int32_t batches, int32_t input_height,
         float* output_ptr = output_data + output_offset;
 
         // Run kernel on the 4 corners of the bilinear resize algorithm.
-        int32_t input_offset = Offset(dims_data, dims_num, b, y0, x0, 0);
+        int64_t input_offset = Offset(dims_data, dims_num, b, y0, x0, 0);
         float scale = (1 - (input_y - y0)) * (1 - (input_x - x0));
         const float* input_ptr = &input_data[input_offset];
         ScaleDepthwise(input_ptr, depth, scale, output_ptr);
@@ -116,11 +115,10 @@ inline void ResizeBilinear(int32_t batches, int32_t input_height,
   }
 }
 
-// Optimized implementatin of bilinear resize for 2X upscaling case.
+// Optimized implementation of bilinear resize for 2X upscaling case.
 inline void ResizeBilinear2x2(int32_t batches, int32_t input_height,
                               int32_t input_width, int32_t depth,
                               int32_t output_height, int32_t output_width,
-                              float height_scale, float width_scale,
                               const float* input_data, float* output_data) {
   const int input_dims_data[] = {input_height, input_width, depth};
   const int output_dims_data[] = {output_height, output_width, depth};
@@ -132,13 +130,15 @@ inline void ResizeBilinear2x2(int32_t batches, int32_t input_height,
         int32_t x1 = std::min(x0 + 1, input_width - 1);
         int32_t y1 = std::min(y0 + 1, input_height - 1);
 
-        const int32 input_x_offset = (x1 - x0) * depth;
-        const int32 input_y_offset = (y1 - y0) * depth * input_width;
-        const int32 output_x_offset = depth;
-        const int32 output_y_offset = depth * output_width;
+        const int64_t input_x_offset = static_cast<int64_t>(x1 - x0) * depth;
+        const int64_t input_y_offset =
+            static_cast<int64_t>(y1 - y0) * depth * input_width;
+        const int64_t output_x_offset = depth;
+        const int64_t output_y_offset =
+            static_cast<int64_t>(depth) * output_width;
 
         for (int ch = 0; ch < depth; ++ch) {
-          const int32 input_offset =
+          const int64_t input_offset =
               Offset(input_dims_data, dims_num, b, y0, x0, ch);
 
           const float x0y0 = input_data[input_offset];
@@ -148,20 +148,20 @@ inline void ResizeBilinear2x2(int32_t batches, int32_t input_height,
               input_data[input_offset + input_x_offset + input_y_offset];
 
           // Calculate top left corner value.
-          const int32 output_offset =
+          const int64_t output_offset =
               Offset(output_dims_data, dims_num, b, y, x, ch);
           output_data[output_offset] = x0y0;
 
           // Calculate top right corner value.
-          output_data[output_offset + output_x_offset] = (x0y0 + x1y0) / 2;
+          output_data[output_offset + output_x_offset] = (x0y0 + x1y0) * 0.5f;
 
           // Calculate bottom left corner value.
-          float output = (x0y0 + x0y1) / 2;
+          float output = (x0y0 + x0y1) * 0.5f;
           output_data[output_offset + output_y_offset] = output;
 
           // Calculate bottom right corner value.
           output_data[output_offset + output_x_offset + output_y_offset] =
-              (output + ((x1y0 + x1y1) / 2)) / 2;
+              (output + ((x1y0 + x1y1) * 0.5f)) * 0.5f;
         }
       }
     }
@@ -170,13 +170,12 @@ inline void ResizeBilinear2x2(int32_t batches, int32_t input_height,
 
 // Resizes given input. Supports `float` datatype only.
 void ComputeResize(const InputPack& inputs, const OutputPack& outputs) {
-#ifndef NDEBUG
-  TFLITE_CHECK(inputs.size() == 2);
-  TFLITE_CHECK(outputs.size() == 1);
-#endif
+  TFLITE_CHECK_EQ(inputs.size(), 2);
+  TFLITE_CHECK_EQ(outputs.size(), 1);
 
   // Extract input image data.
   const DataRef* img = inputs[0];
+  TFLITE_CHECK_EQ(img->Dims().size(), 4);
   const float* img_data = reinterpret_cast<const float*>(img->Data());
   const dim_t img_num_batches = img->Dims()[0];
   const dim_t img_height = img->Dims()[1];
@@ -185,9 +184,16 @@ void ComputeResize(const InputPack& inputs, const OutputPack& outputs) {
 
   // Extract new image size.
   const DataRef* size = inputs[1];
+  TFLITE_CHECK_EQ(size->NumElements(), 2);
   const dim_t* size_data = reinterpret_cast<const dim_t*>(size->Data());
   const dim_t new_height = size_data[0];
   const dim_t new_width = size_data[1];
+
+  if (img_num_batches == 0 || img_num_channels == 0 || new_height == 0 ||
+      new_width == 0) {
+    return;
+  }
+  TFLITE_CHECK(img_height > 0 && img_width > 0);
 
   // Resize output buffer for resized image.
   MutableDataRef* output = outputs[0];
@@ -199,8 +205,7 @@ void ComputeResize(const InputPack& inputs, const OutputPack& outputs) {
 
   if (new_width == 2 * img_width && new_height == 2 * img_height) {
     ResizeBilinear2x2(img_num_batches, img_height, img_width, img_num_channels,
-                      new_height, new_width, height_scale, width_scale,
-                      img_data, output_data);
+                      new_height, new_width, img_data, output_data);
     return;
   }
 
@@ -212,8 +217,8 @@ void ComputeResize(const InputPack& inputs, const OutputPack& outputs) {
 }  // namespace
 
 const Algo* Impl_Resize() {
-  static const Algo center_crop = {&ComputeResize, nullptr};
-  return &center_crop;
+  static constexpr Algo kResize = {&ComputeResize, nullptr};
+  return &kResize;
 }
 
 }  // namespace resize

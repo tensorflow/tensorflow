@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -76,9 +75,5 @@ class ExpandIntegerPowerPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateExpandIntegerPowerPass() {
-  return std::make_unique<ExpandIntegerPowerPass>();
-}
 
 }  // namespace xla::emitters

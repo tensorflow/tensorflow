@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 
@@ -43,6 +44,19 @@ class SymmetricMemory {
   virtual absl::StatusOr<stream_executor::DeviceAddressBase> multimem_addr()
       const {
     return absl::UnimplementedError("Multimem not supported");
+  }
+
+  // Returns an address of the symmetric memory on a peer device.
+  //
+  // The rank argument is in the same rank space as the collective clique that
+  // created this memory. Backends are responsible for translating it to any
+  // backend-local rank space needed by their memory access API.
+  //
+  // Useful for clients who need to pass peer addresses directly as a kernel
+  // arguments instead of calculating a peer address from the kernel itself.
+  virtual absl::StatusOr<stream_executor::DeviceAddressBase> peer_addr(
+      RankId rank) const {
+    return absl::UnimplementedError("Peer address not supported");
   }
 
   virtual std::string ToString() const = 0;

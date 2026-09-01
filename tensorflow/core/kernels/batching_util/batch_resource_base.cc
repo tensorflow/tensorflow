@@ -191,6 +191,54 @@ void RecordInputStatsV2(int32_t batch_size, const std::string& model_name,
       ->IncrementBy(1);
 }
 
+// Records the per-criticality state of the priority-aware batch scheduler's
+// queue as tfstreamz metrics. This gives per-criticality visibility into queue
+// utilization (à la wiz/main models) for the TFRT priority aware scheduler.
+//
+// Exports, labeled by (model_name, op_name, criticality):
+//   - priority_queue_num_tasks: current number of enqueued tasks (Gauge).
+//   - priority_queue_size:      current summed task size enqueued (Gauge).
+// And, labeled by (model_name, op_name):
+//   - priority_queue_max_depth: configured capacity, for utilization%.
+void RecordPriorityQueueState(const PriorityQueueState& state,
+                              absl::string_view model_name,
+                              absl::string_view op_name) {
+  static auto* num_tasks_gauge = monitoring::Gauge<int64_t, 3>::New(
+      "/tensorflow/serving/batching/priority_queue_num_tasks",
+      "Current number of tasks enqueued in the priority aware batch scheduler "
+      "queue, by criticality.",
+      "model_name", "op_name", "criticality");
+  static auto* size_gauge = monitoring::Gauge<int64_t, 3>::New(
+      "/tensorflow/serving/batching/priority_queue_size",
+      "Current summed size (sum of task sizes) of tasks enqueued in the "
+      "priority aware batch scheduler queue, by criticality.",
+      "model_name", "op_name", "criticality");
+  static auto* max_depth_gauge = monitoring::Gauge<int64_t, 2>::New(
+      "/tensorflow/serving/batching/priority_queue_max_depth",
+      "The maximum depth (capacity, in summed task size) of the priority aware "
+      "batch scheduler queue.",
+      "model_name", "op_name");
+
+  // Iterate over every criticality band rather than over the maps, so that a
+  // band that is absent (i.e. has no enqueued tasks) is published as zero
+  // instead of leaving its gauge cell at the last non-zero value.
+  for (const tsl::criticality::Criticality criticality :
+       tsl::criticality::kAllCriticalitiesDescending) {
+    const std::string criticality_str = absl::StrCat(criticality);
+    const auto num_tasks_it = state.num_tasks.find(criticality);
+    const auto size_it = state.size.find(criticality);
+    num_tasks_gauge->GetCell(model_name, op_name, criticality_str)
+        ->Set(num_tasks_it == state.num_tasks.end() ? 0 : num_tasks_it->second);
+    size_gauge->GetCell(model_name, op_name, criticality_str)
+        ->Set(size_it == state.size.end()
+                  ? 0
+                  : static_cast<int64_t>(size_it->second));
+  }
+
+  max_depth_gauge->GetCell(model_name, op_name)
+      ->Set(static_cast<int64_t>(state.max_queue_depth));
+}
+
 // Record the actual batch size without padding.
 void RecordBatchSize(int32_t batch_size, const std::string& model_name,
                      const std::string& op_name) {
@@ -245,17 +293,36 @@ void RecordBatchDelayUs(int64_t batch_delay_us, const std::string& model_name,
 }
 
 void RecordBatchDelayUsV2(int64_t batch_delay_us, const std::string& model_name,
-                          const std::string& op_name, int32_t batch_size) {
-  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
+                          const std::string& op_name, int32_t batch_size,
+                          absl::string_view criticality_str) {
+  static auto* cell = tensorflow::monitoring::Sampler<4>::New(
       {"/tensorflow/serving/batching/batch_delay_us_v2",
        "Tracks the batching delay (in microseconds) for inputs by model_name "
        "(if available).",
-       "model_name", "op_name", "processed_batch_size"},
+       "model_name", "op_name", "processed_batch_size", "criticality"},
       // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
       // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
       monitoring::Buckets::Exponential(1, 2, 27));
-  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+  cell->GetCell(model_name, op_name, std::to_string(batch_size),
+                criticality_str)
       ->Add(static_cast<double>(batch_delay_us));
+}
+
+void RecordQueueingDelayUsV2(int64_t queueing_delay_us,
+                             absl::string_view model_name,
+                             absl::string_view op_name, int32_t batch_size,
+                             absl::string_view criticality_str) {
+  static auto* cell = tensorflow::monitoring::Sampler<4>::New(
+      {"/tensorflow/serving/batching/queueing_delay_us_v2",
+       "Tracks the queueing delay (in microseconds) for inputs by model_name "
+       "(if available).",
+       "model_name", "op_name", "processed_batch_size", "criticality"},
+      // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
+      // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
+      monitoring::Buckets::Exponential(1, 2, 27));
+  cell->GetCell(std::string(model_name), std::string(op_name),
+                std::to_string(batch_size), criticality_str)
+      ->Add(static_cast<double>(queueing_delay_us));
 }
 
 void RecordBatchTaskSizeSum(int32_t batch_task_size,
@@ -300,18 +367,20 @@ void RecordBatchParamPaddingPolicy(const std::string& batch_padding_policy,
 }
 
 static auto* mixed_priority_batching_policy_value =
-    monitoring::Gauge<std::string, 2>::New(
+    monitoring::Gauge<std::string, 3>::New(
         "/tensorflow/serving/batching/mixed_priority_batching_policy",
         "The value of BatchFunction.mixed_priority_batching_policy attribute.",
-        "model_name", "op_name");
+        "model_name", "op_name", "enable_priority_queue");
 
 void RecordBatchParamMixedPriorityBatchingPolicy(
     MixedPriorityBatchingPolicy mixed_priority_batching_policy,
-    const std::string& model_name, const std::string& op_name) {
+    bool enable_priority_queue, const std::string& model_name,
+    const std::string& op_name) {
   auto policy_str =
       GetMixedPriorityBatchingPolicyString(mixed_priority_batching_policy);
   if (policy_str.ok()) {
-    mixed_priority_batching_policy_value->GetCell(model_name, op_name)
+    mixed_priority_batching_policy_value
+        ->GetCell(model_name, op_name, enable_priority_queue ? "true" : "false")
         ->Set(std::string(*policy_str));
   }
 }
@@ -505,17 +574,17 @@ absl::Status BatchResourceBase::RegisterInput(
   batch_components->inputs.reserve(tensors.size());
   for (const Tensor& tensor : tensors) {
     if (tensor.shape().dims() == 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Batching input tensors must have at least one dimension.\nBelow are "
           "the input tensors: \n",
-          GetTensorNamesAndShapesString(context, tensors));
+          GetTensorNamesAndShapesString(context, tensors)));
     }
     if (tensors.size() >= 2 &&
         tensor.shape().dim_size(0) != tensors[0].shape().dim_size(0)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Batching input tensors supplied in a given op invocation must "
           "have equal 0th-dimension size.\nBelow are the input tensors: \n",
-          GetTensorNamesAndShapesString(context, tensors));
+          GetTensorNamesAndShapesString(context, tensors)));
     }
     batch_components->inputs.push_back(tensor);
   }
@@ -539,6 +608,7 @@ absl::Status BatchResourceBase::RegisterInput(
         GetModelName(context), context->op_kernel().name());
     RecordBatchParamMixedPriorityBatchingPolicy(
         this->batcher_queue_options_.mixed_priority_batching_policy,
+        this->batcher_queue_options_.enable_priority_queue,
         GetModelName(context), context->op_kernel().name());
   } else if (adaptive_batcher_) {
     RecordBatchParamBatchTimeoutMicros(
@@ -551,7 +621,7 @@ absl::Status BatchResourceBase::RegisterInput(
         adaptive_batcher_queue_options_.max_enqueued_batches,
         GetModelName(context), context->op_kernel().name());
   } else {
-    return errors::Internal("No batcher defined.");
+    return absl::InternalError("No batcher defined.");
   }
   RecordBatchParamAllowedBatchSizes(allowed_batch_sizes_str_,
                                     GetModelName(context),
@@ -626,7 +696,25 @@ absl::Status BatchResourceBase::RegisterInput(
     num_outstanding_batched_items_ += batch_components->size();
   }
 
-  return batcher_queue->Schedule(&batch_components);
+  // Capture the metric label strings before Schedule(): once the task is
+  // scheduled, a background thread may run its done_callback and free
+  // `context`, so reading `context` afterwards would be a use-after-free.
+  const std::string model_name = GetModelName(context);
+  const std::string op_name = context->op_kernel().name();
+
+  absl::Status schedule_status = batcher_queue->Schedule(&batch_components);
+
+  // Export per-criticality queue utilization metrics for the priority aware
+  // batch scheduler. GetPriorityQueueState() returns nullopt when the priority
+  // aware scheduler is disabled, in which case nothing is recorded. This runs
+  // after Schedule() so the snapshot reflects the just-enqueued task.
+  if (std::optional<PriorityQueueState> priority_queue_state =
+          batcher_queue->GetPriorityQueueState();
+      priority_queue_state.has_value()) {
+    RecordPriorityQueueState(*priority_queue_state, model_name, op_name);
+  }
+
+  return schedule_status;
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -647,7 +735,9 @@ BatchResourceBase::GetBatcherQueueOptions(
       /*mixed_priority_batching_policy*/
       MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
       /*enable_priority_aware_batch_scheduler=*/false,
-      /*enable_priority_aware_batch_scheduler_resplit=*/false);
+      /*enable_priority_aware_batch_scheduler_resplit=*/false,
+      /*enable_batching_task_lazy_cancellation=*/false,
+      /*per_criticality_batch_timeout_micros=*/{});
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -662,7 +752,9 @@ BatchResourceBase::GetBatcherQueueOptions(
     const std::vector<int32_t>& low_priority_allowed_batch_sizes,
     MixedPriorityBatchingPolicy mixed_priority_batching_policy,
     bool enable_priority_aware_batch_scheduler,
-    bool enable_priority_aware_batch_scheduler_resplit) {
+    bool enable_priority_aware_batch_scheduler_resplit,
+    bool enable_batching_task_lazy_cancellation,
+    const std::vector<int64_t>& per_criticality_batch_timeout_micros) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -696,7 +788,11 @@ BatchResourceBase::GetBatcherQueueOptions(
             << "enable_priority_aware_batch_scheduler="
             << enable_priority_aware_batch_scheduler << ", "
             << "enable_priority_aware_batch_scheduler_resplit="
-            << enable_priority_aware_batch_scheduler_resplit;
+            << enable_priority_aware_batch_scheduler_resplit << ", "
+            << "enable_batching_task_lazy_cancellation="
+            << enable_batching_task_lazy_cancellation << ", "
+            << "per_criticality_batch_timeout_micros=["
+            << absl::StrJoin(per_criticality_batch_timeout_micros, ",") << "]";
   if (enable_priority_aware_batch_scheduler) {
     batcher_queue_options.enable_priority_aware_batch_scheduler = true;
 
@@ -711,6 +807,19 @@ BatchResourceBase::GetBatcherQueueOptions(
         std::max(total_allowed_enqueued_entries, static_cast<int64_t>(1));
     batcher_queue_options.priority_aware_scheduler_options.enable_task_resplit =
         enable_priority_aware_batch_scheduler_resplit;
+    batcher_queue_options.priority_aware_scheduler_options
+        .enable_lazy_cancellation_filtering =
+        enable_batching_task_lazy_cancellation;
+
+    size_t num_elements =
+        std::min(tsl::criticality::kAllCriticalitiesDescending.size(),
+                 per_criticality_batch_timeout_micros.size());
+    for (size_t i = 0; i < num_elements; ++i) {
+      auto criticality = tsl::criticality::kAllCriticalitiesDescending[i];
+      int64_t timeout = per_criticality_batch_timeout_micros[i];
+      batcher_queue_options.priority_aware_scheduler_options
+          .criticality_batch_timeout_micros[criticality] = timeout;
+    }
   }
   batcher_queue_options.high_priority_queue_options.input_batch_size_limit =
       max_batch_size;
@@ -799,7 +908,7 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
     const BatchResourceBase::BatchTask& task = batch.task(task_idx);
 
     if (task.inputs.size() != batch.task(0).inputs.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Batching inputs must have equal number of edges");
     }
   }
@@ -838,7 +947,7 @@ absl::Status BatchResourceBase::ConcatInputTensors(
     const std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks,
     OpKernelContext* context, std::vector<Tensor>* concatenated_tensors) const {
   if (batch.num_tasks() == 0) {
-    return errors::InvalidArgument("Empty batch.");
+    return absl::InvalidArgumentError("Empty batch.");
   }
 
   int unbatched_tasks_size = GetTotalTaskSize(unbatched_tasks);
@@ -906,10 +1015,10 @@ absl::Status BatchResourceBase::ConcatInputTensors(
       const Tensor& padding_source = batch.task(0).inputs.at(i);
       Tensor padding;
       if (padding_source.shape().dim_size(0) == 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Cannot use an empty tensor with zero rows as padding when "
             "batching. (Input ",
-            i, " got shape ", padding_source.shape().DebugString(), ".)");
+            i, " got shape ", padding_source.shape().DebugString(), ".)"));
       }
       if (padding_source.shape().dim_size(0) == 1) {
         padding = padding_source;
@@ -980,7 +1089,6 @@ absl::Status BatchResourceBase::ConcatInputTensors(
         absl::Status final_status = absl::OkStatus();
         const int num_output = context->num_outputs();
 
-        LOG(INFO) << "Concatenating split task output";
         for (int i = 0; i < num_output; ++i) {
           Tensor output_tensor;
           if (absl::Status status = ConcatSplitTaskOutput(
@@ -992,13 +1100,10 @@ absl::Status BatchResourceBase::ConcatInputTensors(
           }
 
           if (input_task->forced_warmup_batch_size == 0) {
-            LOG(INFO) << "Setting output tensor";
             if (input_subtask_info.has_value()) {
-              LOG(INFO) << "Setting output tensor for subtask";
               (*input_subtask_info->output)[input_subtask_info->split_index]
                                            [i] = std::move(output_tensor);
             } else {
-              LOG(INFO) << "Setting output tensor for context";
               input_task->context->set_output(i, std::move(output_tensor));
             }
           }
@@ -1035,15 +1140,16 @@ absl::Status BatchResourceBase::ConcatInputTensors(
     const absl::Status split_status = Split(input_task->context, input_tensor,
                                             output_task_sizes, &split_tensors);
     if (!split_status.ok()) {
-      return errors::Internal(
-          "When splitting input, Tensor split operation failed: ",
-          split_status.message());
+      return absl::InternalError(
+          absl::StrCat("When splitting input, Tensor split operation failed: ",
+                       split_status.message()));
     }
     if (split_tensors.size() != output_task_sizes.size()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "When splitting input, tensor split operation did not work as "
           "expected; got ",
-          split_tensors.size(), " splits; expected ", output_task_sizes.size());
+          split_tensors.size(), " splits; expected ",
+          output_task_sizes.size()));
     }
     for (int j = 0; j < output_tasks->size(); ++j) {
       BatchTask& output_task = *((*output_tasks)[j]);
@@ -1060,8 +1166,8 @@ absl::Status BatchResourceBase::SplitOutputTensors(
     std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks) const {
   DCHECK_GE(batch->num_tasks(), 1);
   if (batch->num_tasks() < 1) {
-    return errors::Internal("Batch size expected to be positive; was ",
-                            batch->num_tasks());
+    return absl::InternalError(absl::StrCat(
+        "Batch size expected to be positive; was ", batch->num_tasks()));
   }
 
   std::vector<int64_t> task_sizes_plus_optional_padding;
@@ -1087,7 +1193,7 @@ absl::Status BatchResourceBase::SplitOutputTensors(
   DCHECK_EQ(batch->task(0).context->num_outputs(), combined_outputs.size());
   int combined_outputs_size = combined_outputs.size();
   if (combined_outputs_size != batch->task(0).context->num_outputs()) {
-    return errors::Internal("Wrong number of batched output tensors");
+    return absl::InternalError("Wrong number of batched output tensors");
   }
 
   // Split each element of `combined_outputs` according to task sizes
@@ -1095,20 +1201,20 @@ absl::Status BatchResourceBase::SplitOutputTensors(
   for (int i = 0, iter_limit = combined_outputs.size(); i < iter_limit; ++i) {
     const Tensor& output_tensor = combined_outputs[i];
     if (output_tensor.shape().dims() == 0) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Batched output tensor has 0 dimensions");
     }
     int64_t zeroth_dim_output_tensor_size = output_tensor.shape().dim_size(0);
     if (zeroth_dim_output_tensor_size !=
         static_cast<int64_t>(batch->size() + unbatched_tasks_size +
                              padding_size)) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Batched output tensor's 0th dimension does not equal the sum of "
           "the 0th dimension sizes of the input tensors. "
           "0th dimension size: ",
           zeroth_dim_output_tensor_size, "; batch size: ", batch->size(),
           "; unbatched tasks size: ", unbatched_tasks_size,
-          "; padding size: ", padding_size);
+          "; padding size: ", padding_size));
     }
 
     std::vector<Tensor> split_tensor;
@@ -1116,15 +1222,15 @@ absl::Status BatchResourceBase::SplitOutputTensors(
         output_tensor, task_sizes_plus_optional_padding, &split_tensor);
     DCHECK(split_status.ok()) << split_status;
     if (!split_status.ok()) {
-      return errors::Internal("Tensor split operation failed: ",
-                              split_status.message());
+      return absl::InternalError(absl::StrCat("Tensor split operation failed: ",
+                                              split_status.message()));
     }
     DCHECK_EQ(split_tensor.size(), task_sizes_plus_optional_padding.size());
     if (split_tensor.size() != task_sizes_plus_optional_padding.size()) {
-      return errors::Internal(
-          "Tensor split operation did not work as expected; got ",
-          split_tensor.size(), " splits; expected ",
-          task_sizes_plus_optional_padding.size());
+      return absl::InternalError(
+          absl::StrCat("Tensor split operation did not work as expected; got ",
+                       split_tensor.size(), " splits; expected ",
+                       task_sizes_plus_optional_padding.size()));
     }
 
     // Ignore a possible final split_tensors entry containing the padding.
@@ -1433,7 +1539,7 @@ absl::Status BatchResourceBase::LookupOrCreateBatcherQueue(
         adaptive_batcher_queue_options_, reduced_process_batch_callback,
         &new_queue));
   } else {
-    return errors::Internal("No batcher defined.");
+    return absl::InternalError("No batcher defined.");
   }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
@@ -1544,14 +1650,6 @@ void BatchResourceBase::RecordBatchDelayMetrics(
     const absl::Time start_time = absl::FromUnixNanos(task.start_time);
     const absl::Duration total_scheduler_delay =
         batch_schedule_time - start_time;
-    RecordBatchDelayUs(absl::ToInt64Microseconds(total_scheduler_delay),
-                       model_name, op_name, processed_size);
-    RecordBatchDelayUsV2(absl::ToInt64Microseconds(total_scheduler_delay),
-                         model_name, op_name, processed_size);
-
-    RequestCost* request_cost = task.request_cost;
-    // Skip recording the cost if the request_cost is null.
-    if (!request_cost) continue;
 
     // The duration from when the task was enqueued to when the earliest task in
     // its batch has been in the queue for a duration of batch_timeout (i.e.
@@ -1566,6 +1664,20 @@ void BatchResourceBase::RecordBatchDelayMetrics(
         std::min(remaining_batch_timeout, total_scheduler_delay);
     const absl::Duration queueing_delay =
         total_scheduler_delay - batching_delay;
+
+    const std::string criticality_str = absl::StrCat(task.criticality());
+    RecordBatchDelayUs(absl::ToInt64Microseconds(total_scheduler_delay),
+                       model_name, op_name, processed_size);
+    RecordBatchDelayUsV2(absl::ToInt64Microseconds(total_scheduler_delay),
+                         model_name, op_name, processed_size, criticality_str);
+    RecordQueueingDelayUsV2(absl::ToInt64Microseconds(queueing_delay),
+                            model_name, op_name, processed_size,
+                            criticality_str);
+
+    RequestCost* request_cost = task.request_cost;
+    // Skip recording the cost if the request_cost is null.
+    if (!request_cost) continue;
+
     request_cost->RecordMetrics(
         {{"batching_delay_msecs", absl::ToDoubleMilliseconds(batching_delay)},
          {"batch_queueing_delay_msecs",

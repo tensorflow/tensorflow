@@ -24,8 +24,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -70,6 +72,12 @@ struct CostAnalysisOptions {
   // Used to get the layout size of a shape in bytes.
   std::function<int64_t(const Shape&)> shape_size_bytes_fn =
       [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
+
+  // The execution threads that cost analysis operates on. This is used to
+  // determine which flattened instructions should be included/excluded from
+  // cost analysis.
+  absl::flat_hash_set<absl::string_view> execution_threads = {
+      HloInstruction::kMainExecutionThread};
 };
 
 // A wrapper class around BaseCosts with additional knowledge about the
@@ -97,7 +105,8 @@ class CostAnalysis {
 
   static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
       OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
-      const AliasInfo* alias_info, const HloModule& module);
+      const AliasInfo* alias_info, const HloModule& module,
+      HloAliasAnalysis* alias_analysis);
 
   int64_t GetShapeSizeBytes(const Shape& shape) const;
 
@@ -241,20 +250,15 @@ class CostAnalysis {
  protected:
   CostAnalysis(OpCostManager& op_cost_manager,
                const CostAnalysisOptions& options,
-               std::unique_ptr<HloAliasAnalysis> alias_analysis,
+               HloAliasAnalysis* alias_analysis,
                std::unique_ptr<HloLiveRange> hlo_live_range,
-               std::unique_ptr<CallGraph> call_graph)
-      : op_cost_manager_(op_cost_manager),
-        options_(options),
-        alias_analysis_(std::move(alias_analysis)),
-        hlo_live_range_(std::move(hlo_live_range)),
-        call_graph_(std::move(call_graph)) {}
+               std::unique_ptr<CallGraph> call_graph);
 
  private:
   // A manager responsible for return basic cost metrics.
   OpCostManager& op_cost_manager_;
   const CostAnalysisOptions options_;
-  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+  HloAliasAnalysis* alias_analysis_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;
   std::unique_ptr<CallGraph> call_graph_;
 };

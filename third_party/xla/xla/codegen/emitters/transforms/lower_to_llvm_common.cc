@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -47,8 +48,7 @@ mlir::LogicalResult LowerToLLVM(
     absl::FunctionRef<mlir::LogicalResult(mlir::LLVMTypeConverter&,
                                           mlir::RewritePatternSet&,
                                           mlir::ConversionTarget&)>
-        populate_platform_patterns,
-    bool lower_math_log1p) {
+        populate_platform_patterns) {
   // Populate type conversions.
   mlir::LowerToLLVMOptions llvm_opts(op.getContext(), mlir::DataLayout(op));
   mlir::LLVMTypeConverter type_converter(op.getContext(), llvm_opts);
@@ -66,6 +66,7 @@ mlir::LogicalResult LowerToLLVM(
   mlir::populateFinalizeMemRefToLLVMConversionPatterns(type_converter,
                                                        patterns);
   mlir::ub::populateUBToLLVMConversionPatterns(type_converter, patterns);
+  mlir::vector::populateVectorInsertExtractStridedSliceTransforms(patterns);
   mlir::populateVectorToLLVMConversionPatterns(type_converter, patterns);
   mlir::cf::populateControlFlowToLLVMConversionPatterns(type_converter,
                                                         patterns);
@@ -83,7 +84,7 @@ mlir::LogicalResult LowerToLLVM(
   // Clean up any leftover math ops.
   mlir::RewritePatternSet mathPatterns(op.getContext());
   mlir::populateMathToLLVMConversionPatterns(type_converter, mathPatterns,
-                                             lower_math_log1p);
+                                             /*approximateLog1p=*/false);
   target.addIllegalDialect<mlir::math::MathDialect>();
 
   if (mlir::failed(applyFullConversion(op, target, std::move(mathPatterns)))) {

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -228,7 +229,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction& instr,
 
   for (const auto* operand : instr.operands()) {
     // output_to_operand_aliasing means the operand is to be materialized, which
-    // is against the whole idea of address computation fusion. Skip this
+    // is against the whole idea of dynamic slice fusion. Skip this
     // operand.
     if (aliased_operands.contains(instr.operand_index(operand))) {
       continue;

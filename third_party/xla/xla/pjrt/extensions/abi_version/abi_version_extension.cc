@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -174,8 +175,8 @@ PJRT_Error* CommonRuntimeAbiVersionFromProto(
   xla::PjRtRuntimeAbiVersionProto proto;
   if (!proto.ParseFromString(absl::string_view(args->serialized_proto,
                                                args->serialized_proto_size))) {
-    return new PJRT_Error{absl::InvalidArgumentError(
-        "Failed to parse PjRtRuntimeAbiVersionProto")};
+    return StatusToPjRtError(absl::InvalidArgumentError(
+        "Failed to parse PjRtRuntimeAbiVersionProto"));
   }
 
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtRuntimeAbiVersion> version,
@@ -196,8 +197,8 @@ PJRT_Error* CommonExecutableAbiVersionFromProto(
   xla::PjRtExecutableAbiVersionProto proto;
   if (!proto.ParseFromString(absl::string_view(args->serialized_proto,
                                                args->serialized_proto_size))) {
-    return new PJRT_Error{absl::InvalidArgumentError(
-        "Failed to parse PjRtExecutableAbiVersionProto")};
+    return StatusToPjRtError(absl::InvalidArgumentError(
+        "Failed to parse PjRtExecutableAbiVersionProto"));
   }
 
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtExecutableAbiVersion> version,

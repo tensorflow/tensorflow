@@ -18,8 +18,6 @@ include "mlir/Pass/PassBase.td"
 def LowerXTileEntryPass : Pass<"xtile-cpu-lower-xtile-entry", "mlir::ModuleOp"> {
   let summary = "Lowers the entry function into the form required by the CPU runtime";
 
-  let constructor = "CreateLowerXTileEntryPass()";
-
   let dependentDialects = [
     "mlir::func::FuncDialect",
     "mlir::LLVM::LLVMDialect",
@@ -31,8 +29,6 @@ def LowerXTileEntryPass : Pass<"xtile-cpu-lower-xtile-entry", "mlir::ModuleOp"> 
 
 def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
   let summary = "Lowering satble hlo ops to vector ops";
-
-  let constructor = "CreateShloToVectorPass()";
 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -49,8 +45,6 @@ def LinalgElementwiseToVectorPass : Pass<"xtile-cpu-linalg-elementwise-to-vector
                                        "mlir::ModuleOp"> {
   let summary = "Convert elementwise linalg ops to vector ops";
 
-  let constructor = "CreateLinalgElementwiseToVectorPass()";
-
   let dependentDialects = [
     "mlir::arith::ArithDialect",
     "mlir::scf::SCFDialect",
@@ -66,8 +60,6 @@ def TensorOpsToBufferizablePass : Pass<"xtile-cpu-tensor-ops-to-bufferizable",
     Some tensor ops such as bitcast are not directly bufferizable. This pass
     lowers such ops to ops that have bufferization support.
   }];
-
-  let constructor = "CreateTensorOpsToBufferizablePass()";
 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -104,6 +96,20 @@ def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
   }];
 
   let dependentDialects = [
+    "::mlir::vector::VectorDialect",
+  ];
+}
+
+def DropVectorUnitDimsPass : Pass<"xtile-cpu-drop-vector-unit-dims"> {
+  let summary = "Drop unit dimensions from vector operations.";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def UnrollVectorsPass : Pass<"xtile-cpu-unroll-vectors"> {
+  let summary = "Unroll multi-dimensional vectors to 1D vectors.";
+  let dependentDialects = [
+    "::mlir::affine::AffineDialect",
+    "::mlir::arith::ArithDialect",
     "::mlir::vector::VectorDialect",
   ];
 }
@@ -146,3 +152,22 @@ def InitializeAllocsPass : Pass<"xtile-cpu-initialize-allocs"> {
     "::mlir::LLVM::LLVMDialect",
   ];
 }
+
+def HoistAllocaPass : Pass<"xtile-cpu-hoist-alloca", "mlir::func::FuncOp"> {
+  let summary = "Hoist memref.alloca ops to the entry block of the function.";
+  let dependentDialects = [
+    "::mlir::memref::MemRefDialect"
+  ];
+}
+
+def VectorizeXTilePass : Pass<"xtile-cpu-vectorize-xtile", "mlir::ModuleOp"> {
+  let summary = "Vectorize arith and math ops on tensors";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+    "mlir::vector::VectorDialect",
+    "mlir::tensor::TensorDialect",
+    "xla::XlaDialect",
+  ];
+}
+

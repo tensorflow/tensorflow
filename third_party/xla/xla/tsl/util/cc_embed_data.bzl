@@ -17,6 +17,7 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//lib:sets.bzl", "sets")
+load("@rules_cc//cc:action_names.bzl", "ACTION_NAMES")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
@@ -160,7 +161,12 @@ def _cc_skylark_embed_data_impl(ctx):
         cc_toolchain = cc_toolchain,
         compilation_outputs = compilation_outputs,
         alwayslink = ctx.attr.alwayslink,
-        disallow_dynamic_library = ctx.attr.linkstatic,
+        # The local Mac toolchain seemingly doesn't support this type of dynamic
+        # linking, so we have to feature-detect.
+        disallow_dynamic_library = not cc_common.action_is_enabled(
+            feature_configuration = feature_configuration,
+            action_name = ACTION_NAMES.cpp_link_nodeps_dynamic_library,
+        ),
     )
 
     return [

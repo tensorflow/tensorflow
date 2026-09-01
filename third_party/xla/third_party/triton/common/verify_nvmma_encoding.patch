@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 Add verification for NVMMASharedEncodingAttr during reshape inference.
 
 Implement verifyNVMMASharedEncoding to check compatibility with TMA block shapes
@@ -14,18 +28,15 @@ reshape outcomes.
  #include "mlir/IR/BuiltinTypes.h"
  #include "mlir/IR/Diagnostics.h"
  #include "mlir/Support/DebugStringHelper.h"
-@@ -9,9 +11,8 @@
+@@ -9,6 +11,7 @@
  #include "triton/Dialect/TritonGPU/IR/Types.h"
  #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
  #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 +#include "triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h"
  #include "triton/Tools/LayoutUtils.h"
--#include "llvm/Support/Casting.h"
--#include "llvm/Support/LogicalResult.h"
- 
- // Provide custom directive handlers for declarative assemblyFormat.
- // They must be visible before including the generated op classes.
-@@ -583,7 +584,45 @@ LogicalResult MemDescReshapeOp::verify() {
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/Support/Casting.h"
+@@ -586,7 +589,45 @@ LogicalResult MemDescReshapeOp::verify() {
    return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType);
  }
  
@@ -72,7 +83,7 @@ reshape outcomes.
                                                     Attribute srcEnc,
                                                     ArrayRef<int64_t> dstShape,
                                                     Attribute &dstEnc) {
-@@ -604,6 +643,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+@@ -607,6 +648,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
              ctx, mmaEncoding.getSwizzlingByteWidth(),
              mmaEncoding.getTransposed(), mmaEncoding.getElementBitWidth(),
              mmaEncoding.getFp4Padded(), CGALayout);
@@ -84,7 +95,7 @@ reshape outcomes.
          auto srcLL = toLinearLayout(srcShape, srcEnc);
          auto dstLL = toLinearLayout(dstShape, candidateEncoding);
          if (reshapeLayout(ctx, srcLL, dstShape) == dstLL) {
-@@ -643,8 +687,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
+@@ -646,8 +692,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
  
    Attribute dstEncoding;
    if (Attribute srcEnc = srcTy.getEncoding()) {
@@ -95,3 +106,4 @@ reshape outcomes.
        return failure();
    }
  
+

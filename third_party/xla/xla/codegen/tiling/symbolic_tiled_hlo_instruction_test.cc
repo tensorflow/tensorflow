@@ -139,18 +139,17 @@ TEST_F(SymbolicTiledHloInstructionTest, ToString) {
   tiled_p0.AddRegion(std::move(region));
 
   EXPECT_EQ(tiled_p0.ToString(/*field_separator=*/"\n  "),
-            R"""(hlo: %p0 = f32[16,32]{1,0} parameter(0)
+            R"(hlo: %p0 = f32[16,32]{1,0} parameter(0)
   Symbolic tile with
-	offset_map: (d0, d1) -> (0, 0)
-	size_map: (d0, d1) -> (d1, d0)
-	stride_map: (d0, d1) -> (1, 1)
+  offset_map: (d0, d1) -> (0, 0)
+  size_map: (d0, d1) -> (d1, d0)
+  stride_map: (d0, d1) -> (1, 1)
   indexing map: (d0, d1){rt0} -> (d1, d0), domain: d0 in [0, 31], d1 in [0, 15], rt0 in [0, 3]
   runtime variables: (
   hlo: %p1 = f32[4]{0} parameter(1)
   (no symbolic tile)
   indexing map: (d0) -> (d0), domain: d0 in [0, 3])
-  regions: (
-  #0 size: 1))""");
+  regions sizes: [1])");
 }
 
 }  // namespace

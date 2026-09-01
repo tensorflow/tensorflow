@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/variants/list_ops_util.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/array.h"
@@ -25,15 +26,24 @@ namespace tflite {
 namespace variants {
 
 // Creates a `TfLiteIntArray*` from tensor data that represents a shape.
-IntArrayUniquePtr TensorAsShape(const TfLiteTensor& shape) {
+TfLiteStatus TensorAsShape(TfLiteContext* context, const TfLiteTensor& shape,
+                           IntArrayUniquePtr& result) {
   if (shape.dims->size == 0) {
     // `shape` tensor encode an unranked shape.
-    return BuildTfLiteArray({});
+    result = BuildTfLiteArray({});
+    return kTfLiteOk;
   }
+  TF_LITE_ENSURE_MSG(context, shape.dims->size <= 1,
+                     "Shape tensor must be 1D or unranked.");
   const int rank = shape.dims->data[0];
+  TF_LITE_ENSURE_MSG(context,
+                     rank >= 0 && shape.bytes >= rank * sizeof(int32_t) &&
+                         (rank == 0 || shape.data.data != nullptr),
+                     "Malformed shape tensor.");
   const int* begin = reinterpret_cast<const int*>(shape.data.data);
   const int* end = begin + rank;
-  return BuildTfLiteArray(std::vector<int>(begin, end));
+  result = BuildTfLiteArray(std::vector<int>(begin, end));
+  return kTfLiteOk;
 }
 
 IntArrayUniquePtr MergeShapesOrNull(IntArrayUniquePtr l, IntArrayUniquePtr r) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -33,14 +34,40 @@ namespace gpu {
 // compiles them using a cuDNN handle and serializes them.
 class CuDnnFusionCompiler : public HloModulePass {
  public:
-  explicit CuDnnFusionCompiler(se::dnn::DnnSupport& dnn_support,
+  explicit CuDnnFusionCompiler(se::dnn::DnnSupport* dnn_support,
+                               const se::DeviceDescription& gpu_device_info,
                                BinaryMap& compilation_results)
-      : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
+      : dnn_support_(dnn_support),
+        gpu_device_info_(gpu_device_info),
+        compilation_results_(compilation_results) {}
 
   absl::string_view name() const override { return "cudnn-fusion-compiler"; }
 
-  static int GetAvailablePlanCount(se::StreamExecutor& stream_exec,
-                                   const HloFusionInstruction& hlo);
+  static absl::StatusOr<int> GetAvailablePlanCount(
+      se::StreamExecutor* stream_exec,
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
+
+  enum class DevicelessFusionSupport {
+    // cuDNN's deviceless heuristics advertise at least one execution plan.
+    // Not a guarantee: building the plan on the real device (possibly a
+    // different cuDNN) can still fail.
+    kSupported,
+    // Authoritative: cuDNN reports no engine supports this graph on the
+    // target.
+    kUnsupported,
+    // No verdict (graph construction or deviceless preparation failed; cause
+    // is VLOG(1)-logged). Not evidence either way.
+    kUnknown,
+  };
+
+  // Deviceless (no GPU / cuDNN handle) probe of cuDNN support for the fusion
+  // `hlo` on the target `gpu_device_info`. The verdict applies to the fusion
+  // pipeline only; the legacy conv custom-call pipeline enumerates engines
+  // differently.
+  static DevicelessFusionSupport SupportsFusionDeviceless(
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -48,7 +75,8 @@ class CuDnnFusionCompiler : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::dnn::DnnSupport& dnn_support_;
+  se::dnn::DnnSupport* dnn_support_;
+  const se::DeviceDescription& gpu_device_info_;
   BinaryMap& compilation_results_;
 };
 

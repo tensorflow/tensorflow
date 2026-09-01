@@ -711,7 +711,7 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
     return result;
   }
 
-  BulkTransportRecvResult RecvBulkTransport(
+  absl::StatusOr<BulkTransportRecvResult> RecvBulkTransport(
       const SocketTransferEstablishBulkTransport& remote_bulk_transport_info)
       override {
     BulkTransportRecvResult result;

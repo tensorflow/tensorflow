@@ -91,34 +91,46 @@ class LRNTest(xla_test.XLATestCase):
     self.assertShapeEqual(expected, lrn_t)
 
   def testCompute(self):
-    for _ in range(2):
-      self._RunAndVerify(dtypes.float32)
+    for dtype in [dtypes.float32, dtypes.float16, dtypes.bfloat16]:
+      for _ in range(2):
+        self._RunAndVerify(dtype)
 
   def testLrnGrad(self):
     # Test for LRNGrad that compares against the CPU implementation.
-    shape = [1, 2, 3, 4]
-    total_size = np.prod(shape)
-    in_image_vals = np.arange(1, total_size + 1, dtype=np.float32)
-    out_image_vals = np.arange(1, total_size + 1, dtype=np.float32)
-    out_grads_vals = np.arange(1, total_size + 1, dtype=np.float32)
-    depth_radius = np.random.randint(1, shape[3])
-    bias = 1.0 + np.random.rand()
-    alpha = 1.0 * np.random.rand()
-    beta = 1.0 * np.random.rand()
+    # Note: TF CPU implementation for LRNGrad supports float32 and float16.
+    for dtype in [dtypes.float32, dtypes.float16]:
+      shape = [1, 2, 3, 4]
+      total_size = np.prod(shape)
+      np_dtype = dtype.as_numpy_dtype
+      in_image_vals = np.arange(1, total_size + 1, dtype=np_dtype)
+      out_image_vals = np.arange(1, total_size + 1, dtype=np_dtype)
+      out_grads_vals = np.arange(1, total_size + 1, dtype=np_dtype)
+      depth_radius = np.random.randint(1, shape[3])
+      bias = 1.0 + np.random.rand()
+      alpha = 1.0 * np.random.rand()
+      beta = 1.0 * np.random.rand()
 
-    with self.session():
-      in_image = constant_op.constant(in_image_vals, shape=shape)
-      out_image = constant_op.constant(out_image_vals, shape=shape)
-      out_grads = constant_op.constant(out_grads_vals, shape=shape)
-      with ops.device(CPU_DEVICE):
-        expected = gen_nn_ops.lrn_grad(out_grads, in_image, out_image,
-                                       depth_radius, bias, alpha, beta)
-      with self.test_scope():
-        actual = gen_nn_ops.lrn_grad(out_grads, in_image, out_image,
-                                     depth_radius, bias, alpha, beta)
-      expected_val = self.evaluate(expected)
-      actual_val = self.evaluate(actual)
-    self.assertAllClose(actual_val, expected_val, rtol=1e-3)
+      with self.session():
+        in_image = constant_op.constant(in_image_vals, shape=shape, dtype=dtype)
+        out_image = constant_op.constant(
+            out_image_vals, shape=shape, dtype=dtype
+        )
+        out_grads = constant_op.constant(
+            out_grads_vals, shape=shape, dtype=dtype
+        )
+        with ops.device(CPU_DEVICE):
+          expected = gen_nn_ops.lrn_grad(
+              out_grads, in_image, out_image, depth_radius, bias, alpha, beta
+          )
+        with self.test_scope():
+          actual = gen_nn_ops.lrn_grad(
+              out_grads, in_image, out_image, depth_radius, bias, alpha, beta
+          )
+        expected_val = self.evaluate(expected)
+        actual_val = self.evaluate(actual)
+      rtol = 1e-3 if dtype == dtypes.float32 else 1e-2
+      atol = 1e-6 if dtype == dtypes.float32 else 2e-3
+      self.assertAllClose(actual_val, expected_val, rtol=rtol, atol=atol)
 
 
 if __name__ == "__main__":

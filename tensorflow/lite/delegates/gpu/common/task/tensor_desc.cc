@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -193,7 +197,7 @@ std::vector<uint64_t> TensorDescriptor::GetStorageDims() const {
     switch (storage_type_) {
       case TensorStorageType::BUFFER:
       case TensorStorageType::IMAGE_BUFFER:
-        return {static_cast<uint64_t>(shape_.w * shape_.h)};
+        return {static_cast<uint64_t>(shape_.w) * shape_.h};
       case TensorStorageType::TEXTURE_ARRAY:
       case TensorStorageType::TEXTURE_3D:
         return {static_cast<uint64_t>(shape_.w),
@@ -210,18 +214,18 @@ std::vector<uint64_t> TensorDescriptor::GetStorageDims() const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      return {static_cast<uint64_t>(shape_.w * shape_.b * shape_.h * shape_.d *
-                                    slices)};
+      return {static_cast<uint64_t>(shape_.w) * shape_.b * shape_.h * shape_.d *
+              slices};
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
-      return {static_cast<uint64_t>(shape_.w * shape_.b),
+      return {static_cast<uint64_t>(shape_.w) * shape_.b,
               static_cast<uint64_t>(shape_.h),
-              static_cast<uint64_t>(shape_.d * slices)};
+              static_cast<uint64_t>(shape_.d) * slices};
     case TensorStorageType::TEXTURE_2D:
-      return {static_cast<uint64_t>(shape_.w * shape_.b * shape_.d),
-              static_cast<uint64_t>(shape_.h * slices)};
+      return {static_cast<uint64_t>(shape_.w) * shape_.b * shape_.d,
+              static_cast<uint64_t>(shape_.h) * slices};
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return {static_cast<uint64_t>(shape_.w * shape_.b * shape_.d),
+      return {static_cast<uint64_t>(shape_.w) * shape_.b * shape_.d,
               static_cast<uint64_t>(shape_.h)};
     case TensorStorageType::UNKNOWN:
       return {};
@@ -360,9 +364,12 @@ void TensorDescriptor::GetGpuResources(
     const BHWDC& tensor_shape, GenericGPUResourcesWithValue* resources) const {
   if (HasAxis(Axis::BATCH)) {
     resources->AddInt("slice_stride",
-                      tensor_shape.w * tensor_shape.h * tensor_shape.b);
+                      static_cast<int>(static_cast<int64_t>(tensor_shape.w) *
+                                       tensor_shape.h * tensor_shape.b));
   } else {
-    resources->AddInt("slice_stride", tensor_shape.w * tensor_shape.h);
+    resources->AddInt("slice_stride",
+                      static_cast<int>(static_cast<int64_t>(tensor_shape.w) *
+                                       tensor_shape.h));
   }
   if (HasAxis(Axis::WIDTH)) {
     resources->AddInt("width", tensor_shape.w);
@@ -1304,8 +1311,8 @@ size_t TensorDescriptor::GetSizeInBytesForShape(const BHWDC& shape5d) const {
   int aligned_channels = storage_type_ == TensorStorageType::SINGLE_TEXTURE_2D
                              ? shape5d.c
                              : AlignByN(shape5d.c, 4);
-  int elements_count =
-      shape5d.b * shape5d.w * shape5d.h * shape5d.d * aligned_channels;
+  size_t elements_count = static_cast<size_t>(shape5d.b) * shape5d.w *
+                          shape5d.h * shape5d.d * aligned_channels;
   return elements_count * SizeOf(data_type_);
 }
 
@@ -1317,19 +1324,30 @@ int TensorDescriptor::GetLinearIndex(const BHWDC& shape5d, int b, int x, int y,
     case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
-      return ((((d * slices + s) * shape5d.h + y) * shape5d.w + x) * shape5d.b +
-              b) *
-                 4 +
-             sub_c;  // DSHWBC4
+      return static_cast<int>(
+          ((((static_cast<int64_t>(d) * slices + s) * shape5d.h + y) *
+                shape5d.w +
+            x) *
+               shape5d.b +
+           b) *
+              4 +
+          sub_c);  // DSHWBC4
     case TensorStorageType::TEXTURE_2D:
-      return ((((y * slices + s) * shape5d.w + x) * shape5d.b + b) * shape5d.d +
-              d) *
-                 4 +
-             sub_c;  // HSWBDC4
+      return static_cast<int>(
+          ((((static_cast<int64_t>(y) * slices + s) * shape5d.w + x) *
+                shape5d.b +
+            b) *
+               shape5d.d +
+           d) *
+              4 +
+          sub_c);  // HSWBDC4
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return (((y * shape5d.w + x) * shape5d.b + b) * shape5d.d + d) *
-                 shape5d.c +
-             sub_c;  // HWBDC
+      return static_cast<int>(
+          (((static_cast<int64_t>(y) * shape5d.w + x) * shape5d.b + b) *
+               shape5d.d +
+           d) *
+              shape5d.c +
+          sub_c);  // HWBDC
     case TensorStorageType::UNKNOWN:
       return -1;
   }

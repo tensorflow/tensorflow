@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -43,20 +44,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir/utils/type_util.h"
-#include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
+std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
   // For now, XLA programs compiled with multiple arguments for PJRT cannot use
   // tuples for any of their arguments, so we can assume that a tuple can only
   // arise when there is a single argument.
@@ -74,17 +77,19 @@ static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
   return shapes;
 }
 
-static absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo>
-InferDispatchInfo(
-    CommonPjRtClient* client, std::vector<Shape> parameter_device_shapes,
-    Shape output_device_shape, const HloInputOutputAliasConfig& alias_config,
+absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
+    const PjRtTopologyDescription* topology,
+    std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
+    const HloInputOutputAliasConfig& alias_config,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<CommonPjRtLoadedExecutable::LogicalDeviceIds>
+    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
         addressable_device_logical_ids,
     std::vector<PjRtDevice*> addressable_devices,
-    std::unique_ptr<CommonPjRtLoadedExecutable::DispatchInfo::Extras> extras,
-    bool tuple_inputs) {
-  CommonPjRtLoadedExecutable::DispatchInfo result{
+    std::unique_ptr<PjRtLoadedExecutableDispatchInfo::Extras> extras,
+    bool tuple_inputs,
+    std::unique_ptr<PjRtLoadedExecutableDispatchInfo::InputHloSnapshotBits>
+        input_hlo_snapshot_bits) {
+  PjRtLoadedExecutableDispatchInfo result{
       .parameter_device_shapes = std::move(parameter_device_shapes),
       .output_device_shape =
           std::make_shared<const Shape>(std::move(output_device_shape)),
@@ -92,10 +97,11 @@ InferDispatchInfo(
       .addressable_device_logical_ids =
           std::move(addressable_device_logical_ids),
       .device_assignment = std::move(device_assignment),
+      .input_hlo_snapshot_bits = std::move(input_hlo_snapshot_bits),
       .extras = std::move(extras),
   };
   for (const auto& shape : result.parameter_device_shapes) {
-    TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
+    ABSL_ASSIGN_OR_RETURN(int kind, topology->GetMemorySpaceKindForShape(shape));
     result.parameter_memory_space_kind_ids.push_back(kind);
   }
   {
@@ -105,40 +111,27 @@ InferDispatchInfo(
             : absl::MakeSpan(&*result.output_device_shape, 1);
     result.output_memory_space_kind_ids.reserve(shapes.size());
     for (const auto& shape : shapes) {
-      TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
+      ABSL_ASSIGN_OR_RETURN(int kind, topology->GetMemorySpaceKindForShape(shape));
       result.output_memory_space_kind_ids.push_back(kind);
     }
   }
-  // Initializes information about which arguments to which executables must
+  // Initializes information about which arguments to which executables may
   // be donated due to aliases that were specified by the computation.
-  TF_ASSIGN_OR_RETURN(
-      result.parameters_that_must_be_donated,
-      ComputeParametersThatMustBeDonated(
+  ABSL_ASSIGN_OR_RETURN(
+      result.parameters_that_may_be_donated,
+      ComputeParametersThatMayBeDonated(
           alias_config, result.parameter_device_shapes.size(), tuple_inputs));
   result.input_buffer_sizes_in_bytes.reserve(
       result.parameter_device_shapes.size());
   for (const Shape& shape : result.parameter_device_shapes) {
     DCHECK(!shape.IsTuple());
-    TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
-    TF_ASSIGN_OR_RETURN(int64_t size_in_bytes,
-                        client->GetOnDeviceBytesCount(kind, shape));
+    ABSL_ASSIGN_OR_RETURN(int64_t size_in_bytes, PjRtGetOnDeviceBytesCount(shape));
     result.input_buffer_sizes_in_bytes.push_back(size_in_bytes);
   }
   return result;
 }
 
-absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
-    CommonPjRtClient* client, const ComputationLayout& layout,
-    const HloInputOutputAliasConfig& alias_config,
-    std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<CommonPjRtLoadedExecutable::LogicalDeviceIds>
-        addressable_device_logical_ids,
-    std::vector<PjRtDevice*> addressable_devices, bool tuple_inputs) {
-  return InferDispatchInfo(
-      client, GetParameterShapes(layout), layout.result_shape(), alias_config,
-      std::move(device_assignment), std::move(addressable_device_logical_ids),
-      std::move(addressable_devices), nullptr, tuple_inputs);
-}
+namespace {
 
 absl::StatusOr<std::vector<int64_t>> GetShardShape(
     const xla::HloSharding& sharding, llvm::ArrayRef<int64_t> shape,
@@ -159,29 +152,29 @@ absl::StatusOr<std::vector<int64_t>> GetShardShape(
         "HloSharding %d",
         shape.size(), sharding.TiledDataRank()));
   }
-  const absl::Span<const int64_t> tile_assignment_dims =
-      sharding.tile_assignment().dimensions();
+  const absl::Span<const int64_t> sharding_dims = sharding.dimensions();
   std::vector<int64_t> tile_shape;
   tile_shape.reserve(shape.size());
   for (int64_t i = 0; i < shape.size(); ++i) {
-    tile_shape.push_back(xla::CeilOfRatio(shape[i], tile_assignment_dims[i]));
+    tile_shape.push_back(xla::CeilOfRatio(shape[i], sharding_dims[i]));
   }
   return tile_shape;
 }
 
-absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
-    CommonPjRtClient* client, mlir::ModuleOp mlir_module,
+}  // namespace
+
+absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
+    const PjRtTopologyDescription* topology, mlir::ModuleOp mlir_module,
     const CompileOptions& options,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<CommonPjRtLoadedExecutable::LogicalDeviceIds>
+    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
         addressable_device_logical_ids,
     std::vector<PjRtDevice*> addressable_devices, bool tuple_inputs) {
   if (!device_assignment) {
     return absl::UnimplementedError(
         "Async compilation requires a device_assignment");
   }
-  auto extras =
-      std::make_unique<CommonPjRtLoadedExecutable::DispatchInfo::Extras>();
+  auto extras = std::make_unique<PjRtLoadedExecutableDispatchInfo::Extras>();
   extras->name =
       std::string(mlir_module.getSymName().value_or("?unknown program name?"));
   extras->num_partitions = device_assignment->replica_count();
@@ -209,23 +202,22 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
     xla::PrimitiveType primitive_type;
     if (auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
       llvm::ArrayRef<int64_t> dims = tensor_type.getShape();
-      TF_ASSIGN_OR_RETURN(
-          shard_shape,
-          GetShardShape(sharding, dims,
-                        extras->num_replicas * extras->num_partitions));
+      ABSL_ASSIGN_OR_RETURN(shard_shape, GetShardShape(sharding, dims,
+                                                  extras->num_replicas *
+                                                      extras->num_partitions));
       primitive_type =
           xla::ConvertMlirTypeToPrimitiveType(tensor_type.getElementType());
     } else {
       primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
     }
-    TF_ASSIGN_OR_RETURN(auto* memory_space,
-                        addressable_devices[0]->default_memory_space());
+    ABSL_ASSIGN_OR_RETURN(auto* memory_space,
+                     addressable_devices[0]->default_memory_space());
     auto xla_shard_shape =
         xla::ShapeUtil::MakeShape(primitive_type, shard_shape);
     // TODO(parkers): Fix the nullptr layout.
-    TF_ASSIGN_OR_RETURN(auto xla_shape,
-                        client->MakeDefaultShapeForMemorySpace(
-                            memory_space, xla_shard_shape, nullptr));
+    ABSL_ASSIGN_OR_RETURN(auto xla_shape,
+                     topology->MakeCanonicalShapeForMemorySpace(
+                         memory_space->kind_id(), xla_shard_shape, nullptr));
     auto layout = std::make_shared<PjRtLayout>(xla_shape.layout());
     return std::make_tuple(xla_shape, layout);
   };
@@ -243,9 +235,8 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
                                        /*manualAxes=*/{});
     xla::Shape shape;
     std::shared_ptr<const xla::PjRtLayout> layout;
-    TF_ASSIGN_OR_RETURN(
-        (std::tie(shape, layout)),
-        get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
+    ABSL_ASSIGN_OR_RETURN((std::tie(shape, layout)),
+                     get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
 
     parameter_device_shapes.push_back(shape);
     extras->parameter_shardings->push_back(hlo_sharding.ToProto());
@@ -267,8 +258,8 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
 
     xla::Shape shape;
     std::shared_ptr<const xla::PjRtLayout> layout;
-    TF_ASSIGN_OR_RETURN((std::tie(shape, layout)),
-                        get_xla_shape(hlo_sharding, main.getResultTypes()[i]));
+    ABSL_ASSIGN_OR_RETURN((std::tie(shape, layout)),
+                     get_xla_shape(hlo_sharding, main.getResultTypes()[i]));
 
     result_shapes.push_back(std::move(shape));
     extras->output_shardings->push_back(hlo_sharding.ToProto());
@@ -283,9 +274,9 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       HloInputOutputAliasConfig(output_device_shape);
 
   const auto& input_output_alias_config = extras->input_output_alias_config;
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto result,
-      InferDispatchInfo(client, std::move(parameter_device_shapes),
+      InferDispatchInfo(topology, std::move(parameter_device_shapes),
                         std::move(output_device_shape),
                         input_output_alias_config, std::move(device_assignment),
                         std::move(addressable_device_logical_ids),
@@ -297,7 +288,7 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       result.parameter_memory_space_kind_ids.size());
   for (size_t i = 0; i < result.parameter_memory_space_kind_ids.size(); ++i) {
     auto* device = result.addressable_devices[0];
-    TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+    ABSL_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
     for (auto* ms : device->memory_spaces()) {
       if (ms->kind_id() == result.parameter_memory_space_kind_ids[i]) {
         memory_space = ms;
@@ -309,7 +300,7 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       result.output_memory_space_kind_ids.size());
   for (size_t i = 0; i < result.output_memory_space_kind_ids.size(); ++i) {
     auto* device = result.addressable_devices[0];
-    TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+    ABSL_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
     for (auto* ms : device->memory_spaces()) {
       if (ms->kind_id() == result.output_memory_space_kind_ids[i]) {
         memory_space = ms;

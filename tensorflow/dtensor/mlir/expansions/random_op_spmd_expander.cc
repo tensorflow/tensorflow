@@ -50,8 +50,8 @@ namespace {
 absl::Status CheckLayoutIsSupported(const Layout& layout) {
   // Currently we support small mesh rank for arbitrary layout.
   if (layout.mesh().rank() > 3)
-    return errors::InvalidArgument("Large mesh rank size is not supported",
-                                   layout.ToString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Large mesh rank size is not supported", layout.ToString()));
 
   return absl::OkStatus();
 }
@@ -67,19 +67,19 @@ absl::Status ValidateShapeAndGetNewShape(
   new_random_shape.reserve(op_shape.size());
 
   if (op_sharding.size() != op_shape.size())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Sharding dimension of random op does not match rank of the "
         "random op. Received sharding: ",
-        layout.ToString());
+        layout.ToString()));
 
   for (int i = 0; i < op_sharding.size(); ++i) {
     const auto dimension_sharding = op_sharding[i];
     const auto op_dimension_size = op_shape[i];
     if (op_dimension_size % dimension_sharding != 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Sharding of random op incompatible with shape. Received "
           "sharding: ",
-          layout.ToString());
+          layout.ToString()));
     }
     new_random_shape.emplace_back(op_dimension_size / dimension_sharding);
   }
@@ -108,7 +108,7 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
   mlir::tf_device::ClusterOp cluster =
       op->getParentOfType<mlir::tf_device::ClusterOp>();
   if (!cluster)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "random op not in ClusterOp when it should be");
 
   for (mlir::TF::SqueezeOp squeeze : cluster.getOps<mlir::TF::SqueezeOp>())
@@ -322,7 +322,7 @@ StatusOr<mlir::Operation*> RandomOpSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractSingleLayoutFromOp(op));
 
   if (!layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout of Random op must be known before SPMD expansion.");
 
   // For fully replicated random ops, all devices have the same random
@@ -364,7 +364,7 @@ StatusOr<mlir::Operation*> RandomOpSPMDExpander::ExpandOp(mlir::Operation* op) {
     return CreatedShardedLocalRandomOpV2Range<
         mlir::TF::StatelessRandomUniformIntV2Op>(*layout, op);
   }
-  return errors::Unimplemented(absl::StrCat(
+  return absl::UnimplementedError(absl::StrCat(
       "SPMD expansion for op : ", OpName(op), " is not implemented"));
 }
 

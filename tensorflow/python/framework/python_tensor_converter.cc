@@ -14,20 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/framework/python_tensor_converter.h"
 
+#include <cstdint>
+
 #include "absl/strings/str_cat.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 
-#if PY_MAJOR_VERSION < 3
-// Python 2.x:
-#define PY_INT_AS_LONG(x) (PyInt_AsLong(x))
-#define PY_STRING_INTERN_FROM_STRING(x) (PyString_InternFromString(x))
-#else
 // Python 3.x:
 #define PY_INT_AS_LONG(x) (PyLong_AsLong(x))
 #define PY_STRING_INTERN_FROM_STRING(x) (PyUnicode_InternFromString(x))
-#endif
 
 namespace tensorflow {
 namespace {
@@ -37,16 +35,19 @@ namespace {
 //
 // On error: sets a python AttributeError exception and returns DT_INVALID.
 DataType DataTypeForTensor(PyObject* tensor) {
-  static PyObject* dtype_attr = PY_STRING_INTERN_FROM_STRING("dtype");
-  static PyObject* type_enum_attr = PY_STRING_INTERN_FROM_STRING("_type_enum");
+  static PyObject* const kDtypeAttr = PY_STRING_INTERN_FROM_STRING("dtype");
+  static PyObject* const kTypeEnumAttr =
+      PY_STRING_INTERN_FROM_STRING("_type_enum");
 
-  Safe_PyObjectPtr py_dtype(PyObject_GetAttr(tensor, dtype_attr));
+  Safe_PyObjectPtr py_dtype(PyObject_GetAttr(tensor, kDtypeAttr));
   if (!py_dtype) return DT_INVALID;
 
-  Safe_PyObjectPtr enum_field(PyObject_GetAttr(py_dtype.get(), type_enum_attr));
+  Safe_PyObjectPtr enum_field(PyObject_GetAttr(py_dtype.get(), kTypeEnumAttr));
   if (!enum_field) return DT_INVALID;
 
-  DataType result = static_cast<DataType>(PY_INT_AS_LONG(enum_field.get()));
+  int64_t raw_enum = PY_INT_AS_LONG(enum_field.get());
+  if (raw_enum == -1 && PyErr_Occurred()) return DT_INVALID;
+  DataType result = static_cast<DataType>(raw_enum);
   return result;
 }
 
@@ -71,7 +72,7 @@ bool CheckDType(DataType actual_dtype, DataType& expected_dtype) {
 Safe_PyObjectPtr PythonTensorConverter::Convert(PyObject* src, DataType& dtype,
                                                 bool* used_fallback) const {
   // First, try converting `src` to a Tensor without calling back into Python.
-  if (ctx_) {  // Eager mode
+  if (ctx_ != nullptr) {  // Eager mode
     // TODO(b/164980194): Handle resource variables as well.  (See
     // ConvertToTensor function in pywrap_tfe_src.cc).
     if (EagerTensor_CheckExact(src)) {
@@ -80,10 +81,12 @@ Safe_PyObjectPtr PythonTensorConverter::Convert(PyObject* src, DataType& dtype,
       Py_INCREF(src);
       return Safe_PyObjectPtr(src);
     } else {
-      TFE_TensorHandle* handle =
-          tensorflow::ConvertToEagerTensor(ctx_, src, dtype, device_name_);
-      if (handle) {
+      TFE_TensorHandle* handle = ConvertToEagerTensor(
+          ctx_, src, dtype,
+          device_name_.has_value() ? device_name_->c_str() : nullptr);
+      if (handle != nullptr) {
         Safe_PyObjectPtr result(EagerTensorFromHandle(handle));
+        if (!result) return nullptr;
         if (!CheckDType(PyEagerTensor_Dtype(result.get()), dtype)) {
           return nullptr;
         }
@@ -113,12 +116,13 @@ Safe_PyObjectPtr PythonTensorConverter::Convert(PyObject* src, DataType& dtype,
   //
   // TODO(b/164980194) Reduce/eliminate cases where fallback is used.
   if (used_fallback) *used_fallback = true;
-  static PyObject* convert_to_tensor =
+  static PyObject* const kConvertToTensor =
       swig::GetRegisteredPyObject("tf.convert_to_tensor");
-  if (!convert_to_tensor) return nullptr;
+  if (kConvertToTensor == nullptr) return nullptr;
 
   Safe_PyObjectPtr args(PyTuple_New(dtype == DT_INVALID ? 1 : 2));
   Safe_PyObjectPtr kwargs(PyDict_New());
+  if (!args || !kwargs) return nullptr;
   Py_INCREF(src);
   PyTuple_SetItem(args.get(), 0, src);
   if (dtype != DT_INVALID) {
@@ -126,7 +130,7 @@ Safe_PyObjectPtr PythonTensorConverter::Convert(PyObject* src, DataType& dtype,
   }
   PyDict_SetItemString(kwargs.get(), "ctx", py_eager_context_);
   Safe_PyObjectPtr result(
-      PyObject_Call(convert_to_tensor, args.get(), kwargs.get()));
+      PyObject_Call(kConvertToTensor, args.get(), kwargs.get()));
   if (!result) return nullptr;
   dtype = DataTypeForTensor(result.get());  // set output parameter.
   if (dtype == DT_INVALID) return nullptr;

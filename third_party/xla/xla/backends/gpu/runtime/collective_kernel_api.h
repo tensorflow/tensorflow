@@ -49,10 +49,7 @@ absl::Status LaunchMultiGpuBarrier(
 absl::Status LaunchMultiGpuBarrierWithNccl(
     stream_executor::Stream* stream, int64_t num_devices, RankId rank,
     xla::SymmetricMemory* symmetric_memory,
-    stream_executor::DeviceAddressBase local_barrier_signal_value,
-    stream_executor::DeviceAddressBase ptr_to_store =
-        stream_executor::DeviceAddressBase(),
-    xla::SymmetricMemory* ptr_storage_handle = nullptr);
+    stream_executor::DeviceAddressBase local_barrier_signal_value);
 
 // Returns the size of the barrier signal buffer in bytes.
 size_t GetMultiGpuBarrierSignalBufferSize();

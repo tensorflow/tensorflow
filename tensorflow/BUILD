@@ -91,7 +91,7 @@ PACKAGE_STATIC_DEPS = [
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",
     "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-    "@com_github_grpc_grpc//:__subpackages__",
+    "@grpc//:__subpackages__",
     "@com_google_absl//:__subpackages__",
     "@com_google_googleapis//:__subpackages__",
     "@com_google_protobuf//:__subpackages__",
@@ -117,7 +117,7 @@ PACKAGE_STATIC_DEPS = [
     "@nccl_archive//:__subpackages__",
     "@net_zstd//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
-    "@onednn//:__subpackages__",
+    "@onednn_async//:__subpackages__",
     "@org_sqlite//:__subpackages__",
     "@platforms//:__subpackages__",
     "@snappy//:__subpackages__",
@@ -190,7 +190,10 @@ package(
 #         "notsan",
 #         "noubsan",
 #     ],
-#     deps = [":copybara_config"],
+#     deps = [
+#         ":copybara_config",
+#         "//third_party/xla:leakr_badwords.dic",
+#     ],
 # )
 #
 # action_config_test(
@@ -1035,15 +1038,13 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
-        "//perftools/accelerators/xprof/convert/...",
-        "//perftools/accelerators/xprof/integration_tests/...",
-        "//smartass/brain/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/odml/model_explorer/...",
         "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
@@ -1052,10 +1053,7 @@ package_group(
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
-        "//waymo/accelerator/...",
-        "//waymo/ml/cn/...",
-        "//waymo/ml/models/...",
-    ],
+    ] + if_oss(["public"]),
 )
 
 package_group(
@@ -1129,7 +1127,7 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
+        "//conditions:default": ["@grpc"],
     }),
 )
 
@@ -1137,7 +1135,7 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+        "//conditions:default": ["@grpc//:grpc++"],
     }),
 )
 # copybara:comment_end
@@ -1259,7 +1257,7 @@ pywrap_aware_tf_cc_shared_object(
         "//tensorflow:windows": [
         ],
         # copybara:uncomment_begin(google-only)
-        # "//tools/cpp:asan_build": [
+        # "@bazel_tools//tools/cpp:asan_build": [
         # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         # ],
         # "//tools/cpp:hwasan_build": [
@@ -1591,6 +1589,7 @@ exports_files(
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
         "tf_private_symbols.lds",
+        "tf_framework_version_script.lds",
     ],
 )
 

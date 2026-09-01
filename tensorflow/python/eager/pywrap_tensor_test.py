@@ -71,6 +71,35 @@ class PywrapTensorTest(test.TestCase):
       x = 1.0 * constant_op.constant([4.0, 1, 1, i])
       x._handle_data = x
 
+  def test_delete_handle_data_raises(self):
+    x = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegex(
+        AttributeError, "Cannot delete attribute '_handle_data'"
+    ):
+      del x._handle_data
+
+  def test_delete_tensor_shape_raises(self):
+    x = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegex(
+        AttributeError, "Cannot delete attribute '_tensor_shape'"
+    ):
+      del x._tensor_shape
+
+  def test_handle_data_reentrancy(self):
+    x = constant_op.constant([1.0, 2.0])
+
+    class ReentrantObject:
+
+      def __init__(self, tensor):
+        self.tensor = tensor
+
+      def __del__(self):
+        self.tensor._handle_data = None
+
+    x._handle_data = ReentrantObject(x)
+    x._handle_data = None
+    self.assertIsNone(x._handle_data)
+
 
 if __name__ == "__main__":
   test.main()

@@ -42,6 +42,13 @@ limitations under the License.
 
 namespace stream_executor {
 
+// A virtual base class for storing packed arguments.
+struct PackedArgBase {
+  virtual ~PackedArgBase() = default;
+  virtual void* argument_address() = 0;
+  virtual int64_t size() const = 0;
+};
+
 //===----------------------------------------------------------------------===//
 // Kernel arguments
 //===----------------------------------------------------------------------===//
@@ -78,6 +85,13 @@ class KernelArgs {
   virtual uint64_t number_of_shared_bytes() const = 0;
 
   virtual Kind kind() const = 0;
+};
+
+class PackableKernelArgs {
+ public:
+  virtual ~PackableKernelArgs() = default;
+  virtual absl::Span<const std::unique_ptr<PackedArgBase>> packed_args()
+      const = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -288,15 +302,54 @@ const T* DynCastOrNull(const KernelArgs* args) {
 }
 
 //===----------------------------------------------------------------------===//
+// Kernel arguments packing for device address and POD args
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+// Trivially copyable packed argument type.
+template <typename Packed>
+struct PackedArg final : PackedArgBase {
+  static_assert(std::is_trivially_copyable_v<Packed>,
+                "Packed type must be trivially copyable");
+  explicit PackedArg(Packed packed_arg) : packed_arg(std::move(packed_arg)) {}
+  void* argument_address() final { return &packed_arg; }
+  int64_t size() const final { return sizeof(Packed); }
+  Packed packed_arg;
+};
+
+// Template specialization for already packed argument.
+template <>
+struct PackedArg<PackedKernelArg> : PackedArgBase {
+  explicit PackedArg(PackedKernelArg packed_arg)
+      : packed_arg(std::move(packed_arg)) {}
+  void* argument_address() final { return packed_arg.data(); }
+  int64_t size() const final { return packed_arg.size_bytes(); }
+  PackedKernelArg packed_arg;
+};
+
+template <typename T>
+PackedArg(T) -> PackedArg<T>;
+
+}  // namespace internal
+
+//===----------------------------------------------------------------------===//
 // Kernel arguments device address array
 //===----------------------------------------------------------------------===//
 
-class KernelArgsDeviceAddressArray : public KernelArgs {
+class KernelArgsDeviceAddressArray : public KernelArgs,
+                                     public PackableKernelArgs {
  public:
   KernelArgsDeviceAddressArray(absl::Span<const DeviceAddressBase> args,
                                size_t shared_memory_bytes)
       : device_addr_args_(args.begin(), args.end()),
-        shared_memory_bytes_(shared_memory_bytes) {}
+        shared_memory_bytes_(shared_memory_bytes) {
+    packed_args_.reserve(args.size());
+    for (int i = 0; i < args.size(); i++) {
+      packed_args_.emplace_back(new internal::PackedArg(
+          KernelArgPacking<const DeviceAddressBase*>::Pack(&args[i])));
+    }
+  }
 
   static bool classof(const KernelArgs* args) {
     return args->kind() == Kind::kDeviceAddressArray;
@@ -322,7 +375,14 @@ class KernelArgsDeviceAddressArray : public KernelArgs {
     return device_addr_args_[index].size();
   }
 
+  absl::Span<const std::unique_ptr<PackedArgBase>> packed_args() const final {
+    return packed_args_;
+  }
+
  private:
+  // A storage for packed POD arguments added to this array.
+  absl::InlinedVector<std::unique_ptr<PackedArgBase>, 8> packed_args_;
+
   absl::InlinedVector<DeviceAddressBase, 4> device_addr_args_;
   size_t shared_memory_bytes_ = 0;
 };
@@ -331,48 +391,13 @@ class KernelArgsDeviceAddressArray : public KernelArgs {
 using KernelArgsDeviceMemoryArray ABSL_DEPRECATE_AND_INLINE() =
     KernelArgsDeviceAddressArray;
 
-//===----------------------------------------------------------------------===//
-// Kernel arguments packing for device address and POD args
-//===----------------------------------------------------------------------===//
-
-namespace internal {
-
-// A virtual base class for storing packed arguments.
-struct PackedArgBase {
-  virtual ~PackedArgBase() = default;
-  virtual void* argument_address() = 0;
-};
-
-// Trivially copyable packed argument type.
-template <typename Packed>
-struct PackedArg final : PackedArgBase {
-  static_assert(std::is_trivially_copyable_v<Packed>,
-                "Packed type must be trivially copyable");
-  explicit PackedArg(Packed packed_arg) : packed_arg(std::move(packed_arg)) {}
-  void* argument_address() final { return &packed_arg; }
-  Packed packed_arg;
-};
-
-// Template specialization for already packed argument.
-template <>
-struct PackedArg<PackedKernelArg> : PackedArgBase {
-  explicit PackedArg(PackedKernelArg packed_arg)
-      : packed_arg(std::move(packed_arg)) {}
-  void* argument_address() final { return packed_arg.data(); }
-  PackedKernelArg packed_arg;
-};
-
-template <typename T>
-PackedArg(T) -> PackedArg<T>;
-
-}  // namespace internal
-
 // KernelArgsPackedArray is optimized for packing DeviceAddressBase pointers
 // and POD arguments (i.e. scalars) when the number and type of arguments are
 // not known at compile time. When the kernel signature is fully known at
 // compile time, prefer `KernelArgsPackedTuple` as it requires fewer memory
 // allocations and has lower overheads on a hot path.
-class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
+class KernelArgsPackedArray : public KernelArgsPackedArrayBase,
+                              public PackableKernelArgs {
  public:
   // The `num_args` is the maximum number of device address arguments that can
   // be stored in the array. Adding more arguments will can lead to UB because
@@ -406,8 +431,11 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
   // Adds a device address argument to the list.
   void add_argument(const DeviceAddressBase& arg) {
     DCHECK_LT(device_addr_args_.size(), device_addr_args_.capacity());
-    auto& emplaced = device_addr_args_.emplace_back(arg.opaque());
-    argument_addresses_.push_back(&emplaced);
+    device_addr_args_.emplace_back(arg.opaque());
+
+    auto& emplaced = packed_args_.emplace_back(new internal::PackedArg(
+        KernelArgPacking<const DeviceAddressBase*>::Pack(&arg)));
+    argument_addresses_.push_back(emplaced->argument_address());
   }
 
   // Adds a shared memory argument to the list.
@@ -416,6 +444,10 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
   // that is the only parameter in this function.
   void add_shared_bytes(size_t number_of_bytes) {
     shared_memory_bytes_ += number_of_bytes;
+  }
+
+  absl::Span<void*> device_addr_args() {
+    return absl::MakeSpan(device_addr_args_);
   }
 
   // Gets the number of arguments added so far, including shared memory
@@ -432,12 +464,18 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase {
     return argument_addresses_;
   }
 
+  size_t shared_memory_bytes() const { return shared_memory_bytes_; }
+
+  absl::Span<const std::unique_ptr<PackedArgBase>> packed_args() const final {
+    return packed_args_;
+  }
+
  private:
   // A storage for device address arguments added to this array.
   absl::InlinedVector<void*, 8> device_addr_args_;
 
   // A storage for packed POD arguments added to this array.
-  absl::InlinedVector<std::unique_ptr<internal::PackedArgBase>, 8> packed_args_;
+  absl::InlinedVector<std::unique_ptr<PackedArgBase>, 8> packed_args_;
 
   // Pointers to entries `device_addr_args_` or `packed_args_`.
   absl::InlinedVector<void*, 8> argument_addresses_;

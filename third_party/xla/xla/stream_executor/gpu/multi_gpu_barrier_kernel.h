@@ -69,10 +69,8 @@ struct MultiGpuBarrierWithNcclKernel {
   static constexpr int64_t kMaxPeers = 32;
 
   using KernelType = stream_executor::TypedKernel<
-      int64_t, int64_t, xla::SymmetricMemory*,   // signal buffers
-      stream_executor::DeviceAddress<uint32_t>,  // sync counter
-      stream_executor::DeviceAddressBase,        // pointer to store
-      xla::SymmetricMemory*                      // pointer storage
+      int64_t, int64_t, xla::SymmetricMemory*,  // signal buffers
+      stream_executor::DeviceAddress<uint32_t>  // sync counter
       >;
 };
 

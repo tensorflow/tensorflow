@@ -40,6 +40,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Analysis",
@@ -94,6 +95,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -126,10 +128,10 @@ py_binary(
 
 genrule(
     name = "generate_amdgpu_device_lib_data",
-    srcs = [
+    srcs = if_oss([
         "@rocm_device_libs//:ockl",
         "@rocm_device_libs//:ocml",
-    ],
+    ]),
     outs = ["amdgpu_device_lib_data.h"],
     cmd = "$(location {}) --llvm_link_bin $(location {}) $(SRCS) -o $@ --cpp_identifier=kAMDGPUDeviceLibData".format(
         ":generate_amdgpu_device_lib_data_tool",
@@ -187,7 +189,7 @@ cc_library(
         "//xla/stream_executor:kernel_stats",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:rocm_rocdl_path",
+        "//xla/tsl/platform:sha256",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
@@ -197,6 +199,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -310,7 +313,6 @@ xla_cc_test(
         ":amdgpu_backend",
         ":load_ir_module",
         "//xla:debug_options_flags",
-        "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
@@ -410,17 +412,20 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:CodeGen",
-        "@llvm-project//llvm:SPIRVCodeGen",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:errors",
-    ],
+    ] + if_oss([
+        "@llvm-project//llvm:SPIRVCodeGen",
+    ]),
 )
 
 xla_cc_test(
@@ -436,7 +441,17 @@ xla_cc_test(
     ]),
     deps = [
         ":spirv_backend",
+        "//xla:xla_proto_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/sycl:oneapi_compute_capability",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
     ],
 )

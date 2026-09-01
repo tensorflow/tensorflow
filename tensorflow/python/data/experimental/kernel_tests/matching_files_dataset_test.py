@@ -22,6 +22,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import matching_files
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -152,6 +153,18 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase,
 
     self.assertCountEqual(expected_filenames, actual_filenames)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyPatterns(self):
+    """Test the MatchingFiles dataset with an empty patterns list."""
+    if context.executing_eagerly():
+      with self.assertRaises(errors.InvalidArgumentError):
+        matching_files.MatchingFilesDataset([])
+    else:
+      dataset = matching_files.MatchingFilesDataset([])
+      self.assertDatasetProduces(
+          dataset, expected_error=(errors.InvalidArgumentError, '')
+      )
+
 
 class MatchingFilesDatasetCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
@@ -185,6 +198,41 @@ class MatchingFilesDatasetCheckpointTest(
 
     num_outputs = width * len(patterns)
     verify_fn(self, lambda: self._build_iterator_graph(patterns), num_outputs)
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRestoreInvalidPatternIndex(self):
+    tmp_dir = tempfile.mkdtemp()
+
+    # Touch files
+    open(os.path.join(tmp_dir, 'a.txt'), 'w').close()
+    open(os.path.join(tmp_dir, 'b.txt'), 'w').close()
+
+    # Create an iterator with 2 patterns.
+    patterns1 = [
+        os.path.join(tmp_dir, 'a.txt'),
+        os.path.join(tmp_dir, 'b.txt'),
+    ]
+    ds1 = matching_files.MatchingFilesDataset(patterns1)
+    it1 = ds1.as_numpy_iterator()
+
+    # Consume elements of the dataset.
+    for _ in it1:
+      pass
+
+    # Save the iterator state
+    state = it1.save()
+
+    # Create a new dataset with only 1 pattern.
+    patterns2 = [os.path.join(tmp_dir, 'a.txt')]
+    ds2 = matching_files.MatchingFilesDataset(patterns2)
+    it2 = ds2.as_numpy_iterator()
+
+    # Restoring the state of it1 (current_pattern_index = 2) into it2
+    # (patterns size = 1) should raise an InvalidArgumentError.
+    with self.assertRaises(errors.InvalidArgumentError):
+      it2.restore(state)
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
 

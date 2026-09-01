@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/equal_graph_def.h"
+#include "tsl/platform/ctstring_internal.h"
 
 namespace tensorflow {
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, absl::Status* status);
@@ -930,6 +933,37 @@ TEST(CAPI, ImportGraphDef_WithReturnOutputs) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, ImportGraphDefWithReturnOutputs_Fail) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Create an invalid GraphDef (using a non-existent op to force failure)
+  tensorflow::GraphDef graph_def_proto;
+  auto* node = graph_def_proto.add_node();
+  node->set_name("invalid_node");
+  node->set_op("NonExistentOp");
+
+  std::string serialized;
+  ASSERT_TRUE(graph_def_proto.SerializeToString(&serialized));
+
+  TF_Buffer* graph_def =
+      TF_NewBufferFromString(serialized.data(), serialized.size());
+
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsAddReturnOutput(opts, "invalid_node", 0);
+
+  TF_Output return_outputs[1];
+  TF_GraphImportGraphDefWithReturnOutputs(graph, graph_def, opts,
+                                          return_outputs, 1, s);
+
+  EXPECT_NE(TF_OK, TF_GetCode(s));
+
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteBuffer(graph_def);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -990,6 +1024,23 @@ TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_DeleteImportGraphDefResults(results);
   TF_DeleteImportGraphDefOptions(opts);
   TF_DeleteBuffer(graph_def);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, ImportGraphDefOptionsAddInputMappingReallocation) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+  TF_Operation* scalar = ScalarConst(10, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  for (int i = 0; i < 100; ++i) {
+    std::string name = "fake_" + std::to_string(i);
+    TF_ImportGraphDefOptionsAddInputMapping(opts, name.c_str(), 0, {scalar, 0});
+  }
+
+  TF_DeleteImportGraphDefOptions(opts);
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
 }
@@ -1524,6 +1575,14 @@ TEST(CAPI, DeletingNullPointerIsSafe) {
   TF_DeleteApiDefMap(nullptr);
 
   TF_DeleteStatus(status);
+}
+
+TEST(CAPI, AllocateStringTensorUninitializedDelete) {
+  int64_t dims[] = {100};
+  TF_Tensor* t =
+      TF_AllocateTensor(TF_STRING, dims, 1, 100 * sizeof(TF_TString));
+  EXPECT_NE(t, nullptr);
+  TF_DeleteTensor(t);
 }
 
 TEST(CAPI, TestBitcastFrom_Reshape) {

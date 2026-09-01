@@ -27,12 +27,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -44,15 +44,15 @@ limitations under the License.
 #include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
 
-struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
+struct IfrtIRProgram : RTTIExtends<IfrtIRProgram, Program> {
   IfrtIRProgram() = default;
   explicit IfrtIRProgram(mlir::ModuleOp mlir_module)
       : mlir_module(std::move(mlir_module)) {}
@@ -69,6 +69,10 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
   // Returns true if the program exclusively owns the MLIR context.
   bool OwnsMlirContext() const { return mlir_context != nullptr; }
 
+  // Returns a fingerprint of the IFRT IR program. Two IFRT IR programs are
+  // equivalent if their fingerprints are the same. May ignore debug info.
+  absl::StatusOr<uint64_t> Fingerprint() const;
+
   // Key for the `fill_all_statuses` attribute in the custom_options attribute
   // map. If set to true, all executables will have their status filled if
   // `options.fill_status` is set. Otherwise, only leaf executables will have
@@ -84,17 +88,18 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
 
 // Options for serializing IFRT IR programs.
 struct SerializeIfrtIRProgramOptions
-    : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
+    : RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
   explicit SerializeIfrtIRProgramOptions(
       std::string ifrt_version, std::string atom_program_version,
-      bool version_in_place = true,
+      std::string atom_program_sdy_version, bool version_in_place = true,
       // Using a parameter name `serdes_version` avoids shadowing the base class
       // member variable `version`.
       SerDesVersion serdes_version = SerDesDefaultVersionAccessor::Get())
-      : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions>(
+      : RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions>(
             /*version=*/serdes_version),
         ifrt_version(std::move(ifrt_version)),
         atom_program_version(std::move(atom_program_version)),
+        atom_program_sdy_version(std::move(atom_program_sdy_version)),
         version_in_place(version_in_place) {}
 
   static char ID;  // NOLINT
@@ -105,6 +110,9 @@ struct SerializeIfrtIRProgramOptions
   // String of the form "major.minor.patch", representing the atom program
   // version (currently VHLO version).
   std::string atom_program_version;
+  // String of the form "major.minor.patch", representing the SDY version within
+  // the atom program version.
+  std::string atom_program_sdy_version;
   // Whether to version the IFRT IR ModuleOp in-place.
   bool version_in_place;
 };
@@ -115,15 +123,15 @@ struct SerializeIfrtIRProgramOptions
 // deserialization will use the provided MLIR context and the returned program
 // will not own a MLIR context.
 struct DeserializeIfrtIRProgramOptions
-    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
-                        DeserializeExecutableOptions> {
+    : RTTIExtends<DeserializeIfrtIRProgramOptions,
+                  DeserializeExecutableOptions> {
   explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
       : context(context) {}
   DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context,
                                   std::optional<DeviceListRef> device_list,
                                   absl::Span<Device* const> device_assignments)
-      : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
-                          DeserializeExecutableOptions>(device_list),
+      : RTTIExtends<DeserializeIfrtIRProgramOptions,
+                    DeserializeExecutableOptions>(device_list),
         context(context),
         device_assignments(device_assignments.begin(),
                            device_assignments.end()) {}
@@ -136,7 +144,7 @@ struct DeserializeIfrtIRProgramOptions
 
 // CompileOptions for an IFRT IR program.
 struct IfrtIRCompileOptions
-    : llvm::RTTIExtends<IfrtIRCompileOptions, CompileOptions> {
+    : RTTIExtends<IfrtIRCompileOptions, CompileOptions> {
   IfrtIRCompileOptions() = default;
   explicit IfrtIRCompileOptions(
       std::vector<DeviceId> device_assignments,
@@ -196,7 +204,7 @@ struct IfrtIRCompileOptions
   absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     IfrtIrCompileOptionsProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

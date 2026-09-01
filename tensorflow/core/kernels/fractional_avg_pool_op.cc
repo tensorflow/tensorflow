@@ -42,18 +42,18 @@ class FractionalAvgPoolOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("pseudo_random", &pseudo_random_));
     OP_REQUIRES_OK(context, context->GetAttr("overlapping", &overlapping_));
     OP_REQUIRES(context, pooling_ratio_.size() == 4,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "pooling_ratio field must specify 4 dimensions"));
     for (std::size_t i = 0; i < pooling_ratio_.size(); ++i) {
       OP_REQUIRES(context, pooling_ratio_[i] >= 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "pooling_ratio cannot be smaller than 1, got: ",
-                      pooling_ratio_[i]));
+                      pooling_ratio_[i])));
     }
-    OP_REQUIRES(
-        context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
-        errors::Unimplemented("Fractional average pooling is not yet "
-                              "supported on the batch nor channel dimension."));
+    OP_REQUIRES(context, pooling_ratio_[0] == 1 && pooling_ratio_[3] == 1,
+                absl::UnimplementedError(
+                    "Fractional average pooling is not yet "
+                    "supported on the batch nor channel dimension."));
     OP_REQUIRES_OK(context, context->GetAttr("deterministic", &deterministic_));
     OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
     OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));
@@ -66,7 +66,7 @@ class FractionalAvgPoolOp : public OpKernel {
     } else {
       OP_REQUIRES(
           context, (seed_ == 0) && (seed2_ == 0),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Both seed and seed2 should be 0 if deterministic is false."));
     }
   }
@@ -81,18 +81,18 @@ class FractionalAvgPoolOp : public OpKernel {
 
     const Tensor& tensor_in = context->input(0);
     OP_REQUIRES(context, tensor_in.dims() == tensor_in_and_out_dims,
-                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+                absl::InvalidArgumentError("tensor_in must be 4-dimensional"));
 
     std::vector<int> input_size(tensor_in_and_out_dims);
     std::vector<int> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
-      OP_REQUIRES(
-          context, input_size[i] >= pooling_ratio_[i],
-          errors::InvalidArgument("Pooling ratio is higher than input "
-                                  "dimension size for dimension ",
-                                  i, ". Input dim size: ", input_size[i],
-                                  " pooling ratio: ", pooling_ratio_[i]));
+      OP_REQUIRES(context, input_size[i] >= pooling_ratio_[i],
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Pooling ratio is higher than input "
+                                   "dimension size for dimension ",
+                                   i, ". Input dim size: ", input_size[i],
+                                   " pooling ratio: ", pooling_ratio_[i])));
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
@@ -248,32 +248,33 @@ class FractionalAvgPoolGradOp : public OpKernel {
     OP_REQUIRES(context,
                 orig_input_tensor_shape.dims() == 1 &&
                     orig_input_tensor_shape.NumElements() == 4,
-                errors::InvalidArgument("original input tensor shape must be"
-                                        "1-dimensional and 4 elements"));
+                absl::InvalidArgumentError("original input tensor shape must be"
+                                           "1-dimensional and 4 elements"));
     int64_t num_elements = 1;
     for (int i = 0; i < orig_input_tensor_shape.dims(); i++) {
       OP_REQUIRES(context, orig_input_tensor_shape.dim_size(i) > 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "orig_input_tensor_shape must be positive, got: ",
-                      orig_input_tensor_shape.dim_size(i)));
+                      orig_input_tensor_shape.dim_size(i))));
       num_elements = MultiplyWithoutOverflow(
           num_elements, orig_input_tensor_shape.dim_size(i));
-      OP_REQUIRES(
-          context, num_elements > 0,
-          errors::InvalidArgument(
-              "The total elements specified by orig_input_tensor_shape",
-              " is too large. Encountered overflow after multiplying ",
-              orig_input_tensor_shape.dim_size(i), ", result: ", num_elements));
+      OP_REQUIRES(context, num_elements > 0,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "The total elements specified by orig_input_tensor_shape",
+                      " is too large. Encountered overflow after multiplying ",
+                      orig_input_tensor_shape.dim_size(i),
+                      ", result: ", num_elements)));
     }
 
     const Tensor& out_backprop = context->input(1);
-    OP_REQUIRES(context, out_backprop.dims() == 4,
-                errors::InvalidArgument("out_backprop must be 4-dimensional"));
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        absl::InvalidArgumentError("out_backprop must be 4-dimensional"));
     for (int i = 0; i < out_backprop.dims(); i++) {
       OP_REQUIRES(context, out_backprop.dim_size(i) > 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "out_backprop must be positive for all dimension, got:",
-                      out_backprop.dim_size(i)));
+                      out_backprop.dim_size(i))));
     }
 
     const Tensor& row_seq_tensor = context->input(2);
@@ -284,18 +285,18 @@ class FractionalAvgPoolGradOp : public OpKernel {
     const int64_t out_cols = out_backprop.dim_size(2);
     const int64_t out_depth = out_backprop.dim_size(3);
 
-    OP_REQUIRES(context, row_seq_tensor.NumElements() > out_rows,
-                errors::InvalidArgument("Given out_backprop shape ",
-                                        out_backprop.shape().DebugString(),
-                                        ", row_seq_tensor must have at least ",
-                                        out_rows + 1, " elements, but got ",
-                                        row_seq_tensor.NumElements()));
-    OP_REQUIRES(context, col_seq_tensor.NumElements() > out_cols,
-                errors::InvalidArgument("Given out_backprop shape ",
-                                        out_backprop.shape().DebugString(),
-                                        ", col_seq_tensor must have at least ",
-                                        out_cols + 1, " elements, but got ",
-                                        col_seq_tensor.NumElements()));
+    OP_REQUIRES(
+        context, row_seq_tensor.NumElements() > out_rows,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Given out_backprop shape ", out_backprop.shape().DebugString(),
+            ", row_seq_tensor must have at least ", out_rows + 1,
+            " elements, but got ", row_seq_tensor.NumElements())));
+    OP_REQUIRES(
+        context, col_seq_tensor.NumElements() > out_cols,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Given out_backprop shape ", out_backprop.shape().DebugString(),
+            ", col_seq_tensor must have at least ", out_cols + 1,
+            " elements, but got ", col_seq_tensor.NumElements())));
 
     auto row_seq_tensor_flat = row_seq_tensor.flat<int64_t>();
     auto col_seq_tensor_flat = col_seq_tensor.flat<int64_t>();
@@ -307,16 +308,16 @@ class FractionalAvgPoolGradOp : public OpKernel {
     const int64_t in_depth = orig_input_tensor_shape_flat(3);
     OP_REQUIRES(
         context, in_batch != 0,
-        errors::InvalidArgument("Batch dimension of input must not be 0"));
+        absl::InvalidArgumentError("Batch dimension of input must not be 0"));
     OP_REQUIRES(
         context, in_rows != 0,
-        errors::InvalidArgument("Rows dimension of input must not be 0"));
+        absl::InvalidArgumentError("Rows dimension of input must not be 0"));
     OP_REQUIRES(
         context, in_cols != 0,
-        errors::InvalidArgument("Columns dimension of input must not be 0"));
+        absl::InvalidArgumentError("Columns dimension of input must not be 0"));
     OP_REQUIRES(
         context, in_depth != 0,
-        errors::InvalidArgument("Depth dimension of input must not be 0"));
+        absl::InvalidArgumentError("Depth dimension of input must not be 0"));
 
     constexpr int tensor_in_and_out_dims = 4;
     // Transform orig_input_tensor_shape into TensorShape

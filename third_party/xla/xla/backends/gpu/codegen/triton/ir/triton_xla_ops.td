@@ -279,9 +279,11 @@ def TTXLA_AtomicSpinWaitOp : TTXLA_Op<"atomic_spin_wait",
       $ptr. The memory ordering guarantees are specified by the
       $mem_sync_(scope|semantic) attributes.
 
+      The operation will spin-wait until the loaded value satisfies the
+      condition specified by the $comparator relative to the $expected value.
       The loaded value is compared to $expected using the $comparator.
-      As long as the comparison returns true, the spin-wait loop continues.
-      If the comparison returns false, the spin-wait loop is finished.
+      As long as the comparison returns false, the spin-wait loop continues.
+      If the comparison returns true, the spin-wait loop is finished.
 
       NB: In the end only a single lane/thread within a program will
       write to (or read from) a given memory location so the synchronization
@@ -296,7 +298,7 @@ def TTXLA_AtomicSpinWaitOp : TTXLA_Op<"atomic_spin_wait",
           reordered before this wait. All writes in other programs that
           `release` the same memory location are visible in the current block.
 
-      Internally this operation expands into elementwise
+      Internally this operation expands into an elementwise
       `ld.global.<semantic>.<scope>.u32` and a labelled loop.
     }];
 

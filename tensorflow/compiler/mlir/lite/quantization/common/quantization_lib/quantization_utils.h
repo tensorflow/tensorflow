@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -51,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -440,7 +442,7 @@ class QuantizationPattern : public RewritePattern {
     CustomMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
-    // preceding dequantize ops and succeding quantize ops.
+    // preceding dequantize ops and succeeding quantize ops.
     for (mlir::Operation* quantizing_op : quantizing_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
       if (llvm::isa<QuantizeOpT, DequantizeOpT>(quantizing_op)) {
@@ -490,6 +492,27 @@ class QuantizationPattern : public RewritePattern {
               (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
             return failure();
           }
+        } else if (auto fused_loc =
+                       llvm::dyn_cast<FusedLoc>(quantizing_op->getLoc())) {
+          llvm::SmallVector<mlir::Location, 4> stack;
+          stack.push_back(fused_loc);
+          bool blocked = false;
+          while (!stack.empty()) {
+            mlir::Location l = stack.pop_back_val();
+            if (auto name_loc = llvm::dyn_cast<NameLoc>(l)) {
+              std::string sloc = name_loc.getName().str();
+              if (!sloc.empty() &&
+                  (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
+                blocked = true;
+                break;
+              }
+            } else if (auto fused = llvm::dyn_cast<FusedLoc>(l)) {
+              for (auto child_loc : fused.getLocations()) {
+                stack.push_back(child_loc);
+              }
+            }
+          }
+          if (blocked) return failure();
         }
       }
 
@@ -641,8 +664,24 @@ class QuantizationPattern : public RewritePattern {
         for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
           auto def = quantized_op->getOperand(i).getDefiningOp();
           if (auto q = llvm::dyn_cast_or_null<QuantizeOpT>(def)) {
-            DenseFPElementsAttr attr;
+            ElementsAttr attr;
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
+              continue;
+            }
+            if (auto resourceAttr =
+                    mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
+              if (AsmResourceBlob* blob =
+                      resourceAttr.getRawHandle().getBlob()) {
+                ArrayRef<char> ptr = blob->getData();
+                if (DenseElementsAttr::isValidRawBuffer(resourceAttr.getType(),
+                                                        ptr)) {
+                  attr = DenseElementsAttr::getFromRawBuffer(
+                      resourceAttr.getType(), ptr);
+                }
+              }
+            }
+            if (!mlir::isa<FloatType>(
+                    mlir::getElementTypeOrSelf(attr.getType()))) {
               continue;
             }
             auto cst = arith::ConstantOp::create(rewriter,

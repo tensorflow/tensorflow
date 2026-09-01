@@ -54,11 +54,11 @@ absl::Status ShapeAnnotationsMatch(
     auto it = expected_shapes.find(node->name());
     if (it != expected_shapes.end()) {
       if (!PartialTensorShapeUtils::AreIdentical(shapes, it->second)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Shape mismatch for ", node->name(), ". Expected: ",
             PartialTensorShapeUtils::PartialShapeListString(it->second),
             ", actual: ",
-            PartialTensorShapeUtils::PartialShapeListString(shapes));
+            PartialTensorShapeUtils::PartialShapeListString(shapes)));
       }
       expected_shapes.erase(it);
     }
@@ -69,8 +69,8 @@ absl::Status ShapeAnnotationsMatch(
     for (const auto& entry : expected_shapes) {
       missing.push_back(entry.first);
     }
-    return errors::InvalidArgument("Missing shapes for nodes: ",
-                                   absl::StrJoin(missing, ","));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Missing shapes for nodes: ", absl::StrJoin(missing, ",")));
   }
   return absl::OkStatus();
 }

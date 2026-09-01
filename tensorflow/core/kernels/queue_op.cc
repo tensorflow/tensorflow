@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/queue_op.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/queue_interface.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -54,8 +58,9 @@ QueueOpKernel::QueueOpKernel(OpKernelConstruction* context)
 void QueueOpKernel::ComputeAsync(OpKernelContext* ctx, DoneCallback callback) {
   QueueInterface* queue;
   if (ctx->input_dtype(0) == DT_RESOURCE) {
-    OP_REQUIRES_OK_ASYNC(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &queue), callback);
+    ResourceHandle handle;
+    OP_REQUIRES_OK_ASYNC(ctx, HandleFromInput(ctx, 0, &handle), callback);
+    OP_REQUIRES_OK_ASYNC(ctx, LookupResource(ctx, handle, &queue), callback);
   } else {
     OP_REQUIRES_OK_ASYNC(ctx, GetResourceFromContext(ctx, "handle", &queue),
                          callback);
@@ -210,6 +215,11 @@ DequeueManyOp::DequeueManyOp(OpKernelConstruction* context)
 void DequeueManyOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                                  DoneCallback callback) {
   const Tensor& Tnum_elements = ctx->input(1);
+  OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(Tnum_elements.shape()),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("num_elements must be a scalar, got ",
+                                     Tnum_elements.shape().DebugString())),
+                    callback);
   int32_t num_elements = Tnum_elements.flat<int32_t>()(0);
 
   OP_REQUIRES_ASYNC(
@@ -284,6 +294,11 @@ DequeueUpToOp::DequeueUpToOp(OpKernelConstruction* context)
 void DequeueUpToOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                                  DoneCallback callback) {
   const Tensor& Tnum_elements = ctx->input(1);
+  OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(Tnum_elements.shape()),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("num_elements must be a scalar, got ",
+                                     Tnum_elements.shape().DebugString())),
+                    callback);
   int32_t num_elements = Tnum_elements.flat<int32_t>()(0);
 
   OP_REQUIRES_ASYNC(

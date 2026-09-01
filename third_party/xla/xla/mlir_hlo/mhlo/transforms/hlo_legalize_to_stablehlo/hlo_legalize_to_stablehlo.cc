@@ -147,6 +147,16 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Version 1: Initial version for AsinhOp.
     return 1;
   }
+  // StableHLO doesn't support Mulhi yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::MulhiOp>::value) {
+    // Version 1: Initial version for MulhiOp.
+    return 1;
+  }
+  // StableHLO doesn't support Scan yet.
+  if constexpr (std::is_same_v<HloOpTy, mhlo::ScanOp>) {
+    // Version 1: Initial version for ScanOp.
+    return 1;
+  }
   return std::nullopt;
 }
 
@@ -368,6 +378,9 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
                                        subAxisInfo);
   }
+  if (auto attr = mlir::dyn_cast<mhlo::OriginalValueAttr>(hloAttr)) {
+    return attr;
+  }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {
     // Our guiding principle is to support all StableHLO functionality in MHLO.
@@ -482,6 +495,9 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
       block.getArgumentTypes(), block.getTerminator()->getOperandTypes());
   auto funcOp = func::FuncOp::create(rewriter, region.getLoc(),
                                      op->getName().stripDialect(), type);
+  // The function only backs the custom_call's called_computations reference;
+  // keep it private so symbol DCE can clean it up after recomposition.
+  funcOp.setPrivate();
   symTable.insert(funcOp);
 
   // Move region into new function
@@ -512,15 +528,17 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
     }
 
     // Handle DenseElements --> DenseArray for certain StableHLO ops
-    if constexpr (!std::is_same<HloOpTy, mhlo::AcosOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AcoshOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AtanhOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::CoshOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::SinhOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AsinOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::AsinhOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
+    if constexpr (!std::is_same_v<HloOpTy, mhlo::AcosOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AcoshOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AtanhOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::CoshOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::SinhOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AsinOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AsinhOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::ErfOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::TopKOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::MulhiOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::ScanOp>) {
       if (!stablehloAttr) {
         stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
             hloAttr.getName(), hloAttr.getValue());
@@ -814,8 +832,8 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 
   populateHloToStablehloCustomCallPatterns<
       mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp, mhlo::AtanhOp,
-      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp>(
-      patterns, converter, context, allowExperimentalFeatures);
+      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp, mhlo::MulhiOp,
+      mhlo::ScanOp>(patterns, converter, context, allowExperimentalFeatures);
 }
 
 }  // namespace stablehlo

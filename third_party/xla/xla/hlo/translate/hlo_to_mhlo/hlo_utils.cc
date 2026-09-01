@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -156,9 +157,8 @@ absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
 
 absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, Builder builder) {
-  TF_ASSIGN_OR_RETURN(auto type,
-                      ConvertTensorShapeToType<mlir::RankedTensorType>(
-                          literal.shape(), builder));
+  ABSL_ASSIGN_OR_RETURN(auto type, ConvertTensorShapeToType<mlir::RankedTensorType>(
+                                  literal.shape(), builder));
 
   // TODO(hinsu): Support remaining XLA primitive types.
   auto element_type = literal.shape().element_type();

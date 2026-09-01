@@ -18,6 +18,10 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+
 namespace xla::gpu {
 
 // For CUB segmented sorts (batch_size > 1), XLA appends the segment offsets to
@@ -33,6 +37,14 @@ inline int64_t AddSegmentedSortOffsetsToScratchSize(int64_t scratch_size,
   }
   return scratch_size;
 }
+
+// Creates a new custom call instruction for CUB sort with the estimated
+// scratch size and MLIR dict backend config for the FFI handler attributes,
+// and replaces the original custom call with it.
+absl::Status CreateCubSortCustomCall(HloCustomCallInstruction* custom_call,
+                                     int64_t scratch_size,
+                                     absl::string_view ffi_target,
+                                     bool descending, int64_t batch_size);
 
 }  // namespace xla::gpu
 

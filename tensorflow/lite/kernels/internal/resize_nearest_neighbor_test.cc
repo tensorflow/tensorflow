@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -412,22 +413,26 @@ bool is_valid_scale(int input_width, int input_height, int output_width,
   const float width_scale_float =
       static_cast<float>(input_width) / output_width;
 
-  int32_t height_scale_int = (input_height << 16) / output_height + 1;
-  int32_t width_scale_int = (input_width << 16) / output_width + 1;
+  int64_t height_scale_int =
+      (static_cast<int64_t>(input_height) << 16) / output_height + 1;
+  int64_t width_scale_int =
+      (static_cast<int64_t>(input_width) << 16) / output_width + 1;
 
-  for (int y = 0; y < output_height; ++y) {
-    int32_t in_y_float =
-        std::min(static_cast<int32_t>(std::floor(y * height_scale_float)),
-                 input_height - 1);
-    int32_t in_y_int = std::min((y * height_scale_int) >> 16, input_height - 1);
+  for (int64_t y = 0; y < output_height; ++y) {
+    int64_t in_y_float =
+        std::min(static_cast<int64_t>(std::floor(y * height_scale_float)),
+                 static_cast<int64_t>(input_height - 1));
+    int64_t in_y_int = std::min((y * height_scale_int) >> 16,
+                                static_cast<int64_t>(input_height - 1));
     if (in_y_int != in_y_float) {
       return false;
     }
-    for (int x = 0; x < output_width; ++x) {
-      int32_t in_x_float =
-          std::min(static_cast<int32_t>(std::floor(x * width_scale_float)),
-                   input_width - 1);
-      int32_t in_x_int = std::min((x * width_scale_int) >> 16, input_width - 1);
+    for (int64_t x = 0; x < output_width; ++x) {
+      int64_t in_x_float =
+          std::min(static_cast<int64_t>(std::floor(x * width_scale_float)),
+                   static_cast<int64_t>(input_width - 1));
+      int64_t in_x_int = std::min((x * width_scale_int) >> 16,
+                                  static_cast<int64_t>(input_width - 1));
       if (in_x_int != in_x_float) {
         return false;
       }
@@ -457,6 +462,24 @@ TEST(ResizeNearestNeighborOptimized, TestReferenceParity) {
   }
   // Test that the total number of invalid tests are a small percentage.
   ASSERT_LT(static_cast<float>(invalid_count) / kTestsToRun, 0.001f);
+}
+
+TEST(ResizeNearestNeighborOptimized, TestLargeDimension) {
+  const int batch = 1;
+  const int depth = 1;
+  const int input_width = 1;
+  // 32769 is chosen to exceed 2^15, ensuring that (dim << 16) overflows a
+  // signed 32-bit integer.
+  const int input_height = 32769;
+  const int output_width = 1;
+  const int output_height = 32769;
+
+  EXPECT_TRUE(
+      is_valid_scale(input_width, input_height, output_width, output_height));
+  if (is_valid_scale(input_width, input_height, output_width, output_height)) {
+    TestOptimizedResizeNearestNeighbor(batch, depth, input_width, input_height,
+                                       output_width, output_height);
+  }
 }
 
 }  // namespace

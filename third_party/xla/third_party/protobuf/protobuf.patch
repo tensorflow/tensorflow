@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 diff --git a/BUILD.bazel b/BUILD.bazel
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
@@ -46,9 +60,10 @@ diff --git a/build_defs/BUILD.bazel b/build_defs/BUILD.bazel
 diff --git a/python/dist/system_python.bzl b/python/dist/system_python.bzl
 --- a/python/dist/system_python.bzl
 +++ b/python/dist/system_python.bzl
-@@ -73,11 +73,10 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
+@@ -73,11 +73,11 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
  load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
- load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+-load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
++load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
 
 -cc_library(
 -   name = "python_headers",

@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -83,8 +84,6 @@ TEST(CollectiveCliqueRequestsTest, RequestDevComms) {
   ASSERT_EQ(ordered_requests[0].dev_comms.size(), 2);
   EXPECT_TRUE(ordered_requests[0].dev_comms.contains(dev_comm0));
   EXPECT_TRUE(ordered_requests[0].dev_comms.contains(dev_comm1));
-
-  EXPECT_THAT(requests.GetDevicesRequiringBarrier(), UnorderedElementsAre());
 }
 
 TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
@@ -108,46 +107,29 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
                              testing::HasSubstr("different device groups")));
 }
 
-TEST(CollectiveCliqueRequestsTest, BarrierAfterModuleExecutionRequested) {
-  GlobalDeviceId d0 = GlobalDeviceId(0);
-  GlobalDeviceId d1 = GlobalDeviceId(1);
-
-  GpuCliqueKey k0({d0, d1}, 2);
-
-  // Callers must pass pre-sorted device groups.
-  std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d0, d1}};
-
-  CollectiveCliqueRequests requests;
-  CollectiveCliqueRequests::CliqueRequirements requirements{
-      std::nullopt, CollectiveCliqueRequests::BarrierRequirements{true}};
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0a, requirements));
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0b));
-
-  EXPECT_THAT(requests.GetDevicesRequiringBarrier(),
-              UnorderedElementsAre(d0, d1));
-}
-
-TEST(CollectiveCliqueRequestsTest,
-     BarrierAfterModuleExecutionRequestedByDisjointCliques) {
+TEST(CollectiveCliqueRequestsTest, SingletonDeviceGroupsMismatchAllowed) {
   GlobalDeviceId d0 = GlobalDeviceId(0);
   GlobalDeviceId d1 = GlobalDeviceId(1);
   GlobalDeviceId d2 = GlobalDeviceId(2);
+  GlobalDeviceId d3 = GlobalDeviceId(3);
 
-  GpuCliqueKey k0({d0, d1}, 2);
-  GpuCliqueKey k1({d1, d2}, 2);
+  // Singleton clique key (single device, no cross-device communication).
+  GpuCliqueKey k_singleton({d0}, /*num_local_participants=*/1);
 
-  std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg1a = {{d1, d2}};
+  // Same singleton key requested with different surrounding device groups, as
+  // produced by connected-component collective-permute on different
+  // instructions. This must be tolerated (regression test for the clique
+  // acquisition deadlock).
+  std::vector<std::vector<GlobalDeviceId>> dg_a = {{d0}, {d1, d2, d3}};
+  std::vector<std::vector<GlobalDeviceId>> dg_b = {{d0}, {d1}, {d2, d3}};
 
   CollectiveCliqueRequests requests;
-  CollectiveCliqueRequests::CliqueRequirements requirements{
-      std::nullopt, CollectiveCliqueRequests::BarrierRequirements{true}};
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0a, requirements));
-  TF_ASSERT_OK(requests.RequestClique(k1, dg1a, requirements));
+  ASSERT_OK(requests.RequestClique(k_singleton, dg_a));
+  EXPECT_OK(requests.RequestClique(k_singleton, dg_b));
 
-  EXPECT_THAT(requests.GetDevicesRequiringBarrier(),
-              UnorderedElementsAre(d0, d1, d2));
+  auto ordered_requests = requests.OrderedRequestedCliques();
+  ASSERT_EQ(ordered_requests.size(), 1);
+  EXPECT_EQ(ordered_requests[0].key, k_singleton);
 }
 
 TEST(CollectiveCliqueRequestsTest, DeviceGroupsLexicographicSort) {

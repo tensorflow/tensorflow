@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
-namespace {
 
 struct TestResource : public Stream::Resource {
   TestResource() = default;
@@ -40,6 +39,12 @@ class StreamTest : public ::testing::Test {
   StreamExecutor* NewStreamExecutor() {
     Platform* platform = PlatformManager::PlatformWithName("Host").value();
     return platform->ExecutorForDevice(/*ordinal=*/0).value();
+  }
+
+  using ResourceTypeId = Stream::ResourceTypeId;
+
+  static ResourceTypeId GetNextResourceTypeId() {
+    return Stream::GetNextResourceTypeId();
   }
 };
 
@@ -121,5 +126,10 @@ TEST_F(StreamTest, GetOrCreateResource) {
   EXPECT_EQ(stream->GetOrNullResource<TestResource>(), resource);
 }
 
-}  // namespace
+TEST_F(StreamTest, GetNextResourceTypeIdReturnsDifferentIds) {
+  ResourceTypeId id1 = GetNextResourceTypeId();
+  ResourceTypeId id2 = GetNextResourceTypeId();
+  EXPECT_NE(id1, id2);
+}
+
 }  // namespace stream_executor

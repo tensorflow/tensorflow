@@ -1,4 +1,18 @@
-// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | env FILECHECK_OPTS="" FileCheck %s
 // RUN: tf-opt "-xla-legalize-tf=legalize-chlo=true" -split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix CHLO
 // This test runs twice:
 //   1. Through FILECHECK_OPTS="" FileCheck with chlo legalization disabled since verifying
@@ -2492,6 +2506,24 @@ func.func @cast_i2f(%arg0: tensor<2xi32>) -> tensor<2xf32> {
   // CHECK: mhlo.convert %arg0 : (tensor<2xi32>) -> tensor<2xf32>
   %0 = "tf.Cast"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @cast_float_to_unsigned
+func.func @cast_float_to_unsigned(%arg0: tensor<?xf32>) -> tensor<?xui32> {
+  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[BROADCAST_ZERO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ZERO]], %{{.*}}) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[IS_NEGATIVE:.*]] = mhlo.compare LT, %arg0, %[[BROADCAST_ZERO]]
+  // CHECK: %[[IS_FINITE:.*]] = mhlo.is_finite %arg0 : (tensor<?xf32>) -> tensor<?xi1>
+  // CHECK: %[[FINITE_NEGATIVE:.*]] = mhlo.and %[[IS_NEGATIVE]], %[[IS_FINITE]] : tensor<?xi1>
+  // CHECK: %[[DIRECT:.*]] = mhlo.convert %arg0 : (tensor<?xf32>) -> tensor<?xui32>
+  // CHECK: %[[SIGNED:.*]] = mhlo.convert %arg0 : (tensor<?xf32>) -> tensor<?xi64>
+  // CHECK: %[[UNSIGNED:.*]] = mhlo.convert %[[SIGNED]] : (tensor<?xi64>) -> tensor<?xui64>
+  // CHECK: %[[WRAPPED:.*]] = mhlo.convert %[[UNSIGNED]] : (tensor<?xui64>) -> tensor<?xui32>
+  // CHECK: mhlo.select %[[FINITE_NEGATIVE]], %[[WRAPPED]], %[[DIRECT]]
+  %0 = "tf.Cast"(%arg0) : (tensor<?xf32>) -> tensor<?xui32>
+  func.return %0 : tensor<?xui32>
 }
 
 // -----

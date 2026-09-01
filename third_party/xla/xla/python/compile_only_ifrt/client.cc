@@ -15,17 +15,6 @@ limitations under the License.
 
 #include "xla/python/compile_only_ifrt/client.h"
 
-#include "xla/pjrt/pjrt_executable.h"
-#include "xla/python/ifrt/compiler.h"
-#include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/hlo/hlo_program.h"
-#include "xla/python/ifrt/program.h"
-#include "xla/python/ifrt/topology.h"
-#include "xla/python/pjrt_ifrt/pjrt_executable.h"
-#include "xla/python/pjrt_ifrt/pjrt_topology.h"
-#include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/tsl/platform/statusor.h"
-
 namespace xla {
 
 [[maybe_unused]] char CompileOnlyMemory::ID = 0;

@@ -22,31 +22,35 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/util.h"
 
 namespace xla {
 
 HloProto MakeHloProto(const HloModule& module,
-                      const BufferAssignment& assignment) {
+                      const BufferAssignment& assignment,
+                      HloProtoOptions options) {
   HloProto proto;
-  MakeHloProto(module, assignment, &proto);
+  MakeHloProto(module, assignment, &proto, options);
   return proto;
 }
 
 void MakeHloProto(const HloModule& module, const BufferAssignment& assignment,
-                  HloProto* proto) {
-  MakeHloProto(module, proto);
+                  HloProto* proto, HloProtoOptions options) {
+  MakeHloProto(module, proto, options);
   assignment.ToProto(proto->mutable_buffer_assignment());
 }
 
-HloProto MakeHloProto(const HloModule& module) {
+HloProto MakeHloProto(const HloModule& module, HloProtoOptions options) {
   HloProto proto;
-  MakeHloProto(module, &proto);
+  MakeHloProto(module, &proto, options);
   return proto;
 }
 
-void MakeHloProto(const HloModule& module, HloProto* proto) {
-  module.ToProto(proto->mutable_hlo_module());
+void MakeHloProto(const HloModule& module, HloProto* proto,
+                  HloProtoOptions options) {
+  module.ToProto(proto->mutable_hlo_module(), options);
 }
 
 absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
@@ -103,6 +107,29 @@ absl::StatusOr<std::string> GetBackendConfigString(
     return payload.value();
   }
   return instruction.backend_config();
+}
+
+static void InlinePayloadIfReferenced(Payload* payload,
+                                      const HloModuleProto* module) {
+  if (payload == nullptr || !payload->has_id() || module == nullptr) {
+    return;
+  }
+  const auto& payloads = module->payloads();
+  if (payload->id() >= 0 && payload->id() < payloads.size()) {
+    payload->set_value(payloads.at(payload->id()));
+  }
+}
+
+HloInstructionProto ToProtoWithInlinedPayloads(HloInstructionProto proto,
+                                               const HloModuleProto* module) {
+  if (proto.has_backend_config_payload()) {
+    InlinePayloadIfReferenced(proto.mutable_backend_config_payload(), module);
+  }
+  if (proto.has_metadata() && proto.metadata().has_metadata_payload()) {
+    InlinePayloadIfReferenced(
+        proto.mutable_metadata()->mutable_metadata_payload(), module);
+  }
+  return proto;
 }
 
 }  // namespace xla

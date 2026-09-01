@@ -95,6 +95,10 @@ class HloGumgraph {
     for (const auto& [_, node] : instruction_name_to_node_) {
       nodes.push_back(node.get());
     }
+    std::sort(nodes.begin(), nodes.end(),
+              [](const HloInstructionNode* a, const HloInstructionNode* b) {
+                return a->unique_node_index < b->unique_node_index;
+              });
     return nodes;
   }
 

@@ -96,7 +96,7 @@ class ExecutorTest : public ::testing::Test {
           TF_RETURN_IF_ERROR(CreateNonCachedKernel(device_.get(), nullptr,
                                                    props, version, kernel));
           if ((*kernel)->type_string_view() == "Mock") {
-            down_cast<MockOp*>(*kernel)->SetCompute(mock_fn);
+            absl::down_cast<MockOp*>(*kernel)->SetCompute(mock_fn);
           }
           return absl::OkStatus();
         };

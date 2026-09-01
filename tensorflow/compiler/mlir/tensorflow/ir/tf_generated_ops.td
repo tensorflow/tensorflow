@@ -1141,6 +1141,8 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler_resplit,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$per_criticality_batch_timeout_micros,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_batching_task_lazy_cancellation,
     DefaultValuedOptionalAttr<I64Attr, "0">:$num_warmup_batch_threads
   );
 
@@ -6448,7 +6450,8 @@ indices.shape[batch_dims:] + params.shape[axis + 1:]` where:
 
 Note that on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, a 0 is stored in the
-corresponding output value.
+corresponding output value. Under XLA compilation (e.g. `tf.function(jit_compile=True)`),
+out of bound indices are not checked and result in implementation-defined behavior.
 
 Note that on TPU, if any dimension of `params` is of size 0 then the output will
 be the expected shape filled with zeros. On CPU and GPU an error will be
@@ -11513,6 +11516,8 @@ Send an rpc to the external service that builds rpc payload based on prediction 
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing steps.}]>:$steps,
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the GAIA ID.}]>:$gaia_id,
     Arg<TF_Uint64Tensor, [{1-D uint64 tensor representing a list of video IDs.}]>:$video_id,
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the timestamp.}]>:$timestamp,
+    Arg<TF_Float32Tensor, [{1-D float tensor representing predicted video probabilities.}]>:$predicted_probability,
 
     StrAttr:$op_config
   );
@@ -12713,30 +12718,6 @@ If `x` and `y` are reals, this will return the floating-point division.
   let hasFolder = 1;
 }
 
-def TF_ReciprocalOp : TF_Op<"Reciprocal", [Pure, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
-  let summary = "Computes the reciprocal of x element-wise.";
-
-  let description = [{
-I.e., \\(y = 1 / x\\).
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
-      return ArraysAreCastCompatible(inferred, actual);
-    }
-  }];
-}
-
 def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient for the inverse of `x` wrt its input.";
 
@@ -13004,7 +12985,7 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(CallInterfaceCallable callee) {
-      (*this)->setAttr("f", callee.get<SymbolRefAttr>());
+      (*this)->setAttr("f", ::llvm::cast<SymbolRefAttr>(callee));
     }
     Attribute removeArgAttrsAttr() { return nullptr; }
     Attribute removeResAttrsAttr() { return nullptr; }
@@ -15535,7 +15516,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 smallest possible value for the specific numeric type.
 
 For example:
@@ -15705,7 +15686,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 the largest possible value for the specific numeric type.
 
 For example:
@@ -15811,7 +15792,7 @@ The only difference with SegmentProd is the additional input  `num_segments`.
 This helps in evaluating the output shape in compile time.
 `num_segments` should be consistent with segment_ids.
 e.g. Max(segment_ids) - 1 should be equal to `num_segments` for a 1-d segment_ids
-With inconsistent num_segments, the op still runs. only difference is, 
+With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
 for num_segments more than the expected output size, last elements are assigned 1.

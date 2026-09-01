@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -66,6 +67,10 @@ mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Type type) {
   if (auto array = mlir::dyn_cast<IfrtArrayType>(type)) {
     return array.getShape();
   }
+  if (llvm::isa<mlir::stablehlo::TokenType>(type)) {
+    return mlir::RankedTensorType::get({},
+                                       IfrtTokenType::get(type.getContext()));
+  }
   return mlir::failure();
 }
 
@@ -83,6 +88,10 @@ mlir::FailureOr<mlir::RankedTensorType> GetGlobalShapeFromLocal(
                                          local_ranked_tensor.getElementType());
     }
     return mlir::failure();
+  }
+  if (llvm::isa<mlir::stablehlo::TokenType>(type)) {
+    return mlir::RankedTensorType::get({},
+                                       IfrtTokenType::get(type.getContext()));
   }
   // IFRT arrays cannot be in the local view.
   return mlir::failure();
@@ -424,6 +433,11 @@ mlir::LogicalResult CopyArraysOp::verify() {
     return emitOpError()
            << "requires the same number of input and output arrays";
   }
+  if (getDonated() && getReuse()) {
+    return emitOpError()
+           << "requires at most one of `donated` or `reuse` to be "
+              "set to true";
+  }
   IfrtArrayType first_input = GetArrayType(getInputs().front());
   auto src_devices = first_input.getDevicesAttr();
   auto src_memory_kind = first_input.MemoryKind();
@@ -689,10 +703,10 @@ mlir::CallInterfaceCallable CallOp::getCallableForCallee() {
 void CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
   // Direct call
   if ((*this)->getAttrOfType<mlir::SymbolRefAttr>("callee")) {
-    (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+    (*this)->setAttr("callee", mlir::cast<mlir::SymbolRefAttr>(callee));
   }
   // Indirect call, callee Value is the first operand.
-  return setOperand(0, callee.get<mlir::Value>());
+  return setOperand(0, mlir::cast<mlir::Value>(callee));
 }
 
 mlir::Operation::operand_range CallOp::getArgOperands() { return getInputs(); }
@@ -783,10 +797,10 @@ void CallLoadedExecutableOp::setCalleeFromCallable(
     mlir::CallInterfaceCallable callee) {
   // Direct call
   if ((*this)->getAttrOfType<mlir::SymbolRefAttr>("callee")) {
-    (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+    (*this)->setAttr("callee", mlir::cast<mlir::SymbolRefAttr>(callee));
   }
   // Indirect call, callee Value is the first operand.
-  return setOperand(0, callee.get<mlir::Value>());
+  return setOperand(0, mlir::cast<mlir::Value>(callee));
 }
 
 mlir::Operation::operand_range CallLoadedExecutableOp::getArgOperands() {

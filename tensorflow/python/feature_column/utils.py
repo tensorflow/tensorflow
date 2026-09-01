@@ -20,18 +20,21 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util import nest
 
 
 def sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
   """Returns a [batch_size] Tensor with per-example sequence length."""
   with ops.name_scope(None, 'sequence_length') as name_scope:
+    sp_tensor = sparse_ops.sparse_reorder(sp_tensor)
     row_ids = sp_tensor.indices[:, 0]
     column_ids = sp_tensor.indices[:, 1]
     # Add one to convert column indices to element length
     column_ids += array_ops.ones_like(column_ids)
     # Get the number of elements we will have per example/row
     seq_length = math_ops.segment_max(column_ids, segment_ids=row_ids)
+    seq_length = math_ops.maximum(seq_length, 0)
 
     # The raw values are grouped according to num_elements;
     # how many entities will we have after grouping?

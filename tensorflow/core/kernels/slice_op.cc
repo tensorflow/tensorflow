@@ -74,10 +74,10 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
           TensorShapeUtils::IsVector(size_tensor.shape()) &&
           begin_tensor.NumElements() == input.dims() &&
           size_tensor.NumElements() == input.dims(),
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "Expected begin and size arguments to be 1-D tensors of size ",
           input.dims(), ", but got shapes ", begin_tensor.shape().DebugString(),
-          " and ", size_tensor.shape().DebugString(), " instead."));
+          " and ", size_tensor.shape().DebugString(), " instead.")));
 
   const int input_dims = input.dims();
   IntTensorToInt64Vec(begin_tensor, begin);
@@ -102,12 +102,13 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
                                   ") when ", "input.dim_size(", i, ") == 0"));
     } else {
       OP_REQUIRES(context, 0 <= b && b <= input.dim_size(i),
-                  errors::InvalidArgument("Expected begin[", i, "] in [0, ",
-                                          input.dim_size(i), "], but got ", b));
-      OP_REQUIRES(
-          context, 0 <= s && b + s <= input.dim_size(i),
-          errors::InvalidArgument("Expected size[", i, "] in [0, ",
-                                  input.dim_size(i) - b, "], but ", "got ", s));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Expected begin[", i, "] in [0, ",
+                                   input.dim_size(i), "], but got ", b)));
+      OP_REQUIRES(context, 0 <= s && b + s <= input.dim_size(i),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Expected size[", i, "] in [0, ", input.dim_size(i) - b,
+                      "], but ", "got ", s)));
     }
     OP_REQUIRES_OK(context, output_shape->AddDimWithStatus(s));
     const bool take_all = (b == 0) && (s == input.dim_size(i));
@@ -210,7 +211,7 @@ class SliceOp : public OpKernel {
 
       OP_REQUIRES(
           context, false,
-          errors::Unimplemented("SliceOp : Unhandled input dimensions"));
+          absl::UnimplementedError("SliceOp : Unhandled input dimensions"));
     }
   }
 

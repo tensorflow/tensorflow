@@ -79,7 +79,8 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
         builder, input.getLoc(), input, reduction_indices,
         /*keep_dims=*/builder.getBoolAttr(true));
   } else {
-    return errors::Unimplemented("reduction ", reduce_op, " not implemented");
+    return absl::UnimplementedError(
+        absl::StrCat("reduction ", reduce_op, " not implemented"));
   }
 
   // Then an all reduce.
@@ -96,7 +97,7 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
     mlir::RankedTensorType output_type = mlir::dyn_cast<mlir::RankedTensorType>(
         global_reduce->getResult(0).getType());
     if (!output_type)
-      return errors::Internal(
+      return absl::InternalError(
           "output of EmitAllReduce is not a RankedTensorType");
     std::vector<int64_t> new_shape;
     for (int i = 0; i < output_type.getRank(); ++i)
@@ -126,7 +127,8 @@ absl::Status ComputeExpAndSum(mlir::OpBuilder& builder,
   auto loc = logits.getLoc();
 
   if (logits_layout.rank() == 0)
-    return errors::Unimplemented("softmax not supported for rank 0 tensors.");
+    return absl::UnimplementedError(
+        "softmax not supported for rank 0 tensors.");
 
   const int64_t class_dimension = logits_layout.rank() - 1;
 
@@ -232,7 +234,8 @@ StatusOr<mlir::Value> GetFPConstOfType(mlir::OpBuilder& builder,
                    {value}))
         .getOutput();
   } else {
-    return errors::Unimplemented("non tensor type for labels is not supported");
+    return absl::UnimplementedError(
+        "non tensor type for labels is not supported");
   }
 }
 
@@ -255,10 +258,10 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
   mlir::RankedTensorType features_type =
       mlir::dyn_cast<mlir::RankedTensorType>(features.getType());
   if (!features_type)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "feature input shape must be statically known");
   if (features_type.getRank() == 0)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "expected feature input to have at least rank 1, but found rank 0");
 
   const int64_t local_classes = features_type.getShape().back();
@@ -267,9 +270,9 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
 
   int64_t num_shards = desired_layout.num_shards_for_dim(1);
   if (classes % num_shards)
-    return errors::InvalidArgument("unable to shard onehot with size ", classes,
-                                   " over dimension with ", num_shards,
-                                   " shards");
+    return absl::InvalidArgumentError(
+        absl::StrCat("unable to shard onehot with size ", classes,
+                     " over dimension with ", num_shards, " shards"));
   const mlir::Location& loc = input.getLoc();
 
   mlir::Value depth = CreateIntScalarConst(classes / num_shards, builder, loc,
@@ -313,7 +316,8 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
   // So we insert a cast in this case.
   mlir::TensorType input_type =
       mlir::dyn_cast<mlir::TensorType>(input.getType());
-  if (!input_type) return errors::InvalidArgument("input is not a TensorType");
+  if (!input_type)
+    return absl::InvalidArgumentError("input is not a TensorType");
   if (!input_type.getElementType().isInteger(32))
     id_offset = mlir::TF::CastOp::create(builder, loc,
                                          mlir::RankedTensorType::get(
@@ -346,9 +350,9 @@ StatusOr<mlir::Operation*> SoftmaxOpSPMDExpander::ExpandOp(
                       ExtractRequiredSingleLayoutFromOp(op));
 
   if (!logits_layout) {
-    return errors::InvalidArgument("Failed during SPMD expansion of ",
-                                   OpName(op),
-                                   ". Layout of logits input must be known.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed during SPMD expansion of ", OpName(op),
+                     ". Layout of logits input must be known."));
   }
 
   // (Log)Softmax's logits are a rank >= 1 tensor. We reduce over the last
@@ -549,7 +553,7 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::ExpandOp(
     mlir::Operation* op) {
   if (!mlir::isa<mlir::TF::SoftmaxCrossEntropyWithLogitsOp>(op) &&
       !mlir::isa<mlir::TF::SparseSoftmaxCrossEntropyWithLogitsOp>(op))
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "unsupported op for in SoftmaxLossOpSPMDExpander");
 
   TF_ASSIGN_OR_RETURN(const Layout& features_layout,
@@ -595,7 +599,7 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::ExpandOp(
   }
 
   if (features_layout.rank() == 0)
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "scalar values features is not currently supported");
 
   // SoftmaxCrossEntropyWithLogitsOp is the same as:

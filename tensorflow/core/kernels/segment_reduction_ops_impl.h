@@ -464,17 +464,31 @@ struct SumOp {
 template <typename T>
 struct MaxOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMax(output);
+    if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+      output = data.template cwiseMax<Eigen::PropagateNaN>(output);
+    } else {
+      output = data.cwiseMax(output);
+    }
   }
-  void operator()(const T& data, T& output) { output = std::max(data, output); }
+  void operator()(const T& data, T& output) {
+    output = Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>()(
+        data, output);
+  }
 };
 
 template <typename T>
 struct MinOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMin(output);
+    if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+      output = data.template cwiseMin<Eigen::PropagateNaN>(output);
+    } else {
+      output = data.cwiseMin(output);
+    }
   }
-  void operator()(const T& data, T& output) { output = std::min(data, output); }
+  void operator()(const T& data, T& output) {
+    output = Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>()(
+        data, output);
+  }
 };
 
 template <typename T>
@@ -1330,6 +1344,9 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (M == 0 || N == 0) return;
 
+    OP_REQUIRES(context, input.dim_size(0) > 0,
+                absl::InvalidArgumentError("Invalid number of segments"));
+
     functor::SparseSegmentGradFunctor<Device, T, Index, SegmentId>()(
         context, operation_, input_flat, indices_vec, segment_vec, output);
   }
@@ -1406,6 +1423,10 @@ class SparseSegmentGradV2OpCommon {
       TF_RETURN_IF_ERROR(context->allocate_output(1, TensorShape({0}),
                                                   &sorted_unique_indices));
       return absl::OkStatus();
+    }
+
+    if (input.dim_size(0) == 0) {
+      return absl::InvalidArgumentError("Invalid number of segments");
     }
 
     auto input_flat = input.flat_outer_dims<T>();

@@ -17,31 +17,44 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
+
+REGISTER_PJRT_TOPOLOGY_DESERIALIZER(
+    Cpu, xla::CpuId(), xla::CpuName(),
+    [](const xla::PjRtTopologyDescriptionProto& proto) {
+      return CpuTopologyDescription::FromProto(proto);
+    });
 
 /*static*/ PjRtPlatformId CpuPlatformId() { return xla::CpuId(); }
 
@@ -59,8 +72,62 @@ CpuTopologyDescription::CpuTopologyDescription(
 
 absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  if (!primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Element type %s does not support layout",
+                           PrimitiveType_Name(element_type));
+  }
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  return LayoutUtil::GetWithDefaultLayout(shape).layout();
+  Layout layout = LayoutUtil::GetWithDefaultLayout(shape).layout();
+  // `GetWithDefaultLayout` returns a padded layout for sub-byte types since the
+  // notion of "default" is context dependent and in this case means the default
+  // for literals for historical reasons. Because of this, we need to manually
+  // populate the `element_size_in_bits` for sub-byte types here.
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
+  }
+  return layout;
+}
+
+absl::StatusOr<int> CpuTopologyDescription::GetMemorySpaceKindForShape(
+    const Shape& shape) const {
+  if (shape.has_layout()) {
+    if (shape.layout().memory_space() == Layout::kHostMemorySpace) {
+      return PinnedHostMemorySpace::kKindId;
+    }
+    if (shape.layout().memory_space() == Layout::kUnpinnedHostMemorySpace) {
+      return UnpinnedHostMemorySpace::kKindId;
+    }
+  }
+  return CpuDeviceMemorySpace::kKindId;
+}
+
+absl::StatusOr<absl::string_view> CpuTopologyDescription::KindIdToKind(
+    int kind) const {
+  if (kind == PinnedHostMemorySpace::kKindId) {
+    return PinnedHostMemorySpace::kKind;
+  }
+  if (kind == UnpinnedHostMemorySpace::kKindId) {
+    return UnpinnedHostMemorySpace::kKind;
+  }
+  if (kind == CpuDeviceMemorySpace::kKindId) {
+    return CpuDeviceMemorySpace::kKind;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unknown memory kind ID: ", kind));
+}
+
+absl::Span<const int> CpuTopologyDescription::GetMemorySpaceKindIds() const {
+  static const int kCpuMemorySpaceKindIds[] = {
+      CpuDeviceMemorySpace::kKindId, PinnedHostMemorySpace::kKindId,
+      UnpinnedHostMemorySpace::kKindId};
+  return absl::MakeConstSpan(kCpuMemorySpaceKindIds);
+}
+
+absl::StatusOr<xla::Shape>
+CpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
+    int memory_space_kind_id, xla::Shape shape,
+    const xla::Layout* layout) const {
+  return MakeDefaultCpuBufferShape(std::move(shape), layout);
 }
 
 absl::StatusOr<uint64_t> CpuTopologyDescription::Fingerprint() const {
@@ -69,6 +136,19 @@ absl::StatusOr<uint64_t> CpuTopologyDescription::Fingerprint() const {
     return absl::InternalError("Failed to serialize cpu_topology");
   }
   return tsl::Fingerprint64(result);
+}
+
+absl::StatusOr<std::pair<ProcessId, int>>
+CpuTopologyDescription::ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+    GlobalDeviceId device_id) const {
+  if (device_id.value() < 0 ||
+      device_id.value() >= cpu_topology_.devices().size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid device id: ", device_id.value(), ", valid range: [0, ",
+        cpu_topology_.devices().size(), ")"));
+  }
+  const auto& device = cpu_topology_.devices()[device_id.value()];
+  return std::make_pair(ProcessId(device.process_id), device.local_device_id);
 }
 
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
@@ -101,13 +181,37 @@ CpuTopologyDescription::ToProto() const {
   return proto;
 }
 
+absl::StatusOr<DeviceAssignment>
+CpuTopologyDescription::GetDefaultDeviceAssignment(
+    int process_index, int num_replicas,
+    std::optional<int> num_replicas_per_slice, int num_partitions,
+    const MultiSliceConfig* multi_slice_config) const {
+  if (num_replicas_per_slice.has_value() || multi_slice_config) {
+    return absl::UnimplementedError(
+        "Multi-slice GetDefaultDeviceAssignment is not supported.");
+  }
+  auto device_descriptions = DeviceDescriptions();
+  if (num_partitions * num_replicas <= device_descriptions.size()) {
+    xla::DeviceAssignment assignment(num_replicas, num_partitions);
+    for (int i = 0; i < num_replicas; ++i) {
+      for (int j = 0; j < num_partitions; ++j) {
+        assignment(i, j) = device_descriptions.at(i * num_partitions + j)->id();
+      }
+    }
+    return assignment;
+  }
+  ComputationPlacer computation_placer;
+  return computation_placer.AssignDevices(num_replicas, num_partitions);
+}
+
 absl::StatusOr<std::unique_ptr<CpuTopologyDescription>>
 CpuTopologyDescription::FromProto(
     const xla::PjRtTopologyDescriptionProto& proto) {
-  if (proto.platform_id() != xla::CpuId()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("The platform_id is not a CPU platform. platform_id: ",
-                     proto.platform_id()));
+  if (proto.platform_id() != xla::CpuId() &&
+      proto.platform_name() != xla::CpuName()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The platform is not a CPU platform. platform_id: ",
+        proto.platform_id(), ", platform_name: ", proto.platform_name()));
   }
 
   if (!proto.platform_specific_topology().Is<CpuTopologyProto>()) {
@@ -115,13 +219,37 @@ CpuTopologyDescription::FromProto(
         "The platform_specific_topology is not a CpuTopologyProto.");
   }
   CpuTopologyProto cpu_topology_proto;
-  proto.platform_specific_topology().UnpackTo(&cpu_topology_proto);
-  ASSIGN_OR_RETURN(auto cpu_topology,
+  if (!proto.platform_specific_topology().UnpackTo(&cpu_topology_proto)) {
+    return absl::InvalidArgumentError(
+        "Failed to unpack CpuTopologyProto from platform_specific_topology "
+        "Any.");
+  }
+  ABSL_ASSIGN_OR_RETURN(auto cpu_topology,
                    CpuTopology::FromProto(cpu_topology_proto));
-  std::vector<xla::CpuTopology::CpuDevice> cpu_devices;
   return std::make_unique<CpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), proto.platform_version(),
       *cpu_topology);
+}
+
+absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
+    xla::Shape shape, const xla::Layout* layout) {
+  if (layout) {
+    shape.mutable_layout()->mutable_minor_to_major()->assign(
+        layout->minor_to_major().begin(), layout->minor_to_major().end());
+  } else {
+    xla::LayoutUtil::SetToDefaultLayout(&shape);
+  }
+  auto element_type = shape.element_type();
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(element_type));
+  }
+  if (layout && *layout != shape.layout()) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Unsupported layout used for PjRt CPU buffers: ", layout->ToString(),
+        " (original) vs. ", shape.ToString(), " (canonicalized)"));
+  }
+  return shape;
 }
 
 }  // namespace xla

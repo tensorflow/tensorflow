@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
@@ -59,8 +61,9 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
   TestChildExecutableCompiler() { methods_.reserve(kMaxTestMethods); }
 
   tsl::Future<LoadedExecutableRef> CompileXla(
-      std::unique_ptr<HloProgram> hlo_program,
-      xla::CompileOptions options) override ABSL_LOCKS_EXCLUDED(mu_) {
+      std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks)
+      override ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(mu_);
     methods_.push_back(absl::StrCat("fake_method_", methods_.size()));
     CHECK_LT(methods_.size(), kMaxTestMethods)

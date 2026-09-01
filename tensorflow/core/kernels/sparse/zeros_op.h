@@ -46,8 +46,9 @@ struct CSRSparseMatrixZeros {
     auto dense_shape = dense_shape_t.vec<int64_t>();
     const int rank = dense_shape.size();
     if (!(rank == 2 || rank == 3)) {
-      return errors::InvalidArgument("sparse tensor must have rank == 2 or 3; ",
-                                     "but dense shape has ", rank, " entries");
+      return absl::InvalidArgumentError(
+          absl::StrCat("sparse tensor must have rank == 2 or 3; ",
+                       "but dense shape has ", rank, " entries"));
     }
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);

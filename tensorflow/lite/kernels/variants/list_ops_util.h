@@ -33,7 +33,8 @@ namespace variants {
 // shape (like `tf.TensorShape(None)`). This causes the need for some extra
 // checks. Consider wrapping in something like a `std::union` to differentiate
 // between these cases.
-IntArrayUniquePtr TensorAsShape(const TfLiteTensor& shape);
+TfLiteStatus TensorAsShape(TfLiteContext* context, const TfLiteTensor& shape,
+                           IntArrayUniquePtr& result);
 
 // "Merges" two shape signature arrays if possible, returns nullptr otherwise.
 // Merging means to compute the most specified possible signature which

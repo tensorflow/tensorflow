@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -52,17 +51,17 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/layout_util.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_FLATTENTENSORSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::Attribute;
 using mlir::Location;
@@ -772,7 +771,6 @@ class FlattenTensorsPass
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     MLIRContext* mlir_context = &getContext();
-    RegisterSymbolicExprStorage(mlir_context);
     mlir::RewritePatternSet patterns(mlir_context);
     // clang-format off
     patterns.add<
@@ -816,10 +814,6 @@ class FlattenTensorsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass() {
-  return std::make_unique<FlattenTensorsPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

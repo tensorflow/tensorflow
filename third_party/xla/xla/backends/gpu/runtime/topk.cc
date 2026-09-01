@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -142,9 +143,9 @@ absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
         "TopkSpecializer.");
   }
 
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::PlatformManager::PlatformWithName(platform_name));
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                   se::PlatformManager::PlatformWithName(platform_name));
+  ABSL_ASSIGN_OR_RETURN(
       se::KernelLoaderSpec spec,
       GetTopKKernelForKAndPlatformAndN<T>(k, platform->id(), num_elements));
 

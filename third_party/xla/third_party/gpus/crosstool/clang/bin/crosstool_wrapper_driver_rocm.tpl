@@ -22,18 +22,20 @@ import re
 import sys
 import shlex
 
-# Template values set by rocm_configure.bzl.
-CPU_COMPILER = ('%{cpu_compiler}')
-HOST_COMPILER_PATH = ('%{host_compiler_path}')
+# Get paths from environment variables set by toolchain features
+CPU_COMPILER = os.environ.get('HOST_COMPILER', '/usr/bin/clang')
+HIPCC_PATH = os.environ.get('HIPCC_PATH', '/opt/rocm/bin/hipcc')
+ROCM_PATH = os.environ.get('ROCM_PATH', '/opt/rocm')
+AMDGPU_TARGETS = os.environ.get('AMDGPU_TARGETS', '')
+HIPCC_ENV = os.environ.get('HIPCC_ENV', '')
+ROCR_RUNTIME_LIBRARY = os.environ.get('ROCR_RUNTIME_LIBRARY', 'amdhip64')
+TMPDIR = '%{tmpdir}'
+VERBOSE = os.environ.get('CROSSTOOL_VERBOSE', '0') == '1'
 
-HIPCC_PATH = '%{rocm_root}/bin/hipcc'
-HIPCC_ENV = '%{hipcc_env}'
-HIP_RUNTIME_PATH = '%{rocm_root}/lib'
-HIP_RUNTIME_LIBRARY = '%{rocm_root}/lib'
-ROCR_RUNTIME_PATH = '%{rocm_root}/lib'
-ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
-TMPDIR= '%{tmpdir}'
-VERBOSE = '%{crosstool_verbose}'=='1'
+# Derived paths
+HIP_RUNTIME_PATH = ROCM_PATH + '/lib'
+HIP_RUNTIME_LIBRARY = ROCM_PATH + '/lib'
+ROCR_RUNTIME_PATH = ROCM_PATH + '/lib'
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -107,15 +109,14 @@ def GetHipccOptions(argv):
   """
 
   parser = ArgumentParser()
-  parser.add_argument('--offload-arch', nargs='*', action='append')
   # TODO find a better place for this
   parser.add_argument('-gline-tables-only', action='store_true')
 
   args, _ = parser.parse_known_args(argv)
 
   hipcc_opts = ' -gline-tables-only ' if args.gline_tables_only else ''
-  if args.offload_arch:
-    hipcc_opts = hipcc_opts + ' '.join(['--offload-arch=' + a for a in sum(args.offload_arch, [])])
+  for target in AMDGPU_TARGETS.split(','):
+    hipcc_opts += ' --offload-arch=' + target.strip()
 
   return hipcc_opts
 
@@ -206,7 +207,7 @@ def InvokeHipcc(argv, log=False):
   hipccopts += defines
   hipccopts += std_options
   hipccopts += m_options
-  hipccopts += ' --rocm-path="%{rocm_root}" '
+  hipccopts += ' --rocm-path="' + ROCM_PATH + '" '
 
   if depfiles:
     # Generate the dependency file

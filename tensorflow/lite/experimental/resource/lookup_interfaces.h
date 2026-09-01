@@ -15,13 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_LOOKUP_INTERFACES_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_LOOKUP_INTERFACES_H_
 
-#include <unordered_map>
+#include <cstddef>
 
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/experimental/resource/lookup_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace resource {
@@ -32,6 +30,10 @@ namespace resource {
 // of using Resource handle like TensorFlow).
 class LookupInterface : public ResourceBase {
  public:
+  ResourceType GetResourceType() const override {
+    return ResourceType::kHashTable;
+  }
+
   virtual TfLiteStatus Lookup(TfLiteContext* context, const TfLiteTensor* keys,
                               TfLiteTensor* values,
                               const TfLiteTensor* default_value) = 0;
@@ -47,12 +49,13 @@ class LookupInterface : public ResourceBase {
 };
 
 // Creates an resource hash table, shared among all the subgraphs with the
-// given resource id if there is an existing one.
+// given resource id if there is an existing one. Returns kTfLiteError if the
+// given resource id is already used by a resource of a different type.
 // WARNING: Experimental interface, subject to change.
-void CreateHashtableResourceIfNotAvailable(ResourceMap* resources,
-                                           int resource_id,
-                                           TfLiteType key_dtype,
-                                           TfLiteType value_dtype);
+TfLiteStatus CreateHashtableResourceIfNotAvailable(ResourceMap* resources,
+                                                   int resource_id,
+                                                   TfLiteType key_dtype,
+                                                   TfLiteType value_dtype);
 
 // Returns the corresponding resource hash table, or nullptr if none.
 // WARNING: Experimental interface, subject to change.

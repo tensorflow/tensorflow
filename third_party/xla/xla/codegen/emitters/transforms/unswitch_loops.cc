@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -104,10 +103,6 @@ void UnswitchLoopsPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass() {
-  return std::make_unique<UnswitchLoopsPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

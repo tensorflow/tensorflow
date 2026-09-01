@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -204,8 +205,8 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
             HloInstruction::CreateReshape(ag->shape(), bcast));
       }
 
-      TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
+      ABSL_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
       changed = true;
     }
   }

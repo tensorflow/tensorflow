@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -42,7 +43,7 @@ absl::StatusOr<std::string> MakeCachingHloEvaluatorCacheKey(
   tsl::Fprint128 fingerprint =
       tsl::Fingerprint128(computation.ToString(HloPrintOptions::Default()));
   for (const Literal* arg : args) {
-    TF_ASSIGN_OR_RETURN(std::string serialized, arg->SerializeAsString());
+    ABSL_ASSIGN_OR_RETURN(std::string serialized, arg->SerializeAsString());
     fingerprint =
         tsl::FingerprintCat128(fingerprint, tsl::Fingerprint128(serialized));
   }
@@ -56,8 +57,8 @@ absl::StatusOr<std::string> MakeCachingHloEvaluatorCacheKey(
 
 absl::StatusOr<Literal> CachingHloEvaluator::Evaluate(
     const HloComputation& computation, absl::Span<const Literal* const> args) {
-  TF_ASSIGN_OR_RETURN(const std::string cache_key,
-                      MakeCachingHloEvaluatorCacheKey(computation, args));
+  ABSL_ASSIGN_OR_RETURN(const std::string cache_key,
+                   MakeCachingHloEvaluatorCacheKey(computation, args));
   const std::string filename =
       tsl::io::JoinPath(cache_dir_, absl::StrCat(cache_key, ".hloeval"));
 
@@ -80,12 +81,11 @@ absl::StatusOr<Literal> CachingHloEvaluator::Evaluate(
       return Literal::DeserializeFromString(serialized_literal);
     }
     case Mode::kWrite: {
-      TF_ASSIGN_OR_RETURN(Literal literal,
-                          wrapped_->Evaluate(computation, args));
-      TF_ASSIGN_OR_RETURN(const std::string serialized_literal,
-                          literal.SerializeAsString());
-      TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), filename,
-                                                serialized_literal));
+      ABSL_ASSIGN_OR_RETURN(Literal literal, wrapped_->Evaluate(computation, args));
+      ABSL_ASSIGN_OR_RETURN(const std::string serialized_literal,
+                       literal.SerializeAsString());
+      ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), filename,
+                                             serialized_literal));
       return std::move(literal);
     }
   }

@@ -36,14 +36,22 @@ enum class MapByPositionMode {
 // The goal is to establish a mapping between corresponding instructions from
 // the 'left_instructions' and 'right_instructions' lists, all of the same type.
 // The instructions are first matched by node properties like shape, metadata,
-// etc. If 'map_by_position' is set to true, the left unmatched instructions
-// will try to be matched by position one by one.
+// etc. If 'map_by_position_mode' is not kNever, the left unmatched
+// instructions will try to be matched by position one by one.
+// If `left_instructions` and `right_instructions` each contain a single
+// instruction, a "phase 0" match is attempted: if the similarity between the
+// two instructions is >= `phase_zero_threshold`, they are matched.
+// If the instructions are constants and `phase_zero_threshold > 0.0`, phase 0
+// matching will only be performed if the constant values are equal; if
+// `phase_zero_threshold == 0.0`, constant values are not checked during phase
+// 0.
 void MatchSameOpcodeInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    MapByPositionMode map_by_position = MapByPositionMode::kNever);
+    MapByPositionMode map_by_position_mode = MapByPositionMode::kNever,
+    double phase_zero_threshold = 0.0);
 
 // Find optimal matches between the left and right instruction lists.
 // Sort the instructions by opcode and call MatchSameOpcodeInstructions for each
@@ -53,7 +61,8 @@ void MatchInstructions(
     const std::vector<HloInstructionNode*>& left_instructions,
     const std::vector<HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    MapByPositionMode map_by_position = MapByPositionMode::kNever);
+    MapByPositionMode map_by_position_mode = MapByPositionMode::kNever,
+    double phase_zero_threshold = 0.0);
 
 }  // namespace hlo_diff
 }  // namespace xla

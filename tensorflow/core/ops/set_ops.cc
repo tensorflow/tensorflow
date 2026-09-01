@@ -43,7 +43,7 @@ REGISTER_OP("DenseToDenseSetOperation")
     .Output("result_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
       if (c->num_inputs() != 2) {
-        return errors::InvalidArgument("len(inputs) != 2.");
+        return absl::InvalidArgumentError("len(inputs) != 2.");
       }
       // The following should stay in sync with `ComputeDenseToDense` shape
       // assertions in kernels/set_kernels.cc.
@@ -101,7 +101,7 @@ REGISTER_OP("DenseToSparseSetOperation")
     .Output("result_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
       if (c->num_inputs() != 4) {
-        return errors::InvalidArgument("len(inputs) != 4.");
+        return absl::InvalidArgumentError("len(inputs) != 4.");
       }
       // The following should stay in sync with `ComputeDenseToSparse` shape
       // assertions in kernels/set_kernels.cc.
@@ -147,7 +147,7 @@ REGISTER_OP("SparseToSparseSetOperation")
     .Output("result_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
       if (c->num_inputs() != 6) {
-        return errors::InvalidArgument("len(inputs) != 6.");
+        return absl::InvalidArgumentError("len(inputs) != 6.");
       }
       // The following should stay in sync with `ComputeSparseToSparse` shape
       // assertions in kernels/set_kernels.cc.
@@ -165,8 +165,8 @@ REGISTER_OP("SparseToSparseSetOperation")
       if (c->ValueKnown(input0_rank_dim)) {
         const int64_t input0_rank = c->Value(input0_rank_dim);
         if (input0_rank < 2) {
-          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
-                                         input0_rank, ".");
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Input 0, expected rank >= 2, got ", input0_rank, "."));
         }
         TF_RETURN_IF_ERROR(
             c->WithValue(input1_rank_dim, input0_rank, &input1_rank_dim));
@@ -174,8 +174,8 @@ REGISTER_OP("SparseToSparseSetOperation")
       } else if (c->ValueKnown(input1_rank_dim)) {
         const int64_t input1_rank = c->Value(input1_rank_dim);
         if (input1_rank < 2) {
-          return errors::InvalidArgument("Input 1, expected rank >= 2, got ",
-                                         input1_rank, ".");
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Input 1, expected rank >= 2, got ", input1_rank, "."));
         }
         output_rank_dim = input1_rank_dim;
       } else {

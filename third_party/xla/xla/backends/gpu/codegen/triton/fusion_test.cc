@@ -17,18 +17,22 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/target_constants.h"
@@ -68,13 +72,12 @@ ENTRY entry_computation {
   auto* root = module->entry_computation()->root_instruction();
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
-  mlir::MLIRContext mlir_context;
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion, nullptr);
   std::optional<TritonFusion::LaunchConfig> launch_config =
-      triton_fusion->GetLaunchConfig();
+      TritonFusion::GetLaunchConfig(&analysis);
   ASSERT_NE(launch_config, std::nullopt);
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
             /*ceil(125 / 4)=*/32);
@@ -106,20 +109,27 @@ ENTRY entry_computation {
   auto* root = module->entry_computation()->root_instruction();
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
-  mlir::MLIRContext mlir_context;
+  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
+      []() { return CreateMlirContext(); });
+  TF_ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                          mlir_context_pool.GetOrCreate());
+
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion_emitter, nullptr);
-  EXPECT_EQ(triton_fusion_emitter->GetLaunchConfig(), std::nullopt);
+  EXPECT_EQ(TritonFusion::GetLaunchConfig(&analysis), std::nullopt);
 
   // Ensure that the emitter fails gracefully when the launch config is not set.
   llvm::LLVMContext llvm_ctx;
   llvm::Triple triple(nvptx::TargetTriple());
   std::string data_layout = nvptx::DataLayout();
-  EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
-                  *::xla::Cast<HloFusionInstruction>(root), "random_name",
-                  device_info, triple, data_layout, &llvm_ctx, &mlir_context),
+  EXPECT_THAT(triton_fusion_emitter
+                  ->GenerateTritonKernelAndWrapper(
+                      *::xla::Cast<HloFusionInstruction>(root), "random_name",
+                      device_info, triple, data_layout,
+                      std::move(borrowed_context), nullptr)
+                  .Await(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -148,14 +158,13 @@ ENTRY entry_computation {
   auto* root = module->entry_computation()->root_instruction();
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
-  mlir::MLIRContext mlir_context;
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
 
   ASSERT_NE(triton_fusion, nullptr);
   std::optional<TritonFusion::LaunchConfig> launch_config =
-      triton_fusion->GetLaunchConfig(se::ThreadDim(32, 2, 1));
+      TritonFusion::GetLaunchConfig(&analysis, se::ThreadDim(32, 2, 1));
   ASSERT_NE(launch_config, std::nullopt);
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
             /*ceil(125 / 4)=*/32);

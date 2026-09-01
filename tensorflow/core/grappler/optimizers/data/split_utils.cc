@@ -210,26 +210,26 @@ absl::Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
                                                  std::string* new_input_str) {
   std::vector<std::string> components = absl::StrSplit(input_str, ':');
   if (components.size() != 1 && components.size() != 2) {
-    return errors::Internal("Found node with invalid argument input: ",
-                            input_str);
+    return absl::InternalError(
+        absl::StrCat("Found node with invalid argument input: ", input_str));
   }
   std::string argument_name = components[0];
   if (components.size() == 2 && components[1] != "0") {
     // It is required that `original_function` must not have any list arguments.
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Input string \"", input_str,
         "\" has a last component which is not 0, but it is expected to be 0 "
-        "because corresponding argument is not a list");
+        "because corresponding argument is not a list"));
   }
 
   int i = FindArgDefIndex(original_function_.signature().input_arg(),
                           argument_name);
   if (i == -1) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Input string \"", input_str,
         "\" refers to an argument which does not exist. Argument \"",
         argument_name, "\" does not appear in following FunctionDef: ",
-        original_function_.DebugString());
+        original_function_.DebugString()));
   }
   if (i >=
       original_function_.signature().input_arg_size() - num_captured_inputs_) {
@@ -241,16 +241,16 @@ absl::Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
       &original_function_.signature().input_arg(i);
 
   if (ArgDefIsList(*found_arg_def)) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Splitting a function where an edge is a list of tensors is "
         "unsupported. ArgDef representing edge: ",
-        found_arg_def->DebugString());
+        found_arg_def->DebugString()));
   }
   if (!found_arg_def->type_attr().empty()) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Splitting a function where an edge's ArgDef has a type attribute is "
         "unsupported. ArgDef representing argument: ",
-        found_arg_def->DebugString());
+        found_arg_def->DebugString()));
   }
 
   return RewriteCrossFunctionInput(input_str, *found_arg_def, new_input_str);
@@ -260,7 +260,8 @@ absl::Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
                                              std::string* new_input_str) {
   std::vector<std::string> components = absl::StrSplit(input_str, ':');
   if (components.size() != 2 && components.size() != 3) {
-    return errors::Internal("Found node with invalid node input: ", input_str);
+    return absl::InternalError(
+        absl::StrCat("Found node with invalid node input: ", input_str));
   }
   const std::string& node_name = components[0];
   const std::string& node_output_arg = components[1];
@@ -273,8 +274,8 @@ absl::Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
 
   auto index_iter = name_to_node_.find(node_name);
   if (index_iter == name_to_node_.end()) {
-    return errors::Internal("Found input referring to nonexistent node: ",
-                            node_name);
+    return absl::InternalError(
+        absl::StrCat("Found input referring to nonexistent node: ", node_name));
   }
   const NodeDef& node = *index_iter->second;
 
@@ -282,39 +283,41 @@ absl::Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
   TF_RETURN_IF_ERROR(library_.LookUp(node.op(), &op_reg_data));
   int i = FindArgDefIndex(op_reg_data->op_def.output_arg(), node_output_arg);
   if (i == -1) {
-    return errors::Internal("Could not found input \"", node_output_arg,
-                            "\" for OpDef ", op_reg_data->op_def.name());
+    return absl::InternalError(absl::StrCat("Could not found input \"",
+                                            node_output_arg, "\" for OpDef ",
+                                            op_reg_data->op_def.name()));
   }
   OpDef::ArgDef found_arg_def = op_reg_data->op_def.output_arg(i);
 
   if (ArgDefIsList(found_arg_def)) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Splitting a function where an edge is a list of tensors is "
         "unsupported. ArgDef representing edge: ",
-        found_arg_def.DebugString());
+        found_arg_def.DebugString()));
   }
   if (list_output_index != "0") {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Input string \"", input_str,
         "\" has a last component which is not 0, but it is expected to be 0 "
-        "because corresponding output is not a list");
+        "because corresponding output is not a list"));
   }
 
   if (!found_arg_def.type_attr().empty()) {
     const std::string& attr = found_arg_def.type_attr();
     auto attr_iter = node.attr().find(attr);
     if (attr_iter == node.attr().end()) {
-      return errors::Internal("Failed to find attr ", attr, " on node ",
-                              node.name());
+      return absl::InternalError(
+          absl::StrCat("Failed to find attr ", attr, " on node ", node.name()));
     }
     if (!attr_iter->second.placeholder().empty()) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Splitting a function where an edge between functions has an "
           "AttrValue placeholder dtype is unsupported.");
     }
     DataType dtype = attr_iter->second.type();
     if (dtype == DT_INVALID) {
-      return errors::Internal("Attr ", attr, " is not a dtype attr");
+      return absl::InternalError(
+          absl::StrCat("Attr ", attr, " is not a dtype attr"));
     }
     found_arg_def.mutable_type_attr()->clear();
     found_arg_def.set_type(dtype);
@@ -330,10 +333,10 @@ absl::Status InputRewriter::RewriteCrossFunctionInput(
   if (input_arg_def.is_ref() || IsRefType(input_arg_def.type())) {
     // This case is untested and is not important to support, so an
     // Unimplemented error is raised.
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Splitting a function where an edge between functions is a ref is "
         "unsupported. Input ",
-        input_str, " is a ref type.");
+        input_str, " is a ref type."));
   }
   OpDef::ArgDef* added_output_arg =
       first_function_->mutable_signature()->add_output_arg();
@@ -409,15 +412,15 @@ absl::StatusOr<SplitResults> SplitFunction(
   for (const auto& attr : function.attr()) {
     if (attr.first != data::kTFDataFunction &&
         attr.first != "_construction_context") {
-      return errors::Unimplemented(
-          "Cannot split function with unknown attribute key: ", attr.first);
+      return absl::UnimplementedError(absl::StrCat(
+          "Cannot split function with unknown attribute key: ", attr.first));
     }
   }
 
   for (int i = 0; i < function.signature().input_arg_size(); i++) {
     // Processing list arguments is more complicated and not yet implemented.
     if (ArgDefIsList(function.signature().input_arg(i))) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Cannot split function when an input argument is a list of tensors "
           "instead of a single tensor.");
     }
@@ -425,7 +428,7 @@ absl::StatusOr<SplitResults> SplitFunction(
 
   for (const NodeDef& node_def : function.node_def()) {
     if (IsControlFlow(node_def)) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Cannot split function with control flow ops");
     }
   }
@@ -480,10 +483,10 @@ absl::StatusOr<SplitResults> SplitFunction(
         std::vector<std::string> components = absl::StrSplit(input_str, ':');
         if (!IsControlInput(input_str) && !IsFunctionArgument(input_str) &&
             !nodes_in_first_function.contains(components[0])) {
-          return errors::Internal("Node ", orig_node_def.name(),
-                                  " is in first function but has input ",
-                                  input_str,
-                                  " which is not in first function.");
+          return absl::InternalError(
+              absl::StrCat("Node ", orig_node_def.name(),
+                           " is in first function but has input ", input_str,
+                           " which is not in first function."));
         }
       }
     }
@@ -493,9 +496,9 @@ absl::StatusOr<SplitResults> SplitFunction(
   for (const OpDef::ArgDef& arg_def : function.signature().output_arg()) {
     auto it = function.ret().find(arg_def.name());
     if (it == function.ret().end()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Failed to find output_arg '", arg_def.name(),
-          "' in 'ret' section. FunctionDef: ", function.DebugString());
+          "' in 'ret' section. FunctionDef: ", function.DebugString()));
     }
     std::string& new_ret =
         (*results.second_function.mutable_ret())[arg_def.name()];

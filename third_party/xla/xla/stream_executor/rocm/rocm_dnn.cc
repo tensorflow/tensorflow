@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -101,7 +102,7 @@ static absl::Status PopulateProfileFromTimer(
     dnn::ProfileResult* profile_result,
     std::optional<uint64_t> scratch_size = std::nullopt) {
   if (profile_result) {
-    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    ABSL_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
     profile_result->set_algorithm(algorithm);
     profile_result->set_elapsed_time_in_ms(
         absl::ToDoubleMilliseconds(duration));
@@ -449,12 +450,7 @@ class MIOpenAccess {
   miopenHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
-MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {
-  bool enable_pooling_cache = false;
-  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
-                                   &enable_pooling_cache));
-  if (enable_pooling_cache) m_pooling_cache_allowed = true;
-}
+MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {}
 
 absl::Status MIOpenSupport::Init() {
   std::unique_ptr<ActivateContext> context = parent_->Activate();
@@ -558,7 +554,7 @@ absl::StatusOr<ScopedTensorDescriptor> scope(
       std::vector<int64_t> dims64 =
           batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
 
-#if (MIOPEN_BETA_API && TF_ROCM_VERSION >= 60300)
+#if MIOPEN_BETA_API
       status = miopenSetTensorDescriptorV2(obj.handle_, data_type, nd,
                                            (const size_t*)dims64.data(),
                                            (const size_t*)strides64.data());
@@ -639,7 +635,7 @@ absl::StatusOr<ScopedFilterDescriptor> scope(
       std::vector<int64_t> dims64 =
           filter_descriptor.full_dims(dnn::FilterLayout::kOutputInputYX);
 
-#if (MIOPEN_BETA_API && TF_ROCM_VERSION >= 60300)
+#if MIOPEN_BETA_API
       status = miopenSetTensorDescriptorV2(obj.handle_, data_type, nd,
                                            (const size_t*)dims64.data(),
                                            (const size_t*)strides64.data());
@@ -709,7 +705,6 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
                << ToString(status);
   }
 
-#if (TF_ROCM_VERSION >= 50300)
   if (RequireMIOpenDeterminism()) {
     status = miopenSetConvolutionAttribute(
         obj.handle_, MIOPEN_CONVOLUTION_ATTRIB_DETERMINISTIC, 1);
@@ -718,7 +713,6 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
                  << ToString(status);
     }
   }
-#endif
   return obj;
 }
 
@@ -2144,7 +2138,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return absl::InternalError("AllocateBytes for RNN failed");
       }
-      TF_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           stream->MemZero(&reserve_space, reserve_space_size_in_bytes));
     }
   }
@@ -2153,9 +2147,8 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   std::unique_ptr<EventBasedTimer> timer;
 
   if (is_profiling) {
-    TF_ASSIGN_OR_RETURN(timer,
-                        stream->CreateEventBasedTimer(
-                            output_profile_result->warmup_run_executed()));
+    ABSL_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                output_profile_result->warmup_run_executed()));
   }
 
   // make the forward call
@@ -2199,7 +2192,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+    ABSL_RETURN_IF_ERROR(PopulateProfileFromTimer(
         timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
@@ -2266,28 +2259,27 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream->MemZero(input_backprop_data, size_data * type_size));
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
   if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream->MemZero(input_h_backprop_data, size_data * type_size));
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream->MemZero(input_c_backprop_data, size_data * type_size));
 
   const bool is_profiling = output_profile_result != nullptr;
   std::unique_ptr<EventBasedTimer> timer;
 
   if (is_profiling) {
-    TF_ASSIGN_OR_RETURN(timer,
-                        stream->CreateEventBasedTimer(
-                            output_profile_result->warmup_run_executed()));
+    ABSL_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                output_profile_result->warmup_run_executed()));
   }
 
   // make the backward data call
@@ -2317,7 +2309,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   if (params_backprop_data != nullptr) {
     // Clear the dw to zeros.
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream->MemZero(params_backprop_data, params_backprop_data->size()));
     // make the backward weight call
     status = miopenRNNBackwardWeights(
@@ -2338,7 +2330,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+    ABSL_RETURN_IF_ERROR(PopulateProfileFromTimer(
         timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
@@ -2981,8 +2973,8 @@ absl::Status MIOpenSupport::GetConvolveRunners(
     return absl::InternalError("GetMIOpenConvolveAlgorithms failure");
 
   for (const auto& profile_result : profile_results) {
-    TF_ASSIGN_OR_RETURN(
-        auto runner, ConvolveRunnerFromDesc(
+    ABSL_ASSIGN_OR_RETURN(auto runner,
+                     ConvolveRunnerFromDesc(
                          stream, profile_result.algorithm(), kind, input_type,
                          output_type, input_descriptor, filter_descriptor,
                          output_descriptor, convolution_descriptor));
@@ -3005,7 +2997,7 @@ MIOpenSupport::ConvolveRunnerFromDesc(
 
   if (algo_id == 0) {
     std::vector<dnn::ProfileResult> algorithms;
-    TF_RETURN_IF_ERROR(GetMIOpenConvolveAlgorithmsImmediateMode(
+    ABSL_RETURN_IF_ERROR(GetMIOpenConvolveAlgorithmsImmediateMode(
         kind, input_type, output_type, stream, input_descriptor,
         filter_descriptor, output_descriptor, convolution_descriptor,
         &algorithms, /* maxSolutionCount= */ -1));
@@ -3019,13 +3011,13 @@ MIOpenSupport::ConvolveRunnerFromDesc(
     workspace_size = 0;
   }
 
-  TF_ASSIGN_OR_RETURN(auto scoped_input_desc,
-                      scope(input_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto scoped_output_desc,
-                      scope(output_descriptor, ToMIOpenDataType(output_type)));
-  TF_ASSIGN_OR_RETURN(auto scoped_filter_desc,
-                      scope(filter_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto scoped_conv_desc, scope(convolution_descriptor));
+  ABSL_ASSIGN_OR_RETURN(auto scoped_input_desc,
+                   scope(input_descriptor, ToMIOpenDataType(input_type)));
+  ABSL_ASSIGN_OR_RETURN(auto scoped_output_desc,
+                   scope(output_descriptor, ToMIOpenDataType(output_type)));
+  ABSL_ASSIGN_OR_RETURN(auto scoped_filter_desc,
+                   scope(filter_descriptor, ToMIOpenDataType(input_type)));
+  ABSL_ASSIGN_OR_RETURN(auto scoped_conv_desc, scope(convolution_descriptor));
 
   bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
                       (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
@@ -3126,13 +3118,13 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
     std::vector<dnn::ProfileResult>* out_algorithms, size_t maxSolutionCount) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
-  TF_ASSIGN_OR_RETURN(auto input_nd,
-                      scope(input_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto output_nd,
-                      scope(output_descriptor, ToMIOpenDataType(output_type)));
-  TF_ASSIGN_OR_RETURN(auto filter,
-                      scope(filter_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
+  ABSL_ASSIGN_OR_RETURN(auto input_nd,
+                   scope(input_descriptor, ToMIOpenDataType(input_type)));
+  ABSL_ASSIGN_OR_RETURN(auto output_nd,
+                   scope(output_descriptor, ToMIOpenDataType(output_type)));
+  ABSL_ASSIGN_OR_RETURN(auto filter,
+                   scope(filter_descriptor, ToMIOpenDataType(input_type)));
+  ABSL_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
 
   bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
                       (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
@@ -3266,13 +3258,13 @@ absl::Status MIOpenSupport::PopulateMIOpenFindDb(
     ScratchAllocator* scratch_allocator) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
-  TF_ASSIGN_OR_RETURN(auto input_nd,
-                      scope(input_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto output_nd,
-                      scope(output_descriptor, ToMIOpenDataType(output_type)));
-  TF_ASSIGN_OR_RETURN(auto filter,
-                      scope(filter_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
+  ABSL_ASSIGN_OR_RETURN(auto input_nd,
+                   scope(input_descriptor, ToMIOpenDataType(input_type)));
+  ABSL_ASSIGN_OR_RETURN(auto output_nd,
+                   scope(output_descriptor, ToMIOpenDataType(output_type)));
+  ABSL_ASSIGN_OR_RETURN(auto filter,
+                   scope(filter_descriptor, ToMIOpenDataType(input_type)));
+  ABSL_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
 
   bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
                       (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
@@ -3508,11 +3500,10 @@ absl::Status MIOpenSupport::DoBatchNormalizationForwardImpl(
     bool is_training) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
-  TF_ASSIGN_OR_RETURN(auto x_descriptor,
-                      scope(x_desc, ToMIOpenDataType(input_data_type)));
-  TF_ASSIGN_OR_RETURN(
-      auto scale_offset_descriptor,
-      scope(scale_offset_desc, ToMIOpenDataType(scale_data_type)));
+  ABSL_ASSIGN_OR_RETURN(auto x_descriptor,
+                   scope(x_desc, ToMIOpenDataType(input_data_type)));
+  ABSL_ASSIGN_OR_RETURN(auto scale_offset_descriptor,
+                   scope(scale_offset_desc, ToMIOpenDataType(scale_data_type)));
   miopenBatchNormMode_t mode = miopenBNSpatial;
   float one = 1.0;
   float zero = 0.0;
@@ -3610,12 +3601,12 @@ absl::Status MIOpenSupport::DoBatchNormalizationBackwardImpl(
     DeviceAddress<T>* x_backprop, DeviceAddress<U>* scale_backprop,
     DeviceAddress<U>* offset_backprop) {
   auto miopen = miopen_->GetHandle(parent_, stream);
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto x_descriptor,
       scope(x_desc, static_cast<miopenDataType_t>(miopen_input_type)));
-  TF_ASSIGN_OR_RETURN(auto scale_offset_descriptor,
-                      scope(scale_offset_desc,
-                            static_cast<miopenDataType_t>(miopen_scale_type)));
+  ABSL_ASSIGN_OR_RETURN(auto scale_offset_descriptor,
+                   scope(scale_offset_desc,
+                         static_cast<miopenDataType_t>(miopen_scale_type)));
   miopenBatchNormMode_t mode = miopenBNSpatial;
   float one = 1.0;
   float zero = 0.0;
@@ -3881,41 +3872,13 @@ absl::Status MIOpenSupport::DoPoolForward(
   auto miopen_dtype =
       element_type == dnn::DataType::kFloat ? miopenFloat : miopenHalf;
 
-  TF_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
+  ABSL_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
+  ABSL_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
+  ABSL_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
   bool do_backward = false;
   uint8_t* workspace = nullptr;
   size_t workspace_size = 0;
-  if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
-    do_backward = true;
-    auto status = miopenPoolingGetWorkSpaceSizeV2(
-        pooling_desc.handle(), dest_desc.handle(), &workspace_size);
-    if (status != miopenStatusSuccess) {
-      return absl::InternalError(absl::StrCat(
-          "Failed to obtain workspace size for backward pooling on stream: ",
-          ToString(status)));
-    }
-    if (workspace_size != 0) {
-      PoolingWorkspaceDescriptor* pdesc = nullptr;
-      bool cache_hit =
-          m_pooling_cache_allowed &&
-          m_pooling_cache.find(input_data.opaque(), input_dimensions,
-                               output_dimensions, pooling_dimensions,
-                               miopenFloat, pdesc);
-      if (cache_hit) {
-        // reusing the same buffer
-        workspace =
-            reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
-      } else {
-        TF_ASSIGN_OR_RETURN(auto allocated,
-                            workspace_allocator->AllocateBytes(workspace_size));
-        workspace = reinterpret_cast<uint8_t*>(allocated.opaque());
-      }
-    }
-  }
-
   auto status = miopenPoolingForward(
       miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
       input_data.opaque(), &beta, dest_desc.handle(), output_data.opaque(),
@@ -3925,93 +3888,6 @@ absl::Status MIOpenSupport::DoPoolForward(
         "Failed to enqueue forward pooling on stream: ", ToString(status)));
   }
   return absl::OkStatus();
-}
-
-bool PoolingWorkspaceDescriptor::IsSame(
-    const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions, int _type) {
-  return dtype == _type &&
-         input_dims ==
-             input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX) &&
-         output_dims ==
-             output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX) &&
-         op.mode() == pooling_dimensions.mode() &&
-         op.window() == pooling_dimensions.window() &&
-         op.padding() == pooling_dimensions.padding() &&
-         op.strides() == pooling_dimensions.strides();
-}
-
-bool PoolingWorkspaceCache::find(
-    const void* p, const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    PoolingWorkspaceDescriptor*& pdesc) {
-  pdesc = nullptr;
-  auto it = cache.find(p);
-  if (it == cache.end()) {
-    return false;
-  }
-  if (!it->second.IsSame(input_dimensions, output_dimensions,
-                         pooling_dimensions, _type)) {
-    return false;
-  }
-  pdesc = &it->second;
-  return true;
-}
-
-void PoolingWorkspaceCache::insert(
-    const void* p, const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    ScopedDeviceAddress<uint8_t>& workspace, size_t wsp_size,
-    hipStream_t hip_stream) {
-  PoolingWorkspaceDescriptor* desc = nullptr;
-  auto it = cache.find(p);
-  if (it != cache.end()) {
-    // replacing an entry with the same pointer but different attributes
-    // (if everything matches, the caller is expected to reuse the entry)
-    desc = &it->second;
-    CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
-        << "Failed to sync hipStream";
-    memory_used -= desc->workspace_size;
-  } else {
-    cache[p] = PoolingWorkspaceDescriptor();
-    desc = &cache[p];
-  }
-  desc->input_dims = input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-  desc->output_dims =
-      output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-  desc->op = pooling_dimensions;
-  desc->dtype = _type;
-  desc->timestamp = timestamp;
-  timestamp++;
-  desc->workspace = std::move(workspace);
-  desc->workspace_size = wsp_size;
-  memory_used += wsp_size;
-  trim(hip_stream);
-}
-
-void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
-  if (memory_used < memory_budget && cache.size() < trim_size) return;
-  bool must_sync = true;
-  while (true) {
-    int new_size = cache.size() - (cache.size() >> 2);
-    std::vector<const void*> old_entries;
-    for (auto& x : cache)
-      if (x.second.timestamp + new_size < timestamp)
-        old_entries.push_back(x.first);
-    if (old_entries.empty()) break;
-    if (must_sync)
-      CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
-          << "Failed to sync hipStream";
-    must_sync = true;
-    for (auto x : old_entries) {
-      memory_used -= cache[x].workspace_size;
-      cache.erase(x);
-    }
-    if (memory_used < memory_budget || cache.size() < 10) break;
-  }
 }
 
 absl::Status MIOpenSupport::DoPoolBackward(
@@ -4027,7 +3903,6 @@ absl::Status MIOpenSupport::DoPoolBackward(
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
-  if (m_pooling_cache_allowed) m_pooling_cache_enabled = true;
   // Alpha is the scaling factor for input.
   float alpha = 1.0;
   // Beta is the scaling factor for output.
@@ -4036,13 +3911,12 @@ absl::Status MIOpenSupport::DoPoolBackward(
   auto miopen_dtype =
       element_type == dnn::DataType::kFloat ? miopenFloat : miopenHalf;
 
-  TF_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
+  ABSL_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
+  ABSL_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
+  ABSL_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
   uint8_t* workspace_ptr = nullptr;
   DeviceAddress<uint8_t> workspace;
-  PoolingWorkspaceDescriptor* pdesc = nullptr;
 
   size_t workspace_size_in_bytes = 0;
   auto status = miopenPoolingGetWorkSpaceSizeV2(
@@ -4055,62 +3929,49 @@ absl::Status MIOpenSupport::DoPoolBackward(
 
   // Allocate the workspace.
   if (workspace_size_in_bytes > 0) {
-    bool cache_hit = m_pooling_cache_allowed &&
-                     m_pooling_cache.find(input_data.opaque(), input_dimensions,
-                                          output_dimensions, pooling_dimensions,
-                                          miopen_dtype, pdesc);
-    if (cache_hit) {
-      assert(pdesc != nullptr);
-      workspace_ptr =
-          reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
-      VLOG(1) << "Pooling cache hit";
-    } else {
-      VLOG(1) << "Pooling cache miss";
+    assert(workspace_allocator);
+    auto allocated =
+        workspace_allocator->AllocateBytes(workspace_size_in_bytes);
+    if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
+      return absl::InternalError(
+          "Failed to allocate backward pooling workspace");
+    }
+    DeviceAddress<uint8_t> dest2;  // duplicated dest from forward:
+    int64_t dest2_size = 0;
+
+    // miopen requires the strides and dims to be ordered as BDYX.
+    std::vector<int64_t> dims64 =
+        output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
+    // miopen does not use strides and must have 4D tensor.
+    // std::vector<int> dims(pooling_dimensions.ndims() + 2);
+
+    dest2_size = (element_type == dnn::DataType::kFloat) ? sizeof(float)
+                                                         : sizeof(Eigen::half);
+    for (auto& x : dims64) dest2_size *= x;
+
+    if (dest2_size > 0) {
       assert(workspace_allocator);
-      auto allocated =
-          workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-      if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
+      auto allocated = workspace_allocator->AllocateBytes(dest2_size);
+      if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
         return absl::InternalError(
             "Failed to allocate backward pooling workspace");
       }
-      DeviceAddress<uint8_t> dest2;  // duplicated dest from forward:
-      int64_t dest2_size = 0;
-
-      // miopen requires the strides and dims to be ordered as BDYX.
-      std::vector<int64_t> dims64 =
-          output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-      // miopen does not use strides and must have 4D tensor.
-      // std::vector<int> dims(pooling_dimensions.ndims() + 2);
-
-      dest2_size = (element_type == dnn::DataType::kFloat)
-                       ? sizeof(float)
-                       : sizeof(Eigen::half);
-      for (auto& x : dims64) dest2_size *= x;
-
-      if (dest2_size > 0) {
-        assert(workspace_allocator);
-        auto allocated = workspace_allocator->AllocateBytes(dest2_size);
-        if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
-          return absl::InternalError(
-              "Failed to allocate backward pooling workspace");
-        }
-      } else {
-        LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
-                      "backward pooling";
-      }
-
-      status = miopenPoolingForward(
-          miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-          input_data.opaque(), &beta, dest_desc.handle(), dest2.opaque(), true,
-          workspace.opaque(), workspace_size_in_bytes);
-
-      if (status != miopenStatusSuccess) {
-        return absl::InternalError(absl::StrCat(
-            "Failed to enqueue forward pooling (before backward) on stream: ",
-            ToString(status)));
-      }
-      workspace_ptr = reinterpret_cast<uint8_t*>(workspace.opaque());
+    } else {
+      LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
+                    "backward pooling";
     }
+
+    status = miopenPoolingForward(
+        miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
+        input_data.opaque(), &beta, dest_desc.handle(), dest2.opaque(), true,
+        workspace.opaque(), workspace_size_in_bytes);
+
+    if (status != miopenStatusSuccess) {
+      return absl::InternalError(absl::StrCat(
+          "Failed to enqueue forward pooling (before backward) on stream: ",
+          ToString(status)));
+    }
+    workspace_ptr = reinterpret_cast<uint8_t*>(workspace.opaque());
   }
 
   status = miopenPoolingBackward(
@@ -4333,19 +4194,11 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
     CHECK(output_profile_result == nullptr);
 
-    miopenStatus_t status;
-#if (TF_ROCM_VERSION >= 70000)
-    status = miopenExecuteFusionPlan_v2(
+    miopenStatus_t status = miopenExecuteFusionPlan_v2(
         miopen.handle(), fusion_plan_.fusion_plan_, input_nd_.handle(),
         input_data.opaque(), output_nd_.handle(), output_data.opaque(),
         fusion_plan_.fusion_args_, scratch_memory.opaque(),
         scratch_memory.size());
-#else
-    status = miopenExecuteFusionPlan(miopen.handle(), fusion_plan_.fusion_plan_,
-                                     input_nd_.handle(), input_data.opaque(),
-                                     output_nd_.handle(), output_data.opaque(),
-                                     fusion_plan_.fusion_args_);
-#endif
 
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to enqueue fused convolution on stream: "
@@ -4366,29 +4219,26 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
       BatchDescriptor output_nd, FilterDescriptor filter,
       BatchDescriptor bias_nd, ConvolutionDescriptor conv,
       dnn::ActivationMode activation, std::optional<uint64_t> workspace_size) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto input_nd_,
         scope(input_nd, ToMIOpenDataType(input_type, input_nd.layout())));
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto output_nd_,
         scope(output_nd, ToMIOpenDataType(input_type, input_nd.layout())));
-    TF_ASSIGN_OR_RETURN(auto filter_,
-                        scope(filter, ToMIOpenDataType(input_type)));
-    TF_ASSIGN_OR_RETURN(auto bias_nd_,
-                        scope(bias_nd, ToMIOpenDataType(bias_type)));
-    TF_ASSIGN_OR_RETURN(auto conv_, scope(conv));
+    ABSL_ASSIGN_OR_RETURN(auto filter_, scope(filter, ToMIOpenDataType(input_type)));
+    ABSL_ASSIGN_OR_RETURN(auto bias_nd_,
+                     scope(bias_nd, ToMIOpenDataType(bias_type)));
+    ABSL_ASSIGN_OR_RETURN(auto conv_, scope(conv));
 
-    TF_ASSIGN_OR_RETURN(
-        auto activation_desc,
-        ScopedActivationDescriptor::Create(activation, leakyrelu_alpha));
+    ABSL_ASSIGN_OR_RETURN(auto activation_desc, ScopedActivationDescriptor::Create(
+                                               activation, leakyrelu_alpha));
 
     auto miopen = miopen_->GetHandle(parent, stream);
 
-    TF_ASSIGN_OR_RETURN(
-        auto fusion_plan,
-        ScopedFusionPlanConvolutionBiasActivation::Create(
-            miopen.handle(), input_nd_.handle(), filter_.handle(),
-            conv_.handle(), bias_nd_.handle(), activation_desc));
+    ABSL_ASSIGN_OR_RETURN(auto fusion_plan,
+                     ScopedFusionPlanConvolutionBiasActivation::Create(
+                         miopen.handle(), input_nd_.handle(), filter_.handle(),
+                         conv_.handle(), bias_nd_.handle(), activation_desc));
 
     if (!fusion_plan.CompilationSucceeded()) {
       return absl::InternalError("No algorithms found");
@@ -4507,12 +4357,7 @@ absl::Status MIOpenSupport::GetFusedConvolveRunners(
       side_input_scale, leakyrelu_alpha, input_descriptor, filter_descriptor,
       bias_descriptor, output_descriptor, convolution_descriptor,
       activation_mode);
-// No way to invoke fused convs with workspace prior to rocm 7
-#if (TF_ROCM_VERSION >= 70000)
   if (runner_or.ok()) {
-#else
-  if (runner_or.ok() && runner_or.value()->GetWorkspaceSize() == 0) {
-#endif
     out_exec_plans->push_back(std::move(runner_or).value());
   }
 
@@ -4522,7 +4367,6 @@ absl::Status MIOpenSupport::GetFusedConvolveRunners(
 }
 
 bool UseNhwcLayoutForRocm() {
-#if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
     CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
@@ -4530,9 +4374,6 @@ bool UseNhwcLayoutForRocm() {
     return is_enabled;
   }();
   return is_enabled;
-#else  // TF_ROCM_VERSION < 50000
-  return false;
-#endif
 }
 
 }  // namespace gpu

@@ -140,6 +140,19 @@ TEST_F(HipblasLtBackendTest, GetSupportedConfigs) {
               absl_testing::IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
+TEST_F(HipblasLtBackendTest, GetSupportedConfigsReturnsErrorForDeviceless) {
+  HipblasLtBackend backend_without_stream_executor(
+      /*stream_executor=*/nullptr, &debug_options_, &compiler_,
+      &target_config_);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_without_stream_executor.GetSupportedConfigs(
+          *hlo_module->entry_computation()->root_instruction()->operand(0));
+  EXPECT_THAT(configs,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_F(HipblasLtBackendTest,
        GetSupportedConfigsReturnsEmptyVectorForNonHipblasLtCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -189,13 +202,13 @@ TEST_F(HipblasLtBackendTest, ApplyConfig) {
   HipblasLtBackendConfig config;
   config.set_algorithm(2);
   config.set_autotune_workspace_size(42);
-  google::protobuf::Any any;
-  any.PackFrom(config);
+  BackendConfig backend_config;
+  *backend_config.mutable_gemm() = config;
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
                                          ->root_instruction()
                                          ->mutable_operands()
                                          .at(0),
-                                    any));
+                                    backend_config));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
                               CHECK: "selected_algorithm":"2")"),

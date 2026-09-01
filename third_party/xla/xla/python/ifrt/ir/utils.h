@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_UTILS_H_
 #define XLA_PYTHON_IFRT_IR_UTILS_H_
 
+#include <cstdint>
+#include <memory>
+
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/memory.h"
 
 namespace xla {
 namespace ifrt {
@@ -28,6 +34,15 @@ namespace ifrt {
 // Returns a DeviceList for the given device ids.
 absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
                                             absl::Span<const DeviceId> ids);
+
+// Converts an XLA computation to an `xla::ifrt::HloProgram`, and applies input
+// donation and memory kind attributes to the input and output. The generated
+// MLIR module will have flattened (non XLA tuple) parameters and results.
+absl::StatusOr<std::unique_ptr<HloProgram>> XlaComputationToHloProgram(
+    const xla::XlaComputation& xla_computation,
+    absl::Span<const int64_t> donated_input_indices,
+    absl::Span<const MemoryKind> arg_memory_kinds,
+    absl::Span<const MemoryKind> result_memory_kinds);
 
 }  // namespace ifrt
 }  // namespace xla

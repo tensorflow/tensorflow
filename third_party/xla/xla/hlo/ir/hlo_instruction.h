@@ -37,7 +37,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "absl/base/macros.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -70,7 +71,6 @@ limitations under the License.
 #include "xla/shape_pool.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -80,6 +80,16 @@ namespace xla {
 class HloComputation;
 class HloModule;
 class HloInstruction;
+class BackendConfigWrapper;
+class HloPayloadDeduplicator;
+struct HloProtoOptions {
+  bool deduplicate_backend_config = false;
+  bool deduplicate_metadata = true;
+  // Minimum backend_config size (in bytes) to be eligible for deduplication.
+  // Configs smaller than this threshold are kept inline.
+  int64_t min_backend_config_size = 0;
+  HloPayloadDeduplicator* payload_deduplicator = nullptr;
+};
 
 // A small holder that is used to keep some immutable info alongside an
 // instruction pointer in an HloComputation's list of instructions
@@ -297,6 +307,8 @@ class HloInstruction {
 
   inline static constexpr char kMainExecutionThread[] = "main";
   inline static constexpr char kHostThread[] = "host";
+  // Iota based id unique inside parent computation.
+  using LocalId = int32_t;
 
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
@@ -325,7 +337,8 @@ class HloInstruction {
       const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
       bool prohibit_empty_literal = true,
-      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
+      absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs =
+          {});
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(
@@ -343,9 +356,12 @@ class HloInstruction {
   //
   // - `k` indicates how many elements to return in the last dimension.
   // - `largest` indicates whether to return the largest or smallest elements.
+  // - `is_stable` if is true, the top-k is stable: if two elements are equal,
+  //   the lower-index element appears first.
   static std::unique_ptr<HloInstruction> CreateTopK(const Shape& shape,
                                                     HloInstruction* input,
-                                                    int64_t k, bool largest);
+                                                    int64_t k, bool largest,
+                                                    bool is_stable = true);
 
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
@@ -415,14 +431,16 @@ class HloInstruction {
       HloComputation* map_computation);
 
   // Creates a convolution op, where rhs is the convolutional filter
-  // and window describes how the filter is applied to lhs.
+  // and window describes how the filter is applied to lhs. Additionally,
+  // it supports structured sparsity and block scaling.
   static std::unique_ptr<HloInstruction> CreateConvolve(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
-      const SparsityConfig& sparsity_config = {},
+      const SparsityConfig& sparsity_config = SparsityConfig(),
+      const BlockScalingConfig& block_scaling_config = BlockScalingConfig(),
       ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Creates an FFT op, of the type indicated by fft_type.
@@ -436,9 +454,18 @@ class HloInstruction {
       HloComputation* async_computation,
       absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
+  // Creates a variadic async-update op.
+  static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -677,7 +704,7 @@ class HloInstruction {
   // in the target replica output perspective.
   //
   // For i-th output offset, the current replica will send
-  // `input[input_offsets[i]:input_offsets[i]+input_sizes[i]]` update to
+  // `input[input_offsets[i]:input_offsets[i]+send_sizes[i]]` update to
   // `i`-th replica that will be written to
   // `output_i[output_offsets[i]:output_offsets[i]+send_sizes[i]]` in `i`-th
   // replica ``output``.
@@ -755,13 +782,23 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
       std::shared_ptr<CollectiveDeviceListBase> device_list,
-      bool constrain_layout, const std::optional<int64_t>& channel_id);
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool has_dynamic_root = false);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id, bool has_dynamic_root = false);
+
+  // Creates a collective reduce operation which reduces data from ranks in
+  // replica groups and stores the result only on the root rank.
+  static std::unique_ptr<HloInstruction> CreateCollectiveReduce(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids, bool has_dynamic_root = false);
 
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -1675,6 +1712,9 @@ class HloInstruction {
 
   virtual void ToProto(HloInstructionProto* proto) const;
 
+  // Non-virtual overload that handles payload deduplication options.
+  void ToProto(HloInstructionProto* proto, HloProtoOptions options) const;
+
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   virtual std::string ToCategory() const;
@@ -1694,6 +1734,15 @@ class HloInstruction {
 
   bool IsCustomCall(absl::string_view target) const;
   bool IsCustomCall(absl::Span<const absl::string_view> targets) const;
+
+  // Returns true if this instruction is an allowed async intermediary custom
+  // call (e.g. Sharding, LocalToGlobalShape, GlobalToLocalShape, xla.sdy.*).
+  bool IsAllowedAsyncIntermediaryCustomCall() const;
+
+  // Returns true if this instruction is an allowed async intermediary (e.g.
+  // tuple, get-tuple-element, optimization barrier, copy, or allowed async
+  // intermediary custom-call).
+  bool IsAllowedAsyncIntermediary() const;
 
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
@@ -1904,7 +1953,7 @@ class HloInstruction {
   // equivalent to the least significant 32 bits of the unique ID. This is not
   // guaranteed to be unique across all instructions in a module, only within
   // the computation.
-  int32_t local_id() const;
+  int32_t local_id() const { return local_id_; }
 
   // Returns the unique ID that would be assigned to this instruction if it were
   // inserted into the given parent without an internal ID change. Can be used
@@ -1926,12 +1975,14 @@ class HloInstruction {
     return static_cast<int32_t>(unique_id >> 32);
   }
 
-  bool has_backend_config() const { return !backend_config_.empty(); }
+  bool has_backend_config() const { return !backend_config_->empty(); }
 
-  void clear_backend_config() { backend_config_ = BackendConfigWrapper(); }
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
 
   void CopyBackendConfigFrom(const HloInstruction* other) {
-    backend_config_ = BackendConfigWrapper(other->backend_config_);
+    backend_config_ = other->backend_config_;
   }
 
   // Replaces the frontend attributes with the provided argument.
@@ -2064,7 +2115,7 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 
@@ -2075,25 +2126,33 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::Status MutateBackendConfig(
       const std::function<absl::Status(ConfigProto*)>& fn) {
-    return backend_config_.ApplyFnOnProto(fn);
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
   }
 
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
-    backend_config_ = BackendConfigWrapper(proto);
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
     return absl::OkStatus();
   }
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
-    return backend_config_.GetRawString();
+    return backend_config_->GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
-    backend_config_ = BackendConfigWrapper(std::move(config_str));
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
   }
 
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
+
+  // Returns true if the instruction supports precision config.
+  bool SupportsPrecisionConfig() const;
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -2140,9 +2199,27 @@ class HloInstruction {
     mutable_metadata().set_scheduling_name(name);
   }
 
+  bool has_metadata() const { return metadata_ != nullptr; }
+
   const OpMetadata& metadata() const {
     OpMetadata* m = metadata_.get();
     return (m == nullptr) ? *kEmptyMetadata : *m;
+  }
+
+  bool has_metadata_payload() const {
+    if (metadata_ == nullptr || !metadata_->has_metadata_payload()) {
+      return false;
+    }
+    const auto& payload = metadata_->metadata_payload();
+    return payload.has_value() || payload.has_id();
+  }
+
+  std::string metadata_payload_string() const {
+    if (!has_metadata_payload()) {
+      return "";
+    }
+    const auto& payload = metadata_->metadata_payload();
+    return payload.has_value() ? payload.value() : "";
   }
 
   // Reconstructs the full Python call stack from HloMetadata.
@@ -2255,11 +2332,16 @@ class HloInstruction {
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
 
   // Delegates to HloFusionInstruction::MergeFusionInstruction.
-  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge,
+                              bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
   void MergeFusionInstructionIntoMultiOutput(
-      HloInstruction* instruction_to_merge);
+      HloInstruction* instruction_to_merge, bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::FuseInstruction.
   HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse);
@@ -2453,23 +2535,30 @@ class HloInstruction {
   const SparsityConfig& sparsity_config() const;
   void set_sparsity_config(const SparsityConfig& config);
 
+  // Delegates to HloConvolutionInstruction::block_scaling_config.
+  const BlockScalingConfig& block_scaling_config() const;
+  void set_block_scaling_config(const BlockScalingConfig& config);
+
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
-  bool IsAsynchronous() const;
+  bool IsAsynchronous() const { return HloOpcodeIsAsync(opcode_); }
 
-  // Delagates to HloAsyncInstruction::async_chain_start().
+  // Delegates to HloAsyncInstruction::async_chain_start().
   HloInstruction* async_chain_start() const;
 
-  // Delagates to HloAsyncInstruction::async_done().
+  // Delegates to HloAsyncInstruction::async_chain_done().
   HloInstruction* async_chain_done() const;
 
-  // Returns the computation that will executed asynchronously.
+  // Delegates to HloAsyncInstruction::async_chain_next().
+  HloInstruction* async_chain_next() const;
+
+  // Returns the computation that will be executed asynchronously.
   HloComputation* async_wrapped_computation() const;
 
-  // Delagates to HloAsyncInstruction::async_wrapped_instruction().
+  // Delegates to HloAsyncInstruction::async_wrapped_instruction().
   HloInstruction* async_wrapped_instruction() const;
 
-  // Delagates to HloAsyncInstruction::async_wrapped_opcode().
+  // Delegates to HloAsyncInstruction::async_wrapped_opcode().
   HloOpcode async_wrapped_opcode() const;
 
   // Delegates to HloAsyncInstruction::async_execution_thread().
@@ -2477,6 +2566,28 @@ class HloInstruction {
 
   // Delegates to HloAsyncInstruction::set_async_execution_thread().
   void set_async_execution_thread(absl::string_view async_execution_thread);
+
+  // Returns true if this instruction is an asynchronous producer
+  // (AsyncStart, AsyncUpdate, AllGatherStart, AllReduceStart,
+  // CollectivePermuteStart) - representing any op that produces an async
+  // context.
+  bool IsAsyncProducer() const;
+
+  // Returns true if this instruction is a root asynchronous start
+  // (AsyncStart, AllGatherStart, AllReduceStart, CollectivePermuteStart) -
+  // representing root async start ops.
+  bool IsAsyncStart() const;
+
+  // Returns true if this instruction is a terminal asynchronous done op
+  // (AsyncDone, AllGatherDone, AllReduceDone, CollectivePermuteDone) -
+  // representing terminal async done ops.
+  bool IsAsyncDone() const;
+
+  // Returns true if this instruction is an asynchronous consumer
+  // (AsyncUpdate, AsyncDone, AllGatherDone, AllReduceDone,
+  // CollectivePermuteDone) - representing any op that consumes an async
+  // context.
+  bool IsAsyncConsumer() const;
 
   // Delegates to
   // HloCallableInstruction::RecursivelySetComputationsThreadName().
@@ -2526,12 +2637,19 @@ class HloInstruction {
   void CopyOriginalValue(const HloInstruction* instruction, bool clone = false,
                          bool issue_warning = false);
 
+  // TODO(phui): reimplement this method
+  void DetachFromOperands() {
+    for (HloInstruction* operand : unique_operands()) {
+      operand->RemoveUser(this);
+    }
+    RemoveAllOperands();
+  }
+  void RemoveAllOperands() { operands_.clear(); }
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
-
-  void RemoveAllOperands() { operands_.clear(); }
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);
@@ -2739,7 +2857,7 @@ class HloInstruction {
         user_map_;
   };
 
-  int32_t local_id_;  // Unique to this HloInstruction within a HloComputation.
+  LocalId local_id_;  // Unique to this HloInstruction within a HloComputation.
                       // Index that identifies where the inst is stored in the
                       // parent computation.
 
@@ -2789,8 +2907,10 @@ class HloInstruction {
   std::shared_ptr<Shape> shape_;
 
   // The backend-specific configuration for how a backend should compile this
-  // HLO. See the documentation on backend_config().
-  BackendConfigWrapper backend_config_;
+  // HLO. See the documentation on backend_config(). Declared as shared_ptr to
+  // implement copy-on-write.
+  absl_nonnull std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
 
   // String identifier for instruction.
   std::string name_;
@@ -2842,6 +2962,9 @@ std::string RaggedDotDimensionNumbersToString(
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
+
+std::string BlockScalingConfigToString(
+    const BlockScalingConfig& block_scaling_config);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);
@@ -2927,6 +3050,7 @@ bool HloPredicateIsNotOp(const HloInstruction* instruction) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCall:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceScatter:

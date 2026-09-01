@@ -40,7 +40,8 @@ namespace xla {
 //
 // IMPORTANT: XLA also supports device-initiated collective operations, which
 // are collective operations for communication between device kernels. In
-// XLA:GPU device-initiated collective operations are implemented using NVSHMEM.
+// XLA:GPU device-initiated collective operations are implemented using NCCL
+// device API.
 class Collectives {
  public:
   virtual ~Collectives();

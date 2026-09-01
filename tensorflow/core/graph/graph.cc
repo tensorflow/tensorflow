@@ -210,15 +210,15 @@ absl::Status Node::ShrinkTypeInfo(
   }
   FullTypeDef ft = def().experimental_type();
   if (ft.type_id() != TFT_PRODUCT) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "In ShrinkTypeInfo, full type information does not start with "
         "TFT_PRODUCT\n",
-        ft.DebugString());
+        ft.DebugString()));
   }
   if (ft.args_size() != dtypes.size()) {
-    return errors::Internal("In ShrinkTypeInfo, ft.args_size() ",
-                            ft.args_size(), " != dtypes.size() ",
-                            dtypes.size());
+    return absl::InternalError(
+        absl::StrCat("In ShrinkTypeInfo, ft.args_size() ", ft.args_size(),
+                     " != dtypes.size() ", dtypes.size()));
   }
   FullTypeDef new_ft;
   new_ft.set_type_id(TFT_PRODUCT);
@@ -318,9 +318,9 @@ void Node::set_original_func_names(const std::vector<std::string>& names) {
 
 absl::Status Node::input_edge(int idx, const Edge** e) const {
   if (idx < 0 || idx >= num_inputs()) {
-    return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",
-                                   name(), " only has ", num_inputs(),
-                                   " inputs.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid input_edge index: ", idx, ", Node ", name(),
+                     " only has ", num_inputs(), " inputs."));
   }
 
   // This does a linear search over the edges.  In the common case,
@@ -339,7 +339,8 @@ absl::Status Node::input_edge(int idx, const Edge** e) const {
     }
   }
 
-  return errors::NotFound("Could not find input edge ", idx, " for ", name());
+  return absl::NotFoundError(
+      absl::StrCat("Could not find input edge ", idx, " for ", name()));
 }
 
 // Returns a vector of the non-control input edges to a node, indexed by ID.
@@ -350,18 +351,20 @@ absl::Status Node::input_edges(std::vector<const Edge*>* input_edges) const {
   for (const Edge* edge : in_edges()) {
     if (edge->IsControlEdge()) continue;
     if (edge->dst_input() < 0 || edge->dst_input() >= num_inputs()) {
-      return errors::Internal("Invalid edge input number ", edge->dst_input());
+      return absl::InternalError(
+          absl::StrCat("Invalid edge input number ", edge->dst_input()));
     }
     if ((*input_edges)[edge->dst_input()] != nullptr) {
-      return errors::Internal("Duplicate edge input number: ",
-                              edge->dst_input());
+      return absl::InternalError(
+          absl::StrCat("Duplicate edge input number: ", edge->dst_input()));
     }
     (*input_edges)[edge->dst_input()] = edge;
   }
 
   for (int i = 0; i < num_inputs(); ++i) {
     if ((*input_edges)[i] == nullptr) {
-      return errors::InvalidArgument("Missing edge input number: ", i);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing edge input number: ", i));
     }
   }
   return absl::OkStatus();
@@ -571,7 +574,8 @@ Node* Graph::AddNode(NodeDef node_def, absl::Status* status) {
           full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
                                     *(node_def.mutable_experimental_type()));
       if (!s.ok()) {
-        *status = errors::InvalidArgument("type error: ", s.ToString());
+        *status = absl::InvalidArgumentError(
+            absl::StrCat("type error: ", s.ToString()));
         VLOG(3) << "AddNode: type inference failed for " << node_def.name()
                 << ": " << s;
         return nullptr;
@@ -739,8 +743,8 @@ absl::Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
   const Edge* e = FindEdge(dst, dst_index);
   if (e == nullptr) {
-    return errors::InvalidArgument("Couldn't find edge to ",
-                                   FormatNodeForError(*dst));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't find edge to ", FormatNodeForError(*dst)));
   }
   RemoveEdge(e);
   AddEdge(new_src, new_src_index, dst, dst_index);
@@ -763,9 +767,9 @@ void Graph::AddInput(NodeDef* dst, absl::string_view src_name, int src_slot) {
 absl::Status Graph::AddWhileInputHack(Node* new_src, int new_src_index,
                                       Node* dst) {
   if (!dst->IsWhileNode()) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "dst argument to AddWhileEdgeHack should be a While op, got: ",
-        dst->DebugString());
+        dst->DebugString()));
   }
   TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
   // Find the current number of data inputs. We'll add the new edge to the next
@@ -917,20 +921,23 @@ std::string Graph::NewName(absl::string_view prefix) {
 
 absl::Status Graph::IsValidNode(const Node* node) const {
   if (node == nullptr) {
-    return errors::InvalidArgument("Node is null");
+    return absl::InvalidArgumentError("Node is null");
   }
   const int id = node->id();
   if (id < 0) {
-    return errors::InvalidArgument("node id ", id, " is less than zero");
+    return absl::InvalidArgumentError(
+        absl::StrCat("node id ", id, " is less than zero"));
   }
   if (static_cast<size_t>(id) >= nodes_.size()) {
-    return errors::InvalidArgument(
-        "node id ", id, " is >= than number of nodes in graph ", nodes_.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("node id ", id, " is >= than number of nodes in graph ",
+                     nodes_.size()));
   }
   if (nodes_[id] != node) {
-    return errors::InvalidArgument("Node with id ", id,
-                                   " is different from the passed in node. "
-                                   "Does it belong to a different graph?");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node with id ", id,
+                     " is different from the passed in node. "
+                     "Does it belong to a different graph?"));
   }
   return absl::OkStatus();
 }
@@ -938,10 +945,10 @@ absl::Status Graph::IsValidNode(const Node* node) const {
 absl::Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
   if (idx >= node->num_outputs() || idx < 0) {
-    return errors::OutOfRange("Node '", node->name(), "' (type: '",
-                              node->op_def().name(),
-                              "', num of outputs: ", node->num_outputs(),
-                              ") does not have ", "output ", idx);
+    return absl::OutOfRangeError(absl::StrCat(
+        "Node '", node->name(), "' (type: '", node->op_def().name(),
+        "', num of outputs: ", node->num_outputs(), ") does not have ",
+        "output ", idx));
   }
   return absl::OkStatus();
 }
@@ -949,10 +956,10 @@ absl::Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
 absl::Status Graph::IsValidInputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
   if (idx >= node->num_inputs() || idx < 0) {
-    return errors::OutOfRange("Node '", node->name(), "' (type: '",
-                              node->op_def().name(),
-                              "', num of inputs: ", node->num_inputs(),
-                              ") does not have ", "input ", idx);
+    return absl::OutOfRangeError(absl::StrCat(
+        "Node '", node->name(), "' (type: '", node->op_def().name(),
+        "', num of inputs: ", node->num_inputs(), ") does not have ", "input ",
+        idx));
   }
   return absl::OkStatus();
 }
@@ -1019,8 +1026,8 @@ absl::Status Graph::AddWhileContext(absl::string_view frame_name,
                    std::move(body_outputs))));
   if (!pair.second) {
     *result = nullptr;
-    return errors::InvalidArgument("WhileContext with frame name '", frame_name,
-                                   "' already exists");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "WhileContext with frame name '", frame_name, "' already exists"));
   }
   *result = &pair.first->second;
   return absl::OkStatus();

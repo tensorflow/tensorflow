@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -92,7 +93,7 @@ class TestBufferIntervalComparator : public BufferIntervalComparator {
   MsaBufferIntervalCompare compare_method_;
 };
 
-class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
+class MemorySpaceAssignmentTestBase : public HloTestBase {
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
@@ -192,7 +193,8 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
+    auto alias_analysis_or = HloAliasAnalysis::Run(module, &alias_info_);
+    CHECK_OK(alias_analysis_or.status());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -212,8 +214,9 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
             CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
             /*enable_cache=*/false));
 
-    auto status_or_cost_analysis = CostAnalysis::Create(
-        op_cost_manager, cost_analysis_options, &alias_info_, *module);
+    auto status_or_cost_analysis =
+        CostAnalysis::Create(op_cost_manager, cost_analysis_options,
+                             &alias_info_, *module, alias_analysis_or->get());
     CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 
@@ -301,6 +304,12 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     if (options_override) {
       options = *std::move(options_override);
     }
+    for (const auto& override : options.msa_tensor_overrides.overrides()) {
+      if (override.has_pin_in_alternate_memory()) {
+        check_parameters_in_default_memory = false;
+        break;
+      }
+    }
     std::unique_ptr<TestBufferIntervalComparator> test_comparator;
     if (buffer_interval_compare.has_value()) {
       test_comparator = std::make_unique<TestBufferIntervalComparator>(
@@ -313,13 +322,13 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    TF_ASSIGN_OR_RETURN(auto alias_analysis,
-                        HloAliasAnalysis::Run(module, &alias_info_));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                        HloLiveRange::Run(module->schedule(), *alias_analysis,
-                                          module->entry_computation()));
+    ABSL_ASSIGN_OR_RETURN(auto alias_analysis,
+                     HloAliasAnalysis::Run(module, &alias_info_));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                     HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                       module->entry_computation()));
 
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PresetAssignments> preset_assignments,
         MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
                                    &alias_info_, options));
@@ -378,15 +387,15 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
 
   // Returns a std::vector of HloPositions for the given instruction names and
   // shape_index.
-  std::vector<HloPosition> GetHloPositions(
+  absl::flat_hash_set<HloPosition> GetHloPositions(
       const HloModule* module, std::vector<std::string> instruction_names,
       ShapeIndex shape_index = {}) {
-    std::vector<HloPosition> block_prefetched_positions;
+    absl::flat_hash_set<HloPosition> block_prefetched_positions;
     for (const auto& instruction_name : instruction_names) {
       HloInstruction* param = FindInstruction(module, instruction_name);
       EXPECT_NE(param, nullptr);
       HloPosition param_position{param, shape_index};
-      block_prefetched_positions.push_back(param_position);
+      block_prefetched_positions.insert(param_position);
     }
     return block_prefetched_positions;
   }
@@ -473,8 +482,19 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
       int64_t memory_space) {
     for (const std::string& name : instruction_names) {
       HloInstruction* instruction = FindInstruction(module, name);
-      EXPECT_NE(instruction, nullptr);
-      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space);
+      EXPECT_NE(instruction, nullptr) << "Instruction not found: " << name;
+      if (!instruction) {
+        continue;
+      }
+      EXPECT_TRUE(instruction->shape().has_layout())
+          << "Instruction " << name << " has no layout.";
+      if (!instruction->shape().has_layout()) {
+        continue;
+      }
+      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space)
+          << "Instruction " << name << " has memory space "
+          << instruction->shape().layout().memory_space() << " instead of "
+          << memory_space;
     }
   }
 

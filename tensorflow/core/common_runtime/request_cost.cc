@@ -34,16 +34,26 @@ void RequestCost::RecordCost(
   }
 }
 
-void RequestCost::ScaleCosts(int scale_factor) {
-  absl::MutexLock lock(mutex_);
-  for (auto& [cost_type, cost] : cost_map_) {
-    cost *= scale_factor;
-  }
-}
-
 absl::flat_hash_map<std::string, absl::Duration> RequestCost::GetCosts() const {
   absl::MutexLock lock(mutex_);
   return cost_map_;
+}
+
+void RequestCost::RecordStructuredCosts(
+    const std::vector<std::pair<absl::string_view, StructuredCost>>& costs) {
+  absl::MutexLock lock(mutex_);
+  for (const auto& [name, cost] : costs) {
+    auto& entry = structured_cost_map_[name];
+    for (const auto& [dim, value] : cost) {
+      entry[dim] += value;
+    }
+  }
+}
+
+absl::flat_hash_map<std::string, RequestCost::StructuredCost>
+RequestCost::GetStructuredCosts() const {
+  absl::MutexLock lock(mutex_);
+  return structured_cost_map_;
 }
 
 void RequestCost::RecordMetrics(

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -228,13 +229,13 @@ absl::Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
     std::vector<int>& perm =
         col_params->instance.impl_details.subdiv_permutations[sdi];
     DCHECK_EQ(perm.size(), 0);
-    int offset = col_params->instance.impl_details.subdiv_offsets[sdi];
+    int64_t offset = col_params->instance.impl_details.subdiv_offsets[sdi];
     // A negative subdivision offset is interpreted as follows:
     //  1. Reverse the local device ordering.
     //  2. Begin the subdivision at abs(offset) in the reversed ordering.
     bool reverse = false;
     if (offset < 0) {
-      offset = abs(offset);
+      offset = std::abs(offset);
       reverse = true;
     }
     int prior_dev_count = 0;  // sum over prior worker device counts

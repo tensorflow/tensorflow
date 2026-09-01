@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -345,8 +346,8 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   HloRaggedAllToAllInstruction* all_to_all =
       Cast<HloRaggedAllToAllInstruction>(hlo);
 
-  TF_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
-                      GetReplicaGroupCountAndSize(all_to_all));
+  ABSL_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+                   GetReplicaGroupCountAndSize(all_to_all));
   if (!replica_group_count_and_size.has_value()) {
     return false;
   }
@@ -394,9 +395,8 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
       DenseToRagged(computation, dense_output, output_operand, output_offsets,
                     recv_sizes, num_updates_per_replica, max_update_size);
 
-  TF_RETURN_IF_ERROR(all_to_all->ReplaceAllUsesWith(ragged_output));
-  TF_RETURN_IF_ERROR(
-      computation->RemoveInstructionAndUnusedOperands(all_to_all));
+  ABSL_RETURN_IF_ERROR(all_to_all->ReplaceAllUsesWith(ragged_output));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(all_to_all));
 
   return true;
 }
@@ -418,8 +418,8 @@ absl::StatusOr<bool> RaggedAllToAllDecomposer::RunImpl(
             "`ragged-all-to-all-canonicalizer` pass executed?");
       }
 
-      TF_ASSIGN_OR_RETURN(bool result,
-                          DecomposeRaggedAllToAll(hlo, computation, module));
+      ABSL_ASSIGN_OR_RETURN(bool result,
+                       DecomposeRaggedAllToAll(hlo, computation, module));
       changed |= result;
     }
   }

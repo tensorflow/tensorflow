@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -72,7 +73,9 @@ limitations under the License.
 
 typedef std::function<void()> AsyncOpKernelDoneCallback;
 void TF_RunAsyncOpKernelDoneCallback(TF_AsyncOpKernelDoneCallback* done) {
-  (*reinterpret_cast<AsyncOpKernelDoneCallback*>(done))();
+  auto* callback = reinterpret_cast<AsyncOpKernelDoneCallback*>(done);
+  (*callback)();
+  delete callback;
 }
 
 struct TF_KernelBuilder {
@@ -253,9 +256,11 @@ class CAsyncOpKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx,
                     AsyncOpKernelDoneCallback done) override {
+    // The call site needs to manually delete the done callback.
+    auto* done_ptr = new AsyncOpKernelDoneCallback(std::move(done));
     (*compute_async_func_)(
         c_kernel_, reinterpret_cast<TF_OpKernelContext*>(ctx),
-        reinterpret_cast<TF_AsyncOpKernelDoneCallback*>(&done));
+        reinterpret_cast<TF_AsyncOpKernelDoneCallback*>(done_ptr));
   }
 
   CAsyncOpKernel* AsAsync() override { return this; }
@@ -877,7 +882,7 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
 
   absl::Span<const int> input_indices_array(candidate_input_indices,
                                             num_candidate_input_indices);
-  tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
+  absl::Span<const int64_t> output_dimarray(
       reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;
   absl::Status s = cc_ctx->forward_input_or_allocate_output(

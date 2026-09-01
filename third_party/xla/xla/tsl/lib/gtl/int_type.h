@@ -348,24 +348,23 @@ INT_TYPE_ARITHMETIC_OP(%);
 //   IntType<IntTypeName, ValueType> OP IntType<IntTypeName, ValueType>
 //   IntType<IntTypeName, ValueType> OP ValueType
 //   ValueType OP IntType<IntTypeName, ValueType>
-#define INT_TYPE_COMPARISON_OP(op)                               \
-  template <typename IntTypeName, typename ValueType>            \
-  static inline constexpr bool operator op(                      \
-      IntType<IntTypeName, ValueType> id_1,                      \
-      IntType<IntTypeName, ValueType> id_2) {                    \
-    return id_1.value() op id_2.value();                         \
-  }                                                              \
-  template <typename IntTypeName, typename ValueType>            \
-  static inline constexpr bool operator op(                      \
-      IntType<IntTypeName, ValueType> id,                        \
-      typename IntType<IntTypeName, ValueType>::ValueType val) { \
-    return id.value() op val;                                    \
-  }                                                              \
-  template <typename IntTypeName, typename ValueType>            \
-  static inline constexpr bool operator op(                      \
-      typename IntType<IntTypeName, ValueType>::ValueType val,   \
-      IntType<IntTypeName, ValueType> id) {                      \
-    return val op id.value();                                    \
+#define INT_TYPE_COMPARISON_OP(op)                                          \
+  template <typename IntTypeName, typename ValueType>                       \
+  inline constexpr bool operator op(IntType<IntTypeName, ValueType> id_1,   \
+                                    IntType<IntTypeName, ValueType> id_2) { \
+    return id_1.value() op id_2.value();                                    \
+  }                                                                         \
+  template <typename IntTypeName, typename ValueType>                       \
+  inline constexpr bool operator op(                                        \
+      IntType<IntTypeName, ValueType> id,                                   \
+      typename IntType<IntTypeName, ValueType>::ValueType val) {            \
+    return id.value() op val;                                               \
+  }                                                                         \
+  template <typename IntTypeName, typename ValueType>                       \
+  inline constexpr bool operator op(                                        \
+      typename IntType<IntTypeName, ValueType>::ValueType val,              \
+      IntType<IntTypeName, ValueType> id) {                                 \
+    return val op id.value();                                               \
   }
 INT_TYPE_COMPARISON_OP(==);  // NOLINT
 INT_TYPE_COMPARISON_OP(!=);  // NOLINT

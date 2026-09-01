@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/regularization/util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -44,6 +45,17 @@ absl::StatusOr<SavedModel> ReadSavedModel(absl::string_view file_dir) {
   SavedModel saved_model_pb;
   saved_model_pb.ParseFromString(serialized_saved_model);
   return saved_model_pb;
+}
+
+TEST(SimpleDeleteTest, MissingFAttributeDoesNotCrash) {
+  GraphDef graph_def;
+  NodeDef* node = graph_def.add_node();
+  node->set_op("PartitionedCall");
+  node->set_name("my_node");
+  // Do not add the "f" attribute.
+
+  // This should not crash.
+  SimpleDelete(graph_def);
 }
 
 // Test that SimpleDelete algorithm returns the same hash for two models saved

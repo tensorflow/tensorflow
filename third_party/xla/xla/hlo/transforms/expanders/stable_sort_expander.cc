@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
@@ -152,7 +153,7 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
   // If there is currently no iota operand which we could use for making the
   // sort stable, we will have to add a new such operand.
   if (iota_index == -1) {
-    TF_ASSIGN_OR_RETURN(auto result, AddIotaAndExpand(sort));
+    ABSL_ASSIGN_OR_RETURN(auto result, AddIotaAndExpand(sort));
     comparator = result.comparator;
     new_root = result.new_root;
     iota_index = sort->operand_count();

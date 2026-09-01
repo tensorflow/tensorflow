@@ -18,15 +18,18 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "xla/tests/llvm_irgen_test_base.h"
 
 namespace stream_executor::sycl {
 namespace {
@@ -36,7 +39,7 @@ const int kDefaultDeviceOrdinal = 0;
 using ::absl_testing::IsOk;
 using ::testing::Gt;
 
-class SyclTimerTest : public xla::LlvmIrGenTestBase {
+class SyclTimerTest : public xla::gpu::HloPjRtGpuTestBase {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
     using AddKernel =
@@ -57,10 +60,12 @@ class SyclTimerTest : public xla::LlvmIrGenTestBase {
         xla::ParseAndReturnUnverifiedModule(hlo_ir, config));
 
     TF_ASSERT_OK_AND_ASSIGN(
+        hlo_module, compiler()->RunHloPasses(std::move(hlo_module), executor,
+                                             /*device_allocator=*/nullptr));
+    TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<xla::Executable> exec,
-        CompileToExecutable(std::move(hlo_module),
-                            /*run_optimization_passes=*/true));
-
+        compiler()->RunBackend(std::move(hlo_module), executor,
+                               /*device_allocator=*/nullptr));
     auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
     ASSERT_NE(gpu_exec, nullptr);
 
@@ -69,28 +74,24 @@ class SyclTimerTest : public xla::LlvmIrGenTestBase {
 
     const xla::gpu::Thunk* thunk = thunk_exec.thunks().at(0).get();
     ASSERT_NE(thunk, nullptr);
-    EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kKernel);
+    EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kCustomKernel);
 
     const auto* kernel_thunk =
-        dynamic_cast<const xla::gpu::KernelThunk*>(thunk);
+        dynamic_cast<const xla::gpu::CustomKernelThunk*>(thunk);
     ASSERT_NE(kernel_thunk, nullptr);
 
-    std::string kernel_name = kernel_thunk->kernel_name();
+    const KernelLoaderSpec& kernel_spec =
+        kernel_thunk->custom_kernel().kernel_spec();
 
-    std::vector<uint8_t> spirv_binary(gpu_exec->binary());
-
-    KernelLoaderSpec spec = KernelLoaderSpec::CreateCudaCubinInMemorySpec(
-        spirv_binary, kernel_name, 3);
-
-    TF_ASSERT_OK_AND_ASSIGN(auto add, AddKernel::Create(executor, spec));
+    TF_ASSERT_OK_AND_ASSIGN(auto add, AddKernel::Create(executor, kernel_spec));
 
     constexpr int64_t kLength = 4;
     constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
 
     // Prepare arguments: a=3, b=2, c=0
-    DeviceAddress<int32_t> a = executor_->AllocateArray<int32_t>(kLength, 0);
-    DeviceAddress<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
-    DeviceAddress<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
+    DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(kLength, 0);
+    DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(kLength, 0);
+    DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(kLength, 0);
 
     EXPECT_THAT(stream->Memset32(&a, 3, kByteLength), absl_testing::IsOk());
     EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), absl_testing::IsOk());

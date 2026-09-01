@@ -34,6 +34,7 @@ extern "C" {
 
 typedef struct PLUGIN_Profiler PLUGIN_Profiler;
 typedef struct PLUGIN_Profiler_Error PLUGIN_Profiler_Error;
+typedef struct PLUGIN_Profiler_ConsumeResult PLUGIN_Profiler_ConsumeResult;
 
 struct PLUGIN_Profiler_Error_Destroy_Args {
   size_t struct_size;
@@ -128,6 +129,38 @@ PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_CollectData_Args,
 typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
     PLUGIN_Profiler_CollectData_Args* args);
 
+struct PLUGIN_Profiler_Consume_Args {
+  size_t struct_size;
+  PLUGIN_Profiler* profiler;
+  PLUGIN_Profiler_ConsumeResult* result;  // out
+};
+PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Consume_Args, result);
+
+typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_Consume(
+    PLUGIN_Profiler_Consume_Args* args);
+
+struct PLUGIN_Profiler_ConsumeResult_Destroy_Args {
+  size_t struct_size;
+  PLUGIN_Profiler_ConsumeResult* consume_result;
+};
+PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_ConsumeResult_Destroy_Args,
+                              consume_result);
+
+typedef void PLUGIN_Profiler_ConsumeResult_Destroy(
+    PLUGIN_Profiler_ConsumeResult_Destroy_Args* args);
+
+struct PLUGIN_Profiler_Serialize_Args {
+  size_t struct_size;
+  PLUGIN_Profiler* profiler;
+  PLUGIN_Profiler_ConsumeResult* consume_result;
+  const uint8_t* serialized_bytes;  // out
+  size_t serialized_size;           // out
+};
+PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Serialize_Args, serialized_size);
+
+typedef PLUGIN_Profiler_Error* PLUGIN_Profiler_Serialize(
+    PLUGIN_Profiler_Serialize_Args* args);
+
 typedef struct PLUGIN_Profiler_Api {
   size_t struct_size;
   void* priv;
@@ -139,8 +172,11 @@ typedef struct PLUGIN_Profiler_Api {
   PLUGIN_Profiler_Start* start;
   PLUGIN_Profiler_Stop* stop;
   PLUGIN_Profiler_CollectData* collect_data;
+  PLUGIN_Profiler_Consume* consume;
+  PLUGIN_Profiler_ConsumeResult_Destroy* consume_result_destroy;
+  PLUGIN_Profiler_Serialize* serialize;
 } PLUGIN_Profiler_Api;
-PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Api, collect_data);
+PROFILER_DEFINE_STRUCT_TRAITS(PLUGIN_Profiler_Api, serialize);
 
 #ifdef __cplusplus
 }

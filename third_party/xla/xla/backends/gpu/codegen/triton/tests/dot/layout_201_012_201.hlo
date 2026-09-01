@@ -1,5 +1,7 @@
-// RUN: sed 's/ENABLE_TMA/false/' %s > %t.hlo && triton_test_correctness %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
-// RUN: sed 's/ENABLE_TMA/true/' %s > %t.hlo && triton_test_correctness %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: sed 's/ENABLE_TMA/false/' %s > %t.hlo && triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: sed 's/ENABLE_TMA/false/' %s > %t.hlo && triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: sed 's/ENABLE_TMA/true/' %s > %t.hlo && triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: sed 's/ENABLE_TMA/true/' %s > %t.hlo && triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
 
 fusion {
   fdot.p0 = f32[32,16,256]{2,0,1} parameter(0)

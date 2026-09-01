@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -22,7 +23,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 

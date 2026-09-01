@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -158,7 +159,6 @@ static std::string ToString(rocblas_status status) {
     XVAL(rocblas_status_invalid_size);
     XVAL(rocblas_status_memory_error);
     XVAL(rocblas_status_internal_error);
-#if TF_ROCM_VERSION >= 60000
     XVAL(rocblas_status_perf_degraded);
     XVAL(rocblas_status_size_query_mismatch);
     XVAL(rocblas_status_size_increased);
@@ -168,7 +168,6 @@ static std::string ToString(rocblas_status status) {
     XVAL(rocblas_status_check_numerics_fail);
     XVAL(rocblas_status_excluded_from_build);
     XVAL(rocblas_status_arch_mismatch);
-#endif
     default:
       return absl::StrCat("<invalid rocBLAS status: ", status, ">");
   }
@@ -183,12 +182,10 @@ bool ROCMBlas::Init() {
     return false;
   }
 
-#if TF_HIPBLASLT
   if (!blas_lt_.Init().ok()) {
     LOG(ERROR) << "Failed to initialize hipblasLt";
     return false;
   }
-#endif
 
   int dev = 0;
   hipError_t result = hipGetDevice(&dev);
@@ -203,15 +200,8 @@ bool ROCMBlas::Init() {
   return true;
 }
 
-ROCMBlas::ROCMBlas(StreamExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)),
-      blas_(nullptr)
-#if TF_HIPBLASLT
-      ,
-      blas_lt_(parent)
-#endif
-{
-}
+ROCMBlas::ROCMBlas(StreamExecutor* parent)
+    : parent_(CHECK_NOTNULL(parent)), blas_(nullptr), blas_lt_(parent) {}
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
@@ -402,7 +392,7 @@ absl::Status PopulateProfileFromTimer(
     EventBasedTimer *timer, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
   if (output_profile_result) {
-    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    ABSL_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
     output_profile_result->set_is_valid(true);
     output_profile_result->set_algorithm(algorithm);
     output_profile_result->set_elapsed_time_in_ms(
@@ -513,16 +503,6 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float, float)
      *floats.)
      *
      **/
-    using GemmCallTrace = StreamExecutor::GemmCallTrace;
-
-// Log the GEMM operation if the logging mode is enabled.
-void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
-                              blas::CallContext context, uint64_t size1,
-                              uint64_t size2) {
-  auto status =
-      parent_->RecordApiTrace(GemmCallTrace{op, (int)context, size1, size2});
-}
-
 absl::Status ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                                   blas::Transpose transb, uint64_t m,
                                   uint64_t n, uint64_t k, blas::DataType dtype,
@@ -531,9 +511,6 @@ absl::Status ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                                   const void* beta, DeviceAddressBase* c,
                                   int ldc, const EngineOptions& engine_options,
                                   blas::CallContext context) {
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
-                 m * k * DtypeSize(dtype), n * k * DtypeSize(dtype));
-
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS GEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "
@@ -626,24 +603,22 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
   }
   std::unique_ptr<EventBasedTimer> timer;
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
-                                   profile_result->warmup_run_executed()));
+    ABSL_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                profile_result->warmup_run_executed()));
   }
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
-    TF_RETURN_IF_ERROR(DoBlasGemm(stream, transa, transb, m, n, k, type_a,
-                                  alpha, a, lda, b, ldb, beta, c, ldc,
-                                  engine_options, context));
+    ABSL_RETURN_IF_ERROR(DoBlasGemm(stream, transa, transb, m, n, k, type_a, alpha,
+                               a, lda, b, ldb, beta, c, ldc, engine_options,
+                               context));
 
   } else {
-    MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
-                   m * k * DtypeSize(type_a), n * k * DtypeSize(type_a));
     CheckPreconditions(transa, transb, m, n, k, type_a, lda, ldb);
-    TF_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
-    TF_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
-    TF_ASSIGN_OR_RETURN(auto roc_comp_type,
-                        AsRocBlasComputeType(computation_type));
+    ABSL_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
+    ABSL_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
+    ABSL_ASSIGN_OR_RETURN(auto roc_comp_type,
+                     AsRocBlasComputeType(computation_type));
 
     VLOG(1) << absl::StreamFormat(
         "doing rocBLAS GEMM with Algorithm: at=%d bt=%d m=%u n=%u "
@@ -654,7 +629,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         static_cast<int>(roc_type_a), static_cast<int>(roc_type_c),
         static_cast<int>(roc_comp_type));
 
-    TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+    ABSL_RETURN_IF_ERROR(DoBlasInternalImpl(
         wrap::rocblas_gemm_ex, stream,
         /* pointer_mode_host = */ true,
         /* err_on_failure = */ false, ROCMBlasTranspose(transa),
@@ -664,7 +639,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         roc_type_c, ldc, roc_comp_type, rocblas_gemm_algo_solution_index,
         algorithm, GemmFloat16Flags(type_a, context, use_hgemm_alt_impl_)));
   }
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PopulateProfileFromTimer(timer.get(), algorithm, profile_result));
 
   return absl::OkStatus();
@@ -688,19 +663,17 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
   }
   std::unique_ptr<EventBasedTimer> timer;
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
-                                   profile_result->warmup_run_executed()));
+    ABSL_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                profile_result->warmup_run_executed()));
   }
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
-    TF_RETURN_IF_ERROR(DoBlasGemmStridedBatched(
+    ABSL_RETURN_IF_ERROR(DoBlasGemmStridedBatched(
         stream, transa, transb, m, n, k, type_a, alpha, a, lda, stride_a, b,
         ldb, stride_b, beta, c, ldc, stride_c, batch_count, engine_options,
         context));
   } else {
-    MaybeLogGemmOp(GemmCallTrace::GemmType::kStridedBatched, context, a.size(),
-                   b.size());
     VLOG(1) << absl::StreamFormat(
         "doing rocBLAS GEMM strided batched with Algorithm: at=%d bt=%d m=%u "
         "n=%u "
@@ -712,12 +685,12 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_c), stride_a, stride_b,
         stride_c, batch_count);
 
-    TF_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
-    TF_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
-    TF_ASSIGN_OR_RETURN(auto roc_comp_type,
-                        AsRocBlasComputeType(computation_type));
+    ABSL_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
+    ABSL_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
+    ABSL_ASSIGN_OR_RETURN(auto roc_comp_type,
+                     AsRocBlasComputeType(computation_type));
 
-    TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+    ABSL_RETURN_IF_ERROR(DoBlasInternalImpl(
         wrap::rocblas_gemm_strided_batched_ex, stream,
         /* pointer_mode_host = */ true,
         /* err_on_failure = */ false, ROCMBlasTranspose(transa),
@@ -728,7 +701,7 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         roc_comp_type, rocblas_gemm_algo_solution_index, algorithm,
         GemmFloat16Flags(type_a, context, use_hgemm_alt_impl_)));
   }
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PopulateProfileFromTimer(timer.get(), algorithm, profile_result));
 
   return absl::OkStatus();
@@ -923,7 +896,7 @@ absl::Status ReorganizeMemory(Stream* stream,
     } else {
       DeviceAddressBase src_mem = DeviceAddressBase(x.src_ptr, x.size);
       DeviceAddressBase target_mem = DeviceAddressBase(x.dst_ptr, x.size);
-      TF_RETURN_IF_ERROR(stream->Memcpy(&target_mem, src_mem, x.size));
+      ABSL_RETURN_IF_ERROR(stream->Memcpy(&target_mem, src_mem, x.size));
     }
     i++;
   }
@@ -970,13 +943,13 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   if (scratch_allocator == nullptr) {
     return absl::InternalError("scratch_allocator is null");
   }
-  TF_ASSIGN_OR_RETURN(DeviceAddress<uint8_t> batch_matrix_bytes,
-                      scratch_allocator->AllocateBytes(matrix_batch_byte_size));
+  ABSL_ASSIGN_OR_RETURN(DeviceAddress<uint8_t> batch_matrix_bytes,
+                   scratch_allocator->AllocateBytes(matrix_batch_byte_size));
   res.device_mem = DeviceAddress<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
   if (copy_data) {
-    TF_RETURN_IF_ERROR(ReorganizeMemory(stream, &res.device_mem, raw_ptrs,
-                                        batch_count, batch_stride, true));
+    ABSL_RETURN_IF_ERROR(ReorganizeMemory(stream, &res.device_mem, raw_ptrs,
+                                     batch_count, batch_stride, true));
   }
   return res;
 }
@@ -1032,15 +1005,15 @@ absl::Status ROCMBlas::DoBlasGemmBatchedInternal(
   }
 
   // Make sure the temporary memory are in-scope before the function returns
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto a, AllocateStridedBuffer<T>(a_raw_ptrs, batch_count, batch_stride_a,
                                        scratch_allocator, stream, true));
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto b, AllocateStridedBuffer<T>(b_raw_ptrs, batch_count, batch_stride_b,
                                        scratch_allocator, stream, true));
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto c, AllocateStridedBuffer<T>(c_raw_ptrs, batch_count, batch_stride_c,
                                        scratch_allocator, stream,
                                        true));  // can disable copy if beta=0
@@ -1130,8 +1103,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     DeviceAddressSlice<Eigen::half> c, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a.size(),
-                 b.size());
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
   absl::Status status;
@@ -1166,8 +1137,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     DeviceAddressSlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(),
-                 b_array.size());
   const Eigen::bfloat16 alpha_bf16(alpha);
   const Eigen::bfloat16 beta_bf16(beta);
 
@@ -1189,8 +1158,6 @@ bool ROCMBlas::DoBlasGemmBatched(
       int ldb, T beta, DeviceAddressSlice<T> c_array, int ldc,                 \
       int batch_count, const EngineOptions& engine_options,                    \
       ScratchAllocator* scratch_allocator, blas::CallContext context) {        \
-    MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(), \
-                   b_array.size());                                            \
     absl::Status status = DoBlasGemmBatchedInternal(                           \
         Fun, stream, transa, transb, m, n, k, alpha, a_array, lda, b_array,    \
         ldb, beta, c_array, ldc, batch_count, scratch_allocator);              \
@@ -1258,8 +1225,6 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
       a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc, stride_a,
       stride_b, stride_c, batch_count);
-  MaybeLogGemmOp(GemmCallTrace::GemmType::kStridedBatched, context, a.size(),
-                 b.size());
 
   absl::Status status;
   auto call_gemm = [&](auto func, auto type) {

@@ -15,18 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_
 #define TENSORFLOW_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_
 
-#include <iostream>
 #include <string>
-#include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 
 // For consistency with the parameters defined in extended LstmCell's kernel
 // (tensorflow/lite/kernels/lstm.cc),
-// use lowercase for these constants.
+// use kCamelCase for these constants.
 
 enum ExtendedLstmCellInputs {
   kInputTensor = 0,
@@ -60,50 +58,44 @@ enum ExtendedLstmCellOutputs {
   kExtendedLstmOutputCount = 3
 };
 
-// Create optional array used for optional tensor in ExtendedLstmCell inputs.
+// Creates an optional array in the model and populates the input array buffer
+// with its name.
 void CreateOptionalArray(Model* model, std::string* input_array_buffer,
-                         const std::string& array_name);
+                         absl::string_view array_name);
 
-// Create float array and get its buffer.
+// Creates a new float array with the specified shape in the model's array map
+// and returns a non-owning pointer to its mutable buffer.
 Buffer<ArrayDataType::kFloat>* CreateFloatArrayBuffer(Model* model,
                                                       std::string* array_name,
                                                       const Shape& shape);
 
-// Copy data from one array to the other one (supports 1D and 2D array),
-// for 1D array, the 2nd dim's size is 1.
-// Arguments:
-//   src_buffer: the source buffer
-//   src_stride: the stride of source buffer, i.e., 2nd dim's size
-//   src_start_idx1: the 1st dim index of start point in src matrix
-//   src_start_idx2: the 2nd dim index of start point in src matrix
-//   dst_buffer: the destination buffer
-//   dst_stride: the stride of destination buffer, i.e., 2nd dim's size
-//   dst_start_idx1: the 1st dim index of start point in dst matrix
-//   dst_start_idx2: the 2nd dim index of start point in dst matrix
-//   dim1_copy_size: 1st dim size of copy data
-//   dim2_copy_size: 2nd dim size of copy data
+// Copies a 2D submatrix (or 1D vector, where the second dimension size is 1)
+// from a source buffer to a destination buffer. The source and destination
+// strides specify the total width (second dimension size) of the respective
+// buffers, and the start indices define the top-left offset of the copy region.
 void CopyArrayData(const Buffer<ArrayDataType::kFloat>& src_buffer,
                    int src_stride, int src_start_idx1, int src_start_idx2,
                    Buffer<ArrayDataType::kFloat>* dst_buffer, int dst_stride,
                    int dst_start_idx1, int dst_start_idx2, int dim1_copy_size,
                    int dim2_copy_size);
 
-// Copy a subset of array data and create a smaller array,
-// mostly used for spliting weights and bias for Lstm cell.
+// Creates a smaller array in the model and populates it with a submatrix
+// region copied from the original array.
 void CopySubArrayToArray(Model* model, std::string* array_name,
-                         const std::string& tensor_name, int dim1_size,
+                         absl::string_view tensor_name, int dim1_size,
                          int dim2_size, const Array& original_array,
                          int start_idx1, int start_idx2);
 
-// Copy array data to a large array's submatrix,
-// mostly used for merging weights and bias for Lstm cell.
+// Copies data from a subarray into a submatrix region of a larger tensor
+// buffer.
 void CopyArrayToSubArray(Buffer<ArrayDataType::kFloat>& tensor_buffer,
                          int tensor_stride, const Array& sub_array,
                          int start_idx1, int start_idx2);
 
-// Get mating rnn array inputs using rnn_states flag.
-bool GetMatchingRnnArray(Model* model,
-                         const std::string& back_edge_source_array,
+// Searches the model's rnn_states flags for an entry matching the back-edge
+// source array. Returns true and populates rnn_array with the state array name
+// if a match is found; otherwise returns false.
+bool GetMatchingRnnArray(Model* model, absl::string_view back_edge_source_array,
                          std::string* rnn_array);
 
 }  // namespace toco

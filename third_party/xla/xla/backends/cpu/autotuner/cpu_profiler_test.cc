@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/profiler.h"
@@ -39,9 +40,9 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileHloModule(
   CpuCompiler compiler;
 
   Compiler::CompileOptions compile_options;
-  TF_ASSIGN_OR_RETURN(hlo_module, compiler.RunHloPasses(std::move(hlo_module),
-                                                        /*stream_exec=*/nullptr,
-                                                        compile_options));
+  ABSL_ASSIGN_OR_RETURN(hlo_module, compiler.RunHloPasses(std::move(hlo_module),
+                                                     /*stream_exec=*/nullptr,
+                                                     compile_options));
   // Run backend.
   return compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
                              compile_options);

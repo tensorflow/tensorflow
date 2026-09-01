@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using SortTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using SortTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(SortTest, SortDim0) {
   absl::string_view hlo_text_module = R"(
@@ -63,6 +63,25 @@ TEST_F(SortTest, SortDim1) {
     ENTRY e {
       x = f32[32,64] parameter(0)
       ROOT sort = f32[32,64] sort(x), dimensions={1}, to_apply=compare
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
+}
+
+TEST_F(SortTest, SortDescendingS32) {
+  absl::string_view hlo_text_module = R"(
+    HloModule sort
+
+    compare {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT gt = pred[] compare(p0, p1), direction=GT
+    }
+
+    ENTRY e {
+      x = s32[32,64] parameter(0)
+      ROOT sort = s32[32,64] sort(x), dimensions={1}, to_apply=compare
     }
   )";
 

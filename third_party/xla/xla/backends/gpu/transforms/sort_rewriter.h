@@ -37,8 +37,12 @@ namespace gpu {
 
 class SortRewriter : public HloModulePass {
  public:
-  explicit SortRewriter(const se::DeviceDescription& device_description)
-      : device_description_(device_description) {}
+  explicit SortRewriter(const se::DeviceDescription& device_description,
+                        bool is_deviceless = false,
+                        bool is_early_exit_with_layouts = false)
+      : device_description_(device_description),
+        is_deviceless_(is_deviceless),
+        is_early_exit_with_layouts_(is_early_exit_with_layouts) {}
   absl::string_view name() const override { return "sort-rewriter"; }
 
   enum class Mode {
@@ -64,10 +68,15 @@ class SortRewriter : public HloModulePass {
 
  private:
   absl::StatusOr<bool> RunOnInstruction(HloSortInstruction* sort_op);
-  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
+  absl::StatusOr<bool> RunOnComputation(
+      HloComputation* computation,
+      DebugOptions::DevicelessCubMode deviceless_cub_mode);
 
   static inline Mode sort_mode_ = Mode::kAuto;
   se::DeviceDescription device_description_;
+  // True if there's no device available.
+  bool is_deviceless_;
+  bool is_early_exit_with_layouts_;
 };
 
 }  // namespace gpu

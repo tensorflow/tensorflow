@@ -54,6 +54,38 @@ void CheckPeakOpsPerNs(const DeviceDescription& device_info,
       << "Failed for dtype: " << xla::PrimitiveType_Name(dtype);
 }
 
+TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsA100) {
+  DeviceDescription a100_device_info =
+      xla::gpu::TestGpuDeviceInfo::A100SXMDeviceInfo();
+  FillExecutionUnitDesc(a100_device_info.cuda_compute_capability(),
+                        a100_device_info.clock_rate_ghz(), a100_device_info);
+
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::S8, 624.0);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F16, 312.0);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::BF16, 312.0);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F32, 156.0);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F64, 19.5);
+  // Ampere CUDA cores have 78 TFLOPS peak FP16 (4x FP32) but only 39 TFLOPS
+  // peak BF16 (2x FP32). Since the lookup table maps all 16-bit floats to a
+  // single entry, both F16 and BF16 use the BF16 rate (39.0 TFLOPS) as a
+  // conservative cost-model estimate.
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F16, 39.0);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::BF16, 39.0);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F32, 19.5);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::S32, 19.5);
+  CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F64, 9.7);
+}
+
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
   DeviceDescription h100_device_info =
       xla::gpu::TestGpuDeviceInfo::H100SXMDeviceInfo();
@@ -114,6 +146,16 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
                     xla::PrimitiveType::S32, 37.0);
   CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/false,
                     xla::PrimitiveType::F64, 37.0);
+}
+
+TEST(CudaCoreInfoTableTest, B300UsesBlackwellTable) {
+  DeviceDescription b300_device_info;
+  FillExecutionUnitDesc(CudaComputeCapability{10, 3}, 1.965, b300_device_info);
+
+  const ExecutionUnitDescription* matrix_unit_desc =
+      b300_device_info.matrix_unit_description();
+  ASSERT_NE(matrix_unit_desc, nullptr);
+  EXPECT_EQ(matrix_unit_desc->GetRateInfo(xla::BF16).value().units_per_core, 4);
 }
 
 TEST(CudaCoreInfoTableTest, GetFpusPerCore) {

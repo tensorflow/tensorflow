@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/tokenize.h"
 
+#include <cctype>
 #include <istream>
+#include <iterator>
 #include <string>
 
 #include "tensorflow/lite/string_type.h"

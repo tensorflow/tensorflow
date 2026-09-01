@@ -118,15 +118,25 @@ Literal GetRandomLiteral(const Shape& shape) {
   std::minstd_rand0 engine;
   PrimitiveType dtype = shape.element_type();
   switch (dtype) {
+    case F64:
+      return *LiteralUtil::CreateRandomLiteral<F64>(shape, &engine, mean,
+                                                    stddev);
     case F32:
       return *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, mean,
                                                     stddev);
     case BF16:
       return *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, mean,
                                                      stddev);
+    case F16:
+      return *LiteralUtil::CreateRandomLiteral<F16>(shape, &engine, mean,
+                                                    stddev);
     default:
       LOG(FATAL) << "Add dtype to the if-else block before use: " << dtype;
   }
+}
+
+PrimitiveType GetComputeDType(PrimitiveType dtype) {
+  return dtype == BF16 || dtype == F16 ? F32 : dtype;
 }
 
 void BM_RmsNorm(benchmark::State& state, const NormShape& shape) {
@@ -135,14 +145,19 @@ void BM_RmsNorm(benchmark::State& state, const NormShape& shape) {
       absl::StrJoin(shape.reduction_dims, ",");
   const std::string dtype_str =
       primitive_util::LowercasePrimitiveTypeName(shape.GetDType());
-  const std::string reduction_shape_str = shape.GetReductionShape().ToString();
 
-  Shape input_shape_f32 = ShapeUtil::ChangeElementType(shape.input_shape, F32);
-  const std::string input_shape_f32_str = input_shape_f32.ToString();
+  PrimitiveType compute_dtype = GetComputeDType(shape.GetDType());
+  const std::string compute_dtype_str =
+      primitive_util::LowercasePrimitiveTypeName(compute_dtype);
 
-  Shape reduction_shape_f32 =
-      ShapeUtil::ChangeElementType(shape.GetReductionShape(), F32);
-  const std::string reduction_shape_f32_str = reduction_shape_f32.ToString();
+  Shape compute_input_shape =
+      ShapeUtil::ChangeElementType(shape.input_shape, compute_dtype);
+  const std::string compute_input_shape_str = compute_input_shape.ToString();
+
+  Shape compute_reduction_shape =
+      ShapeUtil::ChangeElementType(shape.GetReductionShape(), compute_dtype);
+  const std::string compute_reduction_shape_str =
+      compute_reduction_shape.ToString();
 
   int64_t reduction_size = 1;
   for (int64_t d : shape.reduction_dims) {
@@ -153,35 +168,35 @@ void BM_RmsNorm(benchmark::State& state, const NormShape& shape) {
 
   absl::string_view hlo = R"(
   reducer_add {
-    lhs = f32[] parameter(0)
-    rhs = f32[] parameter(1)
-    ROOT sum = f32[] add(lhs, rhs)
+    lhs = $compute_dtype[] parameter(0)
+    rhs = $compute_dtype[] parameter(1)
+    ROOT sum = $compute_dtype[] add(lhs, rhs)
   }
 
   ENTRY main {
     input = $input_shape parameter(0)
 
-    input_f32 = $input_shape_f32 convert(input)
-    input_squared = $input_shape_f32 multiply(input_f32, input_f32)
-    zero_f32 = f32[] constant(0)
-    sum_input_squared = $reduction_shape_f32 reduce(input_squared, zero_f32),
+    input_compute = $compute_input_shape convert(input)
+    input_squared = $compute_input_shape multiply(input_compute, input_compute)
+    zero = $compute_dtype[] constant(0)
+    sum_input_squared = $compute_reduction_shape reduce(input_squared, zero),
         dimensions={$reduction_dims}, to_apply=reducer_add
 
-    dim_size_f32 = f32[] constant($reduction_size)
-    dim_size_br = $reduction_shape_f32 broadcast(dim_size_f32), dimensions={}
+    dim_size = $compute_dtype[] constant($reduction_size)
+    dim_size_br = $compute_reduction_shape broadcast(dim_size), dimensions={}
     mean_input_squared =
-        $reduction_shape_f32 divide(sum_input_squared, dim_size_br)
+        $compute_reduction_shape divide(sum_input_squared, dim_size_br)
 
-    epsilon_f32 = f32[] constant(1e-6)
-    epsilon_br = $reduction_shape_f32 broadcast(epsilon_f32), dimensions={}
+    epsilon = $compute_dtype[] constant(1e-6)
+    epsilon_br = $compute_reduction_shape broadcast(epsilon), dimensions={}
     mean_input_squared_eps =
-        $reduction_shape_f32 add(mean_input_squared, epsilon_br)
-    rms_f32 = $reduction_shape_f32 sqrt(mean_input_squared_eps)
+        $compute_reduction_shape add(mean_input_squared, epsilon_br)
+    rms = $compute_reduction_shape sqrt(mean_input_squared_eps)
 
-    rms_br_f32 = $input_shape_f32 broadcast(rms_f32), dimensions={$kept_dims}
+    rms_br = $compute_input_shape broadcast(rms), dimensions={$kept_dims}
 
-    output_f32 = $input_shape_f32 divide(input_f32, rms_br_f32)
-    ROOT output = $input_shape convert(output_f32)
+    output_compute = $compute_input_shape divide(input_compute, rms_br)
+    ROOT output = $input_shape convert(output_compute)
   }
   )";
 
@@ -193,15 +208,17 @@ void BM_RmsNorm(benchmark::State& state, const NormShape& shape) {
 
   Literal input = GetRandomLiteral(shape.input_shape);
 
-  CHECK_OK(RunHloBenchmark(state, hlo, {&input},
-                           {{"$input_shape", input_shape_str},
-                            {"$input_shape_f32", input_shape_f32_str},
-                            {"$reduction_shape_f32", reduction_shape_f32_str},
-                            {"$reduction_dims", reduction_dims_str},
-                            {"$reduction_size", absl::StrCat(reduction_size)},
-                            {"$kept_dims", kept_dims_str},
-                            {"$dtype", dtype_str}},
-                           benchmark_options));
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {&input},
+      {{"$input_shape", input_shape_str},
+       {"$compute_input_shape", compute_input_shape_str},
+       {"$compute_reduction_shape", compute_reduction_shape_str},
+       {"$reduction_dims", reduction_dims_str},
+       {"$reduction_size", absl::StrCat(reduction_size)},
+       {"$kept_dims", kept_dims_str},
+       {"$compute_dtype", compute_dtype_str},
+       {"$dtype", dtype_str}},
+      benchmark_options));
 }
 
 void BM_Softmax(benchmark::State& state, const NormShape& shape) {
@@ -211,12 +228,18 @@ void BM_Softmax(benchmark::State& state, const NormShape& shape) {
   const std::string dtype_str =
       primitive_util::LowercasePrimitiveTypeName(shape.GetDType());
 
-  Shape input_shape_f32 = ShapeUtil::ChangeElementType(shape.input_shape, F32);
-  const std::string input_shape_f32_str = input_shape_f32.ToString();
+  PrimitiveType compute_dtype = GetComputeDType(shape.GetDType());
+  const std::string compute_dtype_str =
+      primitive_util::LowercasePrimitiveTypeName(compute_dtype);
 
-  Shape reduction_shape_f32 =
-      ShapeUtil::ChangeElementType(shape.GetReductionShape(), F32);
-  const std::string reduction_shape_f32_str = reduction_shape_f32.ToString();
+  Shape compute_input_shape =
+      ShapeUtil::ChangeElementType(shape.input_shape, compute_dtype);
+  const std::string compute_input_shape_str = compute_input_shape.ToString();
+
+  Shape compute_reduction_shape =
+      ShapeUtil::ChangeElementType(shape.GetReductionShape(), compute_dtype);
+  const std::string compute_reduction_shape_str =
+      compute_reduction_shape.ToString();
 
   const std::string kept_dims_str = absl::StrJoin(shape.GetKeptDims(), ",");
 
@@ -224,36 +247,37 @@ void BM_Softmax(benchmark::State& state, const NormShape& shape) {
   HloModule softmax
 
   reducer_max {
-    lhs = f32[] parameter(0)
-    rhs = f32[] parameter(1)
-    ROOT max = f32[] maximum(lhs, rhs)
+    lhs = $compute_dtype[] parameter(0)
+    rhs = $compute_dtype[] parameter(1)
+    ROOT max = $compute_dtype[] maximum(lhs, rhs)
   }
 
   reducer_add {
-    lhs = f32[] parameter(0)
-    rhs = f32[] parameter(1)
-    ROOT sum = f32[] add(lhs, rhs)
+    lhs = $compute_dtype[] parameter(0)
+    rhs = $compute_dtype[] parameter(1)
+    ROOT sum = $compute_dtype[] add(lhs, rhs)
   }
 
   ENTRY main {
     input = $input_shape parameter(0)
-    input_f32 = $input_shape_f32 convert(input)
+    input_compute = $compute_input_shape convert(input)
 
-    neg_inf = f32[] constant(-inf)
-    max_val = $reduction_shape_f32 reduce(input_f32, neg_inf),
+    neg_inf = $compute_dtype[] constant(-inf)
+    max_val = $compute_reduction_shape reduce(input_compute, neg_inf),
         dimensions={$reduction_dims}, to_apply=reducer_max
-    max_br = $input_shape_f32 broadcast(max_val), dimensions={$kept_dims}
+    max_br = $compute_input_shape broadcast(max_val), dimensions={$kept_dims}
 
-    input_centered = $input_shape_f32 subtract(input_f32, max_br)
-    input_exp = $input_shape_f32 exponential(input_centered)
+    input_centered = $compute_input_shape subtract(input_compute, max_br)
+    input_exp = $compute_input_shape exponential(input_centered)
 
-    zero = f32[] constant(0)
-    sum_exp = $reduction_shape_f32 reduce(input_exp, zero),
+    zero = $compute_dtype[] constant(0)
+    sum_exp = $compute_reduction_shape reduce(input_exp, zero),
         dimensions={$reduction_dims}, to_apply=reducer_add
-    sum_exp_br = $input_shape_f32 broadcast(sum_exp), dimensions={$kept_dims}
+    sum_exp_br = $compute_input_shape broadcast(sum_exp),
+        dimensions={$kept_dims}
 
-    output_f32 = $input_shape_f32 divide(input_exp, sum_exp_br)
-    ROOT output = $input_shape convert(output_f32)
+    output_compute = $compute_input_shape divide(input_exp, sum_exp_br)
+    ROOT output = $input_shape convert(output_compute)
   }
   )";
 
@@ -265,14 +289,16 @@ void BM_Softmax(benchmark::State& state, const NormShape& shape) {
 
   Literal input = GetRandomLiteral(shape.input_shape);
 
-  CHECK_OK(RunHloBenchmark(state, hlo, {&input},
-                           {{"$input_shape", input_shape_str},
-                            {"$input_shape_f32", input_shape_f32_str},
-                            {"$reduction_shape_f32", reduction_shape_f32_str},
-                            {"$reduction_dims", reduction_dims_str},
-                            {"$kept_dims", kept_dims_str},
-                            {"$dtype", dtype_str}},
-                           benchmark_options));
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {&input},
+      {{"$input_shape", input_shape_str},
+       {"$compute_input_shape", compute_input_shape_str},
+       {"$compute_reduction_shape", compute_reduction_shape_str},
+       {"$reduction_dims", reduction_dims_str},
+       {"$kept_dims", kept_dims_str},
+       {"$compute_dtype", compute_dtype_str},
+       {"$dtype", dtype_str}},
+      benchmark_options));
 }
 
 void BM_ZScore(benchmark::State& state, const NormShape& shape) {
@@ -281,14 +307,19 @@ void BM_ZScore(benchmark::State& state, const NormShape& shape) {
       absl::StrJoin(shape.reduction_dims, ",");
   const std::string dtype_str =
       primitive_util::LowercasePrimitiveTypeName(shape.GetDType());
-  const std::string reduction_shape_str = shape.GetReductionShape().ToString();
 
-  Shape input_shape_f32 = ShapeUtil::ChangeElementType(shape.input_shape, F32);
-  const std::string input_shape_f32_str = input_shape_f32.ToString();
+  PrimitiveType compute_dtype = GetComputeDType(shape.GetDType());
+  const std::string compute_dtype_str =
+      primitive_util::LowercasePrimitiveTypeName(compute_dtype);
 
-  Shape reduction_shape_f32 =
-      ShapeUtil::ChangeElementType(shape.GetReductionShape(), F32);
-  const std::string reduction_shape_f32_str = reduction_shape_f32.ToString();
+  Shape compute_input_shape =
+      ShapeUtil::ChangeElementType(shape.input_shape, compute_dtype);
+  const std::string compute_input_shape_str = compute_input_shape.ToString();
+
+  Shape compute_reduction_shape =
+      ShapeUtil::ChangeElementType(shape.GetReductionShape(), compute_dtype);
+  const std::string compute_reduction_shape_str =
+      compute_reduction_shape.ToString();
 
   int64_t reduction_size = 1;
   for (int64_t d : shape.reduction_dims) {
@@ -299,44 +330,45 @@ void BM_ZScore(benchmark::State& state, const NormShape& shape) {
 
   absl::string_view hlo = R"(
   reducer_add {
-    lhs = f32[] parameter(0)
-    rhs = f32[] parameter(1)
-    ROOT sum = f32[] add(lhs, rhs)
+    lhs = $compute_dtype[] parameter(0)
+    rhs = $compute_dtype[] parameter(1)
+    ROOT sum = $compute_dtype[] add(lhs, rhs)
   }
 
   ENTRY main {
     input = $input_shape parameter(0)
-    input_f32 = $input_shape_f32 convert(input)
+    input_compute = $compute_input_shape convert(input)
 
-    zero_f32 = f32[] constant(0)
-    sum_input = $reduction_shape_f32 reduce(input_f32, zero_f32),
+    zero = $compute_dtype[] constant(0)
+    sum_input = $compute_reduction_shape reduce(input_compute, zero),
         dimensions={$reduction_dims}, to_apply=reducer_add
 
-    dim_size_f32 = f32[] constant($reduction_size)
-    dim_size_br = $reduction_shape_f32 broadcast(dim_size_f32), dimensions={}
-    mean = $reduction_shape_f32 divide(sum_input, dim_size_br)
+    dim_size = $compute_dtype[] constant($reduction_size)
+    dim_size_br = $compute_reduction_shape broadcast(dim_size), dimensions={}
+    mean = $compute_reduction_shape divide(sum_input, dim_size_br)
 
-    mean_br = $input_shape_f32 broadcast(mean), dimensions={$kept_dims}
-    input_centered = $input_shape_f32 subtract(input_f32, mean_br)
+    mean_br = $compute_input_shape broadcast(mean), dimensions={$kept_dims}
+    input_centered = $compute_input_shape subtract(input_compute, mean_br)
 
     input_centered_squared =
-        $input_shape_f32 multiply(input_centered, input_centered)
+        $compute_input_shape multiply(input_centered, input_centered)
     sum_input_centered_squared =
-        $reduction_shape_f32 reduce(input_centered_squared, zero_f32),
+        $compute_reduction_shape reduce(input_centered_squared, zero),
         dimensions={$reduction_dims}, to_apply=reducer_add
 
     variance =
-        $reduction_shape_f32 divide(sum_input_centered_squared, dim_size_br)
+        $compute_reduction_shape divide(sum_input_centered_squared, dim_size_br)
 
-    epsilon_f32 = f32[] constant(1e-6)
-    epsilon_br = $reduction_shape_f32 broadcast(epsilon_f32), dimensions={}
-    variance_eps = $reduction_shape_f32 add(variance, epsilon_br)
-    std_dev = $reduction_shape_f32 sqrt(variance_eps)
+    epsilon = $compute_dtype[] constant(1e-6)
+    epsilon_br = $compute_reduction_shape broadcast(epsilon), dimensions={}
+    variance_eps = $compute_reduction_shape add(variance, epsilon_br)
+    std_dev = $compute_reduction_shape sqrt(variance_eps)
 
-    std_dev_br = $input_shape_f32 broadcast(std_dev), dimensions={$kept_dims}
+    std_dev_br = $compute_input_shape broadcast(std_dev),
+        dimensions={$kept_dims}
 
-    output_f32 = $input_shape_f32 divide(input_centered, std_dev_br)
-    ROOT output = $input_shape convert(output_f32)
+    output_compute = $compute_input_shape divide(input_centered, std_dev_br)
+    ROOT output = $input_shape convert(output_compute)
   }
   )";
 
@@ -348,15 +380,17 @@ void BM_ZScore(benchmark::State& state, const NormShape& shape) {
 
   Literal input = GetRandomLiteral(shape.input_shape);
 
-  CHECK_OK(RunHloBenchmark(state, hlo, {&input},
-                           {{"$input_shape", input_shape_str},
-                            {"$input_shape_f32", input_shape_f32_str},
-                            {"$reduction_shape_f32", reduction_shape_f32_str},
-                            {"$reduction_dims", reduction_dims_str},
-                            {"$reduction_size", absl::StrCat(reduction_size)},
-                            {"$kept_dims", kept_dims_str},
-                            {"$dtype", dtype_str}},
-                           benchmark_options));
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {&input},
+      {{"$input_shape", input_shape_str},
+       {"$compute_input_shape", compute_input_shape_str},
+       {"$compute_reduction_shape", compute_reduction_shape_str},
+       {"$reduction_dims", reduction_dims_str},
+       {"$reduction_size", absl::StrCat(reduction_size)},
+       {"$kept_dims", kept_dims_str},
+       {"$compute_dtype", compute_dtype_str},
+       {"$dtype", dtype_str}},
+      benchmark_options));
 }
 
 void RegisterBenchmarks() {

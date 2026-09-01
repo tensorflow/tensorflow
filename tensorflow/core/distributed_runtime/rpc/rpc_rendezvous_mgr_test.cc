@@ -82,11 +82,11 @@ class DummyWorkerCache : public WorkerCacheInterface {
   }
   absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
-    return errors::Unimplemented("Unimplemented.");
+    return absl::UnimplementedError("Unimplemented.");
   }
   absl::Status GetCoordinationClientCache(
       std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
-    return errors::Unimplemented("Unimplemented.");
+    return absl::UnimplementedError("Unimplemented.");
   }
   bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
@@ -172,7 +172,7 @@ TEST_F(RpcRendezvousMgrTest, LocalAbort) {
     tsl::core::RefCountPtr<RemoteRendezvous> rendez = rmgr_.Find(step_id);
     SchedClosure([this, rendez = rendez.GetNewRef()]() {
       env.env->SleepForMicroseconds(100 * 1000);
-      rendez->StartAbort(errors::Aborted(""));
+      rendez->StartAbort(absl::AbortedError(""));
     });
     Tensor val(DT_STRING);
     bool val_dead = false;

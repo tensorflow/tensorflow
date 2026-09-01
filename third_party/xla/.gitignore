@@ -33,3 +33,6 @@ tools/python_bin_path.sh
 .cache
 compile_commands.json
 external
+
+# Ignore python cache files.
+__pycache__/

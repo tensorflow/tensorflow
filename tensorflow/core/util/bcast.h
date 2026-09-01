@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -137,7 +138,9 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
 
   // Safely multiplies dimensions taking into account symbolic shapes.
   auto mul_dims = [](int64_t dim1, int64_t dim2) -> int64_t {
-    return dim1 != 0 && dim2 != 0 && (dim1 < 0 || dim2 < 0) ? -1 : dim1 * dim2;
+    if (dim1 == 0 || dim2 == 0) return 0;
+    int64_t res = MultiplyWithoutOverflow(dim1, dim2);
+    return res < 0 ? -1 : res;
   };
 
   bool all_equal = true;

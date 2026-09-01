@@ -42,7 +42,7 @@ ExpectedCalls CreateRetriableErrors(const std::string& method, int n) {
   expected_calls.reserve(n);
   for (int i = 0; i < n; i++) {
     expected_calls.emplace_back(std::make_tuple(
-        method, errors::Unavailable(absl::StrCat("Retriable error #", i))));
+        method, absl::UnavailableError(absl::StrCat("Retriable error #", i))));
   }
   return expected_calls;
 }
@@ -234,8 +234,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
 TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Read", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Read", errors::Unavailable("Wrong again")),
+      {std::make_tuple("Read", absl::UnavailableError("Something is wrong")),
+       std::make_tuple("Read", absl::UnavailableError("Wrong again")),
        std::make_tuple("Read", absl::OkStatus())});
   std::unique_ptr<RandomAccessFile> base_file(
       new MockRandomAccessFile(expected_file_calls));
@@ -292,7 +292,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls({
       std::make_tuple("Read",
-                      errors::FailedPrecondition("Failed precondition")),
+                      absl::FailedPreconditionError("Failed precondition")),
   });
   std::unique_ptr<RandomAccessFile> base_file(
       new MockRandomAccessFile(expected_file_calls));
@@ -351,8 +351,9 @@ TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
 TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
+      {std::make_tuple("Sync", absl::UnavailableError("Something is wrong")),
+       std::make_tuple("Sync",
+                       absl::UnavailableError("Something is wrong again")),
        std::make_tuple("Sync", absl::OkStatus()),
        std::make_tuple("Close", absl::OkStatus())});
   std::unique_ptr<WritableFile> base_file(
@@ -378,9 +379,9 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
 TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry_ViaDestructor) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Close", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("Close", absl::UnavailableError("Something is wrong")),
        std::make_tuple("Close",
-                       errors::Unavailable("Something is wrong again")),
+                       absl::UnavailableError("Something is wrong again")),
        std::make_tuple("Close", absl::OkStatus())});
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
@@ -404,8 +405,9 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry_ViaDestructor) {
 TEST(RetryingFileSystemTest, NewAppendableFile_SuccessWith3rdTry) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
-      {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
+      {std::make_tuple("Sync", absl::UnavailableError("Something is wrong")),
+       std::make_tuple("Sync",
+                       absl::UnavailableError("Something is wrong again")),
        std::make_tuple("Sync", absl::OkStatus()),
        std::make_tuple("Close", absl::OkStatus())});
   std::unique_ptr<WritableFile> base_file(
@@ -458,7 +460,7 @@ TEST(RetryingFileSystemTest,
      NewReadOnlyMemoryRegionFromFile_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("NewReadOnlyMemoryRegionFromFile",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("NewReadOnlyMemoryRegionFromFile", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -487,7 +489,7 @@ TEST(RetryingFileSystemTest, NewReadOnlyMemoryRegionFromFile_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, GetChildren_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("GetChildren",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("GetChildren", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -514,7 +516,7 @@ TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("GetMatchingPaths",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("GetMatchingPaths", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -541,7 +543,8 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
 
 TEST(RetryingFileSystemTest, DeleteFile_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("DeleteFile", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("DeleteFile",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("DeleteFile", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -565,7 +568,8 @@ TEST(RetryingFileSystemTest, DeleteFile_AllRetriesFailed) {
 
 TEST(RetryingFileSystemTest, CreateDir_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("CreateDir", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("CreateDir",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("CreateDir", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -589,7 +593,8 @@ TEST(RetryingFileSystemTest, CreateDir_AllRetriesFailed) {
 
 TEST(RetryingFileSystemTest, DeleteDir_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("DeleteDir", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("DeleteDir",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("DeleteDir", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -614,7 +619,7 @@ TEST(RetryingFileSystemTest, DeleteDir_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, GetFileSize_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("GetFileSize",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("GetFileSize", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -640,7 +645,8 @@ TEST(RetryingFileSystemTest, GetFileSize_AllRetriesFailed) {
 
 TEST(RetryingFileSystemTest, RenameFile_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("RenameFile", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("RenameFile",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("RenameFile", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -664,7 +670,7 @@ TEST(RetryingFileSystemTest, RenameFile_AllRetriesFailed) {
 
 TEST(RetryingFileSystemTest, Stat_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("Stat", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("Stat", absl::UnavailableError("Something is wrong")),
        std::make_tuple("Stat", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -702,7 +708,8 @@ TEST(RetryingFileSystemTest, FileExists_AllRetriesFailed) {
 
 TEST(RetryingFileSystemTest, FileExists_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("FileExists", errors::Unavailable("Something is wrong")),
+      {std::make_tuple("FileExists",
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("FileExists", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -715,7 +722,7 @@ TEST(RetryingFileSystemTest, FileExists_SuccessWith2ndTry) {
 TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("IsDirectory",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("IsDirectory", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
@@ -740,7 +747,7 @@ TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
 TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("DeleteRecursively",
-                       errors::Unavailable("Something is wrong")),
+                       absl::UnavailableError("Something is wrong")),
        std::make_tuple("DeleteRecursively", absl::OkStatus())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));

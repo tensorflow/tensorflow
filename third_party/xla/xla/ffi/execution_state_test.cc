@@ -80,7 +80,7 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
   int32_t* value = new int32_t(42);
 
   // Once set, state can be retrieved.
-  TF_ASSERT_OK(state.Set(type_id, value));
+  TF_ASSERT_OK(state.Set(type_id, type_info, value));
   EXPECT_TRUE(state.IsSet());
 
   TF_ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
@@ -112,7 +112,7 @@ TEST(ExecutionStateTest, Serialization) {
       TypeRegistry::AssignTypeId("my_state_type", type_info));
 
   ExecutionState state;
-  TF_ASSERT_OK(state.Set(type_id, new MyState{"some_state_data"}));
+  TF_ASSERT_OK(state.Set(type_id, type_info, new MyState{"some_state_data"}));
 
   TF_ASSERT_OK_AND_ASSIGN(ExecutionStateProto proto, state.ToProto());
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -116,6 +117,18 @@ TEST(UnsortedSegmentProdModelTest, FloatTest_Simple2D) {
               ElementsAreArray(
                   ArrayFloatNear({4.0, 6.0, 6.0, 4.0, 5.0, 6.0, 7.0, 8.0})));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4}));
+}
+
+TEST(UnsortedSegmentProdModelTest, Int32OverflowWrapsWithoutUb) {
+  UnsortedSegmentProdModel<int32_t> model({TensorType_INT32, {2}},
+                                          {TensorType_INT32, {2}},
+                                          {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(),
+                                {std::numeric_limits<int32_t>::max(), 2});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 0});
+  model.PopulateTensor<int32_t>(model.num_segments(), {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({-2}));
 }
 
 }  // namespace

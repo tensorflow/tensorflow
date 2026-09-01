@@ -49,8 +49,7 @@ class ReplicaOrPartitionIdThunk : public Command {
  protected:
   ReplicaOrPartitionIdThunk(Kind kind, ThunkInfo thunk_info,
                             const BufferAllocation::Slice& dest)
-      : Command(CommandType::kComputationIdCmd, kind, std::move(thunk_info)),
-        dest_(dest) {}
+      : Command(kind, std::move(thunk_info)), dest_(dest) {}
 
   BufferUses buffer_uses() const override {
     return {BufferUse::Write(dest_, ShapeUtil::MakeShape(S32, {}))};

@@ -75,19 +75,19 @@ absl::StatusOr<std::shared_ptr<GpuCliqueRendezvous>> GpuCliqueRendezvous::Join(
         "GpuClique rendezvous is not supported for non-local cliques");
   }
 
-  VLOG(3) << absl::StrFormat("rank=[%d] Join gpu clique rendezvous: %s",
-                             rank.value(), clique_key.ToString());
+  VLOG(3) << absl::StrFormat("rank=[%v] Join gpu clique rendezvous: %v", rank,
+                             clique_key);
 
   std::string rendezvous_name =
-      absl::StrFormat("GpuCliqueRendezvous for %s", clique_key.ToString());
+      absl::StrFormat("GpuCliqueRendezvous for %v", clique_key);
   GpuCliqueRendezvousKey rendezvous_key = {clique_key};
   RankData rendezvous_value = {rank, std::move(data)};
 
   // A callback for rendezvous to construct the GpuCliqueRendezvous.
   auto callback = [&](absl::Span<RankData*> values) {
-    VLOG(3) << absl::StrFormat("[ranks=%s] Complete gpu clique rendezvous: %s",
+    VLOG(3) << absl::StrFormat("[ranks=%s] Complete gpu clique rendezvous: %v",
                                absl::StrJoin(values, ",", RankFormatter{}),
-                               clique_key.ToString());
+                               clique_key);
 
     absl::btree_map<RankId, tsl::UniqueAny> data;
     for (auto* value : values) {

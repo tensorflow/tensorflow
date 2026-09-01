@@ -1,7 +1,7 @@
 path: "tensorflow.train.CheckpointSaverListener"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.CheckpointSaverListener\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }

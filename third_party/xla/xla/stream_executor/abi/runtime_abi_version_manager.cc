@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/abi/runtime_abi_version.h"
+#include "xla/stream_executor/abi/runtime_abi_version.pb.h"
 
 namespace stream_executor {
 

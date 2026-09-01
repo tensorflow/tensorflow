@@ -67,7 +67,7 @@ TEST(TestTFGRegionOps, TestIfLikeRegionOpSuccessorRegions) {
   for (unsigned index = 0; index <= 1; ++index, regions.clear()) {
     op.getSuccessorRegions(op->getRegion(index), regions);
     ASSERT_EQ(regions.size(), 1u);
-    EXPECT_TRUE(regions.front().isParent());
+    EXPECT_TRUE(regions.front().isOperation());
   }
 
   // Test parent -> regions
@@ -108,7 +108,7 @@ TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
        ++index, regions.clear()) {
     op.getSuccessorRegions(op->getRegion(index), regions);
     ASSERT_EQ(regions.size(), 1u);
-    EXPECT_TRUE(regions.front().isParent());
+    EXPECT_TRUE(regions.front().isOperation());
   }
 
   // Test parent -> region
@@ -156,7 +156,7 @@ TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
   // Test cond -> parent or body
   op.getSuccessorRegions(op.getRegion(0), regions);
   ASSERT_EQ(regions.size(), 2u);
-  EXPECT_TRUE(regions.front().isParent() ^ regions.back().isParent());
+  EXPECT_TRUE(regions.front().isOperation() ^ regions.back().isOperation());
   regions.clear();
 
   // Test body -> cond
@@ -193,7 +193,7 @@ TEST(TestTFGRegionOps, TestForLikeRegionOpSuccessorRegions) {
   // Test body -> body or parent
   op.getSuccessorRegions(op.getRegion(), regions);
   ASSERT_EQ(regions.size(), 2u);
-  EXPECT_TRUE(regions.front().isParent() ^ regions.back().isParent());
+  EXPECT_TRUE(regions.front().isOperation() ^ regions.back().isOperation());
 }
 
 }  // namespace

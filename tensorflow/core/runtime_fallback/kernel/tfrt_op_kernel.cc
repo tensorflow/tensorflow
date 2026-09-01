@@ -217,6 +217,7 @@ namespace {
 DataType ParseInputOutputSpec(absl::string_view spec) {
   std::vector<absl::string_view> name_type =
       absl::StrSplit(spec, absl::MaxSplits(':', 2));
+  assert(name_type.size() > 1);
   DataType data_type;
   bool success =
       DataTypeFromString(absl::StripAsciiWhitespace(name_type[1]), &data_type);

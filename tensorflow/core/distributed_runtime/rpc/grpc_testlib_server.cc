@@ -59,7 +59,8 @@ absl::Status FillServerDef(const std::string& job_spec,
 
     int num_tasks;
     if (!absl::SimpleAtoi(job_pieces[2], &num_tasks)) {
-      return errors::InvalidArgument("Invalid job string: ", job_str);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid job string: ", job_str));
     }
 
     const absl::string_view spec = job_pieces[1];
@@ -93,13 +94,14 @@ absl::Status FillServerDef(const std::string& job_spec,
               << absl::StrJoin(host_ports, ", ") << "}";
   }
   if (my_tasks_per_replica == 0) {
-    return errors::InvalidArgument("Invalid job specification");
+    return absl::InvalidArgumentError("Invalid job specification");
   }
 
   std::vector<std::string> splits = absl::StrSplit(host_port, ':');
   int port = 0;
   if (!absl::SimpleAtoi(splits[1], &port)) {
-    return errors::InvalidArgument("Invalid host port: ", host_port);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid host port: ", host_port));
   }
   options->set_port(port);
 

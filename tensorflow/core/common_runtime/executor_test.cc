@@ -159,11 +159,10 @@ Rendezvous::ParsedKey Key(const std::string& sender, const uint64_t incarnation,
                           const std::string& receiver,
                           const std::string& name) {
   Rendezvous::ParsedKey result;
-  CHECK(
+  CHECK_OK(
       Rendezvous::ParseKey(Rendezvous::CreateKey(sender, incarnation, receiver,
                                                  name, FrameAndIter(0, 0)),
-                           &result)
-          .ok());
+                           &result));
   return result;
 }
 

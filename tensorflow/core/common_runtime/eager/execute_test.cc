@@ -173,7 +173,7 @@ TEST(ExecuteTest, SimpleFunctionInt32BadFullType) {
   EXPECT_TRUE(
       absl::StrContains(status.message(), "TFT_TENSOR has 0 args instead of 1"))
       << "Actual: " << status.message();
-  // Since an error occured before the function ran, retval[0] was never
+  // Since an error occurred before the function ran, retval[0] was never
   // assigned.
   ASSERT_EQ(retvals[0], nullptr);
   ctx->Unref();

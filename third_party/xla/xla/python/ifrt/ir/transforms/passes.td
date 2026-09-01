@@ -25,78 +25,6 @@ def IfrtIRCompileOptions :
            "std::make_shared<xla::ifrt::IfrtIRCompileOptions>()",
            "The IFRT IR compile options used for compilation.">;
 
-def SpmdExpandableInterfaceVerificationPass
-    : Pass<"spmd-expandable-interface-verification", "mlir::ModuleOp"> {
-  let summary = "Verify all ops have IFRT SpmdExpandableInterface implemented";
-
-  let description = [{
-This pass verifies all ops appearing in atom programs have implemented the
-IFRT SpmdExpandableInterface. This makes sure the interface methods have
-implementation before they are being called in later passes.
-
-This pass will fail if it encounters any op without the implementation.
-
-When the atom program is invoked on 1 device, the verification is skipped as
-no expansion is needed.
-  }];
-
-  let options = [
-    ListOption<"excluded_dialects_", "excluded-dialects", "std::string",
-       "Comma-separated list of MILR dialect namespaces that are excluded from checking">
-  ];
-}
-
-def SpmdExpansionPass : Pass<"spmd-expansion", "mlir::ModuleOp"> {
-  let summary = "Rewrite each op from global view to per-shard view";
-
-  let description = [{
-This pass rewrites all ops in the module from their global view to per-shard
-view so that the program can be executed with SPMD.
-
-Prerequisites for this pass are:
-1. The module has `ifrt.devices` attribute.
-2. The module has an entry function at the top level whose name is either
-"main" or otherwise annotated by a string attribute "ifrt.entry_function".
-3. The entry function's arguments have `ifrt.devices` and `ifrt.sharding`
-attributes.
-4. All ops in the entry function and other functions called by the entry
-function has `IfrtSpmdExpandable` interface implemented.
-
-For example, the following:
-
-```mlir
-#device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
-module attributes {ifrt.devices = #device} {
-  func.func @main(
-      %arg0: tensor<2x2xi32> {ifrt.sharding = #sharding,
-      ifrt.devices = #device})
-      -> (tensor<2x2xi32> {ifrt.sharding = #sharding,
-      ifrt.devices = #device}) {
-    return %arg0 : tensor<2x2xi32>
-  }
-}
-```
-
-will be transformed into:
-
-```mlir
-// The function's input and output shapes are now local.
-#device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
-module attributes {ifrt.devices = #device} {
-  func.func @main(
-      %arg0: tensor<1x2xi32> {ifrt.sharding = #sharding,
-      ifrt.devices = #device})
-      -> (tensor<1x2xi32> {ifrt.sharding = #sharding,
-      ifrt.devices = #device}) {
-    return %arg0 : tensor<1x2xi32>
-  }
-}
-```
-  }];
-}
-
 def IfrtAddCtrlDependenciesPass :
     Pass<"ifrt-add-ctrl-dependencies", "mlir::func::FuncOp"> {
   let summary = "Adds control dependencies to ifrt.CallOps.";
@@ -104,7 +32,6 @@ def IfrtAddCtrlDependenciesPass :
 Adds control dependencies to `ifrt.CallOp` based on program order.
   }];
 }
-
 
 def IfrtOutlineAtomProgramToModulePass :
     Pass<"ifrt-outline-atom-program-to-module", "mlir::ModuleOp"> {
@@ -154,6 +81,35 @@ symbol names. The callee attrs of `ifrt.CallOp`s will be merged to one of
 them. The duplicated callee `FuncOp` will not be removed.
   }];
 }
+
+def IfrtInsertCopyArraysForReturnedManyTimesPass :
+    Pass<"ifrt-insert-copy-arrays-for-returned-many-times", "mlir::func::FuncOp"> {
+  let summary = "Add CopyArrays for program arguments that are returned.";
+  let description = [{
+Insert CopyArrays ops for program arguments that are returned. These CopyArrays
+op always set reuse=false, and set donated=true only on the last return of a
+donated input argument. Thus, IFRT programs provide similar semantics as XLA.
+
+```mlir
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+func.func @main(%arg0: !array, %arg1: !array {ifrt.donated}) -> (!array, !array) {
+  return %arg0, %arg1: !array, !array
+}
+```
+
+will be replaced by:
+
+```mlir
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+func.func @main(%arg0: !array, %arg1: !array {ifrt.donated}) -> (!array, !array) {
+  %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array) -> !array
+  %1, %ctrl_1 = ifrt.CopyArrays(%arg1) {donated=true} : (!array) -> (!array)
+  return %0, %1: !array, !array
+}
+```
+  }];
+}
+
 
 def IfrtMergeCopiesAndReshardsPass :
     Pass<"ifrt-merge-copies-and-reshards", "mlir::func::FuncOp"> {

@@ -48,7 +48,7 @@ message DeviceInterconnectInfoProto {
   string clique_id = 3;
 }
 
-// Next ID: 43
+// Next ID: 47
 message GpuDeviceInfoProto {
   string device_vendor = 30;
   string platform_version = 31;
@@ -94,12 +94,10 @@ message GpuDeviceInfoProto {
   int64 device_address_bits = 40;
   int64 pcie_bandwidth = 41;
   bool ecc_enabled = 42;
-}
-
-message DnnVersionInfoProto {
-  int32 major = 1;
-  int32 minor = 2;
-  int32 patch = 3;
+  float mem_clock_ghz = 43;
+  int64 reserved_shared_memory_per_block = 44;
+  int64 max_blocks_per_multiprocessor = 45;
+  int64 collective_memory_granularity = 46;
 }
 
 message RuntimeVersionProto {
@@ -111,9 +109,10 @@ message RuntimeVersionProto {
 message GpuTargetConfigProto {
   GpuDeviceInfoProto gpu_device_info = 1;
   reserved 2, 3;
-  reserved "cuda_compute_capability", "rocm_compute_capability";
+  reserved "cuda_compute_capability", "rocm_compute_capability",
+      "dnn_version_info";
   string platform_name = 4;
-  DnnVersionInfoProto dnn_version_info = 5;
+  reserved 5;  // was dnn_version_info
   RuntimeVersionProto runtime_version = 8;
 
   // TODO(b/248362914): Autotuning results should be separate from

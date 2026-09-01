@@ -17,6 +17,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -57,18 +59,25 @@ void XlaNudge(xla::XlaBuilder* b, const DataType data_type,
               const float quant_min_value, const float quant_max_value,
               xla::XlaOp* nudged_min, xla::XlaOp* nudged_max,
               xla::XlaOp* scale) {
-  *scale = xla::Div(xla::Sub(max, min),
-                    XlaHelpers::FloatLiteral(
-                        b, data_type, quant_max_value - quant_min_value));
+  xla::XlaOp input_range = xla::Sub(max, min);
+  xla::XlaOp quant_range =
+      XlaHelpers::FloatLiteral(b, data_type, quant_max_value - quant_min_value);
+  *scale = xla::Div(input_range, quant_range);
   xla::XlaOp quant_min =
       XlaHelpers::FloatLiteral(b, data_type, quant_min_value);
-  xla::XlaOp zero_point_from_min = xla::Sub(quant_min, xla::Div(min, *scale));
+  // Calculate the inverse scale directly from the original ranges. Deriving
+  // it from `scale` compounds rounding error and can move an exact half-way
+  // zero point just below the tie on some XLA backends.
+  xla::XlaOp inv_scale = xla::Div(quant_range, input_range);
+  xla::XlaOp zero_point_from_min =
+      xla::Sub(quant_min, xla::Mul(min, inv_scale));
   xla::XlaOp quant_max =
       XlaHelpers::FloatLiteral(b, data_type, quant_max_value);
-  xla::XlaOp nudged_zero_point =
-      xla::Select(xla::Le(zero_point_from_min, quant_min), quant_min,
-                  xla::Select(xla::Ge(zero_point_from_min, quant_max),
-                              quant_max, xla::Round(zero_point_from_min)));
+  xla::XlaOp half = XlaHelpers::FloatLiteral(b, data_type, 0.5f);
+  xla::XlaOp nudged_zero_point = xla::Select(
+      xla::Le(zero_point_from_min, quant_min), quant_min,
+      xla::Select(xla::Ge(zero_point_from_min, quant_max), quant_max,
+                  xla::Floor(xla::Add(zero_point_from_min, half))));
   *nudged_min = xla::Mul(xla::Sub(quant_min, nudged_zero_point), *scale);
   *nudged_max = xla::Mul(xla::Sub(quant_max, nudged_zero_point), *scale);
 }

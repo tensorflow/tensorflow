@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_AVGPOOLING_OP_H_
 // Functor definition for AvgPoolingOp, must be compilable by nvcc.
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/platform/types.h"
@@ -62,14 +63,12 @@ typedef Eigen::GpuDevice GPUDevice;
 //   pad_l: padding size to the left side
 //   bottom_diff: backprop to the input of the pooling layer.
 template <typename T>
-bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
-                            const int height, const int width,
-                            const int channels, const int pooled_height,
-                            const int pooled_width, const int kernel_h,
-                            const int kernel_w, const int stride_h,
-                            const int stride_w, const int pad_t,
-                            const int pad_l, T* const bottom_diff,
-                            const GPUDevice& d);
+absl::Status RunAvePoolBackwardNHWC(const T* top_diff, int num, int height,
+                                    int width, int channels, int pooled_height,
+                                    int pooled_width, int kernel_h,
+                                    int kernel_w, int stride_h, int stride_w,
+                                    int pad_t, int pad_l, T* bottom_diff,
+                                    const GPUDevice& d);
 
 }  // namespace tensorflow
 

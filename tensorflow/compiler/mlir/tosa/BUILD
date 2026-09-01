@@ -287,8 +287,6 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@xla//xla/mlir/framework/ir:xla_framework",
-        "@xla//xla/mlir/framework/transforms:passes",
         "@xla//xla/mlir_hlo:all_passes",
     ],
 )

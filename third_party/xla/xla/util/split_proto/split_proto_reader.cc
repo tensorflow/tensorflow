@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
@@ -52,10 +53,13 @@ template <typename Src>
 absl::Status HandleProtoMergeRecord(riegeli::RecordReader<Src>& record_reader,
                                     google::protobuf::Message& proto) {
   absl::string_view record_data;
-  TF_RETURN_IF_ERROR(ReadRecord(record_reader, record_data));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(ReadRecord(record_reader, record_data),
+                                  "failed to read proto merge record data for ",
+                                  proto.GetTypeName());
 
   if (!proto.MergeFromString(record_data)) {
-    return absl::InternalError("Failed to parse proto merge record");
+    return absl::InternalError(absl::StrFormat(
+        "Failed to parse proto merge record for %s", proto.GetTypeName()));
   }
   return absl::OkStatus();
 }
@@ -106,10 +110,13 @@ absl::Status HandleFieldOverrideRecord(
     riegeli::RecordReader<Src>& record_reader, google::protobuf::Message& proto,
     const Record& record) {
   std::string record_data;
-  TF_RETURN_IF_ERROR(ReadRecord(record_reader, record_data));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      ReadRecord(record_reader, record_data),
+      "failed to read field override record data for ", proto.GetTypeName());
 
-  TF_RETURN_IF_ERROR(
-      ReadOverrideFieldRecord(proto, std::move(record_data), record));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      ReadOverrideFieldRecord(proto, std::move(record_data), record),
+      "failed to read override field record for ", proto.GetTypeName());
   return absl::OkStatus();
 }
 
@@ -139,12 +146,18 @@ absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
   for (const Record& record : manifest.records()) {
     switch (record.record_type_case()) {
       case Record::kProtoMergeRecord: {
-        TF_RETURN_IF_ERROR(HandleProtoMergeRecord<>(record_reader, proto));
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            HandleProtoMergeRecord<>(record_reader, proto),
+            "Failed to read proto merge record for ", proto.GetTypeName(),
+            " split proto");
         break;
       }
       case Record::kFieldOverrideRecord: {
-        TF_RETURN_IF_ERROR(
-            HandleFieldOverrideRecord<>(record_reader, proto, record));
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            HandleFieldOverrideRecord<>(record_reader, proto, record),
+            "Failed to read field override record for field path: ",
+            absl::StrJoin(record.field_override_record().field_path(), "."),
+            " for ", proto.GetTypeName(), " split proto");
         break;
       }
       default:

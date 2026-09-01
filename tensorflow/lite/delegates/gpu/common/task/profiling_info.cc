@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 
+#include <cstdint>
 #include <map>
 #include <string>
+
+#include "absl/time/time.h"
 
 namespace tflite {
 namespace gpu {

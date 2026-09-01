@@ -2,15 +2,15 @@ path: "tensorflow.sysconfig"
 tf_module {
   member {
     name: "CXX11_ABI_FLAG"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "CXX_VERSION"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "MONOLITHIC_BUILD"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member_method {
     name: "get_build_info"

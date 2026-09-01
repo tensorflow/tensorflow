@@ -464,6 +464,7 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
 
 std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
                                  const DataLayout& from, const DataLayout& to) {
+  CHECK_GE(input.size(), 2);
   if (from == to) {
     return input;
   }
@@ -488,6 +489,7 @@ std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
 std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
                                  const FilterLayout& from,
                                  const FilterLayout& to) {
+  CHECK_GE(input.size(), 2);
   if (from == to) {
     return input;
   }
@@ -551,6 +553,9 @@ TensorDescriptor::GetPhysicalDimensionsMajorToMinor() const {
 }
 
 std::vector<int64_t> TensorDescriptor::GetPhysicalStridesMajorToMinor() const {
+  if (ndims() == 0) {
+    return {};
+  }
   std::vector<int64_t> phys_dims = GetPhysicalDimensionsMajorToMinor().value();
   std::vector<int64_t> phys_strides(ndims());
   phys_strides[ndims() - 1] = 1;

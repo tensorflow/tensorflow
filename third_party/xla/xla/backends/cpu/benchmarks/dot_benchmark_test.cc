@@ -239,6 +239,17 @@ std::vector<GenericDot> GetGenericDotList() {
     GenericDot{name, BF16, {1,1,6912}, BF16, {6912,1152}, BF16, {1,1,1152}, {}, {}, {2}, {0}},
     GenericDot{name, BF16, {2,1,1152,256}, BF16, {1,1,1152}, BF16, {2,1,256,1,1}, {}, {}, {2}, {2}}
   });
+  name = "BF16_Shapes01";
+  list.insert(list.end(), {
+    GenericDot{name, BF16, {128,32,1,64}, BF16, {128,1,8,32,32}, BF16, {128,1,64,8,32}, {0,2}, {0,1}, {1}, {4}},
+    GenericDot{name, BF16, {128,32,1,64}, BF16, {128,32,1,8,64}, BF16, {128,1,32,32,8}, {0,2}, {0,2}, {3}, {4}},
+    GenericDot{name, BF16, {128,32,1024}, BF16, {1024,512}, BF16, {128,32,512}, {}, {}, {2}, {0}},
+    GenericDot{name, BF16, {128,32,512}, BF16, {2,1024,512}, BF16, {128,32,2,1024}, {}, {}, {2}, {2}},
+    GenericDot{name, BF16, {128,32,512}, BF16, {512,2}, BF16, {128,32,2}, {}, {}, {2}, {0}},
+    GenericDot{name, BF16, {128,32,512}, BF16, {8,512,64}, BF16, {128,32,8,64}, {}, {}, {2}, {1}},
+    GenericDot{name, BF16, {128,32,8,64}, BF16, {8,64,512}, BF16, {128,32,512}, {}, {}, {3,2}, {1,0}},
+    GenericDot{name, BF16, {2,1,512,64}, BF16, {128,32,512}, BF16, {2,1,64,128,32}, {}, {}, {2}, {2}},
+  });
   // NOLINTEND
   // clang-format on
   return list;
@@ -327,7 +338,7 @@ void RegisterBenchmarks() {
     //===------------------------------------------------------------------===//
     // Pairs of input-output data types.
     std::vector<std::pair<PrimitiveType, PrimitiveType>> dtype_pairs = {
-        {F32, F32}, {BF16, F32}, {S8, S32}, {S32, S32}};
+        {F32, F32}, {BF16, F32}, {BF16, BF16}, {S8, S32}, {S32, S32}};
     for (auto [in_dtype, out_dtype] : dtype_pairs) {
       std::string in_dtype_str = PrimitiveType_Name(in_dtype);
       std::string out_dtype_str = PrimitiveType_Name(out_dtype);

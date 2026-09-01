@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: litert-opt -tfl-reduce-while %s | FileCheck %s
 
 // The original func we want to optimize is:
@@ -65,3 +79,36 @@ func.func @increase_3rd_operand_3_times() -> tensor<i32> {
   ) : (tensor<f32>, tensor<f32>, tensor<i32>) -> (tensor<f32>, tensor<f32>, tensor<i32>)
   func.return %0#2 : tensor<i32>
 }
+
+// CHECK-LABEL:   func @while_with_implicit_argument(%arg0: tensor<i32>) -> tensor<i32> {
+// CHECK:           %[[CST_0:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK:           %[[RES:.*]] = "tfl.while"(%[[CST_0]]) ({
+// CHECK:           ^bb0(%[[A0:.*]]: tensor<i32>):
+// CHECK:             %[[CST_1:.*]] = arith.constant dense<3> : tensor<i32>
+// CHECK:             %[[LESS:.*]] = tfl.less(%[[A0]], %[[CST_1]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:             "tfl.yield"(%[[LESS]]) : (tensor<i1>) -> ()
+// CHECK:           }, {
+// CHECK:           ^bb0(%[[A1:.*]]: tensor<i32>):
+// CHECK:             %[[ADD:.*]] = tfl.add %[[A1]], %arg0 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:             "tfl.yield"(%[[ADD]]) : (tensor<i32>) -> ()
+// CHECK:           }) : (tensor<i32>) -> tensor<i32>
+// CHECK:           return %[[RES]] : tensor<i32>
+// CHECK:         }
+func.func @while_with_implicit_argument(%arg0: tensor<i32>) -> tensor<i32> {
+  %cst_0 = "arith.constant" () {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.while"(%cst_0) (
+    {
+    ^bb0(%arg1: tensor<i32>):
+      %cst_1 = "arith.constant" () {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+      %1 = "tfl.less"(%arg1, %cst_1) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tfl.yield"(%1) : (tensor<i1>) -> ()
+    },
+    {
+    ^bb0(%arg2: tensor<i32>):
+      %2 = "tfl.add"(%arg2, %arg0) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tfl.yield"(%2) : (tensor<i32>) -> ()
+    }
+  ) : (tensor<i32>) -> (tensor<i32>)
+  func.return %0 : tensor<i32>
+}
+

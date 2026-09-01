@@ -1,0 +1,48 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+edition = "2023";
+
+package xla.numerics.comparison;
+
+import "xla/hlo/tools/comparison/comparison_service.proto";
+
+message TensorComparisonResult {
+  repeated TensorPosition target_original_positions = 1;
+  repeated TensorPosition baseline_original_positions = 2;
+  TensorSummary target_summary = 3;
+  bool shape_match = 4;
+
+  message TensorSummaryDelta {
+    TensorSummary baseline_summary = 1;
+    float sample_delta_mean = 2;
+    float sample_delta_stddev = 3;
+    // The absolute value of the largest sample delta.
+    float sample_delta_max = 4;
+  }
+  oneof diff {
+    bool summary_match = 6;
+    TensorSummaryDelta summary_delta = 7;
+  }
+}
+
+message ComparisonStats {
+  ModuleStats target_stats = 1;
+  ModuleStats baseline_stats = 2;
+  int64 num_tensors_compared = 3;
+  int64 num_tensors_with_delta = 4;
+  int64 num_unmatched_target_tensors = 5;
+  int64 num_unmatched_baseline_tensors = 6;
+}

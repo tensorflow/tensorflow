@@ -140,8 +140,7 @@ struct div_no_nan_op;
 
 template <typename T>
 struct div_no_nan_op<T, /*IsComplex=*/false>
-    : public no_nan_op<T, scalar_quotient_op<T>> {
-};
+    : public no_nan_op<T, scalar_quotient_op<T>> {};
 
 template <typename T>
 struct functor_traits<div_no_nan_op<T, /*IsComplex=*/false>> {
@@ -191,8 +190,7 @@ struct functor_traits<div_no_nan_op<T, /*IsComplex=*/true>> {
 };
 
 template <typename T>
-struct mul_no_nan_op : public no_nan_op<T, scalar_product_op<T>> {
-};
+struct mul_no_nan_op : public no_nan_op<T, scalar_product_op<T>> {};
 
 template <typename T>
 struct functor_traits<mul_no_nan_op<T>> {
@@ -539,8 +537,14 @@ struct scalar_round_half_to_even_op {
   }
 };
 
-template <typename Scalar>
-struct scalar_round_half_to_even_op<Scalar, true, false> {
+// Integer types are already rounded, so rounding is the identity. This holds
+// regardless of whether the packet traits advertise rounding support, so the
+// specialization must match any value of the HasRint template parameter.
+// Otherwise integer types whose packet_traits report HasRound == true
+// instantiate as <Scalar, true, true>, miss this specialization, fall through
+// to the floating-point primary template, and produce zeros (issue #74789).
+template <typename Scalar, bool HasRint>
+struct scalar_round_half_to_even_op<Scalar, true, HasRint> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     return x;
@@ -568,9 +572,10 @@ struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
                                                : 4 * NumTraits<Scalar>::AddCost,
-    PacketAccess = packet_traits<Scalar>::HasRound &&
-                   packet_traits<Scalar>::HasAdd &&
-                   packet_traits<Scalar>::HasMul,
+    PacketAccess =
+        Eigen::NumTraits<Scalar>::IsInteger ||
+        (packet_traits<Scalar>::HasRound && packet_traits<Scalar>::HasAdd &&
+         packet_traits<Scalar>::HasMul),
   };
 };
 
@@ -749,6 +754,127 @@ struct functor_traits<scalar_erfinv_op<T>> {
     PacketAccess = packet_traits<T>::HasNdtri,
   };
 };
+template <typename Scalar>
+struct digamma_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x) const {
+    if (x == Scalar(0.)) {
+      return -Eigen::NumTraits<Scalar>::infinity();
+    }
+    return Eigen::internal::scalar_digamma_op<Scalar>()(x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    Packet zeros = pzero(x);
+    Packet mask = pcmp_eq(x, zeros);
+    Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
+    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(x);
+    return pselect(mask, infs, digamma_x);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<digamma_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_digamma_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::AddCost,
+    PacketAccess = functor_traits<scalar_digamma_op<Scalar>>::PacketAccess
+  };
+};
+
+// Specialization of erfinv for float.
+//
+// The generic implementation above evaluates erfinv(x) as
+// ndtri(0.5 * x + 0.5) * sqrt(0.5).  In float, forming 0.5 * x + 0.5
+// catastrophically loses precision for x near +/-1: the result lands on the
+// coarse grid of representable floats around 1.0, so its distance from 1 (which
+// is exactly what ndtri needs in the tail) is corrupted.  This left eager
+// erfinv up to ~1% off near +/-1 while the XLA path stayed accurate.
+//
+// Instead, follow xla::ErfInv32 and evaluate the inverse error function
+// directly with the polynomial approximation from
+//   Giles, M., "Approximating the erfinv function",
+// using w = -log1p(-x * x) so that the 1 - x^2 cancellation is handled
+// accurately.  This keeps the eager and XLA float results in agreement.
+template <>
+struct scalar_erfinv_op<float> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
+    constexpr int kDegree = 9;
+    constexpr float w_less_than_5_constants[kDegree] = {
+        2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+        -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+        -0.00417768164f,  0.246640727f,    1.50140941f};
+    constexpr float w_greater_than_5_constants[kDegree] = {
+        -0.000200214257f, 0.000100950558f, 0.00134934322f,
+        -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+        0.00943887047f,   1.00167406f,     2.83297682f};
+    float w = -numext::log1p(-x * x);
+    float p;
+    if (w < 5.0f) {
+      w -= 2.5f;
+      p = w_less_than_5_constants[0];
+      for (int i = 1; i < kDegree; ++i) p = w_less_than_5_constants[i] + p * w;
+    } else {
+      w = numext::sqrt(w) - 3.0f;
+      p = w_greater_than_5_constants[0];
+      for (int i = 1; i < kDegree; ++i)
+        p = w_greater_than_5_constants[i] + p * w;
+    }
+    float result = p * x;
+    // Handle edge cases: erfinv(+/-1) = +/-inf and erfinv(|x| > 1) = NaN.  The
+    // computation above is indeterminate there.
+    const float abs_x = numext::abs(x);
+    if (abs_x >= 1.0f) {
+      result = (abs_x == 1.0f) ? (x < 0.0f ? -NumTraits<float>::infinity()
+                                           : NumTraits<float>::infinity())
+                               : NumTraits<float>::quiet_NaN();
+    }
+    return result;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    constexpr int kDegree = 9;
+    constexpr float w_less_than_5_constants[kDegree] = {
+        2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+        -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+        -0.00417768164f,  0.246640727f,    1.50140941f};
+    constexpr float w_greater_than_5_constants[kDegree] = {
+        -0.000200214257f, 0.000100950558f, 0.00134934322f,
+        -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+        0.00943887047f,   1.00167406f,     2.83297682f};
+    Packet w = pnegate(plog1p(pnegate(pmul(x, x))));
+    Packet lt = pcmp_lt(w, pset1<Packet>(5.0f));
+    w = pselect(lt, psub(w, pset1<Packet>(2.5f)),
+                psub(psqrt(w), pset1<Packet>(3.0f)));
+    Packet p = pselect(lt, pset1<Packet>(w_less_than_5_constants[0]),
+                       pset1<Packet>(w_greater_than_5_constants[0]));
+    for (int i = 1; i < kDegree; ++i) {
+      Packet c = pselect(lt, pset1<Packet>(w_less_than_5_constants[i]),
+                         pset1<Packet>(w_greater_than_5_constants[i]));
+      p = pmadd(p, w, c);
+    }
+    Packet result = pmul(p, x);
+    // Handle edge cases: erfinv(+/-1) = +/-inf and erfinv(|x| > 1) = NaN.
+    Packet one = pset1<Packet>(1.0f);
+    Packet abs_x = pabs(x);
+    Packet inf = pset1<Packet>(NumTraits<float>::infinity());
+    Packet signed_inf = pselect(pcmp_lt(x, pzero(x)), pnegate(inf), inf);
+    result = pselect(pcmp_eq(abs_x, one), signed_inf, result);
+    result = pselect(pcmp_lt(one, abs_x),
+                     pset1<Packet>(NumTraits<float>::quiet_NaN()), result);
+    return result;
+  }
+};
+
+template <>
+struct functor_traits<scalar_erfinv_op<float>> {
+  enum {
+    Cost = functor_traits<scalar_log1p_op<float>>::Cost +
+           20 * NumTraits<float>::MulCost,
+    PacketAccess = packet_traits<float>::HasLog1p,
+  };
+};
 
 }  // end namespace internal
 }  // end namespace Eigen
@@ -919,7 +1045,7 @@ template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
 
 template <typename T>
-struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
+struct digamma : base<T, Eigen::internal::digamma_op<T>> {};
 
 template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};

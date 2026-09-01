@@ -173,9 +173,9 @@ class ConditionalAccumulatorBaseApplyGradientOp
     const Tensor* local_step_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("local_step", &local_step_tensor));
     if (!TensorShapeUtils::IsScalar(local_step_tensor->shape())) {
-      ctx->CtxFailureWithWarning(errors::InvalidArgument(
-          "Argument local_step must be scalar, but had bad shape ",
-          local_step_tensor->shape().DebugString()));
+      ctx->CtxFailureWithWarning(absl::InvalidArgumentError(
+          absl::StrCat("Argument local_step must be scalar, but had bad shape ",
+                       local_step_tensor->shape().DebugString())));
     }
 
     // Actually try to apply gradient now
@@ -245,9 +245,9 @@ class ConditionalAccumulatorBaseTakeGradientOp
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("num_required", &num_required_tensor),
                          callback);
     if (!TensorShapeUtils::IsScalar(num_required_tensor->shape())) {
-      ctx->CtxFailureWithWarning(errors::InvalidArgument(
+      ctx->CtxFailureWithWarning(absl::InvalidArgumentError(absl::StrCat(
           "Argument num_required must be scalar, but had bad shape ",
-          num_required_tensor->shape().DebugString()));
+          num_required_tensor->shape().DebugString())));
       callback();
     }
 

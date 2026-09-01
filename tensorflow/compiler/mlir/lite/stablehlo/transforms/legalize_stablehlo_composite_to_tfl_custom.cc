@@ -44,9 +44,10 @@ namespace {
 bool IsSupportedComposite(::mlir::stablehlo::CompositeOp op) {
   // List of supported composites to represent using CustomOp.
   return llvm::is_contained(
-      {"odml.update_kv_cache", "odml.update_external_kv_cache",
-       "odml.quantize_and_dequantize", "odml.detector"},
-      op.getName());
+             {"odml.update_kv_cache", "odml.update_external_kv_cache",
+              "odml.quantize_and_dequantize", "odml.detector"},
+             op.getName()) ||
+         op.getName().starts_with("litert_custom_op.");
 }
 
 bool IsKVCacheCompositeOp(::mlir::stablehlo::CompositeOp op) {

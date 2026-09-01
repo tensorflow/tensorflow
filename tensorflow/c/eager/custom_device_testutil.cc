@@ -15,14 +15,14 @@ limitations under the License.
 
 // A simple logging device to test custom device registration.
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace {
 
@@ -30,12 +30,15 @@ struct LoggingDevice {
   std::string device_name;
   std::string underlying_device;
   // Set to true whenever a TensorHandle is copied onto the device
-  bool* arrived_flag;
+  bool* arrived_flag = nullptr;
   // Set to true whenever an operation is executed
-  bool* executed_flag;
+  bool* executed_flag = nullptr;
   // If true, only explicit op placements are accepted. If false, uses
   // type-based dispatch.
-  bool strict_scope_placement;
+  bool strict_scope_placement = false;
+  // If true, the LoggingDevice owns the memory of arrived_flag and
+  // executed_flag, and is responsible for deleting them in DeleteLoggingDevice.
+  bool delete_flags = false;
 };
 
 struct LoggedTensor {
@@ -63,7 +66,7 @@ TFE_TensorHandle* MakeLoggedTensorHandle(TFE_Context* context,
                                          const std::string& logging_device_name,
                                          std::unique_ptr<LoggedTensor> t,
                                          TF_Status* status) {
-  auto dtype = TFE_TensorHandleDataType(t->tensor);
+  TF_DataType dtype = TFE_TensorHandleDataType(t->tensor);
   TFE_CustomDeviceTensorHandleMethods handle_methods;
   handle_methods.num_dims = &LoggedTensorNumDims;
   handle_methods.dim = &LoggedTensorDim;
@@ -115,8 +118,11 @@ void LoggingDeviceExecute(const TFE_Op* original_op, int* num_outputs,
   if (TF_GetCode(s) != TF_OK) return;
   const TFE_OpAttrs* attributes = TFE_OpGetAttrs(original_op);
 
-  TFE_Op* op(TFE_NewOp(context, operation_name, s));
+  TFE_Op* raw_op = TFE_NewOp(context, operation_name, s);
   if (TF_GetCode(s) != TF_OK) return;
+  auto op_cleanup =
+      tensorflow::gtl::MakeCleanup([raw_op]() { TFE_DeleteOp(raw_op); });
+  TFE_Op* op = raw_op;
   TFE_OpAddAttrs(op, attributes);
   TFE_OpSetDevice(op, dev->underlying_device.c_str(), s);
   if (TF_GetCode(s) != TF_OK) return;
@@ -139,26 +145,25 @@ void LoggingDeviceExecute(const TFE_Op* original_op, int* num_outputs,
   }
   std::vector<TFE_TensorHandle*> op_outputs(*num_outputs);
   TFE_Execute(op, op_outputs.data(), num_outputs, s);
-  TFE_DeleteOp(op);
   if (TF_GetCode(s) != TF_OK) return;
-  std::vector<TFE_TensorHandle*> unwrapped_outputs;
-  unwrapped_outputs.reserve(op_outputs.size());
-  for (auto* handle : op_outputs) {
-    unwrapped_outputs.push_back(handle);
-  }
   for (int i = 0; i < *num_outputs; ++i) {
-    auto logged_tensor = std::make_unique<LoggedTensor>(unwrapped_outputs[i]);
+    auto logged_tensor = std::make_unique<LoggedTensor>(op_outputs[i]);
     outputs[i] = MakeLoggedTensorHandle(context, dev->device_name,
                                         std::move(logged_tensor), s);
   }
   *(dev->executed_flag) = true;
 }
 
-void DeleteLoggingDevice(void* device_info) {
-  delete reinterpret_cast<LoggingDevice*>(device_info);
-}
-
 }  // namespace
+
+void DeleteLoggingDevice(void* device_info) {
+  LoggingDevice* dev = reinterpret_cast<LoggingDevice*>(device_info);
+  if (dev->delete_flags) {
+    delete dev->arrived_flag;
+    delete dev->executed_flag;
+  }
+  delete dev;
+}
 
 void RegisterLoggingDevice(TFE_Context* context, const char* name,
                            bool strict_scope_placement, bool* arrived_flag,
@@ -179,9 +184,12 @@ void RegisterLoggingDevice(TFE_Context* context, const char* name,
 
 TFE_TensorHandle* UnpackTensorHandle(TFE_TensorHandle* logged_tensor_handle,
                                      TF_Status* status) {
-  return reinterpret_cast<LoggedTensor*>(
-             TFE_TensorHandleDevicePointer(logged_tensor_handle, status))
-      ->tensor;
+  void* device_ptr =
+      TFE_TensorHandleDevicePointer(logged_tensor_handle, status);
+  if (TF_GetCode(status) != TF_OK || device_ptr == nullptr) {
+    return nullptr;
+  }
+  return reinterpret_cast<LoggedTensor*>(device_ptr)->tensor;
 }
 
 void AllocateLoggingDevice(const char* name, bool* arrived_flag,
@@ -200,5 +208,6 @@ void AllocateLoggingDevice(const char* name, bool* arrived_flag,
   logging_device->underlying_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";
   logging_device->strict_scope_placement = true;
+  logging_device->delete_flags = true;
   *device_info = reinterpret_cast<void*>(logging_device);
 }

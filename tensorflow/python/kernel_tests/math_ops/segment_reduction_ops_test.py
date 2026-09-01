@@ -315,6 +315,64 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
           s = op(data=np.ones((1, 10, 1)), segment_ids=[1676240524292489355])
           self.evaluate(s)
 
+  def testNaNPropagation(self):
+    for dtype in [
+        dtypes_lib.float16,
+        dtypes_lib.bfloat16,
+        dtypes_lib.float32,
+        dtypes_lib.float64,
+    ]:
+      gpu_options = [False]
+      if test.is_gpu_available():
+        gpu_options.append(True)
+      for use_gpu in gpu_options:
+        device_name = "/device:GPU:0" if use_gpu else "/device:CPU:0"
+        with self.session(use_gpu=use_gpu):
+          with ops.device(device_name):
+            # Input [1.0, NaN, 3.0]
+            data_min = constant_op.constant(
+                [1.0, float("nan"), 3.0], dtype=dtype
+            )
+            segment_ids = [0, 0, 0]
+            res_min = math_ops.segment_min(data_min, segment_ids)
+
+            data_max = constant_op.constant(
+                [3.0, float("nan"), 1.0], dtype=dtype
+            )
+            res_max = math_ops.segment_max(data_max, segment_ids)
+
+            if use_gpu:
+              # GPU sorted segment reductions use GpuAtomicMin/GpuAtomicMax
+              # which do not propagate NaNs (they prefer numeric values).
+              self.assertAllClose(self.evaluate(res_min)[0], 1.0)
+              self.assertAllClose(self.evaluate(res_max)[0], 3.0)
+            else:
+              # CPU propagates NaNs via Eigen::PropagateNaN.
+              self.assertTrue(np.isnan(self.evaluate(res_min)[0]))
+              self.assertTrue(np.isnan(self.evaluate(res_max)[0]))
+
+            # Test 2D input NaN propagation
+            data_2d = constant_op.constant(
+                [[1.0, 2.0], [float("nan"), 3.0], [3.0, 1.0]], dtype=dtype
+            )
+            res_2d_min = math_ops.segment_min(data_2d, segment_ids)
+            evaluated_min = self.evaluate(res_2d_min)
+
+            res_2d_max = math_ops.segment_max(data_2d, segment_ids)
+            evaluated_max = self.evaluate(res_2d_max)
+
+            if use_gpu:
+              # GPU does not propagate NaNs
+              self.assertAllClose(evaluated_min[0][0], 1.0)
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertAllClose(evaluated_max[0][0], 3.0)
+              self.assertAllClose(evaluated_max[0][1], 3.0)
+            else:
+              self.assertTrue(np.isnan(evaluated_min[0][0]))
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertTrue(np.isnan(evaluated_max[0][0]))
+              self.assertAllClose(evaluated_max[0][1], 3.0)
+
 
 class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
 
@@ -605,6 +663,66 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
           "Encountered overflow when multiplying | must not be negative"
       ):
         self.evaluate(unsorted)
+
+  def testNaNPropagation(self):
+    for dtype in [dtypes_lib.float32, dtypes_lib.float64]:
+      gpu_options = [False]
+      if test.is_gpu_available():
+        gpu_options.append(True)
+      for use_gpu in gpu_options:
+        device_name = "/device:GPU:0" if use_gpu else "/device:CPU:0"
+        with self.session(use_gpu=use_gpu):
+          with ops.device(device_name):
+            # Input [1.0, NaN, 3.0]
+            data_min = constant_op.constant(
+                [1.0, float("nan"), 3.0], dtype=dtype
+            )
+            segment_ids = [0, 0, 0]
+            res_min = math_ops.unsorted_segment_min(
+                data_min, segment_ids, num_segments=1
+            )
+
+            data_max = constant_op.constant(
+                [3.0, float("nan"), 1.0], dtype=dtype
+            )
+            res_max = math_ops.unsorted_segment_max(
+                data_max, segment_ids, num_segments=1
+            )
+
+            if use_gpu:
+              # GPU segment reductions currently do not support NaN
+              # propagation due to hardware/atomic operation limitations.
+              self.assertAllClose(self.evaluate(res_min)[0], 1.0)
+              self.assertAllClose(self.evaluate(res_max)[0], 3.0)
+            else:
+              self.assertTrue(np.isnan(self.evaluate(res_min)[0]))
+              self.assertTrue(np.isnan(self.evaluate(res_max)[0]))
+
+            # 2D input
+            data_2d = constant_op.constant(
+                [[1.0, 2.0], [float("nan"), 3.0], [3.0, 1.0]], dtype=dtype
+            )
+            res_2d_min = math_ops.unsorted_segment_min(
+                data_2d, segment_ids, num_segments=1
+            )
+            evaluated_min = self.evaluate(res_2d_min)
+
+            res_2d_max = math_ops.unsorted_segment_max(
+                data_2d, segment_ids, num_segments=1
+            )
+            evaluated_max = self.evaluate(res_2d_max)
+
+            if use_gpu:
+              # GPU does not propagate NaNs
+              self.assertAllClose(evaluated_min[0][0], 1.0)
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertAllClose(evaluated_max[0][0], 3.0)
+              self.assertAllClose(evaluated_max[0][1], 3.0)
+            else:
+              self.assertTrue(np.isnan(evaluated_min[0][0]))
+              self.assertAllClose(evaluated_min[0][1], 1.0)
+              self.assertTrue(np.isnan(evaluated_max[0][0]))
+              self.assertAllClose(evaluated_max[0][1], 3.0)
 
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
@@ -1242,8 +1360,31 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     with self.session(use_gpu=False):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
-        with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
+        with self.assertRaisesOpError("Invalid number of segments"):
           self.evaluate(s)
+
+  def testGradientEmptyInputWithNonEmptyIndices(self):
+    ops_list = [
+        math_ops.sparse_segment_sum_grad,
+        math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad,
+    ]
+    v2_ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    indices = [0, 1]
+    segment_ids = [0, 1]
+    output_dim0 = 2
+    for dtype in [dtypes_lib.float16, dtypes_lib.float32, dtypes_lib.float64]:
+      grad = constant_op.constant([], shape=[0], dtype=dtype)
+      for tf_op in ops_list:
+        with self.assertRaisesOpError("Invalid number of segments"):
+          self.evaluate(tf_op(grad, indices, segment_ids, output_dim0))
+      for tf_op in v2_ops_list:
+        with self.assertRaisesOpError("Invalid number of segments"):
+          self.evaluate(tf_op(grad, indices, segment_ids, output_dim0))
 
   def testGradientV2Valid(self):
     # Baseline for the testGradientV2*Invalid* methods below.
@@ -1355,7 +1496,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     with self.session(use_gpu=False):
       for tf_op in ops_list:
         s, j = tf_op(tf_x, tf_indices, segment_indices, 10)
-        with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
+        with self.assertRaisesOpError("Invalid number of segments"):
           self.evaluate([s, j])
 
 

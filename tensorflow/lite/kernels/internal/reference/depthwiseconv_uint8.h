@@ -153,7 +153,8 @@ struct DepthwiseConvBasicKernel {
         for (int out_x = 0; out_x < output_width; ++out_x) {
           for (int ic = 0; ic < input_depth; ++ic) {
             for (int m = 0; m < depth_multiplier; m++) {
-              const int oc = m + ic * depth_multiplier;
+              const int64_t oc =
+                  m + static_cast<int64_t>(ic) * depth_multiplier;
               const int in_x_origin = (out_x * stride_width) - pad_width;
               const int in_y_origin = (out_y * stride_height) - pad_height;
               int32_t acc = 0;
@@ -240,7 +241,8 @@ struct DepthwiseConvBasicKernel {
         for (int out_x = 0; out_x < output_width; ++out_x) {
           for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
             for (int m = 0; m < depth_multiplier; ++m) {
-              const int output_channel = m + in_channel * depth_multiplier;
+              const int64_t output_channel =
+                  m + static_cast<int64_t>(in_channel) * depth_multiplier;
               const int in_x_origin = (out_x * stride_width) - pad_width;
               const int in_y_origin = (out_y * stride_height) - pad_height;
               int32_t acc = 0;

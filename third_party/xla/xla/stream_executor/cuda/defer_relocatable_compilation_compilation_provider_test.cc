@@ -67,10 +67,11 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
 constexpr absl::string_view kSomePtxString = "some ptx string";
 constexpr absl::string_view kSomeOtherPtxString = "some other ptx string";
 constexpr CudaComputeCapability kDefaultComputeCapability{10, 0};
-constexpr CompilationOptions kDefaultCompilationOptions{};
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
      CompileToRelocatableModuleNeverGetsCalledOnDelegate) {
+  const CompilationOptions kDefaultCompilationOptions{};
+
   auto mock_compilation_provider = std::make_unique<MockCompilationProvider>();
   ON_CALL(*mock_compilation_provider, SupportsCompileAndLink())
       .WillByDefault(Return(true));
@@ -91,6 +92,8 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
      DeferredPtxCompilationHappensInCompileAndLink) {
+  const CompilationOptions kDefaultCompilationOptions{};
+
   auto mock_compilation_provider = std::make_unique<MockCompilationProvider>();
   ON_CALL(*mock_compilation_provider, SupportsCompileAndLink())
       .WillByDefault(Return(true));
@@ -134,6 +137,8 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
      CompileGetsForwardedToDelegate) {
+  const CompilationOptions kDefaultCompilationOptions{};
+
   auto mock_compilation_provider = std::make_unique<MockCompilationProvider>();
   ON_CALL(*mock_compilation_provider, SupportsCompileAndLink())
       .WillByDefault(Return(true));

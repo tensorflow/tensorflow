@@ -227,6 +227,7 @@ class TritonDotFusionSearchSpace {
   int min_warps_per_cta_;
   int min_contracting_tile_size_;
   bool exhaustive_tiling_search_;
+  bool has_concatenate_ = false;
 };
 
 }  // namespace xla::gpu

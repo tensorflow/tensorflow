@@ -13,17 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
 namespace {
 
-class YnnE2eTest : public HloPjRtTestBase {
+class YnnE2eTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
     debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
@@ -50,10 +54,10 @@ TEST_F(YnnE2eTest, DoNotDegroupConvolutionFeatures) {
                     "CHECK: f32[1,4,8,9]{3,2,1,0} convolution");
 }
 
-class YnnReduceTest : public HloPjRtTestBase {
+class YnnReduceTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
     return debug_options;
@@ -152,10 +156,10 @@ TEST_F(YnnReduceTest, ReduceConvert) {
   }
 
   ENTRY main {
-    input = f32[512,512] parameter(0)
+    input = f32[4096,512] parameter(0)
     init = f32[] constant(0)
-    reduced = f32[512] reduce(input, init), dimensions={1}, to_apply=add
-    ROOT result = bf16[512] convert(reduced)
+    reduced = f32[4096] reduce(input, init), dimensions={1}, to_apply=add
+    ROOT result = bf16[4096] convert(reduced)
   }
   )";
 
@@ -188,35 +192,52 @@ TEST_F(YnnReduceTest, ConvertReduce) {
 
   MatchOptimizedHlo(hlo_text, R"(
     CHECK: %[[convert:.+]] = {{.+}} convert({{.+}})
-    CHECK: ROOT {{.+}} = {{.+}} reduce-window(%[[convert]], {{.+}})
+    CHECK: ROOT {{.+}} = {{.+}} reduce(%[[convert]], {{.+}})
     CHECK: ENTRY
     CHECK: kind=kCustom
     CHECK: "kind":"__ynn_fusion"
   )");
 }
 
-class YnnDotTest : public HloPjRtTestBase {
+struct DotTestConfig {
+  absl::string_view lhs_dtype;
+  absl::string_view rhs_dtype;
+  absl::string_view out_dtype;
+};
+
+class YnnDotTest : public HloTestBase,
+                   public ::testing::WithParamInterface<DotTestConfig> {
+ public:
+  static std::string Name(const ::testing::TestParamInfo<DotTestConfig>& info) {
+    return absl::StrCat(info.param.lhs_dtype, "_", info.param.rhs_dtype, "_",
+                        info.param.out_dtype);
+  }
+
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
     return debug_options;
   }
 };
 
-TEST_F(YnnDotTest, SingleDot) {
-  const char* hlo_text = R"(
+TEST_P(YnnDotTest, SingleDot) {
+  const char* hlo_template = R"(
   HloModule single_dot
 
   ENTRY main {
-    %lhs = f32[256,128] parameter(0)
-    %rhs = f32[128,512] parameter(1)
-    ROOT %out = f32[256,512] dot(%lhs, %rhs), lhs_contracting_dims={1},
-                                              rhs_contracting_dims={0}
+    %lhs = $lhs_dtype[256,128] parameter(0)
+    %rhs = $rhs_dtype[128,512] parameter(1)
+    ROOT %out = $out_dtype[256,512] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                                     rhs_contracting_dims={0}
   }
   )";
-
+  DotTestConfig config = GetParam();
+  std::string hlo_text =
+      absl::StrReplaceAll(hlo_template, {{"$lhs_dtype", config.lhs_dtype},
+                                         {"$rhs_dtype", config.rhs_dtype},
+                                         {"$out_dtype", config.out_dtype}});
   MatchOptimizedHlo(hlo_text, R"(
     CHECK: dot
     CHECK: ENTRY
@@ -224,6 +245,198 @@ TEST_F(YnnDotTest, SingleDot) {
     CHECK: "kind":"__ynn_fusion"
   )");
 }
+
+TEST_F(YnnReduceTest, ReduceSquared) {
+  const char* hlo_text = R"(
+  HloModule reduce_squared
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    init = f32[] constant(0)
+    squared = f32[512,512] multiply(input, input)
+    ROOT result = f32[] reduce(squared, init), dimensions={0,1}, to_apply=add
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: multiply
+    CHECK: ENTRY
+    CHECK: __ynn_fusion
+  )");
+}
+
+class YnnReduceEltwiseTest : public HloTestBase {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.add_xla_cpu_experimental_ynn_fusion_type(
+        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
+    debug_options.add_xla_cpu_experimental_ynn_fusion_type(
+        DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE);
+    return debug_options;
+  }
+};
+
+TEST_F(YnnReduceEltwiseTest, FuseReduceMultiplyXY) {
+  const char* hlo_text = R"(
+  HloModule reduce_multiply_xy
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    input2 = f32[512,512] parameter(1)
+    init = f32[] constant(0)
+    multiplied = f32[512,512] multiply(input, input2)
+    ROOT result = f32[] reduce(multiplied, init), dimensions={0,1}, to_apply=add
+  }
+  )";
+
+  // Expect fusion for multiply(x, y) when both reduce and eltwise are enabled.
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: multiply
+    CHECK: ENTRY
+    CHECK: __ynn_fusion
+  )");
+}
+
+TEST_F(YnnReduceEltwiseTest, FuseReduceBroadcast) {
+  const char* hlo_text = R"(
+  HloModule reduce_broadcast
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    init = f32[] constant(0)
+    reduced = f32[512] reduce(input, init), dimensions={1}, to_apply=add
+    broadcasted = f32[512,512] broadcast(reduced), dimensions={0}
+    ROOT result = f32[512,512] add(input, broadcasted)
+  }
+  )";
+
+  // Expect a single fusion for the whole graph.
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: fused_computation
+    CHECK: f32[512,512]{1,0} broadcast({{.*}})
+    CHECK-LABEL: ENTRY
+    CHECK: %[[INPUT:.*]] = f32[512,512]{{.*}} parameter(0)
+    CHECK: %[[FUSION:.*]] = {{.*}} fusion(%[[INPUT]]),
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+TEST_F(YnnReduceEltwiseTest, FuseIota) {
+  const char* hlo_text = R"(
+  HloModule iota_test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    iota = f32[512,512] iota(), iota_dimension=1
+    init = f32[] constant(0)
+    ROOT result = f32[512] reduce(iota, init), dimensions={1}, to_apply=add
+  }
+  )";
+
+  // Expect fusion for iota and reduce.
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: iota
+    CHECK: ENTRY
+    CHECK: __ynn_fusion
+  )");
+}
+
+TEST_F(YnnReduceEltwiseTest, FusePad) {
+  const char* hlo_text = R"(
+  HloModule pad_test
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    init = f32[] constant(0)
+    padded = f32[514,514] pad(input, init), padding=1_1_0x1_1_0
+    ROOT result = f32[514,514] add(padded, padded)
+  }
+  )";
+
+  // Expect fusion for pad and add.
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: pad
+    CHECK: ENTRY
+    CHECK: __ynn_fusion
+  )");
+}
+
+TEST_F(YnnReduceEltwiseTest, FuseRmsNorm) {
+  const char* hlo_text = R"(
+  HloModule rms_norm
+
+  add {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    ROOT add = f32[] add(p0, p1)
+  }
+
+  ENTRY main {
+    input = bf16[128,32,512] parameter(0)
+    input_f32 = f32[128,32,512] convert(input)
+    input_squared = f32[128,32,512] multiply(input_f32, input_f32)
+    zero = f32[] constant(0)
+    sum_squared = f32[128,32] reduce(input_squared, zero), dimensions={2},
+        to_apply=add
+
+    count = f32[] constant(512)
+    count_br = f32[128,32] broadcast(count), dimensions={}
+    mean_squared = f32[128,32] divide(sum_squared, count_br)
+
+    eps = f32[] constant(1e-6)
+    eps_br = f32[128,32] broadcast(eps), dimensions={}
+    mean_squared_eps = f32[128,32] add(mean_squared, eps_br)
+    rsqrt = f32[128,32] rsqrt(mean_squared_eps)
+
+    rsqrt_br = f32[128,32,512] broadcast(rsqrt), dimensions={0,1}
+    output_f32 = f32[128,32,512] multiply(input_f32, rsqrt_br)
+    ROOT result = bf16[128,32,512] convert(output_f32)
+  }
+  )";
+
+  // Expect a single fusion for the whole graph, with only one operand (the
+  // input). Constants should be fused inside.
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: fused_computation
+    CHECK: f32[] constant({{.*}})
+    CHECK: f32[] constant({{.*}})
+    CHECK-LABEL: ENTRY
+    CHECK: %[[INPUT:.*]] = bf16[128,32,512]{{.*}} parameter(0)
+    CHECK: %[[FUSION:.*]] = {{.*}} fusion(%[[INPUT]]),
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    YnnDotTestSuite, YnnDotTest,
+    ::testing::ValuesIn({DotTestConfig{"f32", "f32", "f32"},
+                         DotTestConfig{"bf16", "bf16", "bf16"},
+                         DotTestConfig{"bf16", "bf16", "f32"}}),
+    YnnDotTest::Name);
 
 }  // namespace
 }  // namespace xla::cpu

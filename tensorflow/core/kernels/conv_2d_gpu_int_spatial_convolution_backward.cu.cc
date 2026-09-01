@@ -29,9 +29,9 @@ namespace tensorflow {
 
 namespace functor {
 
-template struct SpatialConvolutionBackwardInputFunc<Eigen::GpuDevice, int32>;
+template struct SpatialConvolutionBackwardInputFunc<Eigen::GpuDevice, int32_t>;
 template struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc<
-    Eigen::GpuDevice, int32>;
+    Eigen::GpuDevice, int32_t>;
 
 }  // namespace functor
 }  // namespace tensorflow

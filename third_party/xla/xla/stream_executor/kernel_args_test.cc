@@ -99,12 +99,15 @@ TEST(KernelTest, PackDeviceAddressArguments) {
   auto args = PackKernelArgs(std::vector<DeviceAddressBase>({a, b}), 0);
   ASSERT_EQ(args->number_of_arguments(), 2);
 
-  auto packed = args->argument_addresses();
-  const void* ptr0 = *reinterpret_cast<const void* const*>(packed[0]);
-  const void* ptr1 = *reinterpret_cast<const void* const*>(packed[1]);
+  auto arg_addresses = args->argument_addresses();
+  const void* ptr0 = *reinterpret_cast<const void* const*>(arg_addresses[0]);
+  const void* ptr1 = *reinterpret_cast<const void* const*>(arg_addresses[1]);
 
-  ASSERT_EQ(ptr0, a.opaque());
-  ASSERT_EQ(ptr1, b.opaque());
+  EXPECT_EQ(ptr0, a.opaque());
+  EXPECT_EQ(ptr1, b.opaque());
+
+  const auto& packed = args->packed_args();
+  ASSERT_EQ(packed.size(), 2);
 }
 
 TEST(KernelTest, PackPodArguments) {
@@ -116,16 +119,19 @@ TEST(KernelTest, PackPodArguments) {
 
   ASSERT_EQ(args->number_of_arguments(), 4);
 
-  auto packed = args->argument_addresses();
-  int32_t i32 = *reinterpret_cast<const int32_t*>(packed[0]);
-  float f32 = *reinterpret_cast<const float*>(packed[1]);
-  double f64 = *reinterpret_cast<const double*>(packed[2]);
-  int32_t custom = *reinterpret_cast<const int32_t*>(packed[3]);
+  auto arg_addresses = args->argument_addresses();
+  int32_t i32 = *reinterpret_cast<const int32_t*>(arg_addresses[0]);
+  float f32 = *reinterpret_cast<const float*>(arg_addresses[1]);
+  double f64 = *reinterpret_cast<const double*>(arg_addresses[2]);
+  int32_t custom = *reinterpret_cast<const int32_t*>(arg_addresses[3]);
 
-  ASSERT_EQ(i32, 1);
-  ASSERT_EQ(f32, 2.0f);
-  ASSERT_EQ(f64, 3.0);
-  ASSERT_EQ(custom, 43);
+  EXPECT_EQ(i32, 1);
+  EXPECT_EQ(f32, 2.0f);
+  EXPECT_EQ(f64, 3.0);
+  EXPECT_EQ(custom, 43);
+
+  const auto& packed = args->packed_args();
+  ASSERT_EQ(packed.size(), 4);
 }
 
 TEST(KernelTest, PackPackedArguments) {

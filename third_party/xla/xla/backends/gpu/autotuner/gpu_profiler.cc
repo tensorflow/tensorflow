@@ -18,29 +18,39 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -51,10 +61,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/util/buffer_slice_merge.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -77,23 +85,37 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
   return inputs;
 }
 
-int GetScratchBytes(const Executable* executable) {
-  int scratch_bytes = 0;
-  for (const auto* allocation : executable->GetAllocations()) {
-    if (allocation->IsPreallocatedTempBuffer()) {
-      for (const auto& [buffer, offset] : allocation->assigned_buffers()) {
-        // Scratch space is allocated as the second element in the output tuple
-        // of the instruction.
-        const auto& shape_index = buffer->positions().front().index;
-        bool is_second_element_in_output_tuple =
-            !shape_index.empty() && shape_index[0] == 1;
-        if (is_second_element_in_output_tuple) {
-          scratch_bytes += offset.size;
+int GetScratchBytes(const GpuExecutable& executable) {
+  // Group scratch slices by allocation.
+  absl::flat_hash_map<const BufferAllocation*,
+                      std::vector<BufferAllocation::Slice>>
+      alloc_to_slices;
+
+  CHECK_OK(executable.thunk_executor().thunks().WalkNested(
+      [&alloc_to_slices](const Thunk* thunk) {
+        for (const auto& buffer_use : thunk->buffer_uses()) {
+          // ContentValidity::kUndefined means the buffer is a scratch buffer.
+          if (buffer_use.content_validity() ==
+              BufferUse::ContentValidity::kUndefined) {
+            const auto& slice = buffer_use.slice();
+            alloc_to_slices[slice.allocation()].push_back(slice);
+          }
         }
-      }
+
+        return absl::OkStatus();
+      }));
+
+  int64_t scratch_bytes = 0;
+  for (auto& [alloc, slices] : alloc_to_slices) {
+    // We might be re-using the same physical buffer for different slices (e.g.
+    // we need to use the same scratch buffer for two sequential operations), so
+    // we need to merge overlapping slices.
+    for (const auto& merged_slice : MergeOverlappingSlices(slices)) {
+      scratch_bytes += merged_slice.size();
     }
   }
-  return scratch_bytes;
+
+  return static_cast<int>(scratch_bytes);
 }
 
 // Initialize a specific input buffer with custom values.
@@ -112,9 +134,9 @@ static absl::Status InitializeInputBuffer(GpuInputBuffers& gpu_buffers,
   }
 
   se::DeviceAddressBase buffer = rz_buffers.input_buffers()[buffer_index];
-  TF_RETURN_IF_ERROR(stream->Memcpy(const_cast<se::DeviceAddressBase*>(&buffer),
-                                    values, size_bytes));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(const_cast<se::DeviceAddressBase*>(&buffer),
+                                 values, size_bytes));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -133,8 +155,8 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
   if (instr->opcode() == HloOpcode::kCustomCall &&
       instr->custom_call_target() == "__cublas$lt$groupedMatmul") {
     // Get the backend config to extract ragged dimension information
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr->backend_config<GpuBackendConfig>());
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr->backend_config<GpuBackendConfig>());
     const GroupedGemmBackendConfig& grouped_config =
         gpu_config.grouped_gemm_backend_config();
     const RaggedDotDimensionNumbers& ragged_dims =
@@ -183,7 +205,7 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
           group_sizes[i] = static_cast<int32_t>(base_group_size);
         }
       }
-      TF_RETURN_IF_ERROR(InitializeInputBuffer(
+      ABSL_RETURN_IF_ERROR(InitializeInputBuffer(
           gpu_buffers, stream,
           instr->operand_count() - 1,  // Last parameter is group sizes
           group_sizes.data(), total_elements * sizeof(int32_t)));
@@ -199,7 +221,7 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
           group_sizes[i] = base_group_size;
         }
       }
-      TF_RETURN_IF_ERROR(InitializeInputBuffer(
+      ABSL_RETURN_IF_ERROR(InitializeInputBuffer(
           gpu_buffers, stream,
           instr->operand_count() - 1,  // Last parameter is group sizes
           group_sizes.data(), total_elements * sizeof(int64_t)));
@@ -240,7 +262,7 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable, const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromProgramShape(
           executable->compute_computation_layout().ComputeProgramShape(),
@@ -252,7 +274,7 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
   gpu_buffers->redzone_buffers = std::move(buffers);
 
   // Initialize buffers based on operation type
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       InitializeBuffersIfRequiredByOpcode(instr, *gpu_buffers, stream_));
 
   return gpu_buffers;
@@ -261,20 +283,46 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
 absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     Executable* executable, const InputBuffers& buffers) {
   const GpuInputBuffers& gpu_buffers =
-      tsl::down_cast<const GpuInputBuffers&>(buffers);
+      absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
+
   ProfileResult result;
-  result.scratch_bytes = GetScratchBytes(executable);
+  if (auto* gpu_executable = dynamic_cast<const GpuExecutable*>(executable);
+      gpu_executable != nullptr) {
+    result.scratch_bytes = GetScratchBytes(*gpu_executable);
+  }
   {
-    // Warm up run.
+    // Warm-up run: route every buffer the executable allocates on-demand
+    // (result/output buffers and workspace/scratch buffers alike) through a
+    // RedzoneDeviceAddressAllocator, so that any out-of-bounds write lands in
+    // a mapped post-redzone rather than causing a GPU VM fault.
+    std::optional<se::RedzoneDeviceAddressAllocator> warmup_rz;
+    se::DeviceAddressAllocator* warmup_alloc = allocator_;
+    if (options_.redzone_padding_bytes > 0) {
+      warmup_rz.emplace(stream_, allocator_, options_.redzone_padding_bytes);
+      warmup_alloc = &warmup_rz.value();
+    }
     std::vector<ExecutionInput> execution_inputs =
         CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
                                          rz_buffers.input_shapes());
-    TF_RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
-                               /*profile=*/nullptr)
-                           .status());
-
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
+                            /*profile=*/nullptr, warmup_alloc)
+                        .status());
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    if (warmup_rz.has_value()) {
+      ABSL_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check,
+                       warmup_rz->CheckRedzones());
+      if (!rz_check.ok()) {
+        std::string redzone_failure_msg = rz_check.RedzoneFailureMsg();
+        VLOG(1) << "Autotuning candidate discarded: out-of-bounds write "
+                   "detected past an allocated buffer. "
+                << redzone_failure_msg;
+        return absl::InternalError(absl::StrCat(
+            "Autotuning candidate rejected: kernel wrote past its allocated "
+            "buffer. ",
+            redzone_failure_msg));
+      }
+    }
   }
 
   ExecutionProfile profile;
@@ -283,9 +331,9 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
                                        rz_buffers.input_shapes());
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ExecutionOutput execution_output,
-      Execute(executable, std::move(execution_inputs), &profile));
+      Execute(executable, std::move(execution_inputs), &profile, allocator_));
 
   result.duration = absl::Nanoseconds(profile.compute_time_ns());
   result.output_buffer = execution_output.Commit().ConsumeResult();
@@ -294,7 +342,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
 
 absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
     Executable* executable, std::vector<ExecutionInput> inputs,
-    ExecutionProfile* profile) {
+    ExecutionProfile* profile, se::DeviceAddressAllocator* allocator) {
   // Require exclusive GPU lock to prevent other runs during autotuning.
   GpuExecutableRunOptions gpu_opts;
   gpu_opts.set_requires_exclusive_lock_on_gpu();
@@ -302,7 +350,7 @@ absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(stream_executor_->device_ordinal());
   run_options.set_stream(stream_);
-  run_options.set_allocator(allocator_);
+  run_options.set_allocator(allocator);
   run_options.set_gpu_executable_run_options(&gpu_opts);
   run_options.set_execution_profile(profile);
   ServiceExecutableRunOptions service_run_options(run_options);
@@ -314,11 +362,12 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
   if (options_.redzone_padding_bytes == 0) {
     return absl::OkStatus();
   }
+  absl::ReaderMutexLock gpu_lock(GetGpuMutex(stream_executor_));
   const GpuInputBuffers& gpu_buffers =
-      tsl::down_cast<const GpuInputBuffers&>(buffers);
+      absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
-  TF_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-                      rz_buffers.RedzoneAllocator().CheckRedzones());
+  ABSL_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+                   rz_buffers.RedzoneAllocator().CheckRedzones());
   if (rz_check_status.ok()) {
     return absl::OkStatus();
   }
@@ -329,16 +378,16 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
 absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
                                             ScopedShapedBuffer& reference,
                                             float rtol) {
+  absl::ReaderMutexLock gpu_lock(GetGpuMutex(stream_executor_));
   return ShapeUtil::ForEachLeafShapeWithStatus(
       reference.on_device_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         BufferComparator comparator(subshape, rtol,
                                     /*verbose=*/false);
 
-        TF_ASSIGN_OR_RETURN(
-            bool outputs_match,
-            comparator.CompareEqual(stream_, output.buffer(index),
-                                    reference.buffer(index)));
+        ABSL_ASSIGN_OR_RETURN(bool outputs_match,
+                         comparator.CompareEqual(stream_, output.buffer(index),
+                                                 reference.buffer(index)));
         if (outputs_match) {
           return absl::OkStatus();
         }

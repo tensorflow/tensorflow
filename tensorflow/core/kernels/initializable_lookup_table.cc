@@ -25,7 +25,7 @@ absl::Status InitializableLookupTable::Find(OpKernelContext* ctx,
                                             const Tensor& keys, Tensor* values,
                                             const Tensor& default_value) {
   if (!is_initialized()) {
-    return errors::FailedPrecondition("Table not initialized.");
+    return absl::FailedPreconditionError("Table not initialized.");
   }
   // Do not let the use migrate before the check;  table is used without
   // a lock by the readers.
@@ -80,7 +80,7 @@ absl::Status InitializableLookupTable::Initialize(
     // If the table is already initialized, we make sure that the entries in the
     // table are the same that we want to initialize the table with.
     if (!result) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Table was already initialized with "
           "different data.");
     } else {

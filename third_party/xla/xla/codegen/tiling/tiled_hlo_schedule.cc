@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -127,7 +128,7 @@ CreateMajorToMinorTiledHloSchedule(
 absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
     MLIRContext* ctx) const {
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ValidateIterationSpace(iteration_space, tile_offsets_indexing));
   return MajorToMinorScheduleImpl(tile_offsets_indexing, iteration_space, ctx);
 }
@@ -196,10 +197,10 @@ TransposedDotTiledHloSchedule::Create(
 
   // Using the local parameter index, we can compute the global parameter index
   // (i.e. the parameter index within the sequence of all tiling parameters).
-  TF_ASSIGN_OR_RETURN(int64_t m_dim_id, tiling_specification.ParameterIndex(
-                                            dot, m_local_parameter_index));
-  TF_ASSIGN_OR_RETURN(int64_t n_dim_id, tiling_specification.ParameterIndex(
-                                            dot, n_local_parameter_index));
+  ABSL_ASSIGN_OR_RETURN(int64_t m_dim_id, tiling_specification.ParameterIndex(
+                                         dot, m_local_parameter_index));
+  ABSL_ASSIGN_OR_RETURN(int64_t n_dim_id, tiling_specification.ParameterIndex(
+                                         dot, n_local_parameter_index));
 
   return std::unique_ptr<TransposedDotTiledHloSchedule>(
       new TransposedDotTiledHloSchedule(m_dim_id, n_dim_id));
@@ -208,7 +209,7 @@ TransposedDotTiledHloSchedule::Create(
 absl::StatusOr<IndexingMap> TransposedDotTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
     MLIRContext* ctx) const {
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ValidateIterationSpace(iteration_space, tile_offsets_indexing));
 
   std::optional<int64_t> local_m_dim_index;

@@ -2,7 +2,7 @@ path: "tensorflow.config.LogicalDevice"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDevice\'>"
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDevice\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "device_type"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -12,7 +12,20 @@ tf_class {
     mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
+    name: "__getnewargs__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'_cls\', \'name\', \'device_type\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
+  }
+  member_method {
+    name: "__replace__"
+    argspec: "args=[\'self\'], varargs=None, keywords=kwds, defaults=None"
   }
   member_method {
     name: "count"

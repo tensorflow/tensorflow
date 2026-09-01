@@ -101,7 +101,7 @@ class ManagedStackTrace : public CapturedStackTrace {
 // Generates a message with a definition location based on a provided stack
 // trace, or an empty one if the stack trace is empty.
 inline std::string DefinitionLocationMsg(
-    const absl::optional<ManagedStackTrace>& stack_trace) {
+    const std::optional<ManagedStackTrace>& stack_trace) {
   if (stack_trace.has_value()) {
     std::vector<StackFrame> stack_frames =
         stack_trace->ToStackFrames({}, IsInternalFrameForFilename,

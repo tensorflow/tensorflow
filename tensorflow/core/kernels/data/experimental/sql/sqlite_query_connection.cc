@@ -47,8 +47,10 @@ absl::Status SqliteQueryConnection::Open(const std::string& data_source_name,
 
 absl::Status SqliteQueryConnection::Close() {
   stmt_ = SqliteStatement();
-  db_->Unref();
-  db_ = nullptr;
+  if (db_ != nullptr) {
+    db_->Unref();
+    db_ = nullptr;
+  }
   return absl::OkStatus();
 }
 

@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/execution_stream_assignment.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
+#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/side_effect_util.h"
 
 namespace xla::gpu {
@@ -57,15 +62,18 @@ void AbslStringify(Sink sink, ExecutionScopeKind kind) {
   }
 }
 
+constexpr CommunicationStreamId kPipelinedP2PStreamId0(1);
+constexpr CommunicationStreamId kPipelinedP2PStreamId1(2);
+
 // Maps pipelined P2P ops to CommunicationStreamId(1) and (2), running them
 // on separate streams to avoid cyclic deadlocks.
 ExecutionStreamId GetP2PStreamId(const HloInstruction* instruction) {
   const auto& fe_map = instruction->frontend_attributes().map();
   auto it = fe_map.find(kSendRecvPipelineAttr);
   if (it != fe_map.end() && it->second == "1") {
-    return ExecutionStreamId(CommunicationStreamId(2));
+    return ExecutionStreamId(kPipelinedP2PStreamId1);
   }
-  return ExecutionStreamId(CommunicationStreamId(1));
+  return ExecutionStreamId(kPipelinedP2PStreamId0);
 }
 
 // A helper class to generate the next execution stream id using round-robin
@@ -74,7 +82,14 @@ ExecutionStreamId GetP2PStreamId(const HloInstruction* instruction) {
 class ExecutionStreams {
  public:
   explicit ExecutionStreams(const ExecutionStreamAssignment::Options& opts)
-      : opts_(opts), compute_id_(0), collective_id_(0) {}
+      : opts_(opts),
+        compute_id_(0),
+        next_collective_domain_stream_id_(std::max<uint64_t>(
+            kPipelinedP2PStreamId1.value() + 1,
+            opts.number_of_communication_execution_streams)) {
+    collective_stream_pools_.emplace(kUnspecifiedCollectiveDomain,
+                                     CollectiveStreamPool{/*base=*/0});
+  }
 
   ExecutionStreamId Next(ExecutionScopeKind kind) {
     switch (kind) {
@@ -85,18 +100,36 @@ class ExecutionStreams {
         return stream_id;
       }
       case ExecutionScopeKind::kCommunication: {
-        CommunicationStreamId stream_id{collective_id_};
-        collective_id_ = (collective_id_ + 1) %
-                         opts_.number_of_communication_execution_streams;
-        return stream_id;
+        return NextCollective(kUnspecifiedCollectiveDomain);
       }
     }
   }
 
+  ExecutionStreamId NextCollective(CollectiveCommunicationDomain domain) {
+    auto [it, inserted] = collective_stream_pools_.try_emplace(domain);
+    CollectiveStreamPool& pool = it->second;
+    if (inserted) {
+      pool.base = next_collective_domain_stream_id_;
+      next_collective_domain_stream_id_ +=
+          opts_.number_of_communication_execution_streams;
+    }
+    CommunicationStreamId stream_id(pool.base + pool.ordinal);
+    pool.ordinal =
+        (pool.ordinal + 1) % opts_.number_of_communication_execution_streams;
+    return stream_id;
+  }
+
  private:
+  struct CollectiveStreamPool {
+    uint64_t base = 0;
+    uint64_t ordinal = 0;
+  };
+
   ExecutionStreamAssignment::Options opts_;
   uint64_t compute_id_;
-  uint64_t collective_id_;
+  uint64_t next_collective_domain_stream_id_;
+  absl::flat_hash_map<CollectiveCommunicationDomain, CollectiveStreamPool>
+      collective_stream_pools_;
 };
 
 // Returns true if async instruction wraps a collective operation.
@@ -120,8 +153,11 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
     const HloInstruction* hlo) {
   // Async operation that starts a new execution scope.
   if (auto* start = DynCast<HloAsyncStartInstruction>(hlo)) {
-    return IsWrappedCollective(start) ? ExecutionScopeKind::kCommunication
-                                      : ExecutionScopeKind::kCompute;
+    return IsWrappedCollective(start) || IsCustomCollectiveOp(start) ||
+                   start->frontend_attributes().map().contains(
+                       kCollectiveGroupMarkerAttr)
+               ? ExecutionScopeKind::kCommunication
+               : ExecutionScopeKind::kCompute;
   }
 
   // Async-collective operations not yet migrated to async wrappers.
@@ -149,7 +185,9 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
 std::optional<ExecutionStreamId> FindAssignedStreamId(
     const HloInstruction* instr, ExecutionScopeKind kind) {
   auto& attrs = instr->frontend_attributes().map();
-  if (auto it = attrs.find(kXlaStreamAnnotationAttr); it != attrs.end()) {
+  if (auto it = attrs.find(kXlaStreamAnnotationAttr);
+      it != attrs.end() &&
+      !absl::EqualsIgnoreCase(it->second, kXlaCollectiveStreamAnnotation)) {
     int32_t assigned_stream_id;
     CHECK(absl::SimpleAtoi(it->second, &assigned_stream_id));  // Crash OK
     switch (kind) {
@@ -160,6 +198,22 @@ std::optional<ExecutionStreamId> FindAssignedStreamId(
     }
   }
   return std::nullopt;
+}
+
+std::optional<CollectiveCommunicationDomain> FindCollectiveDomain(
+    const HloInstruction* instruction, ExecutionScopeKind kind) {
+  if (kind != ExecutionScopeKind::kCommunication ||
+      !SupportsCollectiveCommunicationDomain(*instruction)) {
+    return std::nullopt;
+  }
+
+  absl::StatusOr<CollectiveCommunicationDomain> domain =
+      GetCollectiveCommunicationDomain(*instruction);
+  CHECK_OK(domain.status());
+  if (*domain == kUnspecifiedCollectiveDomain) {
+    return std::nullopt;
+  }
+  return *domain;
 }
 
 }  // namespace
@@ -189,11 +243,18 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
     for (const HloInstruction* hlo : instructions) {
       // Only assign execution stream IDs to scope-start operations.
       if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeStart(hlo)) {
-        // Try to find explicitly assigned stream id, or use dedicated P2P
-        // stream for pipelined send/recv, otherwise generate a new execution
-        // stream id for the new execution scope.
+        // Prefer an explicitly assigned stream id, then a collective-domain
+        // stream or a dedicated P2P stream for pipelined send/recv. Otherwise,
+        // generate a new stream id for the execution scope.
         std::optional<ExecutionStreamId> stream_id =
             FindAssignedStreamId(hlo, *kind);
+        if (!stream_id.has_value()) {
+          std::optional<CollectiveCommunicationDomain> collective_domain =
+              FindCollectiveDomain(hlo, *kind);
+          if (collective_domain.has_value()) {
+            stream_id = execution_streams.NextCollective(*collective_domain);
+          }
+        }
         if (!stream_id.has_value() && IsPipelinedP2P(hlo) &&
             options.number_of_communication_execution_streams > 1) {
           stream_id = GetP2PStreamId(hlo);

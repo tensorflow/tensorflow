@@ -54,7 +54,7 @@ class TypedQueueOp : public QueueOp {
   template <typename TypedQueue>
   absl::Status CreateTypedQueue(TypedQueue* queue, QueueInterface** ret) {
     if (queue == nullptr) {
-      return errors::ResourceExhausted("Failed to allocate queue.");
+      return absl::ResourceExhaustedError("Failed to allocate queue.");
     }
     *ret = queue;
     return queue->Initialize();

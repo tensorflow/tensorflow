@@ -55,25 +55,29 @@ void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
       seq_lens_vec.data(), seq_lens_t.data(), sizeof(Tlen) * seq_lens_t.size());
 
   OP_REQUIRES(context, batch_dim != seq_dim,
-              errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim));
+              absl::InvalidArgumentError(
+                  absl::StrCat("batch_dim == seq_dim == ", seq_dim)));
   OP_REQUIRES(context, seq_dim < input.dims(),
-              errors::InvalidArgument("seq_dim must be < input rank", " ( ",
-                                      seq_dim, " vs. ", input.dims(), ")"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("seq_dim must be < input rank", " ( ", seq_dim,
+                               " vs. ", input.dims(), ")")));
   OP_REQUIRES(context, batch_dim < input.dims(),
-              errors::InvalidArgument("batch_dim must be < input rank", " ( ",
-                                      batch_dim, " vs. ", input.dims(), ")"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("batch_dim must be < input rank", " ( ",
+                               batch_dim, " vs. ", input.dims(), ")")));
   OP_REQUIRES(
       context, seq_lengths.NumElements() == input.dim_size(batch_dim),
-      errors::InvalidArgument("Length of seq_lengths != input.dims(", batch_dim,
-                              "), ", "(", seq_lengths.NumElements(), " vs. ",
-                              input.dim_size(batch_dim), ")"));
+      absl::InvalidArgumentError(absl::StrCat(
+          "Length of seq_lengths != input.dims(", batch_dim, "), ", "(",
+          seq_lengths.NumElements(), " vs. ", input.dim_size(batch_dim), ")")));
 
   for (size_t d = 0; d < seq_lens_vec.size(); ++d) {
-    OP_REQUIRES(context, seq_lens_vec[d] >= 0,
-                errors::InvalidArgument("seq_lens(", d, ") < 0"));
+    OP_REQUIRES(
+        context, seq_lens_vec[d] >= 0,
+        absl::InvalidArgumentError(absl::StrCat("seq_lens(", d, ") < 0")));
     OP_REQUIRES(context, seq_lens_vec[d] <= input.dim_size(seq_dim),
-                errors::InvalidArgument("seq_lens(", d, ") > input.dims(",
-                                        seq_dim, ")"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "seq_lens(", d, ") > input.dims(", seq_dim, ")")));
   }
 }
 
@@ -82,19 +86,22 @@ void CheckErrorsGPU(OpKernelContext* context, int batch_dim, int seq_dim) {
   const Tensor& seq_lengths = context->input(1);
 
   OP_REQUIRES(context, batch_dim != seq_dim,
-              errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim));
+              absl::InvalidArgumentError(
+                  absl::StrCat("batch_dim == seq_dim == ", seq_dim)));
   OP_REQUIRES(context, seq_dim < input.dims(),
-              errors::InvalidArgument("seq_dim must be < input rank", " ( ",
-                                      seq_dim, " vs. ", input.dims(), ")"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("seq_dim must be < input rank", " ( ", seq_dim,
+                               " vs. ", input.dims(), ")")));
   OP_REQUIRES(context, batch_dim < input.dims(),
-              errors::InvalidArgument("batch_dim must be < input rank", " ( ",
-                                      batch_dim, " vs. ", input.dims(), ")"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("batch_dim must be < input rank", " ( ",
+                               batch_dim, " vs. ", input.dims(), ")")));
 
   OP_REQUIRES(
       context, seq_lengths.NumElements() == input.dim_size(batch_dim),
-      errors::InvalidArgument("Length of seq_lengths != input.dims(", batch_dim,
-                              "), ", "(", seq_lengths.NumElements(), " vs. ",
-                              input.dim_size(batch_dim), ")"));
+      absl::InvalidArgumentError(absl::StrCat(
+          "Length of seq_lengths != input.dims(", batch_dim, "), ", "(",
+          seq_lengths.NumElements(), " vs. ", input.dim_size(batch_dim), ")")));
 }
 
 template <>
@@ -117,9 +124,11 @@ class ReverseSequenceOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("batch_dim", &batch_dim_));
     OP_REQUIRES_OK(context, context->GetAttr("seq_dim", &seq_dim_));
     OP_REQUIRES(context, batch_dim_ >= 0,
-                errors::InvalidArgument("Invalid batch_dim ", batch_dim_));
-    OP_REQUIRES(context, seq_dim_ >= 0,
-                errors::InvalidArgument("Invalid seq_dim ", seq_dim_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Invalid batch_dim ", batch_dim_)));
+    OP_REQUIRES(
+        context, seq_dim_ >= 0,
+        absl::InvalidArgumentError(absl::StrCat("Invalid seq_dim ", seq_dim_)));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -128,8 +137,8 @@ class ReverseSequenceOp : public OpKernel {
 
     // Preliminary validation of sizes.
     OP_REQUIRES(context, TensorShapeUtils::IsVector(seq_lengths.shape()),
-                errors::InvalidArgument("seq_lengths must be 1-dim, not ",
-                                        seq_lengths.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "seq_lengths must be 1-dim, not ", seq_lengths.dims())));
 
     auto seq_lens_t = seq_lengths.vec<Tlen>();
 
@@ -157,9 +166,9 @@ class ReverseSequenceOp : public OpKernel {
 
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "ReverseSequenceOp : Unhandled input dimensions: ",
-                        input_dims));
+                        input_dims)));
     }
   }
 

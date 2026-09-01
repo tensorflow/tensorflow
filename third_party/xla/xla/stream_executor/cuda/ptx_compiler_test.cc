@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -185,10 +186,10 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
   stream_executor::GpuAsmOpts options(disable_gpuasm_optimizations,
                                       /*preferred_cuda_dir=*/"", extra_flags);
 
-  TF_ASSIGN_OR_RETURN(stream_executor::cuda::Assembly assembly,
-                      stream_executor::CompileGpuAsmUsingLibNvPtxCompiler(
-                          cc, ptx_input, options, cancel_if_reg_spill,
-                          /*dump_compilation_log=*/false));
+  ABSL_ASSIGN_OR_RETURN(stream_executor::cuda::Assembly assembly,
+                   stream_executor::CompileGpuAsmUsingLibNvPtxCompiler(
+                       cc, ptx_input, options, cancel_if_reg_spill,
+                       /*dump_compilation_log=*/false));
   return assembly.cubin;
 }
 

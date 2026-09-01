@@ -70,6 +70,10 @@ class TrackingAllocator : public Allocator {
   std::optional<AllocatorStats> GetStats() override;
   bool ClearStats() override;
 
+  bool AllocatesOpaqueHandle() const override {
+    return allocator_->AllocatesOpaqueHandle();
+  }
+
   AllocatorMemoryType GetMemoryType() const override {
     return allocator_->GetMemoryType();
   }

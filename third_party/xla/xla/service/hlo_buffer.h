@@ -128,7 +128,13 @@ class HloBuffer {
 
   std::vector<HloPosition> ComputePositions() const;
 
+  // Returns a human readable string of the HloBuffer. HloValues contained in
+  // the buffer are not represented in full.
   std::string ToString() const;
+
+  // Returns a human readable string of the HloBuffer. HloValues contained in
+  // the buffer are represented in full.
+  std::string ToDebugString() const;
 
   bool operator==(const HloBuffer& other) const;
   bool operator!=(const HloBuffer& other) const { return !(*this == other); }

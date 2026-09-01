@@ -1109,24 +1109,24 @@ REGISTER_OP("MapDefun")
       DataTypeVector t_args;
       TF_RETURN_IF_ERROR(c->GetAttr("Targuments", &t_args));
       if (output_shapes.size() != c->num_outputs()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "`output_shapes` must be the same length as `output_types` (",
-            output_shapes.size(), " vs. ", c->num_outputs(), ")");
+            output_shapes.size(), " vs. ", c->num_outputs(), ")"));
       }
 
       int64_t dim_zero = -1;
       for (size_t i = 0; i < t_args.size(); ++i) {
         if (c->Rank(c->input(i)) == 0) {
-          return errors::InvalidArgument(
-              "Arguments must have rank at least 1. Input ", i,
-              " has rank of 0.");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Arguments must have rank at least 1. Input ", i,
+                           " has rank of 0."));
         }
         auto dim_handle = c->Dim(c->input(i), 0);
         if (c->ValueKnown(dim_handle)) {
           if (dim_zero == -1) {
             dim_zero = c->Value(dim_handle);
           } else if (c->Value(dim_handle) != dim_zero) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(
                 "Arguments must have the same dimension 0.");
           }
         }

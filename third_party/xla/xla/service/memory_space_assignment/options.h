@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
-#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -65,18 +64,22 @@ using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
     std::function<bool(const HloInstruction*)>;
-using InitSplitTreeFn = std::function<ShapeTree<int64_t>(
+using InitSplitTreeFn = std::function<absl::flat_hash_map<ShapeIndex, int64_t>(
     const HloInstruction*,
-    absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_map<ShapeIndex, int64_t>>*)>;
 using DetermineSplitDimensionFunction =
     std::function<std::optional<SplitConfig>(
         const HloValue&,
-        absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+        absl::flat_hash_map<const HloInstruction*,
+                            absl::flat_hash_map<ShapeIndex, int64_t>>*)>;
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 using AsyncInstructionBwAdjustmentFactorFn =
     std::function<std::optional<float>(const HloInstruction*)>;
+using IsWindowPrefetchableInstructionFunction =
+    std::function<bool(const HloInstruction*)>;
 using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 using OpSpanSizeFn = std::function<int64_t(
     HloInstruction* original_hlo, HloInstruction* hlo_with_memory_spaces,
@@ -97,14 +100,13 @@ struct PostAllocationTransformationUpdate {
   std::string ToString() const;
 };
 
-// The different modes for window prefetch. kWindowExposure is currently the
-// default mode, where the window buffer is exposed from the reserved scoped
-// memory. kWindowPrefetch is a mode where the window buffer is not only exposed
-// from the reserved scoped memory, but also has the content prefetched into
-// alternate memory.
+// The different modes for window prefetch. kAllocationOnly allocates window
+// buffers separately from scoped alternate memory. kPrefetch not only allocates
+// independent window buffers, but it also prefetches their initial content.
 enum class WindowPrefetchMode {
-  kWindowExposure,
-  kWindowPrefetch,
+  kNone,
+  kAllocationOnly,
+  kPrefetch,
 };
 
 // A struct to specify the memory space coloring of a buffer position or use.
@@ -126,11 +128,34 @@ struct CustomCallPrefetchDetails {
 
 // The different options to be passed to the Run() API.
 struct Options {
+  std::string ToString() const;
+
+  // Returns true if op span exposure is enabled.
+  bool IsOpSpanExposureEnabled() const;
+
+  // Returns true if window prefetching is enabled.
+  bool IsWindowPrefetchingEnabled() const;
+
+  std::string WindowPrefetchModeToString() const;
+
+  // The execution threads that memory space assignment operates on. This is
+  // used to determine which flattened instructions should be included/excluded
+  // from cost analysis.
+  absl::flat_hash_set<absl::string_view> execution_threads = {
+      HloInstruction::kMainExecutionThread};
+
   // The backend-specific integer value that describes the default memory.
   int64_t default_memory_space = 0;
 
   // Backend-specific integer value that describes the alternate memory.
   int64_t alternate_memory_space = 0;
+
+  // Color of "view" values. Views are zero-copy, possibly sub-region aliases
+  // into another allocation. We identify them by their color. MSA extends the
+  // pointed-to buffer's allocation to account for the live range of views to
+  // it. Pair with an is_allowed_in_alternate_mem_fn that rejects view colored
+  // values. std::nullopt disables views.
+  std::optional<int64_t> dus_view_color;
 
   // Maximum size of the alternate memory space.
   int64_t max_size_in_bytes = 0;
@@ -352,6 +377,10 @@ struct Options {
   // ones. If it fails to replace the slice, it keeps the sync version.
   bool enable_sync_slice_replacement = false;
 
+  // Used in block prefetching mode. If true, try to asyncify DMA like custom
+  // fusion instructions, like cross-buffer slice fusions.
+  bool enable_sync_custom_fusion_replacement = false;
+
   // If non-zero, this is the number of extra outstanding async copies that we
   // allow for each sync mem op that is converted to an async mem op.
   int extend_async_copies_limit_for_sync_mem_op_conversion = 0;
@@ -378,6 +407,10 @@ struct Options {
   // filtered prefetches.
   PreferredPrefetchOverrides preferred_prefetch_overrides;
 
+  // Unified overrides for tensor placement, pinning, retention, and prefetch
+  // timing.
+  MsaTensorOverrides msa_tensor_overrides;
+
   // Options for slicing prefetches into smaller asynchronously copied pieces.
   SlicedPrefetchOptions sliced_prefetch_options;
 
@@ -394,23 +427,29 @@ struct Options {
   // and prefetching back to alternate memory(if needed) just in time for use.
   bool always_spill_to_default_memory = false;
 
-  // If true, enables window prefetching. Window prefetching is a mechanism
-  // where we prefetch windows of data into the alternate memory before the
-  // first use of the buffer. This allows large tensors to be prefetched as well
-  // and gives MSA more flexibility in choosing the prefetch time and how much
-  // data to prefetch.
-  bool enable_window_prefetch = false;
-
   // Max number of window prefetch operands allowed.
   int64_t window_prefetch_max_operands = 1024;
 
   // Min span size for window prefetch operands allowed.
   int64_t window_prefetch_min_span_size = 4096;
 
+  // This function is called to determine whether an instruction is eligible
+  // for window prefetching. If not provided (nullptr), the default logic is
+  // used: output fusions and loop fusions not on sparsecore are eligible.
+  IsWindowPrefetchableInstructionFunction
+      is_window_prefetchable_instruction_fn =
+          [](const HloInstruction* instruction) {
+            return instruction->IsOutputFusion() || instruction->IsLoopFusion();
+          };
+
   // The mode to use for window prefetching.
-  WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kWindowExposure;
+  WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kNone;
 
   MsaSortOrderOverrides msa_sort_order_overrides;
+
+  // If true, allocates alternate memory colored buffers after pre-colored
+  // buffers but before other buffers.
+  bool allocate_colored_buffers_early = true;
 
   // A mode that enables expanding scoped alternate memory allocations to the
   // largest contiguous open space available.
@@ -431,7 +470,7 @@ struct Options {
   uint64_t reserved_bytes_for_block_prefetches = 0;
 
   // List of hlo positions for block prefetches.
-  std::vector<HloPosition> block_prefetched_positions;
+  absl::flat_hash_set<HloPosition> block_prefetched_positions;
 
   // Determines the bandwidth adjustment factor for an async start instruction.
   // The available bandwidth for instructions between this and the async done
@@ -450,7 +489,13 @@ struct Options {
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
 
-  std::string ToString() const;
+  // Used in block prefetching mode. Returns the operand index of the source
+  // buffer (source of a DMA) for a custom fusion instruction that can be
+  // asyncified. Currently this matches cross-buffer slice fusions which can
+  // be lowered to asynchronous DMAs.
+  std::function<std::optional<int64_t>(const HloInstruction*)>
+      custom_fusion_block_prefetch_operand_index_fn =
+          [](const HloInstruction*) { return std::nullopt; };
 };
 
 }  // namespace memory_space_assignment

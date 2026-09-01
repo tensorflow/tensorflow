@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -57,10 +59,16 @@ namespace sdy {
 
 namespace {
 
+using ::llvm::ArrayRef;
+using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
+using ::mlir::Operation;
+using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
+using ::mlir::WalkOrder;
+using ::mlir::WalkResult;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 using ::mlir::stablehlo::CustomCallOp;
@@ -166,44 +174,15 @@ mlir::LogicalResult rewriteManualComputation(
   return mlir::success();
 }
 
-FuncOp cloneFuncRecursively(
-    FuncOp funcOp, mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
-    mlir::SymbolTable& symbolTable) {
-  mlir::StringAttr originalFuncName = mlir::sdy::getOriginalFuncName(funcOp);
-  FuncOp clonedFuncOp =
-      symbolTable.lookup<FuncOp>(originalFuncName.getValue()).clone();
-  // TODO(enver): Have a MLIR native error handling, instead of CHECK.
-  CHECK(clonedFuncOp) << "Failed to lookup function: "
-                      << originalFuncName.str();
-  clonedFuncOp->setAttr(mlir::sdy::kOriginalFuncName, originalFuncName);
-  if (callOpResultShardings) {
-    mlir::sdy::setFuncResultShardings(clonedFuncOp, callOpResultShardings);
-  }
-  clonedFuncOp->walk([&](CallOp callOp) {
-    FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
-    CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
-        funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
-  });
-  return clonedFuncOp;
-}
-
-void cloneManualComputations(
-    ModuleOp moduleOp, SymbolTable& symbolTable,
-    mlir::SymbolTableCollection& symbolTableCollection) {
-  mlir::sdy::walkCalls(moduleOp, [&](CallOp callOp) {
-    if (!isManualComputation(callOp)) {
-      return mlir::WalkResult::advance();
+SmallVector<StringAttr> getManualAxesList(
+    ArrayRef<ArrayRef<StringAttr>> manualAxesStack) {
+  SmallVector<StringAttr> manualAxesList;
+  for (ArrayRef<StringAttr> manualAxesRefs : manualAxesStack) {
+    for (StringAttr manualAxes : manualAxesRefs) {
+      manualAxesList.push_back(manualAxes);
     }
-    // TODO(b/446881697): Clone just the body on demand like in
-    // shardy/stablehlo_round_trip/shard_map_import.cc.
-    FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
-    CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
-        funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
-    return mlir::WalkResult::advance();
-  });
-  // TODO(enver): Clean up uncalled functions.
+  }
+  return manualAxesList;
 }
 
 class SdyRoundTripShardMapImportPass
@@ -218,8 +197,6 @@ class SdyRoundTripShardMapImportPass
     mlir::SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(module);
     mlir::IRRewriter rewriter(module);
-
-    cloneManualComputations(module, symbolTable, symbolTableCollection);
 
     if (!mlir::sdy::walkCalls(module, [&](CallOp callOp) {
           if (isManualComputation(callOp)) {
@@ -256,10 +233,42 @@ class SdyRoundTripShardMapImportPass
 
     // Erase all manual computation func ops as now they have no call ops.
     for (FuncOp funcOp : llvm::make_early_inc_range(module.getOps<FuncOp>())) {
-      if (isManualComputation(funcOp)) {
-        symbolTable.erase(symbolTable.lookup(funcOp.getName()));
+      StringRef funcName = funcOp.getName();
+      if (isManualComputationOnName(funcName)) {
+        symbolTable.erase(symbolTable.lookup(funcName));
       }
     }
+
+    // Set func manual axes.
+    sdy::iterateFuncs(
+        module,
+        [&](FuncOp funcOp) {
+          SmallVector<ArrayRef<StringAttr>> manualAxesStack;
+          if (auto funcManualAxes = funcOp->getAttrOfType<sdy::ManualAxesAttr>(
+                  sdy::kFuncManualAxes)) {
+            manualAxesStack.push_back(funcManualAxes.getValue());
+          }
+
+          funcOp.walk<WalkOrder::PreOrder>([&](Operation* op) {
+            if (auto manualComputationOp =
+                    mlir::dyn_cast<sdy::ManualComputationOp>(op)) {
+              manualAxesStack.push_back(manualComputationOp.getManualAxes());
+            } else if (auto callOp = mlir::dyn_cast<CallOp>(op)) {
+              if (!manualAxesStack.empty()) {
+                FuncOp calledFuncOp =
+                    sdy::getFuncOpOrDie(callOp.getCallee(), symbolTable);
+                calledFuncOp->setAttr(
+                    sdy::kFuncManualAxes,
+                    sdy::ManualAxesAttr::get(
+                        op->getContext(), getManualAxesList(manualAxesStack)));
+              }
+            } else if (op->hasTrait<mlir::OpTrait::IsTerminator>() &&
+                       mlir::isa<sdy::ManualComputationOp>(op->getParentOp())) {
+              manualAxesStack.pop_back();
+            }
+          });
+        },
+        /*preOrder=*/true);
   }
 
   StringRef getArgument() const override {

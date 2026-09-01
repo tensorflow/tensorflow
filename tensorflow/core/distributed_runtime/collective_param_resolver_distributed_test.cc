@@ -65,12 +65,13 @@ class FakeCache : public TestWorkerCache {
     std::string task_name;
     std::string dev_part;
     if (!DeviceNameUtils::SplitDeviceName(device, &task_name, &dev_part)) {
-      done(errors::Internal("failed to parse device name"));
+      done(absl::InternalError("failed to parse device name"));
       return;
     }
     auto it = workers_.find(task_name);
     if (it == workers_.end()) {
-      done(errors::Internal("failed to find worker ", task_name));
+      done(absl::InternalError(
+          absl::StrCat("failed to find worker ", task_name)));
       return;
     }
     WorkerInterface* wi = it->second;
@@ -88,7 +89,7 @@ class FakeCache : public TestWorkerCache {
         return;
       }
     }
-    done(errors::Internal("device not found: ", device));
+    done(absl::InternalError(absl::StrCat("device not found: ", device)));
   }
 };
 

@@ -168,13 +168,13 @@ struct CurtHealthLaunch {
 template struct CurtHealthLaunch<Eigen::half, float>;
 template struct CurtHealthLaunch<float, float>;
 template struct CurtHealthLaunch<double, float>;
-template struct CurtHealthLaunch<int16, float>;
-template struct CurtHealthLaunch<int32, float>;
+template struct CurtHealthLaunch<int16_t, float>;
+template struct CurtHealthLaunch<int32_t, float>;
 template struct CurtHealthLaunch<Eigen::half, double>;
 template struct CurtHealthLaunch<float, double>;
 template struct CurtHealthLaunch<double, double>;
-template struct CurtHealthLaunch<int16, double>;
-template struct CurtHealthLaunch<int32, double>;
+template struct CurtHealthLaunch<int16_t, double>;
+template struct CurtHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
@@ -192,13 +192,13 @@ struct ConciseHealthLaunch {
 template struct ConciseHealthLaunch<Eigen::half, float>;
 template struct ConciseHealthLaunch<float, float>;
 template struct ConciseHealthLaunch<double, float>;
-template struct ConciseHealthLaunch<int16, float>;
-template struct ConciseHealthLaunch<int32, float>;
+template struct ConciseHealthLaunch<int16_t, float>;
+template struct ConciseHealthLaunch<int32_t, float>;
 template struct ConciseHealthLaunch<Eigen::half, double>;
 template struct ConciseHealthLaunch<float, double>;
 template struct ConciseHealthLaunch<double, double>;
-template struct ConciseHealthLaunch<int16, double>;
-template struct ConciseHealthLaunch<int32, double>;
+template struct ConciseHealthLaunch<int16_t, double>;
+template struct ConciseHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {
@@ -216,13 +216,13 @@ struct FullHealthLaunch {
 template struct FullHealthLaunch<Eigen::half, float>;
 template struct FullHealthLaunch<float, float>;
 template struct FullHealthLaunch<double, float>;
-template struct FullHealthLaunch<int16, float>;
-template struct FullHealthLaunch<int32, float>;
+template struct FullHealthLaunch<int16_t, float>;
+template struct FullHealthLaunch<int32_t, float>;
 template struct FullHealthLaunch<Eigen::half, double>;
 template struct FullHealthLaunch<float, double>;
 template struct FullHealthLaunch<double, double>;
-template struct FullHealthLaunch<int16, double>;
-template struct FullHealthLaunch<int32, double>;
+template struct FullHealthLaunch<int16_t, double>;
+template struct FullHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
@@ -241,13 +241,13 @@ struct ReduceInfNanThreeSlotsLaunch {
 template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
 template struct ReduceInfNanThreeSlotsLaunch<float, float>;
 template struct ReduceInfNanThreeSlotsLaunch<double, float>;
-template struct ReduceInfNanThreeSlotsLaunch<int16, float>;
-template struct ReduceInfNanThreeSlotsLaunch<int32, float>;
+template struct ReduceInfNanThreeSlotsLaunch<int16_t, float>;
+template struct ReduceInfNanThreeSlotsLaunch<int32_t, float>;
 template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, double>;
 template struct ReduceInfNanThreeSlotsLaunch<float, double>;
 template struct ReduceInfNanThreeSlotsLaunch<double, double>;
-template struct ReduceInfNanThreeSlotsLaunch<int16, double>;
-template struct ReduceInfNanThreeSlotsLaunch<int32, double>;
+template struct ReduceInfNanThreeSlotsLaunch<int16_t, double>;
+template struct ReduceInfNanThreeSlotsLaunch<int32_t, double>;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -306,6 +306,10 @@ The tool can also dump LLVMIR after every path.
 bazel run //xla/hlo/tools/ptx-opt -- --arch=9.0 --xla_dump_to=<path> --xla_gpu_dump_llvmir <filename>
 ```
 
+## [`hlo_isolation_test`] Isolate and Verify HLO Stability
+
+For automated debugging and verifying numeric stability or mismatches across compiled HLO modules, use the `hlo_isolation_test` CLI. For detailed usage, installation, and API instructions, see the [HLO Isolation User Guide](./hlo_isolation.md).
+
 ## [`isolate_hlo`] Isolate Problematic HLO Instructions
 
 If you have a large HLO dump and suspect a specific instruction or section

@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -560,9 +559,5 @@ class TritonXLASqueezeDimsPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLASqueezeDimsPass() {
-  return std::make_unique<TritonXLASqueezeDimsPass>();
-}
 
 }  // namespace mlir::triton::xla

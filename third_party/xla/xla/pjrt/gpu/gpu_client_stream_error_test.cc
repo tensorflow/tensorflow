@@ -16,11 +16,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/ffi.h"
@@ -61,8 +63,8 @@ MATCHER_P2(StatusHasPayload, key, value_matcher,
 absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options = xla::CompileOptions()) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      ParseAndReturnUnverifiedModule(program, {}));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   ParseAndReturnUnverifiedModule(program, {}));
   xla::XlaComputation xla_computation(hlo_module->ToProto());
   return client.CompileAndLoad(xla_computation, compile_options);
 }
@@ -103,9 +105,8 @@ absl::Status IllegalAccess(se::Stream* stream, KernelHolder* holder) {
     }
   )";
   if (holder->kernel == nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        holder->kernel,
-        gpu::CreateKernel("IllegalAccess", 0, kPtx, stream->parent(), 0));
+    ABSL_ASSIGN_OR_RETURN(holder->kernel, gpu::CreateKernel("IllegalAccess", 0, kPtx,
+                                                       stream->parent(), 0));
   }
   return gpu::ExecuteKernelOnStream(*holder->kernel, {},
                                     xla::gpu::LaunchDimensions(1, 1),
@@ -128,8 +129,11 @@ TEST_P(PjRtGpuClientStreamErrorTest, AbortsOnStreamError) {
                           api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                          CompileExecutable(kIllegalProgram, *client_));
+  CompileOptions compile_options;
+  compile_options.individually_defined_output_indices = {0};
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      CompileExecutable(kIllegalProgram, *client_, std::move(compile_options)));
   ExecuteContext context;
   TF_ASSERT_OK(context.ffi_context().Emplace<KernelHolder>());
   ExecuteOptions opts;

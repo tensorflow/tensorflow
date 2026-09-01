@@ -259,6 +259,7 @@ tensorflow::ImportFunction
 
 [//tensorflow/compiler/mlir/lite/python:converter_python_api] # converter_python_api
 tflite::Convert
+tflite::ConvertMlirBytecode
 tflite::MlirQuantizeModel
 tflite::MlirSparsifyModel
 tflite::RegisterCustomOpdefs
@@ -545,6 +546,7 @@ tensorflow::PythonAPIInfo
 [//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
 tensorflow::ConvertPythonAPIParameters
 tensorflow::CopyPythonAPITensorLists
+tensorflow::GetPythonAPIMaxIndex
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash

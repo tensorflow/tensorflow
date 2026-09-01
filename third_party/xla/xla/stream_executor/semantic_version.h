@@ -34,21 +34,22 @@ namespace stream_executor {
 // The type is lexicographically ordered and supports printing and parsing.
 class SemanticVersion {
  public:
-  constexpr SemanticVersion(unsigned major, unsigned minor, unsigned patch)
-      : major_(major), minor_(minor), patch_(patch) {}
+  constexpr SemanticVersion(unsigned major_version, unsigned minor_version,
+                            unsigned patch_version)
+      : major_(major_version), minor_(minor_version), patch_(patch_version) {}
   explicit SemanticVersion(std::array<unsigned, 3> other)
       : major_(other[0]), minor_(other[1]), patch_(other[2]) {}
 
   static absl::StatusOr<SemanticVersion> ParseFromString(absl::string_view str);
 
-  unsigned& major() { return major_; }
-  unsigned major() const { return major_; }
+  unsigned& major_version() { return major_; }
+  unsigned major_version() const { return major_; }
 
-  unsigned& minor() { return minor_; }
-  unsigned minor() const { return minor_; }
+  unsigned& minor_version() { return minor_; }
+  unsigned minor_version() const { return minor_; }
 
-  unsigned& patch() { return patch_; }
-  unsigned patch() const { return patch_; }
+  unsigned& patch_version() { return patch_; }
+  unsigned patch_version() const { return patch_; }
 
   bool IsValid() const { return major_ != 0 || minor_ != 0 || patch_ != 0; }
   std::string ToString() const;

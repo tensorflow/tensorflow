@@ -1346,9 +1346,9 @@ absl::Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   // Check that user's provided TF operation really exists.
   for (const auto& s : allowlist) {
     if (!all_ops.contains(s)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "The operation '", s,
-          "' passed to --tf_xla_ops_to_cluster is not supported by XLA.");
+          "' passed to --tf_xla_ops_to_cluster is not supported by XLA."));
     }
   }
 
@@ -1358,10 +1358,10 @@ absl::Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     if (s == "Where") {
       allow_where_op = false;
     } else {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "The operation '", s,
           "' passed to --tf_xla_cluster_exclude_ops is not supported by "
-          "XLA.");
+          "XLA."));
     }
   }
 
@@ -2152,6 +2152,7 @@ absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp() {
       "LowerBound",
       "MatMul",
       "MatrixBandPart",
+      "MatrixDeterminant",
       "MatrixDiag",
       "MatrixDiagPart",
       "MatrixDiagPartV2",
@@ -2313,6 +2314,7 @@ absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp() {
       "UniformRequantize",
       "Unique",
       "UniqueV2",
+      "UnravelIndex",
       "UpperBound",
       "UnsortedSegmentMax",
       "UnsortedSegmentMin",

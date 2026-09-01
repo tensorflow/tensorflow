@@ -62,21 +62,21 @@ class InitializeTableOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& keys = ctx->input(1);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(keys.shape()),
-        errors::InvalidArgument("Keys must be a vector, but received shape",
-                                keys.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(keys.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Keys must be a vector, but received shape",
+                                 keys.shape().DebugString())));
 
     const Tensor& values = ctx->input(2);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(values.shape()),
-        errors::InvalidArgument("Values must be a vector, but received shape",
-                                values.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(values.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Values must be a vector, but received shape",
+                                 values.shape().DebugString())));
 
     OP_REQUIRES(ctx, keys.NumElements() == values.NumElements(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Keys and values must have the same size ",
-                    keys.NumElements(), " vs ", values.NumElements()));
+                    keys.NumElements(), " vs ", values.NumElements())));
 
     int memory_used_before = 0;
     if (ctx->track_allocations()) {
@@ -114,7 +114,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
     std::string delimiter;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("delimiter", &delimiter));
     OP_REQUIRES(ctx, delimiter.size() == 1,
-                errors::InvalidArgument("delimiter should be only 1 char"));
+                absl::InvalidArgumentError("delimiter should be only 1 char"));
     delimiter_ = delimiter[0];
   }
 
@@ -132,15 +132,15 @@ class InitializeTableFromTextFileOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& vocab_filename_tensor = ctx->input(1);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(vocab_filename_tensor.shape()),
-        errors::InvalidArgument("filename should be a single string, but got ",
-                                vocab_filename_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(vocab_filename_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("filename should be a single string, but got ",
+                                 vocab_filename_tensor.shape().DebugString())));
 
     const std::string& vocab_filename =
         vocab_filename_tensor.scalar<tstring>()();
     OP_REQUIRES(ctx, !vocab_filename.empty(),
-                errors::InvalidArgument("filename cannot be empty."));
+                absl::InvalidArgumentError("filename cannot be empty."));
 
     int64_t memory_used_before = 0;
     if (ctx->track_allocations()) {

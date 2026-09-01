@@ -22,14 +22,9 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "rocm/rocm_config.h"  // IWYU pragma: keep - needed for TF_ROCM_VERSION
-
-#if (TF_ROCM_VERSION >= 50200)
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "rocm/include/hipfft/hipfft.h"
-#else
-#include "rocm/include/hipfft.h"
-#endif
-
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"

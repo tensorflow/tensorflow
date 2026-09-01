@@ -254,6 +254,12 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
                                 const Mesh& mesh,
                                 bool allow_mergeable_neighbors = false);
 
+// Merges consecutive adjacent axes.
+//
+// Adjacent axes that overlap will cause a fatal error.
+// Adjacent axes that can be merged are merged.
+void MergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh);
+
 // Sorts and merges axes.
 //
 // The axes are sorted by `operator<` (mesh axis index, then pre-size) and

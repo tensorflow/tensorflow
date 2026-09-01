@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -53,7 +56,6 @@ using tensorflow::FunctionDef;
 using tensorflow::Node;
 using tensorflow::NodeBuilder;
 using tensorflow::Status;
-using tensorflow::errors::InvalidArgument;
 
 namespace {
 typedef std::unique_ptr<TF_Function, decltype(&TF_DeleteFunction)>
@@ -161,7 +163,7 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
   // CPU tensor to GPU).
   // Setting a larger thread pool does not help with the Swift caller, as we use
   // a different TFE context for each thread of execution (for running graph
-  // functions, and their send/recvs corountines).
+  // functions, and their send/recvs coroutines).
   config.set_inter_op_parallelism_threads(1);
 
   TF_Buffer* ret = TF_NewBuffer();
@@ -492,7 +494,19 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
                                                 void* data, size_t len,
                                                 TF_Status* status) {
   auto dtype = static_cast<tensorflow::DataType>(data_type);
-  DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
+  if (!tensorflow::DataTypeCanUseMemcpy(dtype)) {
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("DataType ", dtype, " cannot use memcpy"));
+    return nullptr;
+  }
+
+  size_t expected_len = static_cast<size_t>(tensorflow::DataTypeSize(dtype));
+  if (len > expected_len) {
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("len (", len, ") is larger than expected scalar size for ",
+                     dtype, " (", expected_len, " bytes)"));
+    return nullptr;
+  }
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
@@ -547,10 +561,10 @@ TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {
 
 void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
                                  const int64_t* dims, int num_dims) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  CHECK(index >= 0 && index < shape_list->num_items);
   TF_ShapeAndType& shape = shape_list->items[index];
-  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
-  DCHECK(num_dims >= 0) << "Number of dimensions cannot be negative!";
+  CHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  CHECK(num_dims >= 0) << "Number of dimensions cannot be negative!";
   shape.num_dims = num_dims;
   shape.dims = new int64_t[num_dims];
   memcpy(shape.dims, dims, sizeof(int64_t) * num_dims);
@@ -558,16 +572,16 @@ void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
 
 void TF_ShapeAndTypeListSetUnknownShape(TF_ShapeAndTypeList* shape_list,
                                         int index) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  CHECK(index >= 0 && index < shape_list->num_items);
   TF_ShapeAndType& shape = shape_list->items[index];
-  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  CHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
   shape.num_dims = -1;
   shape.dims = nullptr;
 }
 
 void TF_ShapeAndTypeListSetDtype(TF_ShapeAndTypeList* shape_list, int index,
                                  TF_DataType dtype) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  CHECK(index >= 0 && index < shape_list->num_items);
   TF_ShapeAndType& shape_and_type = shape_list->items[index];
   shape_and_type.dtype = dtype;
 }
@@ -593,7 +607,7 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
 namespace tensorflow {
 absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
-// Helpers for loadding a TensorFlow PluggableDevice plugin (a .so file).
+// Helpers for loading a TensorFlow PluggableDevice plugin (a .so file).
 absl::Status LoadPluggableDeviceLibrary(const char* library_filename,
                                         void** result);
 }  // namespace tensorflow
@@ -722,7 +736,7 @@ void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
 TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
                                           TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
-  status->status = tensorflow::errors::Unimplemented(
+  status->status = absl::UnimplementedError(
       "PluggableDevice plugin functionality is not supported on mobile");
   return nullptr;
 #else

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -64,17 +64,16 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/support/sharding_conversions.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace ifrt {
@@ -240,10 +239,6 @@ bool IfrtCallOpInfo::isEqual(CallOp lhs, CallOp rhs) {
   if (lhs == rhs) {
     return true;
   }
-  if (lhs == getEmptyKey() || lhs == getTombstoneKey() ||
-      rhs == getEmptyKey() || rhs == getTombstoneKey()) {
-    return false;
-  }
   // Verify that the input and output types are the same.
   if (lhs.getInputs().getTypes() != rhs.getInputs().getTypes()) {
     return false;
@@ -282,6 +277,12 @@ void UpdateFunctionType(mlir::func::FuncOp func_op) {
 }
 
 absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
+  if (llvm::isa<IfrtTokenType>(type)) {
+    return ToDType(xla::PrimitiveType::TOKEN);
+  }
+  if (llvm::isa<IfrtStringType>(type)) {
+    return DType(DType::kString);
+  }
   xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
   return ToDType(primitive_type);
 }
@@ -331,28 +332,19 @@ absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
   return expanded_platform_names;
 }
 
-uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
-  std::string s;
-  llvm::raw_string_ostream os(s);
-  mlir::OpPrintingFlags flags;
-  flags.enableDebugInfo(false);
-  module.print(os, flags);
-  return tsl::Fingerprint64(os.str());
-}
-
-absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
+absl::StatusOr<XlaCompileOptions*> GetModuleXlaCompileOverrides(
     mlir::StringAttr compile_options_key,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides) {
-  std::optional<xla::CompileOptions> compile_options = std::nullopt;
+  XlaCompileOptions* compile_options = nullptr;
   if (compile_options_overrides != nullptr && compile_options_key != nullptr) {
     if (auto option_override =
             compile_options_overrides->find(compile_options_key.str());
         option_override != compile_options_overrides->end()) {
-      if (auto xla_options = llvm::dyn_cast<XlaCompileOptions>(
-              option_override->second.get())) {
-        compile_options = xla_options->compile_options;
+      if (auto xla_options =
+              dyn_cast<XlaCompileOptions>(option_override->second.get())) {
+        compile_options = xla_options;
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "The `", kIfrtCompileOptionsKey.str(), "` compile options key `",
@@ -364,6 +356,20 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
   }
 
   return compile_options;
+}
+
+absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleCompileOverrides(
+    mlir::StringAttr compile_options_key,
+    std::shared_ptr<
+        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
+        compile_options_overrides) {
+  ABSL_ASSIGN_OR_RETURN(XlaCompileOptions * xla_compile_options,
+                   GetModuleXlaCompileOverrides(compile_options_key,
+                                                compile_options_overrides));
+  if (xla_compile_options == nullptr) {
+    return std::nullopt;
+  }
+  return xla_compile_options->compile_options;
 }
 
 absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
@@ -378,13 +384,13 @@ absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
       TF_RET_CHECK(devices[logical_id] != nullptr);
       array_devices.push_back(devices[logical_id]);
     }
-    TF_ASSIGN_OR_RETURN(array_device_list,
-                        client->MakeDeviceList(std::move(array_devices)));
+    ABSL_ASSIGN_OR_RETURN(array_device_list,
+                     client->MakeDeviceList(std::move(array_devices)));
   }
 
   IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::HloSharding hlo_sharding,
       xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
   return xla::ifrt::HloSharding::Create(std::move(array_device_list),
@@ -396,10 +402,10 @@ absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
     mlir::Type array_type, Client* client, const DeviceListRef& device_list) {
   IfrtArrayType ifrt_array_type = GetArrayType(array_type);
 
-  TF_ASSIGN_OR_RETURN(DType dtype,
-                      ToIfrtDType(ifrt_array_type.getShape().getElementType()));
+  ABSL_ASSIGN_OR_RETURN(DType dtype,
+                   ToIfrtDType(ifrt_array_type.getShape().getElementType()));
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
   return ArraySpec{

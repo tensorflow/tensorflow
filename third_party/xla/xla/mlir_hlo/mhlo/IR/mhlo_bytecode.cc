@@ -16,6 +16,7 @@ limitations under the License.
 #include "mhlo/IR/mhlo_bytecode.h"
 
 #include <cstdint>
+#include <optional>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -197,6 +198,24 @@ enum AttributeCode {
   kReplicaGroupMeshAxesAttr = 19,
   kSubAxisInfoAttr = 20,
   kAxisRefAttr = 21,
+
+  ///   OriginalArrayAttr {
+  ///     instructionName: StringAttr
+  ///     shapeIndex: svarint[]
+  ///   }
+  kOriginalArrayAttr = 22,
+
+  ///   OriginalValueElementAttr {
+  ///     shapeIndex: svarint[]
+  ///     originalArray: OriginalArrayAttr (optional)
+  ///   }
+  kOriginalValueElementAttr = 23,
+
+  ///   OriginalValueAttr {
+  ///     is_synthetic_call: bool
+  ///     elements: OriginalValueElementAttr[]
+  ///   }
+  kOriginalValueAttr = 24,
 };
 
 /// This enum contains marker codes used to indicate which type is
@@ -283,6 +302,10 @@ class MhloBytecodeInterface : public BytecodeDialectInterface {
       DialectBytecodeReader& reader) const;
   AxisRefAttr readAxisRefAttr(DialectBytecodeReader& reader) const;
   SubAxisInfoAttr readSubAxisInfoAttr(DialectBytecodeReader& reader) const;
+  OriginalArrayAttr readOriginalArrayAttr(DialectBytecodeReader& reader) const;
+  OriginalValueAttr readOriginalValueAttr(DialectBytecodeReader& reader) const;
+  OriginalValueElementAttr readOriginalValueElementAttr(
+      DialectBytecodeReader& reader) const;
 
   // TO ADD ATTRIBUTE: Include a write method for each attribute in StableHLO
   // Ex: void write(SomeAttr attr, DialectBytecodeWriter &writer) const;
@@ -312,6 +335,10 @@ class MhloBytecodeInterface : public BytecodeDialectInterface {
              DialectBytecodeWriter& writer) const;
   void write(AxisRefAttr attr, DialectBytecodeWriter& writer) const;
   void write(SubAxisInfoAttr attr, DialectBytecodeWriter& writer) const;
+  void write(OriginalArrayAttr attr, DialectBytecodeWriter& writer) const;
+  void write(OriginalValueAttr attr, DialectBytecodeWriter& writer) const;
+  void write(OriginalValueElementAttr attr,
+             DialectBytecodeWriter& writer) const;
 
   //===--------------------------------------------------------------------===//
   // Types
@@ -389,6 +416,12 @@ Attribute MhloBytecodeInterface::readAttribute(
       return readAxisRefAttr(reader);
     case mhlo_encoding::kSubAxisInfoAttr:
       return readSubAxisInfoAttr(reader);
+    case mhlo_encoding::kOriginalArrayAttr:
+      return readOriginalArrayAttr(reader);
+    case mhlo_encoding::kOriginalValueAttr:
+      return readOriginalValueAttr(reader);
+    case mhlo_encoding::kOriginalValueElementAttr:
+      return readOriginalValueElementAttr(reader);
 
     default:
       reader.emitError() << "unknown mhlo attribute code: " << code;
@@ -617,6 +650,45 @@ TypeExtensionsAttr MhloBytecodeInterface::readTypeExtensionsAttr(
   return TypeExtensionsAttr::get(getContext(), bounds);
 }
 
+OriginalArrayAttr MhloBytecodeInterface::readOriginalArrayAttr(
+    DialectBytecodeReader& reader) const {
+  LOG_READ_CALL;
+  StringAttr instructionName;
+  llvm::SmallVector<int64_t> shapeIndex;
+  if (failed(reader.readAttribute(instructionName)) ||
+      failed(reader.readSignedVarInts(shapeIndex))) {
+    return OriginalArrayAttr();
+  }
+  return OriginalArrayAttr::get(getContext(), instructionName, shapeIndex);
+}
+
+OriginalValueElementAttr MhloBytecodeInterface::readOriginalValueElementAttr(
+    DialectBytecodeReader& reader) const {
+  LOG_READ_CALL;
+  llvm::SmallVector<int64_t> shapeIndex;
+  OriginalArrayAttr originalArray;
+  if (failed(reader.readSignedVarInts(shapeIndex)) ||
+      failed(reader.readOptionalAttribute(originalArray))) {
+    return OriginalValueElementAttr();
+  }
+  return OriginalValueElementAttr::get(
+      getContext(), shapeIndex,
+      originalArray ? std::optional<OriginalArrayAttr>(originalArray)
+                    : std::nullopt);
+}
+
+OriginalValueAttr MhloBytecodeInterface::readOriginalValueAttr(
+    DialectBytecodeReader& reader) const {
+  LOG_READ_CALL;
+  bool isSyntheticCall;
+  llvm::SmallVector<OriginalValueElementAttr> elements;
+  if (failed(reader.readBool(isSyntheticCall)) ||
+      failed(reader.readAttributes(elements))) {
+    return OriginalValueAttr();
+  }
+  return OriginalValueAttr::get(getContext(), isSyntheticCall, elements);
+}
+
 //===----------------------------------------------------------------------===//
 // Attributes: Writer
 
@@ -629,11 +701,12 @@ LogicalResult MhloBytecodeInterface::writeAttribute(
       .Case<ArgResultAliasAttr, ComparisonDirectionAttr, ComparisonTypeAttr,
             ConvDimensionNumbersAttr, ChannelHandleAttr, DomainKindAttr,
             DotDimensionNumbersAttr, FftTypeAttr, FusionKindAttr,
-            GatherDimensionNumbersAttr, OutputOperandAliasAttr, PrecisionAttr,
-            ResultAccuracyAttr, ResultAccuracyModeAttr, RngAlgorithmAttr,
-            RngDistributionAttr, ScatterDimensionNumbersAttr, TransposeAttr,
-            TypeExtensionsAttr, ReplicaGroupMeshAxesAttr, AxisRefAttr,
-            SubAxisInfoAttr>([&](auto attr) {
+            GatherDimensionNumbersAttr, OutputOperandAliasAttr,
+            OriginalArrayAttr, OriginalValueAttr, OriginalValueElementAttr,
+            PrecisionAttr, ResultAccuracyAttr, ResultAccuracyModeAttr,
+            RngAlgorithmAttr, RngDistributionAttr, ScatterDimensionNumbersAttr,
+            TransposeAttr, TypeExtensionsAttr, ReplicaGroupMeshAxesAttr,
+            AxisRefAttr, SubAxisInfoAttr>([&](auto attr) {
         LOG_WRITE_CALL;
         write(attr, writer);
         return success();
@@ -861,6 +934,28 @@ void MhloBytecodeInterface::write(SubAxisInfoAttr attr,
   writer.writeVarInt(mhlo_encoding::kSubAxisInfoAttr);
   writer.writeSignedVarInt(attr.getPreSize());
   writer.writeSignedVarInt(attr.getSize());
+}
+
+void MhloBytecodeInterface::write(OriginalArrayAttr attr,
+                                  DialectBytecodeWriter& writer) const {
+  writer.writeVarInt(mhlo_encoding::kOriginalArrayAttr);
+  writer.writeAttribute(attr.getInstructionName());
+  writer.writeSignedVarInts(attr.getShapeIndex());
+}
+
+void MhloBytecodeInterface::write(OriginalValueElementAttr attr,
+                                  DialectBytecodeWriter& writer) const {
+  writer.writeVarInt(mhlo_encoding::kOriginalValueElementAttr);
+  writer.writeSignedVarInts(attr.getShapeIndex());
+  writer.writeOptionalAttribute(
+      attr.getOriginalArray() ? *attr.getOriginalArray() : OriginalArrayAttr());
+}
+
+void MhloBytecodeInterface::write(OriginalValueAttr attr,
+                                  DialectBytecodeWriter& writer) const {
+  writer.writeVarInt(mhlo_encoding::kOriginalValueAttr);
+  writer.writeOwnedBool(attr.getIsSyntheticCall());
+  writer.writeAttributes(attr.getElements());
 }
 
 //===----------------------------------------------------------------------===//

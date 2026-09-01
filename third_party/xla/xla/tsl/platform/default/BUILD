@@ -1,6 +1,22 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("//xla/backends/gpu/tests:helper.bzl", "get_canonical_repo_name")
 load(
     "//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
@@ -23,22 +39,13 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "@tsl//tsl/platform:__pkg__",
         "//xla/tsl/platform:__pkg__",
     ]),
     licenses = ["notice"],
-)
-
-cc_library(
-    name = "casts",
-    hdrs = ["casts.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
 )
 
 cc_library(
@@ -80,6 +87,13 @@ cc_library(
         if_false = ["@cuda_nvcc//:nvvm"],
         if_true = ["@cuda_nvvm//:nvvm"],
     )),
+    local_defines = [
+        "CUDA_NVCC_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_nvcc") + "\\\"",
+        "CUDA_NVDISASM_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_nvdisasm") + "\\\"",
+        "NVIDIA_NVSHMEM_REPO_NAME=\\\"" + get_canonical_repo_name("nvidia_nvshmem") + "\\\"",
+        "CUDA_NVVM_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_nvvm") + "\\\"",
+        "CUDA_CUDART_REPO_NAME=\\\"" + get_canonical_repo_name("cuda_cudart") + "\\\"",
+    ],
     tags = [
         "manual",
         "no_oss",
@@ -175,6 +189,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -265,8 +280,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:logging",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log:check",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -541,33 +556,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "status",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["status.h"],
-    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
-)
-
-cc_library(
-    name = "statusor",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["statusor.h"],
-    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
-    deps = [
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["cuda_build_defs.bzl"],
@@ -621,20 +609,32 @@ filegroup(
 )
 
 filegroup(
+    name = "additional_mobile_hdrs_no_runtime",
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
+)
+
+filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "casts.h",
-        "context.h",
         "env.cc",
         "load_library.cc",
         "port.cc",
         "posix_file_system.cc",
+        "//xla/tsl/platform:numa_noop.cc",
+    ],
+    visibility = internal_visibility([
+        "//tensorflow/core/platform:__pkg__",
+        "@tsl//tsl/platform:__pkg__",
+    ]),
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "context.h",
         "posix_file_system.h",
         "stacktrace.h",
-        "status.h",
-        "statusor.h",
         "tracing_impl.h",
-        "//xla/tsl/platform:numa_noop.cc",
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
         "//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
@@ -647,12 +647,19 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "casts.h",
         "error_logging.cc",
         "unbounded_work_queue.cc",
-        "unbounded_work_queue.h",
     ] + if_not_fuchsia([
         "subprocess.cc",
+    ]),
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "unbounded_work_queue.h",
+    ] + if_not_fuchsia([
         "subprocess.h",
     ]),
     visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
@@ -678,4 +685,19 @@ exports_files(
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
     ]),
+)
+
+cc_library(
+    name = "builddata",
+    srcs = ["builddata.cc"],
+    copts = tsl_copts(),
+    visibility = ["//xla/tsl/builddata:__pkg__"],
+    deps = [
+        "//xla/tsl/builddata:builddata_globals_hdrs",
+        "//xla/tsl/builddata:builddata_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+    alwayslink = 1,
 )

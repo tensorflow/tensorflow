@@ -19,17 +19,24 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
 
 namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 absl::Status CheckGpuDelegateCompatibility(const tflite::Model* model) {
   auto subgraphs = model->subgraphs();
@@ -198,6 +205,100 @@ TEST(CheckGpuDelegateCompatibility, Add2Dto4DBroadcastSuccess3) {
   op_sig.inputs[1].dims = {1, 10};
 
   EXPECT_TRUE(CheckGpuDelegateCompatibility(op_sig).message().empty());
+}
+
+TEST(CheckGpuDelegateCompatibility, BasicLstmUnalignedActivationDepth) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_LSTM;
+  auto params = std::make_unique<TfLiteLSTMParams>();
+  params->kernel_type = kTfLiteLSTMBasicKernel;
+  params->activation = kTfLiteActTanh;
+  op_sig.builtin_data = static_cast<void*>(params.get());
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(5);
+  op_sig.inputs[0].is_const = false;
+  op_sig.inputs[0].type = kTfLiteFloat32;
+  op_sig.inputs[1].is_const = true;  // weights
+  op_sig.inputs[1].type = kTfLiteFloat32;
+  op_sig.inputs[2].is_const = true;  // biases
+  op_sig.inputs[2].type = kTfLiteFloat32;
+  op_sig.inputs[3].is_const = false;
+  op_sig.inputs[3].type = kTfLiteFloat32;
+  op_sig.inputs[4].is_const = false;
+  op_sig.inputs[4].type = kTfLiteFloat32;
+
+  op_sig.outputs = std::vector<OpSignatureTensorSpec>(4);
+  op_sig.outputs[3].dims = {2, 5};  // unaligned activation depth = 5
+
+  EXPECT_THAT(
+      CheckGpuDelegateCompatibility(op_sig),
+      StatusIs(
+          absl::StatusCode::kUnimplemented,
+          HasSubstr("BasicLSTM activation depth must be a multiple of 4.")));
+}
+
+TEST(CheckGpuDelegateCompatibility, BasicLstmAlignedActivationDepth) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_LSTM;
+  auto params = std::make_unique<TfLiteLSTMParams>();
+  params->kernel_type = kTfLiteLSTMBasicKernel;
+  params->activation = kTfLiteActTanh;
+  op_sig.builtin_data = static_cast<void*>(params.get());
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(5);
+  op_sig.inputs[0].is_const = false;
+  op_sig.inputs[0].type = kTfLiteFloat32;
+  op_sig.inputs[1].is_const = true;  // weights
+  op_sig.inputs[1].type = kTfLiteFloat32;
+  op_sig.inputs[2].is_const = true;  // biases
+  op_sig.inputs[2].type = kTfLiteFloat32;
+  op_sig.inputs[3].is_const = false;
+  op_sig.inputs[3].type = kTfLiteFloat32;
+  op_sig.inputs[4].is_const = false;
+  op_sig.inputs[4].type = kTfLiteFloat32;
+
+  op_sig.outputs = std::vector<OpSignatureTensorSpec>(4);
+  op_sig.outputs[3].dims = {2, 8};  // aligned activation depth = 8
+
+  EXPECT_THAT(CheckGpuDelegateCompatibility(op_sig), IsOk());
+}
+
+TEST(CheckGpuDelegateCompatibility, ResamplerMismatchedBatch) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_CUSTOM;
+  op_sig.custom_name = "Resampler";
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(2);
+  op_sig.inputs[0].is_const = false;
+  op_sig.inputs[0].type = kTfLiteFloat32;
+  op_sig.inputs[0].dims = {2, 4, 4, 3};
+  op_sig.inputs[1].is_const = false;
+  op_sig.inputs[1].type = kTfLiteFloat32;
+  op_sig.inputs[1].dims = {1, 4, 4, 2};
+  op_sig.outputs = std::vector<OpSignatureTensorSpec>(1);
+  op_sig.outputs[0].type = kTfLiteFloat32;
+  op_sig.outputs[0].dims = {2, 4, 4, 3};
+
+  EXPECT_THAT(CheckGpuDelegateCompatibility(op_sig),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("src.b != warp.b")));
+}
+
+TEST(CheckGpuDelegateCompatibility, ResamplerInvalidChannels) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_CUSTOM;
+  op_sig.custom_name = "Resampler";
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(2);
+  op_sig.inputs[0].is_const = false;
+  op_sig.inputs[0].type = kTfLiteFloat32;
+  op_sig.inputs[0].dims = {1, 4, 4, 3};
+  op_sig.inputs[1].is_const = false;
+  op_sig.inputs[1].type = kTfLiteFloat32;
+  op_sig.inputs[1].dims = {1, 4, 4, 1};
+  op_sig.outputs = std::vector<OpSignatureTensorSpec>(1);
+  op_sig.outputs[0].type = kTfLiteFloat32;
+  op_sig.outputs[0].dims = {1, 4, 4, 3};
+
+  EXPECT_THAT(
+      CheckGpuDelegateCompatibility(op_sig),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("warp.c < 2")));
 }
 
 }  // namespace tflite

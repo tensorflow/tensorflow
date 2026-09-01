@@ -598,6 +598,27 @@ TEST(FastParse, DenseFloat_TooFewElements_ReportsError) {
             std::string::npos);
 }
 
+TEST(FastParse, OobWriteVulnerabilityMalformedSparseSequenceExample) {
+  FastParseExampleConfig context_config;
+  FastParseExampleConfig sequence_config;
+  AddSparseFeature("s", DT_STRING, &sequence_config);
+
+  // Serialized SequenceExample with a malformed bytes list in feature list "s".
+  // The bytes list value declares a length of 100 bytes (0x64), but the stream
+  // terminates immediately, causing CodedInputStream::Skip to fail.
+  const std::vector<tstring> serialized = {
+      tstring("\x12\x0d\x0a\x0b\x0a\x01s\x12\x06\x0a\x04\x0a\x02\x0a\x64", 15)};
+
+  Result context_result, sequence_result;
+  std::vector<Tensor> dense_lengths;
+  const absl::Status status = FastParseSequenceExample(
+      context_config, sequence_config, serialized, {}, nullptr, &context_result,
+      &sequence_result, &dense_lengths);
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+}
+
 }  // namespace
 }  // namespace example
 }  // namespace tensorflow

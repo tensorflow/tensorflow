@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -68,7 +69,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 
   // Get the list of all devices that are participating in the collective
   // operation.
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> devices,
       GetParticipatingDevices(global_device_id, *params.device_assn,
                               replica_groups, group_mode));

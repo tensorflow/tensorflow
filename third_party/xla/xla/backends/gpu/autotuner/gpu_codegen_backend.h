@@ -17,9 +17,12 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_GPU_CODEGEN_BACKEND_H_
 
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends.pb.h"
@@ -33,8 +36,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -69,6 +70,22 @@ class GpuCodegenBackend : public CodegenBackend {
     return stream_executor_;
   }
 
+  // Returns all supported configs with estimated runtimes for the given HLO
+  // instruction.
+  // May be called with null stream executor in deviceless mode.
+  // Default implementation wraps GetSupportedConfigs with std::nullopt
+  // estimated_runtime.
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
+      const HloInstruction& instr) override {
+    ABSL_ASSIGN_OR_RETURN(auto configs, GetSupportedConfigs(instr));
+    std::vector<EstimatedConfig> estimated_configs;
+    estimated_configs.reserve(configs.size());
+    for (auto& config : configs) {
+      estimated_configs.push_back({std::move(config), std::nullopt});
+    }
+    return estimated_configs;
+  }
+
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
       const BackendConfig& config) override {
@@ -98,7 +115,7 @@ class GpuCodegenBackend : public CodegenBackend {
       hlo_module = ExtractInstructionIntoNewModule(hlo_instruction);
       instruction_to_tune = hlo_module->entry_computation()->root_instruction();
     }
-    TF_RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
+    ABSL_RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
@@ -107,8 +124,8 @@ class GpuCodegenBackend : public CodegenBackend {
     Compiler::CompileOptions options;
     options.gpu_topology = GetSingleDeviceGpuTopology("", target_config_);
     options.embed_hlo_module = false;
-    TF_ASSIGN_OR_RETURN(auto optimized_module,
-                        RunHloPasses(std::move(hlo_module), options));
+    ABSL_ASSIGN_OR_RETURN(auto optimized_module,
+                     RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
                                  options);
   }
@@ -120,7 +137,6 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
     debug_options.set_xla_gpu_force_compilation_parallelism(1);
-    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
     // Avoid using GPU graphs as we don't want to measure graph construction
     // time.
     debug_options.clear_xla_gpu_enable_command_buffer();
@@ -137,6 +153,7 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_dump_autotune_results_to("");
     debug_options.set_xla_gpu_load_autotune_results_from("");
     debug_options.set_xla_gpu_dump_autotune_logs_to("");
+    debug_options.clear_xla_run_hlo_passes_starting_from();
   }
 
  private:

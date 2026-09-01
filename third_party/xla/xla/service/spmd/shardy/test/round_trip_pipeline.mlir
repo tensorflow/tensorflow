@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline -split-input-file 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
 // RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline='enable-hlo-sharding-v3=true' -split-input-file 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
@@ -345,6 +359,19 @@ func.func @main(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
   %0:2 = call @g.2(%arg0) {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"}, mhlo.sharding = "{{maximal device=0}, {replicated}}"} : (tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<8x2xi32>)
   %1 = stablehlo.custom_call @MoveToHost(%0#0) {backend_config = ""} : (tensor<8x2xi32>) -> tensor<8x2xi32>
   return %1 : tensor<8x2xi32>
+}
+
+// -----
+
+// CHECK: sdy.mesh @empty_mesh = <[]>
+sdy.mesh @empty_mesh = <[]>
+
+// CHECK-LABEL: func @main
+func.func @main(%arg0: !stablehlo.token) -> tensor<8x4xf32> {
+  // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 7, type = 3>, is_host_transfer = true}> {sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh, [{}, {}]>, <@empty_mesh, []>]>} : (!stablehlo.token) -> (tensor<8x4xf32>, !stablehlo.token)
+  // CHECK-NEXT: return %[[RECV]]#0 : tensor<8x4xf32>
+  %0:2 = "stablehlo.recv"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 7, type = 3>, is_host_transfer = true}> {sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh, [{}, {}]>, <@empty_mesh, []>]>} : (!stablehlo.token) -> (tensor<8x4xf32>, !stablehlo.token)
+  return %0#0 : tensor<8x4xf32>
 }
 
 

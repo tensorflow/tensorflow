@@ -191,7 +191,7 @@ class UniqueOpGPU : public AsyncOpKernel {
         context, input.NumElements() <= std::numeric_limits<int32_t>::max(),
         absl::InvalidArgumentError(
             absl::StrCat("unique does not support input tensors larger than ",
-                         std::numeric_limits<int32>::max(), " elements")),
+                         std::numeric_limits<int32_t>::max(), " elements")),
         done);
 
     OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input.shape()),

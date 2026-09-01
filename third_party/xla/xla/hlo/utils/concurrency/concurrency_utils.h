@@ -21,15 +21,18 @@ limitations under the License.
 #include <cstddef>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -183,24 +186,36 @@ std::vector<Future<T>> Dispatch(ForwardIt begin, ForwardIt end, Action& action,
   std::vector<Future<T>> futures(n);
 
   // Abort flag for early termination of pending tasks on first error.
-  auto abort = std::make_shared<std::atomic<bool>>(false);
+  auto lock = std::make_shared<absl::Mutex>();
+  auto first_error = std::make_shared<absl::Status>();
 
   // Launch actions on the underlying executor.
-  for (ForwardIt it = begin; it != end; ++it) {
-    size_t i = std::distance(begin, it);
-    futures[i] = MakeFutureOn<T>(executor, [&, abort, argument = *it]() -> R {
-      // Short-circuit if execution of `ForEach` already failed.
-      if (abort->load(std::memory_order_acquire)) {
-        return absl::AbortedError(
-            "Action dispatch aborted because of earlier error");
-      }
+  size_t i = 0;
+  for (ForwardIt it = begin; it != end; ++it, ++i) {
+    futures[i] = MakeFutureOn<T>(
+        executor, [&, lock, first_error, argument = *it]() -> R {
+          // Short-circuit if execution of `ForEach` already failed.
+          {
+            absl::MutexLock ml(*lock);
+            if (!first_error->ok()) {
+              return *first_error;
+            }
+          }
 
-      auto result = action(argument);
-      if (!result.ok()) {
-        abort->store(true, std::memory_order_release);
-      }
-      return result;
-    });
+          R result = action(argument);
+          if (!result.ok()) {
+            absl::MutexLock ml(*lock);
+            if (first_error->ok()) {
+              if constexpr (std::is_same_v<R, absl::Status>) {
+                *first_error = result;
+              } else if constexpr (std::is_same_v<R, absl::StatusOr<T>>) {
+                *first_error = result.status();
+              }
+            }
+          }
+
+          return result;
+        });
   }
 
   return futures;

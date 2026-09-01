@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Some very simple unit tests of the (C++) XNNPack Delegate Plugin.
+// Some very simple unit tests of the Stable Delegate Plugin.
+
+#include "tensorflow/lite/acceleration/configuration/stable_delegate_plugin.h"
 
 #include <memory>
+#include <string>
 
+#include "flatbuffers/flatbuffers.h"
 #include <gtest/gtest.h>
 #include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
@@ -28,8 +32,8 @@ namespace tflite {
 class StableDelegatePluginTest : public testing::Test {
  public:
   static constexpr int kNumThreadsForTest = 7;
-  static constexpr tflite::XNNPackFlags kFlagsForTest =
-      tflite::XNNPackFlags::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8;
+  static constexpr XNNPackFlags kFlagsForTest =
+      XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8;
   static constexpr char kDelegateBinaryPath[] =
       "tensorflow/lite/delegates/utils/experimental/"
       "stable_delegate/libtensorflowlite_stable_xnnpack_delegate.so";
@@ -78,12 +82,11 @@ class StableDelegatePluginTest : public testing::Test {
         "StableDelegatePlugin", *tflite_settings_);
     ASSERT_NE(delegate_plugin_, nullptr);
   }
-  void TearDown() override { delegate_plugin_.reset(); }
 
  protected:
-  // settings_ points into storage owned by flatbuffer_builder_.
+  // tflite_settings_ points into storage owned by flatbuffer_builder_.
   flatbuffers::FlatBufferBuilder flatbuffer_builder_;
-  const TFLiteSettings *tflite_settings_;
+  const TFLiteSettings* tflite_settings_;
   std::unique_ptr<delegates::DelegatePluginInterface> delegate_plugin_;
 };
 
@@ -94,16 +97,63 @@ TEST_F(StableDelegatePluginTest, CanCreateAndDestroyDelegate) {
 
 TEST_F(StableDelegatePluginTest, CanGetDelegateErrno) {
   delegates::TfLiteDelegatePtr delegate = delegate_plugin_->Create();
+  ASSERT_NE(delegate, nullptr);
 
   EXPECT_EQ(delegate_plugin_->GetDelegateErrno(delegate.get()), 0);
 }
 
 TEST_F(StableDelegatePluginTest, SetsCorrectThreadCount) {
   delegates::TfLiteDelegatePtr delegate = delegate_plugin_->Create();
+  ASSERT_NE(delegate, nullptr);
   pthreadpool_t threadpool = static_cast<pthreadpool_t>(
       TfLiteXNNPackDelegateGetThreadPool(delegate.get()));
+  ASSERT_NE(threadpool, nullptr);
 
   EXPECT_EQ(pthreadpool_get_threads_count(threadpool), kNumThreadsForTest);
+}
+
+static std::unique_ptr<delegates::DelegatePluginInterface>
+CreatePluginWithDelegatePath(const std::string& delegate_path) {
+  flatbuffers::FlatBufferBuilder flatbuffer_builder;
+  flatbuffers::Offset<flatbuffers::String> stable_delegate_path_offset =
+      delegate_path.empty() ? 0
+                            : flatbuffer_builder.CreateString(delegate_path);
+  StableDelegateLoaderSettingsBuilder stable_delegate_loader_settings_builder(
+      flatbuffer_builder);
+  if (stable_delegate_path_offset.o != 0) {
+    stable_delegate_loader_settings_builder.add_delegate_path(
+        stable_delegate_path_offset);
+  }
+  flatbuffers::Offset<StableDelegateLoaderSettings>
+      stable_delegate_loader_settings =
+          stable_delegate_loader_settings_builder.Finish();
+  TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder);
+  tflite_settings_builder.add_stable_delegate_loader_settings(
+      stable_delegate_loader_settings);
+  tflite_settings_builder.add_delegate(Delegate_XNNPACK);
+  flatbuffers::Offset<TFLiteSettings> tflite_settings =
+      tflite_settings_builder.Finish();
+  flatbuffer_builder.Finish(tflite_settings);
+  const TFLiteSettings* settings = flatbuffers::GetRoot<TFLiteSettings>(
+      flatbuffer_builder.GetBufferPointer());
+  return delegates::DelegatePluginRegistry::CreateByName("StableDelegatePlugin",
+                                                         *settings);
+}
+
+TEST(StableDelegatePluginNullTest, MissingDelegatePath) {
+  std::unique_ptr<delegates::DelegatePluginInterface> delegate_plugin =
+      CreatePluginWithDelegatePath("");
+  ASSERT_NE(delegate_plugin, nullptr);
+  EXPECT_EQ(delegate_plugin->Create(), nullptr);
+  EXPECT_EQ(delegate_plugin->GetDelegateErrno(nullptr), 0);
+}
+
+TEST(StableDelegatePluginNullTest, InvalidDelegatePath) {
+  std::unique_ptr<delegates::DelegatePluginInterface> delegate_plugin =
+      CreatePluginWithDelegatePath("invalid_path.so");
+  ASSERT_NE(delegate_plugin, nullptr);
+  EXPECT_EQ(delegate_plugin->Create(), nullptr);
+  EXPECT_EQ(delegate_plugin->GetDelegateErrno(nullptr), 0);
 }
 
 }  // namespace tflite

@@ -33,9 +33,10 @@ class RestoreOp : public OpKernel {
     if (preferred_shard == -1) {
       preferred_shard_ = checkpoint::TensorSliceReader::kLoadAllShards;
     } else {
-      OP_REQUIRES(context, preferred_shard >= 0,
-                  errors::InvalidArgument("Attribute 'preferred_shard' must be "
-                                          "greater or equal to -1"));
+      OP_REQUIRES(
+          context, preferred_shard >= 0,
+          absl::InvalidArgumentError("Attribute 'preferred_shard' must be "
+                                     "greater or equal to -1"));
       preferred_shard_ = preferred_shard;
     }
   }
@@ -59,9 +60,10 @@ class RestoreSliceOp : public OpKernel {
     if (preferred_shard == -1) {
       preferred_shard_ = checkpoint::TensorSliceReader::kLoadAllShards;
     } else {
-      OP_REQUIRES(context, preferred_shard >= 0,
-                  errors::InvalidArgument("Attribute 'preferred_shard' must be "
-                                          "greater or equal to -1"));
+      OP_REQUIRES(
+          context, preferred_shard >= 0,
+          absl::InvalidArgumentError("Attribute 'preferred_shard' must be "
+                                     "greater or equal to -1"));
       preferred_shard_ = preferred_shard;
     }
   }

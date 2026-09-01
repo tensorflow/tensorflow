@@ -16,6 +16,7 @@
 
 import ast
 import collections
+import numbers
 import os
 import re
 import shutil
@@ -25,6 +26,92 @@ import traceback
 
 import pasta
 
+
+# Monkeypatch pasta to fix Python 3.14 issues with numbers in AST constants.
+try:
+  import pasta.base.annotate as pasta_annotate  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pasta_annotate = None
+
+if pasta_annotate:
+  def _patch_visit_constant(cls):
+    """Adds or overrides visit_Constant on cls to handle Python 3.14."""
+    original_visit_constant = getattr(cls, "visit_Constant", None)
+
+    def visit_Constant(self, node):  # pylint: disable=invalid-name
+      if sys.version_info >= (3, 14):
+        if isinstance(node.value, numbers.Number) and not isinstance(
+            node.value, bool
+        ):
+          if hasattr(self, "visit_Num"):
+            node.n = node.value
+            try:
+              self.visit_Num(node)
+            finally:
+              del node.n
+          else:
+            self.generic_visit(node)
+        elif isinstance(node.value, (str, bytes)):
+          node.s = node.value
+          try:
+            if isinstance(node.value, str):
+              if hasattr(self, "visit_Str"):
+                self.visit_Str(node)
+              else:
+                self.generic_visit(node)
+            else:
+              if hasattr(self, "visit_Bytes"):
+                self.visit_Bytes(node)
+              else:
+                self.generic_visit(node)
+          finally:
+            del node.s
+        elif isinstance(node.value, bool) or node.value is None:
+          if hasattr(self, "visit_NameConstant"):
+            self.visit_NameConstant(node)
+          else:
+            self.generic_visit(node)
+        elif node.value is Ellipsis:
+          if hasattr(self, "visit_Ellipsis"):
+            self.visit_Ellipsis(node)
+          else:
+            self.generic_visit(node)
+        else:
+          if original_visit_constant:
+            original_visit_constant(self, node)
+          else:
+            self.generic_visit(node)
+      else:
+        if original_visit_constant:
+          original_visit_constant(self, node)
+        else:
+          self.generic_visit(node)
+
+    cls.visit_Constant = visit_Constant
+    return cls
+
+  if hasattr(pasta_annotate, "get_ast_annotator"):
+    original_get_ast_annotator = pasta_annotate.get_ast_annotator
+
+    def patched_get_ast_annotator(*args, **kwargs):
+      cls = original_get_ast_annotator(*args, **kwargs)
+      return _patch_visit_constant(cls)
+
+    pasta_annotate.get_ast_annotator = patched_get_ast_annotator
+
+  elif hasattr(pasta_annotate, "get_base_visitor"):
+    original_get_base_visitor = pasta_annotate.get_base_visitor
+
+    def patched_get_base_visitor(*args, **kwargs):
+      cls = original_get_base_visitor(*args, **kwargs)
+      return _patch_visit_constant(cls)
+
+    pasta_annotate.get_base_visitor = patched_get_base_visitor
+  else:
+    if hasattr(pasta_annotate, "BaseVisitor"):
+      _patch_visit_constant(pasta_annotate.BaseVisitor)
+    if hasattr(pasta_annotate, "AstAnnotator"):
+      _patch_visit_constant(pasta_annotate.AstAnnotator)
 
 # Some regular expressions we will need for parsing
 FIND_OPEN = re.compile(r"^\s*(\[).*$")

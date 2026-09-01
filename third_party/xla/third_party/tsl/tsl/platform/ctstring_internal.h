@@ -244,6 +244,13 @@ static inline const char *TF_TString_GetDataPointer(const TF_TString *str) {
 
 static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
                                                    size_t new_size) {
+  if (new_size >= (size_t)~0 - 16) {
+#if defined(__clang__) || defined(__GNUC__)
+    __builtin_trap();
+#else
+    *(volatile int*)0 = 0;
+#endif
+  }
   size_t curr_size = TF_TString_GetSize(str);
   size_t copy_size = TF_min(new_size, curr_size);
 
@@ -279,6 +286,13 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
     new_cap = TF_align16(curr_cap / 2 + 1) - 1;
   } else if (new_size > curr_cap) {
     new_cap = TF_align16(new_size + 1) - 1;
+    if (new_cap < new_size) {  // Check for overflow after alignment
+#if defined(__clang__) || defined(__GNUC__)
+      __builtin_trap();
+#else
+      *(volatile int*)0 = 0;
+#endif
+    }
   } else {
     new_cap = curr_cap;
   }
@@ -325,6 +339,13 @@ static inline char *TF_TString_GetMutableDataPointer(TF_TString *str) {
 }
 
 static inline void TF_TString_Reserve(TF_TString *str, size_t new_cap) {
+  if (new_cap > (size_t)~0 - 16) {
+#if defined(__clang__) || defined(__GNUC__)
+    __builtin_trap();
+#else
+    *(volatile int*)0 = 0;
+#endif
+  }
   TF_TString_Type curr_type = TF_TString_GetType(str);
 
   if (new_cap <= TF_TString_SmallCapacity) {

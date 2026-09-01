@@ -340,6 +340,8 @@ using tflite::TensorType_COMPLEX64;
 using tflite::TensorType_FLOAT16;
 using tflite::TensorType_FLOAT32;
 using tflite::TensorType_FLOAT64;
+using tflite::TensorType_FLOAT8_E4M3FN;
+using tflite::TensorType_FLOAT8_E5M2;
 using tflite::TensorType_INT16;
 using tflite::TensorType_INT2;
 using tflite::TensorType_INT32;
@@ -404,12 +406,12 @@ void CheckParsePointerParams(const Operator* op,
   TFLITE_DCHECK(builtin_data != nullptr);
 }
 
-// Copies the contents from the flatbuffer int vector `flatbuffer` into the
+// Copies the contents from the flatbuffer int vector `flat_vector` into the
 // int array `buffer`. `flat_vector` and `buffer` represent the same
 // configuration operation for a given operation.
 template <typename DataType = int32_t>
 static absl::Status FlatBufferIntVectorToArray(
-    int max_size_of_buffer, const flatbuffers::Vector<DataType>* flat_vector,
+    size_t max_size_of_buffer, const flatbuffers::Vector<DataType>* flat_vector,
     DataType* buffer, const char* op_name) {
   if (!flat_vector) {
     auto error_message = absl::StrFormat(
@@ -1407,6 +1409,12 @@ absl::Status ConvertTensorType(TensorType tensor_type, TfLiteType* type) {
       return OkStatus();
     case TensorType_UINT4:
       *type = kTfLiteUInt4;
+      return OkStatus();
+    case TensorType_FLOAT8_E4M3FN:
+      *type = kTfLiteFloat8E4M3FN;
+      return OkStatus();
+    case TensorType_FLOAT8_E5M2:
+      *type = kTfLiteFloat8E5M2;
       return OkStatus();
     default:
       *type = kTfLiteNoType;
@@ -2490,7 +2498,7 @@ absl::Status ParseStablehloScatter(const Operator* op,
 
     if (schema_params->update_window_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->update_window_dims()->size() * sizeof(int64_t),
+          sizeof(params->update_window_dims),
           schema_params->update_window_dims(), params->update_window_dims,
           "stablehlo_scatter"));
       params->num_update_window_dims =
@@ -2499,7 +2507,7 @@ absl::Status ParseStablehloScatter(const Operator* op,
 
     if (schema_params->inserted_window_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->inserted_window_dims()->size() * sizeof(int64_t),
+          sizeof(params->inserted_window_dims),
           schema_params->inserted_window_dims(), params->inserted_window_dims,
           "stablehlo_scatter"));
       params->num_inserted_window_dims =
@@ -2508,8 +2516,7 @@ absl::Status ParseStablehloScatter(const Operator* op,
 
     if (schema_params->scatter_dims_to_operand_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->scatter_dims_to_operand_dims()->size() *
-              sizeof(int64_t),
+          sizeof(params->scatter_dims_to_operand_dims),
           schema_params->scatter_dims_to_operand_dims(),
           params->scatter_dims_to_operand_dims, "stablehlo_scatter"));
       params->num_scatter_dims_to_operand_dims =
@@ -2569,33 +2576,39 @@ absl::Status ParseStablehloGather(const Operator* op,
       op->builtin_options_2_as_StablehloGatherOptions();
 
   if (schema_params != nullptr) {
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        /*max_size_of_buffer=*/schema_params->offset_dims()->size() *
-            sizeof(int64_t),
-        /*flat_vector=*/schema_params->offset_dims(),
-        /*buffer=*/params->offset_dims,
-        /*op_name=*/"stablehlo_gather"));
-    params->num_offset_dims = schema_params->offset_dims()->size();
+    if (schema_params->offset_dims()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          /*max_size_of_buffer=*/sizeof(params->offset_dims),
+          /*flat_vector=*/schema_params->offset_dims(),
+          /*buffer=*/params->offset_dims,
+          /*op_name=*/"stablehlo_gather"));
+      params->num_offset_dims = schema_params->offset_dims()->size();
+    }
 
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->collapsed_slice_dims()->size() * sizeof(int64_t),
-        schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
-        "stablehlo_gather"));
-    params->num_collapsed_slice_dims =
-        schema_params->collapsed_slice_dims()->size();
+    if (schema_params->collapsed_slice_dims()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          sizeof(params->collapsed_slice_dims),
+          schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
+          "stablehlo_gather"));
+      params->num_collapsed_slice_dims =
+          schema_params->collapsed_slice_dims()->size();
+    }
 
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->start_index_map()->size() * sizeof(int64_t),
-        schema_params->start_index_map(), params->start_index_map,
-        "stablehlo_gather"));
-    params->num_start_index_map = schema_params->start_index_map()->size();
+    if (schema_params->start_index_map()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          sizeof(params->start_index_map), schema_params->start_index_map(),
+          params->start_index_map, "stablehlo_gather"));
+      params->num_start_index_map = schema_params->start_index_map()->size();
+    }
 
     params->index_vector_dim = schema_params->index_vector_dim();
 
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->slice_sizes()->size() * sizeof(int64_t),
-        schema_params->slice_sizes(), params->slice_sizes, "stablehlo_gather"));
-    params->num_slice_sizes = schema_params->slice_sizes()->size();
+    if (schema_params->slice_sizes()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          sizeof(params->slice_sizes), schema_params->slice_sizes(),
+          params->slice_sizes, "stablehlo_gather"));
+      params->num_slice_sizes = schema_params->slice_sizes()->size();
+    }
 
     params->indices_are_sorted = schema_params->indices_are_sorted();
   } else {

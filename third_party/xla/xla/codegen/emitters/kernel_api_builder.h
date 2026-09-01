@@ -35,6 +35,8 @@ limitations under the License.
 
 namespace xla::emitters {
 
+inline constexpr absl::string_view kXlaNotInvariantAttr = "xla.not_invariant";
+
 // Emits and return the kernel entry function into the provided module it for
 // the given HLO instruction.
 // The function will be given the provided name and the arguments will be

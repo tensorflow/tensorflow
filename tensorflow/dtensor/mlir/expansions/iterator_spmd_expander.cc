@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -106,7 +107,7 @@ StatusOr<mlir::Operation*> IteratorGetNextAsOptionalSPMDExpander::ExpandOp(
 
   auto array_attr = op->getAttrOfType<mlir::ArrayAttr>(kIteratorOutputShapes);
   if (!array_attr)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Could not find `{0}` attribute of op: {1}",
                       kIteratorOutputShapes, op->getName())
             .str());

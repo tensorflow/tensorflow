@@ -130,8 +130,9 @@ class InputBuffer {
 // Implementation details.
 
 // Explicit instantiations defined in inputbuffer.cc.
-extern template Status InputBuffer::ReadLine<std::string>(std::string* result);
-extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
+extern template absl::Status InputBuffer::ReadLine<std::string>(
+    std::string* result);
+extern template absl::Status InputBuffer::ReadLine<tstring>(tstring* result);
 
 // Inlined for performance.
 inline absl::Status InputBuffer::ReadVarint32(uint32_t* result) {

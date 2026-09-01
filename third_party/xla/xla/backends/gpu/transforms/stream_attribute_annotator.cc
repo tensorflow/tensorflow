@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -85,7 +86,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForInstruction(
 
   instr_gpu_config.set_operation_queue_id(
       comp_root_gpu_config->operation_queue_id());
-  TF_RETURN_IF_ERROR(instr->set_backend_config(instr_gpu_config));
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(instr_gpu_config));
   return true;
 }
 
@@ -97,7 +98,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForCopyStart(
     return false;
   }
   instr_gpu_config.set_operation_queue_id(channel_id);
-  TF_RETURN_IF_ERROR(instr->set_backend_config(instr_gpu_config));
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(instr_gpu_config));
   VLOG(3) << "Add copy-start's backend config: " << channel_id;
   return true;
 }
@@ -130,13 +131,13 @@ absl::StatusOr<bool> WrapIntoFusionAndAnnotateStreamAttributes(
     module->schedule().replace_instruction(computation, instruction,
                                            fusion_instruction);
   }
-  TF_RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
-  TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
-  TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+  ABSL_RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
+  ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
 
   instr_gpu_config.set_operation_queue_id(channel_id);
-  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(instr_gpu_config));
+  ABSL_RETURN_IF_ERROR(fusion_instruction->set_backend_config(instr_gpu_config));
   VLOG(3) << "Add async stream " << channel_id << " and wrapped instruction "
           << instruction->ToString();
   VLOG(3) << "  Fusion wrapper: " << fusion_instruction->ToString();
@@ -163,25 +164,25 @@ absl::StatusOr<bool> StreamAttributeAnnotator::RunImpl(
       // when the root of fusion is a single instruction
       // running on non-default stream.
       if (HloPredicateIsOp<HloOpcode::kFusion>(instr)) {
-        TF_ASSIGN_OR_RETURN(bool comp_result,
-                            AnnotateStreamAttributesForInstruction(
-                                instr, instr_gpu_config.value()));
+        ABSL_ASSIGN_OR_RETURN(bool comp_result,
+                         AnnotateStreamAttributesForInstruction(
+                             instr, instr_gpu_config.value()));
         changed |= comp_result;
       } else if (instr->opcode() == HloOpcode::kCopyStart &&
                  module->has_schedule()) {
-        TF_ASSIGN_OR_RETURN(bool comp_result,
-                            AnnotateStreamAttributesForCopyStart(
-                                instr, channel_id, instr_gpu_config.value()));
+        ABSL_ASSIGN_OR_RETURN(bool comp_result,
+                         AnnotateStreamAttributesForCopyStart(
+                             instr, channel_id, instr_gpu_config.value()));
         changed |= comp_result;
         continue;
       } else if (comp->IsAsyncComputation() &&
                  (instr->opcode() == HloOpcode::kDynamicSlice ||
                   instr->opcode() == HloOpcode::kDynamicUpdateSlice) &&
                  module->has_schedule()) {
-        TF_ASSIGN_OR_RETURN(bool comp_result,
-                            WrapIntoFusionAndAnnotateStreamAttributes(
-                                instr, channel_id, instr_gpu_config.value(),
-                                device_description_));
+        ABSL_ASSIGN_OR_RETURN(bool comp_result,
+                         WrapIntoFusionAndAnnotateStreamAttributes(
+                             instr, channel_id, instr_gpu_config.value(),
+                             device_description_));
         changed |= comp_result;
         continue;
       }

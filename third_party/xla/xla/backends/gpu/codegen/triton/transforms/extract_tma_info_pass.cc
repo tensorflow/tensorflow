@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <optional>
 
 #include "mlir/IR/BuiltinOps.h"
@@ -28,10 +27,11 @@ limitations under the License.
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h"
 
 namespace mlir::triton::xla {
-namespace {
 
 #define GEN_PASS_DEF_EXTRACTTMAINFOPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
+
+namespace {
 
 struct ExtractTmaInfoPass
     : public impl::ExtractTmaInfoPassBase<ExtractTmaInfoPass> {
@@ -103,9 +103,5 @@ struct ExtractTmaInfoPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateExtractTmaInfoPass() {
-  return std::make_unique<ExtractTmaInfoPass>();
-}
 
 }  // namespace mlir::triton::xla

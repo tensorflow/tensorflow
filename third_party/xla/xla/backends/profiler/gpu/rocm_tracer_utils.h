@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <string>
 
@@ -58,11 +59,15 @@ struct MemsetDetails {
 };
 
 struct KernelDetails {
-  // The amount of private memory used by kernel,
-  // number of register per thread (register spillage if > 0)
+  // Total dispatch-time private-segment (scratch) bytes per work-item.
   uint32_t private_segment_size;
-  // The amount of shared memory (SMEM)
+  // Total dispatch-time group-segment (LDS) bytes per workgroup. Includes
+  // static and dynamic LDS allocation.
   uint32_t group_segment_size;
+  // Architecture and accumulator VGPRs allocated per work-item.
+  uint32_t registers_per_work_item;
+  // Static group-segment (LDS) bytes per workgroup from the kernel symbol.
+  uint32_t static_group_segment_size;
   // X-dimension of a workgroup (grid.x*block.x)
   uint32_t workgroup_x;
   // Y-dimension of a workgroup (grid.x*block.x)
@@ -125,8 +130,9 @@ struct RocmTracerEvent {
       std::numeric_limits<uint32_t>::max();
   static constexpr uint64_t kInvalidThreadId =
       std::numeric_limits<uint64_t>::max();
-  static constexpr uint32_t kInvalidCorrelationId =
-      std::numeric_limits<uint32_t>::max();
+  // Matches rocprofiler_correlation_id_t::internal, which is 64-bit.
+  static constexpr uint64_t kInvalidCorrelationId =
+      std::numeric_limits<uint64_t>::max();
   static constexpr uint64_t kInvalidStreamId =
       std::numeric_limits<uint64_t>::max();
   RocmTracerEventType type;
@@ -136,13 +142,21 @@ struct RocmTracerEvent {
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
   absl::string_view annotation;
+  // Set only for kernel/HIP-API events: the ROCTX label that was active on
+  // the dispatching thread at call time, stored via AnnotationMap::Add and
+  // retrieved by AnnotationMap::LookUpRoctxRange. Empty for Generic (marker)
+  // events, which carry their label in `name` instead.
+  // The view points into AnnotationMap's interning pool, which is session-
+  // scoped. Export() runs within the same session, so the lifetime is safe.
   absl::string_view roctx_range;
   uint64_t start_time_ns = 0;
   uint64_t end_time_ns = 0;
   uint32_t device_id = kInvalidDeviceId;
-  uint32_t correlation_id = kInvalidCorrelationId;
+  uint64_t correlation_id = kInvalidCorrelationId;
   uint64_t thread_id = kInvalidThreadId;
   uint64_t stream_id = kInvalidStreamId;
+  uint64_t queue_id = 0;  // HSA queue handle, preserved for debugging/rocprof
+                          // correlation. Not exported to XEvents yet.
   int64_t scope_range_id = 0;
 
   union {
@@ -152,6 +166,26 @@ struct RocmTracerEvent {
     KernelDetails kernel_info;                    // If type == Kernel
     SynchronizationDetails synchronization_info;  // If type == Synchronization
   };
+};
+
+// Represents one pending ROCTX range pushed via roctxRangePushA. Stored on
+// a per-thread stack in RocmTracer and consumed when roctxRangePop fires.
+struct RoctxFrame {
+  // TODO(rocm-profiler): carry a reference into AnnotationMap's intern pool
+  // instead of owning a copy. Blocked on lifetime, not on the generation
+  // check: the generation guards *emission*, but Enable() calls
+  // annotation_map_.Clear() while frames pushed before it are still live on
+  // some other thread's stack, so a reference would dangle even though the
+  // frame is correctly dropped at pop. Needs the pool to outlive the session
+  // (or a per-frame refcount) before the copy can go.
+  std::string message;  // the range label (owned here for lifetime safety)
+  uint64_t start_ns;    // timestamp captured at push time
+  // Profiling session this frame was pushed in. Frames live on a thread_local
+  // stack that no session boundary can reach, so a range pushed before
+  // Enable() and popped after it would otherwise emit an event with a
+  // previous session's start timestamp into the new session's collector.
+  // Enable() bumps the generation; a pop whose frame predates it is dropped.
+  uint64_t generation;
 };
 
 struct RocmTraceCollectorOptions {
@@ -170,10 +204,12 @@ struct RocmTraceCollectorOptions {
 class AnnotationMap {
  public:
   explicit AnnotationMap(uint64_t max_size) : max_size_(max_size) {}
-  void Add(uint32_t correlation_id, const std::string& annotation,
+  void Add(uint64_t correlation_id, const std::string& annotation,
+           absl::string_view roctx_range = {},
            absl::Span<const int64_t> scope_range_ids = {});
-  absl::string_view LookUp(uint32_t correlation_id);
-  int64_t LookUpScopeRangeId(uint32_t correlation_id);
+  absl::string_view LookUp(uint64_t correlation_id);
+  absl::string_view LookUpRoctxRange(uint64_t correlation_id);
+  int64_t LookUpScopeRangeId(uint64_t correlation_id);
   ScopeRangeIdTree TakeScopeRangeIdTree();
   void Clear();
 
@@ -183,11 +219,15 @@ class AnnotationMap {
     // callback/activity api related threads.
     absl::Mutex mutex;
     // Annotation tends to be repetitive, use a hash_set to store the strings,
-    // an use the reference to the string in the map.
+    // and use a reference_wrapper into the set in the maps. node_hash_set
+    // guarantees pointer and reference stability on rehash, so the stored
+    // references remain valid for the lifetime of the set.
     absl::node_hash_set<std::string> annotations ABSL_GUARDED_BY(mutex);
-    absl::flat_hash_map<uint32_t, absl::string_view> correlation_map
-        ABSL_GUARDED_BY(mutex);
-    absl::flat_hash_map<uint32_t, int64_t> scope_range_id_map
+    absl::flat_hash_map<uint64_t, std::reference_wrapper<const std::string>>
+        correlation_map ABSL_GUARDED_BY(mutex);
+    absl::flat_hash_map<uint64_t, std::reference_wrapper<const std::string>>
+        roctx_range_map ABSL_GUARDED_BY(mutex);
+    absl::flat_hash_map<uint64_t, int64_t> scope_range_id_map
         ABSL_GUARDED_BY(mutex);
     ScopeRangeIdTree scope_range_id_tree ABSL_GUARDED_BY(mutex);
   };

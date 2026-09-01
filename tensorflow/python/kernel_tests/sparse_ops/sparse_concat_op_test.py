@@ -27,17 +27,14 @@ from tensorflow.python.platform import test
 
 class SparseConcatTest(test.TestCase):
 
-  def _SparseTensor_UnknownShape(self,
-                                 ind_shape=None,
-                                 val_shape=None,
-                                 shape_shape=None):
+  def _SparseTensor_UnknownShape(
+      self, ind_shape=None, val_shape=None, shape_shape=None
+  ):
     return sparse_tensor.SparseTensor(
-        array_ops.placeholder(
-            dtypes.int64, shape=ind_shape),
-        array_ops.placeholder(
-            dtypes.float32, shape=val_shape),
-        array_ops.placeholder(
-            dtypes.int64, shape=shape_shape))
+        array_ops.placeholder(dtypes.int64, shape=ind_shape),
+        array_ops.placeholder(dtypes.float32, shape=val_shape),
+        array_ops.placeholder(dtypes.int64, shape=shape_shape),
+    )
 
   def _SparseTensorValue_3x3(self):
     # [    1]
@@ -48,7 +45,9 @@ class SparseConcatTest(test.TestCase):
     shape = np.array([3, 3])
     return sparse_tensor.SparseTensorValue(
         np.array(ind, np.int64),
-        np.array(val, np.float32), np.array(shape, np.int64))
+        np.array(val, np.float32),
+        np.array(shape, np.int64),
+    )
 
   def _SparseTensor_3x3(self):
     return sparse_tensor.SparseTensor.from_value(self._SparseTensorValue_3x3())
@@ -62,7 +61,9 @@ class SparseConcatTest(test.TestCase):
     shape = np.array([3, 5])
     return sparse_tensor.SparseTensorValue(
         np.array(ind, np.int64),
-        np.array(val, np.float32), np.array(shape, np.int64))
+        np.array(val, np.float32),
+        np.array(shape, np.int64),
+    )
 
   def _SparseTensor_3x5(self):
     return sparse_tensor.SparseTensor.from_value(self._SparseTensorValue_3x5())
@@ -77,7 +78,8 @@ class SparseConcatTest(test.TestCase):
     return sparse_tensor.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.float32),
-        constant_op.constant(shape, dtypes.int64))
+        constant_op.constant(shape, dtypes.int64),
+    )
 
   def _SparseTensor_2x3(self):
     # [  1  ]
@@ -88,21 +90,26 @@ class SparseConcatTest(test.TestCase):
     return sparse_tensor.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.float32),
-        constant_op.constant(shape, dtypes.int64))
+        constant_op.constant(shape, dtypes.int64),
+    )
 
   def _SparseTensor_2x3x4(self):
     ind = np.array([
         [0, 0, 1],
-        [0, 1, 0], [0, 1, 2],
+        [0, 1, 0],
+        [0, 1, 2],
         [1, 0, 3],
-        [1, 1, 1], [1, 1, 3],
-        [1, 2, 2]])
+        [1, 1, 1],
+        [1, 1, 3],
+        [1, 2, 2],
+    ])
     val = np.array([1, 10, 12, 103, 111, 113, 122])
     shape = np.array([2, 3, 4])
     return sparse_tensor.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.float32),
-        constant_op.constant(shape, dtypes.int64))
+        constant_op.constant(shape, dtypes.int64),
+    )
 
   def _SparseTensor_NoNonZeros(self, dense_shape):
     ind = np.empty(shape=(0, len(dense_shape)))
@@ -111,7 +118,8 @@ class SparseConcatTest(test.TestCase):
     return sparse_tensor.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.float32),
-        constant_op.constant(shape, dtypes.int64))
+        constant_op.constant(shape, dtypes.int64),
+    )
 
   def _SparseTensor_String3x3(self):
     # [    a]
@@ -123,7 +131,8 @@ class SparseConcatTest(test.TestCase):
     return sparse_tensor.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.string),
-        constant_op.constant(shape, dtypes.int64))
+        constant_op.constant(shape, dtypes.int64),
+    )
 
   def _SparseTensor_String3x5(self):
     # [         ]
@@ -135,7 +144,8 @@ class SparseConcatTest(test.TestCase):
     return sparse_tensor.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.string),
-        constant_op.constant(shape, dtypes.int64))
+        constant_op.constant(shape, dtypes.int64),
+    )
 
   def testConcat1(self):
     with self.session() as sess:
@@ -155,8 +165,9 @@ class SparseConcatTest(test.TestCase):
 
           concat_out = self.evaluate(sp_concat)
 
-          self.assertAllEqual(concat_out.indices,
-                              [[0, 2], [1, 0], [2, 0], [2, 2]])
+          self.assertAllEqual(
+              concat_out.indices, [[0, 2], [1, 0], [2, 0], [2, 2]]
+          )
           self.assertAllEqual(concat_out.values, [1, 2, 3, 4])
           self.assertAllEqual(concat_out.dense_shape, [3, 3])
 
@@ -177,9 +188,19 @@ class SparseConcatTest(test.TestCase):
 
             concat_out = self.evaluate(sp_concat)
 
-            self.assertAllEqual(concat_out.indices, [[0, 2], [1, 0], [1, 4],
-                                                     [2, 0], [2, 2], [2, 3],
-                                                     [2, 6], [2, 7]])
+            self.assertAllEqual(
+                concat_out.indices,
+                [
+                    [0, 2],
+                    [1, 0],
+                    [1, 4],
+                    [2, 0],
+                    [2, 2],
+                    [2, 3],
+                    [2, 6],
+                    [2, 7],
+                ],
+            )
             self.assertAllEqual(concat_out.values, [1, 2, 1, 3, 4, 2, 1, 0])
             self.assertAllEqual(concat_out.dense_shape, [3, 8])
 
@@ -205,7 +226,8 @@ class SparseConcatTest(test.TestCase):
 
         self.assertAllEqual(
             concat_out.indices,
-            [[0, 2], [1, 0], [2, 0], [2, 2], [3, 1], [4, 0], [4, 2]])
+            [[0, 2], [1, 0], [2, 0], [2, 2], [3, 1], [4, 0], [4, 2]],
+        )
         self.assertAllEqual(concat_out.values, np.array([1, 2, 3, 4, 1, 1, 2]))
         self.assertAllEqual(concat_out.dense_shape, np.array([5, 3]))
 
@@ -228,9 +250,21 @@ class SparseConcatTest(test.TestCase):
 
         concat_out = self.evaluate(sp_concat)
 
-        self.assertAllEqual(concat_out.indices, [[0, 2], [1, 0], [1, 4], [1, 8],
-                                                 [2, 0], [2, 2], [2, 3], [2, 6],
-                                                 [2, 7], [2, 8]])
+        self.assertAllEqual(
+            concat_out.indices,
+            [
+                [0, 2],
+                [1, 0],
+                [1, 4],
+                [1, 8],
+                [2, 0],
+                [2, 2],
+                [2, 3],
+                [2, 6],
+                [2, 7],
+                [2, 8],
+            ],
+        )
         self.assertAllEqual(concat_out.values, [1, 2, 1, 1, 3, 4, 2, 1, 0, 2])
         self.assertAllEqual(concat_out.dense_shape, [3, 10])
 
@@ -269,8 +303,9 @@ class SparseConcatTest(test.TestCase):
 
       concat_out = self.evaluate(sp_concat)
 
-      self.assertAllEqual(concat_out.indices,
-                          sp_b.indices + [0, sp_a.dense_shape[1], 0])
+      self.assertAllEqual(
+          concat_out.indices, sp_b.indices + [0, sp_a.dense_shape[1], 0]
+      )
       self.assertAllEqual(concat_out.values, sp_b.values)
       self.assertAllEqual(concat_out.dense_shape, [2, 15, 4])
 
@@ -294,9 +329,11 @@ class SparseConcatTest(test.TestCase):
 
         self.assertAllEqual(
             concat_out.indices,
-            [[0, 2], [1, 0], [1, 4], [2, 0], [2, 2], [2, 3], [2, 6], [2, 7]])
-        self.assertAllEqual(concat_out.values,
-                            [b"a", b"b", b"e", b"c", b"d", b"f", b"g", b"h"])
+            [[0, 2], [1, 0], [1, 4], [2, 0], [2, 2], [2, 3], [2, 6], [2, 7]],
+        )
+        self.assertAllEqual(
+            concat_out.values, [b"a", b"b", b"e", b"c", b"d", b"f", b"g", b"h"]
+        )
         self.assertAllEqual(concat_out.dense_shape, [3, 8])
 
   @test_util.run_deprecated_v1
@@ -321,7 +358,8 @@ class SparseConcatTest(test.TestCase):
       for concat_dim in (-1, 1):
         with self.assertRaises(ValueError):
           sparse_ops.sparse_concat(
-              concat_dim, [sp_a, sp_e], expand_nonconcat_dim=True)
+              concat_dim, [sp_a, sp_e], expand_nonconcat_dim=True
+          )
 
   @test_util.run_deprecated_v1
   def testMismatchedShapes(self):
@@ -331,8 +369,9 @@ class SparseConcatTest(test.TestCase):
       sp_c = self._SparseTensor_3x2()
       sp_d = self._SparseTensor_2x3()
       for concat_dim in (-1, 1):
-        sp_concat = sparse_ops.sparse_concat(concat_dim,
-                                             [sp_a, sp_b, sp_c, sp_d])
+        sp_concat = sparse_ops.sparse_concat(
+            concat_dim, [sp_a, sp_b, sp_c, sp_d]
+        )
 
         # Shape mismatches can only be caught when the op is run
         with self.assertRaisesOpError("Input shapes must match"):
@@ -347,27 +386,59 @@ class SparseConcatTest(test.TestCase):
       for concat_dim0 in (-2, 0):
         for concat_dim1 in (-1, 1):
           sp_concat_dim0 = sparse_ops.sparse_concat(
-              concat_dim0, [sp_a, sp_b, sp_c, sp_d], expand_nonconcat_dim=True)
+              concat_dim0, [sp_a, sp_b, sp_c, sp_d], expand_nonconcat_dim=True
+          )
           sp_concat_dim1 = sparse_ops.sparse_concat(
-              concat_dim1, [sp_a, sp_b, sp_c, sp_d], expand_nonconcat_dim=True)
+              concat_dim1, [sp_a, sp_b, sp_c, sp_d], expand_nonconcat_dim=True
+          )
 
           sp_concat_dim0_out = self.evaluate(sp_concat_dim0)
           sp_concat_dim1_out = self.evaluate(sp_concat_dim1)
 
-          self.assertAllEqual(sp_concat_dim0_out.indices,
-                              [[0, 2], [1, 0], [2, 0], [2, 2], [4, 1], [5, 0],
-                               [5, 3], [5, 4], [7, 0], [8, 0], [9, 1], [10, 0],
-                               [10, 2]])
-          self.assertAllEqual(sp_concat_dim0_out.values,
-                              [1, 2, 3, 4, 1, 2, 1, 0, 1, 2, 1, 1, 2])
+          self.assertAllEqual(
+              sp_concat_dim0_out.indices,
+              [
+                  [0, 2],
+                  [1, 0],
+                  [2, 0],
+                  [2, 2],
+                  [4, 1],
+                  [5, 0],
+                  [5, 3],
+                  [5, 4],
+                  [7, 0],
+                  [8, 0],
+                  [9, 1],
+                  [10, 0],
+                  [10, 2],
+              ],
+          )
+          self.assertAllEqual(
+              sp_concat_dim0_out.values, [1, 2, 3, 4, 1, 2, 1, 0, 1, 2, 1, 1, 2]
+          )
           self.assertAllEqual(sp_concat_dim0_out.dense_shape, [11, 5])
 
-          self.assertAllEqual(sp_concat_dim1_out.indices,
-                              [[0, 2], [0, 11], [1, 0], [1, 4], [1, 8], [1, 10],
-                               [1, 12], [2, 0], [2, 2], [2, 3], [2, 6], [2, 7],
-                               [2, 8]])
-          self.assertAllEqual(sp_concat_dim1_out.values,
-                              [1, 1, 2, 1, 1, 1, 2, 3, 4, 2, 1, 0, 2])
+          self.assertAllEqual(
+              sp_concat_dim1_out.indices,
+              [
+                  [0, 2],
+                  [0, 11],
+                  [1, 0],
+                  [1, 4],
+                  [1, 8],
+                  [1, 10],
+                  [1, 12],
+                  [2, 0],
+                  [2, 2],
+                  [2, 3],
+                  [2, 6],
+                  [2, 7],
+                  [2, 8],
+              ],
+          )
+          self.assertAllEqual(
+              sp_concat_dim1_out.values, [1, 1, 2, 1, 1, 1, 2, 3, 4, 2, 1, 0, 2]
+          )
           self.assertAllEqual(sp_concat_dim1_out.dense_shape, [3, 13])
 
   @test_util.run_deprecated_v1
@@ -377,7 +448,7 @@ class SparseConcatTest(test.TestCase):
           self._SparseTensor_UnknownShape(),
           self._SparseTensor_UnknownShape(val_shape=[3]),
           self._SparseTensor_UnknownShape(ind_shape=[1, 3]),
-          self._SparseTensor_UnknownShape(shape_shape=[3])
+          self._SparseTensor_UnknownShape(shape_shape=[3]),
       ]
 
       for concat_dim in (-2, 0):
@@ -390,11 +461,65 @@ class SparseConcatTest(test.TestCase):
   def testConcatShape(self):
     # Test case for GitHub 21964.
     x = sparse_tensor.SparseTensor(
-        indices=[[0, 0], [1, 1]], values=[1, 2], dense_shape=[2, 2])
+        indices=[[0, 0], [1, 1]], values=[1, 2], dense_shape=[2, 2]
+    )
     y = sparse_tensor.SparseTensor(
-        indices=[[0, 0], [1, 1]], values=[1, 2], dense_shape=[2, 2])
+        indices=[[0, 0], [1, 1]], values=[1, 2], dense_shape=[2, 2]
+    )
     z = sparse_ops.sparse_concat(-1, [x, y])
     self.assertEqual(z.get_shape().as_list(), [2, 4])
+
+  @test_util.run_deprecated_v1
+  def testDivisionByZeroMalformedShape(self):
+    with self.session():
+      sp1 = sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1.0], dense_shape=[0, 1]
+      )
+      sp2 = sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[2.0], dense_shape=[0, 1]
+      )
+      concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
+      with self.assertRaisesOpError(
+          "SparseTensor cannot have non-zero indices if dense shape has zero"
+          " volume"
+      ):
+        self.evaluate(concat_op)
+
+  def testLargeShapeOverflow(self):
+    shape1 = constant_op.constant([2305843009213693952], dtype=dtypes.int64) * 2
+    shape2 = constant_op.constant([2305843009213693952], dtype=dtypes.int64) * 2
+    sp1 = sparse_tensor.SparseTensor(
+        indices=[[0]], values=[1.0], dense_shape=shape1
+    )
+    sp2 = sparse_tensor.SparseTensor(
+        indices=[[0]], values=[1.0], dense_shape=shape2
+    )
+    with self.assertRaisesOpError("overflowed"):
+      concat_op = sparse_ops.sparse_concat(axis=0, sp_inputs=[sp1, sp2])
+      self.evaluate(concat_op)
+
+  def testGPUOutputDenseElementsOverflow(self):
+    if not test.is_gpu_available():
+      self.skipTest("No GPU available to run GPU functor check.")
+
+    with self.session(use_gpu=True):
+      shape1 = (
+          constant_op.constant([2, 2, 1000000000000000000], dtype=dtypes.int64)
+          * 2
+      )
+      shape2 = (
+          constant_op.constant([2, 2, 1000000000000000000], dtype=dtypes.int64)
+          * 2
+      )
+      sp1 = sparse_tensor.SparseTensor(
+          indices=[[0, 0, 0]], values=[1.0], dense_shape=shape1
+      )
+      sp2 = sparse_tensor.SparseTensor(
+          indices=[[0, 0, 0]], values=[1.0], dense_shape=shape2
+      )
+      with self.assertRaisesOpError("dense_elements overflowed"):
+        concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
+        self.evaluate(concat_op)
 
 
 if __name__ == "__main__":

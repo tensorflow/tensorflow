@@ -99,7 +99,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
           -> std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> {
         tensorflow::data::experimental::DispatcherConfig config;
         if (!config.ParseFromString(serialized_dispatcher_config)) {
-          tensorflow::MaybeRaiseFromStatus(tensorflow::errors::InvalidArgument(
+          tensorflow::MaybeRaiseFromStatus(absl::InvalidArgumentError(
               "Failed to deserialize dispatcher config."));
         }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
@@ -116,7 +116,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
           -> std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> {
         tensorflow::data::experimental::WorkerConfig config;
         if (!config.ParseFromString(serialized_worker_config)) {
-          tensorflow::MaybeRaiseFromStatus(tensorflow::errors::InvalidArgument(
+          tensorflow::MaybeRaiseFromStatus(absl::InvalidArgumentError(
               "Failed to deserialize worker config."));
         }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
