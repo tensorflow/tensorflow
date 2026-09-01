@@ -853,12 +853,15 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
     # Use float as the working dtype when a.dtype is exact (e.g. integer),
     # because `decimals` can be negative.
     float_dtype = np_utils.result_type(float)
-    a = a.astype(float_dtype)
+    # `Tensor.astype` only exists once `enable_numpy_methods_on_tensor()`
+    # has been called, and is an alias of `math_ops.cast`; calling `cast`
+    # directly keeps `around` working without that opt-in.
+    a = math_ops.cast(a, float_dtype)
     factor = math_ops.cast(factor, float_dtype)
   a = math_ops.multiply(a, factor)
   a = math_ops.round(a)
   a = math_ops.divide(a, factor)
-  return a.astype(dtype)
+  return math_ops.cast(a, dtype)
 
 
 setattr(np_arrays.ndarray, '__round__', around)
@@ -2177,7 +2180,9 @@ def _with_index_update_helper(update_method, a, slice_spec, updates):
   a_dtype = a.dtype
   a, updates = _promote_dtype_binary(a, updates)
   result_t = _slice_helper(a, slice_spec, update_method, updates)
-  return result_t.astype(a_dtype)
+  # See the note in `around`: `astype` depends on an opt-in that this
+  # module-level helper does not require of its callers.
+  return math_ops.cast(result_t, a_dtype)
 
 
 setattr(np_arrays.ndarray, '_numpy_style_getitem', _getitem)
