@@ -73,6 +73,7 @@ def UniformQuantizedStableHloToTflPass
   ];
 }
 
+
 def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "ModuleOp"> {
   let summary = "Legalize from MHLO to the TF dialect";
   let dependentDialects = ["TF::TensorFlowDialect"];
@@ -110,8 +111,8 @@ def UnfoldSplatConstantPass : Pass<"unfold-splat-constant-pass", "ModuleOp"> {
 }
 
 def CompositeLoweringPass : Pass<"composite-lowering", "ModuleOp"> {
-  let summary = "Lowers mhlo composites directly to tflite ops (when possible).";
-  let dependentDialects = ["mlir::mhlo::MhloDialect", "TFL::TensorFlowLiteDialect"];
+  let summary = "Lowers stablehlo composites directly to tflite ops (when possible).";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "TFL::TensorFlowLiteDialect"];
   let constructor = "mlir::odml::CreateCompositeLoweringPass()";
 }
 
@@ -139,14 +140,14 @@ def LegalizeChloToTflPass
 
 def PrepareHloPass
     : Pass<"prepare-hlo", "mlir::func::FuncOp"> {
-  let summary = "Prepare mhlo for mhlo->tfl legalization.";
+  let summary = "Prepare StableHLO for StableHLO->tfl legalization.";
   let constructor = "mlir::odml::CreatePrepareHloPass()";
   let description = [{
-    Apply generic mhlo->mhlo rewrites to make the graph more amenable for
+    Apply generic StableHLO->StableHLO rewrites to make the graph more amenable for
     legalizing to tfl.
   }];
   let dependentDialects = [
-    "mlir::mhlo::MhloDialect",
+    "mlir::stablehlo::StablehloDialect",
     "func::FuncDialect",
     "TFL::TensorFlowLiteDialect"
   ];
@@ -185,6 +186,22 @@ def StablehloUnfuseBatchNormPass : Pass<"stablehlo-unfuse-batch-norm", "mlir::fu
 
 def StablehloFuseConvolutionPass : Pass<"stablehlo-fuse-convolution", "mlir::func::FuncOp"> {
   let summary = "Fuses stablehlo.convolution and binary element-wise ops.";
+}
+
+def LegalizeStablehloEinsumToDotGeneralPass
+    : Pass<"stablehlo-legalize-einsum-to-dot-general", "mlir::func::FuncOp"> {
+  let summary = "Legalizes stablehlo.einsum ops to stablehlo.dot_general ops.";
+  let constructor = "mlir::odml::CreateLegalizeStablehloEinsumToDotGeneralPass()";
+  let description = [{
+    StableHLO port of MHLO's `-mhlo-legalize-einsum-to-dot-general` pass.
+    Rewrites binary `stablehlo.einsum` ops into a `stablehlo.dot_general`
+    (followed by a `stablehlo.transpose` if the einsum result order differs
+    from the natural dot_general result order). Rank-reducing einsums (e.g.
+    diagonals) and einsums using ellipsis are left untouched.
+    `stablehlo.unary_einsum` is not handled; run
+    `-stablehlo-legalize-deprecated-ops` first to upgrade it to a binary einsum.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
 def DropShapeAssertionsPass : Pass<"drop-shape-assertions", "ModuleOp"> {
