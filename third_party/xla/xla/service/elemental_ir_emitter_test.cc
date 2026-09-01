@@ -620,5 +620,22 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
+TEST_F(ElementalIrEmitterExecutionTest, IntegerPowNegativeExponent) {
+  const std::string hlo_text = R"(
+HloModule IntegerPowNegativeExponent
+
+ENTRY main {
+  base = s32[8]{0} parameter(0)
+  exponent = s32[8]{0} parameter(1)
+  ROOT power = s32[8]{0} power(base, exponent)
+}
+)";
+
+  Literal base = LiteralUtil::CreateR1<int32_t>({-1, -1, -1, -1, 1, 2, -2, 3});
+  Literal exponent =
+      LiteralUtil::CreateR1<int32_t>({-1, -2, -3, -100, -5, -1, -1, -2});
+  RunTest(hlo_text, {&base, &exponent});
+}
+
 }  // namespace
 }  // namespace xla
