@@ -591,6 +591,7 @@ xla_cc_test(
     srcs = ["infeed_token_propagation_test.cc"],
     deps = [
         ":infeed_token_propagation",
+        "//xla:shape_util",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
