@@ -1001,11 +1001,11 @@ absl::Status ConstraintPropagator::PropagateFusionBoundary(
   const HloInstruction* fused_root =
       fusion_instruction->fused_expression_root();
   if (fused_root != nullptr) {
-    // Backward: outer constraint on fusion result flows into inner root.
     ConstraintState fusion_state = states_[fusion_instruction];
+    ConstraintState root_state = states_[fused_root];
+    // Backward: outer constraint on fusion result flows into inner root.
     states_[fused_root].Merge(fusion_state);
     // Forward: internal constraint computed on root flows out to fusion result.
-    ConstraintState root_state = states_[fused_root];
     states_[fusion_instruction].Merge(root_state);
   }
 
@@ -1016,13 +1016,13 @@ absl::Status ConstraintPropagator::PropagateFusionBoundary(
     if (fused_param == nullptr) {
       continue;
     }
+    ConstraintState operand_state = states_[operand];
+    ConstraintState param_state = states_[fused_param];
     // Backward: constraints accumulated on the internal parameter flow out
     // to the caller operand.
-    ConstraintState param_state = states_[fused_param];
     states_[operand].Merge(param_state);
     // Forward: constraints established on the caller operand flow into the
     // internal parameter.
-    ConstraintState operand_state = states_[operand];
     states_[fused_param].Merge(operand_state);
   }
 
