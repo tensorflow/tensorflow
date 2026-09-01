@@ -50,6 +50,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -351,8 +352,31 @@ std::optional<bool> ComparePosition(
     return post_order_position->at(value1->instruction()) <
            post_order_position->at(value2->instruction());
   };
-  const HloValue* a_min = *absl::c_min_element(a->values(), compare);
-  const HloValue* b_min = *absl::c_min_element(b->values(), compare);
+  std::vector<const HloValue*> a_values;
+  for (const HloValue* v : a->values()) {
+    if (post_order_position->contains(v->instruction())) {
+      a_values.push_back(v);
+    }
+  }
+  std::vector<const HloValue*> b_values;
+  for (const HloValue* v : b->values()) {
+    if (post_order_position->contains(v->instruction())) {
+      b_values.push_back(v);
+    }
+  }
+  // An HloBuffer may be selected for sorting if any of its positions reside in
+  // the target computations being assigned, but none of its defining
+  // instructions (v->instruction()) reside in the target computations (e.g.
+  // values defined in an outer/parent computation and passed into a
+  // subcomputation). In that case, a_values or b_values will be empty because
+  // post_order_position only maps instructions within the target computations.
+  // We return std::nullopt so this comparator defers the ordering decision to
+  // subsequent comparators in the chain or the buffer ID tie-breaker.
+  if (a_values.empty() || b_values.empty()) {
+    return std::nullopt;
+  }
+  const HloValue* a_min = *absl::c_min_element(a_values, compare);
+  const HloValue* b_min = *absl::c_min_element(b_values, compare);
   int a_position = post_order_position->at(a_min->instruction());
   int b_position = post_order_position->at(b_min->instruction());
   if (a_position != b_position) {
@@ -461,7 +485,8 @@ std::string GetMemorySpaceName(int color) {
 absl::Status GatherComputationsByAllocationType(
     const HloModule* module,
     std::vector<const HloComputation*>* thread_local_computations,
-    std::vector<const HloComputation*>* global_computations) {
+    std::vector<const HloComputation*>* global_computations,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Create a worklist of computations paired with whether the allocation must
   // be thread-local.
   std::deque<std::pair<const HloComputation*, bool>> worklist;
@@ -546,6 +571,12 @@ absl::Status GatherComputationsByAllocationType(
 
   // Add the computations to the vectors in post order.
   for (auto* computation : module->MakeComputationPostOrder()) {
+    // Only computations running on the specified `execution_threads` are
+    // considered for buffer assignment in this pass.
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads)) {
+      continue;
+    }
     if (thread_local_set.contains(computation)) {
       thread_local_computations->push_back(computation);
     } else if (global_set.contains(computation)) {
@@ -1998,11 +2029,20 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
         assignment->hlo_live_range().buffer_live_ranges();
     cached_new_live_ranges.reserve(hlo_buffer.values().size());
     for (const HloValue* new_value : hlo_buffer.values()) {
+      // When execution threads are filtered, HloLiveRange only computes live
+      // ranges for the included threads. Skip values on excluded threads.
+      if (!HloInstruction::IsThreadIncluded(
+              new_value->instruction()->parent()->execution_thread(),
+              opts_.execution_threads)) {
+        cached_new_live_ranges.push_back(nullptr);
+        continue;
+      }
       auto it = buffer_live_ranges.find(new_value);
-      CHECK(it != buffer_live_ranges.end())
-          << "Buffer doesn't have a proper live range:"
-          << new_value->ToString();
-      cached_new_live_ranges.push_back(&it->second);
+      if (it != buffer_live_ranges.end()) {
+        cached_new_live_ranges.push_back(&it->second);
+      } else {
+        cached_new_live_ranges.push_back(nullptr);
+      }
     }
   }
 
@@ -2013,19 +2053,31 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
 
     const HloLiveRange::LiveRangeBounds* assigned_live_range = nullptr;
     if (assignment->hlo_live_range().total_order_scheduled()) {
+      // Skip assigned buffers that belong to excluded execution threads.
+      if (!HloInstruction::IsThreadIncluded(
+              assigned_buffer.instruction()->parent()->execution_thread(),
+              opts_.execution_threads)) {
+        continue;
+      }
       const auto& buffer_live_ranges =
           assignment->hlo_live_range().buffer_live_ranges();
       auto it2 = buffer_live_ranges.find(&assigned_buffer);
-      CHECK(it2 != buffer_live_ranges.end())
-          << "Buffer doesn't have a proper live range:"
-          << assigned_buffer.ToString();
-      assigned_live_range = &it2->second;
+      if (it2 != buffer_live_ranges.end()) {
+        assigned_live_range = &it2->second;
+      }
     }
 
     for (size_t i = 0; i < hlo_buffer.values().size(); ++i) {
       const HloValue* new_value = hlo_buffer.values()[i];
-      if (assignment->hlo_live_range().total_order_scheduled()) {
-        CHECK_NOTNULL(assigned_live_range);
+      // Skip new values that belong to excluded execution threads.
+      if (!HloInstruction::IsThreadIncluded(
+              new_value->instruction()->parent()->execution_thread(),
+              opts_.execution_threads)) {
+        continue;
+      }
+      if (assignment->hlo_live_range().total_order_scheduled() &&
+          cached_new_live_ranges[i] != nullptr &&
+          assigned_live_range != nullptr) {
         if (LiveRangeInterferes(new_value, *cached_new_live_ranges[i],
                                 &assigned_buffer, *assigned_live_range,
                                 assignment)) {
@@ -2169,12 +2221,19 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
   bool all_computations_have_sequential_order = true;
   for (const HloValue* hlo_value : hlo_buffer->values()) {
     HloComputation* computation = hlo_value->instruction()->parent();
+    // Only check sequential ordering for computations that are being processed
+    // sequentially in this pass.
+    if (buffers_to_assign_sequentially != nullptr &&
+        !buffers_to_assign_sequentially->contains(computation)) {
+      continue;
+    }
     const bool has_sequential_order =
         assignment->hlo_ordering().SequentialOrder(*computation) != nullptr;
     all_computations_have_sequential_order &= has_sequential_order;
   }
 
   if (all_computations_have_sequential_order) {
+    bool delayed = false;
     for (const HloValue* hlo_value : hlo_buffer->values()) {
       HloComputation* computation = hlo_value->instruction()->parent();
       // There is a sequential instruction ordering, so we delay assignment
@@ -2186,10 +2245,14 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
       // earlier in this loop iteration.  See
       // BufferAllocation::IsPreallocatedTempBuffer for the definition of
       // temp buffers.
-      (*buffers_to_assign_sequentially)[computation].insert(hlo_value);
-      VLOG(3) << "Delaying assignment of temp buffer: " << *hlo_value;
+      if (buffers_to_assign_sequentially != nullptr &&
+          buffers_to_assign_sequentially->contains(computation)) {
+        (*buffers_to_assign_sequentially)[computation].insert(hlo_value);
+        VLOG(3) << "Delaying assignment of temp buffer: " << *hlo_value;
+        delayed = true;
+      }
     }
-    return true;
+    return delayed;
   }
   return false;
 }
@@ -2205,6 +2268,13 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
 
   // Attempt to reuse an existing allocation from an operand.
   for (const HloValue* value : hlo_buffer->values()) {
+    // When execution threads are filtered, only attempt allocation reuse for
+    // values on the included execution threads.
+    if (!HloInstruction::IsThreadIncluded(
+            value->instruction()->parent()->execution_thread(),
+            opts_.execution_threads)) {
+      continue;
+    }
     if (value->IsTopLevel() && !value->IsTuple()) {
       const HloInstruction* instruction = value->instruction();
       for (auto* operand : instruction->operands()) {
@@ -2281,8 +2351,20 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
       continue;
     }
     TF_RET_CHECK(!buffer.values().empty());
-    const HloComputation* comp = buffer.values()[0]->instruction()->parent();
-    if (computations_set.contains(comp)) {
+    // Check all values and their positions in the buffer. An HloBuffer may
+    // contain multiple HloValues spanning across computations (e.g. while
+    // loops, conditionals, or parameter aliasing). Checking only the first
+    // value's defining computation would miss buffers whose subsequent values
+    // or positions belong to target computations.
+    bool contains_target_computation =
+        absl::c_any_of(buffer.values(), [&](const HloValue* value) {
+          return absl::c_any_of(value->positions(),
+                                [&](const HloPosition& position) {
+                                  return computations_set.contains(
+                                      position.instruction->parent());
+                                });
+        });
+    if (contains_target_computation) {
       sorted_buffers.push_back(&buffer);
     }
   }
@@ -2624,7 +2706,8 @@ absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
     std::vector<BufferAllocation::OffsetSize> blocking;
     for (const auto& [assigned_value, offset_size] :
          allocation.assigned_buffers()) {
-      if (candidate_interferes_with(candidate, assigned_value)) {
+      if (live_ranges.contains(assigned_value) &&
+          candidate_interferes_with(candidate, assigned_value)) {
         blocking.push_back(offset_size);
       }
     }
@@ -2696,6 +2779,13 @@ absl::Status BufferAssigner::AssignPresetBuffers(
     const HloBuffer& buffer = alias_analysis.GetUniqueBufferAt(
         defining_position.instruction, defining_position.index);
     for (const HloValue* value : buffer.values()) {
+      if (!HloInstruction::IsThreadIncluded(
+              value->instruction()->parent()->execution_thread(),
+              opts_.execution_threads)) {
+        VLOG(3) << "Skipping preset allocation for value on ignored thread: "
+                << value->ToShortString();
+        continue;
+      }
       VLOG(3) << "Preset allocation for value: " << value->ToShortString();
       const HeapSimulator::Chunk& chunk = position_and_chunk.second;
       auto preset_allocations_iter = preset_allocations.find(value->color());
@@ -3187,9 +3277,10 @@ BufferAssigner::CreateAssignment(
     }
   }
 
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                   HloLiveRange::Run(schedule, *alias_analysis,
-                                     module->entry_computation(), true));
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloLiveRange> hlo_live_range,
+      HloLiveRange::Run(schedule, *alias_analysis, module->entry_computation(),
+                        true, opts_.execution_threads));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(3, module->ToString());
@@ -3214,7 +3305,8 @@ BufferAssigner::CreateAssignment(
   std::vector<const HloComputation*> thread_local_computations;
   std::vector<const HloComputation*> global_computations;
   ABSL_RETURN_IF_ERROR(GatherComputationsByAllocationType(
-      module, &thread_local_computations, &global_computations));
+      module, &thread_local_computations, &global_computations,
+      opts_.execution_threads));
 
   bool is_fallback_enabled = opts_.enable_fallback;
   if (opts_.buffer_assignment_algorithm ==

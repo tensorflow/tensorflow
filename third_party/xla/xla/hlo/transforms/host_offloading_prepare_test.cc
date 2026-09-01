@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offloading_prepare.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -103,6 +104,53 @@ ENTRY main {
           {memory_annotations::kMoveToHostCustomCallTarget}));
     }
     // None of the outputs should be a "to device" custom call.
+    for (const HloInstruction* user : instruction->users()) {
+      EXPECT_FALSE(user->IsCustomCall(
+          {memory_annotations::kMoveToDeviceCustomCallTarget}));
+    }
+  }
+}
+
+TEST_F(HostOffloadingPrepareTest,
+       SingleInputHasMoveToHostThroughOptimizationBarrier) {
+  const std::string& hlo_string = R"(
+HloModule my_module, entry_computation_layout={(s32[32]{0:T(128)})->s32[32]{0:T(128)}}
+
+host_computation {
+  Arg_0.0 = s32[32]{0} parameter(0)
+  ROOT multiply.0 = s32[32]{0} multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+async_computation {
+  param_0 = s32[32]{0} parameter(0)
+  ROOT call = s32[32]{0} call(param_0), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
+}, execution_thread="host"
+
+ENTRY main {
+  Arg_0.1 = s32[32]{0:T(128)} parameter(0)
+  constant.2 = s32[]{:T(128)} constant(2)
+  broadcast.3 = s32[32]{0:T(128)} broadcast(constant.2), dimensions={}
+  multiply.4 = s32[32]{0:T(128)} multiply(Arg_0.1, broadcast.3)
+  move_to_host = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
+  opt_barrier = s32[32]{0:T(128)} opt-barrier(move_to_host)
+  start = ((s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(opt_barrier), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32]{0:T(128)} async-done(start), frontend_attributes={_xla_compute_type="host"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunRewrite(module.get(), Rewrite::kElideMoveToHost));
+
+  EXPECT_TRUE(changed);
+
+  for (const HloInstruction* instruction :
+       GetHostOffloadAsyncStartInstructions(module.get())) {
+    for (const HloInstruction* operand : instruction->operands()) {
+      EXPECT_FALSE(operand->IsCustomCall(
+          {memory_annotations::kMoveToHostCustomCallTarget}));
+    }
     for (const HloInstruction* user : instruction->users()) {
       EXPECT_FALSE(user->IsCustomCall(
           {memory_annotations::kMoveToDeviceCustomCallTarget}));
