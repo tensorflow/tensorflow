@@ -89,9 +89,11 @@ const OpRegistrationData* OpRegistry::LookUp(
   {
     tf_shared_lock l(mu_);
     if (initialized_) {
-      if (const OpRegistrationData* res =
-              gtl::FindWithDefault(registry_, op_type_name, nullptr).get()) {
-        return res;
+      if (const std::unique_ptr<const OpRegistrationData>* ptr =
+              gtl::FindOrNull(registry_, op_type_name)) {
+        if (const OpRegistrationData* res = ptr->get()) {
+          return res;
+        }
       }
     }
   }
@@ -107,7 +109,10 @@ const OpRegistrationData* OpRegistry::LookUpSlow(
   {  // Scope for lock.
     mutex_lock lock(mu_);
     first_call = MustCallDeferred();
-    res = gtl::FindWithDefault(registry_, op_type_name, nullptr).get();
+    if (const std::unique_ptr<const OpRegistrationData>* ptr =
+            gtl::FindOrNull(registry_, op_type_name)) {
+      res = ptr->get();
+    }
 
     static bool unregistered_before = false;
     first_unregistered = !unregistered_before && (res == nullptr);
