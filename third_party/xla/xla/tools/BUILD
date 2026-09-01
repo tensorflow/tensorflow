@@ -1114,6 +1114,7 @@ cc_library(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
+        "//xla/service:xla_compile_result_proto_cc",
         "//xla/service/cpu:cpu_compiler_pure",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1163,6 +1164,7 @@ cc_library(
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
+        "//xla/service/cpu:cpu_symbol_repository",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/cpu:export_hlo",
         "//xla/service/gpu:export_hlo",
@@ -1229,9 +1231,12 @@ xla_test(
     deps = [
         ":xla_compile_lib",
         "//xla:util",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/hlo/ir:hlo",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc",
+        "//xla/service/cpu:cpu_symbol_repository",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
@@ -1248,6 +1253,7 @@ xla_test(
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:duration_cc_proto",
         "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
     ] + if_cuda([
         "//xla/tsl/cuda:nvml",
     ]),

@@ -23,13 +23,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/xla_compile_result.pb.h"
 
 namespace xla {
 
 // Compiles the provided HLO module for CPU using AOT.
 absl::StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    std::optional<cpu::TargetMachineOptions> target_config);
+    std::optional<cpu::TargetMachineOptions> target_config,
+    CompilationResult* result = nullptr);
 
 }  // namespace xla
 

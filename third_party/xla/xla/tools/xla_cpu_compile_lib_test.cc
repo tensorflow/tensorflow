@@ -24,7 +24,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/cpu/cpu_symbol_repository.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -39,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/status.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -160,6 +164,99 @@ TEST_F(XlaCompileLibTest, MainForCpu) {
   TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
   EXPECT_TRUE(result.has_status());
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
+  EXPECT_TRUE(result.has_hlo_module());
+}
+
+TEST_F(XlaCompileLibTest, MainForCpuWithTargetConfigPath) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module_target_config.txt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                      module_->ToString()));
+
+  std::string target_config_text;
+  tsl::protobuf::TextFormat::PrintToString(
+      cpu::TargetMachineOptions().ToProto(), &target_config_text);
+
+  const std::string target_config_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "target_config.pbtxt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), target_config_file,
+                                      target_config_text));
+
+  const std::string output_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_output_config");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_result_config.pb");
+
+  XlaCompileOptions options;
+  options.module_path = module_file;
+  options.output_file = output_file;
+  options.platform = "cpu";
+  options.result_output_file = result_file;
+  options.cpu_options.cpu_target_config_path = target_config_file;
+  TF_EXPECT_OK(XlaCompileMain(options));
+
+  CompilationResult result;
+  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  EXPECT_TRUE(result.has_status());
+  EXPECT_EQ(result.status().code(), tensorflow::error::OK);
+  EXPECT_TRUE(result.has_hlo_module());
+}
+
+namespace {
+
+class FakeCpuSymbolRepository : public SymbolRepository {
+ public:
+  explicit FakeCpuSymbolRepository(
+      std::unique_ptr<HloModule> module,
+      std::optional<cpu::TargetMachineOptions> options = std::nullopt)
+      : module_(std::move(module)), options_(std::move(options)) {}
+
+  absl::StatusOr<std::unique_ptr<HloModuleAndMetadata>> Lookup(
+      absl::string_view symbol_reference, BackendType backend) const override {
+    if (symbol_reference != "valid_cpu_symbol") {
+      return absl::NotFoundError("not found");
+    }
+    auto result = std::make_unique<HloModuleAndMetadata>();
+    result->hlo_module = module_->Clone();
+    if (backend == BackendType::kCpu) {
+      auto data = std::make_unique<cpu::CpuBackendSpecificData>();
+      data->target_machine_options = options_;
+      result->backend_specific_data = std::move(data);
+    }
+    return result;
+  }
+
+ private:
+  std::unique_ptr<HloModule> module_;
+  std::optional<cpu::TargetMachineOptions> options_;
+};
+
+}  // namespace
+
+TEST_F(XlaCompileLibTest, MainForCpuWithSymbolRepo) {
+  auto target_options = cpu::TargetMachineOptions();
+  GetGlobalSymbolRepositoryRegistry().Register(
+      "test_cpu_repo", std::make_unique<FakeCpuSymbolRepository>(
+                           module_->Clone(), target_options));
+
+  const std::string output_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_repo_output");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_repo_result.pb");
+
+  XlaCompileOptions options;
+  options.repo_options.symbol_repo = "test_cpu_repo";
+  options.repo_options.symbol_id = "valid_cpu_symbol";
+  options.output_file = output_file;
+  options.platform = "cpu";
+  options.result_output_file = result_file;
+  TF_EXPECT_OK(XlaCompileMain(options));
+
+  CompilationResult result;
+  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  EXPECT_TRUE(result.has_status());
+  EXPECT_EQ(result.status().code(), tensorflow::error::OK);
+  EXPECT_TRUE(result.has_hlo_module());
 }
 
 TEST_F(XlaCompileLibTest, LoadAutotuneDataCpu) {
