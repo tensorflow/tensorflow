@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 
 namespace mlir::odml {
 
-// Patterns to legalize mhlo.if to TFL.
+// Patterns to legalize stablehlo.if to TFL.
 void PopulateIfPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                         ConversionTarget& target);
 

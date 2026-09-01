@@ -41,8 +41,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -257,12 +257,10 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
 }  // namespace
 
 Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
-                 mhlo::DotDimensionNumbersAttr dot_dimension_numbers,
+                 stablehlo::DotDimensionNumbersAttr dot_dimension_numbers,
                  ShapedType result_type, mlir::Location loc) {
   auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
   auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
-  const int lhs_rank = lhs_type.getRank();
-  const int rhs_rank = rhs_type.getRank();
   ImplicitLocOpBuilder builder(loc, rewriter);
 
   // Collects lhs and rhs dimensions information.
@@ -283,13 +281,10 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
       lhs_dot_dimensions_info.batch_dimensions().SizesArray(),
       lhs_dot_dimensions_info.out_dimensions().SizesArray(),
       lhs_dot_dimensions_info.contracting_dimensions().SizesArray());
-  auto lhs_transposed = mhlo::TransposeOp::create(
+  auto lhs_transposed = stablehlo::TransposeOp::create(
       rewriter, loc,
       RankedTensorType::get(lhs_transposed_shape, lhs_type.getElementType()),
-      lhs,
-      DenseIntElementsAttr::get(
-          RankedTensorType::get({lhs_rank}, rewriter.getI64Type()),
-          lhs_permutation));
+      lhs, rewriter.getDenseI64ArrayAttr(lhs_permutation));
 
   // Transposes rhs shape to be in the order of {batch_dimensions, contracting
   // dimensions, out_dimensions}.
@@ -301,13 +296,10 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
       rhs_dot_dimensions_info.batch_dimensions().SizesArray(),
       rhs_dot_dimensions_info.contracting_dimensions().SizesArray(),
       rhs_dot_dimensions_info.out_dimensions().SizesArray());
-  auto rhs_transposed = mhlo::TransposeOp::create(
+  auto rhs_transposed = stablehlo::TransposeOp::create(
       rewriter, loc,
       RankedTensorType::get(rhs_transposed_shape, rhs_type.getElementType()),
-      rhs,
-      DenseIntElementsAttr::get(
-          RankedTensorType::get({rhs_rank}, rewriter.getI64Type()),
-          rhs_permutation));
+      rhs, rewriter.getDenseI64ArrayAttr(rhs_permutation));
   // Reshapes lhs to flatten out_dimensions and contracting_dimensions.
   llvm::SmallVector<int64_t, 4> lhs_flattened_shape = Concat<int64_t>(
       lhs_dot_dimensions_info.batch_dimensions().SizesArray(),
@@ -317,14 +309,14 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
           lhs_dot_dimensions_info.FlattenedContractingDimensionSize()});
   Value lhs_flattend;
   if (lhs_type.hasStaticShape()) {
-    lhs_flattend = mhlo::ReshapeOp::create(
+    lhs_flattend = stablehlo::ReshapeOp::create(
         rewriter, loc,
         RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
         lhs_transposed.getResult());
   } else {
     auto lhs_flattend_shape_op = BuildDotOperandFlattenedShapeOp(
         lhs, lhs_dot_dimensions_info, builder, /*is_lhs=*/true);
-    lhs_flattend = mhlo::DynamicReshapeOp::create(
+    lhs_flattend = stablehlo::DynamicReshapeOp::create(
         rewriter, loc,
         RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
         lhs_transposed, lhs_flattend_shape_op);
@@ -339,14 +331,14 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
           rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
   Value rhs_flattend;
   if (rhs_type.hasStaticShape()) {
-    rhs_flattend = mhlo::ReshapeOp::create(
+    rhs_flattend = stablehlo::ReshapeOp::create(
         rewriter, loc,
         RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
         rhs_transposed.getResult());
   } else {
     auto rhs_flattend_shape_op = BuildDotOperandFlattenedShapeOp(
         rhs, rhs_dot_dimensions_info, builder, /*is_lhs=*/false);
-    rhs_flattend = mhlo::DynamicReshapeOp::create(
+    rhs_flattend = stablehlo::DynamicReshapeOp::create(
         rewriter, loc,
         RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
         rhs_transposed, rhs_flattend_shape_op);
@@ -366,8 +358,8 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
       lhs_flattend, rhs_flattend, /*adj_x*/ false_attr, /*adj_y*/ false_attr,
       /*asym_quant_input*/ false_attr);
   if (result_type.hasStaticShape()) {
-    auto reshaped =
-        mhlo::ReshapeOp::create(rewriter, loc, result_type, matmul.getResult());
+    auto reshaped = stablehlo::ReshapeOp::create(rewriter, loc, result_type,
+                                                 matmul.getResult());
     return reshaped.getResult();
   }
 
@@ -416,13 +408,13 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
       rewriter, loc, result_shape_type,
       ValueRange{lhs_batch_and_out_dims, rhs_out_dims}, 0, "NONE");
 
-  auto reshaped = mhlo::DynamicReshapeOp::create(
+  auto reshaped = stablehlo::DynamicReshapeOp::create(
       rewriter, loc, result_type, matmul.getResult(), result_shape);
   return reshaped.getResult();
 }
 
 LogicalResult LowerDotGeneralOp::matchAndRewrite(
-    mhlo::DotGeneralOp op, OpAdaptor adaptor,
+    stablehlo::DotGeneralOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   auto val = ConvertDot(
       rewriter, op.getLhs(), op.getRhs(), op.getDotDimensionNumbers(),

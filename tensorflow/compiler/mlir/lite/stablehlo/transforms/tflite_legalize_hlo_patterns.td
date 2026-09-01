@@ -20,7 +20,7 @@ include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
-include "mhlo/IR/hlo_ops.td"
+include "stablehlo/dialect/StablehloOps.td"
 
 
 def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
@@ -28,22 +28,22 @@ def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
-def ConstDefaultResultAccuracyAttr :
-  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+def CreateI32ConstFromI64Array : NativeCodeCall<
+  "CreateI32ConstFromI64Array($0, $_loc, $_builder)">;
 
 def IsBuildableWithArithConstant : Constraint<
   CPred<"::mlir::arith::ConstantOp::isBuildableWith($0, $1.getType())">
 >;
 
 def : Pat<
-  (MHLO_ConstantOp:$output $value),
+  (StableHLO_ConstantOp:$output $value),
   (Arith_ConstantOp $value),
   [(IsBuildableWithArithConstant $value, $output)],
   [],
   (addBenefit 10)>;
 
 def : Pat<
-  (MHLO_ConstantOp:$output $value),
+  (StableHLO_ConstantOp:$output $value),
   (TFL_ConstOp $value),
   [(TFL_TensorOf<[AnyType]> $output)]>;
 
@@ -53,16 +53,14 @@ def : Pat<
 //===----------------------------------------------------------------------===//
 
 def : Pat<
-  (MHLO_TransposeOp $arg, $perm),
+  (StableHLO_TransposeOp $arg, $perm),
   (TFL_TransposeOp $arg,
-    (CreateTFLCastToInt32Op
-      (TFL_ConstOp $perm)))>;
+    (CreateI32ConstFromI64Array $perm))>;
 
 def : Pat<
-  (MHLO_ReverseOp $input, $dims),
+  (StableHLO_ReverseOp $input, $dims),
   (TFL_ReverseV2Op $input,
-    (CreateTFLCastToInt32Op
-      (Arith_ConstantOp $dims)))>;
+    (CreateI32ConstFromI64Array $dims))>;
 
 def I64AttrToI32Attr:
   NativeCodeCall<
@@ -70,7 +68,7 @@ def I64AttrToI32Attr:
       "static_cast<int32_t>(llvm::cast<IntegerAttr>($0).getInt()))">;
 
 def : Pat<
-  (MHLO_ConcatenateOp $inputs, $dim),
+  (StableHLO_ConcatenateOp $inputs, $dim),
   (TFL_ConcatenationOp
     $inputs,
     (I64AttrToI32Attr $dim),
@@ -81,13 +79,13 @@ def : Pat<
 //
 
 def : Pat<
-  (MHLO_ReshapeOp:$output $input),
+  (StableHLO_ReshapeOp:$output $input),
   (TFL_ReshapeOp $input,
     (CreateTFLCastToInt32Op
       (ShapeToConst $output)))>;
 
 def : Pat<
-  (MHLO_DynamicReshapeOp $input, $shape),
+  (StableHLO_DynamicReshapeOp $input, $shape),
   (TFL_ReshapeOp $input,
     (CreateTFLCastToInt32Op $shape))>;
 
@@ -108,7 +106,7 @@ def ExpandedDynamicShape :
   NativeCodeCall<"ExpandedDynamicShape($_builder, $0, $1, $2)">;
 
 def : Pat<
-  (MHLO_BroadcastInDimOp:$output
+  (StableHLO_BroadcastInDimOp:$output
     $input,
     $broadcast_dimensions),
   (TFL_BroadcastToOp
@@ -117,7 +115,7 @@ def : Pat<
   [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>;
 
 def : Pat<
-  (MHLO_BroadcastInDimOp:$output
+  (StableHLO_BroadcastInDimOp:$output
     $input,
     $broadcast_dimensions),
   (TFL_BroadcastToOp
@@ -131,7 +129,7 @@ def : Pat<
   [(IsNotTFLStyleBroadcast $broadcast_dimensions, $output)]>;
 
 def : Pat<
-  (MHLO_DynamicBroadcastInDimOp:$output
+  (StableHLO_DynamicBroadcastInDimOp:$output
     $input,
     $output_dimensions,
     $broadcast_dimensions,
@@ -143,7 +141,7 @@ def : Pat<
   [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>;
 
 def : Pat<
-  (MHLO_DynamicBroadcastInDimOp:$output
+  (StableHLO_DynamicBroadcastInDimOp:$output
     $input,
     $output_dimensions,
     $broadcast_dimensions,
@@ -168,47 +166,47 @@ class GetRankedScalarAttr<string prefix, int width, string signed, string value>
     "RankedTensorType::get({}, $_builder.getIntegerType("
       # width # signed # "))," # value # ")">;
 
-def : Pat<(MHLO_NotOp I1Tensor:$input), (TFL_LogicalNotOp $input)>;
+def : Pat<(StableHLO_NotOp I1Tensor:$input), (TFL_LogicalNotOp $input)>;
 
 // TFL does not support bitwise negation. not(x) is equivalant to xor(x, y) if
 // y has a 1 in every bit position (xor(1, 1) = 0 and xor(0, 1) = 1).
 
 // Signed: The 2s complement of -1 has a 1 in every bit position.
-def : Pat<(MHLO_NotOp I8Tensor:$input),
+def : Pat<(StableHLO_NotOp I8Tensor:$input),
             (TFL_BitwiseXorOp $input,
               (Arith_ConstantOp
                 (GetRankedScalarAttr<"", 8, "", "-1">)))>;
 
-def : Pat<(MHLO_NotOp I16Tensor:$input),
+def : Pat<(StableHLO_NotOp I16Tensor:$input),
             (TFL_BitwiseXorOp $input,
               (Arith_ConstantOp
                 (GetRankedScalarAttr<"", 16, "", "-1">)))>;
 
-def : Pat<(MHLO_NotOp I32Tensor:$input),
+def : Pat<(StableHLO_NotOp I32Tensor:$input),
             (TFL_BitwiseXorOp $input,
               (Arith_ConstantOp
                 (GetRankedScalarAttr<"", 32, "", "-1">)))>;
 
 
 // Unsigned: 0xFFF... has a 1 in every bit position.
-def : Pat<(MHLO_NotOp TensorOf<[UI8]>:$input),
+def : Pat<(StableHLO_NotOp TensorOf<[UI8]>:$input),
             (TFL_BitwiseXorOp $input,
               (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 8, ", false", "0xFFU">)))>;
 
-def : Pat<(MHLO_NotOp TensorOf<[UI16]>:$input),
+def : Pat<(StableHLO_NotOp TensorOf<[UI16]>:$input),
             (TFL_BitwiseXorOp $input,
               (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 16, ", false", "0xFFFFU">)))>;
 
-def : Pat<(MHLO_NotOp TensorOf<[UI32]>:$input),
+def : Pat<(StableHLO_NotOp TensorOf<[UI32]>:$input),
             (TFL_BitwiseXorOp $input,
               (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 32, ", false", "0xFFFFFFFFUL">)))>;
 
 foreach pair = [
-  [MHLO_AndOp, TFL_LogicalAndOp],
-  [MHLO_OrOp, TFL_LogicalOrOp],
+  [StableHLO_AndOp, TFL_LogicalAndOp],
+  [StableHLO_OrOp, TFL_LogicalOrOp],
 ] in {
   def : Pat<
     (pair[0] TFL_BoolTensor:$l, TFL_BoolTensor:$r),
@@ -216,7 +214,7 @@ foreach pair = [
 }
 
 def LegalizeXor : Pat<
-  (MHLO_XorOp
+  (StableHLO_XorOp
     TFL_IntTensor:$l,
     TFL_IntTensor:$r),
   (TFL_BitwiseXorOp $l, $r)>;
@@ -226,26 +224,26 @@ def LegalizeXor : Pat<
 //===----------------------------------------------------------------------===//
 
 def : Pat<
-  (MHLO_ShiftRightArithmeticOp $l, $r),
+  (StableHLO_ShiftRightArithmeticOp $l, $r),
   (TFL_RightShiftOp $l, $r)>;
 
 def : Pat<
-  (MHLO_ShiftRightLogicalOp $l, $r),
+  (StableHLO_ShiftRightLogicalOp $l, $r),
   (TFL_RightShiftOp $l, $r)>;
 
 def : Pat<
-  (MHLO_Atan2Op $l, $r),
+  (StableHLO_Atan2Op $l, $r),
   (TFL_Atan2Op $l, $r)>;
 
 def : Pat<
-  (MHLO_RemOp $l, $r),
+  (StableHLO_RemOp $l, $r),
   (TFL_FloorModOp $l, $r)>;
 
 // Binary ops with no attrs.
 foreach pair = [
-  [MHLO_MaxOp, TFL_MaximumOp],
-  [MHLO_MinOp, TFL_MinimumOp],
-  [MHLO_PowOp, TFL_PowOp],
+  [StableHLO_MaxOp, TFL_MaximumOp],
+  [StableHLO_MinOp, TFL_MinimumOp],
+  [StableHLO_PowOp, TFL_PowOp],
 ] in {
   def : Pat<
     (pair[0] $l, $r),
@@ -253,7 +251,7 @@ foreach pair = [
 
   def : Pat<
     (pair[0] 
-      (MHLO_BroadcastInDimOp:$output
+      (StableHLO_BroadcastInDimOp:$output
         $bcast_operand,
         $broadcast_dimensions),
       $r),
@@ -263,7 +261,7 @@ foreach pair = [
   def : Pat<
     (pair[0] 
       $l,
-      (MHLO_BroadcastInDimOp:$output
+      (StableHLO_BroadcastInDimOp:$output
         $bcast_operand,
         $broadcast_dimensions)),
     (pair[1] $l, $bcast_operand),
@@ -272,10 +270,10 @@ foreach pair = [
 
 // Binary ops with fused activiation attr.
 foreach pair = [
-  [MHLO_DivOp, TFL_DivOp],
-  [MHLO_AddOp, TFL_AddOp],
-  [MHLO_MulOp, TFL_MulOp],
-  [MHLO_SubtractOp, TFL_SubOp],
+  [StableHLO_DivOp, TFL_DivOp],
+  [StableHLO_AddOp, TFL_AddOp],
+  [StableHLO_MulOp, TFL_MulOp],
+  [StableHLO_SubtractOp, TFL_SubOp],
 ] in {
   def : Pat<
     (pair[0] $l, $r),
@@ -283,7 +281,7 @@ foreach pair = [
 
   def : Pat<
     (pair[0] 
-      (MHLO_BroadcastInDimOp:$output
+      (StableHLO_BroadcastInDimOp:$output
         $bcast_operand,
         $broadcast_dimensions),
       $r),
@@ -293,7 +291,7 @@ foreach pair = [
   def : Pat<
     (pair[0] 
       $l,
-      (MHLO_BroadcastInDimOp:$output
+      (StableHLO_BroadcastInDimOp:$output
         $bcast_operand,
         $broadcast_dimensions)),
     (pair[1] $l, $bcast_operand, TFL_AF_None),
@@ -309,22 +307,22 @@ foreach pair = [
 // Check implicit bool cast of `$_self` to ensure Attribute is non-null before
 // casting.
 def HasSupportedComparisonType : AttrConstraint<
-  CPred<"!$_self || SupportedComparisonType(llvm::cast<mhlo::ComparisonTypeAttr>($_self))">>;
+  CPred<"!$_self || SupportedComparisonType(llvm::cast<stablehlo::ComparisonTypeAttr>($_self))">>;
 
-class MHLO_ComparisonDirectionValue<string enumStr> :
-  ConstantAttr<MHLO_ComparisonDirectionAttr,
-    "::mlir::mhlo::ComparisonDirection::" # enumStr>;
+class StableHLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<StableHLO_ComparisonDirectionAttr,
+    "::mlir::stablehlo::ComparisonDirection::" # enumStr>;
 
 foreach p = [
-  [TFL_EqualOp,        MHLO_ComparisonDirectionValue<"EQ">],
-  [TFL_NotEqualOp,     MHLO_ComparisonDirectionValue<"NE">],
-  [TFL_GreaterEqualOp, MHLO_ComparisonDirectionValue<"GE">],
-  [TFL_LessEqualOp,    MHLO_ComparisonDirectionValue<"LE">],
-  [TFL_GreaterOp,      MHLO_ComparisonDirectionValue<"GT">],
-  [TFL_LessOp,         MHLO_ComparisonDirectionValue<"LT">]]
+  [TFL_EqualOp,        StableHLO_ComparisonDirectionValue<"EQ">],
+  [TFL_NotEqualOp,     StableHLO_ComparisonDirectionValue<"NE">],
+  [TFL_GreaterEqualOp, StableHLO_ComparisonDirectionValue<"GE">],
+  [TFL_LessEqualOp,    StableHLO_ComparisonDirectionValue<"LE">],
+  [TFL_GreaterOp,      StableHLO_ComparisonDirectionValue<"GT">],
+  [TFL_LessOp,         StableHLO_ComparisonDirectionValue<"LT">]]
 in {
   def : Pat<
-    (MHLO_CompareOp $l, $r, p[1], HasSupportedComparisonType),
+    (StableHLO_CompareOp $l, $r, p[1], HasSupportedComparisonType),
     (p[0] $l, $r)>;
 }
 
@@ -332,7 +330,7 @@ in {
 // unary element-wise op
 //===----------------------------------------------------------------------===//
 
-def LowerCbrt : Pat<(MHLO_CbrtOp $opr, ConstDefaultResultAccuracyAttr),
+def LowerCbrt : Pat<(StableHLO_CbrtOp $opr, $accuracy),
   (TFL_PowOp $opr,
     (TFL_DivOp
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
@@ -340,20 +338,20 @@ def LowerCbrt : Pat<(MHLO_CbrtOp $opr, ConstDefaultResultAccuracyAttr),
       TFL_AF_None)),
       [(F32Tensor $opr)]>;
 
-// Pattern to legacyze mhlo.abs(complex) to tfl.complex_abs.
-def : Pat<(MHLO_AbsOp MHLO_ComplexTensor:$arg), (TFL_ComplexAbsOp $arg)>;
+// Pattern to legalize stablehlo.abs(complex) to tfl.complex_abs.
+def : Pat<(StableHLO_AbsOp HLO_ComplexTensor:$arg), (TFL_ComplexAbsOp $arg)>;
 
 // Pattern to match non-complex abs.
-def : Pat<(MHLO_AbsOp MHLO_PredIntFpOrQuantizedTensor:$arg), (TFL_AbsOp $arg)>;
+def : Pat<(StableHLO_AbsOp HLO_PredIntFpOrQuantizedTensor:$arg), (TFL_AbsOp $arg)>;
 
 foreach pair = [
-  [MHLO_BitcastConvertOp, TFL_BitcastOp],
-  [MHLO_CeilOp, TFL_CeilOp],
-  [MHLO_FloorOp, TFL_FloorOp],
-  [MHLO_ImagOp, TFL_ImagOp],
-  [MHLO_NegOp, TFL_NegOp],
-  [MHLO_RealOp, TFL_RealOp],
-  [MHLO_SignOp, TFL_SignOp],
+  [StableHLO_BitcastConvertOp, TFL_BitcastOp],
+  [StableHLO_CeilOp, TFL_CeilOp],
+  [StableHLO_FloorOp, TFL_FloorOp],
+  [StableHLO_ImagOp, TFL_ImagOp],
+  [StableHLO_NegOp, TFL_NegOp],
+  [StableHLO_RealOp, TFL_RealOp],
+  [StableHLO_SignOp, TFL_SignOp],
 ] in {
   def : Pat<
     (pair[0] $input),
@@ -361,27 +359,27 @@ foreach pair = [
 }
 
 foreach pair = [
-  [MHLO_CosineOp, TFL_CosOp],
-  [MHLO_ExpOp, TFL_ExpOp],
-  [MHLO_LogOp, TFL_LogOp],
-  [MHLO_LogisticOp, TFL_LogisticOp],
-  [MHLO_RsqrtOp, TFL_RsqrtOp],
-  [MHLO_SineOp, TFL_SinOp],
-  [MHLO_SqrtOp, TFL_SqrtOp],
-  [MHLO_TanhOp, TFL_TanhOp],
+  [StableHLO_CosineOp, TFL_CosOp],
+  [StableHLO_ExpOp, TFL_ExpOp],
+  [StableHLO_LogOp, TFL_LogOp],
+  [StableHLO_LogisticOp, TFL_LogisticOp],
+  [StableHLO_RsqrtOp, TFL_RsqrtOp],
+  [StableHLO_SineOp, TFL_SinOp],
+  [StableHLO_SqrtOp, TFL_SqrtOp],
+  [StableHLO_TanhOp, TFL_TanhOp],
 ] in {
   def : Pat<
-    (pair[0] $input, ConstDefaultResultAccuracyAttr),
+    (pair[0] $input, $accuracy),
     (pair[1] $input)>;
 }
 
 
 def : Pat<
-  (MHLO_ConvertOp $input),
+  (StableHLO_ConvertOp $input),
   (TFL_CastOp $input)>;
 
 def : Pat<
-  (MHLO_Expm1Op F32Tensor:$x, ConstDefaultResultAccuracyAttr),
+  (StableHLO_Expm1Op F32Tensor:$x, $accuracy),
   (TFL_SubOp
     (TFL_ExpOp $x),
     (Arith_ConstantOp
@@ -389,14 +387,14 @@ def : Pat<
     TFL_AF_None)>;
 
 def : Pat<
-  (MHLO_IsFiniteOp F32Tensor:$x),
+  (StableHLO_IsFiniteOp F32Tensor:$x),
   (TFL_EqualOp
     (TFL_SubOp $x, $x, TFL_AF_None),
     (Arith_ConstantOp
       ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">))>;
 
 def : Pat<
-  (MHLO_Log1pOp F32Tensor:$x, ConstDefaultResultAccuracyAttr),
+  (StableHLO_Log1pOp F32Tensor:$x, $accuracy),
   (TFL_LogOp
     (TFL_AddOp
       $x,
@@ -415,7 +413,7 @@ def SameValue :
   Constraint<CPred<"$0 == $1">>;
 
 def FloatOrDefaultCompare :
-  Constraint<CPred<"!$0 || $0.getValue() == ::mlir::mhlo::ComparisonType::FLOAT">>;
+  Constraint<CPred<"!$0 || $0.getValue() == ::mlir::stablehlo::ComparisonType::FLOAT">>;
 
 def SameTypeOrDefaultCompare :
   Constraint<CPred<"SameTypeOrDefaultCompare($0, $1)">>;
@@ -430,13 +428,13 @@ def ValueGreaterThanZero :
   Constraint<CPred<"ValueGreaterThanZero($0)">>;
 
 def : Pat<
-  (MHLO_RoundNearestEvenOp $input),
+  (StableHLO_RoundNearestEvenOp $input),
   (TFL_RoundOp $input)>;
 
 // Converts a dag of HLOs representing banker rounding (round x.5 to nearest
-// even) to tfl.round. This only supports float types because mhlo.floor only
+// even) to tfl.round. This only supports float types because stablehlo.floor only
 // supports float types. tf.round with integer input type will become an
-// identity op, so we will never face an mhlo.floor with an integer input type.
+// identity op, so we will never face an stablehlo.floor with an integer input type.
 // The pattern matched executes the following computation:
 // frac = x - floor(x)
 // to_even = (floor(x) - 2 * floor(0.5 * x)) == 1
@@ -444,30 +442,30 @@ def : Pat<
 //   return floor(x) + 1
 // else
 //   return floor(x)
-def Phase1_Round : Pat<(MHLO_SelectOp
-            (MHLO_OrOp
-              (MHLO_CompareOp (MHLO_SubtractOp:$frac
+def Phase1_Round : Pat<(StableHLO_SelectOp
+            (StableHLO_OrOp
+              (StableHLO_CompareOp (StableHLO_SubtractOp:$frac
                                $input,
-                               (MHLO_FloorOp:$floor $input)),
-                             (MHLO_ConstantOp $half),
-                             MHLO_ComparisonDirectionValue<"GT">,
+                               (StableHLO_FloorOp:$floor $input)),
+                             (StableHLO_ConstantOp $half),
+                             StableHLO_ComparisonDirectionValue<"GT">,
                              $compare_type0),
-              (MHLO_AndOp
-                (MHLO_CompareOp
+              (StableHLO_AndOp
+                (StableHLO_CompareOp
                   $frac1,
-                  (MHLO_ConstantOp $half1),
-                  MHLO_ComparisonDirectionValue<"EQ">,
+                  (StableHLO_ConstantOp $half1),
+                  StableHLO_ComparisonDirectionValue<"EQ">,
                   $compare_type1),
-                (MHLO_CompareOp
-                  (MHLO_SubtractOp
+                (StableHLO_CompareOp
+                  (StableHLO_SubtractOp
                     $floor1,
-                    (MHLO_MulOp
-                      (MHLO_FloorOp (MHLO_MulOp $input, (MHLO_ConstantOp $half2))),
-                      (MHLO_ConstantOp $two))),
-                  (MHLO_ConstantOp $one1),
-                  MHLO_ComparisonDirectionValue<"EQ">,
+                    (StableHLO_MulOp
+                      (StableHLO_FloorOp (StableHLO_MulOp $input, (StableHLO_ConstantOp $half2))),
+                      (StableHLO_ConstantOp $two))),
+                  (StableHLO_ConstantOp $one1),
+                  StableHLO_ComparisonDirectionValue<"EQ">,
                   $compare_type2))),
-            (MHLO_AddOp $floor2, (MHLO_ConstantOp $one)),
+            (StableHLO_AddOp $floor2, (StableHLO_ConstantOp $one)),
             $floor3),
           (TFL_RoundOp $input),
           [(ValueEquals<"1.0"> $one),
@@ -492,19 +490,19 @@ def Phase1_Round : Pat<(MHLO_SelectOp
 //    if ((rem[i] < 0) != (arg0[i] < 0) && arg0[i] != 0)
 //       rem[i] += arg1[i]
 // return rem
-def Phase1_FloorMod : Pat<(MHLO_SelectOp
-            (MHLO_AndOp
-              (MHLO_CompareOp
-                (MHLO_CompareOp:$rltz
-                  (MHLO_RemOp:$rem $arg, $arg1),
-                  (MHLO_ConstantOp $cst),
-                  MHLO_ComparisonDirectionValue<"LT">,
+def Phase1_FloorMod : Pat<(StableHLO_SelectOp
+            (StableHLO_AndOp
+              (StableHLO_CompareOp
+                (StableHLO_CompareOp:$rltz
+                  (StableHLO_RemOp:$rem $arg, $arg1),
+                  (StableHLO_ConstantOp $cst),
+                  StableHLO_ComparisonDirectionValue<"LT">,
                   $compare_type),
-                (MHLO_CompareOp:$arg1ltz $arg1, (MHLO_ConstantOp $cst1), MHLO_ComparisonDirectionValue<"LT">, $compare_type1),
-                MHLO_ComparisonDirectionValue<"NE">,
+                (StableHLO_CompareOp:$arg1ltz $arg1, (StableHLO_ConstantOp $cst1), StableHLO_ComparisonDirectionValue<"LT">, $compare_type1),
+                StableHLO_ComparisonDirectionValue<"NE">,
                 $compare_type2),
-              (MHLO_CompareOp:$rnz $rem1, (MHLO_ConstantOp $cst2), MHLO_ComparisonDirectionValue<"NE">, $compare_type3)),
-            (MHLO_AddOp $rem2, $arg1),
+              (StableHLO_CompareOp:$rnz $rem1, (StableHLO_ConstantOp $cst2), StableHLO_ComparisonDirectionValue<"NE">, $compare_type3)),
+            (StableHLO_AddOp $rem2, $arg1),
             $rem3),
           (TFL_FloorModOp $arg, $arg1),
           [(ValueEquals<"0.0"> $cst),
@@ -525,15 +523,15 @@ def Phase1_FloorMod : Pat<(MHLO_SelectOp
 //    if (rem[i] < 0 && rem[i] != 0)
 //       rem[i] += cst
 // return rem
-def Phase1_FloorMod2 : Pat<(MHLO_SelectOp
-            (MHLO_AndOp
-              (MHLO_CompareOp:$rltz
-                (MHLO_RemOp:$rem $arg, (MHLO_ConstantOp $cst)),
-                (MHLO_ConstantOp $cst1),
-                MHLO_ComparisonDirectionValue<"LT">,
+def Phase1_FloorMod2 : Pat<(StableHLO_SelectOp
+            (StableHLO_AndOp
+              (StableHLO_CompareOp:$rltz
+                (StableHLO_RemOp:$rem $arg, (StableHLO_ConstantOp $cst)),
+                (StableHLO_ConstantOp $cst1),
+                StableHLO_ComparisonDirectionValue<"LT">,
                 $compare_type),
-              (MHLO_CompareOp:$rnz $rem1, (MHLO_ConstantOp $cst2), MHLO_ComparisonDirectionValue<"NE">, $compare_type3)),
-            (MHLO_AddOp $rem2, (MHLO_ConstantOp $cst3)),
+              (StableHLO_CompareOp:$rnz $rem1, (StableHLO_ConstantOp $cst2), StableHLO_ComparisonDirectionValue<"NE">, $compare_type3)),
+            (StableHLO_AddOp $rem2, (StableHLO_ConstantOp $cst3)),
             $rem3),
           (TFL_FloorModOp $arg, (Arith_ConstantOp $cst3)),
           [(ValueGreaterThanZero $cst),
@@ -555,40 +553,24 @@ def Phase1_FloorMod2 : Pat<(MHLO_SelectOp
 //    if (rem[i] != 0 && sign(arg1[i]) != sign(rem[i]))
 //       rem[i] -= 1.0
 // return round_nearest_afz(rem)
-// As a dag this looks like the following:
-//                       round
-//                         |
-//              -------- select
-//              |          |    \
-//             &&          +    div
-//           /   |        / \
-//        !=    !=       div -1
-//       / |   / |      / |
-//    rem 0.0 sn sn1    -  $1
-//   / |      |  |    / |
-// $0 $1     $1 rem  $0 rem
-// Note that named operators like 'sn' and 'sn1' are different values produced by
-// the same function in this case the sign function. Named values like 'div'
-// refer to the same value produced by the same function, in this case division.
-// Mathematical symbols do not indicate a re-use of the value.
-def Phase1_FloorDiv : Pat<(MHLO_RoundOp
-            (MHLO_SelectOp
-              (MHLO_AndOp
-                (MHLO_CompareOp
-                  (MHLO_RemOp:$rem $arg0, $arg1),
-                  (MHLO_ConstantOp $cst),
-                  MHLO_ComparisonDirectionValue<"NE">,
+def Phase1_FloorDiv : Pat<(StableHLO_RoundOp
+            (StableHLO_SelectOp
+              (StableHLO_AndOp
+                (StableHLO_CompareOp
+                  (StableHLO_RemOp:$rem $arg0, $arg1),
+                  (StableHLO_ConstantOp $cst),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
-                (MHLO_CompareOp
-                  (MHLO_SignOp $arg1),
-                  (MHLO_SignOp $rem1),
-                  MHLO_ComparisonDirectionValue<"NE">,
+                (StableHLO_CompareOp
+                  (StableHLO_SignOp $arg1),
+                  (StableHLO_SignOp $rem1),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
-              (MHLO_AddOp
-                (MHLO_DivOp:$div
-                  (MHLO_SubtractOp $arg0, $rem2),
+              (StableHLO_AddOp
+                (StableHLO_DivOp:$div
+                  (StableHLO_SubtractOp $arg0, $rem2),
                   $arg1b),
-                (MHLO_ConstantOp $cst_neg1)),
+                (StableHLO_ConstantOp $cst_neg1)),
               $div1)),
           (TFL_FloorDivOp $arg0, $arg1),
           [(ValueEquals<"0.0"> $cst),
@@ -600,51 +582,25 @@ def Phase1_FloorDiv : Pat<(MHLO_RoundOp
            (FloatOrDefaultCompare $compare_type1, $cst)]>;
 
 // Converts a dag of HLOs representing floor_div with a splat constant to
-// tfl.floor_div. The pattern matched executes the following computation:
-// This particular pattern matches multiplication with the reciprocal of the
-// constant instead of dividing by the constant.
-// rem = remainder(arg0, cst)
-// for i in 0 to len(arg0):
-//    rem[i] = (arg0[i] - rem[i]) * 1 / cst
-//    if (rem[i] != 0 && sign(cst) != sign(rem[i]))
-//       rem[i] += -1.0
-// return round_nearest_afz(rem)
-// As a dag this looks like the following:
-//                       round
-//                         |
-//              -------- select
-//              |           |     \
-//             &&           +     mul
-//           /   |         / \
-//        !=    !=        mul -1
-//       / |   /  |       / |
-//    rem 0.0 cs1 sn1   -  cs2
-//   / |           |   / |
-// $0 cst         rem $0 rem
-// cs1 == sign(cst)
-// cs2 = 1 / cst i.e. the reciprocal
-// Note that named operators like 'sn' and 'sn1' are different values produced by
-// the same function in this case the sign function. Named values like 'div'
-// refer to the same value produced by the same function, in this case division.
-// Mathematical symbols do not indicate a re-use of the value.
-def Phase1_FloorDiv2 : Pat<(MHLO_RoundOp
-            (MHLO_SelectOp
-              (MHLO_AndOp
-                (MHLO_CompareOp
-                  (MHLO_RemOp:$rem $arg0, (MHLO_ConstantOp:$cst $cstv)),
-                  (MHLO_ConstantOp $cst_zero),
-                  MHLO_ComparisonDirectionValue<"NE">,
+// tfl.floor_div.
+def Phase1_FloorDiv2 : Pat<(StableHLO_RoundOp
+            (StableHLO_SelectOp
+              (StableHLO_AndOp
+                (StableHLO_CompareOp
+                  (StableHLO_RemOp:$rem $arg0, (StableHLO_ConstantOp:$cst $cstv)),
+                  (StableHLO_ConstantOp $cst_zero),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
-                (MHLO_CompareOp
-                  (MHLO_ConstantOp $cst_sgn),
-                  (MHLO_SignOp $rem1),
-                  MHLO_ComparisonDirectionValue<"NE">,
+                (StableHLO_CompareOp
+                  (StableHLO_ConstantOp $cst_sgn),
+                  (StableHLO_SignOp $rem1),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
-              (MHLO_AddOp
-                (MHLO_MulOp:$mul
-                  (MHLO_SubtractOp $arg0, $rem2),
-                  (MHLO_ConstantOp $cst_recip)),
-                (MHLO_ConstantOp $cst_neg1)),
+              (StableHLO_AddOp
+                (StableHLO_MulOp:$mul
+                  (StableHLO_SubtractOp $arg0, $rem2),
+                  (StableHLO_ConstantOp $cst_recip)),
+                (StableHLO_ConstantOp $cst_neg1)),
               $mul1)),
           (TFL_FloorDivOp $arg0, $cst),
           [(ValueEquals<"0.0"> $cst_zero),
@@ -658,51 +614,25 @@ def Phase1_FloorDiv2 : Pat<(MHLO_RoundOp
            (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
 
 // Converts a dag of HLOs representing floor_div with a splat constant to
-// tfl.floor_div. The pattern matched executes the following computation:
-// This particular pattern matches division with the constant.
-// .
-// rem = remainder(arg0, cst)
-// for i in 0 to len(arg0):
-//    rem[i] = (arg0[i] - rem[i]) / cst
-//    if (rem[i] != 0 && sign(cst) != sign(rem[i]))
-//       rem[i] -= 1.0
-// return round_nearest_afz(rem)
-// As a dag this looks like the following:
-//                       round
-//                         |
-//              -------- select
-//              |           |     \
-//             &&           +     div
-//           /   |         / \
-//        !=    !=        div -1
-//       / |   /  |       / |
-//    rem 0.0 cs1 sn1   -  cs2
-//   / |           |   / |
-// $0 cst         rem $0 rem
-// cs1 == sign(cst)
-// cs2 = 1 / cst i.e. the reciprocal
-// Note that named operators like 'sn' and 'sn1' are different values produced by
-// the same function in this case the sign function. Named values like 'div'
-// refer to the same value produced by the same function, in this case division.
-// Mathematical symbols do not indicate a re-use of the value.
-def Phase1_FloorDiv3 : Pat<(MHLO_RoundOp
-            (MHLO_SelectOp
-              (MHLO_AndOp
-                (MHLO_CompareOp
-                  (MHLO_RemOp:$rem $arg0, (MHLO_ConstantOp:$cst $cstv)),
-                  (MHLO_ConstantOp $cst_zero),
-                  MHLO_ComparisonDirectionValue<"NE">,
+// tfl.floor_div.
+def Phase1_FloorDiv3 : Pat<(StableHLO_RoundOp
+            (StableHLO_SelectOp
+              (StableHLO_AndOp
+                (StableHLO_CompareOp
+                  (StableHLO_RemOp:$rem $arg0, (StableHLO_ConstantOp:$cst $cstv)),
+                  (StableHLO_ConstantOp $cst_zero),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
-                (MHLO_CompareOp
-                  (MHLO_ConstantOp $cst_sgn),
-                  (MHLO_SignOp $rem1),
-                  MHLO_ComparisonDirectionValue<"NE">,
+                (StableHLO_CompareOp
+                  (StableHLO_ConstantOp $cst_sgn),
+                  (StableHLO_SignOp $rem1),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
-              (MHLO_AddOp
-                (MHLO_DivOp:$div
-                  (MHLO_SubtractOp $arg0, $rem2),
-                  (MHLO_ConstantOp $cstv1)),
-                (MHLO_ConstantOp $cst_neg1)),
+              (StableHLO_AddOp
+                (StableHLO_DivOp:$div
+                  (StableHLO_SubtractOp $arg0, $rem2),
+                  (StableHLO_ConstantOp $cstv1)),
+                (StableHLO_ConstantOp $cst_neg1)),
               $div1)),
           (TFL_FloorDivOp $arg0, $cst),
           [(ValueEquals<"0.0"> $cst_zero),
@@ -716,58 +646,28 @@ def Phase1_FloorDiv3 : Pat<(MHLO_RoundOp
            (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
 
 // Converts a dag of HLOs representing floor_div with a broadcasted vector
-// constant to tfl.floor_div. The pattern matched executes the following
-// computation:
-// scs = sign(cst)
-// bcst = broadcast(cst)
-// rem = remainder(arg0, bcst)
-// for i in 0 to len(arg0):
-//    rem[i] = arg0[i] - rem[i] * / bcst
-//    if (rem[i] != 0 && scs != sign(rem[i]))
-//       rem[i] -= 1.0
-// return round_nearest_afz(rem)
-// Where scs is a splat constant folded sign on the unbroadcasted tensor.
-//
-// As a dag this looks like the following:
-//                       round
-//                         |
-//              -------- select
-//              |           |     \
-//             &&           +     div
-//           /   |         / \
-//        !=    !=        div -1
-//       / |   /  |       / |
-//    rem 0.0 scs sn1   -  bcst
-//   / |           |   / |
-// $0 bcst        rem $0 rem
-//     |
-//    cst
-// scs == sign(cst) == sign(bcst)
-// Note that named operators like 'sn' and 'sn1' are different values produced by
-// the same function in this case the sign function. Named values like 'div'
-// refer to the same value produced by the same function, in this case division.
-// Mathematical symbols do not indicate a re-use of the value.
-def Phase1_FloorDiv4 : Pat<(MHLO_RoundOp
-            (MHLO_SelectOp
-              (MHLO_AndOp
-                (MHLO_CompareOp
-                  (MHLO_RemOp:$rem $arg0,
-                    (MHLO_BroadcastInDimOp:$bcst
-                      (MHLO_ConstantOp $cstv),
+// constant to tfl.floor_div.
+def Phase1_FloorDiv4 : Pat<(StableHLO_RoundOp
+            (StableHLO_SelectOp
+              (StableHLO_AndOp
+                (StableHLO_CompareOp
+                  (StableHLO_RemOp:$rem $arg0,
+                    (StableHLO_BroadcastInDimOp:$bcst
+                      (StableHLO_ConstantOp $cstv),
                       $broadcast_dimension)),
-                  (MHLO_ConstantOp $cst_zero),
-                  MHLO_ComparisonDirectionValue<"NE">,
+                  (StableHLO_ConstantOp $cst_zero),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
-                (MHLO_CompareOp
-                  (MHLO_ConstantOp $cst_sgn),
-                  (MHLO_SignOp $rem1),
-                  MHLO_ComparisonDirectionValue<"NE">,
+                (StableHLO_CompareOp
+                  (StableHLO_ConstantOp $cst_sgn),
+                  (StableHLO_SignOp $rem1),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
-              (MHLO_AddOp
-                (MHLO_DivOp:$div
-                  (MHLO_SubtractOp $arg0, $rem2),
+              (StableHLO_AddOp
+                (StableHLO_DivOp:$div
+                  (StableHLO_SubtractOp $arg0, $rem2),
                   $bcst1),
-                (MHLO_ConstantOp $cst_neg1)),
+                (StableHLO_ConstantOp $cst_neg1)),
               $div1)),
           (TFL_FloorDivOp $arg0, $bcst),
           [(ValueEquals<"0.0"> $cst_zero),
@@ -783,26 +683,26 @@ def Phase1_FloorDiv4 : Pat<(MHLO_RoundOp
 // Semantically equivalant to above, just uses sub(x, 1) instead of
 // add(x, -1).
 def Phase1_FloorDiv5 : Pat<
-          (MHLO_RoundOp
-            (MHLO_SelectOp
-              (MHLO_AndOp
-                (MHLO_CompareOp
-                  (MHLO_RemOp:$rem
+          (StableHLO_RoundOp
+            (StableHLO_SelectOp
+              (StableHLO_AndOp
+                (StableHLO_CompareOp
+                  (StableHLO_RemOp:$rem
                     $arg0,
-                    (MHLO_ConstantOp:$cstv_op $cstv)),
-                  (MHLO_ConstantOp $cst_zero),
-                  MHLO_ComparisonDirectionValue<"NE">,
+                    (StableHLO_ConstantOp:$cstv_op $cstv)),
+                  (StableHLO_ConstantOp $cst_zero),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
-                (MHLO_CompareOp
-                  (MHLO_ConstantOp $cst_sgn),
-                  (MHLO_SignOp $rem1),
-                  MHLO_ComparisonDirectionValue<"NE">,
+                (StableHLO_CompareOp
+                  (StableHLO_ConstantOp $cst_sgn),
+                  (StableHLO_SignOp $rem1),
+                  StableHLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
-              (MHLO_SubtractOp
-                (MHLO_DivOp:$div
-                  (MHLO_SubtractOp $arg0, $rem2),
+              (StableHLO_SubtractOp
+                (StableHLO_DivOp:$div
+                  (StableHLO_SubtractOp $arg0, $rem2),
                   $cstv_op_2),
-                (MHLO_ConstantOp $cst_1)),
+                (StableHLO_ConstantOp $cst_1)),
               $div1)),
           (TFL_FloorDivOp $arg0, $cstv_op),
           [(ValueEquals<"0.0"> $cst_zero),
@@ -815,12 +715,54 @@ def Phase1_FloorDiv5 : Pat<
            (FloatOrDefaultCompare $compare_type, $cst_zero),
            (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
 
+def Phase1_FloorDiv6 : Pat<
+          (StableHLO_RoundOp
+            (StableHLO_SelectOp
+              (StableHLO_AndOp
+                (StableHLO_CompareOp
+                  (StableHLO_RemOp:$rem
+                    $arg0,
+                    (StableHLO_BroadcastInDimOp:$bcst
+                      (StableHLO_ConstantOp $cstv),
+                      $broadcast_dimension)),
+                  (StableHLO_BroadcastInDimOp
+                    (StableHLO_ConstantOp $cst_zero),
+                    $broadcast_dimension_zero),
+                  StableHLO_ComparisonDirectionValue<"NE">,
+                  $compare_type),
+                (StableHLO_CompareOp
+                  (StableHLO_BroadcastInDimOp
+                    (StableHLO_ConstantOp $cst_sgn),
+                    $broadcast_dimension_sgn),
+                  (StableHLO_SignOp $rem1),
+                  StableHLO_ComparisonDirectionValue<"NE">,
+                  $compare_type1)),
+              (StableHLO_SubtractOp
+                (StableHLO_DivOp:$div
+                  (StableHLO_SubtractOp $arg0, $rem2),
+                  $bcst1),
+                (StableHLO_BroadcastInDimOp
+                  (StableHLO_ConstantOp $cst_1),
+                  $broadcast_dimension_one)),
+              $div1)),
+          (TFL_FloorDivOp $arg0, $bcst),
+          [(ValueEquals<"0.0"> $cst_zero),
+           (ValueEquals<"1.0"> $cst_1),
+           (TensorIsSign $cstv, $cst_sgn),
+           (SameValue $bcst, $bcst1),
+           (SameValue $div, $div1),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (FloatOrDefaultCompare $compare_type, $cst_zero),
+           (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
+
 
 
 //===----------------------------------------------------------------------===//
 // ternary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(MHLO_ClampOp $min, $arg, $max),
+def : Pat<(StableHLO_ClampOp $min, $arg, $max),
           (TFL_MaximumOp (TFL_MinimumOp $arg, $max), $min)>;
-def : Pat<(MHLO_SelectOp $cond, $t, $e), (TFL_SelectOp $cond, $t, $e)>;
+def : Pat<(StableHLO_SelectOp $cond, $t, $e), (TFL_SelectOp $cond, $t, $e)>;
+
