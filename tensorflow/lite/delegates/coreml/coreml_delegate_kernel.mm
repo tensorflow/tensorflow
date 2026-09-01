@@ -267,9 +267,10 @@ CoreMlDelegateKernel::~CoreMlDelegateKernel() {
   @try {
     [executor_ cleanup];
   } @catch (NSException* exception) {
+    const char* reason = [exception.reason UTF8String];
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
                     "Exception during CoreML cleanup: %s",
-                    [exception.reason UTF8String]);
+                    reason ? reason : "Unknown reason");
   }
 }
 
