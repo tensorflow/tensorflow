@@ -19562,6 +19562,70 @@ ENTRY main {
       },
       preset_assignments.get(), alias_analysis.get()));
 }
+
+TEST_F(MemorySpaceAssignmentTest,
+       GetLiveAllocationForHloValueFiltersOtherBuffers) {
+  // Tests that GetLiveAllocationForHloValueAt correctly filters out allocations
+  // belonging to other buffers/HloValues (such as slices or sync copy
+  // conversions) present in the allocation sequence, ensuring preferred offsets
+  // and requirements are only derived from matching HloValues.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[4,4] parameter(0)
+    p1 = f32[2,2] parameter(1)
+    a = f32[4,4] tanh(p0)
+    s = f32[2,2] slice(a), slice={[0:2], [0:2]}
+    ROOT r = f32[2,2] add(s, p1)
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HloInstruction* a = module->entry_computation()->GetInstructionWithName("a");
+  HloInstruction* s = module->entry_computation()->GetInstructionWithName("s");
+
+  const HloValue* value_a =
+      &alias_analysis->dataflow_analysis().GetUniqueValueAt(a, {});
+  const HloValue* value_s =
+      &alias_analysis->dataflow_analysis().GetUniqueValueAt(s, {});
+
+  AllocationSequence allocations;
+  // Allocation 1: PinnedAllocation for 'a' live in [10, 20].
+  allocations.push_back(std::make_unique<PinnedAllocation>(
+      HloPosition{a, {}}, MemorySpace::kAlternate,
+      HeapSimulator::Chunk::FromOffsetSize(0, 64), /*start_time=*/10,
+      /*end_time=*/20));
+  // Allocation 2: PinnedAllocation for slice 's' live in [15, 25].
+  allocations.push_back(std::make_unique<PinnedAllocation>(
+      HloPosition{s, {}}, MemorySpace::kAlternate,
+      HeapSimulator::Chunk::FromOffsetSize(64, 16), /*start_time=*/15,
+      /*end_time=*/25));
+
+  // At time 18, both allocations are live in the sequence.
+  // Querying for 'value_a' must return Allocation 1 (for 'a'), NOT
+  // Allocation 2 (the more recent allocation for 's').
+  Allocation* live_a = MsaAlgorithm::GetLiveAllocationForHloValueAt(
+      allocations, *value_a, /*time=*/18, *alias_analysis);
+  ASSERT_NE(live_a, nullptr);
+  EXPECT_EQ(live_a->defining_position(), (HloPosition{a, {}}));
+  EXPECT_EQ(live_a->chunk().offset, 0);
+
+  // Querying for 'value_s' must return Allocation 2 (for 's').
+  Allocation* live_s = MsaAlgorithm::GetLiveAllocationForHloValueAt(
+      allocations, *value_s, /*time=*/18, *alias_analysis);
+  ASSERT_NE(live_s, nullptr);
+  EXPECT_EQ(live_s->defining_position(), (HloPosition{s, {}}));
+  EXPECT_EQ(live_s->chunk().offset, 64);
+
+  // Querying for a time outside range returns nullptr.
+  EXPECT_EQ(MsaAlgorithm::GetLiveAllocationForHloValueAt(
+                allocations, *value_a, /*time=*/30, *alias_analysis),
+            nullptr);
+}
 }  // namespace
 
 }  // namespace memory_space_assignment
