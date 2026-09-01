@@ -466,14 +466,14 @@ class AsyncTracker {
   // e.g., we modify the schedule of a computation, which could change the
   // resource usage of the computation.
   void InvalidateCache() {
-    absl::MutexLock lock(&async_in_computation_cache_mu_);
+    absl::MutexLock lock(async_in_computation_cache_mu_);
     async_in_computation_cache_.clear();
   }
 
   // Similar to InvalidateCache(), but only invalidates the cache for the given
   // computation.
   void InvalidateCache(const HloComputation* computation) {
-    absl::MutexLock lock(&async_in_computation_cache_mu_);
+    absl::MutexLock lock(async_in_computation_cache_mu_);
     async_in_computation_cache_.erase(computation);
   }
 
@@ -1932,7 +1932,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::Status InitializeScheduler(const HloModule* module) override;
 
   absl::Status CaptureScheduleProto() override {
-    absl::MutexLock lock(&schedule_proto_mu_);
+    absl::MutexLock lock(schedule_proto_mu_);
     schedule_proto_ = ScheduleProto();
     *schedule_proto_->mutable_hlo_module() = module_->ToProto();
 
@@ -1940,7 +1940,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   }
 
   absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() override {
-    absl::MutexLock lock(&schedule_proto_mu_);
+    absl::MutexLock lock(schedule_proto_mu_);
     if (!schedule_proto_.has_value()) {
       return absl::FailedPreconditionError("Schedule proto not captured.");
     }
