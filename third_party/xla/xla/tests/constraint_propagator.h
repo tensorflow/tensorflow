@@ -30,10 +30,17 @@ limitations under the License.
 
 namespace xla {
 
-enum class IdentityElementType { kUnknown, kZero, kOne };
+enum class IdentityElementType {
+  kUnknown,
+  kZero,
+  kOne,
+  kMinimum,
+  kMaximum,
+};
 
 // Returns the identity element type for the given reduction computation.
-// Add => 0, Mul => 1, etc.. Returns kUnknown otherwise.
+// Add => 0, Mul => 1, Max => MinValue, Min => MaxValue. Returns kUnknown
+// otherwise.
 IdentityElementType GetReductionIdentityElementType(
     const HloComputation& computation);
 

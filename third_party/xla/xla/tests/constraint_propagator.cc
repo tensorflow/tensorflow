@@ -45,7 +45,6 @@ namespace xla {
 
 IdentityElementType GetReductionIdentityElementType(
     const HloComputation& computation) {
-  // TODO(b/77635120): Add init values, for min, max, and their arg variants.
   const HloInstruction* const root = computation.root_instruction();
   if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
@@ -56,9 +55,15 @@ IdentityElementType GetReductionIdentityElementType(
 
   switch (root->opcode()) {
     case HloOpcode::kAdd:
+    case HloOpcode::kOr:
       return IdentityElementType::kZero;
     case HloOpcode::kMultiply:
+    case HloOpcode::kAnd:
       return IdentityElementType::kOne;
+    case HloOpcode::kMaximum:
+      return IdentityElementType::kMinimum;
+    case HloOpcode::kMinimum:
+      return IdentityElementType::kMaximum;
     default:
       return IdentityElementType::kUnknown;
   }
@@ -657,19 +662,29 @@ absl::Status ConstraintPropagator::SeedConstraints(
 
       case HloOpcode::kReduce:
       case HloOpcode::kReduceWindow: {
-        int64_t first_init = inst->operand_count() / 2;
-        if (inst->opcode() == HloOpcode::kReduceWindow) {
-          first_init = 1;
-        }
+        int64_t first_init = inst->opcode() == HloOpcode::kReduce
+                                 ? inst->operand_count() / 2
+                                 : inst->operand_count() - 1;
         IdentityElementType etype =
             GetReductionIdentityElementType(*inst->to_apply());
         for (int64_t i = first_init; i < inst->operand_count(); ++i) {
+          PrimitiveType elem_type = inst->operand(i)->shape().element_type();
           if (etype == IdentityElementType::kZero) {
             states_[inst->operand(i)].AddConstraint(
                 ConstraintInterval{0.0, 0.0, false});
           } else if (etype == IdentityElementType::kOne) {
             states_[inst->operand(i)].AddConstraint(
                 ConstraintInterval{1.0, 1.0, true});
+          } else if (etype == IdentityElementType::kMinimum) {
+            if (auto domain = GetTypeFiniteDomain(elem_type)) {
+              states_[inst->operand(i)].AddConstraint(
+                  ConstraintInterval{domain->min, domain->min, false});
+            }
+          } else if (etype == IdentityElementType::kMaximum) {
+            if (auto domain = GetTypeFiniteDomain(elem_type)) {
+              states_[inst->operand(i)].AddConstraint(
+                  ConstraintInterval{domain->max, domain->max, false});
+            }
           }
         }
         break;
@@ -678,12 +693,23 @@ absl::Status ConstraintPropagator::SeedConstraints(
       case HloOpcode::kSelectAndScatter: {
         IdentityElementType etype =
             GetReductionIdentityElementType(*inst->scatter());
+        PrimitiveType elem_type = inst->operand(2)->shape().element_type();
         if (etype == IdentityElementType::kZero) {
           states_[inst->operand(2)].AddConstraint(
               ConstraintInterval{0.0, 0.0, false});
         } else if (etype == IdentityElementType::kOne) {
           states_[inst->operand(2)].AddConstraint(
               ConstraintInterval{1.0, 1.0, true});
+        } else if (etype == IdentityElementType::kMinimum) {
+          if (auto domain = GetTypeFiniteDomain(elem_type)) {
+            states_[inst->operand(2)].AddConstraint(
+                ConstraintInterval{domain->min, domain->min, false});
+          }
+        } else if (etype == IdentityElementType::kMaximum) {
+          if (auto domain = GetTypeFiniteDomain(elem_type)) {
+            states_[inst->operand(2)].AddConstraint(
+                ConstraintInterval{domain->max, domain->max, false});
+          }
         }
         break;
       }

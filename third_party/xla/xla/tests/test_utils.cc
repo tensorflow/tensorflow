@@ -311,6 +311,10 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
         return LiteralUtil::Zero(param_shape.element_type());
       case IdentityElementType::kOne:
         return LiteralUtil::One(param_shape.element_type());
+      case IdentityElementType::kMinimum:
+        return LiteralUtil::MinValue(param_shape.element_type());
+      case IdentityElementType::kMaximum:
+        return LiteralUtil::MaxValue(param_shape.element_type());
       case IdentityElementType::kUnknown:
         // We want the identity element for the computation, but we don't
         // really know what it is - so any value we generate will be just as
