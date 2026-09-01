@@ -45,12 +45,6 @@ ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions();
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions();
 
 // TODO(b/397167511): Remove legacy wrapper once callers are migrated.
-inline std::unique_ptr<mlir::Pass>
-createLegalizeTrigonometricToApproximationPass() {
-  return createLegalizeTanhToApproximationPass();
-}
-
-// TODO(b/397167511): Remove legacy wrapper once callers are migrated.
 inline std::unique_ptr<mlir::Pass> createExpandHloTuplesPass(
     const std::string& entryFunctionName) {
   ExpandHloTuplesPassOptions options;
