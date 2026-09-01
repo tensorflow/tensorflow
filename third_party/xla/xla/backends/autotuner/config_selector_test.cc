@@ -135,5 +135,82 @@ TEST(ConfigSelectorTest, IgnoresScratchBytesOutsideWindow) {
   EXPECT_EQ(best.scratch_bytes, 200);
 }
 
+TEST(ConfigSelectorTest, PicksNextBestConfigWhenFastestBackendExcluded) {
+  MockCodegenBackend cublas_backend;
+  EXPECT_CALL(cublas_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::CUBLASLT_FISSION));
+  MockCodegenBackend triton_backend;
+  EXPECT_CALL(triton_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::TRITON));
+
+  std::vector<ConfigRunner::ConfigProfile> profiles;
+  profiles.push_back(CreateProfile(&cublas_backend, "cublas_fast_config",
+                                   absl::Microseconds(10)));
+  profiles.push_back(CreateProfile(&triton_backend, "triton_config_1",
+                                   absl::Microseconds(20)));
+  profiles.push_back(CreateProfile(&triton_backend, "triton_config_2",
+                                   absl::Microseconds(30)));
+
+  std::vector<autotuner::Backend> excluded_backends = {
+      autotuner::Backend::CUBLASLT_FISSION};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto best, PickBestConfig(profiles, /*scratch_bytes_window_size_us=*/0,
+                                excluded_backends));
+  EXPECT_THAT(*best.config.backend_config, ConfigMatcher("triton_config_1"));
+  EXPECT_EQ(best.duration, absl::Microseconds(20));
+}
+
+TEST(ConfigSelectorTest, FailsWhenAllSuccessfulConfigsAreFromExcludedBackends) {
+  MockCodegenBackend cublas_backend;
+  EXPECT_CALL(cublas_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::CUBLASLT_FISSION));
+  MockCodegenBackend triton_backend;
+  EXPECT_CALL(triton_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::TRITON));
+
+  std::vector<ConfigRunner::ConfigProfile> profiles;
+  profiles.push_back(
+      CreateProfile(&cublas_backend, "cublas_config", absl::Microseconds(10)));
+  profiles.push_back(CreateProfile(
+      &triton_backend, "triton_config", absl::Microseconds(20),
+      /*scratch_bytes=*/0,
+      ConfigRunner::Failure{ConfigRunner::FailureKind::kWrongResults,
+                            "wrong results"}));
+
+  std::vector<autotuner::Backend> excluded_backends = {
+      autotuner::Backend::CUBLASLT_FISSION};
+
+  EXPECT_THAT(PickBestConfig(profiles, /*scratch_bytes_window_size_us=*/0,
+                             excluded_backends),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(ConfigSelectorTest, ScratchBytesOptimizationIgnoresExcludedBackends) {
+  MockCodegenBackend cublas_backend;
+  EXPECT_CALL(cublas_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::CUBLASLT_FISSION));
+  MockCodegenBackend triton_backend;
+  EXPECT_CALL(triton_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::TRITON));
+
+  std::vector<ConfigRunner::ConfigProfile> profiles;
+  profiles.push_back(CreateProfile(&cublas_backend, "cublas_least_scratch",
+                                   absl::Microseconds(21), 0));
+  profiles.push_back(CreateProfile(&triton_backend, "triton_fast",
+                                   absl::Microseconds(20), 200));
+  profiles.push_back(CreateProfile(&triton_backend, "triton_opt_scratch",
+                                   absl::Microseconds(25), 100));
+
+  std::vector<autotuner::Backend> excluded_backends = {
+      autotuner::Backend::CUBLASLT_FISSION};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto best, PickBestConfig(profiles, /*scratch_bytes_window_size_us=*/8,
+                                excluded_backends));
+  EXPECT_THAT(*best.config.backend_config, ConfigMatcher("triton_opt_scratch"));
+  EXPECT_EQ(best.scratch_bytes, 100);
+}
+
 }  // namespace
 }  // namespace xla
