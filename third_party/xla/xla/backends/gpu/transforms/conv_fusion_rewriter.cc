@@ -82,6 +82,15 @@ bool IsConvFusionOutputsValid(const std::vector<HloInstruction*>& outputs) {
                                  (outputs[1]->opcode() == HloOpcode::kReduce)) {
     return false;
   }
+  // Disallow upcast converts at fusion outputs. S32->F32 is allowed as cuDNN
+  // INT8 convs require it for epilogue fusions.
+  for (const HloInstruction* output : outputs) {
+    if (output->opcode() == HloOpcode::kConvert &&
+        output->shape().element_type() == F32 &&
+        output->operand(0)->shape().element_type() != S32) {
+      return false;
+    }
+  }
   return true;
 }
 
