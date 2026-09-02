@@ -47,7 +47,7 @@ filegroup(
         "flag_defs.h",
         "flags.h",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
