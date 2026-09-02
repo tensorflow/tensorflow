@@ -677,7 +677,8 @@ class ImportShardingsPass
             ? MeshAttr::get(moduleOp.getContext(), namedAxes)
             : MeshAttr::get(moduleOp.getContext(), namedAxes, meshDeviceIds);
     symbolTable.insert(MeshOp::create(opBuilder, moduleOp.getLoc(),
-                                      kGlobalMeshName, globalMesh));
+                                      kGlobalMeshName, globalMesh,
+                                      /*sym_visibility=*/nullptr));
 
     SmallDenseMap<int64_t, StringRef> deviceIdToMaximalMeshName;
     for (int64_t deviceId : deviceIdsForMaximalMesh) {
@@ -685,7 +686,8 @@ class ImportShardingsPass
       std::string meshName = absl::StrCat("maximal_mesh_", deviceId);
       auto meshOp =
           MeshOp::create(opBuilder, moduleOp.getLoc(), meshName,
-                         MeshAttr::getMaximal(moduleOp.getContext(), deviceId));
+                         MeshAttr::getMaximal(moduleOp.getContext(), deviceId),
+                         /*sym_visibility=*/nullptr);
       symbolTable.insert(meshOp);
       deviceIdToMaximalMeshName[deviceId] = meshOp.getSymName();
     }
