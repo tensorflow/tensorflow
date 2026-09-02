@@ -72,10 +72,23 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "requires-gpu-nvidia:2": "Test needs 2 NVIDIA GPUs to run",
     "requires-gpu-sm60-only": "Requires exactly sm60.",
     "requires-gpu-sm70-only": "Requires exactly sm70.",
+    "requires-gpu-sm80": (
+        "Test requires NVIDIA GPU with compute capability >= 8.0 (sm80 or"
+        " newer)"
+    ),
     "requires-gpu-sm80-only": "Requires exactly sm80.",
+    "requires-gpu-sm90": (
+        "Test requires NVIDIA GPU with compute capability >= 9.0 (sm90 or"
+        " newer)"
+    ),
+    "requires-gpu-sm90:2": (
+        "Test needs 2 NVIDIA GPUs with compute capability >= 9.0 (sm90 or"
+        " newer) to run"
+    ),
     "requires-gpu-sm90-only": "Requires exactly sm90.",
     "requires-gpu-sm100-only": "Requires exactly sm100.",
     "requires-gpu-sm103-only": "Requires exactly sm103.",
+    "requires-gpu-sm107-only": "Requires exactly sm107.",
     "requires-gpu-sm120-only": "Requires exactly sm120.",
     "full": (
         "Test requires a full GPU, not a partitioned one. No effect in OSS."
@@ -104,6 +117,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_gb200": "Runs on a gb200.",
     "xla_gb300": "Runs on a gb300.",
     "xla_rtx6000pro": "Runs on an rtx6000pro.",
+    "xla_vr200": "Runs on a vr200.",
     "xla_device_p100": "Runs on a p100.",
     "xla_device_v100": "Runs on a v100.",
     "xla_device_a100": "Runs on an a100.",
@@ -112,6 +126,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_device_gb200": "Runs on a gb200.",
     "xla_device_gb300": "Runs on a gb300.",
     "xla_device_rtx6000pro": "Runs on an rtx6000pro.",
+    "xla_device_vr200": "Runs on a vr200.",
     # Below tags are consumed by `xla_test`.
     "test_migrated_to_hlo_runner_pjrt": (
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"

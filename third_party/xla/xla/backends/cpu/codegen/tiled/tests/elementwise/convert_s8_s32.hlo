@@ -42,7 +42,7 @@ fusion {
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<1x4xi8>
 // CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<1x4xi8>
-// CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() {alignment = 64 : i64} : memref<1x4xi32>
+// CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() alignment = 64 : memref<1x4xi32>
 // CHECK-VECTOR:         memref.copy %{{.*}}, %[[ALLOCA_0]]
 
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
@@ -50,9 +50,9 @@ fusion {
 // NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0 : i8
 // NEW-VECTOR:         scf.for
 // NEW-VECTOR-NOT:     scf.if
-// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true]} : memref<128x256xi8>, vector<4xi8>
-// NEW-VECTOR:         %[[EXT:.*]] = arith.extsi %[[R0]] : vector<4xi8> to vector<4xi32>
-// NEW-VECTOR:         vector.transfer_write %[[EXT]], %[[ARG1]][%{{.*}}, %{{.*}}] {in_bounds = [true]} : vector<4xi32>, memref<128x256xi32>
+// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xi8>, vector<1x4xi8>
+// NEW-VECTOR:         %[[EXT:.*]] = arith.extsi %[[R0]] : vector<1x4xi8> to vector<1x4xi32>
+// NEW-VECTOR:         vector.transfer_write %[[EXT]], %[[ARG1]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<1x4xi32>, memref<128x256xi32>
 
 // CHECK-LLVM: llvm.intr.memcpy
 

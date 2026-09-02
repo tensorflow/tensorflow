@@ -54,5 +54,7 @@ common_patch_list = [
     "//third_party/triton:common/rewrite_tensor_descriptor_to_pointer_uaf.patch",
     "//third_party/triton:common/blackwell_nvfp4_mn_major_fallback.patch",
     "//third_party/triton:common/llvm_cl966791199.patch",
+    "//third_party/triton:common/llvm_cl969980821.patch",
+    "//third_party/triton:common/llvm_cl974500093.patch",
     # Add new patches just above this line
 ]

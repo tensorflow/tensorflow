@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/fingerprinting_x_platform_utils.h"
+#include "tensorflow/cc/saved_model/singleprint.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 #include "tensorflow/core/graph/regularization/util.h"
@@ -237,12 +238,11 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
   // At this point we have neither saved_model.pb nor saved_model.cpb.
   return CreateReducedFingerprintDef();  // Only sets the UUID.
 #else  // The following runs on Windows and Mac.
-  absl::StatusOr<FingerprintDef> fingerprint_def =
-      CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
-  if (!fingerprint_def.ok()) {
-    return CreateReducedFingerprintDef();
+  std::string pb_file = absl::StrCat(prefix, ".pb");
+  if (Env::Default()->FileExists(pb_file).ok()) {
+    return CreateFingerprintDefPb(export_dir, pb_file);
   }
-  return fingerprint_def;
+  return CreateReducedFingerprintDef();
 #endif
 }
 
@@ -258,6 +258,12 @@ absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
   if (!result.ok()) return result;
 
   return fingerprint_proto;
+}
+
+absl::StatusOr<std::string> Singleprint(absl::string_view export_dir) {
+  TF_ASSIGN_OR_RETURN(FingerprintDef fingerprint_def,
+                      ReadSavedModelFingerprint(export_dir));
+  return Singleprint(fingerprint_def);
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

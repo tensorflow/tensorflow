@@ -205,12 +205,6 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
 };
 
-// A custom PjRtClient that overrides the device assignment method.
-class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
- public:
-  using PjRtStreamExecutorClient::PjRtStreamExecutorClient;
-};
-
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 

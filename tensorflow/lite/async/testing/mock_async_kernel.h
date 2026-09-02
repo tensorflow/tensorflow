@@ -26,7 +26,7 @@ namespace async {
 namespace testing {
 
 // A fully mocked out async kernel.
-// Mocked TfLiteAsyncKernel can be retreived by `MockAsyncKernel::kernel()`.
+// Mocked TfLiteAsyncKernel can be retrieved by `MockAsyncKernel::kernel()`.
 class MockAsyncKernel : public delegates::BackendAsyncKernelInterface {
  public:
   MOCK_METHOD(TfLiteStatus, RegisterBuffer,

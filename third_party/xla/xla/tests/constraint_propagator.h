@@ -30,10 +30,17 @@ limitations under the License.
 
 namespace xla {
 
-enum class IdentityElementType { kUnknown, kZero, kOne };
+enum class IdentityElementType {
+  kUnknown,
+  kZero,
+  kOne,
+  kMinimum,
+  kMaximum,
+};
 
 // Returns the identity element type for the given reduction computation.
-// Add => 0, Mul => 1, etc.. Returns kUnknown otherwise.
+// Add => 0, Mul => 1, Max => MinValue, Min => MaxValue. Returns kUnknown
+// otherwise.
 IdentityElementType GetReductionIdentityElementType(
     const HloComputation& computation);
 
@@ -55,6 +62,7 @@ IdentityElementType GetReductionIdentityElementType(
 //   between operands are simplified into independent constraints to keep
 //   computation scalable.
 //
+class ConstraintPropagatorTest;
 // Limitations:
 // - Does not handle control flow.
 // - Uses weak heuristics for accumulation-intensive operations.
@@ -67,10 +75,21 @@ class ConstraintPropagator {
           get_index_known_zeroes = nullptr);
 
  private:
+  friend class ConstraintPropagatorTest;
+
   explicit ConstraintPropagator(
       std::function<std::optional<uint64_t>(const HloInstruction*, int64_t)>
           get_index_known_zeroes)
       : get_index_known_zeroes_(get_index_known_zeroes) {}
+
+  // Populates max_add_reduction_elements_per_exp_ by analyzing downstream
+  // addition-reduction chains across the computation.
+  void ComputeMaxAddReductionElementsPerExp(const HloComputation* computation);
+
+  // Returns the maximum number of downstream addition-reduction elements for
+  // the given kExp instruction, or 1 if unreduced or not found.
+  int64_t GetMaxAddReductionElementsForExp(
+      const HloInstruction* exp_instruction) const;
 
   // Propagates constraints in post-order throughout the given computation.
   absl::Status Propagate(const HloComputation* computation);
@@ -95,6 +114,13 @@ class ConstraintPropagator {
   // This is exact and does not introduce any approximations as ops like data
   // formatting can simply propagate the exact constraints to their operands.
   absl::Status PropagateConstraintsExact(const HloInstruction* instruction);
+
+  // Propagates constraints bidirectionally across a subcomputation boundary
+  // (e.g. kFusion or kCall), mapping caller operands to callee parameters and
+  // caller result to the callee root instruction.
+  absl::Status PropagateComputationBoundary(
+      const HloInstruction* caller_instruction,
+      const HloComputation* callee_computation);
 
   // Propagates constraints from the output of an instruction to its operands.
   // This is approximate and introduces approximations for ops like add, sub,
@@ -142,6 +168,11 @@ class ConstraintPropagator {
 
   // Constraint states for each instruction in the module.
   absl::flat_hash_map<const HloInstruction*, ConstraintState> states_;
+
+  // Maps each kExp instruction to the maximum number of elements summed
+  // downstream across any addition reduction path.
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      max_add_reduction_elements_per_exp_;
 };
 
 }  // namespace xla

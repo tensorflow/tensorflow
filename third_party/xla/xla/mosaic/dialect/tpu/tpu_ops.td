@@ -182,7 +182,7 @@ def TPU_ReduceOp : TPU_Op<"reduce", [Pure, SameOperandsAndResultRank]> {
   let hasVerifier = 1;
 }
 
-// tpu.scan performs a scan across a vector.
+// tpu.scan performs a scan across a vector along the specified dimension.
 //
 // If a mask is provided, all output elements before the first unmasked input
 // element is undefined. Subsequent masked elements will hold the result
@@ -203,7 +203,8 @@ def TPU_ScanOp : TPU_Op<"scan"> {
   let arguments = (ins
     VectorOfNonZeroRankOf<[I1, I16, I32, BF16, F32]>:$input,
     TPU_ReductionKindAttr:$kind,
-    Optional<VectorOfNonZeroRankOf<[I1]>>:$mask
+    Optional<VectorOfRankAndType<[1], [I1]>>:$mask,
+    I64Attr:$dimension
   );
   let results = (outs VectorOfNonZeroRankOf<[I16, I32, BF16, F32]>:$output);
   let assemblyFormat = [{
@@ -215,10 +216,12 @@ def TPU_ScanOp : TPU_Op<"scan"> {
 def TPU_SortOp : TPU_Op<"sort", [Pure]> {
   let summary = "Sorts key/value pairs based on keys.";
   let description = [{
-    tpu.sort performs a stable sort of key/value pairs in ascending or
-    descending order based on keys. Masked-out keys and values are placed at the
-    end of the output vectors. An output mask indicates which outputs
-    correspond to the valid inputs.
+    tpu.sort performs a stable sort of key/value pairs in the innermost
+    dimension in ascending or descending order based on keys. Duplicate keys
+    preserve their input order regardless of the sorting order. Masked-out keys
+    and values are placed at the end of the output vectors. Integer keys are
+    treated as unsigned. An output mask indicates which outputs correspond to
+    the valid inputs. 
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
@@ -332,6 +335,7 @@ def TPU_StridedLoadOp : TPU_Op<"strided_load", [DefaultMemRead]> {
     $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TPU_StridedStoreOp : TPU_Op<"strided_store", [DefaultMemWrite]> {
@@ -905,6 +909,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     - `rhs_dilation`: Dilation factor for the kernel/filter (defaults to 1).
     - `window_reversal`: Boolean flags indicating whether to reverse the kernel
       window along each spatial dimension.
+    - `feature_group_count`: Number of feature groups for grouped convolution.
+    - `batch_group_count`: Number of batch groups for grouped convolution.
     - `precision`: Optional contraction precision mode for TPU matrix multiplication.
   }];
   let arguments = (ins
@@ -917,6 +923,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     DenseI64ArrayAttr:$lhs_dilation,
     DenseI64ArrayAttr:$rhs_dilation,
     DenseBoolArrayAttr:$window_reversal,
+    DefaultValuedAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedAttr<I64Attr, "1">:$batch_group_count,
     OptionalAttr<TPU_ContractPrecisionEnum>:$precision
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
@@ -1196,6 +1204,19 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
     std::optional<std::string> verifyOffsetAndSizeTileAlignment(
         std::array<int64_t, 2> tc_target_shape,
         MemRefType source_type_override = nullptr);
+
+    // Given a source shape size, a slice shape size, a source tile size, a
+    // result tile size and optionally a slice offset, the below functions
+    // returns a tri-state boolean (nullopt means "unknown") indicating whether
+    // the result tiles of the slice stride across or within the source tiles.
+    // The result tile should divide the source tile and the offset, if
+    // provided, should be divisible by the result tile size.
+    static std::optional<bool> sliceStridesAcrossSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
+    static std::optional<bool> sliceStridesWithinSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
@@ -1288,6 +1309,22 @@ def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure]> {
     $operand attr-dict `:` type($operand) `->` type($result)
   }];
   let hasFolder = 1;
+  let hasVerifier = 1;
+}
+
+def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType]> {
+  let summary = "Annotates a memref with memory annotations.";
+  let arguments = (ins
+    AnyMemRef:$operand,
+    DefaultValuedAttr<BoolAttr, "false">:$no_store,
+    DefaultValuedAttr<BoolAttr, "false">:$no_bank_conflict,
+    DefaultValuedAttr<BoolAttr, "false">:$no_hazard,
+    DefaultValuedAttr<BoolAttr, "false">:$no_hazard_no_deps
+  );
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand)
+  }];
   let hasVerifier = 1;
 }
 

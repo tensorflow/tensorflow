@@ -739,8 +739,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const override;
 
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override;
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override;
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     return pjrt::GetCompiledMemoryStats(c_api_, executable_.get());

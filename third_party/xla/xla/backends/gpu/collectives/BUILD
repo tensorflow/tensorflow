@@ -1038,6 +1038,7 @@ cc_library(
         "@oneccl//:libs",
         "@tsl//tsl/platform:casts",
     ],
+    alwayslink = True,  # registers collectives implementation
 )
 
 cc_library(
@@ -1102,7 +1103,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/runtime:collective_kernel_api",
+        "//xla/backends/gpu/runtime:multi_gpu_barrier",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",

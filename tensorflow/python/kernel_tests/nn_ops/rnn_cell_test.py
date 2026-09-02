@@ -1558,6 +1558,181 @@ class LSTMTest(test.TestCase):
               h_grad=per_step(),
               use_peephole=True))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testBlockLSTMSeqLenMaxBounds(self):
+    timelen, batch_size, input_size, cell_size = 4, 2, 3, 5
+    x = constant_op.constant(
+        0.1, shape=[timelen, batch_size, input_size], dtype=dtypes.float32
+    )
+    cs_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32
+    )
+    h_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32
+    )
+    w = constant_op.constant(
+        0.1, shape=[input_size + cell_size, 4 * cell_size], dtype=dtypes.float32
+    )
+    wci = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
+    wcf = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
+    wco = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
+    b = constant_op.constant(0.1, shape=[4 * cell_size], dtype=dtypes.float32)
+
+    # Valid boundary cases: seq_len_max == 0 and seq_len_max == timelen
+    for valid_seq_len_max in [0, 2, timelen]:
+      res = self.evaluate(
+          gen_rnn_ops.BlockLSTM(
+              seq_len_max=constant_op.constant(
+                  valid_seq_len_max, dtype=dtypes.int64
+              ),
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=wci,
+              wcf=wcf,
+              wco=wco,
+              b=b,
+              forget_bias=0.0,
+              cell_clip=-1.0,
+              use_peephole=False,
+          )
+      )
+      self.assertEqual(len(res), 7)
+
+    # Invalid cases: seq_len_max < 0 or seq_len_max > timelen
+    for invalid_seq_len_max in [-1, timelen + 1, 100]:
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError),
+          r"seq_len_max must be between 0 and",
+      ):
+        self.evaluate(
+            gen_rnn_ops.BlockLSTM(
+                seq_len_max=constant_op.constant(
+                    invalid_seq_len_max, dtype=dtypes.int64
+                ),
+                x=x,
+                cs_prev=cs_prev,
+                h_prev=h_prev,
+                w=w,
+                wci=wci,
+                wcf=wcf,
+                wco=wco,
+                b=b,
+                forget_bias=0.0,
+                cell_clip=-1.0,
+                use_peephole=False,
+            )
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBlockLSTMGradSeqLenMaxBounds(self):
+    timelen, batch_size, input_size, cell_size = 4, 2, 3, 5
+    x = constant_op.constant(
+        0.1, shape=[timelen, batch_size, input_size], dtype=dtypes.float32
+    )
+    cs_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32
+    )
+    h_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32
+    )
+    w = constant_op.constant(
+        0.1, shape=[input_size + cell_size, 4 * cell_size], dtype=dtypes.float32
+    )
+    wci = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
+    wcf = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
+    wco = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
+    b = constant_op.constant(0.1, shape=[4 * cell_size], dtype=dtypes.float32)
+    i = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    cs = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    f = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    o = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    ci = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    co = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    h = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    cs_grad = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+    h_grad = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32
+    )
+
+    # Valid boundary cases: seq_len_max == 0 and seq_len_max == timelen
+    for valid_seq_len_max in [0, 2, timelen]:
+      res = self.evaluate(
+          gen_rnn_ops.BlockLSTMGrad(
+              seq_len_max=constant_op.constant(
+                  valid_seq_len_max, dtype=dtypes.int64
+              ),
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=wci,
+              wcf=wcf,
+              wco=wco,
+              b=b,
+              i=i,
+              cs=cs,
+              f=f,
+              o=o,
+              ci=ci,
+              co=co,
+              h=h,
+              cs_grad=cs_grad,
+              h_grad=h_grad,
+              use_peephole=False,
+          )
+      )
+      self.assertEqual(len(res), 8)
+
+    # Invalid cases: seq_len_max < 0 or seq_len_max > timelen
+    for invalid_seq_len_max in [-1, timelen + 1, 100]:
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError),
+          r"seq_len_max must be between 0 and",
+      ):
+        self.evaluate(
+            gen_rnn_ops.BlockLSTMGrad(
+                seq_len_max=constant_op.constant(
+                    invalid_seq_len_max, dtype=dtypes.int64
+                ),
+                x=x,
+                cs_prev=cs_prev,
+                h_prev=h_prev,
+                w=w,
+                wci=wci,
+                wcf=wcf,
+                wco=wco,
+                b=b,
+                i=i,
+                cs=cs,
+                f=f,
+                o=o,
+                ci=ci,
+                co=co,
+                h=h,
+                cs_grad=cs_grad,
+                h_grad=h_grad,
+                use_peephole=False,
+            )
+        )
+
 
 class BidirectionalRNNTest(test.TestCase):
 

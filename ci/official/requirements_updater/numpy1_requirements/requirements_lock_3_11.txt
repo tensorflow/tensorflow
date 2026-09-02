@@ -248,9 +248,9 @@ libclang==18.1.1 \
 lit==17.0.6 \
     --hash=sha256:dfa9af9b55fc4509a56be7bf2346f079d7f4a242d583b9f2e0b078fd0abae31b
     # via -r ci/official/requirements_updater/requirements.in
-markdown==3.8 \
-    --hash=sha256:794a929b79c5af141ef5ab0f2f642d0f7b1872981250230e72682346f7cc90dc \
-    --hash=sha256:7df81e63f0df5c4b24b7d156eb81e4690595239b7d70937d0409f1b0de319c6f
+markdown==3.8.1 \
+    --hash=sha256:46cc0c0f1e5211ab2e9d453582f0b28a1bfaf058a9f7d5c50386b99b588d8811 \
+    --hash=sha256:a2e2f01cead4828ee74ecca9623045f62216aef2212a7685d6eb9163f590b8c1
     # via tb-nightly
 markdown-it-py==3.0.0 \
     --hash=sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1 \
@@ -519,9 +519,9 @@ nvidia-cusparse-cu12==12.5.1.3 \
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
     #   nvidia-cusolver-cu12
-nvidia-nccl-cu12==2.29.7 \
-    --hash=sha256:0cf032ee22b560447daf0456108a75e32bd74a4de6c6b64725637a359fa48cd8 \
-    --hash=sha256:ecd0a012051abc20c1aa87328841efa8cade3ced65803046e38c2f03c0891fea
+nvidia-nccl-cu12==2.30.7 \
+    --hash=sha256:03ecd776fd1d58fd2c9a0a687dcf8db9ecd0057382dba646fa3d65786d4a9ea1 \
+    --hash=sha256:8ce1b8213f61f2bfac132e6df890af6450b77cbd140c6ce4e98cb0c2d8e678c9
     # via
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
@@ -952,9 +952,9 @@ zstandard==0.25.0 \
     # via -r ci/official/requirements_updater/requirements.in
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==78.1.1 \
-    --hash=sha256:c3a9c4211ff4c309edb8b8c4f1cbfa7ae324c4ba9f91ff254e3d305b9fd54561 \
-    --hash=sha256:fcc17fd9cd898242f6b4adfaca46137a9edef687f43e6f78469692a5e70d851d
+setuptools==83.0.0 \
+    --hash=sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef \
+    --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3
     # via
     #   -r ci/official/requirements_updater/requirements.in
     #   tb-nightly

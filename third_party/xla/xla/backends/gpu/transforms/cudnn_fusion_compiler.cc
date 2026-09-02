@@ -512,27 +512,89 @@ class ConvDimensionAdapter {
                                 dnums_for_layout};
   }
 
+  int64_t HloDimToCudnnDim(int64_t hlo_dim) const {
+    if (hlo_dim == dums_.output_batch_dimension()) {
+      return 0;  // Batch (N)
+    }
+    if (hlo_dim == dums_.output_feature_dimension()) {
+      return 1;  // Feature / Channel (C)
+    }
+    int64_t dummy_spatial_dims =
+        std::max<int64_t>(0, 2 - dums_.output_spatial_dimensions_size());
+    for (int i = 0; i < dums_.output_spatial_dimensions_size(); ++i) {
+      if (hlo_dim == dums_.output_spatial_dimensions(i)) {
+        return 2 + dummy_spatial_dims + i;  // Spatial dimensions (H, W, ...)
+      }
+    }
+    return -1;
+  }
+
+  const HloInstruction* get_broadcast_user(const HloInstruction* hlo) {
+    auto all_users_are_broadcast = [](const HloInstruction* instr) {
+      return !instr->users().empty() &&
+             absl::c_all_of(instr->users(), [](const HloInstruction* u) {
+               return u->opcode() == HloOpcode::kBroadcast;
+             });
+    };
+
+    // Pattern 1: hlo -> broadcast
+    if (all_users_are_broadcast(hlo)) {
+      return hlo->users()[0];
+    }
+
+    // Pattern 2: hlo -> convert -> broadcast
+    if (hlo->user_count() == 1 &&
+        hlo->users()[0]->opcode() == HloOpcode::kConvert) {
+      const HloInstruction* convert = hlo->users()[0];
+      if (all_users_are_broadcast(convert)) {
+        return convert->users()[0];
+      }
+    }
+
+    return nullptr;
+  };
+
   std::optional<Result> DimensionsAndStrides(const HloInstruction& hlo) {
+    int64_t spatial_dims =
+        std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
+    int64_t cudnn_rank = spatial_dims + 2;
+
     if (ShapeUtil::IsScalar(hlo.shape())) {
       Result result;
-      // cuDNN convolution tensors have a batch and a feature dimension in
-      // addition to spatial dimensions (at least 2 spatial dimensions for
-      // cuDNN).
-      int64_t spatial_dims =
-          std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
-      result.sizes = std::vector<int64_t>(spatial_dims + 2, 1);
-      result.strides = std::vector<int64_t>(spatial_dims + 2, 1);
+      result.sizes = std::vector<int64_t>(cudnn_rank, 1);
+      result.strides = std::vector<int64_t>(cudnn_rank, 1);
       return result;
     }
-    if (hlo.shape().dimensions().size() == 1) {
+
+    int64_t conv_hlo_rank = dums_.input_spatial_dimensions_size() + 2;
+    if (hlo.shape().dimensions().size() < conv_hlo_rank) {
       Result result;
-      int64_t spatial_dims =
-          std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
-      result.sizes = std::vector<int64_t>(spatial_dims + 2, 1);
-      result.strides = std::vector<int64_t>(spatial_dims + 2, 0);
-      result.sizes[1] = hlo.shape().dimensions(0);
-      result.strides[1] = 1;
-      return result;
+      result.sizes = std::vector<int64_t>(cudnn_rank, 1);
+      result.strides = std::vector<int64_t>(cudnn_rank, 0);
+
+      // If the parameter is consumed by a broadcast, map its dimensions to the
+      // corresponding cuDNN canonical axes (N, C, spatial...).
+      if (const HloInstruction* broadcast = get_broadcast_user(&hlo)) {
+        const auto& bcast_dims = broadcast->dimensions();
+        for (int i = 0; i < bcast_dims.size(); ++i) {
+          int64_t cudnn_dim = HloDimToCudnnDim(bcast_dims[i]);
+          if (cudnn_dim >= 0 && cudnn_dim < cudnn_rank) {
+            result.sizes[cudnn_dim] = hlo.shape().dimensions(i);
+            result.strides[cudnn_dim] = 1;
+          }
+        }
+        return result;
+      }
+
+      // Fallback for un-broadcasted 1D parameters: assume channel bias [1, C,
+      // 1, 1].
+      if (hlo.shape().dimensions().size() == 1) {
+        result.sizes[1] = hlo.shape().dimensions(0);
+        result.strides[1] = 1;
+        return result;
+      }
+
+      return std::nullopt;
     }
     // Placeholder FP32 data type here, it is not used.
     auto desc = se::dnn::TensorDescriptor::For(
@@ -796,10 +858,14 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
       // and int32 = conv(int8, int8)
       hlo_to_cudnn[hlo] = operand(0);
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
       CHECK(hlo_to_cudnn.contains(hlo));
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
       if (hlo->user_count() != 1 ||
           !IsWorkspaceAllocationRoot(*hlo->users()[0])) {
         return absl::UnimplementedError(
@@ -808,7 +874,9 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
                          hlo->ToString()));
       }
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kTuple>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kTuple>(hlo)) {
       if (!IsWorkspaceAllocationRoot(*hlo) && !IsAmaxRoot(*hlo)) {
         return absl::UnimplementedError(
             absl::StrCat("Tuples are only expected at outputs for workspace "
@@ -816,9 +884,17 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
                          hlo->ToString()));
       }
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
+      const Shape& root_shape = computation.root_instruction()->shape();
+      const Shape& output_shape =
+          root_shape.IsTuple() ? root_shape.tuple_shapes(0) : root_shape;
+      int64_t rank = std::max<int64_t>(3, output_shape.dimensions().size());
       ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
-                       HandleConstantHloToCudnnGraph(*hlo, graph));
+                       HandleConstantHloToCudnnGraph(*hlo, graph, rank));
+      ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+                       HandleConstantHloToCudnnGraph(*hlo, graph, rank));
     } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
                                 HloOpcode::kTranspose, HloOpcode::kCopy,
                                 HloOpcode::kSlice>(hlo)) {

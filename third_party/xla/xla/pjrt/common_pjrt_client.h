@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/dynamic_shapes.h"
+#include "xla/pjrt/infer_dispatch_info.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/raw_pjrt_client.h"
@@ -134,8 +135,8 @@ class CommonPjRtClient : public PjRtClient {
   // Gets the memory_space_kind for a particular XLA layout.
   virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
       const xla::Shape& shape) const {
-    return absl::UnimplementedError(
-        "GetMemorySpaceKindForShape is not supported.");
+    ABSL_ASSIGN_OR_RETURN(auto* topology, GetTopologyDescription());
+    return topology->GetMemorySpaceKindForShape(shape);
   }
 
   // Allocates a raw buffer of a particular size after an optional
@@ -449,10 +450,18 @@ class CommonPjRtClient : public PjRtClient {
       absl::Span<const Shape> parameter_device_shapes, bool& is_error,
       bool allow_fallback_for_donation = false);
 
-  absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
-  AllocateOutputBuffersWithInputReuse(
+  struct PreparedOutputBuffers {
+    absl::InlinedVector<PjRtRawBufferRef, 4> buffers;
+
+    // Overrides the executable's result shape when a donated static input
+    // is reused for an unbounded dynamic output.
+    std::optional<Shape> output_device_shape_override;
+  };
+
+  absl::StatusOr<PreparedOutputBuffers> AllocateOutputBuffersWithInputReuse(
       const Shape& output_device_shape,
       absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
+      absl::Span<PjRtBuffer* const> argument_handles,
       const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
       absl::Span<const int> output_memory_space_kind_ids,
       const ExecuteOptions& options);
@@ -502,7 +511,31 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const absl::Cord& serialized,
+      std::optional<CompileOptions> options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::shared_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override;
+
  protected:
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
+      std::shared_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options, bool dump);
   // Returns the required alignment for device memory addresses when slicing.
   virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
     return absl::UnimplementedError(
@@ -528,39 +561,7 @@ class CommonPjRtClient : public PjRtClient {
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:
-  struct DispatchInfo {
-    std::vector<Shape> parameter_device_shapes;
-    std::shared_ptr<const Shape> output_device_shape;
-    std::vector<int> parameter_memory_space_kind_ids;
-    std::vector<int> output_memory_space_kind_ids;
-    std::vector<PjRtDevice*> addressable_devices;
-    std::vector<LogicalDeviceIds> addressable_device_logical_ids;
-    std::shared_ptr<DeviceAssignment> device_assignment;
-    std::vector<int> parameters_that_may_be_donated;
-    std::vector<int64_t> input_buffer_sizes_in_bytes;
-    // Executable shape information that is computable from the PjRtExecutable*.
-    struct Extras {
-      std::string name;
-      int num_partitions;
-      int num_replicas;
-      absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
-          parameter_layouts;
-      absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
-          output_layouts;
-      std::optional<std::vector<OpSharding>> parameter_shardings;
-      std::optional<std::vector<OpSharding>> output_shardings;
-      std::vector<absl::string_view> parameter_memory_kinds;
-      std::vector<absl::string_view> output_memory_kinds;
-      absl::StatusOr<std::string> fingerprint;
-      HloInputOutputAliasConfig input_output_alias_config;
-    };
-    struct InputHloSnapshotBits {
-      xla::HloModuleProto hlo_module;
-      xla::DebugOptions debug_options;
-    };
-    std::unique_ptr<InputHloSnapshotBits> input_hlo_snapshot_bits;
-    std::unique_ptr<Extras> extras;
-  };
+  using DispatchInfo = PjRtLoadedExecutableDispatchInfo;
 
   CommonPjRtLoadedExecutable(
       CommonPjRtClient* client, tsl::AsyncValueRef<PjRtExecutable> executable,
@@ -758,6 +759,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     PjRtDeviceEventRefVector extra_deps;
     PjRtDeviceEventRefVector control_deps;
     absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers;
+    std::optional<Shape> output_device_shape_override;
     bool is_predetermined_error;
     const ExecuteOptions* options;
   };
@@ -781,8 +783,11 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   // side-effect of the execution. Derived classes may use custom logic.
   absl::Span<int const> ParametersThatMayBeDonated() const;
 
-  virtual const HloInputOutputAliasConfig& input_output_alias_config()
-      const = 0;
+  virtual const HloInputOutputAliasConfig& input_output_alias_config() const {
+    auto hlo_module = GetExecutable()->GetHloModule();
+    CHECK_OK(hlo_module.status());
+    return (*hlo_module)->input_output_alias_config();
+  }
 
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.

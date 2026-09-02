@@ -143,13 +143,6 @@ CodegenOrchestrator::GetDefaultConfig(const HloInstruction& instr) const {
 
 absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(
     const HloInstruction& instr, const Config& config) const {
-  if (options_.exclude_cublas_config &&
-      (config.codegen_backend->backend() ==
-           autotuner::Backend::CUBLASLT_FISSION ||
-       config.codegen_backend->backend() ==
-           autotuner::Backend::HIPBLASLT_FISSION)) {
-    return absl::CancelledError("exclude_cublas_config is set.");
-  }
   VLOG(4) << "Compiling config " << config.ToString() << " for HLO "
           << instr.ToString();
   absl::StatusOr<std::unique_ptr<Executable>> executable =

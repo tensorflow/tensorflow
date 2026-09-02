@@ -45,7 +45,7 @@ fusion {
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<1x4xf32>
 // CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<1x4xf32>
-// CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() {alignment = 64 : i64} : memref<1x4xf32>
+// CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() alignment = 64 : memref<1x4xf32>
 // CHECK-VECTOR:         memref.copy %{{.*}}, %[[ALLOCA_0]]
 // CHECK-VECTOR:         memref.copy %{{.*}}, %{{.*}}
 
@@ -54,11 +54,11 @@ fusion {
 // NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // NEW-VECTOR:         scf.for
 // NEW-VECTOR-NOT:     scf.if
-// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true]} : memref<128x32xf32>, vector<4xf32>
-// NEW-VECTOR:         %[[CAST_0:.*]] = arith.bitcast %[[R0]] : vector<4xf32> to vector<4xi32>
-// NEW-VECTOR:         %[[SHR_0:.*]] = arith.shrui %{{.*}}, %{{.*}} : vector<4xi32>
-// NEW-VECTOR:         %[[CAST_1:.*]] = arith.bitcast %{{.*}} : vector<4xi32> to vector<4xf32>
-// NEW-VECTOR:         vector.transfer_write %{{.*}}, %[[ARG1]][%{{.*}}, %{{.*}}] {in_bounds = [true]} : vector<4xf32>, memref<128x32xf32>
+// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x32xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[CAST_0:.*]] = arith.bitcast %[[R0]] : vector<1x4xf32> to vector<1x4xi32>
+// NEW-VECTOR:         %[[SHR_0:.*]] = arith.shrui %{{.*}}, %{{.*}} : vector<1x4xi32>
+// NEW-VECTOR:         %[[CAST_1:.*]] = arith.bitcast %{{.*}} : vector<1x4xi32> to vector<1x4xf32>
+// NEW-VECTOR:         vector.transfer_write %{{.*}}, %[[ARG1]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<1x4xf32>, memref<128x32xf32>
 
 // CHECK-LLVM: llvm.intr.memcpy
 

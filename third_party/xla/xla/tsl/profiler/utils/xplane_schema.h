@@ -408,11 +408,13 @@ enum StatType {
   // Program Counter in Oci Descriptors, etc
   kProgramCounter,
   kUsesIci,
+  kDimensions,
+  kType,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kUsesIci,
+  kLastStatType = kType,
   // LINT.ThenChange(:stat_type_enum)
 };
 

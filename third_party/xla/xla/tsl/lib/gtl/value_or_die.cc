@@ -21,8 +21,8 @@ limitations under the License.
 
 namespace tsl::gtl::internal_value_or_die {
 
-ABSL_ATTRIBUTE_NORETURN void DieBecauseEmptyValue(const char* file, int line,
-                                                  const absl::Status* status) {
+[[noreturn]] void DieBecauseEmptyValue(const char* file, int line,
+                                       const absl::Status* status) {
   if (status == nullptr) {
     LOG(FATAL).AtLocation(file, line) << "ValueOrDie on empty value.";
   } else {

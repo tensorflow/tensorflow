@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/config_assigner.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -84,6 +84,16 @@ class ConfigAssignerPassTest : public HloHardwareIndependentTestBase {
         allocator_(
             std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
                 stream_executor_)) {}
+
+  void SetUp() override {
+    AutotunerCache::ClearAutotuneResults();
+    InMemoryStore::Clear();
+  }
+
+  void TearDown() override {
+    AutotunerCache::ClearAutotuneResults();
+    InMemoryStore::Clear();
+  }
 
   absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> CreatePass(
       const DebugOptions& debug_options) {
@@ -351,8 +361,8 @@ TEST_F(ConfigAssignerPassTest, CublasGemmIsAutotunedAndCached) {
   // Verify that the backend config in the HLO matches the cache.
   const HloInstruction* gemm =
       module_2->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
-                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
+                       gemm->backend_config<GpuBackendConfig>());
   const GemmBackendConfig& hlo_backend_config =
       hlo_gpu_backend_config.gemm_backend_config();
   EXPECT_TRUE(hlo_backend_config.has_selected_algorithm());
@@ -661,8 +671,9 @@ TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {
 TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  InMemoryStore::Clear();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -679,8 +690,8 @@ TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
 
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto supported_configs,
-                          cublaslt_backend->GetSupportedConfigs(*gemm));
+  ASSERT_OK_AND_ASSIGN(auto supported_configs,
+                       cublaslt_backend->GetSupportedConfigs(*gemm));
   ASSERT_GT(supported_configs.size(), 1);
   auto expected_config = std::move(supported_configs[0]);
 
@@ -712,8 +723,8 @@ TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
 
   log.StopCapturingLogs();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
-                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
+                       gemm->backend_config<GpuBackendConfig>());
 
   ASSERT_TRUE(expected_config->has_gemm());
   EXPECT_EQ(gpu_backend_config_after.gemm_backend_config().selected_algorithm(),
@@ -742,8 +753,9 @@ TEST_F(ConfigAssignerPassTest, TritonSelectFirstConfig) {
   )hlo";
 
   AutotunerCache::ClearAutotuneResults();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kTritonGemmFusionHlo));
+  InMemoryStore::Clear();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kTritonGemmFusionHlo));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -765,8 +777,8 @@ TEST_F(ConfigAssignerPassTest, TritonSelectFirstConfig) {
       &alias_info, &mlir_context);
 
   auto fusion = module->entry_computation()->GetInstructionWithName("fusion");
-  TF_ASSERT_OK_AND_ASSIGN(auto supported_configs,
-                          triton_backend->GetSupportedConfigs(*fusion));
+  ASSERT_OK_AND_ASSIGN(auto supported_configs,
+                       triton_backend->GetSupportedConfigs(*fusion));
   ASSERT_GT(supported_configs.size(), 1);
   auto expected_config = std::move(supported_configs[0]);
 
@@ -800,8 +812,8 @@ TEST_F(ConfigAssignerPassTest, TritonSelectFirstConfig) {
               absl_testing::IsOkAndHolds(true));
 
   log.StopCapturingLogs();
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
-                          fusion->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
+                       fusion->backend_config<GpuBackendConfig>());
 
   ASSERT_TRUE(expected_config->has_triton());
   EXPECT_THAT(
@@ -824,6 +836,7 @@ TEST_F(ConfigAssignerPassTest, CudnnSelectFirstConfig) {
   )hlo";
 
   AutotunerCache::ClearAutotuneResults();
+  InMemoryStore::Clear();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kCudnnConvForwardHlo));
 
@@ -839,8 +852,8 @@ TEST_F(ConfigAssignerPassTest, CudnnSelectFirstConfig) {
       &target_config);
 
   auto conv = module->entry_computation()->GetInstructionWithName("result");
-  TF_ASSERT_OK_AND_ASSIGN(auto supported_configs,
-                          cudnn_backend->GetSupportedConfigs(*conv));
+  ASSERT_OK_AND_ASSIGN(auto supported_configs,
+                       cudnn_backend->GetSupportedConfigs(*conv));
   ASSERT_GT(supported_configs.size(), 1);
   auto expected_config = std::move(supported_configs[0]);
 
@@ -886,8 +899,8 @@ TEST_F(ConfigAssignerPassTest, CudnnSelectFirstConfig) {
   }
   ASSERT_NE(conv_after, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
-                          conv_after->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
+                       conv_after->backend_config<GpuBackendConfig>());
 
   ASSERT_TRUE(expected_config->has_algorithm());
   EXPECT_EQ(gpu_backend_config_after.cudnn_conv_backend_config()

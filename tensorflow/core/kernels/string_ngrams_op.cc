@@ -78,10 +78,17 @@ class StringNGramsOp : public tensorflow::OpKernel {
 
     const tensorflow::Tensor* data;
     OP_REQUIRES_OK(context, context->input("data", &data));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(data->shape()),
+                errors::InvalidArgument("data must be a vector, got shape: ",
+                                        data->shape().DebugString()));
     const auto& input_data = data->flat<tstring>().data();
 
     const tensorflow::Tensor* splits;
     OP_REQUIRES_OK(context, context->input("data_splits", &splits));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(splits->shape()),
+        errors::InvalidArgument("data_splits must be a vector, got shape: ",
+                                splits->shape().DebugString()));
     const auto& splits_vec = splits->flat<SPLITS_TYPE>();
 
     // Validate that the splits are valid indices into data, only if there are
@@ -89,7 +96,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
     const int input_data_size = data->flat<tstring>().size();
     const int splits_vec_size = splits_vec.size();
     if (splits_vec_size > 0) {
-      int prev_split = splits_vec(0);
+      SPLITS_TYPE prev_split = splits_vec(0);
       OP_REQUIRES(context, prev_split == 0,
                   absl::InvalidArgumentError(absl::StrCat(
                       "First split value must be 0, got ", prev_split)));

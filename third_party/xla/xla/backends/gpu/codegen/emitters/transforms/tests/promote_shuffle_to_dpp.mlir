@@ -25,7 +25,7 @@ module {
 
 // CHECK-LABEL: @shuffle_down_1
 // CHECK-SAME: (%[[ARG:.*]]: f32)
-// CHECK: %[[DPP:.*]] = amdgpu.dpp %[[ARG]] %[[ARG]] row_shl(1 : i32) {bound_ctrl = true} : f32
+// CHECK: %[[DPP:.*]] = amdgpu.dpp %[[ARG]] %[[ARG]] row_shl(1 : i32) bound_ctrl(true) : f32
 // CHECK: return %[[DPP]] : f32
 
 // -----
@@ -40,7 +40,7 @@ module {
 }
 
 // CHECK-LABEL: @shuffle_down_4
-// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(4 : i32) {bound_ctrl = true} : f32
+// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(4 : i32) bound_ctrl(true) : f32
 
 // -----
 
@@ -54,7 +54,7 @@ module {
 }
 
 // CHECK-LABEL: @shuffle_down_8
-// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(8 : i32) {bound_ctrl = true} : f32
+// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(8 : i32) bound_ctrl(true) : f32
 
 // -----
 
@@ -68,7 +68,7 @@ module {
 }
 
 // CHECK-LABEL: @shuffle_down_15
-// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(15 : i32) {bound_ctrl = true} : f32
+// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(15 : i32) bound_ctrl(true) : f32
 
 // -----
 
@@ -134,7 +134,7 @@ module {
 }
 
 // CHECK-LABEL: @shuffle_down_i32
-// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(2 : i32) {bound_ctrl = true} : i32
+// CHECK: amdgpu.dpp %{{.*}} %{{.*}} row_shl(2 : i32) bound_ctrl(true) : i32
 
 // -----
 

@@ -67,23 +67,17 @@ fusion {
 // NEW-VECTOR:           %[[CMP0:.*]] = arith.cmpi sge, %[[BOUNDS]]#0, %{{.*}} : index
 // NEW-VECTOR:           %[[CMP1:.*]] = arith.cmpi sge, %[[BOUNDS]]#1, %{{.*}} : index
 // NEW-VECTOR:           %[[COND:.*]] = arith.andi %[[CMP0]], %[[CMP1]] : i1
-// NEW-VECTOR:           %[[R0:.*]] = scf.if %[[COND]] -> (vector<16x32xf32>) {
+// NEW-VECTOR:           %[[R:.*]]:2 = scf.if %[[COND]] -> (vector<16x32xf32>, vector<16x32xf32>) {
 // NEW-VECTOR:             %[[R0_IN:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<100x100xf32>, vector<16x32xf32>
-// NEW-VECTOR:             scf.yield %[[R0_IN]]
+// NEW-VECTOR:             %[[R1_IN:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<100x100xf32>, vector<16x32xf32>
+// NEW-VECTOR:             scf.yield %[[R0_IN]], %[[R1_IN]]
 // NEW-VECTOR:           } else {
 // NEW-VECTOR:             %[[MASK0:.*]] = vector.create_mask %{{.*}}, %{{.*}} : vector<16x32xi1>
 // NEW-VECTOR:             %[[R0_MASK:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]], %[[MASK0]] : memref<100x100xf32>, vector<16x32xf32>
-// NEW-VECTOR:             scf.yield %[[R0_MASK]]
+// NEW-VECTOR:             %[[R1_MASK:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]], %[[MASK0]] : memref<100x100xf32>, vector<16x32xf32>
+// NEW-VECTOR:             scf.yield %[[R0_MASK]], %[[R1_MASK]]
 // NEW-VECTOR:           }
-// NEW-VECTOR:           %[[R1:.*]] = scf.if %[[COND]] -> (vector<16x32xf32>) {
-// NEW-VECTOR:             %[[R1_IN:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<100x100xf32>, vector<16x32xf32>
-// NEW-VECTOR:             scf.yield %[[R1_IN]]
-// NEW-VECTOR:           } else {
-// NEW-VECTOR:             %[[MASK1:.*]] = vector.create_mask %{{.*}}, %{{.*}} : vector<16x32xi1>
-// NEW-VECTOR:             %[[R1_MASK:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]], %[[MASK1]] : memref<100x100xf32>, vector<16x32xf32>
-// NEW-VECTOR:             scf.yield %[[R1_MASK]]
-// NEW-VECTOR:           }
-// NEW-VECTOR:           %[[MIN:.*]] = arith.minimumf %[[R0]], %[[R1]]
+// NEW-VECTOR:           %[[MIN:.*]] = arith.minimumf %[[R]]#0, %[[R]]#1
 // NEW-VECTOR:           scf.if %[[COND]] {
 // NEW-VECTOR:             vector.transfer_write %[[MIN]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<16x32xf32>, memref<100x100xf32>
 // NEW-VECTOR:           } else {

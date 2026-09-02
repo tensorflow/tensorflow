@@ -1473,13 +1473,19 @@ module {
                                   ExecuteOptionsWithFillStatus(), devices));
   EXPECT_THAT(
       result.status.Await(),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Invalid buffer passed to Execute() as argument 0")));
+      AnyOf(StatusIs(
+                absl::StatusCode::kInvalidArgument,
+                HasSubstr("Invalid buffer passed to Execute() as argument 0")),
+            StatusIs(absl::StatusCode::kInvalidArgument,
+                     HasSubstr("donates or deletes twice an array"))));
   ASSERT_EQ(result.outputs.size(), 1);
   EXPECT_THAT(
       result.outputs[0]->GetReadyFuture().Await(),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Invalid buffer passed to Execute() as argument 0")));
+      AnyOf(StatusIs(
+                absl::StatusCode::kInvalidArgument,
+                HasSubstr("Invalid buffer passed to Execute() as argument 0")),
+            StatusIs(absl::StatusCode::kInvalidArgument,
+                     HasSubstr("donates or deletes twice an array"))));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, DonatingTwiceAliasedBufferThrowsError) {
@@ -1533,6 +1539,8 @@ module {
           StatusIs(absl::StatusCode::kInvalidArgument,
                    HasSubstr(
                        "Attempt to donate the same buffer twice in Execute()")),
+          StatusIs(absl::StatusCode::kInvalidArgument,
+                   HasSubstr("donates or deletes twice an array")),
           StatusIs(
               absl::StatusCode::kNotFound,
               HasSubstr(
@@ -1544,6 +1552,8 @@ module {
           StatusIs(absl::StatusCode::kInvalidArgument,
                    HasSubstr(
                        "Attempt to donate the same buffer twice in Execute()")),
+          StatusIs(absl::StatusCode::kInvalidArgument,
+                   HasSubstr("donates or deletes twice an array")),
           StatusIs(
               absl::StatusCode::kNotFound,
               HasSubstr(

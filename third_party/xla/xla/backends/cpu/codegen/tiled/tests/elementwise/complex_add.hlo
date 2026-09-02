@@ -41,9 +41,9 @@ fusion {
 // NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
 
 // NEW-VECTOR:       %[[LHS_VEC:.*]] = vector.transfer_read %[[LHS]]
-// NEW-VECTOR-SAME:    : memref<128x256x2xf32>, vector<4x2xf32>
+// NEW-VECTOR-SAME:    : memref<128x256x2xf32>, vector<1x4x2xf32>
 // NEW-VECTOR:       %[[RHS_VEC:.*]] = vector.transfer_read %[[RHS]]
-// NEW-VECTOR-SAME:    : memref<128x256x2xf32>, vector<4x2xf32>
+// NEW-VECTOR-SAME:    : memref<128x256x2xf32>, vector<1x4x2xf32>
 // NEW-VECTOR:       %[[ADD:.*]] = arith.addf %[[LHS_VEC]], %[[RHS_VEC]]
 
 // NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl

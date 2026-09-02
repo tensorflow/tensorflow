@@ -44,6 +44,10 @@ load("@bazel_features//:deps.bzl", "bazel_features_deps")
 
 bazel_features_deps()
 
+load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
+
+compatibility_proxy_repo()
+
 load("@rules_shell//shell:repositories.bzl", "rules_shell_dependencies", "rules_shell_toolchains")
 
 rules_shell_dependencies()
@@ -87,6 +91,7 @@ python_init_repositories(
         "3.12": "//:requirements_lock_3_12.txt",
         "3.13": "//:requirements_lock_3_13.txt",
         "3.14": "//:requirements_lock_3_14.txt",
+        "3.14-freethreaded": "//:requirements_lock_3_14_freethreaded.txt",
     },
 )
 

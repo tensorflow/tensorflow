@@ -296,8 +296,7 @@ void StreamExecutorGpuRawClient::UpdateGlobalProcessInfo(
 void StreamExecutorGpuRawClient::UpdateCompileOptionsTopology(
     const PjRtTopologyDescription& topology, CompileOptions* options) const {
   options->executable_build_options.set_gpu_topology(
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription*>(
-          &topology)
+      absl::down_cast<const StreamExecutorGpuTopologyDescription*>(&topology)
           ->gpu_topology());
 }
 
@@ -310,7 +309,7 @@ namespace {
 // Get the local device state for a given PjRtDevice.
 absl::StatusOr<LocalDeviceState*> GetLocalDeviceState(PjRtDevice* device) {
   PjRtStreamExecutorDevice* pjrt_se_device =
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
+      absl::down_cast<PjRtStreamExecutorDevice*>(device);
   return pjrt_se_device->GetLocalDeviceState();
 }
 
@@ -629,7 +628,7 @@ StreamExecutorGpuRawClient::CrossHostTransferBuffers(
     // Get the local_device_state and use it to schedule transfers. Fail
     // transfers early if we cannot get the local_device_state.
     absl::StatusOr<LocalDeviceState*> local_device_state =
-        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<PjRtStreamExecutorDevice*>(device)
             ->GetLocalDeviceState();
     if (!local_device_state.ok()) {
       SetEventAsError(transfer_event, local_device_state.status());
@@ -673,7 +672,7 @@ void StreamExecutorGpuRawClient::ScheduleTransfersOnLocalDevice(
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
         absl::StrFormat(
-            "[%v] StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice",
+            "[%v] StreamExecutorGpuRawClient::ScheduleTransfersOnLocalDevice",
             local_device_state->local_device_id()),
         {{"num_buffers", transfer_specs.size()}});
   });
@@ -1833,7 +1832,7 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
   }
 
   auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
+      absl::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
   if (!allocator_adapter) {
     return Unimplemented(
         "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
@@ -1858,7 +1857,7 @@ absl::Status StreamExecutorGpuDevice::ClearMemoryStats() {
   }
 
   auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
+      absl::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
   if (!allocator_adapter) {
     return absl::UnimplementedError(
         "ClearMemoryStats() is only implemented with MultiDeviceAdapter "
@@ -1888,7 +1887,7 @@ const int StreamExecutorGpuHbmMemorySpace::kKindId = []() {
   return static_cast<int>(kind_id);
 }();
 
-std::unique_ptr<StreamExecutorGpuClient> MakeStreamExecutorGpuClient(
+std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
     std::string platform_name,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
@@ -1901,7 +1900,7 @@ std::unique_ptr<StreamExecutorGpuClient> MakeStreamExecutorGpuClient(
   attrs.pjrt_c_api_minor_version = 0;
   attrs.attributes["serialize_with_sdy"] = true;
   attrs.attributes["supports_cross_host_transfers"] = PjRtValueType(true);
-  auto result = std::make_unique<StreamExecutorGpuClient>(
+  auto result = std::make_unique<PjRtStreamExecutorClient>(
       tsl::Fingerprint64(platform_name), platform_name, platform_version,
       process_index, std::move(topology), std::move(raw_client),
       std::move(kv_store), std::move(attrs));
@@ -2224,8 +2223,7 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
 
   ABSL_ASSIGN_OR_RETURN(auto options_and_stream,
                    exec.RunHelper(argument_shapes, run_options_inp));
-  auto* gpu_exec =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(exec.executable());
+  auto* gpu_exec = absl::down_cast<gpu::GpuExecutable*>(exec.executable());
   const ServiceExecutableRunOptions* run_options = &options_and_stream.first;
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
 

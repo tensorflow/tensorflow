@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -113,6 +114,19 @@ Operation* TPUDialect::materializeConstant(OpBuilder& builder, Attribute value,
     return std::nullopt;
   }
   return mlir::cast<CoreTypeAttr>(attr).getValue();
+}
+
+LogicalResult TPUDialect::verifyOperationAttribute(Operation* const op,
+                                                   NamedAttribute attr) {
+  CHECK(op != nullptr);
+  if (attr.getName() == GetMainKey()) {
+    if (!isa<func::FuncOp>(op) || !isa<mlir::UnitAttr>(attr.getValue())) {
+      return op->emitOpError() << GetMainKey()
+                               << " attribute is expected to be a unit "
+                                  "attribute on a func.func operation";
+    }
+  }
+  return success();
 }
 
 // Rewrites
@@ -216,9 +230,27 @@ CoreType GetCoreTypeOfParentOp(Operation& op) {
   return parent ? *TPUDialect::GetCoreTypeAttr(parent) : CoreType::kTc;
 }
 
-absl::StatusOr<func::FuncOp> GetFuncWithCoreType(ModuleOp module,
-                                                 CoreType core_type) {
+absl::StatusOr<func::FuncOp> GetMainFunc(ModuleOp module, CoreType core_type) {
   func::FuncOp result = nullptr;
+  for (auto func_op : module.getOps<func::FuncOp>()) {
+    if (!func_op->hasAttr(TPUDialect::GetMainKey())) {
+      continue;
+    }
+    if (TPUDialect::GetCoreTypeAttr(func_op) != core_type) {
+      continue;
+    }
+    if (result != nullptr) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Multiple functions with %v attribute and tpu.core_type = %v found",
+          TPUDialect::GetMainKey(), core_type));
+    }
+    result = func_op;
+  }
+  if (result != nullptr) {
+    return result;
+  }
+  // If there is no function marked with tpu.main, fall back to finding a
+  // (unique) function with the requested core type.
   for (func::FuncOp func_op : module.getOps<func::FuncOp>()) {
     if (TPUDialect::GetCoreTypeAttr(func_op) != core_type) {
       continue;
@@ -373,7 +405,6 @@ int64_t TiledLayoutAttr::getUntiledRank() const {
   return mlir::tpu::getUntiledRank(getTiles(), getRank());
 }
 
-namespace {
 FailureOr<SmallVector<int64_t>> getExpandedShape(
     const ArrayRef<int64_t> untiled_shape, const ArrayRef<xla::Tile> tiles,
     const bool require_alignment) {
@@ -401,7 +432,6 @@ FailureOr<SmallVector<int64_t>> getExpandedShape(
   }
   return shape;
 }
-}  // namespace
 
 SmallVector<int64_t> TiledLayoutAttr::getContiguousTileStrides(
     const ArrayRef<xla::Tile> tiles, const ArrayRef<int64_t> shape) {
@@ -478,27 +508,26 @@ SmallVector<int64_t> TiledLayoutAttr::getExpandedShape(
                                       /*require_alignment=*/false);
 }
 
-SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
-  if (getTiles().empty()) {
-    return SmallVector<int64_t>(getTileStrides());
+FailureOr<SmallVector<int64_t>> getExpandedStrides(
+    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides) {
+  if (tiles.empty()) {
+    return SmallVector<int64_t>(tile_strides);
   }
-  SmallVector<int64_t> strides(getTileStrides());
+  SmallVector<int64_t> strides(tile_strides);
   // Expand front tile
-  const xla::Tile& first_tile = getTiles().front();
-  const FailureOr<SmallVector<int64_t>> failure_or_expanded_tile =
-      mlir::tpu::getExpandedShape(first_tile.dimensions(),
-                                  getTiles().drop_front(),
-                                  /*require_alignment=*/true);
-  // Verification should ensure this:
-  assert(succeeded(failure_or_expanded_tile));
-  const SmallVector<int64_t>& expanded_tile = *failure_or_expanded_tile;
-  strides.resize_for_overwrite(getRank() + expanded_tile.size());
+  const xla::Tile& first_tile = tiles.front();
+  FAILUREOR_ASSIGN_OR_RETURN(
+      SmallVector<int64_t> expanded_tile,
+      mlir::tpu::getExpandedShape(first_tile.dimensions(), tiles.drop_front(),
+                                  /*require_alignment=*/true));
+  const int64_t rank = tile_strides.size();
+  strides.resize_for_overwrite(rank + expanded_tile.size());
   int64_t first_tile_size = llvm::product_of(first_tile.dimensions());
   int64_t tile_size = 1;
   for (int64_t d = strides.size() - 1; d >= 0; --d) {
-    if (d >= getRank()) {
+    if (d >= rank) {
       const int64_t new_stride = tile_size;
-      tile_size *= expanded_tile[d - getRank()];
+      tile_size *= expanded_tile[d - rank];
       strides[d] = new_stride;
     } else {
       if (ShapedType::isStatic(strides[d])) {
@@ -507,6 +536,12 @@ SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
     }
   }
   return strides;
+}
+
+SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
+  auto strides = mlir::tpu::getExpandedStrides(getTiles(), getTileStrides());
+  CHECK(succeeded(strides));
+  return *strides;
 }
 
 SmallVector<int64_t> TiledLayoutAttr::getSubtileUnit(

@@ -84,9 +84,8 @@ Operation* GetParentOpWithCoreType(Operation& op);
 // annotation is found, returns kTc.
 CoreType GetCoreTypeOfParentOp(Operation& op);
 
-// Returns the function in the module with the given core type.
-absl::StatusOr<func::FuncOp> GetFuncWithCoreType(ModuleOp module,
-                                                 CoreType core_type);
+// Returns the main function in the module for the given core type.
+absl::StatusOr<func::FuncOp> GetMainFunc(ModuleOp module, CoreType core_type);
 
 // Changes the memory space of the value and propagates it through the program.
 LogicalResult specializeMemorySpace(TypedValue<MemRefType> value,
@@ -95,6 +94,15 @@ LogicalResult specializeMemorySpace(TypedValue<MemRefType> value,
 // In Mosaic, we often strip tiled layouts from memrefs, for compatibility with
 // vector ops. This functions inverts the layout erasure applied to the value.
 MemRefType getMemRefType(Value value);
+
+// Expands a shape according to the tiles list, with optional alignment checks.
+FailureOr<SmallVector<int64_t>> getExpandedShape(
+    ArrayRef<int64_t> untiled_shape, ArrayRef<xla::Tile> tiles,
+    bool require_alignment = false);
+
+// Evaluates the expanded strides for the given tiles and tile strides.
+FailureOr<SmallVector<int64_t>> getExpandedStrides(
+    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides);
 
 // Returns the remainder of the given value when divided by the given divisor.
 // Returns nullopt if the remainder is not known.

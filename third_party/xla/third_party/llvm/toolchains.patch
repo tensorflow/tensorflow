@@ -1,11 +1,25 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 9affa75801b7..2f681c82c298 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -42,6 +42,36 @@ exports_files([
+@@ -57,6 +57,36 @@
+     # This one is needed for building and vendoring out lldb from off tree.
      "utils/lldbDataFormatters.py",
  ])
- 
++
 +config_setting(
 +    name = "macos_arm64",
 +    constraint_values = [
@@ -35,23 +49,21 @@ index 9affa75801b7..2f681c82c298 100644
 +        "@platforms//cpu:x86_64",
 +    ],
 +)
-+
+ 
  config_setting(
      name = "darwin_arm64",
-     constraint_values = [
 diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-index d592f9e5bfcc..7b87dad91e1b 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
 +++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-@@ -100,8 +100,9 @@ builtin_thread_pointer = select({
- 
- # TODO: We should split out host vs. target here.
- llvm_config_defines = os_defines + builtin_thread_pointer + select({
+@@ -147,8 +147,9 @@
+     Label("//llvm:is_aarch64_windows_clang_cl"): native_arch_defines("AArch64", "aarch64-pc-windows-msvc"),
+     Label("//llvm:is_aarch64_windows_msvc"): native_arch_defines("AArch64", "aarch64-pc-windows-msvc"),
+     Label("//llvm:is_x86_64_windows_clang_mingw"): native_arch_defines("X86", "x86_64-w64-windows-gnu"),
 -    Label("//llvm:darwin_arm64"): native_arch_defines("AArch64", "arm64-apple-darwin"),
 -    Label("//llvm:darwin_x86_64"): native_arch_defines("X86", "x86_64-unknown-darwin"),
 +    Label("//llvm:macos_arm64"): native_arch_defines("AArch64", "arm64-apple-darwin"),
 +    Label("//llvm:macos_x86_64"): native_arch_defines("X86", "x86_64-unknown-darwin"),
 +    Label("//llvm:macos_x86_64_default"): native_arch_defines("X86", "x86_64-unknown-darwin"),
      Label("//llvm:linux_aarch64"): native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+     Label("//llvm:linux_armv7"): native_arch_defines("ARM", "armv7-linux-gnueabihf"),
      Label("//llvm:linux_ppc64le"): native_arch_defines("PowerPC", "powerpc64le-unknown-linux-gnu"),
-     Label("//llvm:linux_riscv64"): native_arch_defines("RISCV", "riscv64-unknown-linux-gnu"),

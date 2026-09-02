@@ -978,6 +978,13 @@ CodegenDecision IsTritonSupportedComputation(
       // supported for fusion roots.
       continue;
     }
+    if (instruction->opcode() == HloOpcode::kGetTupleElement &&
+        instruction->operand(0)->opcode() == HloOpcode::kScan &&
+        instruction->tuple_index() == 0) {
+      // While GetTupleElement is not generally supported by Triton codegen, it
+      // is supported for scan results.
+      continue;
+    }
     if (CodegenDecision can_codegen =
             IsTritonSupportedInstruction(*instruction, gpu_compute_capability);
         !can_codegen) {

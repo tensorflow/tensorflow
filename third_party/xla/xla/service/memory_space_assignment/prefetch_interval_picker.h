@@ -83,7 +83,8 @@ class PrefetchIntervalPicker {
 
   // Begins the iterator for the first start time of the prefetch.
   virtual void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
-                     std::optional<int64_t> preferred_time) = 0;
+                     std::optional<int64_t> preferred_time,
+                     bool strict_timing = false) = 0;
 
   // Advances the start time of the prefetch and returns that value.
   virtual int64_t Next() = 0;
@@ -165,7 +166,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                   int64_t end_time) const override;
 
   void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
-             std::optional<int64_t> preferred_time) override;
+             std::optional<int64_t> preferred_time,
+             bool strict_timing = false) override;
 
   int64_t Next() override;
   bool Done() const override;
@@ -181,6 +183,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t max_overlap_count_;
   int64_t end_time_;
   int64_t current_prefetch_time_;
+  bool strict_timing_ = false;
+  int64_t strict_prefetch_time_ = -1;
 };
 
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
@@ -231,7 +235,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                   int64_t end_time) const override;
 
   void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
-             std::optional<int64_t> preferred_time) override;
+             std::optional<int64_t> preferred_time,
+             bool strict_timing = false) override;
 
   int64_t Next() override;
   bool Done() const override;

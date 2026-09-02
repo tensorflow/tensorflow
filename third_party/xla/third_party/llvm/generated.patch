@@ -1,43 +1,73 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-@@ -1467,15 +1467,12 @@
-     name = "__support_libc_assert",
-     hdrs = ["src/__support/libc_assert.h"],
-     deps = [
--        ":__support_integer_to_string",
-         ":__support_macros_attributes",
-         ":__support_macros_config",
-         ":__support_macros_hardening",
-         ":__support_macros_macro_utils",
-         ":__support_macros_optimization",
-         ":__support_macros_properties_os",
--        ":__support_osutil_exit_hdrs",
--        ":__support_osutil_io",
-     ],
- )
+diff -ruN --strip-trailing-cr a/lldb/include/lldb/Symbol/Symbol.h b/lldb/include/lldb/Symbol/Symbol.h
+--- a/lldb/include/lldb/Symbol/Symbol.h
++++ b/lldb/include/lldb/Symbol/Symbol.h
+@@ -53,11 +53,7 @@
  
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl b/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
---- a/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
-+++ b/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
-@@ -61,14 +61,19 @@
-     else:
-         deps = deps + ["//libc/test/UnitTest:LibcUnitTest"]
+   Symbol(const Symbol &rhs);
  
-+    tags = kwargs.pop("tags", [])
-     if full_build:
-         copts = copts + _FULL_BUILD_COPTS
+-  ~Symbol() {
+-    if (m_type != lldb::eSymbolTypeReExported &&
+-        m_type != lldb::eSymbolTypeInvalid)
+-      m_addr_or_reexport.GetAddressRange(*this).Clear();
+-  }
++  ~Symbol() { m_addr_or_reexport.Clear(*this); }
+ 
+   const Symbol &operator=(const Symbol &rhs);
+ 
+@@ -419,6 +415,13 @@
+     // impl to let the compiler know it's handled.
+     ~AddrRangeOrReExport() {}
+ 
++    void Clear(const Symbol &sym) {
++      if (sym.GetType() == lldb::eSymbolTypeReExported)
++        m_reexport_info.Clear();
++      else
++        m_addr_range.Clear();
++    }
 +
-+        # Temporarily disable full_build tests (currently broken) to unblock CI.
-+        tags = tags + ["manual", "notap"]
-     cc_test(
-         name = name,
-         local_defines = local_defines + _TEST_DEFINES + LIBC_CONFIGURE_OPTIONS,
-         deps = deps,
-         copts = copts + libc_common_copts(),
-         linkstatic = 1,
-+        tags = tags,
-         **kwargs
-     )
+   private:
+     union {
+       // Contains the value, or the section offset address when the value is an
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+@@ -5964,6 +5964,8 @@
+                                 ISD::matchUnaryPredicate(
+                                     Y,
+                                     [&](auto *C) {
++                                      if (!C)
++                                        return true;
+                                       const APInt &YConst = C->getAsAPIntVal();
+                                       return (Opcode == ISD::ABDS)
+                                                  ? YConst.isSignedIntN(Bits)
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/abd-combine.ll b/llvm/test/CodeGen/AArch64/abd-combine.ll
+--- a/llvm/test/CodeGen/AArch64/abd-combine.ll
++++ b/llvm/test/CodeGen/AArch64/abd-combine.ll
+@@ -523,9 +523,26 @@
+   ret <1 x i64> %10
+ }
  
++; Poison elements in the constant operand pass a null ConstantSDNode to the
++; matchUnaryPredicate lambda in visitABD; make sure that does not crash.
++define <4 x i32> @abdu_const_poison(<4 x i8> %x) {
++; CHECK-LABEL: abdu_const_poison:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    mov w8, #8388736 // =0x800080
++; CHECK-NEXT:    bic v0.4h, #255, lsl #8
++; CHECK-NEXT:    fmov d1, x8
++; CHECK-NEXT:    uabdl v0.4s, v0.4h, v1.4h
++; CHECK-NEXT:    ret
++  %ext = zext <4 x i8> %x to <4 x i32>
++  %sub = sub <4 x i32> <i32 128, i32 128, i32 poison, i32 poison>, %ext
++  %abs = call <4 x i32> @llvm.abs.v4i32(<4 x i32> %sub, i1 false)
++  ret <4 x i32> %abs
++}
++
+ declare <8 x i8> @llvm.aarch64.neon.umax.v8i8(<8 x i8>, <8 x i8>)
+ declare <1 x i64> @llvm.aarch64.neon.saddlp.v1i64.v2i32(<2 x i32>)
+ declare <8 x i8> @llvm.aarch64.neon.uabd.v8i8(<8 x i8>, <8 x i8>)
+ declare <8 x i16> @llvm.aarch64.neon.uabd.v8i16(<8 x i16>, <8 x i16>)
+ declare <8 x i16> @llvm.aarch64.neon.sabd.v8i16(<8 x i16>, <8 x i16>)
+ declare <8 x i32> @llvm.abs.v8i32(<8 x i32>, i1)
++declare <4 x i32> @llvm.abs.v4i32(<4 x i32>, i1)

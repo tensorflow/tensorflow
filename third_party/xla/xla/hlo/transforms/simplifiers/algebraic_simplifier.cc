@@ -2479,7 +2479,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
 
   Shape* shape;
   // exp(A)/exp(B) => exp(A-B)
-  if (Match(divide, m::Divide(m::Exp(m::Op(&a)), m::Exp(m::Op(&b)))
+  if (options_.enable_fast_math() &&
+      Match(divide, m::Divide(m::Exp(m::Op(&a)), m::Exp(m::Op(&b)))
                         .WithShape(m::Shape(&shape)))) {
     VLOG(10) << "transform [exp(A)/exp(B) => exp(A-B)]: " << divide->ToString();
     HloInstruction* subtract = divide->AddInstruction(
@@ -2489,7 +2490,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A/exp(B) => A*exp(-B)
-  if (Match(divide, m::Divide(m::Op(&a), m::Exp(m::Op(&b))))) {
+  if (options_.enable_fast_math() &&
+      Match(divide, m::Divide(m::Op(&a), m::Exp(m::Op(&b))))) {
     VLOG(10) << "transform [A/exp(B) => A*exp(-B)]: " << divide->ToString();
     HloInstruction* negate = divide->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kNegate, b));
@@ -5164,7 +5166,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   VLOG(10) << "trying to transform exp(LHS) * exp(RHS) => exp(LHS+RHS) "
            << multiply->ToString();
-  if (Match(multiply, m::Multiply(m::Exp(m::Op(&lhs)), m::Exp(m::Op(&rhs))))) {
+  if (options_.enable_fast_math() &&
+      Match(multiply, m::Multiply(m::Exp(m::Op(&lhs)), m::Exp(m::Op(&rhs))))) {
     auto add = multiply->AddInstruction(HloInstruction::CreateBinary(
         multiply->shape(), HloOpcode::kAdd, lhs, rhs));
     return ReplaceWithNewInstruction(
@@ -5381,6 +5384,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
       return absl::OkStatus();
     }
     used_elements[use->tuple_index()] = true;
+  }
+  for (size_t i = 0; i < barrier->shape().tuple_shapes().size(); ++i) {
+    if (barrier->shape().tuple_shapes()[i].IsToken()) {
+      used_elements[i] = true;
+    }
   }
 
   HloInstruction* operand = barrier->mutable_operand(0);
@@ -6189,7 +6197,8 @@ absl::Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
 
   // pow(exp(A),B) => exp(A*B)
   HloInstruction *a, *b;
-  if (Match(power, m::Power(m::Exp(m::Op(&a)), m::Op(&b)))) {
+  if (options_.enable_fast_math() &&
+      Match(power, m::Power(m::Exp(m::Op(&a)), m::Op(&b)))) {
     auto a_times_b = power->AddInstruction(HloInstruction::CreateBinary(
         power->shape(), HloOpcode::kMultiply, a, b));
     return ReplaceWithNewInstruction(

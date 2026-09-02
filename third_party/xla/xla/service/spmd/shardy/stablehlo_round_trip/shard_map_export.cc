@@ -184,16 +184,25 @@ void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
   op->setAttr(kManualAxes, manualAxes);
 }
 
-void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  Attribute meshOrRef,
-                                  const mlir::SymbolTable& symbolTable);
+void setManualAxesForOpsInBody(
+    ManualComputationOp op, const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes);
 
-mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
-                               Attribute meshOrRef,
-                               const mlir::SymbolTable& symbolTable) {
-  if (mlir::isa<ManualComputationOp>(op)) {
-    // Skip `ManualComputationOp`s and their nested operations, they will
-    // be handled separately.
+void setFuncManualAxesRecursively(
+    FuncOp funcOp, ManualAxesAttr manualAxes, Attribute meshOrRef,
+    const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes);
+
+mlir::WalkResult setManualAxes(
+    Operation* op, ManualAxesAttr manualAxes, Attribute meshOrRef,
+    const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes) {
+  if (auto manualCompOp = mlir::dyn_cast<ManualComputationOp>(op)) {
+    // Record parent manual axes for this manualCompOp and process its body.
+    SmallVector<StringAttr>& parentAxes = parentManualCompAxes[manualCompOp];
+    parentAxes.assign(manualAxes.getValue().begin(),
+                      manualAxes.getValue().end());
+    setManualAxesForOpsInBody(manualCompOp, symbolTable, parentManualCompAxes);
     return mlir::WalkResult::skip();
   }
   if (!mlir::isa<FuncOp, mlir::func::ReturnOp>(op)) {
@@ -202,14 +211,16 @@ mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
   if (CallOp callOp = mlir::dyn_cast<CallOp>(op)) {
     FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
     CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    setFuncManualAxesRecursively(funcOp, manualAxes, meshOrRef, symbolTable);
+    setFuncManualAxesRecursively(funcOp, manualAxes, meshOrRef, symbolTable,
+                                 parentManualCompAxes);
   }
   return mlir::WalkResult::advance();
 }
 
-void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  Attribute meshOrRef,
-                                  const mlir::SymbolTable& symbolTable) {
+void setFuncManualAxesRecursively(
+    FuncOp funcOp, ManualAxesAttr manualAxes, Attribute meshOrRef,
+    const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes) {
   llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
   funcArgAttrs.reserve(funcOp.getNumArguments());
   for (int argNum = 0; argNum < funcOp.getNumArguments(); argNum++) {
@@ -249,16 +260,16 @@ void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
   funcOp.setAllResultAttrs(newResultAttrs);
 
   // Walk in preorder of blocks in order to stop walks on manual computations.
-  funcOp->walk([&](Operation* op) {
-    return setManualAxes(op, manualAxes, meshOrRef, symbolTable);
+  funcOp->walk<mlir::WalkOrder::PreOrder>([&](Operation* op) {
+    return setManualAxes(op, manualAxes, meshOrRef, symbolTable,
+                         parentManualCompAxes);
   });
 }
 
 // Sets the manual axes of all operations in `op`'s body.
 void setManualAxesForOpsInBody(
-    ManualComputationOp op,
-    const ManualComputationToParentManualAxes& parentManualCompAxes,
-    const mlir::SymbolTable& symbolTable) {
+    ManualComputationOp op, const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes) {
   TensorShardingAttr sharding = getFirstSharding(op);
   if (!sharding) {
     // If there are no in/out shardings, op.getManualAxes() must be empty. We do
@@ -280,7 +291,8 @@ void setManualAxesForOpsInBody(
   // Set the manual axes of all operations in the body.
   op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
       [&](Operation* opInBody) {
-        return setManualAxes(opInBody, manualAxesAttr, meshOrRef, symbolTable);
+        return setManualAxes(opInBody, manualAxesAttr, meshOrRef, symbolTable,
+                             parentManualCompAxes);
       });
 }
 
@@ -488,7 +500,7 @@ class ShardMapExportPass
         parentAxes.insert(parentAxes.end(), parentOp.getManualAxes().begin(),
                           parentOp.getManualAxes().end());
       }
-      setManualAxesForOpsInBody(op, parentManualCompAxes, symbolTable);
+      setManualAxesForOpsInBody(op, symbolTable, parentManualCompAxes);
     });
 
     // Need to do a separate post order walk to inline the

@@ -29,6 +29,10 @@ tf_module {
     mtype: "<class \'type\'>"
   }
   member {
+    name: "PositionalWeightedCombiner"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
     name: "QuantizationConfig"
     mtype: "<class \'type\'>"
   }

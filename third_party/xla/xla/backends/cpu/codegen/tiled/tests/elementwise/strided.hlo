@@ -36,7 +36,7 @@ ENTRY main {
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
 // NEW-VECTOR-COUNT-4:   memref.load {{.*}} : memref<1x12x1x1xf64>
 // NEW-VECTOR:           vector.transfer_write
-// NEW-VECTOR-SAME:        : vector<2x2xf64>, memref<1x3x2x2xf64>
+// NEW-VECTOR-SAME:        : vector<1x1x2x2xf64>, memref<1x3x2x2xf64>
 
 // NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
 // NEW-VECTOR-LLVM-NOT:   llvm.alloca

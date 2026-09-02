@@ -405,8 +405,11 @@ xla_test(
     backends = ["cpu"],
     deps = [
         "//xla:literal",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/service/cpu:fusion_wrapper",
+        "//xla/service/cpu:target_machine_features_stub",
+        "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -450,12 +453,30 @@ xla_test(
 )
 
 xla_test(
+    name = "corpus_compile_test",
+    srcs = ["corpus_compile_test.cc"],
+    backends = ["cpu"],
+    data = ["//xla/backends/cpu/benchmarks/hlo:hlo_files"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tools:hlo_module_loader",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
     name = "cpu_edge_cases_test",
     srcs = ["cpu_edge_cases_test.cc"],
     backends = ["cpu"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",

@@ -125,7 +125,13 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
       // `shape.dims()[i]` cannot be negative (we explicitly check for this
       // above) or zero (we return early for `shape.num_elements() == 0`).
       DCHECK_GT(shape.dims()[i], 0);
-      last_element_byte_offset += (stride * (shape.dims()[i] - 1));
+      int64_t product;
+      if (__builtin_mul_overflow(stride, shape.dims()[i] - 1, &product)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "byte_stride[", i, "] * (dim[", i,
+            "] - 1) overflows: stride=", stride, " dim=", shape.dims()[i]));
+      }
+      last_element_byte_offset += static_cast<uint64_t>(product);
     }
   }
   return ArrayMemRegion(mem_region_start, last_element_byte_offset + byte_size);

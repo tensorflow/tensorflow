@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/ffi_collectives.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/api/collectives_c_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/attribute_map.h"
@@ -417,7 +419,12 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
       collective_params, collective_clique_requests, collective_memory_requests,
       collective_cliques, collective_memory, execution_context,
       computation_streams);
-  context.extension_start = extension_start;
+  GpuCollectivesState collectives_state{
+      collective_params, collective_clique_requests, collective_cliques};
+  XLA_FFI_Collectives_Extension collectives =
+      MakeCollectivesExtension(&collectives_state);
+  collectives.extension_base.next = extension_start;
+  context.extension_start = &collectives.extension_base;
   return Invoke(ffi::GetXlaFfiApi(), handler, *call_frame, context, stage);
 }
 
@@ -444,7 +451,12 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
       collective_params, collective_clique_requests, collective_memory_requests,
       collective_cliques, collective_memory, execution_context,
       computation_streams);
-  context.extension_start = extension_start;
+  GpuCollectivesState collectives_state{
+      collective_params, collective_clique_requests, collective_cliques};
+  XLA_FFI_Collectives_Extension collectives =
+      MakeCollectivesExtension(&collectives_state);
+  collectives.extension_base.next = extension_start;
+  context.extension_start = &collectives.extension_base;
   return Invoke(ffi::GetXlaFfiApi(), handler, *call_frame, context, stage);
 }
 

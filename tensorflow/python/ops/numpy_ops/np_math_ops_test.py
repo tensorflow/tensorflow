@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -422,6 +423,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
     )
     self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
 
+  def testDiffErrorMessage(self):
+    # Verify the error message for negative n mentions the parameter correctly.
+    x = np_array_ops.array([1, 2, 3])
+    with self.assertRaisesRegex(
+        ValueError,
+        r'Argument `n` must be a non-negative integer\. Received: n=-1',
+    ):
+      np_math_ops.diff(x, n=-1)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
@@ -644,6 +654,93 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isposinf(x2))
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
+
+  def testSignBit(self):
+    for transform in self.array_transforms:
+      values = transform([-1.5, -0.0, 0.0, 1.5])
+      self.assertAllEqual(
+          np_math_ops.signbit(values), [True, True, False, False]
+      )
+    # The sign bit is set even when the value compares equal to zero or NaN.
+    self.assertAllEqual(np_math_ops.signbit([np.nan, -np.nan]), [False, True])
+    self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
+    negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
+    self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testConcatenateAxisNone(self):
+    a = np_array_ops.array([1, 2])
+    b = np_array_ops.array([[3], [4]])
+    self.assertAllEqual(
+        np_math_ops.concatenate([a, b], axis=None), [1, 2, 3, 4]
+    )
+    self.assertAllEqual(
+        np_math_ops.concatenate(np_array_ops.array([[5, 6]]), axis=None), [5, 6]
+    )
+
+  def testIsInfFamilyNonFloatInputs(self):
+    # A non-floating input has no infinities, but the result must still be an
+    # elementwise boolean array shaped like the input, as numpy returns, and
+    # the argument must be converted before its dtype is inspected.
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        [1, 2, 3],
+        np.array([1, 2, 3], dtype=np.int32),
+        np.array([1, 2, 3], dtype=np.int64),
+        np.array([[1, 2], [3, 4]], dtype=np.int32),
+        np.array([True, False]),
+        ops.convert_to_tensor([1, 2, 3]),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg),
+            np_fun(np.asarray(arg)),
+            msg='{}({})'.format(np_fun.__name__, arg),
+        )
+
+  def testIsInfFamilyFloatInputs(self):
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        np.array([1.0, np.inf, -np.inf, np.nan], dtype=np.float64),
+        np.array([1.0, np.inf, -np.inf], dtype=np.float32),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg), np_fun(arg), msg='{}({})'.format(np_fun.__name__, arg)
+        )
+
+  def testFabsAlwaysReturnsFloat(self):
+    # `fabs` differs from `absolute` in that its result is always floating
+    # point, so an integer argument is promoted rather than passed through.
+    int_args = [
+        [1, -2, 3],
+        -5,
+        np.array([1, -2, 3], dtype=np.int32),
+        np.array([1, -2, 3], dtype=np.int64),
+        np.array([], dtype=np.int32),
+        np.array([[1, -2], [3, -4]], dtype=np.int32),
+    ]
+    for arg in int_args:
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
+
+    # A floating point argument keeps its own dtype.
+    for dtype in [np.float16, np.float32, np.float64]:
+      arg = np.array([1.5, -2.5], dtype=dtype)
+      self.match(
+          np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
+      )
+
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()

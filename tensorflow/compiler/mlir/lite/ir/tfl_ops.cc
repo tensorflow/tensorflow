@@ -260,7 +260,9 @@ bool HasDenseResourceOperand(mlir::Operation* op) {
 // TODO(b/394905516): Remove this once we have a way to configure the threshold.
 bool ShouldFoldOperation(Operation* inst) {
   if (!(ENABLE_DENSE_RESOURCE_ATTR_FOLD) && HasDenseResourceOperand(inst)) {
-    return false;
+    if (!llvm::isa<TransposeOp, ReshapeOp>(inst)) {
+      return false;
+    }
   }
 
   auto get_size = [&](TypeRange types) {
@@ -4024,8 +4026,10 @@ OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
 
   auto operands = adaptor.getOperands();
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/f16/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsF16ShapedType(result_type) &&
+      !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
   return ConstFoldUnaryOp(result_type, operands[0], compute);

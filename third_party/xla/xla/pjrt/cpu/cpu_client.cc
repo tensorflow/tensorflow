@@ -44,6 +44,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
+#include "riegeli/messages/parse_message.h"
 #include "xla/array.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/constant_allocation.h"
@@ -565,15 +568,12 @@ PjRtCpuExecutable::GetOutputMemoryKinds() const {
   return out;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::LoadSerializedExecutableInternal(
-    google::protobuf::io::ZeroCopyInputStream* stream,
-    std::optional<CompileOptions> options, const LoadOptions& load_options) {
+/*static*/ absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>>
+PjRtCpuExecutable::Deserialize(riegeli::Any<riegeli::Reader*> reader,
+                               const xla::CpuTopologyDescription& topology,
+                               std::optional<CompileOptions>&& options) {
   ExecutableAndOptionsProto proto;
-  if (!proto.ParseFromZeroCopyStream(stream)) {
-    return Internal(
-        "PjRtCpuClient::DeserializeExecutable proto deserialization failed");
-  }
+  ABSL_RETURN_IF_ERROR(riegeli::ParseMessage(reader.get(), proto));
   CompileOptions compile_options;
   if (options.has_value()) {
     compile_options = *std::move(options);
@@ -599,10 +599,9 @@ PjRtCpuClient::LoadSerializedExecutableInternal(
   ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       compile_options.compile_portable_executable,
       &compile_options.executable_build_options,
-      [this](int num_replicas, int num_partitions) {
-        return topology().GetDefaultDeviceAssignment(process_index(),
-                                                     num_replicas, std::nullopt,
-                                                     num_partitions, nullptr);
+      [&topology](int num_replicas, int num_partitions) {
+        return topology.GetDefaultDeviceAssignment(
+            0, num_replicas, std::nullopt, num_partitions, nullptr);
       },
       &num_replicas, &num_partitions, &device_assignment));
 
@@ -630,37 +629,11 @@ PjRtCpuClient::LoadSerializedExecutableInternal(
                                : nullptr);
   }
 
-  auto cpu_executable = std::make_shared<PjRtCpuExecutable>(
+  auto cpu_executable = std::make_unique<PjRtCpuExecutable>(
       num_replicas, num_partitions, std::move(input_options),
       std::move(executable), std::move(result_buffer_indices), nullptr,
-      topology());
-  return LoadInternal(std::move(cpu_executable), std::move(device_assignment));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
-                                        std::optional<CompileOptions> options,
-                                        const LoadOptions& load_options) {
-  if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "PjRtCpuClient::DeserializeExecutable proto too large (>2GB)");
-  }
-  google::protobuf::io::ArrayInputStream stream(serialized.data(), serialized.size());
-  return LoadSerializedExecutableInternal(&stream, std::move(options),
-                                          load_options);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::LoadSerializedExecutable(const absl::Cord& serialized,
-                                        std::optional<CompileOptions> options,
-                                        const LoadOptions& load_options) {
-  if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "PjRtCpuClient::DeserializeExecutable proto too large (>2GB)");
-  }
-  google::protobuf::io::CordInputStream stream(&serialized);
-  return LoadSerializedExecutableInternal(&stream, std::move(options),
-                                          load_options);
+      topology);
+  return cpu_executable;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -722,6 +695,12 @@ PjRtCpuClient::LoadInternal(
           cpu_executable->input_buffer_sizes_in_bytes_,
       },
       std::move(load_state));
+}
+
+tsl::AsyncValueRef<PjRtExecutable> PjRtCpuRawClient::ToAsyncExecutable(
+    std::shared_ptr<PjRtExecutable> executable) const {
+  return tsl::MakeAvailableAsyncValueRef(
+      std::static_pointer_cast<PjRtCpuExecutable>(executable));
 }
 
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
@@ -849,16 +828,6 @@ PjRtCpuRawClient::CompileAheadOfTime(const XlaComputation& computation,
                          /*layout_canonicalization_callback=*/nullptr,
                          std::move(options), topology, process_index,
                          &aot_options);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::CompileAheadOfTimeAndLoad(
-    const XlaComputation& computation, CompileOptions options,
-    const AotCompilationOptions& aot_options) {
-  ABSL_ASSIGN_OR_RETURN(auto executable, raw_client()->CompileAheadOfTime(
-                                        computation, options, topology(),
-                                        process_index(), aot_options));
-  return Load(std::move(executable), LoadOptions());
 }
 
 struct CpuCompilationParams {
@@ -1078,45 +1047,6 @@ bool PjRtCpuClient::BufferFromHostBufferSupportsZeroCopy(
       data, type, dims, byte_strides, shape);
 }
 
-absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
-    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides,
-    HostBufferSemantics host_buffer_semantics,
-    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-    const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
-  if (device_shape.IsToken()) {
-    return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-  }
-  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
-  if (cpp_buf == nullptr) {
-    return absl::InvalidArgumentError("Not a CPU raw buffer");
-  }
-  return cpp_buf->CopyFromHostBuffer(
-      data, type, dims, byte_strides, host_buffer_semantics,
-      std::move(on_done_with_host_buffer), device_shape, async_work_runner(),
-      raw_client()->eigen_intraop_pool(),
-      raw_client()->max_transpose_threads());
-}
-
-absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
-    const LiteralSlice& literal, const xla::Shape& device_shape,
-    HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
-  if (host_buffer_semantics ==
-      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall) {
-    return absl::UnimplementedError(
-        "ImmutableOnlyDuringCall semantics is not supported on CPU.");
-  }
-  if (device_shape.IsToken()) {
-    return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-  }
-  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
-  if (cpp_buf == nullptr) {
-    return absl::InvalidArgumentError("Not a CPU raw buffer");
-  }
-  return cpp_buf->CopyFromLiteral(literal, device_shape.layout(),
-                                  async_work_runner());
-}
-
 absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
     const {
   const auto& buffer_assignment = cpu_executable_->buffer_assignment();
@@ -1213,29 +1143,6 @@ PjRtCpuRawClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
   };
 
   return std::make_pair(std::move(raw_buffer), std::move(buffer_promise_cb));
-}
-
-absl::StatusOr<int> PjRtCpuClient::GetMemorySpaceKindForShape(
-    const Shape& shape) const {
-  return topology().GetMemorySpaceKindForShape(shape);
-}
-
-static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
-  // For now, TPU programs compiled with multiple arguments cannot use tuples
-  // for any of their arguments, so we can assume that a tuple can only arise
-  // when there is a single argument.
-  std::vector<Shape> shapes;
-  if (layout.parameter_count() == 1 && layout.parameter_shape(0).IsTuple()) {
-    shapes.reserve(layout.parameter_shape(0).tuple_shapes().size());
-    absl::c_copy(layout.parameter_shape(0).tuple_shapes(),
-                 std::back_inserter(shapes));
-  } else {
-    shapes.reserve(layout.parameter_count());
-    for (const ShapeLayout& sl : layout.parameter_layouts()) {
-      shapes.push_back(sl.shape());
-    }
-  }
-  return shapes;
 }
 
 PjRtCpuExecutable::PjRtCpuExecutable(

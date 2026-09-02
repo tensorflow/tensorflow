@@ -2110,7 +2110,7 @@ class FromSavedModelTest(TestModels):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testShapeOverriding(self):
-    """Test a SavedModel with the input_shapes arugment."""
+    """Test a SavedModel with the input_shapes argument."""
     saved_model_dir = self._createSavedModel(shape=[None, 16, 16, 3])
 
     # Convert model and ensure model is not None.

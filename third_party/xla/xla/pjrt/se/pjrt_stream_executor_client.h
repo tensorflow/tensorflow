@@ -293,6 +293,9 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
            (executor_ == nullptr || !executor_->IsHostMemoryPinned(data, size));
   }
 
+  tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
+      std::shared_ptr<PjRtExecutable> executable) const override;
+
   void ThenRecordEvent(BufferSequencingEventRef event,
                        LocalDeviceState* local_device,
                        EventPool::Handle device_event, se::Stream* stream);
@@ -393,6 +396,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   virtual void RecordMemoryStats(LocalDeviceState* local_device_state) {}
 
+  tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() override;
+
  private:
   se::DeviceAddressAllocator* allocator_ = nullptr;
   std::unique_ptr<se::DeviceAddressAllocator> owned_allocator_;
@@ -428,6 +433,8 @@ class PjRtStreamExecutorExecutableLoadState : public PjRtExecutableLoadState {
   void Delete() override { is_deleted_.store(true); }
   bool IsDeleted() const override { return is_deleted_.load(); }
 
+  absl::Status Preload(PjRtExecutable* executable) override;
+
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
       tsl::AsyncValueRef<PjRtExecutable> executable,
       const ExecuteOptions& options, size_t host_callback_idx,
@@ -456,17 +463,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
     return executable.SerializeExecutable();
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized,
-      std::optional<CompileOptions> options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      const absl::Cord& serialized,
-      std::optional<CompileOptions> options) override;
-
-  // For PjRtStreamExecutorClient, `options` is mandatory.
-  // This function returns an InvalidArgument error if `std::nullopt` is passed.
-  // TODO(b/237720161): make it actually optional
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
@@ -551,13 +547,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
  protected:
   friend class PjRtStreamExecutorRawBuffer;
   friend class PjRtStreamExecutorRawLoadedExecutable;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      std::unique_ptr<riegeli::Reader> reader,
-      std::optional<CompileOptions> options);
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
-      std::shared_ptr<PjRtExecutable> executable, bool dump);
 };
 
 struct PjRtStreamExecutorExecutionOutput {

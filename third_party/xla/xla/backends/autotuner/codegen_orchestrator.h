@@ -44,9 +44,6 @@ class CodegenOrchestrator {
     std::function<bool(const HloInstruction&, autotuner::Backend)>
         allow_reg_spills_fn =
             [](const HloInstruction&, autotuner::Backend) { return false; };
-    // TODO(b/519059655): Generalize and move to tuner.
-    // If true, do not allow compilation of cublas or rocblas configs.
-    bool exclude_cublas_config = false;
   };
 
   // TODO(b/444398084): Unify Cache::Config and CodegenOrchestrator::Config

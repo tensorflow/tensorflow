@@ -30,12 +30,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -108,14 +112,18 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
 
 absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
     PjRtClient* client) {
-  const StreamExecutorGpuClient* gpu_client =
-      dynamic_cast<const StreamExecutorGpuClient*>(client);
+  const auto* gpu_client = dynamic_cast<const CommonPjRtClient*>(client);
   if (gpu_client != nullptr) {
-    return gpu_client->client()->backend().default_stream_executor();
+    if (const auto* raw_gpu_client =
+            dynamic_cast<const PjRtStreamExecutorRawClient*>(
+                gpu_client->raw_client())) {
+      return raw_gpu_client->client()->backend().default_stream_executor();
+    }
   }
 
   return absl::InvalidArgumentError(
-      "Given PjRtClient is not a StreamExecutorGpuClient.");
+      "Given PjRtClient does not contain a xla::LocalClient needed for "
+      "autotuning.");
 }
 
 }  // namespace
@@ -463,6 +471,15 @@ StreamExecutorGpuCompiler::DeserializePjRtTopologyDescription(
         "Failed to parse StreamExecutorGpuTopologyDescription from string.");
   }
   return StreamExecutorGpuTopologyDescription::FromProto(proto);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+StreamExecutorGpuCompiler::DeserializeExecutable(
+    const PjRtTopologyDescription& topology,
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions>&& options) {
+  return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
+                                               std::move(options));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>

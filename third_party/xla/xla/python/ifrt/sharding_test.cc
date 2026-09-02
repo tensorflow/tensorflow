@@ -223,7 +223,7 @@ TEST_P(OpaqueShardingTest, GetShardShape) {
   ShardingRef sharding = OpaqueSharding::Create(device_list, MemoryKind());
   EXPECT_THAT(sharding->GetShardShape(Shape({10, 20})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
-                       HasSubstr("OpaqueSharding does not have shard shape")));
+                       HasSubstr("does not have shard shape")));
 }
 
 TEST_P(OpaqueShardingTest, HasSamePartitioning) {
@@ -343,11 +343,9 @@ TEST_P(ConcreteShardingTest, GetShardShapeFailure) {
   shard_shapes.push_back(Shape({20}));
   ShardingRef sharding = ConcreteSharding::Create(device_list, MemoryKind(),
                                                   Shape({30}), shard_shapes);
-  EXPECT_THAT(
-      sharding->GetShardShape(Shape({30})),
-      StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("ConcreteSharding does not have a fixed shard shape")));
+  EXPECT_THAT(sharding->GetShardShape(Shape({30})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("does not have a fixed shard shape")));
 }
 
 TEST_P(ConcreteShardingTest, HasSamePartitioning) {
@@ -732,10 +730,9 @@ TEST_P(ConcreteEvenShardingTest, GetShardShape) {
   EXPECT_THAT(sharding->GetShardShape(Shape({30})), IsOkAndHolds(Shape({15})));
   EXPECT_THAT(
       sharding->GetShardShape(Shape({45})),
-      StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("ConcreteEvenSharding has a shard shape for shape [30], "
-                    "but was asked to get a shard shape for shape [45]")));
+      StatusIs(tsl::error::INVALID_ARGUMENT,
+               HasSubstr("has a shard shape for shape [30], "
+                         "but was asked to get a shard shape for shape [45]")));
 }
 
 TEST_P(ConcreteEvenShardingTest, HasSamePartitioning) {
