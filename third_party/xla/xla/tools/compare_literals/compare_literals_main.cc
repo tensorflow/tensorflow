@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tools/compare_literals/compare_literals.h"
+#include "xla/tools/compare_literals/compare_model_literals.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 
@@ -39,35 +40,32 @@ ABSL_FLAG(std::string, output_markdown, "",
           "Path to write Markdown report file.");
 ABSL_FLAG(int, max_bar_width, 40, "Maximum character width of histogram bars.");
 ABSL_FLAG(bool, color, true, "Use ANSI colors in terminal output.");
+ABSL_FLAG(std::string, output_json, "",
+          "Optional path to write structured JSON report.");
+ABSL_FLAG(std::string, output_tsv, "",
+          "Optional path to write flat TSV report.");
+ABSL_FLAG(std::string, output_device_tsv, "",
+          "Optional path to write detailed per-device TSV report.");
+ABSL_FLAG(
+    int, threads, 16,
+    "Number of parallel worker threads for reading and comparing literals.");
 
 namespace {
 
 using ::xla::compare_literals::CompareLiteralFiles;
+using ::xla::compare_literals::CompareModelDirectories;
 using ::xla::compare_literals::ComparisonOptions;
 using ::xla::compare_literals::ComparisonResult;
+using ::xla::compare_literals::ModelComparisonOptions;
+using ::xla::compare_literals::ModelComparisonResult;
+using ::xla::compare_literals::WriteModelComparisonOutputs;
 
 constexpr int kExitPass = 0;
 constexpr int kExitMismatch = 1;
 constexpr int kExitError = 2;
 
-}  // namespace
-
-int main(int argc, char** argv) {
-  constexpr absl::string_view kUsage =
-      "Usage: compare_literals <clean_path> <dirty_path> [flags]";
-  tsl::port::InitMain(kUsage.data(), &argc, &argv);
-  std::vector<char*> positional_args = absl::ParseCommandLine(argc, argv);
-
-  if (positional_args.size() != 3) {
-    std::cerr << "Error: Exactly two positional file paths must be provided.\n";
-    std::cerr << "Usage:\n  " << argv[0]
-              << " <clean_path> <dirty_path> [flags]\n";
-    return kExitError;
-  }
-
-  std::string clean = positional_args[1];
-  std::string dirty = positional_args[2];
-
+int RunFileComparison(tsl::Env* env, absl::string_view clean,
+                      absl::string_view dirty) {
   ComparisonOptions options;
   options.abs_error_bound = absl::GetFlag(FLAGS_abs_error_bound);
   options.rel_error_bound = absl::GetFlag(FLAGS_rel_error_bound);
@@ -75,7 +73,6 @@ int main(int argc, char** argv) {
 
   absl::StatusOr<ComparisonResult> result_or =
       CompareLiteralFiles(clean, dirty, options);
-
   if (!result_or.ok()) {
     std::cerr << "Comparison error: " << result_or.status() << "\n";
     return kExitError;
@@ -89,8 +86,7 @@ int main(int argc, char** argv) {
   std::cout << "  Bounds: abs = " << options.abs_error_bound
             << ", rel = " << options.rel_error_bound << "\n\n";
 
-  bool use_color = absl::GetFlag(FLAGS_color);
-
+  const bool use_color = absl::GetFlag(FLAGS_color);
   std::cout << result.SummaryToString(use_color) << "\n";
 
   if (result.total_elements > 0) {
@@ -98,22 +94,117 @@ int main(int argc, char** argv) {
       std::cout << result.histogram.ToString(absl::GetFlag(FLAGS_max_bar_width))
                 << "\n";
     }
-
     if (absl::GetFlag(FLAGS_show_heatmap)) {
-      std::cout << result.heatmap.ToString(absl::GetFlag(FLAGS_color)) << "\n";
+      std::cout << result.heatmap.ToString(use_color) << "\n";
     }
   }
 
-  std::string md_path = absl::GetFlag(FLAGS_output_markdown);
+  const std::string md_path = absl::GetFlag(FLAGS_output_markdown);
   if (!md_path.empty()) {
     std::string md = result.SummaryToMarkdown();
-    absl::Status s = tsl::WriteStringToFile(tsl::Env::Default(), md_path, md);
+    absl::Status s = tsl::WriteStringToFile(env, md_path, md);
     if (!s.ok()) {
       std::cerr << "Failed to write markdown report to '" << md_path
                 << "': " << s << "\n";
       return kExitError;
     }
+    std::cout << "Wrote markdown report to: " << md_path << "\n";
   }
 
   return result.passed ? kExitPass : kExitMismatch;
+}
+
+int RunDirectoryComparison(tsl::Env* env, absl::string_view golden_dir,
+                           absl::string_view test_dir) {
+  ModelComparisonOptions options;
+  options.num_threads = absl::GetFlag(FLAGS_threads);
+  options.comparison_options.abs_error_bound =
+      absl::GetFlag(FLAGS_abs_error_bound);
+  options.comparison_options.rel_error_bound =
+      absl::GetFlag(FLAGS_rel_error_bound);
+  options.comparison_options.heatmap_yellow_pct =
+      absl::GetFlag(FLAGS_heatmap_yellow_pct);
+
+  absl::StatusOr<ModelComparisonResult> result_or =
+      CompareModelDirectories(golden_dir, test_dir, options);
+  if (!result_or.ok()) {
+    std::cerr << "CompareModelDirectories failed: " << result_or.status()
+              << "\n";
+    return kExitError;
+  }
+
+  const ModelComparisonResult& result = *result_or;
+  std::cout << result.SummaryToString() << "\n";
+
+  const std::string json_path = absl::GetFlag(FLAGS_output_json);
+  const std::string tsv_path = absl::GetFlag(FLAGS_output_tsv);
+  const std::string device_tsv_path = absl::GetFlag(FLAGS_output_device_tsv);
+
+  absl::Status s =
+      WriteModelComparisonOutputs(result, json_path, tsv_path, device_tsv_path);
+  if (!s.ok()) {
+    std::cerr << "Failed to write outputs: " << s << "\n";
+    return kExitError;
+  }
+
+  if (!json_path.empty()) {
+    std::cout << "Wrote JSON output to: " << json_path << "\n";
+  }
+  if (!tsv_path.empty()) {
+    std::cout << "Wrote TSV output to: " << tsv_path << "\n";
+  }
+  if (!device_tsv_path.empty()) {
+    std::cout << "Wrote Device TSV output to: " << device_tsv_path << "\n";
+  }
+
+  bool all_passed =
+      (result.missing_in_golden.empty() && result.missing_in_test.empty() &&
+       result.summary.differing_literals == 0 &&
+       result.summary.failed_device_comparisons == 0);
+  return all_passed ? kExitPass : kExitMismatch;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  constexpr absl::string_view kUsage =
+      "Usage: compare_literals <clean_path> <dirty_path> [flags]";
+  tsl::port::InitMain(kUsage.data(), &argc, &argv);
+  std::vector<char*> positional_args = absl::ParseCommandLine(argc, argv);
+
+  if (positional_args.size() != 3) {
+    std::cerr << "Error: Exactly two positional paths must be provided.\n";
+    std::cerr << "Usage:\n  " << argv[0]
+              << " <clean_path> <dirty_path> [flags]\n";
+    return kExitError;
+  }
+
+  const std::string clean = positional_args[1];
+  const std::string dirty = positional_args[2];
+
+  tsl::Env* env = tsl::Env::Default();
+  if (!env->FileExists(clean).ok()) {
+    std::cerr << "Error: Path does not exist: " << clean << "\n";
+    return kExitError;
+  }
+  if (!env->FileExists(dirty).ok()) {
+    std::cerr << "Error: Path does not exist: " << dirty << "\n";
+    return kExitError;
+  }
+
+  const bool clean_is_dir = env->IsDirectory(clean).ok();
+  const bool dirty_is_dir = env->IsDirectory(dirty).ok();
+
+  if (clean_is_dir != dirty_is_dir) {
+    std::cerr << "Error: Cannot compare file to directory: clean is "
+              << (clean_is_dir ? "directory" : "file") << ", dirty is "
+              << (dirty_is_dir ? "directory" : "file") << ".\n";
+    return kExitError;
+  }
+
+  if (clean_is_dir) {
+    return RunDirectoryComparison(env, clean, dirty);
+  }
+
+  return RunFileComparison(env, clean, dirty);
 }

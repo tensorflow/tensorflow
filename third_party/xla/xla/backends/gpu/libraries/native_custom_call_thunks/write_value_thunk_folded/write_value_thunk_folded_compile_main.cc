@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 
