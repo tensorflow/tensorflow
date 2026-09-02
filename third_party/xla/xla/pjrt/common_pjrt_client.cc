@@ -53,6 +53,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "riegeli/bytes/cord_reader.h"
 #include "riegeli/bytes/string_reader.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/error/error_codes.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -98,6 +99,63 @@ limitations under the License.
 
 namespace xla {
 
+PjRtDynamicShapeKind CommonPjRtClient::GetDynamicShapeKind(
+    int memory_space_kind_id) const {
+  if (!IsTpuId(platform_id()) ||
+      UnpinnedHostMemorySpace::kKindId == memory_space_kind_id) {
+    return PjRtDynamicShapeKind::kSuffix;
+  }
+  return PjRtDynamicShapeKind::kPrefix;
+}
+
+absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
+CommonPjRtClient::GetHloCostAnalysis() const {
+  return std::make_unique<HloCostAnalysis>(
+      [](const xla::Shape& shape) -> int64_t {
+        if (shape.IsTuple()) {
+          return ShapeUtil::TupleElementCount(shape) * sizeof(uint32_t);
+        }
+        auto result = PjRtGetOnDeviceBytesCount(shape);
+        CHECK_OK(result.status()) << shape.ToString(true);
+        return *result;
+      });
+}
+
+bool CommonPjRtClient::IsOnCpu(PjRtMemorySpace* memory_space) {
+  auto topology = GetTopologyDescription();
+  CHECK_OK(topology.status());
+  return (*topology)->IsMemorySpaceOnCpu(memory_space->kind_id());
+}
+
+bool CommonPjRtClient::BufferFromHostBufferSupportsZeroCopy(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
+    PjRtMemorySpace* memory_space, const Layout* device_layout) const {
+  if (!IsCpuId(platform_id()) &&
+      memory_space->kind_id() != UnpinnedHostMemorySpace::kKindId) {
+    return false;
+  }
+  if (byte_strides && !HasMajorToMinorLayout(type, dims, *byte_strides)) {
+    return false;
+  }
+  // Packed arrays are unpacked on host and packed on device.
+  if (primitive_util::IsSubByteNonPredType(type)) {
+    return false;
+  }
+  if (shape.has_layout() &&
+      !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return false;
+  }
+
+  // If the input buffer has a default layout and is sufficiently aligned, we
+  // can simply point to the input array's data without any further copies. At
+  // the time of writing we require a 16-byte alignment because XLA may generate
+  // code which requires it.
+  if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
+    return false;
+  }
+  return true;
+}
 void CommonPjRtClient::TrackFuture(PjRtMemorySpace* memory_space,
                                    absl::string_view debug_info,
                                    const Future<>& future) {}
@@ -4045,6 +4103,23 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
       kv_store_(std::move(kv_store)),
       raw_client_(std::move(raw_client)) {
   CHECK(topology_) << " topology is required.";
+  auto set_bool_attr_from_plugin_attrs = [&](absl::string_view key, bool& out) {
+    if (!plugin_attributes_) {
+      return;
+    }
+    auto it = plugin_attributes_->attributes.find(key);
+    if (it != plugin_attributes_->attributes.end()) {
+      if (const bool* b = std::get_if<bool>(&it->second)) {
+        out = *b;
+      }
+    }
+  };
+  set_bool_attr_from_plugin_attrs("allow_fallback_for_donation",
+                                  allow_fallback_for_donation_);
+  set_bool_attr_from_plugin_attrs("supports_two_phase_launch",
+                                  supports_two_phase_launch_);
+  set_bool_attr_from_plugin_attrs("supports_predetermined_error",
+                                  supports_predetermined_error_);
 }
 
 void CommonPjRtClientImpl::AttachDevices(
