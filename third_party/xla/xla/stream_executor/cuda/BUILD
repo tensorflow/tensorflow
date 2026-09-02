@@ -2667,11 +2667,6 @@ xla_cc_test(
         ":nvlink",
         ":ptxas",
     ],
-    tags = [
-        "cuda-only",
-        "gpu",
-        "requires-gpu-nvidia",
-    ],
     deps = [
         ":assemble_compilation_provider",
         ":compilation_provider",
