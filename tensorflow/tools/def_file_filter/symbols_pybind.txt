@@ -618,3 +618,4 @@ tensorflow::tpu::SparseCoreLayoutStacker::AddTable
 tensorflow::tpu::SparseCoreLayoutStacker::SparseCoreLayoutStacker
 tensorflow::tpu::SparseCoreLayoutStacker::AddTable
 tensorflow::tpu::SparseCoreLayoutStacker::GetLayouts
+
