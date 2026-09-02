@@ -77,10 +77,7 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
     auto config_or = GetGpuLaunchConfig64(num_elements, d);
-    if (!config_or.ok()) {
-      context->SetStatus(config_or.status());
-      return;
-    }
+    CHECK_OK(config_or.status());  // Crash OK
     const GpuLaunchConfig64& cfg = *config_or;
 
     TF_CHECK_OK(
