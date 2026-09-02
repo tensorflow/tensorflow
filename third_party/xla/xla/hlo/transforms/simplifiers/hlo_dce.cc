@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -42,6 +43,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/shape.h"
@@ -167,6 +170,35 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
                         ? tuple_shapes[0]
                         : ShapeUtil::MakeTupleShape(tuple_shapes);
   *fusion_instruction->mutable_shape() = std::move(new_shape);
+
+  if (std::shared_ptr<OriginalValue> old_original_value =
+          fusion_instruction->original_value()) {
+    if (!old_original_value->is_synthetic_call()) {
+      if (tuple_shapes.size() == 1) {
+        int64_t old_idx = *used_tuple_elements.begin();
+        auto new_original_value =
+            std::make_shared<OriginalValue>(fusion_instruction->shape());
+        if (old_original_value->tree().find({old_idx}) !=
+            old_original_value->tree().end()) {
+          new_original_value->mutable_tree()->CopySubtreeFrom(
+              old_original_value->tree(), {old_idx}, {});
+          fusion_instruction->set_original_value(new_original_value);
+        }
+      } else {
+        absl::flat_hash_map<int64_t, int64_t> old_to_new_tuple_idx;
+        int64_t new_idx = 0;
+        for (int64_t old_idx : used_tuple_elements) {
+          old_to_new_tuple_idx[old_idx] = new_idx++;
+        }
+        auto new_original_value =
+            std::make_shared<OriginalValue>(fusion_instruction->shape());
+        if (CopyOriginalValue(old_original_value, new_original_value,
+                              old_to_new_tuple_idx)) {
+          fusion_instruction->set_original_value(new_original_value);
+        }
+      }
+    }
+  }
 
   // Update the users of the old fusion instruction.
   ABSL_RETURN_IF_ERROR(
