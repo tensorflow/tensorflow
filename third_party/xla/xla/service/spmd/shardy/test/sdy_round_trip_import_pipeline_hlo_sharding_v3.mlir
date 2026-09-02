@@ -127,11 +127,13 @@ module @module_1 {
   // Test that inlined meshes are lifted and deduplicated.
 
   // CHECK-LABEL: func @inlined_mesh(
-  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>})
-  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>}) {
+  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>},
+  // CHECK-SAME: %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>})
+  // CHECK-SAME: -> tensor<32xi32> {
   func.func @inlined_mesh(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"}
-  ) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"},
+    %arg1: tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}
+  ) -> tensor<32xi32> {
     // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh_0, [{"a", "b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
     %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['c'=4], [{'c'}]}"} : (tensor<32xi32>) -> tensor<32xi32>
@@ -238,6 +240,13 @@ module @maximal_sharding_module {
       operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>
+  }
+
+  // CHECK-LABEL: func @result_with_maximal_sharding
+  // CHECK-SAME:    (%arg0: tensor<32xi32>) -> tensor<32xi32> {
+  func.func @result_with_maximal_sharding(%arg0: tensor<32xi32>) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=0]}"}) {
+    // CHECK-NEXT: return %arg0 : tensor<32xi32>
+    return %arg0 : tensor<32xi32>
   }
 }
 
