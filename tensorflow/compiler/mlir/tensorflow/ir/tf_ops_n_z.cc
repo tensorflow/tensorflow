@@ -719,7 +719,7 @@ int GetLengthOfRange(FloatOrInt start, FloatOrInt limit, FloatOrInt delta) {
   // Refer to the implementation in
   // tensorflow/lite/kernels/range.cc.
   FloatOrInt diff = limit - start;
-  if (std::is_integral<FloatOrInt>::value) {
+  if (std::is_integral_v<FloatOrInt>) {
     return ((std::abs(diff) + std::abs(delta) - 1) / std::abs(delta));
   }
   return std::ceil(std::abs(diff / delta));
