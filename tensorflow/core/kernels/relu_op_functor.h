@@ -144,11 +144,10 @@ struct Elu {
   // activations: same shape as "features".
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
-    // features.constant(?)
+    // Use expm1 (exp(x) - 1) to avoid catastrophic cancellation for small x.
     activations.device(d) =
         (features < static_cast<T>(0))
-            .select(features.exp() - features.constant(static_cast<T>(1)),
-                    features);
+            .select(features.expm1(), features);
   }
 };
 
@@ -178,17 +177,15 @@ struct Selu {
   // activations: same shape as "features".
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
-    // features.constant(?)
+    // Use expm1 (exp(x) - 1) to avoid catastrophic cancellation for small x.
     const auto scale = static_cast<T>(1.0507009873554804934193349852946);
     const auto scale_alpha = static_cast<T>(1.7580993408473768599402175208123);
-    const auto one = static_cast<T>(1);
     const auto zero = static_cast<T>(0);
     activations.device(d) =
-        (features.isnan())
+     (features.isnan())
             .select(features,
                     (features < zero)
-                        .select(scale_alpha *
-                                    (features.exp() - features.constant(one)),
+                        .select(scale_alpha * features.expm1(),
                                 scale * features));
   }
 };
