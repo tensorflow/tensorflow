@@ -268,6 +268,33 @@ class UnaryOpTest(test.TestCase):
     self.assertTrue(np.isnan(y[2]))
     self.assertTrue(np.isnan(y[3]))
 
+  def testDoubleErfLargeFinite(self):
+    # Regression test for GitHub issue #124773: Eigen's double erf used to
+    # return NaN for very large finite inputs (and +/-inf) because intermediate
+    # x*x overflowed.  erf should saturate to +/-1 for these values, matching
+    # math.erf / scipy / peer libraries.
+    x = np.array(
+        [1e200, 1e300, -1e200, -1e300, np.inf, -np.inf], dtype=np.float64
+    )
+    with self.cached_session():
+      y = self.evaluate(math_ops.erf(ops.convert_to_tensor(x)))
+    self.assertAllEqual(np.array([1.0, 1.0, -1.0, -1.0, 1.0, -1.0]), y)
+    # Still finite for the large-but-finite cases.
+    self.assertTrue(np.all(np.isfinite(y[:4])))
+    # NaN input remains NaN (scalar path).
+    nan_y = self.evaluate(
+        math_ops.erf(
+            ops.convert_to_tensor(np.array([np.nan], dtype=np.float64))
+        )
+    )
+    self.assertTrue(np.isnan(nan_y[0]))
+    # NaN input remains NaN (vectorized packet path).
+    nan_x = np.array(
+        [np.nan, 1.0, np.nan, 1e300, np.nan] * 8, dtype=np.float64
+    )
+    nan_y_vec = self.evaluate(math_ops.erf(ops.convert_to_tensor(nan_x)))
+    self.assertAllEqual(np.isnan(nan_x), np.isnan(nan_y_vec))
+
   @test_util.run_deprecated_v1
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
