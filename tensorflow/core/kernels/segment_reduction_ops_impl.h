@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -1347,8 +1348,9 @@ class SparseSegmentGradOpBase : public OpKernel {
       // only runs when N > 0. Without this, an empty `indices` combined with
       // `output_dim0` > 0 returns the freshly allocated output uninitialized.
       // Zero is the correct gradient for a row that received no contribution.
-      if (M > 0) {
-        output->flat_outer_dims<T>().setZero();
+      if (output->NumElements() > 0) {
+        functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                             output->flat<T>());
       }
       return;
     }
