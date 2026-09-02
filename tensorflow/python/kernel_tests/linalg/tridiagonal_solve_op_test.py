@@ -23,6 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -501,6 +502,12 @@ class TridiagonalSolveOpTest(test.TestCase):
             y_placeholder: y
         })
 
+  def testEmptyBatch(self):
+    self._test(
+        diags=constant_op.constant(0, shape=(0, 3, 4), dtype=dtypes.float32),
+        rhs=constant_op.constant(0, shape=(0, 4, 1), dtype=dtypes.float32),
+        expected=constant_op.constant(0, shape=(0, 4, 1), dtype=dtypes.float32))
+
   # Invalid input shapes
 
   @flags(FLAG_NO_PARAMETERIZATION)
@@ -513,6 +520,8 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 3, 4), (4, 5))
     test_raises((5, 3, 4), (5))
     test_raises((5), (5, 4))
+    test_raises((5, 3, 4), (4, 4, 1))
+    test_raises((5, 3, 4), (5, 3, 1))
 
   @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesSequenceFormat(self):
@@ -537,6 +546,55 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 4, 7), (5, 4))
     test_raises((5, 4, 4), (3, 4))
     test_raises((5, 4, 4), (5, 3))
+
+  @test_util.run_deprecated_v1
+  def testInvalidShapesWithPlaceholders(self):
+    if context.executing_eagerly():
+      return
+    # Use placeholders to bypass Python static shape checks and trigger C++
+    # validation in TridiagonalSolveOpGpu.
+    diags = array_ops.placeholder(dtypes.float64, shape=None)
+    rhs = array_ops.placeholder(dtypes.float64, shape=None)
+    x = linalg_impl.tridiagonal_solve(
+        diags, rhs, "compact", partial_pivoting=self.pivoting)
+
+    with self.cached_session() as sess:
+      # 1. LHS rank < 2
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "LHS tensor must have rank >= 2"):
+        sess.run(x, feed_dict={diags: np.ones((5,)), rhs: np.ones((5, 4))})
+
+      # 2. LHS rank != RHS rank
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "LHS and RHS tensors must have the same rank"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 3, 4)), rhs: np.ones((5, 4))
+        })
+
+      # 3. LHS and RHS batch dimensions mismatch
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "LHS and RHS tensors must have the same batch dimensions"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 3, 4)), rhs: np.ones((4, 4, 1))
+        })
+
+      # 4. Expected 3 diagonals
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "Expected diagonals to be provided as a matrix with 3 rows"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 4, 4)), rhs: np.ones((5, 4, 1))
+        })
+
+      # 5. Expected same matrix size
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "Expected same matrix size in both arguments"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 3, 4)), rhs: np.ones((5, 3, 1))
+        })
 
   # Tests with placeholders
 

@@ -293,6 +293,12 @@ class TridiagonalSolveOpGpu : public OpKernel {
       batch_size *= lhs.dim_size(i);
     }
 
+    if (batch_size == 0) {
+      Tensor* output;
+      OP_REQUIRES_OK(context, context->allocate_output(0, rhs.shape(), &output));
+      return;
+    }
+
     // The batching mechanism of LinearAlgebraOp is used when it's not
     // possible or desirable to use GtsvBatched.
     const bool use_linalg_op =
