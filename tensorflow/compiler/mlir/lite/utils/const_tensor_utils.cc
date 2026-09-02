@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 
-#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cstddef>
@@ -46,9 +45,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -375,7 +374,8 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     case 8: {
       assert(bytes_len == shaped_type.getNumElements());
       assert(mlir::isa<mlir::Float8E4M3FNType>(elem_type) ||
-             mlir::isa<mlir::Float8E5M2Type>(elem_type));
+             mlir::isa<mlir::Float8E5M2Type>(elem_type) ||
+             mlir::isa<mlir::Float8E8M0FNUType>(elem_type));
       return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
           shaped_type,
           llvm::ArrayRef<char>(reinterpret_cast<const char*>(buffer.data()),

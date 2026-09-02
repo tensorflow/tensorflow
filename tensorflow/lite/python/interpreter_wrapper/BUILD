@@ -58,7 +58,8 @@ cc_library(
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/py/numpy:headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep

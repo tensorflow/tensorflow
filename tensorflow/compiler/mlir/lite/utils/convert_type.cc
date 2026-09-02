@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -28,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
 
 namespace tflite {
 
@@ -49,6 +50,8 @@ tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
     return tflite::TensorType_FLOAT8_E4M3FN;
   } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
     return tflite::TensorType_FLOAT8_E5M2;
+  } else if (mlir::isa<mlir::Float8E8M0FNUType>(type)) {
+    return tflite::TensorType_FLOAT8_E8M0FNU;
   } else if (mlir::isa<mlir::TF::StringType>(type)) {
     return tflite::TensorType_STRING;
   } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
@@ -102,6 +105,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return mlir::Float8E4M3FNType::get(builder.getContext());
     case tflite::TensorType_FLOAT8_E5M2:
       return mlir::Float8E5M2Type::get(builder.getContext());
+    case tflite::TensorType_FLOAT8_E8M0FNU:
+      return mlir::Float8E8M0FNUType::get(builder.getContext());
     case tflite::TensorType_INT32:
       return builder.getIntegerType(32);
     case tflite::TensorType_UINT16:
@@ -159,6 +164,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_FLOAT8_E4M3FN;
     case tflite::TensorType_FLOAT8_E5M2:
       return tensorflow::DT_FLOAT8_E5M2;
+    case tflite::TensorType_FLOAT8_E8M0FNU:
+      return tensorflow::DT_INVALID;
     // TODO(b/246806634): Tensorflow DT_INT2/4 type doesn't exist yet
     case tflite::TensorType_INT2:
       return tensorflow::DT_INT8;

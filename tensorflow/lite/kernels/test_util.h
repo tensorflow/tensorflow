@@ -39,6 +39,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "fp16/fp16.h"  // from @FP16
 #include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -60,10 +61,8 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
-#include "tensorflow/lite/types/fp16.h"
 #include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
-#include "tsl/platform/logging.h"
 
 namespace tflite {
 
@@ -957,7 +956,8 @@ class SingleOpModel {
         (tensor->type == kTfLiteInt4
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
          || tensor->type == kTfLiteFloat8E4M3FN ||
-         tensor->type == kTfLiteFloat8E5M2
+         tensor->type == kTfLiteFloat8E5M2 ||
+         tensor->type == kTfLiteFloat8E8M0FNU
 #endif
          )) {
       v = reinterpret_cast<const T*>(tensor->data.raw);
@@ -1269,7 +1269,8 @@ class SingleOpModel {
       if (std::is_same_v<T, uint8_t> &&
           (t->type == kTfLiteInt4
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
-           || t->type == kTfLiteFloat8E4M3FN || t->type == kTfLiteFloat8E5M2
+           || t->type == kTfLiteFloat8E4M3FN || t->type == kTfLiteFloat8E5M2 ||
+           t->type == kTfLiteFloat8E8M0FNU
 #endif
            )) {
         v = reinterpret_cast<T*>(t->data.raw);

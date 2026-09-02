@@ -22,11 +22,14 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -442,6 +445,7 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       break;
     case TensorType_FLOAT8_E4M3FN:
     case TensorType_FLOAT8_E5M2:
+    case TensorType_FLOAT8_E8M0FNU:
       bytes_required *= sizeof(uint8_t);
       break;
     case TensorType_INT8:
