@@ -44,8 +44,8 @@ module attributes {gpu.container_module} {
     // ABI-SAME: %[[ARG7:.*]]: i64, %[[ARG8:.*]]: i64, %[[ARG9:.*]]: i64
     // SHAPE-SAME: %[[ARG0:.*]]: !llvm.ptr, %[[ARG1:.*]]: !llvm.ptr, %[[ARG2:.*]]: i64, %[[ARG3:.*]]: i64, %[[ARG4:.*]]: i64, %[[ARG5:.*]]: !llvm.ptr, %[[ARG6:.*]]: !llvm.ptr, %[[ARG7:.*]]: i64, %[[ARG8:.*]]: i64, %[[ARG9:.*]]: i64
     llvm.func @abs_kernel(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: !llvm.ptr, %arg6: !llvm.ptr, %arg7: i64, %arg8: i64, %arg9: i64) attributes {gpu.kernel} {
-      // ABI: %[[ZERO:.*]] = llvm.mlir.constant(0 : index)
-      // ABI: %[[ONE:.*]] = llvm.mlir.constant(1 : index)
+      // ABI: %[[ZERO:.*]] = llvm.mlir.constant(0 : i64)
+      // ABI: %[[ONE:.*]] = llvm.mlir.constant(1 : i64)
       // CHECK: llvm.mlir.undef
       %0 = llvm.mlir.undef : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
       // ABI-NEXT: llvm.insertvalue %[[ARG1]]
@@ -108,8 +108,8 @@ module attributes {gpu.container_module} {
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index, llvm.noalias}
     llvm.func @AddV2_kernel(%arg0: i64, %arg1: !llvm.ptr, %arg2: !llvm.ptr, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: !llvm.ptr, %arg7: !llvm.ptr, %arg8: i64, %arg9: i64, %arg10: i64, %arg11: !llvm.ptr, %arg12: !llvm.ptr, %arg13: i64, %arg14: i64, %arg15: i64) attributes {gpu.kernel} {
-      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
-      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
+      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : i64) : i64
+      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : i64) : i64
       %0 = llvm.mlir.undef : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
       %1 = llvm.insertvalue %arg1, %0[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
       %2 = llvm.insertvalue %arg2, %1[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
@@ -197,8 +197,8 @@ module attributes {gpu.container_module} {
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
     llvm.func @AddV2_kernel(%arg0: i64, %arg1: i64, %arg2: !llvm.ptr, %arg3: !llvm.ptr {llvm.align = 16 : index, llvm.noalias}, %arg4: i64, %arg5: i64, %arg6: i64, %arg7: i64, %arg8: i64, %arg9: !llvm.ptr, %arg10: !llvm.ptr {llvm.align = 16 : index}, %arg11: i64, %arg12: i64, %arg13: i64, %arg14: i64, %arg15: i64, %arg16: !llvm.ptr, %arg17: !llvm.ptr {llvm.align = 16 : index}, %arg18: i64, %arg19: i64, %arg20: i64, %arg21: i64, %arg22: i64) attributes {gpu.kernel} {
-      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
-      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
+      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : i64) : i64
+      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : i64) : i64
       %0 = llvm.mlir.undef : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
       %1 = llvm.insertvalue %arg2, %0[0] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
       %2 = llvm.insertvalue %arg3, %1[1] : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
@@ -305,8 +305,8 @@ module attributes {gpu.container_module} {
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
     llvm.func @AddV2_kernel(%arg0: i64, %arg1: !llvm.ptr, %arg2: !llvm.ptr, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: !llvm.ptr, %arg7: !llvm.ptr, %arg8: i64, %arg9: i64, %arg10: i64, %arg11: !llvm.ptr, %arg12: !llvm.ptr, %arg13: i64, %arg14: i64, %arg15: i64) attributes {gpu.kernel} {
-      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
-      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
+      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : i64) : i64
+      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : i64) : i64
       %0 = llvm.mlir.undef : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
       %1 = llvm.insertvalue %arg1, %0[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
       %2 = llvm.insertvalue %arg2, %1[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>

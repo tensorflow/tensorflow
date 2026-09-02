@@ -19,36 +19,32 @@
 #include <limits>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
 #include <memory>
 #include <numeric>
-#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace {
-using errors::InvalidArgument;
-
 template <typename Scalar>
 using RowMajorMatrix =
     Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -141,7 +137,7 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     Eigen::Map<MatrixXfRowMajor> sampled_points(
         output_sampled_points_tensor->matrix<float>().data(), num_to_sample,
         point_dimensions);
-    std::unordered_set<int64_t> sampled_indices;
+    absl::flat_hash_set<int64_t> sampled_indices;
 
     random::PhiloxRandom random(seed);
     random::SimplePhilox rng(&random);
@@ -329,8 +325,10 @@ class NearestNeighborsOp : public OpKernel {
         points_tensor.matrix<float>().data(), num_points, point_dimensions);
     const Eigen::Map<const MatrixXfRowMajor> centers(
         centers_tensor.matrix<float>().data(), num_centers, center_dimensions);
-    const int64_t k =
-        std::min<int64_t>(num_centers, k_tensor.scalar<int64_t>()());
+    const int64_t k_tensor_val = k_tensor.scalar<int64_t>()();
+    OP_REQUIRES(context, k_tensor_val >= 0,
+                absl::InvalidArgumentError("Expected k >= 0."));
+    const int64_t k = std::min<int64_t>(num_centers, k_tensor_val);
 
     Tensor* output_nearest_center_indices_tensor;
     Tensor* output_nearest_center_distances_tensor;
