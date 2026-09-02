@@ -40,11 +40,11 @@ namespace functor {
 template <typename T>
 struct NanAwareCompare {
   bool operator()(const T& a, const T& b) const {
+    if (a < b) return true;
     if constexpr (!Eigen::NumTraits<T>::IsInteger) {
-      if (Eigen::numext::isnan(a)) return false;
-      if (Eigen::numext::isnan(b)) return true;
+      return !Eigen::numext::isnan(a) && Eigen::numext::isnan(b);
     }
-    return a < b;
+    return false;
   }
 };
 
