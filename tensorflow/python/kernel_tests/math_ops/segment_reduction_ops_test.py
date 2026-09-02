@@ -726,11 +726,11 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
               self.assertAllClose(evaluated_max[0][1], 3.0)
 
   def testNumSegmentsOverflow(self):
-    """Regression test: num_segments > 2G must raise InvalidArgumentError.
+    """Regression test: an oversized num_segments raises InvalidArgumentError.
 
     Excessively large num_segments values (near INT64_MAX) cause integer
     overflow in internal size calculations, leading to illegal memory access
-    or process abort. The upper bound of 2^31 prevents this. See #117549.
+    or process abort. The kint32max upper bound prevents this. See #117549.
     """
     data = constant_op.constant([1, 2, 3, 4], dtype=dtypes_lib.int32)
     segment_ids = constant_op.constant([0, 1, 0, 1], dtype=dtypes_lib.int64)

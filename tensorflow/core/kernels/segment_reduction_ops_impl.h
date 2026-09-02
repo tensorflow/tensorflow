@@ -523,7 +523,8 @@ class UnsortedSegmentReductionOp : public OpKernel {
     // subsequently used (see SubtleMustCopy).
     const int64_t num_segments_val =
         num_segments.dtype() == DT_INT32
-            ? internal::SubtleMustCopy(num_segments.scalar<int32_t>()())
+            ? static_cast<int64_t>(
+                  internal::SubtleMustCopy(num_segments.scalar<int32_t>()()))
             : internal::SubtleMustCopy(num_segments.scalar<int64_t>()());
     OP_REQUIRES(context, num_segments_val >= 0,
                 absl::InvalidArgumentError(
