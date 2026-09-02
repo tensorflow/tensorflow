@@ -128,6 +128,7 @@ class RaggedGatherOpBase : public OpKernel {
       std::vector<std::pair<SPLITS_TYPE, SPLITS_TYPE>>* value_slices,
       SPLITS_TYPE* num_values) {
     *num_values = 0;
+    int64_t total_values = 0;
     value_slices->clear();
 
     int num_splits = indices_in.dims() - 1 + params_nested_splits_in.size();
@@ -188,9 +189,17 @@ class RaggedGatherOpBase : public OpKernel {
       }
       if (limit != start) {
         value_slices->emplace_back(start, limit);
-        *num_values += limit - start;
+        total_values += limit - start;
       }
     }
+    // The value count is accumulated in a wide type and validated before it is
+    // narrowed to SPLITS_TYPE, so an int32 Tsplits cannot silently wrap and
+    // drive an undersized output allocation in WriteValues.
+    if (total_values > std::numeric_limits<SPLITS_TYPE>::max()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of values ", total_values, " exceeds limits of Tsplits"));
+    }
+    *num_values = static_cast<SPLITS_TYPE>(total_values);
     return absl::OkStatus();
   }
 
