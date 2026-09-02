@@ -25,10 +25,32 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.platform import test
 
 
 class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
+
+  def testGetItemFromEmptyList(self):
+    # Regression test for GitHub issue 109648. Reading from a statically
+    # empty list appears in code that never runs, such as the body of a
+    # while loop with a zero trip count, but XLA compiles that code anyway
+    # and used to reject the read at compile time. It now yields zeros of
+    # the element shape.
+    with self.session() as sess, self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_shape=[2], element_dtype=dtypes.float32, num_elements=0)
+      e = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(e), [0.0, 0.0])
+
+  def testMapFnOverEmptyTensor(self):
+    # End to end case for GitHub issue 109648: map_fn over a zero length
+    # tensor compiles its loop body even though it never runs, and the
+    # TensorListGetItem in that body used to fail compilation.
+    with self.session() as sess, self.test_scope():
+      x = array_ops.zeros([0], dtype=dtypes.float32)
+      y = map_fn.map_fn(lambda t: t + 1.0, x)
+      self.assertAllEqual(sess.run(y).shape, (0,))
 
   def testElementShape(self):
     with self.session() as sess, self.test_scope():
