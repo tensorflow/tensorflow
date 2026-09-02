@@ -47,7 +47,6 @@ load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_static",
-    "tf_cuda_tests_tags",
 )
 load(
     "//xla/tsl/platform:rules_cc.bzl",
@@ -942,7 +941,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cuda_device_address_vmm_allocator",
@@ -2397,7 +2396,9 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
-    ] + tf_cuda_tests_tags(),
+        "notsan",
+        "requires-gpu-sm90",
+    ],
     deps = [
         ":compilation_provider_test_lib",
         "@com_google_googletest//:gtest_main",
