@@ -31,20 +31,9 @@ def CreateTFLCastToInt32Op : NativeCodeCall<
 def ConstDefaultResultAccuracyAttr :
   ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
 
-def IsBuildableWithArithConstant : Constraint<
-  CPred<"::mlir::arith::ConstantOp::isBuildableWith($0, $1.getType())">
->;
-
 def : Pat<
   (MHLO_ConstantOp:$output $value),
   (Arith_ConstantOp $value),
-  [(IsBuildableWithArithConstant $value, $output)],
-  [],
-  (addBenefit 10)>;
-
-def : Pat<
-  (MHLO_ConstantOp:$output $value),
-  (TFL_ConstOp $value),
   [(TFL_TensorOf<[AnyType]> $output)]>;
 
 
