@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/shape.h"
@@ -744,6 +745,8 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
                                 ArrayRef<bool> allowPropagationToResults,
                                 bool enableHloShardingV3) {
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
