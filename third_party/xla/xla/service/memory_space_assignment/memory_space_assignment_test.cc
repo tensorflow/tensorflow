@@ -1550,8 +1550,8 @@ ENTRY entry {
   options_result_modifier.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value_to_update->defining_instruction()
-                    ->name() == "p0" &&
+        if (request.allocation_value_to_update->position()
+                    .instruction->name() == "p0" &&
             request.use->hlo_use.instruction->name() == "add0") {
           result = AllocationResult::kFailRequiresUncommit;
         }
@@ -1573,7 +1573,7 @@ ENTRY entry {
   options_request_modifier.max_retries = 1;
   options_request_modifier
       .allocation_request_modifier_testing_fn = [](AllocationRequest& request) {
-    if (request.allocation_value_to_update->defining_instruction()->name() ==
+    if (request.allocation_value_to_update->position().instruction->name() ==
             "p0" &&
         request.use->hlo_use.instruction->name() == "add0") {
       // Schedule the copy-done before negate4 (scheduled at 6).
@@ -1647,7 +1647,7 @@ ENTRY entry {
   options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "p0_copy" &&
             request.use->hlo_use.instruction->name() == "concat") {
           result = AllocationResult::kFailRequiresUncommit;
@@ -8382,11 +8382,11 @@ TEST_F(MemorySpaceAssignmentTest,
   // default memory, and creates a new one which is wrong.
   bool marked_inefficient = false;
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
+    if (absl::c_find(positions,
                      HloPosition{FindInstruction(module.get(), "while1"),
-                                 {1}}) != defining_positions.end() &&
+                                 {1}}) != positions.end() &&
         !marked_inefficient) {
       LOG(INFO) << "Marking the use inefficient.";
       marked_inefficient = true;
@@ -8423,11 +8423,10 @@ TEST_F(MemorySpaceAssignmentTest, InefficientAllocationRetryWithoutProgress) {
   Options options = DefaultMemorySpaceOptions();
   // The hook flags the add instruction's use of p0 as inefficient.
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
-                     HloPosition{FindInstruction(module.get(), "p0"), {}}) !=
-        defining_positions.end()) {
+    if (absl::c_find(positions, HloPosition{FindInstruction(module.get(), "p0"),
+                                            {}}) != positions.end()) {
       return {HloUse{FindInstruction(module.get(), "add"), 1}};
     }
     return {};
@@ -17851,7 +17850,7 @@ ENTRY entry {
   memory_space_options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "negate0" &&
             retry_number <= 0 && result == AllocationResult::kSuccess) {
           result = AllocationResult::kFailOutOfMemory;

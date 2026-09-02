@@ -1169,7 +1169,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       AllocationValue& allocation_value) const;
 
   // Adds a required assignment in default memory, at the given time, if
-  // allocation_value's defining position is not allowed in alternate memory.
+  // allocation_value's position is not allowed in alternate memory.
   void AssignDefaultMemIfNotAllowedInAlternateMem(
       AllocationValue& allocation_value, int64_t time);
 
