@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_CODEGEN_ORCHESTRATOR_H_
 #define XLA_BACKENDS_AUTOTUNER_CODEGEN_ORCHESTRATOR_H_
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -104,7 +105,15 @@ class CodegenOrchestrator {
       std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
       Options options)
       : codegen_backends_(std::move(codegen_backends)),
-        options_(std::move(options)) {}
+        options_(std::move(options)) {
+    // Reorder codegen backends so the trustworthy ones are first and correct
+    // configs are prioritized.
+    std::stable_partition(codegen_backends_.begin(), codegen_backends_.end(),
+                          [](const std::unique_ptr<CodegenBackend>& backend) {
+                            return backend != nullptr &&
+                                   !backend->CanProduceWrongResults();
+                          });
+  }
 
   absl::Status IsValidExecutable(
       const absl::StatusOr<std::unique_ptr<Executable>>& executable,

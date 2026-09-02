@@ -72,6 +72,48 @@ TEST_F(CodegenOrchestratorTest, NoCodegenBackendReturnsInvalidArgument) {
   EXPECT_THAT(orchestrator, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_F(CodegenOrchestratorTest, ReordersBackendsSoCorrectOnesAreFirst) {
+  auto wrong_backend_1 = std::make_unique<MockCodegenBackendWithWrongResults>();
+  EXPECT_CALL(*wrong_backend_1, name())
+      .WillRepeatedly(Return("wrong_backend_1"));
+
+  auto correct_backend_1 = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*correct_backend_1, CanProduceWrongResults())
+      .WillRepeatedly(Return(false));
+  EXPECT_CALL(*correct_backend_1, name())
+      .WillRepeatedly(Return("correct_backend_1"));
+
+  auto wrong_backend_2 = std::make_unique<MockCodegenBackendWithWrongResults>();
+  EXPECT_CALL(*wrong_backend_2, name())
+      .WillRepeatedly(Return("wrong_backend_2"));
+
+  auto correct_backend_2 = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*correct_backend_2, CanProduceWrongResults())
+      .WillRepeatedly(Return(false));
+  EXPECT_CALL(*correct_backend_2, name())
+      .WillRepeatedly(Return("correct_backend_2"));
+
+  auto* c1_ptr = correct_backend_1.get();
+  auto* c2_ptr = correct_backend_2.get();
+  auto* w1_ptr = wrong_backend_1.get();
+  auto* w2_ptr = wrong_backend_2.get();
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(wrong_backend_1));
+  backends.push_back(std::move(correct_backend_1));
+  backends.push_back(std::move(wrong_backend_2));
+  backends.push_back(std::move(correct_backend_2));
+
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+
+  ASSERT_THAT(orchestrator->codegen_backends(), SizeIs(4));
+  EXPECT_EQ(orchestrator->codegen_backends()[0].get(), c1_ptr);
+  EXPECT_EQ(orchestrator->codegen_backends()[1].get(), c2_ptr);
+  EXPECT_EQ(orchestrator->codegen_backends()[2].get(), w1_ptr);
+  EXPECT_EQ(orchestrator->codegen_backends()[3].get(), w2_ptr);
+}
+
 TEST_F(CodegenOrchestratorTest, GetSupportedConfigsAggregatesFromAllBackends) {
   std::vector<std::unique_ptr<BackendConfig>> configs_1;
   configs_1.push_back(GetTestConfig("test_config_1"));
