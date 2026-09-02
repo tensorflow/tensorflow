@@ -249,8 +249,12 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   // Collapse and tile parallel loops for GPU only.
   pm.addNestedPass<FuncOp>(mlir::createCollapseParallelLoopsTo1DPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::createTileLoopsPass(tile_sizes, unroll_factors));
+  mlir::TileLoopsPassOptions tile_loops_options;
+  tile_loops_options.tile_sizes_ =
+      llvm::SmallVector<int64_t>(tile_sizes.begin(), tile_sizes.end());
+  tile_loops_options.unroll_factors_ =
+      llvm::SmallVector<int64_t>(unroll_factors.begin(), unroll_factors.end());
+  pm.addNestedPass<FuncOp>(mlir::createTileLoopsPass(tile_loops_options));
 
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
