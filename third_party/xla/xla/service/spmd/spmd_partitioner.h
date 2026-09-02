@@ -53,6 +53,8 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+inline constexpr char kSpmdBoundaryCopyAttr[] = "_xla_spmd_boundary_copy";
+
 // Enum representing the partitioning methods for gather and scatter.
 enum class GatherScatterPartitioningMethod {
   kExplicitBatch,
