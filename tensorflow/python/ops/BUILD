@@ -4832,3 +4832,32 @@ py_test(
         "//tensorflow/python/platform:client_testlib",
     ],
 )
+
+py_library(
+    name = "quantized_dense",
+    srcs = ["quantized_dense.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":math_ops",
+        ":nn_ops",
+        ":random_ops",
+        ":variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+    ],
+)
+
+tf_py_strict_test(
+    name = "quantized_dense_test",
+    size = "small",
+    srcs = ["quantized_dense_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":quantized_dense",
+        ":random_ops",
+        "//tensorflow/python/framework:random_seed",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
