@@ -1395,7 +1395,7 @@ class DatasetBase : public core::RefCounted {
   // Returns the cardinality of this dataset.
   // TODO(shilpakrish): Remove this overload once all callers are migrated
   // to the API which passes in the options parameter.
-  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
+  [[deprecated("Use the overload that passes in the options parameter.")]]
   int64_t Cardinality() const;
 
   // Returns the cardinality of this dataset based on the options.

@@ -197,7 +197,7 @@ class DeviceBase {
 
   // This method is provided for backwards compatibility, and will be removed
   // in a future release.
-  ABSL_DEPRECATED("Use `this->GetAllocator()` or `this->GetScopedAllocator()`.")
+  [[deprecated("Use `this->GetAllocator()` or `this->GetScopedAllocator()`.")]]
   Allocator* GetStepAllocator(AllocatorAttributes attr, ResourceMgr*) {
     return GetAllocator(attr);
   }

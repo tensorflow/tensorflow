@@ -76,7 +76,7 @@ std::string Printf(const absl::FormatSpec<Arg1, Arg2, Arg3, Arg4, Arg5>& format,
 
 template <typename Arg1, typename Arg2, typename Arg3, typename Arg4,
           typename Arg5, typename... AV>
-ABSL_DEPRECATED("Use absl::StrFormat instead.")
+[[deprecated("Use absl::StrFormat instead.")]]
 std::string
     Printf(const absl::FormatSpec<Arg1, Arg2, Arg3, Arg4, Arg5, AV...>& format,
            Arg1 arg1, Arg2 arg2, Arg3 arg3, Arg4 arg4, Arg5 arg5, AV... args) {
@@ -130,7 +130,7 @@ void Appendf(std::string* dst,
 
 template <typename Arg1, typename Arg2, typename Arg3, typename Arg4,
           typename Arg5, typename... AV>
-ABSL_DEPRECATED("Use absl::StrAppendFormat instead.")
+[[deprecated("Use absl::StrAppendFormat instead.")]]
 void Appendf(
     std::string* dst,
     const absl::FormatSpec<Arg1, Arg2, Arg3, Arg4, Arg5, AV...>& format,

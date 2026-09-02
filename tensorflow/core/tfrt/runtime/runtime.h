@@ -195,7 +195,7 @@ class Runtime {
     return absl::OkStatus();
   }
 
-  ABSL_DEPRECATED("Use the overload that take ModelRuntimeContext instead.")
+  [[deprecated("Use the overload that take ModelRuntimeContext instead.")]]
   void CreateRuntimeResources(const GraphExecutionOptions& options,
                               tfrt::ResourceContext* resource_ctx) const {
     ModelRuntimeContext model_context(

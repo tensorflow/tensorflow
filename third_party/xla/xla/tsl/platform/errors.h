@@ -173,8 +173,8 @@ void AppendToMessage(absl::Status* status, Args... args) {
   *status = std::move(new_status);
 }
 
-ABSL_DEPRECATED(
-    "TF_RETURN_IF_ERROR is deprecated. Call ABSL_RETURN_IF_ERROR instead")
+[[deprecated(
+    "TF_RETURN_IF_ERROR is deprecated. Call ABSL_RETURN_IF_ERROR instead")]]
 inline void TfReturnIfErrorDeprecationMarker() {}
 
 // For propagating errors when calling a function.
@@ -214,8 +214,8 @@ inline absl::Status Cancelled(const absl::Status& arg) {
   return absl::CancelledError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::CancelledError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::CancelledError(arg1) instead.")]] inline absl::Status
     Cancelled(Arg1 arg1) {
   return absl::CancelledError(arg1);
 }
@@ -275,7 +275,7 @@ inline absl::Status Cancelled(
   return absl::CancelledError(
       absl::StrCat(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8));
 }
-ABSL_DEPRECATED("Use absl::CancelledError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::CancelledError(absl::StrCat(args...)) instead.")]]
 inline absl::Status Cancelled(
     const absl::AlphaNum& arg1, const absl::AlphaNum& arg2,
     const absl::AlphaNum& arg3, const absl::AlphaNum& arg4,
@@ -307,7 +307,7 @@ inline absl::Status Cancelled(
                                            arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::CancelledError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::CancelledError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS Cancelled(Args... rest) {
   return absl::CancelledError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -322,8 +322,8 @@ absl::Status CancelledWithPayloads(
 // InvalidArgument
 // Function for the cases where we need to have a small call stack footprint.
 template <typename... Args>
-ABSL_DEPRECATED(
-    "Use absl::InvalidArgumentError(absl::StrCat(args...)) instead.")
+[[deprecated(
+    "Use absl::InvalidArgumentError(absl::StrCat(args...)) instead.")]]
 absl::Status InvalidArgumentError(Args... args) {
   return absl::InvalidArgumentError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -331,8 +331,8 @@ absl::Status InvalidArgumentError(Args... args) {
 ABSL_DEPRECATE_AND_INLINE()
 inline absl::Status InvalidArgument(const absl::Status& arg) { return arg; }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::InvalidArgumentError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::InvalidArgumentError(arg1) instead.")]] inline absl::Status
     InvalidArgument(Arg1 arg1) {
   return absl::InvalidArgumentError(arg1);
 }
@@ -424,8 +424,8 @@ inline absl::Status InvalidArgument(
       arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED(
-    "Use absl::InvalidArgumentError(absl::StrCat(args...)) instead.")
+[[deprecated(
+    "Use absl::InvalidArgumentError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS InvalidArgument(Args... rest) {
   return absl::InvalidArgumentError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -442,8 +442,8 @@ inline absl::Status NotFound(const absl::Status& arg) {
   return absl::NotFoundError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::NotFoundError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::NotFoundError(arg1) instead.")]] inline absl::Status
     NotFound(Arg1 arg1) {
   return absl::NotFoundError(arg1);
 }
@@ -534,7 +534,7 @@ inline absl::Status NotFound(
                                           arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::NotFoundError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::NotFoundError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS NotFound(Args... rest) {
   return absl::NotFoundError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -551,8 +551,8 @@ inline absl::Status AlreadyExists(const absl::Status& arg) {
   return absl::AlreadyExistsError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::AlreadyExistsError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::AlreadyExistsError(arg1) instead.")]] inline absl::Status
     AlreadyExists(Arg1 arg1) {
   return absl::AlreadyExistsError(arg1);
 }
@@ -644,7 +644,7 @@ inline absl::Status AlreadyExists(
       arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::AlreadyExistsError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::AlreadyExistsError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS AlreadyExists(Args... rest) {
   return absl::AlreadyExistsError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -662,8 +662,8 @@ inline absl::Status ResourceExhausted(const absl::Status& arg) {
   return absl::ResourceExhaustedError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::ResourceExhaustedError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::ResourceExhaustedError(arg1) instead.")]] inline absl::Status
     ResourceExhausted(Arg1 arg1) {
   return absl::ResourceExhaustedError(arg1);
 }
@@ -756,8 +756,8 @@ inline absl::Status ResourceExhausted(
       arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED(
-    "Use absl::ResourceExhaustedError(absl::StrCat(args...)) instead.")
+[[deprecated(
+    "Use absl::ResourceExhaustedError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS ResourceExhausted(Args... rest) {
   return absl::ResourceExhaustedError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -775,8 +775,8 @@ inline absl::Status Unavailable(const absl::Status& arg) {
   return absl::UnavailableError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::UnavailableError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::UnavailableError(arg1) instead.")]] inline absl::Status
     Unavailable(Arg1 arg1) {
   return absl::UnavailableError(arg1);
 }
@@ -868,7 +868,7 @@ inline absl::Status Unavailable(
                                              arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::UnavailableError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::UnavailableError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS Unavailable(Args... rest) {
   return absl::UnavailableError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -885,8 +885,8 @@ inline absl::Status FailedPrecondition(const absl::Status& arg) {
   return absl::FailedPreconditionError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::FailedPreconditionError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::FailedPreconditionError(arg1) instead.")]] inline absl::Status
     FailedPrecondition(Arg1 arg1) {
   return absl::FailedPreconditionError(arg1);
 }
@@ -979,8 +979,8 @@ inline absl::Status FailedPrecondition(
       arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED(
-    "Use absl::FailedPreconditionError(absl::StrCat(args...)) instead.")
+[[deprecated(
+    "Use absl::FailedPreconditionError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS FailedPrecondition(Args... rest) {
   return absl::FailedPreconditionError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -998,8 +998,8 @@ inline absl::Status OutOfRange(const absl::Status& arg) {
   return absl::OutOfRangeError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::OutOfRangeError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::OutOfRangeError(arg1) instead.")]] inline absl::Status
     OutOfRange(Arg1 arg1) {
   return absl::OutOfRangeError(arg1);
 }
@@ -1091,7 +1091,7 @@ inline absl::Status OutOfRange(
                                             arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::OutOfRangeError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::OutOfRangeError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS OutOfRange(Args... rest) {
   return absl::OutOfRangeError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1104,7 +1104,7 @@ inline absl::Status OutOfRangeWithPayloads(
 
 // Unimplemented
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::UnimplementedError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::UnimplementedError(absl::StrCat(args...)) instead.")]]
 absl::Status UnimplementedError(Args... args) {
   return absl::UnimplementedError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -1114,8 +1114,8 @@ inline absl::Status Unimplemented(const absl::Status& arg) {
   return absl::UnimplementedError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::UnimplementedError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::UnimplementedError(arg1) instead.")]] inline absl::Status
     Unimplemented(Arg1 arg1) {
   return absl::UnimplementedError(arg1);
 }
@@ -1207,7 +1207,7 @@ inline absl::Status Unimplemented(
       arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::UnimplementedError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::UnimplementedError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS Unimplemented(Args... rest) {
   return absl::UnimplementedError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1220,7 +1220,7 @@ inline absl::Status UnimplementedWithPayloads(
 
 // Internal
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::InternalError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::InternalError(absl::StrCat(args...)) instead.")]]
 absl::Status InternalError(Args... args) {
   return absl::InternalError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -1230,8 +1230,8 @@ inline absl::Status Internal(const absl::Status& arg) {
   return absl::InternalError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::InternalError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::InternalError(arg1) instead.")]] inline absl::Status
     Internal(Arg1 arg1) {
   return absl::InternalError(arg1);
 }
@@ -1322,7 +1322,7 @@ inline absl::Status Internal(
                                           arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::InternalError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::InternalError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS Internal(Args... rest) {
   return absl::InternalError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1339,8 +1339,8 @@ inline absl::Status Aborted(const absl::Status& arg) {
   return absl::AbortedError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::AbortedError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::AbortedError(arg1) instead.")]] inline absl::Status
     Aborted(Arg1 arg1) {
   return absl::AbortedError(arg1);
 }
@@ -1431,7 +1431,7 @@ inline absl::Status Aborted(
                                          arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::AbortedError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::AbortedError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS Aborted(Args... rest) {
   return absl::AbortedError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1448,8 +1448,8 @@ inline absl::Status DeadlineExceeded(const absl::Status& arg) {
   return absl::DeadlineExceededError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::DeadlineExceededError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::DeadlineExceededError(arg1) instead.")]] inline absl::Status
     DeadlineExceeded(Arg1 arg1) {
   return absl::DeadlineExceededError(arg1);
 }
@@ -1542,8 +1542,8 @@ inline absl::Status DeadlineExceeded(
       arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED(
-    "Use absl::DeadlineExceededError(absl::StrCat(args...)) instead.")
+[[deprecated(
+    "Use absl::DeadlineExceededError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS DeadlineExceeded(Args... rest) {
   return absl::DeadlineExceededError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1560,8 +1560,8 @@ inline absl::Status DataLoss(const absl::Status& arg) {
   return absl::DataLossError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::DataLossError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::DataLossError(arg1) instead.")]] inline absl::Status
     DataLoss(Arg1 arg1) {
   return absl::DataLossError(arg1);
 }
@@ -1652,7 +1652,7 @@ inline absl::Status DataLoss(
                                           arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::DataLossError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::DataLossError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS DataLoss(Args... rest) {
   return absl::DataLossError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1669,8 +1669,8 @@ inline absl::Status Unknown(const absl::Status& arg) {
   return absl::UnknownError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::UnknownError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::UnknownError(arg1) instead.")]] inline absl::Status
     Unknown(Arg1 arg1) {
   return absl::UnknownError(arg1);
 }
@@ -1761,7 +1761,7 @@ inline absl::Status Unknown(
                                          arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED("Use absl::UnknownError(absl::StrCat(args...)) instead.")
+[[deprecated("Use absl::UnknownError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS Unknown(Args... rest) {
   return absl::UnknownError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1777,8 +1777,8 @@ inline absl::Status PermissionDenied(const absl::Status& arg) {
   return absl::PermissionDeniedError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::PermissionDeniedError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::PermissionDeniedError(arg1) instead.")]] inline absl::Status
     PermissionDenied(Arg1 arg1) {
   return absl::PermissionDeniedError(arg1);
 }
@@ -1871,8 +1871,8 @@ inline absl::Status PermissionDenied(
       arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11));
 }
 template <typename... Args>
-ABSL_DEPRECATED(
-    "Use absl::PermissionDeniedError(absl::StrCat(args...)) instead.")
+[[deprecated(
+    "Use absl::PermissionDeniedError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS PermissionDenied(Args... rest) {
   return absl::PermissionDeniedError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));
@@ -1889,8 +1889,8 @@ inline absl::Status Unauthenticated(const absl::Status& arg) {
   return absl::UnauthenticatedError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::UnauthenticatedError(arg1) instead.") inline absl::Status
+ABSL_REFACTOR_INLINE [[deprecated(
+    "Use absl::UnauthenticatedError(arg1) instead.")]] inline absl::Status
     Unauthenticated(Arg1 arg1) {
   return absl::UnauthenticatedError(arg1);
 }
@@ -1931,8 +1931,8 @@ inline absl::Status Unauthenticated(const absl::AlphaNum& arg1,
       absl::StrCat(arg1, arg2, arg3, arg4, arg5, arg6));
 }
 template <typename... Args>
-ABSL_DEPRECATED(
-    "Use absl::UnauthenticatedError(absl::StrCat(args...)) instead.")
+[[deprecated(
+    "Use absl::UnauthenticatedError(absl::StrCat(args...)) instead.")]]
 inline ABSL_STATUS Unauthenticated(Args... rest) {
   return absl::UnauthenticatedError(
       absl::StrCat(::tsl::errors::internal::PrepareForStrCat(rest)...));

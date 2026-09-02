@@ -62,9 +62,9 @@ class MemoryKind {
     sink.Append(memory_kind.memory_kind_);
   }
 
-  ABSL_DEPRECATED(
+  [[deprecated(
       "Use `value()` instead. If it is required to check if the memory kind is "
-      "default, use `is_default()`.")
+      "default, use `is_default()`.")]]
   std::optional<absl::string_view> memory_kind() const { return memory_kind_; }
 
   bool is_default() const;
@@ -112,7 +112,7 @@ class Memory : public RTTIExtends<Memory, RTTIRoot> {
   // enough to describe the current device unambiguously.
   //
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  ABSL_DEPRECATED("Memory implements AbslStringify; rely on that instead.")
+  [[deprecated("Memory implements AbslStringify; rely on that instead.")]]
   virtual absl::string_view DebugString() const = 0;
 
   // The devices to which this memory space is attached.

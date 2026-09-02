@@ -58,7 +58,7 @@ class OpKernelRunner {
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
 
-  ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
+  [[deprecated("Please use the Create() method that takes node_name.")]]
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view device_name, int num_args,
       const std::function<absl::Status(tensorflow::AttrValueMap*)>&
@@ -79,7 +79,7 @@ class OpKernelRunner {
           process_function_library_runtime,
       tensorflow::Device* device);
 
-  ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
+  [[deprecated("Please use the Create() method that takes node_name.")]]
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, int num_args,
       const std::function<absl::Status(tensorflow::AttrValueMap*)>&

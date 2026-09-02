@@ -40,7 +40,7 @@ using Condition = absl::Condition;
 // constructor interface.  This type is as fast as mutex, but is also a shared
 // lock, and provides conditional critical sections (via Await()), as an
 // alternative to condition variables.
-class TF_LOCKABLE ABSL_DEPRECATED("Use absl::Mutex instead.") mutex {
+class TF_LOCKABLE [[deprecated("Use absl::Mutex instead.")]] mutex {
  public:
   mutex();
   // The default implementation of the underlying mutex is safe to use after
@@ -180,7 +180,7 @@ class TF_SCOPED_LOCKABLE tf_shared_lock {
   static_assert(0, "tf_shared_lock_decl_missing_var_name");
 
 // Mimic std::condition_variable.
-class ABSL_DEPRECATED("Use absl::CondVar instead.") condition_variable {
+class [[deprecated("Use absl::CondVar instead.")]] condition_variable {
  public:
   condition_variable();
 

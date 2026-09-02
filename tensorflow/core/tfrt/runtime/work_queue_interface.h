@@ -59,7 +59,7 @@ class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
   // TODO(b/198671794): Remove per-request concepts from the work queue
   // interface so that the interface is more composable. Per-request logic
   // should be handled separately.
-  ABSL_DEPRECATED("Create the instance directly instead.")
+  [[deprecated("Create the instance directly instead.")]]
   virtual absl::StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       int64_t request_id, int priority) const {
     return {nullptr};

@@ -209,7 +209,7 @@ class Layout {
   // Creates a Layout from a LayoutProto.
   static absl::StatusOr<Layout> FromProto(const LayoutProto& proto);
 
-  ABSL_DEPRECATED("Use FromProto instead.")
+  [[deprecated("Use FromProto instead.")]]
   static Layout CreateFromProto(const LayoutProto& proto) {
     return FromProto(proto).value();
   }

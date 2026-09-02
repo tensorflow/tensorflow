@@ -67,7 +67,7 @@ namespace tensorflow {
 //   result shapes.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
-ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+[[deprecated("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")]]
 absl::Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
@@ -100,7 +100,7 @@ absl::Status ConvertMLIRToXlaComputation(
 //   true, includes legalization and MHLO lowering passes.
 // allow_partial_conversion: when this is true, allow operations that can't be
 //   legalized.
-ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+[[deprecated("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")]]
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     bool enable_op_fallback,
@@ -115,14 +115,14 @@ struct TensorOrResourceShape {
 };
 
 // Refine MLIR types based on new shape information.
-ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
+[[deprecated("Not meant to be used directly and should be a util.")]]
 absl::Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
                           mlir::ModuleOp module);
 
 // Lower TF to MHLO and insert HLO into the XlaBuilder. xla_params are HLO-level
 // inputs to module_op that have already been added to the XlaBuilder. returns
 // are the returned XlaOps.
-ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+[[deprecated("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")]]
 absl::Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                             llvm::ArrayRef<xla::XlaOp> xla_params,
                             std::vector<xla::XlaOp>& returns,
@@ -134,7 +134,7 @@ absl::Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
 // Apply shape, description, and resource information to inputs and outputs
 // in the XlaCompilationResult. This should be called after
 // compilation_result->computation was set.
-ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
+[[deprecated("Not meant to be used directly and should be a util.")]]
 absl::Status PopulateResultIOInfo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     bool use_tuple_args, bool use_resource_updates_for_aliases,
@@ -151,7 +151,7 @@ absl::Status PopulateResultIOInfo(
 //
 // Running the MLIR Bridge performs many transformations on the input module
 // which is modified in place.
-ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+[[deprecated("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")]]
 absl::Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
@@ -172,7 +172,7 @@ absl::Status CompileMlirToXlaHlo(
 // analysis for the graph is successful. Otherwise, an error is returned.
 //
 // On success, returns the serialized MLIR module.
-ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+[[deprecated("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")]]
 absl::StatusOr<std::string> CompileMlirToXlaHloAndSerialize(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
@@ -188,7 +188,7 @@ absl::StatusOr<std::string> CompileMlirToXlaHloAndSerialize(
 //
 // If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
 // accompanying metadata and stores them in CompilationResult.
-ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+[[deprecated("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")]]
 absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
@@ -204,7 +204,7 @@ absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
 // metadata and stores them in CompilationResult. This will rewrite arguments
 // and run the TensorFlow standard pipeline prior to invoking
 // `CompileMlirToXlaHlo`.
-ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
+[[deprecated("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")]]
 absl::Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
@@ -220,8 +220,8 @@ absl::Status CompileGraphToXlaHlo(
 // xla_params is the HLO-level inputs and returns is the HLO-level outputs.
 // If unconditionally_use_output_shapes is true then the unregistered
 // attribute _output_shapes is always used to set the output shapes of the ops.
-ABSL_DEPRECATED(
-    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
+[[deprecated(
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")]]
 absl::Status BuildHloFromGraph(
     const Graph& graph, xla::XlaBuilder& builder,
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,

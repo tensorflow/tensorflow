@@ -94,7 +94,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   //
   // This returns a vanilla HloModule that doesn't run the HLO verifier on
   // destruction.
-  ABSL_DEPRECATED("Use CreateNewVerifiedModule instead.")
+  [[deprecated("Use CreateNewVerifiedModule instead.")]]
   std::unique_ptr<HloModule> CreateNewUnverifiedModule(
       const std::string& name = TestName()) const;
 

@@ -61,9 +61,9 @@ GraphdefToMlirTranslateFunction(
     const std::vector<std::string>& control_output_arrays,
     const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
-ABSL_DEPRECATED(
+[[deprecated(
     "Please use the other overload of this function which accepts structured "
-    "inputs instead of strings")
+    "inputs instead of strings")]]
 // Converts a TensorFlow GraphDef contained in `input` param into a MLIR module.
 // Creates MLIR entities into the given MLIR `context`.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
@@ -84,9 +84,9 @@ GraphdefToSplattedMlirTranslateFunction(
     const std::vector<std::string>& control_output_arrays,
     const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
-ABSL_DEPRECATED(
+[[deprecated(
     "Please use the other overload of this function which accepts structured "
-    "inputs instead of strings")
+    "inputs instead of strings")]]
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>

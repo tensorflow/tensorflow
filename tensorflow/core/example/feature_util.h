@@ -144,7 +144,7 @@ namespace internal {
 // TODO(gorban): Update all clients in a followup CL.
 // Returns a reference to a feature corresponding to the name.
 // Note: it will create a new Feature if it is missing in the example.
-ABSL_DEPRECATED("Use GetFeature instead.")
+[[deprecated("Use GetFeature instead.")]]
 Feature& ExampleFeature(absl::string_view name, Example* example);
 
 // Specializations of RepeatedFieldTrait define a type of RepeatedField
@@ -654,7 +654,7 @@ bool HasFeature(absl::string_view key,
 
 // TODO(gorban): update all clients in a followup CL.
 template <typename... FeatureType>
-ABSL_DEPRECATED("Use HasFeature instead.")
+[[deprecated("Use HasFeature instead.")]]
 bool ExampleHasFeature(absl::string_view key, const Example& example) {
   return HasFeature<FeatureType...>(key, example);
 }

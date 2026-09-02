@@ -109,7 +109,7 @@ constexpr uint64_t HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The HTTP response code "412 Precondition Failed".
 constexpr uint64_t HTTP_CODE_PRECONDITION_FAILED = 412;
 // The environment variable that overrides the size of the readahead buffer.
-ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
+[[deprecated("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")]]
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that overrides the maximum age of entries in the
 // Stat cache. A value of 0 means nothing is cached.

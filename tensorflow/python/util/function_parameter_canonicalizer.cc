@@ -213,7 +213,7 @@ bool FunctionParameterCanonicalizer::Canonicalize(
   return true;
 }
 
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 ABSL_ATTRIBUTE_HOT
 inline std::size_t FunctionParameterCanonicalizer::InternedArgNameLinearSearch(
     PyObject* name) {

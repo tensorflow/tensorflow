@@ -34,7 +34,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     CollectiveOpGroupMode group_mode,
     CommunicationId communication_id = CommunicationId(0));
 
-ABSL_DEPRECATED("Use CommunicationId overload instead")
+[[deprecated("Use CommunicationId overload instead")]]
 inline absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,

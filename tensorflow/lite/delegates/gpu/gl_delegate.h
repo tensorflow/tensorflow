@@ -105,7 +105,7 @@ TFL_CAPI_EXPORT TfLiteGpuDelegateOptions TfLiteGpuDelegateOptionsDefault();
 //   .preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST,
 //   .dynamic_batch_enabled = false,
 // },
-ABSL_DEPRECATED("Use TfLiteGpuDelegateV2Create defined in delegate.h instead.")
+[[deprecated("Use TfLiteGpuDelegateV2Create defined in delegate.h instead.")]]
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateCreate(
     const TfLiteGpuDelegateOptions* options);
 

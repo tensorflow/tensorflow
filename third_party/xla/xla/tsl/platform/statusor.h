@@ -79,12 +79,12 @@ namespace tsl {
 template <typename T>
 using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
 
-ABSL_DEPRECATED(
-    "TF_ASSIGN_OR_RETURN is deprecated. Use ABSL_ASSIGN_OR_RETURN instead")
+[[deprecated(
+    "TF_ASSIGN_OR_RETURN is deprecated. Use ABSL_ASSIGN_OR_RETURN instead")]]
 inline void TfAssignOrReturnDeprecationMarker() {}
 
-ABSL_DEPRECATED(
-    "TF_ASSERT_OK_AND_ASSIGN is deprecated. Use ASSERT_OK_AND_ASSIGN instead")
+[[deprecated(
+    "TF_ASSERT_OK_AND_ASSIGN is deprecated. Use ASSERT_OK_AND_ASSIGN instead")]]
 inline void TfAssertOkAndAssignDeprecationMarker() {}
 
 }  // namespace tsl

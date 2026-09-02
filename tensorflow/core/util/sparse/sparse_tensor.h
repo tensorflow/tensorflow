@@ -66,23 +66,23 @@ class SparseTensor {
 
   SparseTensor() : dims_(0) {}
 
-  ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
+  [[deprecated("Use Create() functions instead of constructors directly.")]]
   SparseTensor(Tensor ix, Tensor vals, const TensorShape& shape)
       : SparseTensor(std::move(ix), std::move(vals), TensorShapeToVector(shape),
                      UndefinedOrder(TensorShapeToVector(shape))) {}
 
-  ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
+  [[deprecated("Use Create() functions instead of constructors directly.")]]
   SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape)
       : SparseTensor(std::move(ix), std::move(vals), shape,
                      UndefinedOrder(shape)) {}
 
-  ABSL_DEPRECATED("use Create() functions instead of constructors directly.")
+  [[deprecated("use Create() functions instead of constructors directly.")]]
   SparseTensor(Tensor ix, Tensor vals, const TensorShape& shape,
                const VarDimArray order)
       : SparseTensor(std::move(ix), std::move(vals), TensorShapeToVector(shape),
                      order) {}
 
-  ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
+  [[deprecated("Use Create() functions instead of constructors directly.")]]
   SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape,
                const VarDimArray order);
 

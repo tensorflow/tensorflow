@@ -86,7 +86,7 @@ class ThreadPool {
                               std::nullopt);
     }
 
-    ABSL_DEPRECATED("Use SchedulingParams::Fixed or SchedulingParams::Adaptive")
+    [[deprecated("Use SchedulingParams::Fixed or SchedulingParams::Adaptive")]]
     explicit SchedulingParams(SchedulingStrategy strategy,
                               std::optional<int64_t> cost_per_unit,
                               std::optional<int64_t> block_size)
@@ -176,7 +176,7 @@ class ThreadPool {
   // Context creation. Underestimating may not fully make use of the specified
   // parallelism, and may also cause inefficiencies due to load balancing
   // issues and stragglers.
-  ABSL_DEPRECATED("Use ParallelFor with a SchedulingParams argument")
+  [[deprecated("Use ParallelFor with a SchedulingParams argument")]]
   void ParallelFor(int64_t total, int64_t cost_per_unit,
                    const std::function<void(int64_t begin, int64_t end)>& fn);
 
@@ -193,7 +193,7 @@ class ThreadPool {
   }
 
   // Same as ParallelFor with Fixed Block Size scheduling strategy.
-  ABSL_DEPRECATED("Use ParallelFor with a SchedulingParams argument")
+  [[deprecated("Use ParallelFor with a SchedulingParams argument")]]
   void TransformRangeConcurrently(
       int64_t block_size, int64_t total,
       const std::function<void(int64_t, int64_t)>& fn);

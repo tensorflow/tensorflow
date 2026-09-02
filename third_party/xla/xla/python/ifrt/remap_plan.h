@@ -135,9 +135,9 @@ class RemapPlan {
                                    std::move(output_specs),
                                    std::move(mappings))) {}
 
-  ABSL_DEPRECATED(
+  [[deprecated(
       "Use the constructor that takes `input_devices_for_output_map` without "
-      "`mappings` instead.")
+      "`mappings` instead.")]]
   RemapPlan(std::vector<ArraySpec> input_specs,
             std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings,
             absl::flat_hash_map<int, std::vector<InputDeviceRange>>

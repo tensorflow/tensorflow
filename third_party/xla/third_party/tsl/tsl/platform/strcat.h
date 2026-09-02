@@ -123,7 +123,7 @@ inline std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
 
 // Support 5 or more arguments
 template <typename... AV>
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
+[[deprecated("Use absl::StrCat() instead.")]]
 std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
                    const absl::AlphaNum& c, const absl::AlphaNum& d,
                    const absl::AlphaNum& e, const AV&... args) {
@@ -174,7 +174,7 @@ inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
 
 // Support 5 or more arguments
 template <typename... AV>
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
+[[deprecated("Use absl::StrAppend() instead.")]]
 inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
                       const absl::AlphaNum& b, const absl::AlphaNum& c,
                       const absl::AlphaNum& d, const absl::AlphaNum& e,

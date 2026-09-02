@@ -36,7 +36,7 @@ class FunctionParameterCanonicalizer {
                                  absl::Span<PyObject*> defaults);
 
   // Returns the total number of arguments.
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   int GetArgSize() const { return interned_arg_names_.size(); }
 
   // Canonicalizes `args` and `kwargs` by the spec specified at construction.
@@ -47,7 +47,7 @@ class FunctionParameterCanonicalizer {
   // On success, every populated entry in `result` owns a strong reference to
   // the canonicalized Python argument. This keeps the result valid even if a
   // caller concurrently mutates `kwargs` after canonicalization.
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   ABSL_ATTRIBUTE_HOT
   bool Canonicalize(PyObject* args, PyObject* kwargs,
                     absl::Span<Safe_PyObjectPtr> result);
@@ -55,7 +55,7 @@ class FunctionParameterCanonicalizer {
  private:
   // Simple linear search of `name` in `interned_arg_names`. If found, returns
   // the index. If not found, returns `interned_arg_names.size()`.
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   ABSL_ATTRIBUTE_HOT
   std::size_t InternedArgNameLinearSearch(PyObject* name);
 

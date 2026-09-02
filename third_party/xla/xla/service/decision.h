@@ -106,8 +106,8 @@ class Decision {
   // Whether the decision is negative.
   bool IsForbidden() const { return explanation_.has_value(); }
 
-  ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-      "Use IsAllowed() or IsForbidden() instead.") inline bool CanFuse() const {
+  ABSL_REFACTOR_INLINE [[deprecated(
+      "Use IsAllowed() or IsForbidden() instead.")]] inline bool CanFuse() const {
     return IsAllowed();
   }
 

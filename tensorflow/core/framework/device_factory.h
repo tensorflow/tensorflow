@@ -34,7 +34,7 @@ class DeviceFactory {
   static void Register(const std::string& device_type,
                        std::unique_ptr<DeviceFactory> factory, int priority,
                        bool is_pluggable_device);
-  ABSL_DEPRECATED("Use the `Register` function above instead")
+  [[deprecated("Use the `Register` function above instead")]]
   static void Register(const std::string& device_type, DeviceFactory* factory,
                        int priority, bool is_pluggable_device) {
     Register(device_type, std::unique_ptr<DeviceFactory>(factory), priority,

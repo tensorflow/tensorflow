@@ -46,10 +46,10 @@ limitations under the License.
 
 namespace xla {
 
-class ABSL_DEPRECATED(
+class [[deprecated(
     "Please avoid introducing new tests that use this class. This class exists "
     "to support existing tests that cannot be easily migrated to use "
-    "HloRunnerPjRt") HloTestBaseLegacy
+    "HloRunnerPjRt")]] HloTestBaseLegacy
     : public HloRunnerAgnosticReferenceMixin<HloRunnerAgnosticTestBase> {
  public:
   // Compiles the given `hlo` with optimizations, and verifies that optimized

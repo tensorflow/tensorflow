@@ -890,9 +890,9 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   CommonPjRtBufferImpl& operator=(CommonPjRtBufferImpl&&) = delete;
 
   const Shape& on_device_shape() const override { return *on_device_shape_; }
-  ABSL_DEPRECATED(
+  [[deprecated(
       "Buffers are associated with memories. Use memory_space() instead when "
-      "possible.")
+      "possible.")]]
   PjRtDevice* device() const override;
   CommonPjRtClient* client() const override;
   PjRtMemorySpace* memory_space() const override { return memory_space_; }

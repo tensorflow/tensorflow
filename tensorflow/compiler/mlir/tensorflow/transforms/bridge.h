@@ -35,9 +35,9 @@ inline constexpr char kStandardPipelineAfter[] = "standard_pipeline_after";
 // any target specialization. When enable_logging is true, enables
 // tensorflow::BridgeLogger. When enable_inliner is true, enables the inliner
 // pass.
-ABSL_DEPRECATED(
+[[deprecated(
     "This is legacy code and is unsupported. Use at your own risk. Use "
-    "tf2xla/api/v2/* for specific functionality")
+    "tf2xla/api/v2/* for specific functionality")]]
 absl::Status RunBridgeWithStandardPipeline(ModuleOp module, bool enable_logging,
                                            bool enable_inliner);
 }  // namespace TF

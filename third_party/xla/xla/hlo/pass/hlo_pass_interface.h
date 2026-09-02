@@ -86,10 +86,10 @@ class HloPassInterface {
   // Same as above, except that this API allows the pass to return a *different*
   // module, rather than modifying the module in-place.
   // TODO(b/454418238): Remove this function (and the corresponding RunImpl).
-  ABSL_DEPRECATED(
+  [[deprecated(
       "This interface exists for passes which create an entire new HloModule "
       "instead of updating the existing one in place. This is not the norm and "
-      "should not be done.")
+      "should not be done.")]]
   absl::StatusOr<bool> Run(
       std::unique_ptr<HloModule>& module_ptr,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});

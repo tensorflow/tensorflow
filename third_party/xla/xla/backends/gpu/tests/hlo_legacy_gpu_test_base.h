@@ -29,8 +29,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class ABSL_DEPRECATED(
-    "Please use HloPjRtTestBase or HloPjRtGpuTestBase instead.")
+class [[deprecated(
+    "Please use HloPjRtTestBase or HloPjRtGpuTestBase instead.")]]
     HloLegacyGpuTestBase : public HloTestBaseLegacy,
                            public HloGpuTestBaseInterface {
  protected:

@@ -32,7 +32,7 @@ namespace test {
 namespace graph {
 
 // Converts "g" into its corresponding GraphDef "def".
-ABSL_DEPRECATED("Call g->ToGraphDef(def) instead.")
+[[deprecated("Call g->ToGraphDef(def) instead.")]]
 void ToGraphDef(Graph* g, GraphDef* def);
 
 // A few helpers to construct a graph.

@@ -163,7 +163,7 @@ typedef std::function<void(const absl::Status&)> StatusCallback;
 #define TF_QCHECK_OK(val) QCHECK_OK(val)
 #else
 
-ABSL_DEPRECATED("TF_CHECK_OK macro is deprecated. call CHECK_OK instead")
+[[deprecated("TF_CHECK_OK macro is deprecated. call CHECK_OK instead")]]
 inline void TfCheckOkDeprecationMarker() {}
 
 #define TF_CHECK_OK(val) CHECK_OK((::tsl::TfCheckOkDeprecationMarker(), val))

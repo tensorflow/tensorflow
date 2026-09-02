@@ -22,10 +22,10 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
-ABSL_DEPRECATED("TF_EXPECT_OK is deprecated. Call EXPECT_OK instead")
+[[deprecated("TF_EXPECT_OK is deprecated. Call EXPECT_OK instead")]]
 inline void TfExpectOkDeprecationMarker() {}
 
-ABSL_DEPRECATED("TF_ASSERT_OK is deprecated. Call ASSERT_OK instead")
+[[deprecated("TF_ASSERT_OK is deprecated. Call ASSERT_OK instead")]]
 inline void TfAssertOkDeprecationMarker() {}
 }  // namespace tsl
 

@@ -187,7 +187,7 @@ class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
   absl::StatusOr<xla::ifrt::ArrayRef> FullyReplicatedShard(
       xla::ifrt::ArrayCopySemantics semantics) override;
 
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
@@ -215,7 +215,7 @@ class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
   const UserContextRef user_context_;
 
   const ArrayHandle handle_
-      ABSL_DEPRECATED("Use GetHandle() function instead.");
+      [[deprecated("Use GetHandle() function instead.")]];
 
   mutable absl::Mutex mu_;
   enum class DeletionState {

@@ -527,18 +527,18 @@ class HloModule {
   // for loading a proto that had its ids manually created, created incorrectly
   // or in an older version of the compiler. Instructions will only have the
   // local id in the id field.
-  ABSL_DEPRECATED(
+  [[deprecated(
       "Use CreateFromProto with preserve_instruction_ids=false "
-      "instead.")
+      "instead.")]]
   static absl::StatusOr<HloModuleProto> RemapInstructionIds(
       const HloModuleProto& proto);
 
   // Updates the instruction ids in the computation's schedule to match the new
   // instruction ids as defined by the old_instr_id_to_new_id map. The map only
   // needs to be consistent and unique within the computation level.
-  ABSL_DEPRECATED(
+  [[deprecated(
       "Use CreateFromProto with preserve_instruction_ids=false "
-      "instead when loading the HLO module.")
+      "instead when loading the HLO module.")]]
   static absl::Status UpdateIdsInSchedule(
       HloModuleProto& proto, int64_t computation_proto_id,
       absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id);

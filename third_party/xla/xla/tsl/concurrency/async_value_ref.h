@@ -53,7 +53,7 @@ class AsyncValuePtr;
 // Constructs a ConcreteAsyncValue in error state with the given status.
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status);
 
-ABSL_DEPRECATED("Use the error async value constructor that takes absl::Status")
+[[deprecated("Use the error async value constructor that takes absl::Status")]]
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::string_view message);
 
 // Constructs an IndirectAsyncValue without forwarding it to anything.
@@ -370,7 +370,7 @@ class AsyncValueRef {
     return value_->SetError(std::move(status));
   }
 
-  ABSL_DEPRECATED("Use SetError with absl::Status argument")
+  [[deprecated("Use SetError with absl::Status argument")]]
   void SetError(absl::string_view message) const {
     // Converting to `absl::string_view` because implicit conversion is not
     // supported in android builds.

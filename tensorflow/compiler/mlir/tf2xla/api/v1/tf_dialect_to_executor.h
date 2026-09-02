@@ -45,9 +45,9 @@ namespace v1 {
 // `tf_device.cluster_func` ops.
 // Output: A MLIR module in the Tensorflow Executor Dialect.
 
-ABSL_DEPRECATED(
+[[deprecated(
     "Use v2/tf_dialect_to_executor.h::ExportFromTensorflowDialectToExecutor "
-    "instead.")
+    "instead.")]]
 absl::Status ExportFromTensorflowDialectToExecutor(
     mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 

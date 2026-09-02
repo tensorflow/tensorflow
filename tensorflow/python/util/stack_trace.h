@@ -44,7 +44,7 @@ class StackTrace : public CapturedStackTrace {
   // `limit` determines how many stack frames at most are returned: set to -1
   // for "no limit".
   // Python GIL must be acquired beforehand.
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   ABSL_ATTRIBUTE_HOT
   static std::shared_ptr<StackTrace> Capture(int limit);
 

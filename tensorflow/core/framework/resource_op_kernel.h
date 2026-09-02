@@ -119,7 +119,7 @@ class ResourceOpKernel : public OpKernel {
   ContainerInfo cinfo_ TF_GUARDED_BY(mu_);
   // TODO(b/243544755): delete after scam migrates ResourceKernelOp subclasses
   // to get_resource() in TF 2.11.
-  ABSL_DEPRECATED("Use get_resource() instead.")
+  [[deprecated("Use get_resource() instead.")]]
   T* resource_ TF_GUARDED_BY(mu_) = nullptr;
 
   core::RefCountPtr<T> get_resource() TF_LOCKS_EXCLUDED(mu_) {

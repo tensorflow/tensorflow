@@ -108,11 +108,11 @@ class XlaOpKernelContext {
   // bounds as the dimension size instead of having unknown dimensions. Use
   // InputXlaShape instead that provides shapes with dynamism information.
   //
-  ABSL_DEPRECATED(
-      "Prefer InputXlaShape which handles dynamic shapes accurately.")
+  [[deprecated(
+      "Prefer InputXlaShape which handles dynamic shapes accurately.")]]
   TensorShape InputShape(int index);
-  ABSL_DEPRECATED(
-      "Prefer InputXlaShape which handles dynamic shapes accurately.")
+  [[deprecated(
+      "Prefer InputXlaShape which handles dynamic shapes accurately.")]]
   TensorShape InputShape(absl::string_view name);
 
   // Returns input `index` as a XlaOp. Unlike

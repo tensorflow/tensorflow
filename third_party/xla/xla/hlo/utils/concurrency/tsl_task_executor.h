@@ -26,10 +26,10 @@ limitations under the License.
 
 namespace xla::concurrency {
 
-class ABSL_DEPRECATED(
+class [[deprecated(
     "Prefer `xla::concurrency::DefaultExecutor()` if you want to use a default "
     "executor available to the XLA process. Otherwise use TSL ThreadPool "
-    "directly, or any other tsl::Executor implementation.") TslTaskExecutor
+    "directly, or any other tsl::Executor implementation.")]] TslTaskExecutor
     : public tsl::Executor {
  public:
   explicit TslTaskExecutor(

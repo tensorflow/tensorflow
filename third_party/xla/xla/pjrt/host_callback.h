@@ -47,9 +47,9 @@ namespace xla {
 
 bool ThisThreadIsInsideHostCallback();
 
-ABSL_DEPRECATED("Use HostCallbackScope") void EnterHostCallback();
+[[deprecated("Use HostCallbackScope")]] void EnterHostCallback();
 
-ABSL_DEPRECATED("Use HostCallbackScope") void LeaveHostCallback();
+[[deprecated("Use HostCallbackScope")]] void LeaveHostCallback();
 
 class HostCallbackScope {
  public:

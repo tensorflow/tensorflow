@@ -163,7 +163,7 @@ class PjRtDevice {
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  ABSL_DEPRECATED("Use global_device_id() instead")
+  [[deprecated("Use global_device_id() instead")]]
   virtual int id() const { return global_device_id().value(); }
 
   // There are several different IDs for a PJRT device.

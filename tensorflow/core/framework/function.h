@@ -611,7 +611,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // NOTE: This overload will lead to a copy of a potentially large graph
   // being stored in memory for the lifetime of the library. Using the lazy
   // `creator` function overload is recommended in new code.
-  ABSL_DEPRECATED("Use the lazy `creator` function overload in new code.")
+  [[deprecated("Use the lazy `creator` function overload in new code.")]]
   void AddOptimizedFunctionGraph(const std::string& function_name,
                                  const OptimizedFunctionGraph& graph)
       TF_LOCKS_EXCLUDED(mu_) {
