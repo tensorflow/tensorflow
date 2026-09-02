@@ -26,7 +26,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
-from tensorflow.python.ops import array_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
@@ -665,10 +664,10 @@ class TrainingOpsTest(TensorFlowTestCase):
           (dtypes.float16, 'half'),
       ):
         var = resource_variable_ops.ResourceVariable(
-            array_ops.ones((4, 2), dtype=var_dtype)
+            constant_op.constant(1.0, shape=(4, 2), dtype=var_dtype)
         )
         accum = resource_variable_ops.ResourceVariable(
-            array_ops.ones((4, 2), dtype=var_dtype)
+            constant_op.constant(1.0, shape=(4, 2), dtype=var_dtype)
         )
         self.evaluate(variables.global_variables_initializer())
         s = np.float32(0.1)
