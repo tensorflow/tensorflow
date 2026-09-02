@@ -667,6 +667,16 @@ class MathTest(test.TestCase, parameterized.TestCase):
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
 
+  def testConcatenateAxisNone(self):
+    a = np_array_ops.array([1, 2])
+    b = np_array_ops.array([[3], [4]])
+    self.assertAllEqual(
+        np_math_ops.concatenate([a, b], axis=None), [1, 2, 3, 4]
+    )
+    self.assertAllEqual(
+        np_math_ops.concatenate(np_array_ops.array([[5, 6]]), axis=None), [5, 6]
+    )
+
   def testIsInfFamilyNonFloatInputs(self):
     # A non-floating input has no infinities, but the result must still be an
     # elementwise boolean array shaped like the input, as numpy returns, and
