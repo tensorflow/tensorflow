@@ -1,73 +1,824 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/include/lldb/Symbol/Symbol.h b/lldb/include/lldb/Symbol/Symbol.h
---- a/lldb/include/lldb/Symbol/Symbol.h
-+++ b/lldb/include/lldb/Symbol/Symbol.h
-@@ -53,11 +53,7 @@
+diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.md b/clang/docs/ReleaseNotes.md
+--- a/clang/docs/ReleaseNotes.md
++++ b/clang/docs/ReleaseNotes.md
+@@ -405,12 +405,6 @@
  
-   Symbol(const Symbol &rhs);
+ - Improved how Unicode characters are displayed in diagnostic messages.
  
--  ~Symbol() {
--    if (m_type != lldb::eSymbolTypeReExported &&
--        m_type != lldb::eSymbolTypeInvalid)
--      m_addr_or_reexport.GetAddressRange(*this).Clear();
+-- Clang no longer retains source comments in the AST when nothing will read them
+-  back. Comments are now collected only when they may be consumed (e.g. with
+-  ``-fparse-all-comments``, when ``-Wdocumentation`` is enabled, when emitting a
+-  PCH/module, or during code completion), reducing memory overhead for typical
+-  compilations.
+-
+ - `-Wtautological-pointer-compare` and `-Wpointer-bool-conversion` now
+   diagnose a reference to a function (e.g. of type `void (&)()`) compared
+   against or converted to a null pointer, the same as a bare function name.
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/CommentOptions.h b/clang/include/clang/Basic/CommentOptions.h
+--- a/clang/include/clang/Basic/CommentOptions.h
++++ b/clang/include/clang/Basic/CommentOptions.h
+@@ -30,14 +30,6 @@
+   /// Treat ordinary comments as documentation comments.
+   bool ParseAllComments = false;
+ 
+-  /// Force the front end to retain all documentation comments in the AST, even
+-  /// when no comment consuming diagnostic or language option is enabled. Tools
+-  /// that query comments after parsing set this.
+-  bool RetainComments = false;
+-
+-  /// Retain documentation comments from system headers in the AST.
+-  bool RetainCommentsFromSystemHeaders = false;
+-
+   CommentOptions() = default;
+ };
+ 
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/Diagnostic.h b/clang/include/clang/Basic/Diagnostic.h
+--- a/clang/include/clang/Basic/Diagnostic.h
++++ b/clang/include/clang/Basic/Diagnostic.h
+@@ -974,16 +974,6 @@
+            diag::Severity::Ignored;
+   }
+ 
+-  bool areAllIgnored(StringRef Group, SourceLocation Loc) const {
+-    llvm::SmallVector<diag::kind> diagsInGroup;
+-    bool Failed = Diags->getDiagnosticsInGroup(diag::Flavor::WarningOrError,
+-                                               Group, diagsInGroup);
+-    assert(!Failed && "Incorrect group name?");
+-    (void)Failed;
+-    return Diags->getDiagnosticListHighestSeverity(diagsInGroup, Loc, *this) ==
+-           diag::Severity::Ignored;
 -  }
-+  ~Symbol() { m_addr_or_reexport.Clear(*this); }
+-
+   /// Based on the way the client configured the DiagnosticsEngine
+   /// object, classify the specified diagnostic ID into a Level, consumable by
+   /// the DiagnosticConsumer.
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/DiagnosticIDs.h b/clang/include/clang/Basic/DiagnosticIDs.h
+--- a/clang/include/clang/Basic/DiagnosticIDs.h
++++ b/clang/include/clang/Basic/DiagnosticIDs.h
+@@ -516,12 +516,6 @@
+   getDiagnosticSeverity(unsigned DiagID, SourceLocation Loc,
+                         const DiagnosticsEngine &Diag) const LLVM_READONLY;
  
-   const Symbol &operator=(const Symbol &rhs);
+-  /// Given a collection of diagnostic IDs, get the 'highest' severity of them
+-  /// at the provided location for this DiagnosticsEngine.
+-  diag::Severity getDiagnosticListHighestSeverity(
+-      llvm::ArrayRef<diag::kind> DiagIDs, SourceLocation Loc,
+-      const DiagnosticsEngine &Diag) const LLVM_READONLY;
+-
+   Class getDiagClass(unsigned DiagID) const;
  
-@@ -419,6 +415,13 @@
-     // impl to let the compiler know it's handled.
-     ~AddrRangeOrReExport() {}
+   /// Whether the diagnostic may leave the AST in a state where some
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/LangOptions.def b/clang/include/clang/Basic/LangOptions.def
+--- a/clang/include/clang/Basic/LangOptions.def
++++ b/clang/include/clang/Basic/LangOptions.def
+@@ -405,6 +405,8 @@
  
-+    void Clear(const Symbol &sym) {
-+      if (sym.GetType() == lldb::eSymbolTypeReExported)
-+        m_reexport_info.Clear();
-+      else
-+        m_addr_range.Clear();
-+    }
+ LANGOPT(XLPragmaPack, 1, 0, NotCompatible, "IBM XL #pragma pack handling")
+ 
++LANGOPT(RetainCommentsFromSystemHeaders, 1, 0, Compatible, "retain documentation comments from system headers in the AST")
 +
-   private:
-     union {
-       // Contains the value, or the section offset address when the value is an
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
---- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-@@ -5964,6 +5964,8 @@
-                                 ISD::matchUnaryPredicate(
-                                     Y,
-                                     [&](auto *C) {
-+                                      if (!C)
-+                                        return true;
-                                       const APInt &YConst = C->getAsAPIntVal();
-                                       return (Opcode == ISD::ABDS)
-                                                  ? YConst.isSignedIntN(Bits)
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/abd-combine.ll b/llvm/test/CodeGen/AArch64/abd-combine.ll
---- a/llvm/test/CodeGen/AArch64/abd-combine.ll
-+++ b/llvm/test/CodeGen/AArch64/abd-combine.ll
-@@ -523,9 +523,26 @@
-   ret <1 x i64> %10
+ LANGOPT(APINotes, 1, 0, NotCompatible, "use external API notes")
+ LANGOPT(APINotesModules, 1, 0, NotCompatible, "use module-based external API notes")
+ LANGOPT(SwiftVersionIndependentAPINotes, 1, 0, NotCompatible, "use external API notes capturing all versions")
+diff -ruN --strip-trailing-cr a/clang/include/clang/Options/Options.td b/clang/include/clang/Options/Options.td
+--- a/clang/include/clang/Options/Options.td
++++ b/clang/include/clang/Options/Options.td
+@@ -2221,12 +2221,6 @@
+ def fparse_all_comments : Flag<["-"], "fparse-all-comments">, Group<f_clang_Group>,
+   Visibility<[ClangOption, CC1Option]>,
+   MarshallingInfoFlag<LangOpts<"CommentOpts.ParseAllComments">>;
+-def fretain_comments : Flag<["-"], "fretain-comments">, Group<f_clang_Group>,
+-  Visibility<[ClangOption, CC1Option]>,
+-  HelpText<"Retain documentation comments in the AST even when no diagnostic or "
+-           "language option would otherwise require them (e.g. for tools that "
+-           "query comments after parsing)">,
+-  MarshallingInfoFlag<LangOpts<"CommentOpts.RetainComments">>;
+ def frecord_command_line : Flag<["-"], "frecord-command-line">,
+   DocBrief<[{Generate a section named ".GCC.command.line" containing the
+ driver command-line. After linking, the section may contain multiple command
+@@ -3948,7 +3942,7 @@
+           [NoXarchOption], [ClangOption, CLOption]>>;
+ def fretain_comments_from_system_headers : Flag<["-"], "fretain-comments-from-system-headers">, Group<f_Group>,
+   Visibility<[ClangOption, CC1Option]>,
+-  MarshallingInfoFlag<LangOpts<"CommentOpts.RetainCommentsFromSystemHeaders">>;
++  MarshallingInfoFlag<LangOpts<"RetainCommentsFromSystemHeaders">>;
+ def fmodule_header : Flag <["-"], "fmodule-header">, Group<f_Group>,
+   Visibility<[ClangOption, CLOption]>,
+   HelpText<"Build a C++20 Header Unit from a header">;
+diff -ruN --strip-trailing-cr a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
+--- a/clang/include/clang/Sema/Sema.h
++++ b/clang/include/clang/Sema/Sema.h
+@@ -1126,11 +1126,6 @@
+ 
+   void ActOnComment(SourceRange Comment);
+ 
+-  /// Returns true if a comment at \p Loc should be retained in the AST
+-  /// (some consumer such as -Wdocumentation, -fparse-all-comments, code
+-  /// completion, or AST-file serialization may read it back).
+-  bool shouldRetainCommentsInAST(SourceLocation Loc) const;
+-
+   /// Retrieve the parser's current scope.
+   ///
+   /// This routine must only be used when it is certain that semantic analysis
+diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
+--- a/clang/lib/AST/ASTContext.cpp
++++ b/clang/lib/AST/ASTContext.cpp
+@@ -357,7 +357,7 @@
  }
  
-+; Poison elements in the constant operand pass a null ConstantSDNode to the
-+; matchUnaryPredicate lambda in visitABD; make sure that does not crash.
-+define <4 x i32> @abdu_const_poison(<4 x i8> %x) {
-+; CHECK-LABEL: abdu_const_poison:
-+; CHECK:       // %bb.0:
-+; CHECK-NEXT:    mov w8, #8388736 // =0x800080
-+; CHECK-NEXT:    bic v0.4h, #255, lsl #8
-+; CHECK-NEXT:    fmov d1, x8
-+; CHECK-NEXT:    uabdl v0.4s, v0.4h, v1.4h
-+; CHECK-NEXT:    ret
-+  %ext = zext <4 x i8> %x to <4 x i32>
-+  %sub = sub <4 x i32> <i32 128, i32 128, i32 poison, i32 poison>, %ext
-+  %abs = call <4 x i32> @llvm.abs.v4i32(<4 x i32> %sub, i1 false)
-+  ret <4 x i32> %abs
-+}
+ void ASTContext::addComment(const RawComment &RC) {
+-  assert(LangOpts.CommentOpts.RetainCommentsFromSystemHeaders ||
++  assert(LangOpts.RetainCommentsFromSystemHeaders ||
+          !SourceMgr.isInSystemHeader(RC.getSourceRange().getBegin()));
+   Comments.addComment(RC, LangOpts.CommentOpts, BumpAlloc);
+ }
+diff -ruN --strip-trailing-cr a/clang/lib/Basic/DiagnosticIDs.cpp b/clang/lib/Basic/DiagnosticIDs.cpp
+--- a/clang/lib/Basic/DiagnosticIDs.cpp
++++ b/clang/lib/Basic/DiagnosticIDs.cpp
+@@ -541,131 +541,103 @@
+ diag::Severity
+ DiagnosticIDs::getDiagnosticSeverity(unsigned DiagID, SourceLocation Loc,
+                                      const DiagnosticsEngine &Diag) const {
+-  return getDiagnosticListHighestSeverity({DiagID}, Loc, Diag);
+-}
++  bool IsCustomDiag = DiagnosticIDs::IsCustomDiag(DiagID);
++  assert(getDiagClass(DiagID) != CLASS_NOTE);
 +
- declare <8 x i8> @llvm.aarch64.neon.umax.v8i8(<8 x i8>, <8 x i8>)
- declare <1 x i64> @llvm.aarch64.neon.saddlp.v1i64.v2i32(<2 x i32>)
- declare <8 x i8> @llvm.aarch64.neon.uabd.v8i8(<8 x i8>, <8 x i8>)
- declare <8 x i16> @llvm.aarch64.neon.uabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i16> @llvm.aarch64.neon.sabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i32> @llvm.abs.v8i32(<8 x i32>, i1)
-+declare <4 x i32> @llvm.abs.v4i32(<4 x i32>, i1)
++  // Specific non-error diagnostics may be mapped to various levels from ignored
++  // to error.  Errors can only be mapped to fatal.
++  diag::Severity Result = diag::Severity::Fatal;
+ 
+-diag::Severity DiagnosticIDs::getDiagnosticListHighestSeverity(
+-    llvm::ArrayRef<diag::kind> DiagIDs, SourceLocation Loc,
+-    const DiagnosticsEngine &Diag) const {
++  // Get the mapping information, or compute it lazily.
+   DiagnosticsEngine::DiagState *State = Diag.GetDiagStateForLoc(Loc);
++  DiagnosticMapping Mapping = State->getOrAddMapping((diag::kind)DiagID);
+ 
+-  auto checkSingleDiag = [&](diag::kind DiagID) -> diag::Severity {
+-    bool IsCustomDiag = DiagnosticIDs::IsCustomDiag(DiagID);
+-    assert(getDiagClass(DiagID) != CLASS_NOTE);
+-
+-    // Specific non-error diagnostics may be mapped to various levels from
+-    // ignored to error.  Errors can only be mapped to fatal.
+-    diag::Severity Result = diag::Severity::Fatal;
+-
+-    // Get the mapping information, or compute it lazily.
+-    DiagnosticMapping Mapping = State->getOrAddMapping((diag::kind)DiagID);
+-
+-    // TODO: Can a null severity really get here?
+-    if (Mapping.getSeverity() != diag::Severity())
+-      Result = Mapping.getSeverity();
+-
+-    // Upgrade ignored diagnostics if -Weverything is enabled.
+-    if (State->EnableAllWarnings && Result == diag::Severity::Ignored &&
+-        !Mapping.isUser() &&
+-        (IsCustomDiag || getDiagClass(DiagID) != CLASS_REMARK))
+-      Result = diag::Severity::Warning;
+-
+-    // Ignore -pedantic diagnostics inside __extension__ blocks.
+-    // (The diagnostics controlled by -pedantic are the extension diagnostics
+-    // that are not enabled by default.)
+-    bool EnabledByDefault = false;
+-    bool IsExtensionDiag = isExtensionDiag(DiagID, EnabledByDefault);
+-    if (Diag.AllExtensionsSilenced && IsExtensionDiag && !EnabledByDefault)
+-      return diag::Severity::Ignored;
++  // TODO: Can a null severity really get here?
++  if (Mapping.getSeverity() != diag::Severity())
++    Result = Mapping.getSeverity();
++
++  // Upgrade ignored diagnostics if -Weverything is enabled.
++  if (State->EnableAllWarnings && Result == diag::Severity::Ignored &&
++      !Mapping.isUser() &&
++      (IsCustomDiag || getDiagClass(DiagID) != CLASS_REMARK))
++    Result = diag::Severity::Warning;
++
++  // Ignore -pedantic diagnostics inside __extension__ blocks.
++  // (The diagnostics controlled by -pedantic are the extension diagnostics
++  // that are not enabled by default.)
++  bool EnabledByDefault = false;
++  bool IsExtensionDiag = isExtensionDiag(DiagID, EnabledByDefault);
++  if (Diag.AllExtensionsSilenced && IsExtensionDiag && !EnabledByDefault)
++    return diag::Severity::Ignored;
++
++  // For extension diagnostics that haven't been explicitly mapped, check if we
++  // should upgrade the diagnostic. Skip if the user explicitly suppressed it
++  // (e.g. -Wno-foo).
++  if (IsExtensionDiag &&
++      !(Mapping.isUser() && Result == diag::Severity::Ignored)) {
++    if (Mapping.hasNoWarningAsError())
++      Result = std::max(Result,
++                        std::min(State->ExtBehavior, diag::Severity::Warning));
++    else
++      Result = std::max(Result, State->ExtBehavior);
++  }
+ 
+-    // For extension diagnostics that haven't been explicitly mapped, check if
+-    // we should upgrade the diagnostic. Skip if the user explicitly
+-    // suppressed it (e.g. -Wno-foo).
+-    if (IsExtensionDiag &&
+-        !(Mapping.isUser() && Result == diag::Severity::Ignored)) {
+-      if (Mapping.hasNoWarningAsError())
+-        Result = std::max(
+-            Result, std::min(State->ExtBehavior, diag::Severity::Warning));
+-      else
+-        Result = std::max(Result, State->ExtBehavior);
+-    }
+-
+-    // At this point, ignored errors can no longer be upgraded.
+-    if (Result == diag::Severity::Ignored)
+-      return Result;
+-
+-    // Honor -w: this disables all messages which are not Error/Fatal by
+-    // default (disregarding attempts to upgrade severity from Warning to
+-    // Error), as well as disabling all messages which are currently mapped to
+-    // Warning (whether by default or downgraded from Error via e.g.
+-    // -Wno-error or #pragma diagnostic.)
+-    // FIXME: Should -w be ignored for custom warnings without a group?
+-    if (State->IgnoreAllWarnings) {
+-      if ((!IsCustomDiag ||
+-           CustomDiagInfo->getDescription(DiagID).GetGroup()) &&
+-          (Result == diag::Severity::Warning ||
+-           (Result >= diag::Severity::Error &&
+-            !isDefaultMappingAsError((diag::kind)DiagID))))
+-        return diag::Severity::Ignored;
+-    }
+-
+-    // If -Werror is enabled, map warnings to errors unless explicitly
+-    // disabled.
+-    if (Result == diag::Severity::Warning) {
+-      if (State->WarningsAsErrors && !Mapping.hasNoWarningAsError())
+-        Result = diag::Severity::Error;
+-    }
+-
+-    // If -Wfatal-errors is enabled, map errors to fatal unless explicitly
+-    // disabled.
+-    if (Result == diag::Severity::Error) {
+-      if (State->ErrorsAsFatal && !Mapping.hasNoErrorAsFatal())
+-        Result = diag::Severity::Fatal;
+-    }
+-
+-    // If explicitly requested, map fatal errors to errors.
+-    if (Result == diag::Severity::Fatal &&
+-        DiagID != diag::fatal_too_many_errors && Diag.FatalsAsError)
+-      Result = diag::Severity::Error;
++  // At this point, ignored errors can no longer be upgraded.
++  if (Result == diag::Severity::Ignored)
++    return Result;
+ 
+-    // Rest of the mappings are only applicable for diagnostics associated
+-    // with a SourceLocation, bail out early for others.
+-    if (!Diag.hasSourceManager())
+-      return Result;
+-
+-    // We check both the location-specific state and the ForceSystemWarnings
+-    // override. In some cases (like template instantiations from system
+-    // modules), the location-specific state might have suppression enabled,
+-    // but the engine might have an override (e.g.
+-    // AllowWarningInSystemHeaders) to show the warning.
+-    if (State->SuppressSystemWarnings && !Diag.getForceSystemWarnings() &&
+-        shouldSuppressAsSystemWarning(DiagID, Loc, Diag)) {
++  // Honor -w: this disables all messages which are not Error/Fatal by
++  // default (disregarding attempts to upgrade severity from Warning to Error),
++  // as well as disabling all messages which are currently mapped to Warning
++  // (whether by default or downgraded from Error via e.g. -Wno-error or #pragma
++  // diagnostic.)
++  // FIXME: Should -w be ignored for custom warnings without a group?
++  if (State->IgnoreAllWarnings) {
++    if ((!IsCustomDiag || CustomDiagInfo->getDescription(DiagID).GetGroup()) &&
++        (Result == diag::Severity::Warning ||
++         (Result >= diag::Severity::Error &&
++          !isDefaultMappingAsError((diag::kind)DiagID))))
+       return diag::Severity::Ignored;
+-    }
++  }
+ 
+-    // Clang-diagnostics pragmas always take precedence over suppression
+-    // mapping.
+-    if (!Mapping.isPragma() && Diag.isSuppressedViaMapping(DiagID, Loc))
+-      return diag::Severity::Ignored;
++  // If -Werror is enabled, map warnings to errors unless explicitly disabled.
++  if (Result == diag::Severity::Warning) {
++    if (State->WarningsAsErrors && !Mapping.hasNoWarningAsError())
++      Result = diag::Severity::Error;
++  }
+ 
++  // If -Wfatal-errors is enabled, map errors to fatal unless explicitly
++  // disabled.
++  if (Result == diag::Severity::Error) {
++    if (State->ErrorsAsFatal && !Mapping.hasNoErrorAsFatal())
++      Result = diag::Severity::Fatal;
++  }
++
++  // If explicitly requested, map fatal errors to errors.
++  if (Result == diag::Severity::Fatal &&
++      DiagID != diag::fatal_too_many_errors && Diag.FatalsAsError)
++    Result = diag::Severity::Error;
++
++  // Rest of the mappings are only applicable for diagnostics associated with a
++  // SourceLocation, bail out early for others.
++  if (!Diag.hasSourceManager())
+     return Result;
+-  };
+ 
+-  diag::Severity CompositeResult = diag::Severity::Ignored;
+-  for (diag::kind DiagID : DiagIDs) {
+-    CompositeResult = std::max(CompositeResult, checkSingleDiag(DiagID));
+-
+-    // If we already hit 'fatal', we can't get any higher! So just return that.
+-    // We could potentially short-cut this by taking a parameter for "return
+-    // first greater than", but since our uses of this are fairly small, and
+-    // that only optimizes for the "we are about to do something expensive
+-    // anyway" variant (that is, when everything is NOT ignored), it doesn't
+-    // seem particularly valuable.
+-    if (CompositeResult == diag::Severity::Fatal)
+-      break;
++  // We check both the location-specific state and the ForceSystemWarnings
++  // override. In some cases (like template instantiations from system modules),
++  // the location-specific state might have suppression enabled, but the
++  // engine might have an override (e.g. AllowWarningInSystemHeaders) to show
++  // the warning.
++  if (State->SuppressSystemWarnings && !Diag.getForceSystemWarnings() &&
++      shouldSuppressAsSystemWarning(DiagID, Loc, Diag)) {
++    return diag::Severity::Ignored;
+   }
+ 
+-  return CompositeResult;
++  // Clang-diagnostics pragmas always take precedence over suppression mapping.
++  if (!Mapping.isPragma() && Diag.isSuppressedViaMapping(DiagID, Loc))
++    return diag::Severity::Ignored;
++
++  return Result;
+ }
+ 
+ bool DiagnosticIDs::shouldSuppressAsSystemWarning(
+diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -8163,8 +8163,6 @@
+   Args.AddAllArgs(CmdArgs, options::OPT_fcomment_block_commands);
+   // Forward -fparse-all-comments to -cc1.
+   Args.AddAllArgs(CmdArgs, options::OPT_fparse_all_comments);
+-  // Forward -fretain-comments to -cc1.
+-  Args.AddAllArgs(CmdArgs, options::OPT_fretain_comments);
+ 
+   // Turn -fplugin=name.so into -load name.so
+   for (const Arg *A : Args.filtered(options::OPT_fplugin_EQ)) {
+diff -ruN --strip-trailing-cr a/clang/lib/ExtractAPI/ExtractAPIConsumer.cpp b/clang/lib/ExtractAPI/ExtractAPIConsumer.cpp
+--- a/clang/lib/ExtractAPI/ExtractAPIConsumer.cpp
++++ b/clang/lib/ExtractAPI/ExtractAPIConsumer.cpp
+@@ -455,9 +455,6 @@
+ }
+ 
+ bool ExtractAPIAction::PrepareToExecuteAction(CompilerInstance &CI) {
+-  // ExtractAPI reads documentation comments off the AST.
+-  CI.getLangOpts().CommentOpts.RetainComments = true;
+-
+   // Public API can never be inside function bodies, so skip parsing them.
+   CI.getFrontendOpts().SkipFunctionBodies = true;
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/Frontend/ASTUnit.cpp b/clang/lib/Frontend/ASTUnit.cpp
+--- a/clang/lib/Frontend/ASTUnit.cpp
++++ b/clang/lib/Frontend/ASTUnit.cpp
+@@ -1533,9 +1533,6 @@
+ 
+   // We'll manage file buffers ourselves.
+   CI->getPreprocessorOpts().RetainRemappedFileBuffers = true;
+-  // libclang and other ASTUnit clients query documentation comments after
+-  // parsing, so keep them in the AST.
+-  CI->getLangOpts().CommentOpts.RetainComments = true;
+   CI->getFrontendOpts().DisableFree = false;
+   ProcessWarningOptions(AST->getDiagnostics(), CI->getDiagnosticOpts(),
+                         AST->getFileManager().getVirtualFileSystem());
+@@ -1644,9 +1641,6 @@
+ 
+   // We'll manage file buffers ourselves.
+   Invocation->getPreprocessorOpts().RetainRemappedFileBuffers = true;
+-  // libclang and other ASTUnit clients query documentation comments after
+-  // parsing, so keep them in the AST.
+-  Invocation->getLangOpts().CommentOpts.RetainComments = true;
+   Invocation->getFrontendOpts().DisableFree = false;
+   getDiagnostics().Reset();
+   ProcessWarningOptions(getDiagnostics(), Invocation->getDiagnosticOpts(),
+diff -ruN --strip-trailing-cr a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
+--- a/clang/lib/Frontend/CompilerInvocation.cpp
++++ b/clang/lib/Frontend/CompilerInvocation.cpp
+@@ -5296,7 +5296,6 @@
+ 
+   HBuilder.add(getLangOpts().ObjCRuntime);
+   HBuilder.addRange(getLangOpts().CommentOpts.BlockCommandNames);
+-  HBuilder.add(getLangOpts().CommentOpts.RetainCommentsFromSystemHeaders);
+ 
+   // Extend the signature with the target options.
+   HBuilder.add(getTargetOpts().Triple, getTargetOpts().CPU,
+diff -ruN --strip-trailing-cr a/clang/lib/Frontend/FrontendActions.cpp b/clang/lib/Frontend/FrontendActions.cpp
+--- a/clang/lib/Frontend/FrontendActions.cpp
++++ b/clang/lib/Frontend/FrontendActions.cpp
+@@ -86,8 +86,6 @@
+ 
+ std::unique_ptr<ASTConsumer>
+ ASTDumpAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
+-  // Dumping the AST shows documentation comments.
+-  CI.getLangOpts().CommentOpts.RetainComments = true;
+   const FrontendOptions &Opts = CI.getFrontendOpts();
+   return CreateASTDumper(nullptr /*Dump to stdout.*/, Opts.ASTDumpFilter,
+                          Opts.ASTDumpDecls, Opts.ASTDumpAll,
+@@ -252,10 +250,6 @@
+ 
+ bool GenerateModuleInterfaceAction::PrepareToExecuteAction(
+     CompilerInstance &CI) {
+-  // Documentation comments must still be serialized into the BMI
+-  // so importers can query them.
+-  CI.getLangOpts().CommentOpts.RetainComments = true;
+-
+   for (const auto &FIF : CI.getFrontendOpts().Inputs) {
+     if (const auto InputFormat = FIF.getKind().getFormat();
+         InputFormat != InputKind::Format::Source) {
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/Sema.cpp b/clang/lib/Sema/Sema.cpp
+--- a/clang/lib/Sema/Sema.cpp
++++ b/clang/lib/Sema/Sema.cpp
+@@ -2749,39 +2749,10 @@
+   return nullptr;
+ }
+ 
+-bool Sema::shouldRetainCommentsInAST(SourceLocation Loc) const {
+-  if (!LangOpts.CommentOpts.RetainCommentsFromSystemHeaders &&
+-      SourceMgr.isInSystemHeader(Loc))
+-    return false;
+-
+-  if (LangOpts.CommentOpts.ParseAllComments)
+-    return true;
+-
+-  if (LangOpts.CommentOpts.RetainComments)
+-    return true;
+-
+-  // When building a PCH the comments are serialized into the AST file
+-  // so downstream consumers like clangd) can retrieve documentation, and the
+-  // incremental/REPL front end may query them interactively.
+-  if (TUKind != TU_Complete)
+-    return true;
+-
+-  if (PP.isCodeCompletionEnabled())
+-    return true;
+-
+-  // Keep the comment if any of the -Wdocumentation warnings is enabled at
+-  // its location (checking the location handles warnings turned on by
+-  // `#pragma clang diagnostic`). -Wdocumentation-pedantic is checked
+-  // separately because it is not a subgroup of -Wdocumentation.
+-  if (!Diags.areAllIgnored("documentation", Loc) ||
+-      !Diags.areAllIgnored("documentation-pedantic", Loc))
+-    return true;
+-
+-  return false;
+-}
+ 
+ void Sema::ActOnComment(SourceRange Comment) {
+-  if (!shouldRetainCommentsInAST(Comment.getBegin()))
++  if (!LangOpts.RetainCommentsFromSystemHeaders &&
++      SourceMgr.isInSystemHeader(Comment.getBegin()))
+     return;
+   RawComment RC(SourceMgr, Comment, LangOpts.CommentOpts, false);
+   if (RC.isAlmostTrailingComment() || RC.hasUnsupportedSplice(SourceMgr)) {
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -30,6 +30,7 @@
+ #include "clang/AST/StmtCXX.h"
+ #include "clang/AST/Type.h"
+ #include "clang/Basic/Builtins.h"
++#include "clang/Basic/DiagnosticComment.h"
+ #include "clang/Basic/HLSLRuntime.h"
+ #include "clang/Basic/PartialDiagnostic.h"
+ #include "clang/Basic/SourceManager.h"
+@@ -15739,8 +15740,10 @@
+   if (Group.empty() || !Group[0])
+     return;
+ 
+-  if (Diags.areAllIgnored("documentation", Group[0]->getLocation()) &&
+-      Diags.areAllIgnored("documentation-pedantic", Group[0]->getLocation()))
++  if (Diags.isIgnored(diag::warn_doc_param_not_found,
++                      Group[0]->getLocation()) &&
++      Diags.isIgnored(diag::warn_unknown_comment_command_name,
++                      Group[0]->getLocation()))
+     return;
+ 
+   if (Group.size() >= 2) {
+diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-comment-retention.cpp b/clang/test/AST/ast-dump-comment-retention.cpp
+--- a/clang/test/AST/ast-dump-comment-retention.cpp
++++ b/clang/test/AST/ast-dump-comment-retention.cpp
+@@ -1,28 +0,0 @@
+-// Comments are only collected into the AST when a consumer may read them back
+-// (see Sema::shouldRetainCommentsInAST). -ast-dump is such a consumer: it
+-// force-enables comment retention, so documentation comments remain visible in
+-// its output even without -Wdocumentation. An ordinary comment is only turned
+-// into an AST comment node when -fparse-all-comments is passed.
+-
+-// RUN: %clang_cc1 -ast-dump -ast-dump-filter Test %s \
+-// RUN:   | FileCheck -strict-whitespace %s --check-prefixes=CHECK,DEFAULT
+-// RUN: %clang_cc1 -fparse-all-comments -ast-dump -ast-dump-filter Test %s \
+-// RUN:   | FileCheck -strict-whitespace %s --check-prefixes=CHECK,ALL
+-
+-/// Doc
+-int Test_DocComment;
+-// A documentation comment is retained for -ast-dump in both modes.
+-// CHECK:      VarDecl{{.*}}Test_DocComment
+-// CHECK-NEXT:   FullComment
+-// CHECK-NEXT:     ParagraphComment
+-// CHECK-NEXT:       TextComment{{.*}} Text=" Doc"
+-
+-// Ordinary
+-int Test_OrdinaryComment;
+-// An ordinary comment becomes an AST comment node only with
+-// -fparse-all-comments; by default it is dropped.
+-// CHECK:       VarDecl{{.*}}Test_OrdinaryComment
+-// ALL-NEXT:      FullComment
+-// ALL-NEXT:        ParagraphComment
+-// ALL-NEXT:          TextComment{{.*}} Text=" Ordinary"
+-// DEFAULT-NOT: FullComment
+diff -ruN --strip-trailing-cr a/clang/test/Sema/warn-documentation-comment-retention.cpp b/clang/test/Sema/warn-documentation-comment-retention.cpp
+--- a/clang/test/Sema/warn-documentation-comment-retention.cpp
++++ b/clang/test/Sema/warn-documentation-comment-retention.cpp
+@@ -1,38 +0,0 @@
+-// RUN: %clang_cc1 -fsyntax-only -verify %s
+-
+-// The comment-retention optimization (Sema::shouldRetainCommentsInAST) must
+-// still parse a documentation comment when -Wdocumentation is enabled at the
+-// comment's location -- including when it is turned on by a #pragma clang
+-// diagnostic rather than on the command line. The check is done at the
+-// comment's location precisely so pragma regions are honored.
+-
+-/// \returns Aaa
+-void outside();
+-// -Wdocumentation is off at this location, so the comment is not checked and
+-// no diagnostic is produced. -verify fails on any unexpected diagnostic, so
+-// this line asserts the comment is *not* diagnosed here.
+-
+-#pragma clang diagnostic push
+-#pragma clang diagnostic warning "-Wdocumentation"
+-/// \returns Aaa
+-void inside();
+-// expected-warning@-2 {{'\returns' command used in a comment that is attached to a function returning void}}
+-#pragma clang diagnostic pop
+-
+-// Any warning in the -Wdocumentation group must keep the comment, not just a
+-// hard-coded subset: -Wdocumentation-html is a subgroup of -Wdocumentation.
+-#pragma clang diagnostic push
+-#pragma clang diagnostic warning "-Wdocumentation-html"
+-/// Aaa <br></br>
+-void html_inside();
+-// expected-warning@-2 {{HTML end tag 'br' is forbidden}}
+-#pragma clang diagnostic pop
+-
+-// -Wdocumentation-unknown-command is under -Wdocumentation-pedantic, which is
+-// not a subgroup of -Wdocumentation and must be checked separately.
+-#pragma clang diagnostic push
+-#pragma clang diagnostic warning "-Wdocumentation-unknown-command"
+-/// \unknowncommand Aaa
+-void unknown_inside();
+-// expected-warning@-2 {{unknown command tag name}}
+-#pragma clang diagnostic pop
+diff -ruN --strip-trailing-cr a/clang-tools-extra/clangd/Compiler.cpp b/clang-tools-extra/clangd/Compiler.cpp
+--- a/clang-tools-extra/clangd/Compiler.cpp
++++ b/clang-tools-extra/clangd/Compiler.cpp
+@@ -121,8 +121,7 @@
+   // createInvocationFromCommandLine sets DisableFree.
+   CI->getFrontendOpts().DisableFree = false;
+   CI->getLangOpts().CommentOpts.ParseAllComments = true;
+-  CI->getLangOpts().CommentOpts.RetainComments = true;
+-  CI->getLangOpts().CommentOpts.RetainCommentsFromSystemHeaders = true;
++  CI->getLangOpts().RetainCommentsFromSystemHeaders = true;
+ 
+   disableUnsupportedOptions(*CI);
+   return CI;
+diff -ruN --strip-trailing-cr a/clang-tools-extra/clangd/index/IndexAction.cpp b/clang-tools-extra/clangd/index/IndexAction.cpp
+--- a/clang-tools-extra/clangd/index/IndexAction.cpp
++++ b/clang-tools-extra/clangd/index/IndexAction.cpp
+@@ -167,8 +167,7 @@
+   bool BeginInvocation(CompilerInstance &CI) override {
+     // We want all comments, not just the doxygen ones.
+     CI.getLangOpts().CommentOpts.ParseAllComments = true;
+-    CI.getLangOpts().CommentOpts.RetainComments = true;
+-    CI.getLangOpts().CommentOpts.RetainCommentsFromSystemHeaders = true;
++    CI.getLangOpts().RetainCommentsFromSystemHeaders = true;
+     // Index the whole file even if there are warnings and -Werror is set.
+     // Avoids some analyses too. Set in two places as we're late to the party.
+     CI.getDiagnosticOpts().IgnoreWarnings = true;
+diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-doc/tool/ClangDocMain.cpp b/clang-tools-extra/clang-doc/tool/ClangDocMain.cpp
+--- a/clang-tools-extra/clang-doc/tool/ClangDocMain.cpp
++++ b/clang-tools-extra/clang-doc/tool/ClangDocMain.cpp
+@@ -285,8 +285,7 @@
+     llvm::outs() << "Emiting docs in " << Format << " format.\n";
+     auto G = ExitOnErr(doc::findGeneratorByName(Format));
+ 
+-    ArgumentsAdjuster ArgAdjuster = getInsertArgumentAdjuster(
+-        "-fretain-comments", tooling::ArgumentInsertPosition::END);
++    ArgumentsAdjuster ArgAdjuster;
+     if (!DoxygenOnly)
+       ArgAdjuster = combineAdjusters(
+           getInsertArgumentAdjuster("-fparse-all-comments",
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp
+--- a/llvm/lib/Target/X86/X86InstrInfo.cpp
++++ b/llvm/lib/Target/X86/X86InstrInfo.cpp
+@@ -8607,7 +8607,9 @@
+       break;
+     case X86::AVX512_512_SETALLONES:
+       IsAllOnes = true;
+-      [[fallthrough]];
++      Ty = FixedVectorType::get(Type::getInt32Ty(MF.getFunction().getContext()),
++                                16);
++      break;
+     case X86::AVX1_SETALLONES:
+     case X86::AVX2_SETALLONES:
+     case X86::AVX512_256_SETALLONES:
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
+--- a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
++++ b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
+@@ -2609,6 +2609,13 @@
+     setOrigin(&I, getOrigin(&I, 0));
+   }
+ 
++  void visitPtrToAddrInst(PtrToAddrInst &I) {
++    IRBuilder<> IRB(&I);
++    setShadow(&I, IRB.CreateIntCast(getShadow(&I, 0), getShadowTy(&I), false,
++                                    "_msprop_ptrtoaddr"));
++    setOrigin(&I, getOrigin(&I, 0));
++  }
++
+   void visitIntToPtrInst(IntToPtrInst &I) {
+     IRBuilder<> IRB(&I);
+     setShadow(&I, IRB.CreateIntCast(getShadow(&I, 0), getShadowTy(&I), false,
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-setallones-512.ll b/llvm/test/CodeGen/X86/fold-setallones-512.ll
+--- a/llvm/test/CodeGen/X86/fold-setallones-512.ll
++++ b/llvm/test/CodeGen/X86/fold-setallones-512.ll
+@@ -0,0 +1,152 @@
++; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
++; RUN: llc < %s -mtriple=x86_64-- -mattr=+avx512bw -regalloc=basic | FileCheck %s
++
++; The all-ones value is live across a region where all 32 ZMM registers are in
++; use, so the register allocator folds AVX512_512_SETALLONES into the users as a
++; constant pool load. Make sure the constant pool entry is 512 bits wide.
++
++declare <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16>, <32 x i16>)
++
++define void @fold_512_setallones(ptr %p) nounwind {
++; CHECK-LABEL: fold_512_setallones:
++; CHECK:       # %bb.0: # %entry
++; CHECK-NEXT:    vmovdqa64 (%rdi), %zmm0
++; CHECK-NEXT:    vmovaps (%rdi), %zmm31
++; CHECK-NEXT:    vmovaps (%rdi), %zmm30
++; CHECK-NEXT:    vmovaps (%rdi), %zmm29
++; CHECK-NEXT:    vmovaps (%rdi), %zmm28
++; CHECK-NEXT:    vmovaps (%rdi), %zmm27
++; CHECK-NEXT:    vmovaps (%rdi), %zmm26
++; CHECK-NEXT:    vmovaps (%rdi), %zmm25
++; CHECK-NEXT:    vmovaps (%rdi), %zmm24
++; CHECK-NEXT:    vmovaps (%rdi), %zmm23
++; CHECK-NEXT:    vmovaps (%rdi), %zmm22
++; CHECK-NEXT:    vmovaps (%rdi), %zmm21
++; CHECK-NEXT:    vmovaps (%rdi), %zmm20
++; CHECK-NEXT:    vmovaps (%rdi), %zmm19
++; CHECK-NEXT:    vmovaps (%rdi), %zmm18
++; CHECK-NEXT:    vmovaps (%rdi), %zmm17
++; CHECK-NEXT:    vmovaps (%rdi), %zmm16
++; CHECK-NEXT:    vmovaps (%rdi), %zmm15
++; CHECK-NEXT:    vmovaps (%rdi), %zmm14
++; CHECK-NEXT:    vmovaps (%rdi), %zmm13
++; CHECK-NEXT:    vmovaps (%rdi), %zmm12
++; CHECK-NEXT:    vmovaps (%rdi), %zmm11
++; CHECK-NEXT:    vmovaps (%rdi), %zmm10
++; CHECK-NEXT:    vmovaps (%rdi), %zmm9
++; CHECK-NEXT:    vmovaps (%rdi), %zmm8
++; CHECK-NEXT:    vmovaps (%rdi), %zmm7
++; CHECK-NEXT:    vmovaps (%rdi), %zmm6
++; CHECK-NEXT:    vmovaps (%rdi), %zmm5
++; CHECK-NEXT:    vmovaps (%rdi), %zmm4
++; CHECK-NEXT:    vmovaps (%rdi), %zmm3
++; CHECK-NEXT:    vmovaps (%rdi), %zmm2
++; CHECK-NEXT:    vmovdqa64 (%rdi), %zmm1
++; CHECK-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm0, %zmm0 # [4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]
++; CHECK-NEXT:    vmovdqa64 %zmm0, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm31, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm30, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm29, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm28, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm27, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm26, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm25, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm24, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm23, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm22, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm21, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm20, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm19, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm18, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm17, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm16, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm15, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm14, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm13, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm12, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm11, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm10, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm9, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm8, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm7, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm6, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm5, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm4, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm3, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm2, (%rdi)
++; CHECK-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm1, %zmm0 # [4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]
++; CHECK-NEXT:    vmovdqa64 %zmm0, (%rdi)
++; CHECK-NEXT:    vzeroupper
++; CHECK-NEXT:    retq
++entry:
++  %v0 = load volatile <32 x i16>, ptr %p
++  %v1 = load volatile <32 x i16>, ptr %p
++  %v2 = load volatile <32 x i16>, ptr %p
++  %v3 = load volatile <32 x i16>, ptr %p
++  %v4 = load volatile <32 x i16>, ptr %p
++  %v5 = load volatile <32 x i16>, ptr %p
++  %v6 = load volatile <32 x i16>, ptr %p
++  %v7 = load volatile <32 x i16>, ptr %p
++  %v8 = load volatile <32 x i16>, ptr %p
++  %v9 = load volatile <32 x i16>, ptr %p
++  %v10 = load volatile <32 x i16>, ptr %p
++  %v11 = load volatile <32 x i16>, ptr %p
++  %v12 = load volatile <32 x i16>, ptr %p
++  %v13 = load volatile <32 x i16>, ptr %p
++  %v14 = load volatile <32 x i16>, ptr %p
++  %v15 = load volatile <32 x i16>, ptr %p
++  %v16 = load volatile <32 x i16>, ptr %p
++  %v17 = load volatile <32 x i16>, ptr %p
++  %v18 = load volatile <32 x i16>, ptr %p
++  %v19 = load volatile <32 x i16>, ptr %p
++  %v20 = load volatile <32 x i16>, ptr %p
++  %v21 = load volatile <32 x i16>, ptr %p
++  %v22 = load volatile <32 x i16>, ptr %p
++  %v23 = load volatile <32 x i16>, ptr %p
++  %v24 = load volatile <32 x i16>, ptr %p
++  %v25 = load volatile <32 x i16>, ptr %p
++  %v26 = load volatile <32 x i16>, ptr %p
++  %v27 = load volatile <32 x i16>, ptr %p
++  %v28 = load volatile <32 x i16>, ptr %p
++  %v29 = load volatile <32 x i16>, ptr %p
++  %v30 = load volatile <32 x i16>, ptr %p
++  %v31 = load volatile <32 x i16>, ptr %p
++  br label %bb1
++
++bb1:
++  %n0 = call <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16> %v0, <32 x i16> splat (i16 -1))
++  store volatile <16 x i32> %n0, ptr %p
++  store volatile <32 x i16> %v1, ptr %p
++  store volatile <32 x i16> %v2, ptr %p
++  store volatile <32 x i16> %v3, ptr %p
++  store volatile <32 x i16> %v4, ptr %p
++  store volatile <32 x i16> %v5, ptr %p
++  store volatile <32 x i16> %v6, ptr %p
++  store volatile <32 x i16> %v7, ptr %p
++  store volatile <32 x i16> %v8, ptr %p
++  store volatile <32 x i16> %v9, ptr %p
++  store volatile <32 x i16> %v10, ptr %p
++  store volatile <32 x i16> %v11, ptr %p
++  store volatile <32 x i16> %v12, ptr %p
++  store volatile <32 x i16> %v13, ptr %p
++  store volatile <32 x i16> %v14, ptr %p
++  store volatile <32 x i16> %v15, ptr %p
++  store volatile <32 x i16> %v16, ptr %p
++  store volatile <32 x i16> %v17, ptr %p
++  store volatile <32 x i16> %v18, ptr %p
++  store volatile <32 x i16> %v19, ptr %p
++  store volatile <32 x i16> %v20, ptr %p
++  store volatile <32 x i16> %v21, ptr %p
++  store volatile <32 x i16> %v22, ptr %p
++  store volatile <32 x i16> %v23, ptr %p
++  store volatile <32 x i16> %v24, ptr %p
++  store volatile <32 x i16> %v25, ptr %p
++  store volatile <32 x i16> %v26, ptr %p
++  store volatile <32 x i16> %v27, ptr %p
++  store volatile <32 x i16> %v28, ptr %p
++  store volatile <32 x i16> %v29, ptr %p
++  store volatile <32 x i16> %v30, ptr %p
++  %n1 = call <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16> %v31, <32 x i16> splat (i16 -1))
++  store volatile <16 x i32> %n1, ptr %p
++  ret void
++}
+diff -ruN --strip-trailing-cr a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
+--- a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
++++ b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
+@@ -0,0 +1,14 @@
++; RUN: opt < %s -S -passes=msan 2>&1 | FileCheck %s
++
++target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
++target triple = "x86_64-unknown-linux-gnu"
++
++; CHECK-LABEL: @ptrtoaddr_propagate(
++; CHECK:       %[[SHADOW:.*]] = load i64, ptr @__msan_param_tls
++; CHECK-NOT:   __msan_warning
++; CHECK:       store i64 %[[SHADOW]], ptr @__msan_retval_tls
++; CHECK:       ret i64
++define i64 @ptrtoaddr_propagate(ptr %p) sanitize_memory {
++  %addr = ptrtoaddr ptr %p to i64
++  ret i64 %addr
++}
