@@ -843,10 +843,7 @@ xla_cc_test(
     name = "ondevice_event_exporter_test",
     srcs = ["ondevice_event_exporter_test.cc"],
     tags = [
-        "cuda-only",
-        "gpu",
         "no_mac",
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":ondevice_event_exporter",
@@ -875,8 +872,6 @@ xla_cc_test(
     name = "cupti_buffer_events_test",
     srcs = ["cupti_buffer_events_test.cc"],
     tags = [
-        "cuda-only",
-        "gpu",
         "no_mac",
     ],
     deps = [
@@ -893,8 +888,6 @@ xla_cc_test(
     size = "small",
     srcs = ["cupti_collector_test.cc"],
     tags = [
-        "cuda-only",
-        "gpu",
         "no_mac",
     ],
     deps = [
