@@ -414,9 +414,19 @@ absl::Status InitBiasAddArgs(OpKernelContext* context, BiasAddArgs<T>* args,
   // Bias of the following dimensions: [ output_depth ]
   const Tensor& bias = context->input(2);
 
-  if (bias.dims() != 1)
+  if (bias.dims() < 1) {
     return absl::InvalidArgumentError(
-        absl::StrCat("bias must be 1-dimensional", bias.shape().DebugString()));
+        absl::StrCat("bias must be at least 1-dimensional",
+                     bias.shape().DebugString()));
+  }
+  for (int i = 0; i < bias.dims() - 1; ++i) {
+    if (bias.dim_size(i) != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("For bias_dims > 1, all except the last dimension "
+                       "must be 1, got: ",
+                       bias.shape().DebugString()));
+    }
+  }
 
   const auto data_ptr = [](const Tensor& tensor) -> const T* {
     return reinterpret_cast<const T*>(tensor.tensor_data().data());

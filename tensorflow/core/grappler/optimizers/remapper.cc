@@ -708,8 +708,7 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
     int conv_channel_dim;
     conv_channel_dim = shape.dim(shape.dim_size() - 1).size();
 
-    if (shape.dim_size() == 4 && bcast_shape.dim_size() > 4) return false;
-    if (shape.dim_size() == 5 && bcast_shape.dim_size() > 5) return false;
+    if (bcast_shape.dim_size() > shape.dim_size()) return false;
 
     if (shape.dim_size() < 2) return false;
     // Check that the conv node's channel dim is equal to the 1-dim add node's
