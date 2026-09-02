@@ -26,16 +26,20 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Register.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -63,7 +67,7 @@ class AttributeExporterTest : public ::testing::Test {
                      mlir::mhlo::MhloDialect>();
     mlir::stablehlo::registerAllDialects(registry_);
     context_ = std::make_unique<mlir::MLIRContext>(registry_);
-    context_->loadDialect<mlir::mhlo::MhloDialect>();
+    context_->loadAllAvailableDialects();
   }
 
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModule(
@@ -627,6 +631,46 @@ TEST_F(AttributeExporterTest, ProjectOriginalValueProtoEmptyLeaf) {
   ASSERT_EQ(projected_empty->elements_size(), 1);
   EXPECT_TRUE(projected_empty->elements(0).shape_index().empty());
   EXPECT_FALSE(projected_empty->elements(0).has_original_array());
+}
+
+TEST_F(AttributeExporterTest, ExportImportDotAlgorithmFP8xNAllAlgorithms) {
+  mlir::Builder builder(context_.get());
+
+  // Test ALG_DOT_BF16_BF16_FP8X3 import to DotAlgorithmAttr and exact
+  // properties.
+  auto fp8x3_attr = xla::stablehlo::ConvertDotAlgorithm(
+      PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3, &builder);
+  ASSERT_TRUE(fp8x3_attr);
+  EXPECT_TRUE(
+      mlir::isa<mlir::Float8E4M3FNType>(fp8x3_attr.getLhsPrecisionType()));
+  EXPECT_TRUE(
+      mlir::isa<mlir::Float8E4M3FNType>(fp8x3_attr.getRhsPrecisionType()));
+  EXPECT_TRUE(fp8x3_attr.getAccumulationType().isF32());
+  EXPECT_EQ(fp8x3_attr.getLhsComponentCount(), 1);
+  EXPECT_EQ(fp8x3_attr.getRhsComponentCount(), 1);
+  EXPECT_EQ(fp8x3_attr.getNumPrimitiveOperations(), 3);
+  EXPECT_FALSE(fp8x3_attr.getAllowImpreciseAccumulation());
+  TF_ASSERT_OK_AND_ASSIGN(PrecisionConfig::Algorithm fp8x3_exported,
+                          ConvertDotAlgorithm(fp8x3_attr));
+  EXPECT_EQ(fp8x3_exported, PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3);
+
+  // Test ALG_DOT_BF16_BF16_FP8X4 import to DotAlgorithmAttr and exact
+  // properties.
+  auto fp8x4_attr = xla::stablehlo::ConvertDotAlgorithm(
+      PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4, &builder);
+  ASSERT_TRUE(fp8x4_attr);
+  EXPECT_TRUE(
+      mlir::isa<mlir::Float8E4M3FNType>(fp8x4_attr.getLhsPrecisionType()));
+  EXPECT_TRUE(
+      mlir::isa<mlir::Float8E4M3FNType>(fp8x4_attr.getRhsPrecisionType()));
+  EXPECT_TRUE(fp8x4_attr.getAccumulationType().isF32());
+  EXPECT_EQ(fp8x4_attr.getLhsComponentCount(), 1);
+  EXPECT_EQ(fp8x4_attr.getRhsComponentCount(), 1);
+  EXPECT_EQ(fp8x4_attr.getNumPrimitiveOperations(), 4);
+  EXPECT_FALSE(fp8x4_attr.getAllowImpreciseAccumulation());
+  TF_ASSERT_OK_AND_ASSIGN(PrecisionConfig::Algorithm fp8x4_exported,
+                          ConvertDotAlgorithm(fp8x4_attr));
+  EXPECT_EQ(fp8x4_exported, PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4);
 }
 
 }  // namespace
