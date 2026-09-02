@@ -13,18 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/riegeli_file_writer_factory.h"
+
 #include <memory>
 
 #include "absl/strings/string_view.h"
-#include "riegeli/bytes/file_reader.h"
-#include "riegeli/bytes/reader.h"
-#include "xla/service/riegeli_file_reader_factory.h"
+#include "riegeli/bytes/writer.h"
+#include "tsl/platform/platform.h"
+
+#if TSL_IS_IN_OSS
+#include "riegeli/bytes/fd_writer.h"
+#else
+#include "riegeli/bytes/file_writer.h"
+#endif
 
 namespace xla {
 
-std::unique_ptr<riegeli::Reader> CreateRiegeliFileReader(
+std::unique_ptr<riegeli::Writer> CreateRiegeliFileWriter(
     absl::string_view filename) {
-  return std::make_unique<riegeli::FileReader<>>(filename);
+#if TSL_IS_IN_OSS
+  return std::make_unique<riegeli::FdWriter<>>(filename);
+#else
+  return std::make_unique<riegeli::FileWriter<>>(filename);
+#endif
 }
 
 }  // namespace xla
