@@ -29,6 +29,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The job only reads the tree and builds it, as in every other workflow here.
+permissions:
+  contents: read
+
 defaults:
   run:
     # The project lives in its own directory and its Makefile uses relative
@@ -49,10 +53,12 @@ jobs:
       matrix:
         python: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to a commit rather than a tag, as every action in
+      # .github/workflows is: a tag is a movable reference, so an unpinned use
+      # runs whatever that tag points at on the day the job runs.
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
-
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
         with:
           python-version: ${{ matrix.python }}
 
