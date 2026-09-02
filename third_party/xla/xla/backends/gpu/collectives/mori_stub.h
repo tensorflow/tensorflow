@@ -16,14 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_MORI_STUB_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_MORI_STUB_H_
 
-#include <hip/hip_runtime.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <utility>
-#include <vector>
 
 // Inert stand-in for the subset of the MORI shmem host API used by the MORI
 // collectives/communicator backbone. These placeholders let the backbone
@@ -75,76 +70,6 @@ inline void* ShmemMalloc(size_t /*size*/) {
 inline void ShmemFree(void* /*ptr*/) {}
 
 }  // namespace shmem
-}  // namespace mori
-
-namespace mori {
-namespace collective {
-
-// Element type + reduction op enums mirror the real facade's non-templated API
-// (mori/collective/collectives_facade.hpp), so the communicator's enum dispatch
-// compiles against either the stub or the real facade.
-enum class DataType {
-  F8E5M2,
-  F8E4M3FN,
-  F16,
-  BF16,
-  S8,
-  U8,
-  S32,
-  U32,
-  S64,
-  U64,
-  F32,
-  F64
-};
-enum class ReduceOpKind { SUM, PRODUCT, MIN, MAX };
-
-// Inert stand-in for the real MORI CollectivesFacade. Header-only, all Run* are
-// no-ops returning hipSuccess. Lets the collectives/communicator wiring compile
-// and link without @roc_mori.
-class CollectivesFacade {
-  CollectivesFacade() = default;
-
- public:
-  using AddressVector = std::vector<std::pair<const void*, void*>>;
-
-  CollectivesFacade(const CollectivesFacade&) = delete;
-  CollectivesFacade& operator=(const CollectivesFacade&) = delete;
-
-  static std::unique_ptr<CollectivesFacade> Create(int /*myPe*/, int /*nPes*/,
-                                                   size_t /*maxStagingBytes*/) {
-    return std::unique_ptr<CollectivesFacade>(new CollectivesFacade());
-  }
-  ~CollectivesFacade() = default;
-
-  hipError_t RunReduceScatter(const void*, void*, size_t, DataType,
-                              ReduceOpKind, hipStream_t) {
-    return hipSuccess;
-  }
-  hipError_t RunAllReduce(const void*, void*, size_t, DataType, ReduceOpKind,
-                          hipStream_t) {
-    return hipSuccess;
-  }
-  hipError_t RunAllGather(const void*, void*, size_t, hipStream_t) {
-    return hipSuccess;
-  }
-  hipError_t RunAllToAll(const AddressVector&, size_t, hipStream_t) {
-    return hipSuccess;
-  }
-  hipError_t RunBarrier(hipStream_t) { return hipSuccess; }
-  hipError_t RunSend(const void*, size_t, int, hipStream_t) {
-    return hipSuccess;
-  }
-  hipError_t RunRecv(void*, size_t, int, hipStream_t) { return hipSuccess; }
-  hipError_t RunCollectivePermute(const void*, void*, size_t, int,
-                                  const std::vector<int>&, hipStream_t) {
-    return hipSuccess;
-  }
-  hipError_t RunQuiet(hipStream_t) { return hipSuccess; }
-  hipError_t RunFence() { return hipSuccess; }
-};
-
-}  // namespace collective
 }  // namespace mori
 
 #endif  // XLA_BACKENDS_GPU_COLLECTIVES_MORI_STUB_H_
