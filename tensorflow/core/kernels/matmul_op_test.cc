@@ -288,6 +288,25 @@ class FusedMatMulOpTest : public OpsTestBase {
                              run_fused);
   }
 
+  void VerifyMatMulWithBroadcastBias(int m, int k, int n, bool transpose_a,
+                                     bool transpose_b) {
+    DataType dtype = DataTypeToEnum<T>::v();
+    Tensor lhs(dtype, {transpose_a ? k : m, transpose_a ? m : k});
+    lhs.flat<T>() = lhs.flat<T>().setRandom();
+    Tensor rhs(dtype, {transpose_b ? n : k, transpose_b ? k : n});
+    rhs.flat<T>() = rhs.flat<T>().setRandom();
+    Tensor bias(dtype, {1, n});
+    bias.flat<T>() = bias.flat<T>().setRandom();
+
+    Tensor fused_matmul;
+    bool skipped = false;
+    RunFusedMatMulOp(lhs, rhs, {bias}, {"BiasAdd"}, transpose_a, transpose_b,
+                     &fused_matmul, /*allow_gpu_device=*/true, &skipped);
+    if (!skipped) {
+      ASSERT_EQ(fused_matmul.shape(), TensorShape({m, n}));
+    }
+  }
+
   // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
   // to FusedMatMul.
   void VerifyConv2DWithBiasAndActivation(int m, int k, int n, bool transpose_a,
@@ -356,6 +375,10 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
   this->VerifyMatMulWithBias(1, 256, 1, false, false);
 }
 
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMulWithBroadcastBias) {
+  this->VerifyMatMulWithBroadcastBias(8, 16, 32, false, false);
+}
+
 static auto GetActivations(DataType dtype) {
   // "GeluExact", "Tanh", "Sigmoid" fusions are only supported for half-float
   // datatype
@@ -407,6 +430,7 @@ REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,       //
                             MatMul1x256x256,                 //
                             MatMul256x256x1,                 //
                             MatMul1x256x1,                   //
+                            MatMulWithBroadcastBias,         //
                             MatMul256x128x64WithActivation,  //
                             MatMul1x256x256WithActivation,   //
                             MatMul256x256x1WithActivation,   //
