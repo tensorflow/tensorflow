@@ -137,7 +137,18 @@ INSTANTIATE_TEST_SUITE_P(
         TC{"SmallerByteStrideThanDataType", kS32, {5, 5}, Strides({1, 1})},
         TC{"ByteStrideIndivisibleByDataType", kS32, {5, 5}, Strides({7, 7})},
         // Bad arguments
-        TC{"NegativeShapeDimension", kS32, {-5, -5}, Strides({20, 4})}),
+        TC{"NegativeShapeDimension", kS32, {-5, -5}, Strides({20, 4})},
+        // Stride * (dim - 1) overflows int64_t — must be rejected, not silently
+        // wrap to zero (which would bypass the size check in
+        // FromMinimalMemRegion).
+        TC{"ByteStrideOverflowSingleDim",
+           kS32,
+           {5},
+           Strides({INT64_C(4611686018427387904)})},  // 2^62 * 4 = 2^64 wraps
+        TC{"ByteStrideOverflowMultiDim",
+           kS32,
+           {5, 3},
+           Strides({INT64_C(4611686018427387904), 4})}),
     testing::PrintToStringParamName());
 TEST_P(ArrayMemRegionFailure, TestCase) {
   const TC tc = GetParam();
