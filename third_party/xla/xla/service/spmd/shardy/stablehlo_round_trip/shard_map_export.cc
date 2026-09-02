@@ -260,7 +260,7 @@ void setFuncManualAxesRecursively(
   funcOp.setAllResultAttrs(newResultAttrs);
 
   // Walk in preorder of blocks in order to stop walks on manual computations.
-  funcOp->walk([&](Operation* op) {
+  funcOp->walk<mlir::WalkOrder::PreOrder>([&](Operation* op) {
     return setManualAxes(op, manualAxes, meshOrRef, symbolTable,
                          parentManualCompAxes);
   });
