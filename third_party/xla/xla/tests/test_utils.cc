@@ -26,10 +26,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -37,12 +40,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/constraint_propagator.h"
 #include "xla/tests/constraint_state.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -62,49 +66,76 @@ bool NeedsInitValue(const HloUse& use) {
            op_num >= instruction->operand_count() / 2));
 }
 
-// Generate random values that are constrained to the input_shape minus the
-// output_shape so as not to produce wrapping slices, for instance.
-Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
-  std::uniform_int_distribution<int32_t> generator(0, index_bound);
-  return LiteralUtil::CreateR0<int32_t>(generator(*engine));
-}
-
-// Returns true if `dest' is reachable from `src' through data-formatting and
-// custom call instructions within the same computation.
-bool ReachableViaDataFormatting(const HloInstruction* src,
-                                const HloInstruction* dest,
-                                bool treat_gte_as_data_formatting) {
-  if (src == dest) {
-    return true;
-  }
-  switch (dest->opcode()) {
+bool IsDataFormattingOp(const HloInstruction* instruction,
+                        bool treat_gte_as_data_formatting) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kConvert:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kCopy:
     case HloOpcode::kReshape:
     case HloOpcode::kTranspose:
-    case HloOpcode::kCopy:
     case HloOpcode::kSlice:
-      break;
+    case HloOpcode::kBitcast:
+      return true;
     case HloOpcode::kCustomCall:
-      if (dest->custom_call_target() == "AssumeGatherIndicesInBound") {
-        break;
-      }
-      return false;
-    // TODO(b/249417724): a workaround for tuple param.
+      return instruction->custom_call_target() == "AssumeGatherIndicesInBound";
     case HloOpcode::kGetTupleElement:
-      if (treat_gte_as_data_formatting) {
-        break;
-      } else {
-        return false;
-      }
+      return treat_gte_as_data_formatting;
     default:
       return false;
   }
-  for (const auto* operand : dest->operands()) {
-    if (ReachableViaDataFormatting(src, operand,
-                                   treat_gte_as_data_formatting)) {
-      return true;
+}
+
+void FindConstrainedUsesHelper(
+    const HloDataflowAnalysis& dataflow, const HloInstruction& instruction,
+    bool treat_gte_as_data_formatting,
+    absl::flat_hash_set<const HloInstruction*>& visited,
+    std::vector<HloUse>& constrained_uses) {
+  auto [it, inserted] = visited.insert(&instruction);
+  if (!inserted) {
+    return;
+  }
+
+  for (const auto& pair : dataflow.GetInstructionValueSet(&instruction)) {
+    for (const HloValue* value : pair.second.values()) {
+      for (const HloUse& use : value->GetUses()) {
+        HloInstruction* const user = use.instruction;
+        const HloOpcode opcode = user->opcode();
+        const int64_t op_num = use.operand_number;
+
+        if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
+            (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
+          constrained_uses.push_back(use);
+        } else if ((opcode == HloOpcode::kGather ||
+                    opcode == HloOpcode::kScatter) &&
+                   op_num == 1) {
+          constrained_uses.push_back(use);
+        } else if (opcode == HloOpcode::kFusion) {
+          const HloInstruction* const to_analyze =
+              user->fused_parameter(op_num);
+          FindConstrainedUsesHelper(dataflow, *to_analyze,
+                                    treat_gte_as_data_formatting, visited,
+                                    constrained_uses);
+        } else if (NeedsInitValue(use)) {
+          constrained_uses.push_back(use);
+        } else if (IsDataFormattingOp(user, treat_gte_as_data_formatting)) {
+          FindConstrainedUsesHelper(dataflow, *user,
+                                    treat_gte_as_data_formatting, visited,
+                                    constrained_uses);
+        } else if (opcode == HloOpcode::kSort &&
+                   (user->operand_count() >= 2 ||
+                    Cast<const HloSortInstruction>(user)->is_stable()) &&
+                   op_num == 0) {
+          // Operand 0 of sort is the array of keys used for key/value
+          // (two-operand) kSort instructions. Since sort stability is not
+          // guaranteed, constrain keys of key-value sort not to have
+          // duplicates, since otherwise the value order may legitimately
+          // differ.
+          constrained_uses.push_back(use);
+        }
+      }
     }
   }
-  return false;
 }
 
 // Use dataflow analysis on each parameter to see if there are uses that would
@@ -116,62 +147,9 @@ std::vector<HloUse> FindConstrainedUses(const HloDataflowAnalysis& dataflow,
                                         const HloInstruction& param,
                                         bool treat_gte_as_data_formatting) {
   std::vector<HloUse> constrained_uses;
-  for (const auto& pair : dataflow.GetInstructionValueSet(&param)) {
-    const HloValue& value = dataflow.GetUniqueValueAt(&param, pair.first);
-    for (const HloUse& use : value.GetUses()) {
-      HloInstruction* instruction = use.instruction;
-      const HloOpcode opcode = instruction->opcode();
-      const int64_t op_num = use.operand_number;
-      if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
-          (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
-        constrained_uses.push_back(use);
-      } else if ((opcode == HloOpcode::kGather ||
-                  opcode == HloOpcode::kScatter) &&
-                 op_num == 1) {
-        constrained_uses.push_back(use);
-      } else if (opcode == HloOpcode::kFusion) {
-        const HloInstruction* const to_analyze =
-            instruction->fused_parameter(op_num);
-        auto fused_uses = FindConstrainedUses(dataflow, *to_analyze,
-                                              treat_gte_as_data_formatting);
-        constrained_uses.insert(constrained_uses.end(), fused_uses.begin(),
-                                fused_uses.end());
-      } else if (NeedsInitValue(use)) {
-        constrained_uses.push_back(use);
-      } else if (opcode == HloOpcode::kConvert ||
-                 opcode == HloOpcode::kReducePrecision) {
-        auto converted_uses = FindConstrainedUses(dataflow, *instruction,
-                                                  treat_gte_as_data_formatting);
-        constrained_uses.insert(constrained_uses.end(), converted_uses.begin(),
-                                converted_uses.end());
-      } else if (opcode == HloOpcode::kSort &&
-                 (instruction->operand_count() >= 2 ||
-                  Cast<const HloSortInstruction>(instruction)->is_stable()) &&
-                 op_num == 0) {
-        // Operand 0 of sort is the array of keys used for key/value
-        // (two-operand) kSort instructions. Since sort stability is not
-        // guaranteed, constrain keys of key-value sort not to have
-        // duplicates, since otherwise the value order may legitimately
-        // differ.
-        constrained_uses.push_back(use);
-      }
-    }
-  }
-
-  for (auto* instruction : param.parent()->instructions()) {
-    const HloOpcode opcode = instruction->opcode();
-    if (opcode == HloOpcode::kGather || opcode == HloOpcode::kScatter) {
-      if (instruction->operand(1) == &param) {
-        // Above already covers this case.
-        continue;
-      }
-      if (ReachableViaDataFormatting(&param, instruction->operand(1),
-                                     treat_gte_as_data_formatting)) {
-        constrained_uses.push_back(
-            HloUse{instruction, /*operand_number=*/1, ShapeIndex{}});
-      }
-    }
-  }
+  absl::flat_hash_set<const HloInstruction*> visited;
+  FindConstrainedUsesHelper(dataflow, param, treat_gte_as_data_formatting,
+                            visited, constrained_uses);
   return constrained_uses;
 }
 
@@ -187,8 +165,8 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     bool generate_aligned_ds_indices,
     GetIndexKnownZeroesFn get_index_known_zeroes = nullptr) {
   int64_t index_bound = INT64_MAX;
-  // Used for operations like DUS / DS which need to be aligned when they appear
-  // in a fusion.
+  // Used for operations like DUS / DS which need to be aligned when they
+  // appear in a fusion.
   std::optional<int64_t> index_alignment = std::nullopt;
   bool no_duplicates = false;
   bool needs_constant = false;
@@ -305,7 +283,8 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
         needs_sorted_indices, no_duplicates, use_large_range,
         max_bits_of_precision, index_alignment, index_known_zeroes,
         /*float_generator=*/nullptr);
-  } else if (needs_constant) {
+  }
+  if (needs_constant) {
     switch (identity_type) {
       case IdentityElementType::kZero:
         return LiteralUtil::Zero(param_shape.element_type());
@@ -327,14 +306,13 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
                                /*index_known_zeroes=*/std::nullopt,
                                /*float_generator=*/nullptr);
     }
-  } else {
-    return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
-                           /*is_sorted=*/needs_sorted_indices, no_duplicates,
-                           use_large_range, max_bits_of_precision,
-                           /*index_alignment=*/std::nullopt,
-                           /*index_known_zeroes=*/std::nullopt,
-                           /*float_generator=*/nullptr);
   }
+  return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
+                         /*is_sorted=*/needs_sorted_indices, no_duplicates,
+                         use_large_range, max_bits_of_precision,
+                         /*index_alignment=*/std::nullopt,
+                         /*index_known_zeroes=*/std::nullopt,
+                         /*float_generator=*/nullptr);
 }
 
 // Given a module entry parameter, use the dataflow analysis to see if a

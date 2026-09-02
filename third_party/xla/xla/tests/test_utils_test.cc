@@ -29,13 +29,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -618,6 +620,67 @@ ENTRY %module (param: f4e2m1fn[1024]) -> f4e2m1fn[1024] {
 
   const int64_t num_possible_values = 16;
   EXPECT_EQ(values.size(), num_possible_values);
+}
+
+// Tests that max reduction uses MinValue as the identity element through copy
+// pass-through.
+TEST_F(TestUtilsTest, ReduceMaxIdentityElement) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule ReduceMaxIdentityModule
+
+max_BF16 (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT maximum = bf16[] maximum(lhs, rhs)
+}
+
+ENTRY entry {
+  param_0 = bf16[4,5,128,256] parameter(0)
+  param_1 = bf16[] parameter(1)
+  copy = bf16[] copy(param_1)
+  ROOT reduce-window = bf16[3,4,128,256] reduce-window(param_0, copy),
+    window={size=2x2x1x1 pad=0_0x0_0x0_0x0_0}, to_apply=max_BF16
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_EQ(args[1].Get<bfloat16>({}),
+            LiteralUtil::MinValue(BF16).Get<bfloat16>({}));
+}
+
+// Tests that min reduction uses MaxValue as the identity element through copy
+// pass-through and fusion.
+TEST_F(TestUtilsTest, ReduceMinIdentityElement) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule ReduceMinIdentityModule
+
+min_F32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT minimum = f32[] minimum(lhs, rhs)
+}
+
+fused_computation (param_0: f32[4,5,128,256], param_1: f32[]) -> f32[3,4,128,256] {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT reduce-window = f32[3,4,128,256] reduce-window(param_0, param_1),
+    window={size=2x2x1x1 pad=0_0x0_0x0_0x0_0}, to_apply=min_F32
+}
+
+ENTRY entry {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  copy = f32[] copy(param_1)
+  ROOT fusion = f32[3,4,128,256] fusion(param_0, copy), kind=kOutput, calls=fused_computation
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_EQ(args[1].Get<float>({}), LiteralUtil::MaxValue(F32).Get<float>({}));
 }
 
 }  // namespace
