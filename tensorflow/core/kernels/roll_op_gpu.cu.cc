@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/roll_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -30,12 +31,12 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void RollKernel(const int32_t nthreads, const int32_t num_dims,
+__global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
                            const T* __restrict__ input, T* __restrict__ output,
                            const int32_t* __restrict__ dim_size,
                            const int32_t* __restrict__ threshold,
                            const int64_t* __restrict__ dim_range) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+  CUDA_1D_KERNEL_LOOP(out_idx, nthreads, int64_t) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
       const int64_t stride = dim_range[i] / dim_size[i];
@@ -75,7 +76,12 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
-    GpuLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
+    auto config_or = GetGpuLaunchConfig64(num_elements, d);
+    if (!config_or.ok()) {
+      context->SetStatus(config_or.status());
+      return;
+    }
+    const GpuLaunchConfig64& cfg = *config_or;
 
     TF_CHECK_OK(
         GpuLaunchKernel(RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,

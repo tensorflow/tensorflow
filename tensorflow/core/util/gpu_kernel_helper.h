@@ -34,9 +34,17 @@ limitations under the License.
 #endif
 
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
-#define GPU_1D_KERNEL_LOOP(i, n) \
+#define GPU_1D_KERNEL_LOOP(i, n, ...) \
+  GPU_1D_KERNEL_LOOP_SELECT(i, n, ##__VA_ARGS__)
+#define GPU_1D_KERNEL_LOOP_SELECT(i, n, T, ...) \
+  for (T i : ::tensorflow::GpuGridRangeX<T>(n))
+#define GPU_1D_KERNEL_LOOP_SELECT(i, n, ...) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
-#define CUDA_1D_KERNEL_LOOP(i, n) \
+#define CUDA_1D_KERNEL_LOOP(i, n, ...) \
+  CUDA_1D_KERNEL_LOOP_SELECT(i, n, ##__VA_ARGS__)
+#define CUDA_1D_KERNEL_LOOP_SELECT(i, n, T, ...) \
+  for (T i : ::tensorflow::GpuGridRangeX<T>(n))
+#define CUDA_1D_KERNEL_LOOP_SELECT(i, n, ...) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
 
 // Deprecated, use 'for(int i : GpuGridRange?(n))' instead.
