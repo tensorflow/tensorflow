@@ -3782,13 +3782,13 @@ TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
                         "needs to be collective-permute-start, found tuple"));
 }
 
-TEST_F(HloVerifierTest, ComparisonTypeFloat) {
+TEST_F(HloVerifierTest, ComparisonOrderSigned) {
   const char* const hlo_string = R"(
   HloModule Module
 
-  ENTRY RngOperandElementTypesNotMatch {
-   p0 = f32[] parameter(0)
-   ROOT cmp = pred[] compare(f32[] p0, f32[] p0), direction=LT, type=UNSIGNED
+  ENTRY CompareSignedPartial {
+   p0 = s32[] parameter(0)
+   ROOT cmp = pred[] compare(s32[] p0, s32[] p0), direction=LT, order=PARTIAL
   }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
@@ -3796,55 +3796,44 @@ TEST_F(HloVerifierTest, ComparisonTypeFloat) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("Expected comparison type FLOAT or TOTALORDER"));
+              HasSubstr("Expected comparison order TOTAL for integral/pred "
+                        "operand, but got PARTIAL"));
 }
 
-TEST_F(HloVerifierTest, ComparisonTypeSigned) {
+TEST_F(HloVerifierTest, ComparisonOrderUnsigned) {
   const char* const hlo_string = R"(
   HloModule Module
 
-  ENTRY RngOperandElementTypesNotMatch {
-   p0 = s32[] parameter(0)
-   ROOT cmp = pred[] compare(s32[] p0, s32[] p0), direction=LT, type=UNSIGNED
-  }
-  )";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Expected comparison type SIGNED"));
-}
-
-TEST_F(HloVerifierTest, ComparisonTypeUnsigned) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY RngOperandElementTypesNotMatch {
+  ENTRY CompareUnsignedPartial {
    p0 = u32[] parameter(0)
-   ROOT cmp = pred[] compare(u32[] p0, u32[] p0), direction=LT, type=SIGNED
+   ROOT cmp = pred[] compare(u32[] p0, u32[] p0), direction=LT, order=PARTIAL
   }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Expected comparison type UNSIGNED"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Expected comparison order TOTAL for integral/pred "
+                        "operand, but got PARTIAL"));
 }
 
-TEST_F(HloVerifierTest, ComparisonTypePred) {
+TEST_F(HloVerifierTest, ComparisonOrderPred) {
   const char* const hlo_string = R"(
   HloModule Module
 
-  ENTRY RngOperandElementTypesNotMatch {
+  ENTRY ComparePredPartial {
    p0 = pred[] parameter(0)
-   ROOT cmp = pred[] compare(pred[] p0, pred[] p0), direction=LT, type=SIGNED
+   ROOT cmp = pred[] compare(pred[] p0, pred[] p0), direction=LT, order=PARTIAL
   }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Expected comparison type UNSIGNED"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Expected comparison order TOTAL for integral/pred "
+                        "operand, but got PARTIAL"));
 }
 
 TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {

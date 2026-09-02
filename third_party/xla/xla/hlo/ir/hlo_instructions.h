@@ -448,13 +448,16 @@ class HloCopyStartInstruction : public HloInstruction {
 
 class HloCompareInstruction : public HloInstruction {
  public:
-  explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
-                                 HloInstruction* rhs,
-                                 ComparisonDirection direction,
-                                 std::optional<Comparison::Type> type);
+  explicit HloCompareInstruction(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      ComparisonDirection direction,
+      std::optional<ComparisonOrder> order = std::nullopt);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
   ComparisonOrder order() const { return compare_.GetOrder(); }
-  Comparison::Type type() const { return compare_.GetType(); }
+  [[deprecated("Use order()")]] Comparison::Type type() const {
+    return compare_.GetType();
+  }
+  const Comparison& comparison() const { return compare_; }
   void ToProto(HloInstructionProto* proto) const override;
 
   static bool ClassOf(const HloInstruction* hlo) {

@@ -128,7 +128,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 102
+// Next ID: 103
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -439,6 +439,9 @@ message HloInstructionProto {
 
   // Convolution block scaling config.
   BlockScalingConfig block_scaling_config = 101;
+
+  // Comparison order (TOTAL, PARTIAL).
+  string comparison_order = 102;
 }
 
 // Serialization of HloComputation.

@@ -323,6 +323,7 @@ class HloParserImpl : public HloParser {
     kFftType,
     kPaddingType,
     kComparisonDirection,
+    kComparisonOrder,
     kComparisonType,
     kWindow,
     kConvolutionDimensionNumbers,
@@ -629,6 +630,7 @@ class HloParserImpl : public HloParser {
   bool ParsePaddingType(PaddingType* result);
   bool ParsePrimitiveType(PrimitiveType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
+  bool ParseComparisonOrder(Comparison::Order* result);
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
@@ -2851,9 +2853,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
+      optional<ComparisonOrder> order;
       optional<Comparison::Type> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
+      attrs["order"] = {/*required=*/false, AttrTy::kComparisonOrder, &order};
       attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
@@ -2866,8 +2870,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
+      if (order.has_value() && type.has_value()) {
+        TokenError(
+            "Cannot specify both 'type' and 'order' attributes on compare");
+        return nullptr;
+      }
+      if (order.has_value()) {
+        return builder->AddInstruction(HloInstruction::CreateCompare(
+            *shape, operands[0], operands[1], *direction, *order));
+      }
+      if (type.has_value()) {
+        return builder->AddInstruction(HloInstruction::CreateCompare(
+            *shape, operands[0], operands[1], *direction,
+            Comparison::DefaultOrdering(*type)));
+      }
       return builder->AddInstruction(HloInstruction::CreateCompare(
-          *shape, operands[0], operands[1], *direction, type));
+          *shape, operands[0], operands[1], *direction));
     }
     case HloOpcode::kCholesky: {
       CholeskyOptions options;
@@ -6117,6 +6135,15 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kComparisonOrder: {
+        Comparison::Order result;
+        if (!ParseComparisonOrder(&result)) {
+          return false;
+        }
+        static_cast<optional<Comparison::Order>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
       case AttrTy::kComparisonType: {
         Comparison::Type result;
         if (!ParseComparisonType(&result)) {
@@ -8365,6 +8392,21 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseComparisonOrder(Comparison::Order* result) {
+  VLOG(kDebugLevel) << "ParseComparisonOrder";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison order");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = ShortStringToComparisonOrder(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects comparison order but sees: %s", val));
   }
   *result = status_or_result.value();
   lexer_.Lex();

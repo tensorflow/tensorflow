@@ -518,18 +518,28 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             comparison_direction,
             StringToComparisonDirection(proto.comparison_direction()));
       }
-      auto comparison_type_str = proto.comparison_type();
-      if (!comparison_type_str.empty()) {
-        // If a comparison type is specified, it *must* be valid.
-        ABSL_ASSIGN_OR_RETURN(auto comparison_type,
-                         StringToComparisonType(comparison_type_str));
+      auto comparison_order_str = proto.comparison_order();
+      if (!comparison_order_str.empty()) {
+        ABSL_ASSIGN_OR_RETURN(auto comparison_order,
+                         ShortStringToComparisonOrder(comparison_order_str));
         instruction = CreateCompare(shape, operands(0), operands(1),
-                                    *comparison_direction, comparison_type);
+                                    *comparison_direction, comparison_order);
       } else {
-        // Allow the specify of comparison type to be optional.
-        // The comparison type will be determined by the types of the operands.
-        instruction = CreateCompare(shape, operands(0), operands(1),
-                                    *comparison_direction);
+        auto comparison_type_str = proto.comparison_type();
+        if (!comparison_type_str.empty()) {
+          // If a comparison type is specified, it *must* be valid.
+          ABSL_ASSIGN_OR_RETURN(auto comparison_type,
+                           StringToComparisonType(comparison_type_str));
+          instruction = CreateCompare(
+              shape, operands(0), operands(1), *comparison_direction,
+              Comparison::DefaultOrdering(comparison_type));
+        } else {
+          // Allow the specification of comparison type to be optional.
+          // The comparison type will be determined by the types of the
+          // operands.
+          instruction = CreateCompare(shape, operands(0), operands(1),
+                                      *comparison_direction);
+        }
       }
       break;
     }
@@ -1770,9 +1780,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    ComparisonDirection direction, std::optional<Comparison::Type> type) {
+    ComparisonDirection direction, std::optional<ComparisonOrder> order) {
   return std::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction,
-                                                 type);
+                                                 order);
 }
 
 /* static */ std::unique_ptr<HloInstruction>

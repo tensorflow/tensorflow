@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -3728,6 +3729,50 @@ ENTRY %configuration_test() -> s32[] {
                            ->raw_backend_config_string());
 }
 
+TEST_F(HloParserTest, CompareWithOrder) {
+  const std::string original = R"(HloModule CompareWithOrder
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, order=TOTAL
+})";
+  auto result = ParseAndReturnVerifiedModule(original);
+  ASSERT_OK(result.status());
+  const HloInstruction* root =
+      result.value()->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  const auto* compare = static_cast<const HloCompareInstruction*>(root);
+  EXPECT_EQ(compare->direction(), ComparisonDirection::kGt);
+  EXPECT_EQ(compare->order(), ComparisonOrder::kTotal);
+}
+
+TEST_F(HloParserTest, CompareBothTypeAndOrderFails) {
+  const std::string original = R"(HloModule CompareBothTypeAndOrderFails
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, type=FLOAT, order=TOTAL
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(
+      result.status().message(),
+      "Cannot specify both 'type' and 'order' attributes on compare");
+}
+
+TEST_F(HloParserTest, CompareTotalOrderRejected) {
+  const std::string original = R"(HloModule CompareTotalOrderRejected
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, order=TOTALORDER
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "expects comparison order but sees: TOTALORDER");
+}
+
 TEST_F(HloParserTest, LiteralDimensionsError) {
   const std::string original = R"(HloModule some_2x3_module
 
@@ -6709,8 +6754,8 @@ ENTRY AsyncDoneWithTransparentIntermediaries {
   ROOT async-done = f32[3,2] async-done(copy)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* done = module->entry_computation()->root_instruction();
   EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
   const HloInstruction* producer =

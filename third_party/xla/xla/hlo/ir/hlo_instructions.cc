@@ -946,10 +946,10 @@ HloCopyStartInstruction::CloneWithNewOperandsImpl(
 
 HloCompareInstruction::HloCompareInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    ComparisonDirection direction, std::optional<Comparison::Type> type)
+    ComparisonDirection direction, std::optional<ComparisonOrder> order)
     : HloInstruction(HloOpcode::kCompare, shape),
-      compare_(type.has_value()
-                   ? Comparison(direction, *type)
+      compare_(order.has_value()
+                   ? Comparison(direction, lhs->shape().element_type(), *order)
                    : Comparison(direction, lhs->shape().element_type())) {
   AppendOperand(lhs);
   AppendOperand(rhs);
@@ -959,6 +959,8 @@ void HloCompareInstruction::ToProto(HloInstructionProto* proto) const {
   HloInstruction::ToProto(proto);
   proto->set_comparison_direction(
       ComparisonDirectionToString(compare_.GetDirection()));
+  proto->set_comparison_order(
+      ComparisonOrderToShortString(compare_.GetOrder()));
   proto->set_comparison_type(ComparisonTypeToString(compare_.GetType()));
 }
 
@@ -983,7 +985,8 @@ bool HloCompareInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloCompareInstruction&>(other);
-  return direction() == casted_other.direction();
+  return direction() == casted_other.direction() &&
+         order() == casted_other.order();
 }
 
 std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
@@ -991,7 +994,7 @@ std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return std::make_unique<HloCompareInstruction>(
-      shape, new_operands[0], new_operands[1], direction(), type());
+      shape, new_operands[0], new_operands[1], direction(), order());
 }
 
 namespace {
