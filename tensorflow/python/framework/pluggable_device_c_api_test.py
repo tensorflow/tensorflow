@@ -26,12 +26,14 @@ binary while their header went on declaring them, and nothing noticed for two
 releases. They are the only way a plugin can reach a resource variable's
 tensor, so every optimiser became unimplementable on a PluggableDevice.
 
-This test is deliberately dumb: it asks the process whether each name resolves.
-It does not call them, because calling them needs a kernel context.
+This test is deliberately dumb: it asks the runtime library whether each name
+resolves. It does not call them, because calling them needs a kernel context.
 """
 
 import ctypes
+import sys
 
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
@@ -69,23 +71,35 @@ _KERNELS = (
     "TF_GetStream",
 )
 
+# The extension module that pywrap_tensorflow loads. It is the object a plugin
+# is linked against, and dlsym on its handle searches it and the libraries it
+# depends on, which is where the C API actually lands. The process-wide
+# namespace is not searchable instead: pywrap_tensorflow deliberately loads
+# this with RTLD_LOCAL so that TensorFlow's statically linked LLVM does not
+# leak into it.
+_RUNTIME_MODULE = "tensorflow.python._pywrap_tensorflow_internal"
+
 
 class PluggableDeviceCApiTest(test.TestCase):
 
   def setUp(self):
     super().setUp()
-    try:
-      # RTLD_DEFAULT: everything the process has loaded, which is where a
-      # plugin's own references are resolved from.
-      self._process = ctypes.CDLL(None)
-    except OSError:
-      self.skipTest("this platform has no flat symbol namespace to search")
+    if sys.platform == "win32":
+      # A name resolves on Windows only if the module definition file exports
+      # it, which is a different question from whether it was linked in, and
+      # the one this test is not asking.
+      self.skipTest("symbol visibility on Windows is governed by a .def file")
+    module = sys.modules.get(_RUNTIME_MODULE)
+    path = getattr(module, "__file__", None)
+    if not path:
+      self.skipTest(f"{_RUNTIME_MODULE} was not loaded from a shared object")
+    self._runtime = ctypes.CDLL(path)
 
   def _assert_defined(self, names, why):
     missing = []
     for name in names:
       try:
-        getattr(self._process, name)
+        getattr(self._runtime, name)
       except AttributeError:
         missing.append(name)
     self.assertEmpty(

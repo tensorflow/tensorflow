@@ -1566,6 +1566,7 @@ tf_py_strict_test(
     # source tree.
     tags = ["no_pip"],
     deps = [
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
