@@ -689,8 +689,8 @@ class TrainingOpsTest(TensorFlowTestCase):
         for apply_op in cases:
           with self.assertRaisesRegex(
               errors.InvalidArgumentError,
-              'Trying to read a resource variable of dtype %s as float'
-              % dtype_name,
+              r'(Trying to read a resource variable of dtype %s as float'
+              r'|Trying to read variable with wrong dtype)' % dtype_name,
           ):
             self.evaluate(apply_op())
 

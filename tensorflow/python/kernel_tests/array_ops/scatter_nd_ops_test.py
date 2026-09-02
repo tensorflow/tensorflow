@@ -484,8 +484,8 @@ class StatefulScatterNdTest(test.TestCase):
       updates = constant_op.constant([0., 2.], dtype=dtypes.float32)
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          'Trying to read a resource variable of dtype %s as float'
-          % dtype_name):
+          r'(Trying to read a resource variable of dtype %s as float'
+          r'|Trying to read variable with wrong dtype)' % dtype_name):
         self.evaluate(
             gen_state_ops.resource_scatter_nd_update(
                 ref.handle, indices, updates))

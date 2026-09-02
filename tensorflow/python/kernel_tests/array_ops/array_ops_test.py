@@ -1500,8 +1500,8 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       value = constant_op.constant([3., 4.], dtype=dtypes.float32)
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "Trying to read a resource variable of dtype %s as float"
-          % dtype_name):
+          r"(Trying to read a resource variable of dtype %s as float"
+          r"|Trying to read variable with wrong dtype)" % dtype_name):
         self.evaluate(
             gen_array_ops.resource_strided_slice_assign(
                 v.handle, begin, end, strides, value))
