@@ -158,6 +158,10 @@ class CuptiTracer {
   // Returns the error (if any) when using libcupti.
   static std::string ErrorIfAny();
 
+  // Enables activity hardware events tracing using HES (Hardware Event System).
+  // Once enabled, it stays enabled for the process lifetime.
+  static absl::Status EnableHES();
+
   // Returns true if the number of annotation strings is too large. The input
   // count is the per-thread count.
   bool TooManyAnnotationStrings(size_t count) const;
