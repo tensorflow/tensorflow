@@ -2524,7 +2524,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
                            m::Multiply(m::Parameter(1), m::Parameter(2)))));
 }
 
-// Test that A/exp(B) is simplified to A*exp(-B).
+// Test that A/exp(B) is simplified only with fast-math.
 TEST_F(AlgebraicSimplifierTest, DivOfExp) {
   auto m = CreateNewVerifiedModule();
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -2544,7 +2544,16 @@ TEST_F(AlgebraicSimplifierTest, DivOfExp) {
               GmockMatch(m::Divide(m::Parameter(0), m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_FALSE(changed);
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Divide(m::Parameter(0), m::Exp(m::Parameter(1)))));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  AlgebraicSimplifier fast_math_simplifier(options);
+  ASSERT_TRUE(fast_math_simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0),
@@ -2841,7 +2850,7 @@ TEST_F(AlgebraicSimplifierTest, SelectMakeTuple) {
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(1), m::Parameter(2))));
 }
 
-// Test that exp(A)/exp(B) is simplified to exp(A-B)
+// Test that exp(A)/exp(B) is simplified only with fast-math.
 TEST_F(AlgebraicSimplifierTest, ExpDiv) {
   auto m = CreateNewVerifiedModule();
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -2864,14 +2873,24 @@ TEST_F(AlgebraicSimplifierTest, ExpDiv) {
       GmockMatch(m::Divide(m::Exp(m::Parameter(0)), m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_FALSE(changed);
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Exp(m::Parameter(0)), m::Exp(m::Parameter(1)))));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  AlgebraicSimplifier fast_math_simplifier(options);
+  ASSERT_TRUE(fast_math_simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
       GmockMatch(m::Exp(m::Subtract(m::Parameter(0), m::Parameter(1)))));
 }
 
-// Test that exp(A)*exp(B) is simplified to exp(A+B)
+// Test that exp(A)*exp(B) is simplified only with fast-math.
 TEST_F(AlgebraicSimplifierTest, ExpMul) {
   auto m = CreateNewVerifiedModule();
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -2894,13 +2913,23 @@ TEST_F(AlgebraicSimplifierTest, ExpMul) {
                                      m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_FALSE(changed);
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Multiply(m::Exp(m::Parameter(0)),
+                                     m::Exp(m::Parameter(1)))));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  AlgebraicSimplifier fast_math_simplifier(options);
+  ASSERT_TRUE(fast_math_simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Exp(m::Add(m::Parameter(0), m::Parameter(1)))));
 }
 
-// Test that pow(exp(A), B) is simplified to exp(A*B)
+// Test that pow(exp(A), B) is simplified only with fast-math.
 TEST_F(AlgebraicSimplifierTest, PowExp) {
   auto m = CreateNewVerifiedModule();
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -2920,7 +2949,16 @@ TEST_F(AlgebraicSimplifierTest, PowExp) {
               GmockMatch(m::Power(m::Exp(m::Parameter(0)), m::Parameter(1))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_FALSE(changed);
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Exp(m::Parameter(0)), m::Parameter(1))));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  AlgebraicSimplifier fast_math_simplifier(options);
+  ASSERT_TRUE(fast_math_simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
