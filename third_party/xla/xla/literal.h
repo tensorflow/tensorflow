@@ -685,7 +685,7 @@ class LiteralBase {
     int64_t num_read() const { return num_read_; }
 
     template <typename NativeT>
-    ABSL_MUST_USE_RESULT bool ReadElement(NativeT& element) {
+    [[nodiscard]] bool ReadElement(NativeT& element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
@@ -732,7 +732,7 @@ class LiteralBase {
     }
 
     template <typename NativeT>
-    ABSL_MUST_USE_RESULT bool ReadElements(absl::Span<NativeT> elements) {
+    [[nodiscard]] bool ReadElements(absl::Span<NativeT> elements) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
