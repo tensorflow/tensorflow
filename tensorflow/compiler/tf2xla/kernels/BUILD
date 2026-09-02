@@ -1043,6 +1043,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
         "@xla//xla/hlo/builder/lib:logdet",

@@ -38,8 +38,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -938,8 +936,8 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  TF_EXPECT_OK(HloCSE(true).Run(&*module));
-  TF_EXPECT_OK(HloDCE().Run(&*module));
+  EXPECT_OK(HloCSE(true).Run(&*module));
+  EXPECT_OK(HloDCE().Run(&*module));
   ASSERT_TRUE(pass.Run(&*module).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(op::Conditional()),
@@ -1723,12 +1721,11 @@ ENTRY %main (pred.1: pred[], tuple.1: (f32[10]), tuple.2: (f32[10])) -> (f32[10]
   ROOT %tuple.0 = (f32[10]{0}, f32[10]{0}) tuple(f32[10]{0} %pow.1, f32[10]{0} %get-first-index.2), sharding={{devices=[4]0,1,2,3}, {devices=[4]0,1,2,3}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_EXPECT_OK(HloCSE(true).Run(&*module));
-  TF_EXPECT_OK(HloDCE().Run(&*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_OK(HloCSE(true).Run(&*module));
+  EXPECT_OK(HloDCE().Run(&*module));
   ConditionalCodeMotion pass(true, true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   ASSERT_TRUE(changed);
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(op::Conditional()),
@@ -2614,10 +2611,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   ConditionalCodeMotion pass(true, true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   ASSERT_TRUE(changed);
   std::string baseline_str = module->ToString();
 
@@ -2626,15 +2623,15 @@ ENTRY main {
   std::vector<std::unique_ptr<HloModule>> other_modules;
   other_modules.reserve(10);
   for (int i = 0; i < 10; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> other_module,
-                            ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> other_module,
+                         ParseAndReturnVerifiedModule(hlo_string));
     other_modules.push_back(std::move(other_module));
   }
 
   for (int i = 0; i < 10; ++i) {
     ConditionalCodeMotion other_pass(true, true);
-    TF_ASSERT_OK_AND_ASSIGN(bool other_changed,
-                            other_pass.Run(other_modules[i].get()));
+    ASSERT_OK_AND_ASSIGN(bool other_changed,
+                         other_pass.Run(other_modules[i].get()));
     ASSERT_TRUE(other_changed);
     EXPECT_EQ(baseline_str, other_modules[i]->ToString());
   }

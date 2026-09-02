@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -30,10 +31,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::memory_space_assignment {
 namespace {
@@ -52,11 +50,11 @@ class AllocationTest : public HloHardwareIndependentTestBase {
     schedule.set_sequence(module->entry_computation(), sequence);
 
     AliasInfo alias_info;
-    TF_ASSERT_OK_AND_ASSIGN(alias_analysis,
-                            HloAliasAnalysis::Run(module, &alias_info));
-    TF_ASSERT_OK_AND_ASSIGN(live_range,
-                            HloLiveRange::Run(schedule, *alias_analysis,
-                                              module->entry_computation()));
+    ASSERT_OK_AND_ASSIGN(alias_analysis,
+                         HloAliasAnalysis::Run(module, &alias_info));
+    ASSERT_OK_AND_ASSIGN(live_range,
+                         HloLiveRange::Run(schedule, *alias_analysis,
+                                           module->entry_computation()));
   }
 };
 
@@ -72,8 +70,7 @@ ENTRY entry {
   ROOT tuple = tuple(add, p0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   std::unique_ptr<HloLiveRange> hlo_live_range;
   std::unique_ptr<HloAliasAnalysis> alias_analysis;
@@ -100,7 +97,7 @@ ENTRY entry {
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
   BitcastSplitFn split_fn = nullptr;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       copy_allocation.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   // Check copy_start and copy_done instructions.
@@ -133,8 +130,7 @@ ENTRY entry {
   ROOT tuple = tuple(add, p0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   std::unique_ptr<HloLiveRange> hlo_live_range;
   std::unique_ptr<HloAliasAnalysis> alias_analysis;
@@ -161,7 +157,7 @@ ENTRY entry {
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
   BitcastSplitFn split_fn = nullptr;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       copy_allocation.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   // Check copy_start and copy_done instructions.
@@ -196,8 +192,7 @@ ENTRY entry {
   ROOT tuple = tuple(add, p0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   std::unique_ptr<HloLiveRange> hlo_live_range;
   std::unique_ptr<HloAliasAnalysis> alias_analysis;
@@ -225,7 +220,7 @@ ENTRY entry {
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
   BitcastSplitFn split_fn = nullptr;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       copy_allocation.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   // Check copy_start and copy_done instructions.
@@ -260,8 +255,7 @@ ENTRY entry {
   ROOT tuple = tuple(cp-done)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   std::unique_ptr<HloLiveRange> hlo_live_range;
   std::unique_ptr<HloAliasAnalysis> alias_analysis;
@@ -279,7 +273,7 @@ ENTRY entry {
   pinned.AddUse(HloUse{cp_done, 0, {0}});
 
   BitcastSplitFn split_fn = nullptr;
-  TF_ASSERT_OK(pinned.Process(split_fn, *hlo_live_range, *alias_analysis));
+  ASSERT_OK(pinned.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   EXPECT_EQ(cp_done->operand(0), cp_start);
 }

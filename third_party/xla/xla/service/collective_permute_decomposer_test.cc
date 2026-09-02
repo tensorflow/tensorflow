@@ -32,8 +32,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -114,7 +112,7 @@ TEST_F(DecomposerTest, WithCycleNotTransformed) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -133,7 +131,7 @@ TEST_F(DecomposerTest, ThresholdNotTransformed) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/kThreshold,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE),
@@ -152,7 +150,7 @@ TEST_F(DecomposerTest, ThresholdIgnoredWhenPipelineParallelismOptEnabled) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/kThreshold,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -170,7 +168,7 @@ TEST_F(DecomposerTest, Basic) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -187,7 +185,7 @@ TEST_F(DecomposerTest, NoChannelId) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -201,7 +199,7 @@ TEST_F(DecomposerTest, OutsideOfWhileLoop) {
       ROOT cp = u32[] collective-permute(data), channel_id=1,
           source_target_pairs={{0,1}, {1,2}}
     })";
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -240,7 +238,7 @@ TEST_F(DecomposerTest, ControlDependency_IndependentCPs) {
       ROOT while_result = (u32[], f32[64], f32[64], f32[64]) while(while_init),
           body=body, condition=cond
     })";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -272,7 +270,7 @@ TEST_F(DecomposerTest, ControlDependency_BasicDependency) {
       ROOT result = (u32[], f32[64]) tuple(i, cp-b)
     }
   )");
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           kHlo,
@@ -297,7 +295,7 @@ TEST_F(DecomposerTest, ControlDependency_MoreDependencies) {
       cp3 = f32[64] collective-permute(cp2), source_target_pairs={{6,7}}
       ROOT out = (u32[], f32[64]) tuple(i, cp3)
     })");
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           kHlo,
@@ -370,7 +368,7 @@ TEST_F(DecomposerTest, StructureAndMetadata) {
         source_line=35}
       ROOT result = (u32[], f32[64]) tuple(i, cp)
     })");
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           kHlo,
@@ -424,7 +422,7 @@ TEST_F(DecomposerTest, Pipeline1) {
       ROOT result = u32[2] get-tuple-element(while_result), index=1
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -485,7 +483,7 @@ TEST_F(DecomposerTest, ForwardPipeline2) {
     ROOT result = u32[2] get-tuple-element(while_result), index=1
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -554,7 +552,7 @@ TEST_F(DecomposerTest, ForwardPipelineWithMatmul) {
     ROOT data_out = f32[2,2] get-tuple-element(while_result), index=1
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -617,7 +615,7 @@ TEST_F(DecomposerTest, BackwardPipeline2) {
     ROOT result = u32[2] get-tuple-element(while_result), index=1
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -674,7 +672,7 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingCollectivePermute) {
         condition=cond
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -761,7 +759,7 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingAllReduce) {
         condition=cond
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -847,7 +845,7 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingSendRecv) {
         condition=cond
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -943,7 +941,7 @@ TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
         condition=cond
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -1044,7 +1042,7 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
         while(while_init), body=body, condition=cond
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
@@ -1150,7 +1148,7 @@ TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
         body=body, condition=cond
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       RunAndCheckHloRewrite(
           hlo,
