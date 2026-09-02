@@ -44,14 +44,6 @@ ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions();
 /// Returns options for the ChloLegalizeToHighLevelMhloPass for the GPU backend.
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions();
 
-// TODO(b/397167511): Remove legacy wrapper once callers are migrated.
-inline std::unique_ptr<mlir::Pass> createExpandHloTuplesPass(
-    const std::string& entryFunctionName) {
-  ExpandHloTuplesPassOptions options;
-  options.entry_function_name_ = entryFunctionName;
-  return createExpandHloTuplesPass(options);
-}
-
 #define GEN_PASS_REGISTRATION
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
