@@ -17,8 +17,21 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/conv_grad_input_ops.h"
 
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
