@@ -2208,6 +2208,7 @@ py_library(
         ":array_ops_stack",
         ":math_ops",
         ":nn_ops_gen",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
     ],
