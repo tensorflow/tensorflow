@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -322,7 +323,8 @@ class NcclSymmetricBuffersSpec {
 };
 
 bool IsNcclSymmetricBuffersEnabledForCollective(
-    const HloInstruction* instruction, const DebugOptions& opts);
+    const HloInstruction* instruction, const DebugOptions& opts,
+    const stream_executor::GpuComputeCapability* gpu_version = nullptr);
 
 //===----------------------------------------------------------------------===//
 // Async collective configuration.

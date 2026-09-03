@@ -158,7 +158,8 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
     const HloModule* module, const GpuAliasInfo* alias_info,
-    BufferValue::SizeFunction buffer_size_bytes_function) {
+    BufferValue::SizeFunction buffer_size_bytes_function,
+    const se::GpuComputeCapability* gpu_version = nullptr) {
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
@@ -171,7 +172,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  opts.colorer = CreateColorer(options);
+  opts.colorer = CreateColorer(options, gpu_version);
   opts.temp_buffer_color = color;
 
   // Allow S(0) buffers to reuse S(1) temp allocations. S(1) allocations
@@ -228,7 +229,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   ABSL_ASSIGN_OR_RETURN(results.buffer_assignment,
                    RunBufferAssignment(hlo_module, alias_info,
-                                       std::move(buffer_size_bytes_function)));
+                                       std::move(buffer_size_bytes_function),
+                                       &device_desc.gpu_compute_capability()));
   ABSL_ASSIGN_OR_RETURN(results.output_info,
                    GetOutputInfo(*hlo_module, *results.buffer_assignment));
 
