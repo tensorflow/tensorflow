@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import clustering_ops
 from tensorflow.python.platform import test
@@ -88,9 +89,9 @@ class KMC2InitializationLargeTest(test.TestCase):
         sample = self.evaluate(
             clustering_ops.kmc2_chain_initialization(self._distances, seed + i))
         counts[sample] = counts.get(sample, 0) + 1
-      self.assertEqual(len(counts), 2)
-      self.assertTrue(500 in counts)
-      self.assertTrue(1000 in counts)
+      self.assertLen(counts, 2)
+      self.assertIn(500, counts)
+      self.assertIn(1000, counts)
       self.assertGreaterEqual(counts[500], 5)
       self.assertGreaterEqual(counts[1000], 5)
 
@@ -141,6 +142,31 @@ class NearestCentersTest(test.TestCase):
                                                               self._centers, 2)
       self.assertAllClose(indices, [[0, 1], [0, 1], [1, 0], [4, 3]])
       self.assertAllClose(distances, [[0., 2.], [5., 5.], [1., 5.], [0., 2.]])
+
+  def testNearestNegativeK(self):
+    with self.cached_session():
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError, "Expected k >= 0."
+      ):
+        self.evaluate(
+            clustering_ops.nearest_neighbors(self._points, self._centers, -1)
+        )
+
+  def testNearestZeroK(self):
+    with self.cached_session():
+      [indices, distances] = clustering_ops.nearest_neighbors(
+          self._points, self._centers, 0
+      )
+      self.assertEqual(self.evaluate(indices).shape, (4, 0))
+      self.assertEqual(self.evaluate(distances).shape, (4, 0))
+
+  def testNearestLargerThanNumCenters(self):
+    with self.cached_session():
+      [indices, distances] = clustering_ops.nearest_neighbors(
+          self._points, self._centers, 10
+      )
+      self.assertEqual(self.evaluate(indices).shape, (4, 5))
+      self.assertEqual(self.evaluate(distances).shape, (4, 5))
 
 
 @test_util.run_all_in_graph_and_eager_modes
