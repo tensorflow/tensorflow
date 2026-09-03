@@ -573,6 +573,23 @@ TEST(PjRtClientTest, CompileMlirModule) {
   EXPECT_NE(executable.get(), nullptr);
 }
 
+TEST(PjRtClientTest, CompileXlaComputation) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  XlaBuilder builder("add_one");
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto one = ConstantR0<int32_t>(&builder, 1);
+  auto add = Add(input, one);
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build(add));
+
+  CompileOptions options;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                       client->Compile(computation, options));
+  EXPECT_NE(executable.get(), nullptr);
+}
+
 TEST(PjRtCApiClientTest, LoadExecutable) {
   SetUpCpuPjRtApi();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
