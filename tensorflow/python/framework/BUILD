@@ -1557,6 +1557,21 @@ py_library(
     ],
 )
 
+tf_py_strict_test(
+    name = "pluggable_device_c_api_test",
+    size = "small",
+    srcs = ["pluggable_device_c_api_test.py"],
+    # It asks the process for symbols the public C headers declare, so it has
+    # to run against a build that actually linked them rather than against the
+    # source tree.
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:sysconfig",
+    ],
+)
+
 cuda_py_strict_test(
     name = "config_test",
     size = "small",
