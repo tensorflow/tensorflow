@@ -432,8 +432,8 @@ void AllocateParallelDevice(const char* device_name,
        ++device_index) {
     underlying_devices_vector.push_back(underlying_devices[device_index]);
   }
-  std::unique_ptr<ParallelDevice> parallel_device(
-      new ParallelDevice(underlying_devices_vector));
+  std::unique_ptr<ParallelDevice> parallel_device =
+      std::make_unique<ParallelDevice>(underlying_devices_vector);
   *device_info =
       new NamedParallelDevice{device_name, std::move(parallel_device)};
 }
