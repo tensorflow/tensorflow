@@ -58,6 +58,17 @@ __global__ void Count1D(GpuLaunchConfig config, int bufsize,
     atomicAdd(&outbuf[x % bufsize], 1);
   }
 }
+__global__ void Count1DInt64(GpuLaunchConfig64 config, int bufsize,
+                             int* __restrict__ outbuf) {
+  GPU_1D_KERNEL_LOOP(x, config.virtual_thread_count, int64_t) {
+    static_assert(std::is_same<decltype(x), int64_t>::value,
+                  "Expected int64_t index");
+    if (x < 0) {  // x might overflow when testing extreme case
+      break;
+    }
+    atomicAdd(&outbuf[x % bufsize], 1);
+  }
+}
 __global__ void Count2D(Gpu2DLaunchConfig config, int bufsize,
                         int* __restrict__ outbuf) {
   GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
@@ -219,6 +230,38 @@ TEST_F(GpuLaunchConfigTest, GetGpuLaunchConfig) {
   TEST_LAUNCH_PARAMETER(123456);
   TEST_LAUNCH_PARAMETER(1 << 30);
 #undef TEST_LAUNCH_PARAMETER
+}
+
+TEST_F(GpuLaunchConfigTest, GetGpuLaunchConfig64WithTyped1DKernelLoop) {
+  GpuLaunchConfig64 cfg;
+  GpuLaunchConfig cfg1d;
+  const int64_t work_element_count = 123456;
+
+  cfg1d = GetGpuLaunchConfig(bufsize, d);
+  TF_CHECK_OK(GpuLaunchKernel(SetOutbufZero, cfg1d.block_count, cfg1d.thread_per_block,
+                              0, d.stream(), cfg1d, outbuf));
+  CUDA_ASSERT_SUCCESS
+
+  cfg = GetGpuLaunchConfig64(work_element_count, d).value();
+  TF_CHECK_OK(GpuLaunchKernel(Count1DInt64, cfg.block_count, cfg.thread_per_block,
+                              0, d.stream(), cfg, bufsize, outbuf));
+  CUDA_EXPECT_SUCCESS
+  copyToHost();
+  EXPECT_EQ(work_element_count,
+            std::accumulate(outbuf_host, outbuf_host + bufsize, 0));
+
+  cfg1d = GetGpuLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);
+  TF_CHECK_OK(GpuLaunchKernel(SetOutbufZero, cfg1d.block_count, cfg1d.thread_per_block,
+                              0, d.stream(), cfg1d, outbuf));
+  CUDA_ASSERT_SUCCESS
+
+  cfg = GetGpuLaunchConfig64(work_element_count, d, Count1DInt64, 0, 0).value();
+  TF_CHECK_OK(GpuLaunchKernel(Count1DInt64, cfg.block_count, cfg.thread_per_block,
+                              0, d.stream(), cfg, bufsize, outbuf));
+  CUDA_EXPECT_SUCCESS
+  copyToHost();
+  EXPECT_EQ(work_element_count,
+            std::accumulate(outbuf_host, outbuf_host + bufsize, 0));
 }
 
 bool operator==(const Gpu2DLaunchConfig& a, const Gpu2DLaunchConfig& b) {
