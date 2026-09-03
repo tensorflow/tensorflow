@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
@@ -65,8 +66,15 @@ class PackOp : public OpKernel {
                     "axis = ", axis_, " not in [", -expanded_num_dims, ", ",
                     expanded_num_dims, ")")));
 
+    OP_REQUIRES(
+        c, first_input.dims() < TensorShape::MaxDimensions(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Cannot pack tensors of rank ", first_input.dims(),
+            ": packing would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), ".")));
+
     TensorShape output_shape(first_input.shape());
-    output_shape.InsertDim(axis, num);
+    OP_REQUIRES_OK(c, output_shape.InsertDimWithStatus(axis, num));
 
     // In the num = 1 case, just reshape the input
     if (num == 1) {

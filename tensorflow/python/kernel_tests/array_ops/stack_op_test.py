@@ -70,6 +70,23 @@ class StackOpTest(test.TestCase):
             c = array_ops_stack.stack(xs, axis=axis)
             self.assertAllEqual(c, data)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testPackAtMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 252,
+        constant_op.constant(0.0, dtype=dtypes.float32))
+    packed = array_ops_stack.stack([value], axis=0)
+    self.assertEqual(254, self.evaluate(array_ops.rank(packed)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testPackExceedsMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 253,
+        constant_op.constant(0.0, dtype=dtypes.float32))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "maximum supported rank"):
+      self.evaluate(array_ops_stack.stack([value], axis=0))
+
   def testSimpleParallelCPU(self):
     # tf.parallel_stack is only supported in graph mode.
     with ops.Graph().as_default():
