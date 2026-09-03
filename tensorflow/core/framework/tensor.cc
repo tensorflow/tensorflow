@@ -1026,7 +1026,7 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
 #define SINGLE_ARG(...) __VA_ARGS__
 #define CASE(TYPE, STMTS)               \
   case DataTypeToEnum<TYPE>::value: {   \
-    typedef TF_ATTRIBUTE_UNUSED TYPE T; \
+    typedef TYPE T TF_ATTRIBUTE_UNUSED; \
     STMTS;                              \
     break;                              \
   }

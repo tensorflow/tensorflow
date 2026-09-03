@@ -567,6 +567,38 @@ ENTRY main {
   EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
 }
 
+TEST_F(ConstraintPropagatorTest, ReduceWindowSumReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+add_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+ENTRY main {
+  param_0 = bf16[16,16,256,256] parameter(0)
+  init = bf16[] constant(0)
+  ROOT reduce_window = bf16[16,16,256,256] reduce-window(param_0, init),
+    window={size=1x1x1x511 pad=0_0x0_0x0_0x255_255},
+    to_apply=add_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+
+  // Window size is 511 along dim 3, but operand dim 3 size is 256.
+  // Effective reduction size N = min(511, 256) = 256 elements.
+  // Root max_out = 65504.0.
+  // max_in = 65504.0 / 256 = 255.875.
+  double expected_max_in = 65504.0 / 256.0;
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
+}
+
 TEST_F(ConstraintPropagatorTest, DotReverseConstraintShapes) {
   const char* hlo = R"(
 HloModule TestModule
