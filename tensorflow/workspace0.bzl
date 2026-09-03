@@ -23,7 +23,6 @@ load("@grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@local_config_android//:android.bzl", "android_workspace")
 load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
 load("//third_party:models_repos.bzl", "models_repositories")
-load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
 
 def _tf_bind():
@@ -39,15 +38,6 @@ def workspace():
     """TensorFlow workspace initialization."""
     models_repositories()
     bazel_toolchains_repositories()
-
-    tf_http_archive(
-        name = "rules_proto",
-        sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
-        strip_prefix = "rules_proto-7.1.0",
-        urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/rules_proto/archive/refs/tags/7.1.0.tar.gz",
-        ),
-    )
 
     # Now, finally use the rules
     apple_rules_dependencies()

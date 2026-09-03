@@ -1180,7 +1180,8 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
           'Function `diff` currently requires a known rank for input `a`. '
           f'Received: a={a} (unknown rank)'
       )
-    if (axis + nd if axis < 0 else axis) >= nd:
+    axis_normalized = axis + nd if axis < 0 else axis
+    if axis_normalized < 0 or axis_normalized >= nd:
       raise ValueError(
           f'Argument `axis` (received axis={axis}) is out of bounds '
           f'for input {a} of rank {nd}.'
