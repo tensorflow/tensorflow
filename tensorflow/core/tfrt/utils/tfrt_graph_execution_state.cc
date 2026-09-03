@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -190,8 +191,13 @@ tensorflow::GraphDef CreateGraphDefFromGraphAndFlibDef(
     const tensorflow::Graph& graph,
     const tensorflow::FunctionLibraryDefinition& flib_def) {
   tensorflow::GraphDef graph_def;
-  graph.ToGraphDef(&graph_def);
-  *graph_def.mutable_library() = flib_def.ToProto();
+  graph.ToGraphDef(&graph_def, /*include_flib_def=*/false);
+  if (tensorflow::ProtoMemoryOptimizationsEnabled()) {
+    *graph_def.mutable_library() =
+        flib_def.ReachableDefinitions(graph).ToProto();
+  } else {
+    *graph_def.mutable_library() = flib_def.ToProto();
+  }
   return graph_def;
 }
 
@@ -693,6 +699,14 @@ TfrtGraphExecutionState::OptimizeGraph(
         &optimized_flib));
   }
 
+  if (!options_.run_placer_grappler_on_functions &&
+      tensorflow::ProtoMemoryOptimizationsEnabled()) {
+    // Unref existing FunctionRecords before move assignment to prevent leaks.
+    optimized_graph->mutable_flib_def()->Clear();
+    *optimized_graph->mutable_flib_def() = std::move(*optimized_flib);
+    return optimized_graph;
+  }
+
   FunctionDefLibrary optimized_flib_proto = optimized_flib->ToProto();
   if (options_.run_placer_grappler_on_functions) {
     TF_RETURN_IF_ERROR(OptimizeFunctions(optimized_flib_proto, *optimized_flib,
@@ -702,9 +716,12 @@ TfrtGraphExecutionState::OptimizeGraph(
     // avoid errors when adding the optimized flib, we should clear the current
     // flib first.
     optimized_graph->mutable_flib_def()->Clear();
+    TF_RETURN_IF_ERROR(
+        optimized_graph->AddFunctionLibrary(std::move(optimized_flib_proto)));
+  } else {
+    TF_RETURN_IF_ERROR(
+        optimized_graph->AddFunctionLibrary(optimized_flib_proto));
   }
-
-  TF_RETURN_IF_ERROR(optimized_graph->AddFunctionLibrary(optimized_flib_proto));
 
   return optimized_graph;
 }
