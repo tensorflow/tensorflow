@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -38,7 +39,13 @@ std::vector<int32_t> ExtractIntegerVector(const TfLiteTensor* t) {
   const RuntimeShape& shape = GetTensorShape(t);
   std::vector<int32_t> result(shape.FlatSize());
   if (t->type == kTfLiteInt32) {
-    memcpy(result.data(), t->data.raw_const, t->bytes);
+    // Clamp the copy length to the destination size. `t->bytes` is
+    // derived from the raw FlatBuffer buffer size for constant tensors
+    // and may be inflated relative to the logical shape, so it must be
+    // bounded by the destination allocation to avoid an out-of-bounds
+    // write.
+    memcpy(result.data(), t->data.raw_const,
+           std::min(t->bytes, result.size() * sizeof(int32_t)));
   } else {
     const int64_t* data = GetTensorData<int64_t>(t);
     for (int i = 0; i < result.size(); ++i) {

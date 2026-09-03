@@ -141,5 +141,45 @@ TEST(ExpandDimsOpTest, StrTensor) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
 }
 
+template <typename InputType>
+class ExpandDimsConstInputOpModel : public SingleOpModel {
+ public:
+  ExpandDimsConstInputOpModel(int axis, std::initializer_list<int> input_shape,
+                              const std::vector<InputType>& input_data) {
+    input_ = AddConstInput(GetTensorType<InputType>(), input_data, input_shape);
+    axis_ = AddConstInput(TensorType_INT32, {axis}, {1});
+    output_ = AddOutput(GetTensorType<InputType>());
+    SetBuiltinOp(BuiltinOperator_EXPAND_DIMS, BuiltinOptions_ExpandDimsOptions,
+                 0);
+    BuildInterpreter({input_shape, {1}});
+  }
+
+  std::vector<InputType> GetValues() {
+    return ExtractVector<InputType>(output_);
+  }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int axis_;
+  int output_;
+};
+
+// A constant tensor's raw FlatBuffer buffer may legally be larger than its
+// logical shape requires; the model loader only validates
+// required_bytes <= buffer_size. The copy into the output must be
+// bounded by the output allocation, not by the raw buffer length.
+TYPED_TEST(ExpandDimsOpTest, ConstantInputWithOversizedBuffer) {
+  const std::vector<TypeParam> logical{-1, 1, -2, 2};
+  std::vector<TypeParam> input_data(1 << 12);
+  for (int i = 0; i < 4; ++i) {
+    input_data[i] = logical[i];
+  }
+  ExpandDimsConstInputOpModel<TypeParam> m(0, {2, 2}, input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetValues(), ElementsAreArray(logical));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+}
+
 }  // namespace
 }  // namespace tflite
