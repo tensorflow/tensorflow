@@ -948,7 +948,7 @@ def central_crop(image, central_fraction):
         return image
     else:
       assert_ops = _assert(
-          math_ops.logical_or(central_fraction > 0.0, central_fraction <= 1.0),
+          math_ops.logical_and(central_fraction > 0.0, central_fraction <= 1.0),
           ValueError, 'central_fraction must be within (0, 1]')
       image = control_flow_ops.with_dependencies(assert_ops, image)
 
