@@ -277,15 +277,18 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
         "layout has a physical_shape, but is not a sparse array: %s",
         shape.ToString());
   }
-  for (const auto& tile : layout.tiles()) {
+  for (int64_t i = 0; i < layout.tiles().size(); ++i) {
+    const Tile& tile = layout.tiles(i);
     if (tile.dimensions().empty()) {
       return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
     }
     for (int64_t dim : tile.dimensions()) {
-      if (dim <= 0 && dim != Tile::kCombineDimension) {
+      // Only the top level tile may combine dimensions; the next levels pad
+      // the combined extent (see LayoutUtil::ResolvedTiles).
+      if (dim <= 0 && (dim != Tile::kCombineDimension || i > 0)) {
         return InvalidArgument(
             "layout has invalid tiles: tile dimension %d must be positive or "
-            "kCombineDimension: %s",
+            "kCombineDimension in the top level tile: %s",
             dim, shape.ToString());
       }
     }
@@ -567,6 +570,36 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   return result;
 }
 
+/*static*/ TileVector LayoutUtil::ResolvedTiles(const Shape& shape) {
+  TileVector tiles(shape.layout().tiles().begin(),
+                   shape.layout().tiles().end());
+  if (tiles.empty() ||
+      !absl::c_linear_search(tiles[0].dimensions(), Tile::kCombineDimension)) {
+    return tiles;
+  }
+  const int64_t tile_rank = tiles[0].dimensions().size();
+  const int64_t rank = shape.dimensions().size();
+  Tile resolved;
+  for (int64_t i = 0; i < tile_rank; ++i) {
+    int64_t dim = tiles[0].dimension(i);
+    if (dim == Tile::kCombineDimension) {
+      const int64_t minor = tile_rank - 1 - i;
+      dim = minor < rank ? shape.dimensions(Minor(shape.layout(), minor)) : 1;
+      dim = std::max<int64_t>(dim, 1);
+      // The next tile level pads the combined dimension within the tile.
+      if (tiles.size() > 1) {
+        const int64_t offset = tile_rank - tiles[1].dimensions().size();
+        if (i >= offset && tiles[1].dimension(i - offset) > 0) {
+          dim = RoundUpTo(dim, tiles[1].dimension(i - offset));
+        }
+      }
+    }
+    resolved.add_dimensions(dim);
+  }
+  tiles[0] = resolved;
+  return tiles;
+}
+
 /*static*/ int64_t LayoutUtil::LinearIndex(const Shape& shape,
                                            absl::Span<const int64_t> indices) {
   CHECK(shape.IsArray());
@@ -584,6 +617,9 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   Tile tile = {};
   if (!shape.layout().tiles().empty()) {
     tile = shape.layout().tiles()[0];
+    if (absl::c_linear_search(tile.dimensions(), Tile::kCombineDimension)) {
+      tile = ResolvedTiles(shape)[0];
+    }
   }
 
   int64_t linear_index = 0;
@@ -643,7 +679,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   }
 
   // 2. Iteratively apply each tile level.
-  for (const Tile& tile : shape.layout().tiles()) {
+  for (const Tile& tile : ResolvedTiles(shape)) {
     const int64_t tile_rank = tile.dimensions().size();
     if (tile_rank > current_shape.size()) {
       int64_t pad_size = tile_rank - current_shape.size();
@@ -727,7 +763,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   };
   std::vector<TilingStep> steps;
 
-  for (const Tile& tile : shape.layout().tiles()) {
+  for (const Tile& tile : ResolvedTiles(shape)) {
     const int64_t tile_rank = tile.dimensions().size();
     if (tile_rank > current_shape.size()) {
       int64_t pad_size = tile_rank - current_shape.size();

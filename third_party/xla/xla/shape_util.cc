@@ -1086,7 +1086,11 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
         if (subshape.is_dynamic()) {
           size += sizeof(DynamicSizeType) * subshape.dimensions().size();
         }
-        if (primitive_util::IsSubByteNonPredType(subshape.element_type())) {
+        if (subshape.element_type() == PRED) {
+          // PRED is packed 8 elements per byte.
+          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
+        } else if (primitive_util::IsSubByteNonPredType(
+                       subshape.element_type())) {
           // 4-bit types are packed 2 elements per byte.
           size += CeilOfRatio<int64_t>(
               ElementsIn(subshape),
@@ -2328,6 +2332,11 @@ ShapeUtil::ByteStrides(const Shape& shape) {
   }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
+  Tile resolved_tile;
+  if (absl::c_linear_search(tile_dimensions, Tile::kCombineDimension)) {
+    resolved_tile = LayoutUtil::ResolvedTiles(shape)[0];
+    tile_dimensions = resolved_tile.dimensions();
+  }
   auto minor_to_major = shape.layout().minor_to_major();
   int64_t shape_dim_size = shape.dimensions().size();
   int64_t tile_dim_size = tile_dimensions.size();
