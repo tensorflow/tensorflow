@@ -100,7 +100,7 @@ def ones_like(a, dtype=None):
 def eye(N, M=None, k=0, dtype=float):  # pylint: disable=invalid-name,missing-docstring
   if dtype:
     dtype = np_utils.result_type(dtype)
-  if not M:
+  if M is None:
     M = N
   # Making sure N, M and k are `int`
   N = int(N)
