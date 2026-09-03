@@ -39,6 +39,7 @@ cc_library(
         "dialect/tpu/util.h",
     ],
     compatible_with = get_compatible_with_libtpu_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":stringify_util",
         ":tpu_enums_inc_gen",
