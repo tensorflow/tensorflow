@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/immutable_constant_op.h"
 
+#include <limits>
 #include <unordered_set>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -64,6 +68,10 @@ class MemmappedTensorAllocator : public Allocator {
 
   void set_delete_on_deallocate() { delete_on_deallocate_ = true; }
 
+  uint64_t memory_region_length() const {
+    return memory_region_ ? memory_region_->length() : 0;
+  }
+
   // Make sure tensors or complex types (strings, variants, resources) don't get
   // their constructor called via a placement new since that would require
   // writing to immutable data.
@@ -104,6 +112,51 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, dtype_ != DT_STRING,
               absl::UnimplementedError("Sorry, DT_STRING is not currently "
                                        "supported for ImmutableConstOp."));
+  // The shape arrives as a graph attr, so fold the dimensions one at a time
+  // rather than trusting a precomputed element count that may have wrapped.
+  int64_t num_elements = 1;
+  for (int i = 0; i < shape_.dims(); ++i) {
+    const int64_t dim = shape_.dim_size(i);
+    OP_REQUIRES(ctx, dim >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape ", shape_.DebugString(), " has negative dimension ",
+                    dim, " at index ", i)));
+    num_elements = MultiplyWithoutOverflow(num_elements, dim);
+    OP_REQUIRES(ctx, num_elements >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Shape ", shape_.DebugString(),
+                                 " overflows when computing element count")));
+  }
+
+  const int64_t element_size = DataTypeSize(dtype_);
+  OP_REQUIRES(
+      ctx, element_size > 0,
+      absl::InvalidArgumentError(absl::StrCat(
+          "Cannot determine element size for dtype ", DataTypeString(dtype_))));
+
+  const int64_t total_bytes =
+      MultiplyWithoutOverflow(num_elements, element_size);
+  OP_REQUIRES(ctx, total_bytes >= 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Tensor size overflows for shape ", shape_.DebugString(),
+                  " and dtype ", DataTypeString(dtype_))));
+
+  // size_t is narrower than int64 on 32 bit builds, and the allocation path
+  // downstream takes a size_t.
+  OP_REQUIRES(
+      ctx,
+      static_cast<uint64_t>(total_bytes) <= std::numeric_limits<size_t>::max(),
+      absl::InvalidArgumentError(
+          absl::StrCat("Tensor size of ", total_bytes,
+                       " bytes is too large for this platform")));
+
+  // The mapped region has to hold exactly the tensor we are about to hand out.
+  const uint64_t region_length = allocator->memory_region_length();
+  OP_REQUIRES(ctx, static_cast<uint64_t>(total_bytes) == region_length,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Memory region of ", region_length, " bytes does not match ",
+                  total_bytes, " bytes needed for shape ", shape_.DebugString(),
+                  " and dtype ", DataTypeString(dtype_))));
   ctx->set_output(0, Tensor(allocator.get(), dtype_, shape_));
   OP_REQUIRES_OK(ctx, allocator->allocation_status());
   // Allocator is owned by the tensor from this point.
