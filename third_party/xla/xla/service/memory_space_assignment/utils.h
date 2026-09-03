@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
@@ -153,11 +154,32 @@ class MemorySpaceAssignmentUtils {
       const MsaBufferInterval& buffer_interval,
       bool is_cross_program_prefetch = false);
 
+  static constexpr int64_t kDefaultCustomFusionStagingBytes = 20 * 1024 * 1024;
+
+  struct CustomFusionChunkSizing {
+    int64_t num_slices = 1;
+    int64_t slice_bytes = 0;
+    int64_t max_slices_per_chunk = 128;
+    int64_t chunk_size_bytes = 0;
+    int64_t double_buffered_staging_bytes = 0;
+  };
+
+  // Calculates slice count, slice size, max slices per chunk, and
+  // double-buffered staging memory requirements for custom fusions (e.g.
+  // cross-buffer slice).
+  static CustomFusionChunkSizing GetCustomFusionChunkSizing(
+      const HloInstruction* custom_fusion,
+      int64_t default_vmem_bytes = kDefaultCustomFusionStagingBytes);
+
  private:
   static bool DoesBufferIntervalMatchHloUseFilter(
       const HloPositionMatcher& filter,
       const MsaBufferInterval& buffer_interval);
 };
+
+using CustomFusionChunkSizingFn = std::function<
+    std::optional<MemorySpaceAssignmentUtils::CustomFusionChunkSizing>(
+        const HloInstruction* instruction, int64_t staging_limit_bytes)>;
 
 }  // namespace memory_space_assignment
 }  // namespace xla

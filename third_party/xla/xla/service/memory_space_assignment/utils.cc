@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <random>
 #include <string>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "highwayhash/arch_specific.h"
@@ -51,6 +54,30 @@ namespace {
 
 // The default seed used by HloRandomFilter when no seed is given.
 const int64_t kRandomFilterDefaultSeed = 1234;
+
+void PopulateCustomFusionChunkSizing(
+    int64_t default_vmem_bytes,
+    MemorySpaceAssignmentUtils::CustomFusionChunkSizing& result) {
+  int64_t total_slice_bytes = result.num_slices * result.slice_bytes;
+  int64_t staged_vmem_limit_bytes =
+      default_vmem_bytes > 0
+          ? default_vmem_bytes
+          : MemorySpaceAssignmentUtils::kDefaultCustomFusionStagingBytes;
+  if (total_slice_bytes <= staged_vmem_limit_bytes) {
+    result.max_slices_per_chunk = result.num_slices;
+    result.chunk_size_bytes = total_slice_bytes;
+    result.double_buffered_staging_bytes = total_slice_bytes;
+  } else {
+    int64_t vmem_staging_cap = staged_vmem_limit_bytes / 2;
+    int64_t max_slices =
+        std::max<int64_t>(1, vmem_staging_cap / result.slice_bytes);
+    result.max_slices_per_chunk = max_slices;
+    int64_t slices_in_chunk =
+        std::min<int64_t>(result.num_slices, result.max_slices_per_chunk);
+    result.chunk_size_bytes = slices_in_chunk * result.slice_bytes;
+    result.double_buffered_staging_bytes = 2 * result.chunk_size_bytes;
+  }
+}
 
 }  // namespace
 
@@ -603,5 +630,43 @@ int64_t MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
   }
   return 0;
 }
+
+MemorySpaceAssignmentUtils::CustomFusionChunkSizing
+MemorySpaceAssignmentUtils::GetCustomFusionChunkSizing(
+    const HloInstruction* custom_fusion, int64_t default_vmem_bytes) {
+  CustomFusionChunkSizing result;
+  if (custom_fusion == nullptr) {
+    return result;
+  }
+  if (custom_fusion->opcode() == HloOpcode::kAsyncStart ||
+      custom_fusion->opcode() == HloOpcode::kAsyncUpdate ||
+      custom_fusion->opcode() == HloOpcode::kAsyncDone) {
+    custom_fusion = custom_fusion->async_wrapped_instruction();
+    if (custom_fusion == nullptr) {
+      return result;
+    }
+  }
+
+  // Generic minimal fallback for instructions not handled by the backend hook:
+  // treat as 1 slice of the instruction's shape.
+  result.num_slices = 1;
+  const Shape* target_shape = &custom_fusion->shape();
+  if (target_shape->IsTuple() &&
+      !custom_fusion->called_computations().empty()) {
+    const HloInstruction* root =
+        custom_fusion->called_computations().front()->root_instruction();
+    if (root->opcode() == HloOpcode::kTuple && root->operand_count() > 0) {
+      target_shape = &root->operand(0)->shape();
+    }
+  }
+  result.slice_bytes = ShapeUtil::ByteSizeOf(*target_shape);
+  if (result.slice_bytes <= 0) {
+    result.slice_bytes = 1024;
+  }
+
+  PopulateCustomFusionChunkSizing(default_vmem_bytes, result);
+  return result;
+}
+
 }  // namespace memory_space_assignment
 }  // namespace xla

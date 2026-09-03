@@ -1265,10 +1265,7 @@ std::vector<const MsaBufferInterval*> MsaAlgorithm::GetSortedColocatedIntervals(
 }
 
 bool MsaAlgorithm::IsUseAllowedInAlternateMemory(const HloUse& use) const {
-  if (!options_.is_use_allowed_in_alternate_mem_fn(use)) {
-    return false;
-  }
-  return true;
+  return options_.is_use_allowed_in_alternate_mem_fn(use);
 }
 
 bool MsaAlgorithm::IsWhileLoopUseRequiredInDefaultMemory(
@@ -1870,22 +1867,13 @@ void MsaAlgorithm::IdentifyAndOptimizeMemoryBoundLoops() {
 
 bool MsaAlgorithm::IsAsyncConversionCandidate(
     const HloInstruction* instruction) const {
-  bool meets_special_preconditions =
-      IsAsyncConversionCopyCandidate(instruction) ||
-      IsAsyncConversionSliceCandidate(instruction) ==
-          AsyncConversionResult::kSuccess ||
-      IsAsyncCustomFusionConversionCandidate(instruction) ==
-          AsyncConversionResult::kSuccess;
-  if (!meets_special_preconditions) {
+  if (!(IsAsyncConversionCopyCandidate(instruction) ||
+        IsAsyncConversionSliceCandidate(instruction) ==
+            AsyncConversionResult::kSuccess)) {
     return false;
-  }
-  if (IsBlockPrefetchingEnabled()) {
-    return true;
   }
 
   for (auto& operand : instruction->operands()) {
-    // TODO(b/374835319): relax the operand constraint to be able to cover
-    // nested sync data movement cases.
     if (IsAsyncConversionCandidate(operand)) {
       VLOG(4) << "The instruction is not considered to be replaced, because it "
                  "potentially has a replaceable operand.";
@@ -1985,22 +1973,25 @@ bool MsaAlgorithm::IsAsyncConversionCopyCandidate(
   return true;
 }
 
-MsaAlgorithm::AsyncConversionResult
-MsaAlgorithm::IsAsyncCustomFusionConversionCandidate(
+bool MsaAlgorithm::IsBlockPrefetchCandidate(
     const HloInstruction* instruction) const {
+  if (instruction == nullptr) {
+    return false;
+  }
   if (!options_.enable_sync_custom_fusion_replacement) {
-    return AsyncConversionResult::kFeatureNotEnabled;
+    return false;
   }
   auto it = failed_async_conversions_.find(instruction);
   if (it != failed_async_conversions_.end()) {
-    return it->second;
+    return false;
   }
-  if (!instruction->IsCustomFusion() ||
+  if ((!instruction->IsCustomFusion() &&
+       instruction->opcode() != HloOpcode::kCustomCall) ||
       !options_.custom_fusion_block_prefetch_operand_index_fn(instruction)
            .has_value()) {
-    return AsyncConversionResult::kFailedPrecondition;
+    return false;
   }
-  return AsyncConversionResult::kSuccess;
+  return true;
 }
 
 MsaAlgorithm::AsyncConversionResult
@@ -2075,8 +2066,10 @@ std::vector<const HloValue*> MsaAlgorithm::GenerateJointProcessedValues(
       }
       // Expand the worklist to include values that connect to the current
       // value as sync copy operands, if any.
-      HloInstruction* defining_instruction = value->instruction();
-      if (IsAsyncConversionCandidate(defining_instruction)) {
+      const HloInstruction* defining_instruction =
+          value->defining_position().instruction;
+      if (IsSliceLikeInstruction(defining_instruction) &&
+          IsAsyncConversionCandidate(defining_instruction)) {
         // The first operand of slice like instruction (slice or dynamic-slice)
         // is the defining instruction.
         add_to_worklist(defining_instruction->operand(0));
@@ -2216,7 +2209,9 @@ void MsaAlgorithm::CreateAllocationValuesForJointProcessedValues(
           interval.buffer->instruction();
       auto may_be_replaced_by_slice_fn = [this](const HloInstruction* user) {
         return IsInstructionPendingReplacements(user) &&
-               IsSliceLikeInstruction(user);
+               (IsSliceLikeInstruction(user) ||
+                options_.custom_fusion_block_prefetch_operand_index_fn(user)
+                    .has_value());
       };
       bool may_be_replaced_by_slice = std::any_of(
           defining_instruction->users().begin(),
@@ -2711,9 +2706,17 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
 
     // Mark the instruction as ineligible for async conversion if it is a
     // candidate for async conversion.
-    if (IsAsyncConversionCandidate(
-            first_value->defining_position().instruction)) {
-      failed_async_conversions_[first_value->defining_position().instruction] =
+    const HloInstruction* instruction =
+        first_value->defining_position().instruction;
+    if (IsBlockPrefetchCandidate(instruction)) {
+      VLOG(3) << "Skipping colored buffer " << buffer->ToString()
+              << " in ProcessColoredBuffers because its defining instruction "
+              << instruction->name()
+              << " is handled exclusively by explicit block prefetch.";
+      continue;
+    }
+    if (IsAsyncConversionCandidate(instruction)) {
+      failed_async_conversions_[instruction] =
           AsyncConversionResult::kAsyncConversionNotAllowedForColoredBuffer;
     }
 
@@ -3448,14 +3451,6 @@ MsaAlgorithm::BlockPrefetchCategory MsaAlgorithm::ClassifyBlockPrefetchBuffer(
     return BlockPrefetchCategory::kPinToDefaultMemory;
   }
 
-  if (!DoesValueHaveNonAsyncConversionCandidateUses(first_defining_value)) {
-    VLOG(3) << "Not block prefetching buffer because its first defining "
-               "value does not have any uses that benefit from a copy of the "
-               "HloValue in Vmem: "
-            << buffer->ToString();
-    return BlockPrefetchCategory::kPinToDefaultMemory;
-  }
-
   HloInstruction* first_instruction = first_defining_value->instruction();
 
   // Program inputs need no further checks!
@@ -3466,7 +3461,16 @@ MsaAlgorithm::BlockPrefetchCategory MsaAlgorithm::ClassifyBlockPrefetchBuffer(
     return BlockPrefetchCategory::kBlockPrefetchOnly;
   }
 
-  if (!IsAsyncConversionCandidate(first_instruction)) {
+  if (!DoesValueHaveNonAsyncConversionCandidateUses(first_defining_value)) {
+    VLOG(3) << "Not block prefetching buffer because its first defining "
+               "value does not have any uses that benefit from a copy of the "
+               "HloValue in Vmem: "
+            << buffer->ToString();
+    return BlockPrefetchCategory::kPinToDefaultMemory;
+  }
+
+  if (!IsAsyncConversionCandidate(first_instruction) &&
+      !IsBlockPrefetchCandidate(first_instruction)) {
     VLOG(3)
         << "Not block prefetching buffer because first value of the "
            "buffer is not an async conversion candidate or a program input: "
@@ -3502,7 +3506,7 @@ MsaAlgorithm::ComputeBlockPrefetchingAsyncConversionMetadata(
   // candidate instruction is operand 0 at {} shape index. However, this can be
   // overridden by options_.custom_fusion_block_prefetch_operand_index_fn.
   int64_t operand_number = 0;
-  if (first_instruction->IsCustomFusion()) {
+  if (IsBlockPrefetchCandidate(first_instruction)) {
     std::optional<int64_t> custom_fusion_index =
         options_.custom_fusion_block_prefetch_operand_index_fn(
             first_instruction);
@@ -3708,14 +3712,23 @@ void MsaAlgorithm::FilterBlockPrefetchCandidatesByUseConstraints(
       continue;
     }
 
+    const HloInstruction* first_instruction =
+        initial_analysis.buffer_to_first_defining_value.at(buffer)
+            ->instruction();
     BlockPrefetchCandidateUseAnalysis use_analysis =
         ComputeBlockPrefetchCandidateUseAnalysis(
             buffer, instruction_schedule, async_conv_candidate_instructions);
     if (use_analysis.first_use_time == std::numeric_limits<int64_t>::max()) {
-      VLOG(3) << "Not block prefetching a buffer because it has no uses: "
-              << buffer->ToString();
-      category = BlockPrefetchCategory::kPinToDefaultMemory;
-      continue;
+      if (IsBlockPrefetchCandidate(first_instruction) &&
+          IsBufferAliasedToProgramOutput(buffer)) {
+        use_analysis.first_use_time =
+            instruction_schedule.at(first_instruction);
+      } else {
+        VLOG(3) << "Not block prefetching a buffer because it has no uses: "
+                << buffer->ToString();
+        category = BlockPrefetchCategory::kPinToDefaultMemory;
+        continue;
+      }
     }
     if (!use_analysis.all_uses_allowed_in_alternate_memory) {
       VLOG(3)
@@ -3733,9 +3746,6 @@ void MsaAlgorithm::FilterBlockPrefetchCandidatesByUseConstraints(
       continue;
     }
 
-    const HloInstruction* first_instruction =
-        initial_analysis.buffer_to_first_defining_value.at(buffer)
-            ->instruction();
     if (HasDataMovementPositionsInMiddle(buffer, first_instruction)) {
       VLOG(3) << "Not block prefetching a buffer because it has data movement "
                  "positions in the middle: "
@@ -3777,9 +3787,6 @@ MsaAlgorithm::BuildBlockPrefetchingContextHelper(
       BlockPrefetchCandidateUseAnalysis use_analysis =
           ComputeBlockPrefetchCandidateUseAnalysis(
               buffer, instruction_schedule, async_conv_candidate_instructions);
-      VLOG(3) << "First use time for buffer " << buffer->ToString() << " is "
-              << use_analysis.first_use_time << " at instruction "
-              << use_analysis.first_use_instruction->name();
       buffer_to_first_use_time[buffer] = use_analysis.first_use_time;
     }
   }
@@ -3856,7 +3863,8 @@ void MsaAlgorithm::CreatePinnedAllocationsInAltMemoryForPositions(
       pinned_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
-      if (IsAsyncConversionCandidate(use->instruction)) {
+      if (IsAsyncConversionCandidate(use->instruction) ||
+          IsBlockPrefetchCandidate(use->instruction)) {
         failed_async_conversions_[use->instruction] =
             AsyncConversionResult::kSourceBufferInAlternateMemory;
       }
@@ -3911,7 +3919,8 @@ absl::Status MsaAlgorithm::CreateMirroredAllocationsInAlternateMemory(
       mirrored_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
-      if (IsAsyncConversionCandidate(use->instruction)) {
+      if (IsAsyncConversionCandidate(use->instruction) ||
+          IsBlockPrefetchCandidate(use->instruction)) {
         failed_async_conversions_[use->instruction] =
             AsyncConversionResult::kSourceBufferInAlternateMemory;
       }
@@ -4013,7 +4022,10 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
   }
 
   // 2. Find the earliest time we can start prefetching the buffer.
-  int64_t buffer_size = buffer_intervals_.at(first_defining_value).size;
+  HloInstruction* custom_fusion_user =
+      GetBlockPrefetchedCustomFusionUser(first_defining_value);
+  int64_t buffer_size = CalculateBlockPrefetchStagingSize(
+      buffer_intervals_.at(first_defining_value).size, custom_fusion_user);
   VLOG(3) << "Finding a chunk for block prefetched buffer: "
           << buffer->ToString() << " buffer size: " << buffer_size
           << " within limit: " << block_prefetching_limit_bytes;
@@ -4062,6 +4074,10 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
             << buffer->ToString() << "\n non_trivial_source_position: "
             << non_trivial_source_position.instruction->name()
             << " sync_mem_op: " << sync_mem_op->name();
+  } else if (custom_fusion_user != nullptr) {
+    sync_mem_op = custom_fusion_user;
+    VLOG(3) << "Custom fusion operand block prefetched buffer: "
+            << buffer->ToString() << " sync_mem_op: " << sync_mem_op->name();
   }
   Allocation* pinned_allocation = CreatePinnedAllocationInDefaultMemory(
       non_trivial_source_position, first_use_time, instruction_schedule,
@@ -4080,11 +4096,12 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
 
   // For asynchronous conversion candidates, identify the source operand index.
   int64_t source_operand_index = 0;
-  if (sync_mem_op && sync_mem_op->IsCustomFusion()) {
-    auto custom_fusion_index =
+  if (IsBlockPrefetchCandidate(sync_mem_op)) {
+    std::optional<int64_t> custom_fusion_index =
         options_.custom_fusion_block_prefetch_operand_index_fn(sync_mem_op);
-    CHECK(custom_fusion_index.has_value());
-    source_operand_index = *custom_fusion_index;
+    if (custom_fusion_index.has_value()) {
+      source_operand_index = *custom_fusion_index;
+    }
   }
 
   // 5. For the first buffer position create a copy allocation.
@@ -4135,7 +4152,8 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
       copy_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
-      if (IsAsyncConversionCandidate(use->instruction)) {
+      if (IsAsyncConversionCandidate(use->instruction) ||
+          IsBlockPrefetchCandidate(use->instruction)) {
         failed_async_conversions_[use->instruction] =
             AsyncConversionResult::kSourceBufferInAlternateMemory;
       }
@@ -4194,11 +4212,16 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
   if (block_prefetching_limit_bytes > options_.max_size_in_bytes) {
     int64_t corrected_reserved_bytes =
         options_.max_size_in_bytes - block_prefetching_starting_offset;
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Block prefetched values bytes limit: ", block_prefetching_limit_bytes,
-        " is greater than options_.max_size_in_bytes ",
-        options_.max_size_in_bytes, ". Try setting it to ",
-        (corrected_reserved_bytes / 1024), " KiB."));
+    if (corrected_reserved_bytes > 0) {
+      block_prefetching_limit_bytes = options_.max_size_in_bytes;
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Block prefetched values bytes limit: ",
+                       block_prefetching_limit_bytes,
+                       " is greater than options_.max_size_in_bytes ",
+                       options_.max_size_in_bytes, ". Try setting it to ",
+                       (corrected_reserved_bytes / 1024), " KiB."));
+    }
   }
   VLOG(3) << "Block prefetched values bytes limit: "
           << block_prefetching_limit_bytes;
@@ -4251,6 +4274,10 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
 
 int64_t MsaAlgorithm::ReserveAlternateMemoryForScopedMemoryAllocations() {
   int64_t max_scoped_memory_size = MaxScopedMemorySize();
+  if (options_.alignment_in_bytes > 0) {
+    max_scoped_memory_size =
+        GetAlignedOffset(max_scoped_memory_size, options_.alignment_in_bytes);
+  }
   int program_start_time = 0;
   int program_end_time =
       hlo_live_range_.flattened_instruction_sequence().instructions().size() -
@@ -4763,7 +4790,6 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
               << " because it is already processed.";
       continue;
     }
-
     JointAllocationProposal proposal = GetJointProposal(interval);
     if (proposal.allocation_values.empty()) {
       VLOG(3) << "No allocation values for these joint-processed values."
@@ -6101,6 +6127,56 @@ AliasedOffset* MsaAlgorithm::CheckOrUpdatePreferredOffsetForUse(
     preferred_offset = required_assignment->offset;
   }
   return preferred_offset;
+}
+
+int64_t MsaAlgorithm::CalculateBlockPrefetchStagingSize(
+    int64_t original_size, const HloInstruction* custom_fusion_user) const {
+  if (!IsBlockPrefetchCandidate(custom_fusion_user)) {
+    return original_size;
+  }
+
+  // Capping the VMEM reservation for block-prefetched custom fusions to the
+  // double-buffered staging budget instead of the full tensor size prevents
+  // alternate memory exhaustion (VMEM OOMs) when streaming large buffers.
+  int64_t vmem_limit =
+      options_.reserved_bytes_for_block_prefetches > 0
+          ? options_.reserved_bytes_for_block_prefetches
+          : MemorySpaceAssignmentUtils::kDefaultCustomFusionStagingBytes;
+  std::optional<MemorySpaceAssignmentUtils::CustomFusionChunkSizing>
+      custom_sizing = options_.custom_fusion_chunk_sizing_fn != nullptr
+                          ? options_.custom_fusion_chunk_sizing_fn(
+                                custom_fusion_user, vmem_limit)
+                          : std::nullopt;
+  MemorySpaceAssignmentUtils::CustomFusionChunkSizing sizing =
+      custom_sizing.has_value()
+          ? *custom_sizing
+          : MemorySpaceAssignmentUtils::GetCustomFusionChunkSizing(
+                custom_fusion_user, vmem_limit);
+  if (sizing.double_buffered_staging_bytes <= 0) {
+    return original_size;
+  }
+  return std::min<int64_t>(original_size, sizing.double_buffered_staging_bytes);
+}
+
+HloInstruction* MsaAlgorithm::GetBlockPrefetchedCustomFusionUser(
+    const HloValue* value) const {
+  if (value == nullptr) {
+    return nullptr;
+  }
+  if (IsBlockPrefetchCandidate(value->instruction())) {
+    return value->instruction();
+  }
+  for (const HloUse& use : value->GetUses()) {
+    if (IsBlockPrefetchCandidate(use.instruction)) {
+      std::optional<int64_t> operand_index =
+          options_.custom_fusion_block_prefetch_operand_index_fn(
+              use.instruction);
+      if (operand_index.has_value() && use.operand_number == *operand_index) {
+        return use.instruction;
+      }
+    }
+  }
+  return nullptr;
 }
 
 AllocationRequest MsaAlgorithm::CreateAllocationRequest(
@@ -8925,13 +9001,17 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       // unit should always succeed since we released a reserved chunk that was
       // a fallback for this purpose.
       CHECK(allocation_result == AllocationResult::kSuccess);
-    } else if (!IsAsyncConversionCandidate(
-                   request.allocation_value_to_update->position()
-                       .instruction)) {
+    } else if (!(IsAsyncConversionCandidate(
+                     request.allocation_value_to_update->position()
+                         .instruction) ||
+                 IsBlockPrefetchCandidate(
+                     request.allocation_value_to_update->position()
+                         .instruction))) {
       // If the start of an allocation is in alternate memory and the allocation
       // sequence is not empty:
-      // - It is either an async conversion candidate, which means the coloring
-      //   requirement will be fulfilled with a copy allocation
+      // - It is either an async conversion candidate or block prefetch
+      //   candidate, which means the coloring requirement will be fulfilled
+      //   with a copy allocation
       // - Or we already have an allocation in the alternate memory.
       Allocation* last_allocation =
           request.allocation_value->allocation_sequence()->back().get();
@@ -9166,8 +9246,9 @@ void MsaAlgorithm::AddAsyncCopyOrOtherMemOp(
   allocations->push_back(std::make_unique<CopyAllocation>(
       prev_allocation, memory_space, chunk, exclusive_start_time,
       copy_done_schedule_before_time, end_time, cross_program_prefetch_index,
-      sync_mem_op, async_mem_op_start, async_mem_op_done,
-      source_operand_index));
+      sync_mem_op, async_mem_op_start, async_mem_op_done, source_operand_index,
+      options_.reserved_bytes_for_block_prefetches,
+      options_.custom_fusion_chunk_sizing_fn));
 
   RegisterAsyncCopy(memory_space, exclusive_start_time,
                     copy_done_schedule_before_time, allocations, aliased_offset,

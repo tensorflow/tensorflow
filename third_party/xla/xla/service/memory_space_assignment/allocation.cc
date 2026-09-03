@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/layout.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/slice.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/service/time_utils.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
@@ -266,13 +268,40 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                 << " at index " << use.operand_index.ToString();
         replacement_instruction = tuple_inst;
       } else {
+        HloInstruction* tuple_producing_instruction = producing_instruction;
+        const Shape& subshape =
+            ShapeUtil::GetSubshape(tuple_inst->shape(), use.operand_index);
+        if (!subshape.IsTuple() &&
+            !tuple_producing_instruction->shape().IsTuple() &&
+            (subshape.has_layout() &&
+                     tuple_producing_instruction->shape().has_layout()
+                 ? !Shape::Equal()
+                        .IgnoreSplitConfigInLayout()
+                        .IgnoreMemorySpaceInLayout()(
+                            subshape, tuple_producing_instruction->shape())
+                 : !ShapeUtil::Compatible(
+                       subshape, tuple_producing_instruction->shape()))) {
+          VLOG(4) << "Old shape = " << subshape.ToString() << ", new shape = "
+                  << tuple_producing_instruction->shape().ToString()
+                  << "; inserting a bitcast.";
+          tuple_producing_instruction =
+              computation->AddInstruction(HloInstruction::CreateBitcast(
+                  subshape, tuple_producing_instruction));
+        }
         ABSL_ASSIGN_OR_RETURN(
             replacement_instruction,
-            TupleUtil::ReplaceTupleWith(producing_instruction, tuple_inst,
-                                        use.operand_index));
+            TupleUtil::ReplaceTupleWith(
+                tuple_producing_instruction, tuple_inst, use.operand_index,
+                /*insert_bitcast_if_different_shape=*/false));
       }
-    } else if (!Shape::Equal().IgnoreSplitConfigInLayout()(
-                   operand_shape, producing_instruction->shape())) {
+    } else if ((operand_shape.has_layout() &&
+                producing_instruction->shape().has_layout())
+                   ? !Shape::Equal()
+                          .IgnoreSplitConfigInLayout()
+                          .IgnoreMemorySpaceInLayout()(
+                              operand_shape, producing_instruction->shape())
+                   : !ShapeUtil::Compatible(operand_shape,
+                                            producing_instruction->shape())) {
       // When processing allocations, we treat bitcasts as trivial positions and
       // do not create allocations for them. We insert bitcasts after copies, to
       // account for the fact that we don't have an allocation for the bitcast.
@@ -465,7 +494,9 @@ CopyAllocation::CopyAllocation(
     int64_t copy_done_schedule_before_time, int64_t end_time,
     std::optional<int64_t> cross_program_prefetch_index,
     HloInstruction* sync_mem_op, HloInstruction* async_mem_op_start,
-    HloInstruction* async_mem_op_done, int64_t source_operand_index)
+    HloInstruction* async_mem_op_done, int64_t source_operand_index,
+    int64_t reserved_bytes_for_block_prefetches,
+    CustomFusionChunkSizingFn custom_fusion_chunk_sizing_fn)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space, chunk,
           // Allocation uses an inclusive start time
@@ -477,7 +508,10 @@ CopyAllocation::CopyAllocation(
       copy_start_(async_mem_op_start),
       copy_done_(async_mem_op_done),
       sync_mem_op_(sync_mem_op),
-      source_operand_index_(source_operand_index) {}
+      source_operand_index_(source_operand_index),
+      reserved_bytes_for_block_prefetches_(reserved_bytes_for_block_prefetches),
+      custom_fusion_chunk_sizing_fn_(std::move(custom_fusion_chunk_sizing_fn)) {
+}
 
 int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
@@ -505,13 +539,15 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
         sync_mem_op_->opcode() == HloOpcode::kDynamicSlice ||
+        sync_mem_op_->opcode() == HloOpcode::kCustomCall ||
         sync_mem_op_->IsCustomFusion()) {
       ABSL_ASSIGN_OR_RETURN(copy_done_,
                        computation->CreateAsyncInstructions(
                            sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
                            HloInstruction::kMainExecutionThread, false));
     } else {
-      return Internal("Sync mem op is not a copy, slice, or dynamic slice.");
+      return Internal("Sync mem op is not a copy, slice, or dynamic slice: %s",
+                      sync_mem_op_->ToString());
     }
     copy_start_ = copy_done_->mutable_operand(0);
     // If the shape of the copy start operand is not compatible with the
@@ -527,8 +563,61 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
     }
     ABSL_RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(source_operand_index_,
                                                     producing_instruction));
+    if (sync_mem_op_->IsCustomFusion() ||
+        sync_mem_op_->opcode() == HloOpcode::kCustomCall) {
+      const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+          output_operand_aliasing = sync_mem_op_->output_operand_aliasing();
+      if (!output_operand_aliasing.empty()) {
+        std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+            async_aliasing;
+        async_aliasing.reserve(output_operand_aliasing.size());
+        for (const auto& alias : output_operand_aliasing) {
+          ShapeIndex new_output_index = {1};
+          for (int64_t idx : alias.first) {
+            new_output_index.push_back(idx);
+          }
+          async_aliasing.emplace_back(new_output_index, alias.second);
+        }
+        copy_start_->set_output_to_operand_aliasing(async_aliasing);
+      }
+      int64_t vmem_limit =
+          reserved_bytes_for_block_prefetches_ > 0
+              ? reserved_bytes_for_block_prefetches_
+              : MemorySpaceAssignmentUtils::kDefaultCustomFusionStagingBytes;
+      std::optional<MemorySpaceAssignmentUtils::CustomFusionChunkSizing>
+          custom_sizing =
+              custom_fusion_chunk_sizing_fn_ != nullptr
+                  ? custom_fusion_chunk_sizing_fn_(sync_mem_op_, vmem_limit)
+                  : std::nullopt;
+      MemorySpaceAssignmentUtils::CustomFusionChunkSizing sizing =
+          custom_sizing.has_value()
+              ? *custom_sizing
+              : MemorySpaceAssignmentUtils::GetCustomFusionChunkSizing(
+                    sync_mem_op_, vmem_limit);
+      if (sizing.max_slices_per_chunk > 0 &&
+          sizing.num_slices > sizing.max_slices_per_chunk) {
+        int64_t num_chunks =
+            (sizing.num_slices + sizing.max_slices_per_chunk - 1) /
+            sizing.max_slices_per_chunk;
+        HloInstruction* prev_op = copy_start_;
+        for (int64_t chunk = 1; chunk < num_chunks; ++chunk) {
+          HloInstruction* async_update =
+              computation->AddInstruction(HloInstruction::CreateAsyncUpdate(
+                  copy_start_->shape(), prev_op,
+                  copy_start_->async_wrapped_opcode(),
+                  copy_start_->async_wrapped_computation()));
+          async_update->set_raw_backend_config_string(
+              copy_start_->raw_backend_config_string());
+          prev_op = async_update;
+        }
+        ABSL_RETURN_IF_ERROR(copy_done_->ReplaceOperandWith(0, prev_op));
+        absl::down_cast<HloAsyncInstruction*>(copy_done_)->UpdateChainShapes();
+      }
+    }
   } else {
     Shape dest_shape = shape;
+    dest_shape.mutable_layout()->set_memory_space(
+        static_cast<int64_t>(memory_space()));
     if (memory_space() == MemorySpace::kDefault) {
       dest_shape.mutable_layout()->clear_split_configs();
     }

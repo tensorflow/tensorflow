@@ -137,7 +137,8 @@ namespace xla {
         ABSL_ASSIGN_OR_RETURN(tuple_args[i],
                          ReplaceTupleWith(new_instruction, get_operand(),
                                           ShapeIndex(shape_index.begin() + 1,
-                                                     shape_index.end())));
+                                                     shape_index.end()),
+                                          insert_bitcast_if_different_shape));
       } else {
         if (subshape != new_instruction->shape() &&
             insert_bitcast_if_different_shape) {
