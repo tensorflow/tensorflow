@@ -74,17 +74,19 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
 
   if (delta == static_cast<T>(0)) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Requires delta != 0: ", delta));
+        absl::StrCat("Requires delta != 0: ", static_cast<double>(delta)));
   }
   if (delta > static_cast<T>(0)) {
     if (start > limit) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Requires start <= limit when delta > 0: ", start, "/", limit));
+          "Requires start <= limit when delta > 0: ",
+          static_cast<double>(start), "/", static_cast<double>(limit)));
     }
   } else {
     if (start < limit) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Requires start >= limit when delta < 0: ", start, "/", limit));
+          "Requires start >= limit when delta < 0: ",
+          static_cast<double>(start), "/", static_cast<double>(limit)));
     }
   }
   int64_t size;
