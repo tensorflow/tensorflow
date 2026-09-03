@@ -349,7 +349,7 @@ def nvidia_gpu_build_with_compute_capability(
       build_tag_filters=build_tag_filters,
       options=options,
       repo_env=repo_env,
-      extra_setup_commands=(["nvidia-smi"],),
+      extra_setup_commands=(["nvidia-smi"],) if multi_gpu else (),
   )
 
 
