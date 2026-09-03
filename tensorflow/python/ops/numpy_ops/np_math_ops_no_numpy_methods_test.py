@@ -126,6 +126,28 @@ class MathWithoutNumpyMethodsOnTensorTest(test.TestCase):
           err_msg='average({})'.format(arg),
       )
 
+  def testLogaddexpAcceptsIntegerInputs(self):
+    # `logaddexp` and `logaddexp2` promote integer arguments to a float dtype,
+    # which must not depend on `enable_numpy_methods_on_tensor()`.
+    x1 = np.array([1, 2, 3], dtype=np.int32)
+    for x2 in (np.int32(1), np.array([4, 5, 6], dtype=np.int32)):
+      actual = np_math_ops.logaddexp(x1, x2)
+      np.testing.assert_allclose(
+          np.asarray(actual),
+          np.logaddexp(x1, x2),
+          rtol=1e-6,
+          atol=1e-6,
+          err_msg='logaddexp({}, {})'.format(x1, x2),
+      )
+      actual2 = np_math_ops.logaddexp2(x1, x2)
+      np.testing.assert_allclose(
+          np.asarray(actual2),
+          np.logaddexp2(x1, x2),
+          rtol=1e-6,
+          atol=1e-6,
+          err_msg='logaddexp2({}, {})'.format(x1, x2),
+      )
+
   def testFloatInputsAreUnchanged(self):
     arg = np.array([1.5, 2.5, 3.5], dtype=np.float32)
     for name, tf_fun, np_fun in _PROMOTING_UNARY_OPS:
