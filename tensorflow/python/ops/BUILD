@@ -4005,6 +4005,7 @@ py_test(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":gradient_checker_v2",
         ":math_ops",
         ":random_ops",
         "//tensorflow/core/config:flags_py",
