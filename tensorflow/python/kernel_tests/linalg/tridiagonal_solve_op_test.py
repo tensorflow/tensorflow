@@ -552,22 +552,23 @@ class TridiagonalSolveOpTest(test.TestCase):
     if context.executing_eagerly():
       return
     # Use placeholders to bypass Python static shape checks and trigger C++
-    # validation in TridiagonalSolveOpGpu.
+    # validation in TridiagonalSolveOpGpu and CPU LinearAlgebraOp.
     diags = array_ops.placeholder(dtypes.float64, shape=None)
     rhs = array_ops.placeholder(dtypes.float64, shape=None)
     x = linalg_impl.tridiagonal_solve(
         diags, rhs, "compact", partial_pivoting=self.pivoting)
 
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       # 1. LHS rank < 2
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  "LHS tensor must have rank >= 2"):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"(LHS tensor|Input tensor 0) must have rank >= 2"):
         sess.run(x, feed_dict={diags: np.ones((5,)), rhs: np.ones((5, 4))})
 
       # 2. LHS rank != RHS rank
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "LHS and RHS tensors must have the same rank"):
+          r"(LHS and RHS|All input) tensors must have the same rank"):
         sess.run(x, feed_dict={
             diags: np.ones((5, 3, 4)), rhs: np.ones((5, 4))
         })
@@ -575,7 +576,8 @@ class TridiagonalSolveOpTest(test.TestCase):
       # 3. LHS and RHS batch dimensions mismatch
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "LHS and RHS tensors must have the same batch dimensions"):
+          r"(LHS and RHS tensors must have the same batch dimensions|"
+          r"All input tensors must have the same outer dimensions)"):
         sess.run(x, feed_dict={
             diags: np.ones((5, 3, 4)), rhs: np.ones((4, 4, 1))
         })
@@ -591,7 +593,8 @@ class TridiagonalSolveOpTest(test.TestCase):
       # 5. Expected same matrix size
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "Expected same matrix size in both arguments"):
+          r"(Expected same matrix size in both arguments|"
+          r"Expected the same number of left-hand sides and right-hand sides)"):
         sess.run(x, feed_dict={
             diags: np.ones((5, 3, 4)), rhs: np.ones((5, 3, 1))
         })
