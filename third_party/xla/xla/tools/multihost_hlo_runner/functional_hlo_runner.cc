@@ -1271,7 +1271,7 @@ absl::Status DumpOutput(
   results.resize(write_tasks.size());
   {
     tsl::Env* env = tsl::Env::Default();
-    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner::DumpOutput", 16);
+    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner_DumpOutput", 16);
     for (int i = 0; i < write_tasks.size(); ++i) {
       thread_pool.Schedule(
           [&write_tasks, &results, i]() { results[i] = write_tasks[i](); });
