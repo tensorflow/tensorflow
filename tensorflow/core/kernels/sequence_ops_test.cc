@@ -193,5 +193,37 @@ TEST_F(LinSpaceOpTest, Simple_Double) {
   test::ExpectTensorEqual<double>(expected, *GetOutput(0));
 }
 
+TEST_F(LinSpaceOpTest, Simple_Half) {
+  MakeOp(DT_HALF, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(3.0f)});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(7.0f)});
+  AddInputFromArray<int32_t>(TensorShape({}), {3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output
+  Tensor expected(allocator(), DT_HALF, TensorShape({3}));
+  test::FillValues<Eigen::half>(
+      &expected, {Eigen::half(3.0f), Eigen::half(5.0f), Eigen::half(7.0f)});
+  test::ExpectTensorEqual<Eigen::half>(expected, *GetOutput(0));
+}
+
+TEST_F(LinSpaceOpTest, Simple_Bfloat16) {
+  MakeOp(DT_BFLOAT16, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(3.0f)});
+  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(7.0f)});
+  AddInputFromArray<int32_t>(TensorShape({}), {3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output
+  Tensor expected(allocator(), DT_BFLOAT16, TensorShape({3}));
+  test::FillValues<bfloat16>(
+      &expected, {bfloat16(3.0f), bfloat16(5.0f), bfloat16(7.0f)});
+  test::ExpectTensorEqual<bfloat16>(expected, *GetOutput(0));
+}
+
 }  // namespace
 }  // namespace tensorflow

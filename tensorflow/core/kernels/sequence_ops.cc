@@ -206,8 +206,10 @@ class LinSpaceOp : public OpKernel {
     auto flat = out->flat<T>();
     flat(0) = start;
     if (num > 1) {
-      const T step = (stop - start) / (num - 1);
-      for (Tnum i = 1; i < num - 1; ++i) flat(i) = start + step * i;
+      const T step = (stop - start) / static_cast<T>(num - 1);
+      for (Tnum i = 1; i < num - 1; ++i) {
+        flat(i) = start + step * static_cast<T>(i);
+      }
       // Ensure final value == stop; float arithmetic won't guarantee this.
       flat(num - 1) = stop;
     }
@@ -230,10 +232,14 @@ class LinSpaceOp : public OpKernel {
   REGISTER_KERNEL(dev, T, int64_t)
 
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_CPU, T)
+TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 
 #define REGISTER_DEFAULT_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_DEFAULT, T)
+TF_CALL_half(REGISTER_DEFAULT_KERNEL);
+TF_CALL_bfloat16(REGISTER_DEFAULT_KERNEL);
 TF_CALL_float(REGISTER_DEFAULT_KERNEL);
 TF_CALL_double(REGISTER_DEFAULT_KERNEL);
 #undef REGISTER_DEFAULT_KERNEL
