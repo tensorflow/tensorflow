@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -166,6 +167,16 @@ TEST(RangeOpModel, FloatNegativeDeltaConst) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
 }
 
+TEST(RangeOpModel, FloatRejectsOutputSizeLargerThanIntMax) {
+  RangeOpModel<float> model(TensorType_FLOAT32);
+  model.PopulateTensor<float>(model.start(), {0});
+  model.PopulateTensor<float>(
+      model.limit(),
+      {static_cast<float>(std::numeric_limits<int>::max()) * 2.0f});
+  model.PopulateTensor<float>(model.delta(), {1});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
 TEST(RangeOpModel, EmptyOutput) {
   RangeOpModel<int32_t> model(TensorType_INT32);
   model.PopulateTensor<int32_t>(model.start(), {0});
@@ -232,6 +243,52 @@ TEST(RangeOpModel, Int64NegativeDeltaConst) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3));
   EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
+}
+
+TEST(RangeOpModel, Int64RejectsSubtractionOverflowOutputSize) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(model.start(),
+                                {std::numeric_limits<int64_t>::min()});
+  model.PopulateTensor<int64_t>(model.limit(),
+                                {std::numeric_limits<int64_t>::max()});
+  model.PopulateTensor<int64_t>(model.delta(), {1});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST(RangeOpModel, Int64RejectsOutputSizeLargerThanIntMax) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(model.start(), {0});
+  model.PopulateTensor<int64_t>(
+      model.limit(),
+      {static_cast<int64_t>(std::numeric_limits<int>::max()) + 1});
+  model.PopulateTensor<int64_t>(model.delta(), {1});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST(RangeOpModel, Int64NoOverflowAfterLastPositiveValue) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(
+      model.start(), {std::numeric_limits<int64_t>::max() - 1});
+  model.PopulateTensor<int64_t>(model.limit(),
+                                {std::numeric_limits<int64_t>::max()});
+  model.PopulateTensor<int64_t>(model.delta(), {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAre(std::numeric_limits<int64_t>::max() - 1));
+}
+
+TEST(RangeOpModel, Int64NoOverflowAfterLastNegativeValue) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(
+      model.start(), {std::numeric_limits<int64_t>::min() + 1});
+  model.PopulateTensor<int64_t>(model.limit(),
+                                {std::numeric_limits<int64_t>::min()});
+  model.PopulateTensor<int64_t>(model.delta(), {-2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAre(std::numeric_limits<int64_t>::min() + 1));
 }
 
 TEST(RangeOpModel, Int64EmptyOutput) {
