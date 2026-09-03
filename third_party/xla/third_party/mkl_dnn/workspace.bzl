@@ -47,6 +47,7 @@ def repo():
         patch_file = [
             "//third_party/mkl_dnn:onednn_acl_lock_fixed_format_matmul.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_default_max.patch",
+            "//third_party/mkl_dnn:onednn_bfloat16_windows_arm64_v3_7.patch",
         ],
         sha256 = "5792cbc07764c6e25c459ff68efb5cfcd7f4a0ba66dca6a4a2c681cd7a644596",
         strip_prefix = "oneDNN-3.7",

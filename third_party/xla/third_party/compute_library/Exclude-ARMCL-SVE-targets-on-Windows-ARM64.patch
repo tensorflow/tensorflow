@@ -1,0 +1,99 @@
+From d906aa97f52de5b4e012c3e63043343b1dd262ad Mon Sep 17 00:00:00 2001
+From: Mugundan SelvaNayagam <mugunthan.selvanayagam@multicorewareinc.com>
+Date: Wed, 12 Aug 2026 15:34:47 +0530
+Subject: [PATCH] Exclude ARMCL SVE targets on Windows ARM64
+
+---
+ BUILD.bazel | 42 +++++++++++++++++++++++++++++++-----------
+ 1 file changed, 31 insertions(+), 11 deletions(-)
+
+diff --git a/BUILD.bazel b/BUILD.bazel
+index f553b7bfad..fe6a440f12 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -182,7 +182,6 @@ cc_library(
+                   "ENABLE_NHWC_KERNELS",
+                   "ENABLE_NCHW_KERNELS",
+                   "ARM_COMPUTE_GRAPH_ENABLED",
+-                  "ARM_COMPUTE_ENABLE_SVEF32MM",
+                   "ARM_COMPUTE_ENABLE_FIXED_FORMAT_KERNELS",
+                   "_GLIBCXX_USE_NANOSLEEP"
+               ] + select({
+@@ -191,6 +190,12 @@ cc_library(
+                       "ARM_COMPUTE_ASSERTS_ENABLED",
+                   ],
+                   "//conditions:default": [],
++             }) + 
++             select({
++                    "@xla//xla/tsl:windows_aarch64": [],
++                    "//conditions:default": [
++                        "ARM_COMPUTE_ENABLE_SVEF32MM",
++                    ],
+               }) +
+               select({
+                   "//:logging_flag": ["ARM_COMPUTE_LOGGING_ENABLED"],
+@@ -264,7 +269,8 @@ cc_library(
+ 
+ #---------------------------------------------------------------------
+ # SVE2 library
+-
++# The SVE/SVE2 source files include GNU/Linux headers such as <alloca.h>,
++# which are unavailable with clang-cl/MSVC on Windows ARM64.
+ cc_library(
+     name = "arm_compute_sve2",
+     srcs = ["//src:arm_compute_sve2_srcs"],
+@@ -315,7 +321,9 @@ cc_library(
+ 
+ #---------------------------------------------------------------------
+ # SVE library
+-
++#
++# NOTE: This target remains defined for non-Windows platforms, but
++# @xla//xla/tsl:windows_aarch64 does not depend on it from :arm_compute.
+ cc_library(
+     name = "arm_compute_sve",
+     srcs = ["//src:arm_compute_sve_srcs"],
+@@ -409,11 +417,16 @@ cc_library(
+         "//:openmp_flag": ["-fopenmp"],
+         "//conditions:default": [],
+     }),
+-    local_defines = [
+-        "ENABLE_SVE",
+-        "ARM_COMPUTE_ENABLE_SVE",
+-        "ARM_COMPUTE_ENABLE_BF16",
+-    ],
++    local_defines = select({
++        # Do not enable SVE feature macros on Windows ARM64 because the SVE
++        # source files depend on GNU/Linux headers>.
++        "@xla//xla/tsl:windows_aarch64": [],
++        "//conditions:default": [
++            "ENABLE_SVE",
++            "ARM_COMPUTE_ENABLE_SVE",
++            "ARM_COMPUTE_ENABLE_BF16",
++        ],
++    }),
+     visibility = ["//visibility:public"],
+     deps = [
+         "//:common_defines",
+@@ -423,8 +436,15 @@ cc_library(
+         "//include",
+         "//support",
+         "//utils",
+-        "//:arm_compute_sve",
+-        "//:arm_compute_sve2"
+-    ],
++    ] + select({
++        # Windows ARM64: build ACL source, but avoid SVE/SVE2 objects.
++        # This prevents compiling SVE kernals on Windows ARM64.
++        # which includes <alloca.h>, unavailable under clang-cl/MSVC.
++        "@xla//xla/tsl:windows_aarch64": [],
++        "//conditions:default": [
++            "//:arm_compute_sve",
++            "//:arm_compute_sve2",
++        ],
++    }),
+     alwayslink = True,
+ )
+-- 
+2.52.0.windows.1
+

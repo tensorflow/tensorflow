@@ -242,7 +242,10 @@ _TEXTUAL_HDRS_LIST = glob([
 # compiler doesn't clean up stack from temporary objects.)
 cc_library(
     name = "onednn_autogen",
-    srcs = glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
+    srcs = select({
+        "@xla//xla/tsl:windows_aarch64": [],
+        "//conditions:default": glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
+    }),
     copts = [
         "-O1",
         "-U_FORTIFY_SOURCE",
@@ -262,33 +265,38 @@ cc_library(
     name = "onednn_cpu",
     # Builds oneDNN with CPU support only (no GPU kernels).
     # Used when SYCL is not configured. See :onednn_gpu_and_cpu for GPU variant.
-    srcs = glob(
-        [
-            "src/common/*.cpp",
-            "src/cpu/*.cpp",
-            "src/cpu/**/*.cpp",
-            "src/cpu/jit_utils/**/*.cpp",
-            "src/cpu/x64/**/*.cpp",
-            "src/graph/interface/*.cpp",
-            "src/graph/backend/*.cpp",
-            "src/graph/backend/dnnl/*.cpp",
-            "src/graph/backend/fake/*.cpp",
-            "src/graph/backend/dnnl/executables/*.cpp",
-            "src/graph/backend/dnnl/passes/*.cpp",
-            "src/graph/backend/dnnl/patterns/*.cpp",
-            "src/graph/backend/dnnl/kernels/*.cpp",
-            "src/graph/utils/*.cpp",
-            "src/graph/utils/pm/*.cpp",
-            "third_party/ittnotify/*.c",
-        ],
-        exclude = [
-            "src/cpu/aarch64/**",
-            "src/cpu/ppc64/**",
-            "src/cpu/rv64/**",
-            "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
-            "src/cpu/sycl/**",
-        ],
-    ),
+    # Windows ARM64 uses @mkl_dnn_acl_compatible instead (via mkl_deps()),
+    # so this target compiles no sources on windows_aarch64.
+    srcs = select({
+            "@xla//xla/tsl:windows_aarch64": [],
+            "//conditions:default": glob(
+            [
+                "src/common/*.cpp",
+                "src/cpu/*.cpp",
+                "src/cpu/**/*.cpp",
+                "src/cpu/jit_utils/**/*.cpp",
+                "src/cpu/x64/**/*.cpp",
+                "src/graph/interface/*.cpp",
+                "src/graph/backend/*.cpp",
+                "src/graph/backend/dnnl/*.cpp",
+                "src/graph/backend/fake/*.cpp",
+                "src/graph/backend/dnnl/executables/*.cpp",
+                "src/graph/backend/dnnl/passes/*.cpp",
+                "src/graph/backend/dnnl/patterns/*.cpp",
+                "src/graph/backend/dnnl/kernels/*.cpp",
+                "src/graph/utils/*.cpp",
+                "src/graph/utils/pm/*.cpp",
+                "third_party/ittnotify/*.c",
+            ],
+            exclude = [
+                "src/cpu/aarch64/**",
+                "src/cpu/ppc64/**",
+                "src/cpu/rv64/**",
+                "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
+                "src/cpu/sycl/**",
+            ],
+        ),
+    }),
     copts = _COPTS_LIST + [
         "-DDNNL_ENABLE_ITT_TASKS",  # Enable ITT for CPU
     ],
@@ -303,7 +311,10 @@ cc_library(
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
-    deps = [":onednn_autogen"] + if_mkl_ml(
+    deps = select({
+        "@xla//xla/tsl:windows_aarch64": [],
+        "//conditions:default": [":onednn_autogen"],
+    }) + if_mkl_ml(
         ["@xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),
