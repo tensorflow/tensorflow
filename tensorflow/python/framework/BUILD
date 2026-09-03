@@ -1568,6 +1568,7 @@ tf_py_strict_test(
     deps = [
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:sysconfig",
     ],
 )
 

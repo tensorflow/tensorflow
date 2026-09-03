@@ -26,14 +26,19 @@ binary while their header went on declaring them, and nothing noticed for two
 releases. They are the only way a plugin can reach a resource variable's
 tensor, so every optimiser became unimplementable on a PluggableDevice.
 
-This test is deliberately dumb: it asks the runtime library whether each name
+This test is deliberately dumb: it asks the shipped binaries whether each name
 resolves. It does not call them, because calling them needs a kernel context.
 """
 
 import ctypes
+import glob
+import os
 import sys
 
+# Imported for its side effect: it is what loads the extension module the
+# symbols are looked up in.
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 
 
@@ -71,37 +76,65 @@ _KERNELS = (
     "TF_GetStream",
 )
 
-# The extension module that pywrap_tensorflow loads. It is the object a plugin
-# is linked against, and dlsym on its handle searches it and the libraries it
-# depends on, which is where the C API actually lands. The process-wide
-# namespace is not searchable instead: pywrap_tensorflow deliberately loads
-# this with RTLD_LOCAL so that TensorFlow's statically linked LLVM does not
-# leak into it.
+# The extension module pywrap_tensorflow loads. It is the primary place to
+# look: it is what a plugin is linked against, and resolving a name through its
+# handle searches it and the libraries it depends on, which is where the C API
+# lands in a shared-object build.
+#
+# The process-wide namespace is not the place to look, and asking it is how
+# this test first got the answer wrong. pywrap_tensorflow loads that extension
+# with RTLD_LOCAL deliberately, so that TensorFlow's statically linked LLVM
+# does not leak into a process that may later import its own; nothing of
+# TensorFlow's is in RTLD_DEFAULT to find. On Windows ctypes cannot even be
+# asked: CDLL(None) is a TypeError there rather than an OSError, which is what
+# turned the first version of this test into an error instead of a failure.
 _RUNTIME_MODULE = "tensorflow.python._pywrap_tensorflow_internal"
+
+
+def _candidate_libraries():
+  """Paths of the binaries a plugin's undefined references resolve against."""
+  paths = []
+  module = sys.modules.get(_RUNTIME_MODULE)
+  path = getattr(module, "__file__", None)
+  if path:
+    paths.append(path)
+
+  # A monolithic build keeps the C API in the extension module above. A
+  # shared-object build puts it in libtensorflow_framework, which that module
+  # depends on, so the handle above already reaches it; naming it as well
+  # covers a layout where it does not.
+  library_dir = sysconfig.get_lib()
+  if sys.platform == "win32":
+    patterns = ("*tensorflow*.dll",)
+  elif sys.platform == "darwin":
+    patterns = ("*tensorflow_framework*.dylib*",)
+  else:
+    patterns = ("*tensorflow_framework*.so*",)
+  for pattern in patterns:
+    paths.extend(sorted(glob.glob(os.path.join(library_dir, pattern))))
+  return paths
 
 
 class PluggableDeviceCApiTest(test.TestCase):
 
   def setUp(self):
     super().setUp()
-    if sys.platform == "win32":
-      # A name resolves on Windows only if the module definition file exports
-      # it, which is a different question from whether it was linked in, and
-      # the one this test is not asking.
-      self.skipTest("symbol visibility on Windows is governed by a .def file")
-    module = sys.modules.get(_RUNTIME_MODULE)
-    path = getattr(module, "__file__", None)
-    if not path:
-      self.skipTest(f"{_RUNTIME_MODULE} was not loaded from a shared object")
-    self._runtime = ctypes.CDLL(path)
+    self._libraries = []
+    for path in _candidate_libraries():
+      try:
+        self._libraries.append(ctypes.CDLL(path))
+      except OSError:
+        # A path that is not loadable on this platform tells us nothing; the
+        # test fails below if no library at all defines the names.
+        continue
+    if not self._libraries:
+      self.skipTest("no TensorFlow shared library to resolve symbols against")
 
   def _assert_defined(self, names, why):
-    missing = []
-    for name in names:
-      try:
-        getattr(self._runtime, name)
-      except AttributeError:
-        missing.append(name)
+    missing = [
+        name for name in names
+        if not any(getattr(library, name, None) for library in self._libraries)
+    ]
     self.assertEmpty(
         missing,
         f"{len(missing)} of {len(names)} entry points are declared by the "
