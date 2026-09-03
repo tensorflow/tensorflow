@@ -61,6 +61,30 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
     window = window[:-1]
   return window
 
+def _scipy_blackman(length, symmetric=True):
+  """A simple implementation of a Blackman window that matches SciPy.
+
+  https://en.wikipedia.org/wiki/Window_function#Blackman_window
+  https://github.com/scipy/scipy/blob/v0.14.0/scipy/signal/windows.py#L615
+
+  Args:
+    length: The window length.
+    symmetric: Whether to create a symmetric window.
+
+  Returns:
+    A Blackman window of length `length`.
+  """
+  if length == 1:
+    return np.ones(1)
+  odd = length % 2
+  if not symmetric and not odd:
+    length += 1
+  window = (0.42 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
+            + 0.08 * np.cos(4.0 * np.pi * np.arange(length) / (length - 1)))
+  if not symmetric and not odd:
+    window = window[:-1]
+  return window
+
 
 @tf_test_util.run_all_in_graph_and_eager_modes
 class WindowOpsTest(test.TestCase, parameterized.TestCase):
@@ -147,7 +171,19 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       itertools.product(
+          _WINDOW_LENGTHS,
+          (False, True),
+          _TF_DTYPE_TOLERANCE))
+  def test_blackman_window(self, window_length, periodic, tf_dtype_tol):
+    """Check that blackman_window matches scipy.signal.blackman's behavior."""
+    self._compare_window_fns(
+        _scipy_blackman,
+        window_ops.blackman_window, window_length, periodic, tf_dtype_tol)
+
+  @parameterized.parameters(
+      itertools.product(
           (window_ops.hann_window, window_ops.hamming_window,
+           window_ops.blackman_window,
            window_ops.kaiser_window, window_ops.kaiser_bessel_derived_window,
            window_ops.vorbis_window),
           (False, True),
