@@ -288,6 +288,44 @@ class FusedMatMulOpTest : public OpsTestBase {
                              run_fused);
   }
 
+  // Verifies that computing MatMul+BiasAdd with 2D bias [1, N] is supported
+  // and matches the 1D bias computation.
+  void VerifyMatMulWith2DBias(int m, int k, int n, bool transpose_a,
+                              bool transpose_b) {
+    VLOG(2) << "=== VerifyMatMulWith2DBias (" << m << ", " << k << ", " << n
+            << ", " << (int)transpose_a << ", " << (int)transpose_b << ") ===";
+
+    DataType dtype = DataTypeToEnum<T>::v();
+    Tensor lhs(dtype, {transpose_a ? k : m, transpose_a ? m : k});
+    lhs.flat<T>() = lhs.flat<T>().setRandom();
+
+    Tensor rhs(dtype, {transpose_b ? n : k, transpose_b ? k : n});
+    rhs.flat<T>() = rhs.flat<T>().setRandom();
+
+    Tensor bias_1d(dtype, {n});
+    bias_1d.flat<T>() = bias_1d.flat<T>().setRandom();
+
+    Tensor bias_2d(dtype, {1, n});
+    std::copy_n(bias_1d.flat<T>().data(), n, bias_2d.flat<T>().data());
+
+    Tensor matmul;
+    Tensor fused_matmul;
+
+    RunMatMulWithBias(lhs, rhs, bias_1d, transpose_a, transpose_b, &matmul,
+                      /*allow_gpu_device=*/true);
+    bool skipped = false;
+    RunFusedMatMulOp(lhs, rhs, {bias_2d}, {"BiasAdd"}, transpose_a,
+                     transpose_b, &fused_matmul, /*allow_gpu_device=*/true,
+                     &skipped);
+    if (!skipped) {
+      ASSERT_EQ(matmul.dtype(), fused_matmul.dtype());
+      ASSERT_EQ(matmul.shape(), fused_matmul.shape());
+      double atol = this->kTValueType == DT_HALF ? 1e-3 : 1e-5;
+      double rtol = this->kTValueType == DT_HALF ? 1e-3 : -1.0;
+      test::ExpectClose(matmul, fused_matmul, atol, rtol);
+    }
+  }
+
   // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
   // to FusedMatMul.
   void VerifyConv2DWithBiasAndActivation(int m, int k, int n, bool transpose_a,
@@ -402,11 +440,19 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
   }
 }
 
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul2DBias) {
+  this->VerifyMatMulWith2DBias(8, 32, 64, false, false);
+  this->VerifyMatMulWith2DBias(8, 32, 64, true, false);
+  this->VerifyMatMulWith2DBias(8, 32, 64, false, true);
+  this->VerifyMatMulWith2DBias(8, 32, 64, true, true);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,       //
                             MatMul256x128x64,                //
                             MatMul1x256x256,                 //
                             MatMul256x256x1,                 //
                             MatMul1x256x1,                   //
+                            MatMul2DBias,                    //
                             MatMul256x128x64WithActivation,  //
                             MatMul1x256x256WithActivation,   //
                             MatMul256x256x1WithActivation,   //
