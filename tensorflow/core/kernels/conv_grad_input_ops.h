@@ -356,7 +356,11 @@ class Conv2DBackpropInputOp : public OpKernel {
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
         absl::InvalidArgumentError(absl::StrCat(
-            "input_sizes must be 4-dimensional, got: ", out_backprop.dims())));
+            "out_backprop must be 4-dimensional, got: ", out_backprop.dims())));
+    OP_REQUIRES(
+        context, filter.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "filter must be 4-dimensional, got: ", filter.dims())));
 
     TensorShape input_shape;
     OP_REQUIRES_OK(context,
@@ -468,7 +472,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
         absl::InvalidArgumentError(absl::StrCat(
-            "input_sizes must be 4-dimensional, got: ", out_backprop.dims())));
+            "out_backprop must be 4-dimensional, got: ", out_backprop.dims())));
+    OP_REQUIRES(
+        context, filter.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "filter must be 4-dimensional, got: ", filter.dims())));
 
     TensorShape input_shape;
     OP_REQUIRES_OK(context,
