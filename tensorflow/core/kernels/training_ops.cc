@@ -17,16 +17,25 @@ limitations under the License.
 #include "tensorflow/core/kernels/training_ops.h"
 
 #include <algorithm>  // NOLINT
+#include <type_traits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
-#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -1112,6 +1121,11 @@ class ApplyAdadeltaOp : public OpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "var and accum do not have the same shape",
             var.shape().DebugString(), " ", accum.shape().DebugString())));
+    OP_REQUIRES(ctx, var.shape().IsSameSize(accum_update.shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and accum_update do not have the same shape",
+                    var.shape().DebugString(), " ",
+                    accum_update.shape().DebugString())));
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
         absl::InvalidArgumentError(absl::StrCat(
@@ -3758,7 +3772,7 @@ class ApplyAdamWithAmsgradOp : public OpKernel {
     OP_REQUIRES(
         ctx, vhat.IsInitialized(),
         errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(2)));
+            "Attempting to use uninitialized variables: ", requested_input(3)));
 
     const Tensor& beta1_power = ctx->input(4);
     const Tensor& beta2_power = ctx->input(5);
@@ -3798,6 +3812,11 @@ class ApplyAdamWithAmsgradOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "var and v do not have the same shape",
                     var.shape().DebugString(), " ", v.shape().DebugString())));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(vhat.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "var and vhat do not have the same shape",
+            var.shape().DebugString(), " ", vhat.shape().DebugString())));
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
         absl::InvalidArgumentError(absl::StrCat(
@@ -4147,7 +4166,7 @@ class ApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, var.shape().IsSameSize(mg.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "var and mg do not have the same shape",
-                    var.shape().DebugString(), " ", ms.shape().DebugString())));
+                    var.shape().DebugString(), " ", mg.shape().DebugString())));
 
     OP_REQUIRES(ctx, var.shape().IsSameSize(ms.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
@@ -4287,9 +4306,6 @@ class SparseApplyRMSPropOp : public OpKernel {
     const Tensor& epsilon = ctx->input(6);
     const Tensor& grad = ctx->input(7);
     const Tensor& indices = ctx->input(8);
-    OP_REQUIRES(ctx, grad.dims() == var.dims(),
-                absl::InvalidArgumentError("grad must have the same number of "
-                                           "dimensions as var"));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
@@ -4324,6 +4340,9 @@ class SparseApplyRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -4420,6 +4439,10 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
         ctx, mom.IsInitialized(),
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(3)));
+    OP_REQUIRES(ctx, mg.IsInitialized(),
+                absl::FailedPreconditionError(
+                    absl::StrCat("Attempting to use uninitialized variables: ",
+                                 requested_input(1))));
 
     const Tensor& lr = ctx->input(4);
     const Tensor& rho = ctx->input(5);
@@ -4427,9 +4450,6 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     const Tensor& epsilon = ctx->input(7);
     const Tensor& grad = ctx->input(8);
     const Tensor& indices = ctx->input(9);
-    OP_REQUIRES(ctx, grad.dims() == var.dims(),
-                absl::InvalidArgumentError("grad must have the same number of "
-                                           "dimensions as var"));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
@@ -4469,6 +4489,9 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   absl::InvalidArgumentError(absl::StrCat(
@@ -4601,7 +4624,7 @@ class ApplyAddSignOp : public OpKernel {
                     "alpha is not a scalar: ", alpha.shape().DebugString())));
     const Tensor& sign_decay = ctx->input(4);
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(alpha.shape()),
+        ctx, TensorShapeUtils::IsScalar(sign_decay.shape()),
         absl::InvalidArgumentError(absl::StrCat(
             "sign_decay is not a scalar: ", sign_decay.shape().DebugString())));
     const Tensor& beta = ctx->input(5);
@@ -4710,7 +4733,7 @@ class ApplyPowerSignOp : public OpKernel {
             "logbase is not a scalar: ", logbase.shape().DebugString())));
     const Tensor& sign_decay = ctx->input(4);
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(logbase.shape()),
+        ctx, TensorShapeUtils::IsScalar(sign_decay.shape()),
         absl::InvalidArgumentError(absl::StrCat(
             "sign_decay is not a scalar: ", sign_decay.shape().DebugString())));
     const Tensor& beta = ctx->input(5);
