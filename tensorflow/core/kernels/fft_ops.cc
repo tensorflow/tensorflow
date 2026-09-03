@@ -239,8 +239,8 @@ class FFTBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
+    if (input_shape.num_elements() == 0 ||
+        output_shape.num_elements() == 0) {
       return;
     }
 
@@ -364,8 +364,8 @@ class FFTNBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
+    if (input_shape.num_elements() == 0 ||
+        output_shape.num_elements() == 0) {
       return;
     }
     DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
