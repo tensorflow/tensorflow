@@ -65,6 +65,61 @@ namespace stream_executor::gpu {
 namespace {
 constexpr bool kHasCuda12090 = CUDA_VERSION >= 12090;
 
+// Wraps a C++ object of type `T` and binds its lifetime to a CUDA graph using
+// `CUuserObject` mechanisms. This ensures that the underlying C++ resource
+// is retained as long as the CUDA graph exists,
+// and gets correctly deleted when the graph is destroyed.
+template <typename T>
+class CudaUserObject {
+ public:
+  CudaUserObject(const CudaUserObject&) = delete;
+  CudaUserObject& operator=(const CudaUserObject&) = delete;
+
+  // Creates and initializes a `CudaUserObject`.
+  // The object `instance` is wrapped, registered as a `CUuserObject` with CUDA,
+  // and attached to the supplied `graph` to retain its reference.
+  static absl::StatusOr<CudaUserObject*> Create(T&& instance, CUgraph graph) {
+    auto obj_ptr = absl::WrapUnique(new CudaUserObject(std::move(instance)));
+
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuUserObjectCreate(
+        &obj_ptr->handle_, obj_ptr.get(),
+        [](void* user_data) {
+          auto* cb = static_cast<CudaUserObject<T>*>(user_data);
+          delete cb;
+        },
+        1, CU_USER_OBJECT_NO_DESTRUCTOR_SYNC)));
+
+    CudaUserObject* res = std::move(obj_ptr).release();
+    ABSL_RETURN_IF_ERROR(res->AttachTo(graph));
+
+    return res;
+  }
+
+  T* get() { return &instance_; }
+  CUuserObject handle() { return handle_; }
+
+ private:
+  explicit CudaUserObject(T instance) : instance_(std::move(instance)) {}
+
+  absl::Status AttachTo(CUgraph graph) {
+    absl::Status res = cuda::ToStatus(
+        cuGraphRetainUserObject(graph, handle_, 1, CU_GRAPH_USER_OBJECT_MOVE));
+    if (!res.ok()) {
+      cuUserObjectRelease(handle_, 1);
+    }
+    return res;
+  }
+
+  T instance_;
+  CUuserObject handle_;
+};
+
+void HostCallbackTrampoline(void* user_data) {
+  auto* user_object =
+      static_cast<CudaUserObject<absl::AnyInvocable<void()>>*>(user_data);
+  (*user_object->get())();
+}
+
 template <typename... Args>
 void LogAppend(std::string& out, const absl::FormatSpec<Args...>& format,
                const Args&... args) {
@@ -615,6 +670,51 @@ absl::Status CudaCommandBuffer::UpdateClonedChildNode(
       cuGraphExecChildGraphNodeSetParams(
           exec_update, ToCudaGraphHandle(node_handle), child_graph),
       "Failed to set CUDA graph child node params");
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateHostNode(
+    absl::Span<const GraphNodeHandle> dependencies,
+    absl::AnyInvocable<void()> callback) {
+  XLA_VLOG_DEVICE(2, stream_exec_->device_ordinal())
+      << "Add host node to a graph " << graph_;
+
+  std::string log_msg;
+  absl::Cleanup cleanup = [&] {
+    XLA_VLOG_DEVICE(5, stream_exec_->device_ordinal()) << log_msg;
+  };
+
+  CUgraphNodeParams cu_params = {};
+  cu_params.type = CU_GRAPH_NODE_TYPE_HOST;
+
+  CUDA_HOST_NODE_PARAMS_v2& params = cu_params.host;
+  params.fn = &HostCallbackTrampoline;
+
+  ABSL_ASSIGN_OR_RETURN(params.userData,
+                   CudaUserObject<absl::AnyInvocable<void()>>::Create(
+                       std::move(callback), graph_));
+
+  std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+  std::vector<CUgraphEdgeData> edge_data;
+  edge_data.reserve(deps.size());
+  for (size_t i = 0; i < deps.size(); ++i) {
+    CUgraphEdgeData edge_data_item = {};
+    CUgraphNodeType type;
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(
+        cuGraphNodeGetType(deps[i], &type),
+        absl::StrCat("Failed to get CUDA graph node type for dependency ", i)));
+    LogAppend(log_msg, "  dep %d node: %p, type: %d", i, deps[i], type);
+    edge_data.push_back(edge_data_item);
+  }
+
+  CUgraphNode node_handle = nullptr;
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphAddNode_v2(&node_handle, graph_, deps.data(), edge_data.data(),
+                        deps.size(), &cu_params),
+      "Failed to add host node to a CUDA graph"));
+
+  LogAppend(log_msg, "CudaCommandBuffer::CreateHostNode: created node: %p",
+            node_handle);
+  return FromCudaGraphHandle(node_handle);
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
