@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -104,6 +105,30 @@ class SliceOp : public XlaOpKernel {
       }
       std::vector<int64_t> strides(begin.size(), 1);
       auto slice = xla::Slice(ctx->Input(0), begin, limits, strides);
+
+      // If the input has dynamic dimensions, the dynamic size that XLA
+      // infers for a partial slice of such a dimension does not implement
+      // the slice semantics, so set the output size explicitly. A dimension
+      // holding `dynamic_size` valid elements contributes
+      // clamp(dynamic_size - begin, 0, size) elements to the slice.
+      auto input_xla_shape = ctx->builder()->GetShape(ctx->Input(0));
+      OP_REQUIRES_OK(ctx, input_xla_shape.status());
+      for (int64_t i = 0; i < input_dims; ++i) {
+        if (input_xla_shape->is_dynamic_dimension(i)) {
+          xla::XlaOp input_dynamic_size =
+              xla::GetDimensionSize(ctx->Input(0), i);
+          xla::XlaOp begin_size = xla::ConstantR0<int32_t>(
+              ctx->builder(), static_cast<int32_t>(begin[i]));
+          xla::XlaOp requested_size = xla::ConstantR0<int32_t>(
+              ctx->builder(), static_cast<int32_t>(wrapped_size[i]));
+          xla::XlaOp output_size =
+              xla::Clamp(xla::ConstantR0<int32_t>(ctx->builder(), 0),
+                         input_dynamic_size - begin_size, requested_size);
+          slice = xla::RemoveDynamicDimension(slice, i);
+          slice = xla::SetDimensionSize(slice, output_size, i);
+        }
+      }
+
       // Check for slice on dynamic dimensions.
       std::vector<bool> size_is_dynamic;
       OP_REQUIRES_OK(
