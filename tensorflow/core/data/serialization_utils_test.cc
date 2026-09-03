@@ -185,6 +185,22 @@ TEST(SerializationUtilsTest, VariantTensorDataReaderOOB) {
             error::OUT_OF_RANGE);
 }
 
+TEST(SerializationUtilsTest, VariantTensorDataReaderEmptyMetadata) {
+  // Metadata that splits into no keys (empty or delimiter-only) must not cause
+  // the reader to index the first key out of bounds while building its maps.
+  for (const std::string& metadata : {std::string(""), std::string("@@")}) {
+    VariantTensorData data;
+    data.metadata_ = metadata;
+    data.tensors_.push_back(Tensor(DT_INT64, {1}));
+    std::vector<const VariantTensorData*> reader_data;
+    reader_data.push_back(&data);
+    VariantTensorDataReader reader(reader_data);
+    int64_t val_int64;
+    EXPECT_EQ(reader.ReadScalar("Iterator", "key1", &val_int64).code(),
+              error::NOT_FOUND);
+  }
+}
+
 class ParameterizedIteratorStateVariantTest
     : public DatasetOpsTestBase,
       public ::testing::WithParamInterface<std::vector<Tensor>> {
