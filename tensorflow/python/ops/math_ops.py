@@ -975,8 +975,9 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   components:
 
   ```python
-  x = tf.constant([1.4+2.6j, 3.2+4.8j])
-  rounded = tf.complex(tf.round(tf.math.real(x)), tf.round(tf.math.imag(x)))
+  x = tf.constant([1.4 + 2.6j, 3.2 + 4.8j])
+  rounded = tf.complex(
+      tf.math.round(tf.math.real(x)), tf.math.round(tf.math.imag(x)))
   ```
 
   Args:
@@ -993,9 +994,11 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   x = ops.convert_to_tensor(x, name="x")
   if x.dtype.is_complex:
     raise TypeError(
-        f"tf.math.round does not support complex dtypes (received {x.dtype.name}). "
-        "To round complex numbers, apply tf.math.round separately to the real and "
-        "imaginary components using tf.math.real() and tf.math.imag().")
+        f"tf.math.round does not support complex dtypes (received"
+        f" {x.dtype.name}). To round complex numbers, apply tf.math.round"
+        " separately to the real and imaginary components using tf.math.real()"
+        " and tf.math.imag()."
+    )
   if x.dtype.is_integer:
     return x
   else:
