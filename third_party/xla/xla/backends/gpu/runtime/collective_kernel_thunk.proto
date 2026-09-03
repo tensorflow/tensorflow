@@ -62,6 +62,7 @@ message CollectiveKernelSpecProto {
   repeated ScratchBufferSpecProto scratch_buffers = 3;
   repeated KernelArgDescriptorProto argument_descriptors = 4;
   int32 invocation_count_increment = 5;
+  bool copy_input_to_scratch = 6;
 }
 
 message CollectiveKernelThunkProto {
