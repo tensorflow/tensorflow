@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -210,6 +211,27 @@ class SliceTest(test.TestCase):
     with self.assertRaisesWithPredicateMatch(
         TypeError, "must be integers or slices, not tuple"):
       self.evaluate(func(input_val))
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "XLA shape inference rejects the reshape to an INT64_MAX dimension, so "
+      "the test cannot reach the Slice kernel under XLA")
+  def testBeginSizeOverflowRaises(self):
+    # Regression test for GitHub issue 126125. `begin + size` was validated
+    # with signed int64 addition, so for a large first dimension the sum could
+    # wrap negative, pass the upper-bound check, and reach a fatal
+    # `Tensor::Slice` invariant. It must raise instead.
+    i64_max = (1 << 63) - 1
+    value = array_ops.reshape(
+        constant_op.constant([], dtype=dtypes.float32),
+        constant_op.constant([i64_max, 0], dtype=dtypes.int64))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Expected size"):
+      self.evaluate(
+          gen_array_ops.Slice(
+              input=value,
+              begin=constant_op.constant([i64_max, 0], dtype=dtypes.int64),
+              size=constant_op.constant([i64_max, 0], dtype=dtypes.int64)))
 
   def _testSliceMatrixDim0(self, x, begin, size):
     tf_ans = self.evaluate(array_ops.slice(x, [begin, 0], [size, x.shape[1]]))

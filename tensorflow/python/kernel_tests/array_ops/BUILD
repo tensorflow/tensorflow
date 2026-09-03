@@ -702,6 +702,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
