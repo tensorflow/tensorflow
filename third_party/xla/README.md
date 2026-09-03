@@ -16,7 +16,7 @@ different hardware platforms including GPUs, CPUs, and ML accelerators.
 
 ## Get started
 
-If you want to use XLA to compile your ML project, refer to the corresponding
+If you want to use XLA to compile your ML projects, refer to the corresponding
 documentation for your ML framework:
 
 * [PyTorch](https://pytorch.org/xla)
