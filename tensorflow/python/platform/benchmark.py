@@ -189,7 +189,7 @@ class ParameterizedBenchmark(_BenchmarkRegistrar):
         params = param_config[1:]
         benchmark_name = name + "__" + test_name_suffix
         if benchmark_name in attrs:
-          raise Exception(
+          raise ValueError(
               "Benchmark named {} already defined.".format(benchmark_name))
 
         benchmark = create_benchmark_function(original_benchmark, params)

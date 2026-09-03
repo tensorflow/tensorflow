@@ -202,8 +202,9 @@ class Client:
             self._symptom_msg(
                 'a recent runtime OOM has occurred ~{} seconds ago. The model '
                 'script will terminate automatically. To prevent future OOM '
-                'events, please consider reducing the model size. To disable this '
-                'behavior, set flag --runtime_oom_exit=false when starting the '
+                'events, please consider reducing the model size. '
+                'To disable this behavior, set flag '
+                '--runtime_oom_exit=false when starting the '
                 'script.'.format(time_diff.seconds)))
         return True
     return False
@@ -222,10 +223,12 @@ class Client:
       if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
         logging.warning(
             self._symptom_msg(
-                'a recent HBM OOM has occurred ~{} seconds ago. The model '
-                'script will terminate automatically. To prevent future HBM OOM '
-                'events, please consider reducing the model size. To disable this '
-                'behavior, set flag --hbm_oom_exit=false when starting the '
+                'a recent HBM OOM has occurred ~{} seconds ago. '
+                'The model script will terminate automatically. '
+                'To prevent future HBM OOM events, please '
+                'consider reducing the model size. '
+                'To disable this behavior, set flag '
+                '--hbm_oom_exit=false when starting the '
                 'script.'.format(time_diff.seconds)))
         return True
     return False
@@ -421,13 +424,14 @@ class Client:
       except urllib.error.HTTPError as e:
         status_code = e.code
         if status_code == 404:
-          raise Exception(
+          raise RuntimeError(
               'Tensorflow version {} is not available on Cloud TPU, '
               'try a previous nightly version or refer to '
               'https://cloud.google.com/tpu/docs/release-notes for '
-              'the latest official version.'.format(version))
+              'the latest official version.'.format(version)) from e
         else:
-          raise Exception('Failed to configure worker {}'.format(ip_address))
+          raise RuntimeError(
+              'Failed to configure worker {}'.format(ip_address)) from e
 
     workers = self.network_endpoints()
 
