@@ -15935,7 +15935,7 @@ are sorted in non-decreasing order.
 # e is a tensor of eigenvalues.
 # v is a tensor of eigenvectors.
 e, v = self_adjoint_eig(a)
-e = self_adjoint_eig(a, compute_v=False)
+e, _ = self_adjoint_eig(a, compute_v=False)
 ```
   }];
 
@@ -15947,7 +15947,8 @@ e = self_adjoint_eig(a, compute_v=False)
 
   let results = (outs
     Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Eigenvalues. Shape is `[N]`.}]>:$e,
-    Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Eigenvectors. Shape is `[N, N]`.}]>:$v
+    Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>, [{Eigenvectors. Shape is `[N, N]` if `compute_v` is `True`. Otherwise `v` is
+an empty tensor.}]>:$v
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
