@@ -818,6 +818,14 @@ class TestFoldDeterminism(test.TestCase):
   def setUp(self):
     super().setUp()
     random_seed.set_seed(42)
+    self._prev_determinism = config.is_op_determinism_enabled()
+
+  def tearDown(self):
+    if self._prev_determinism:
+      config.enable_op_determinism()
+    else:
+      config.disable_op_determinism()
+    super().tearDown()
 
   def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
     return array_ops.extract_image_patches_v2(

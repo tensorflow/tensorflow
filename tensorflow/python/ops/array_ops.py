@@ -6440,7 +6440,8 @@ def fold(patches,
   stride = strides
   dilation = rates
   # Handling inputs
-  if patches.shape.ndims != 4:
+  patches = ops.convert_to_tensor(patches)
+  if patches.shape.ndims != 4 and patches.shape.ndims is not None:
     raise ValueError(
         f"patches(input must be 4D (batch, height, width, patch_dim), "
         f"got {patches.shape.ndims}D tensor with shape {patches.shape}")
@@ -6477,6 +6478,11 @@ def fold(patches,
     dilation_h, dilation_w = dilation
     if dilation_h < 1 or dilation_w < 1:
       raise ValueError(f"dilation must be >= 1, got {dilation}")
+
+  if len(output_size) != 2 or output_size[0] <= 0 or output_size[1] <= 0:
+    raise ValueError(
+        f"output_size must be a tuple of 2 positive integers (height, width), "
+        f"got {output_size}")
 
   # Handling inputs for padding argument
   k_eff_h = (kernel_h - 1) * dilation_h + 1
@@ -6523,6 +6529,18 @@ def fold(patches,
   if isinstance(padding, str):
     if padding == "VALID":
       pad_top = pad_bottom = pad_left = pad_right = 0
+      static_patches_shape = patches.shape
+      if static_patches_shape.ndims == 4:
+        static_out_h = static_patches_shape[1]
+        static_out_w = static_patches_shape[2]
+        if static_out_h is not None and static_out_w is not None:
+          if ((static_out_h - 1) * stride_h + k_eff_h > height or
+              (static_out_w - 1) * stride_w + k_eff_w > width):
+            raise ValueError(
+                f"output_size {output_size} is too small for extracted patches"
+                f" with sizes={kernel_size}, strides={stride},"
+                f" rates={dilation}"
+                f" and spatial patch shape ({static_out_h}, {static_out_w})")
     elif padding == "SAME":
       # Calculate total padding required
       val_h = (out_h - 1) * stride_h + k_eff_h - height
