@@ -640,6 +640,59 @@ class TrainingOpsTest(TensorFlowTestCase):
             )
         )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testResourceApplyOpsRejectDtypeMismatch(self):
+    # Regression test for #113074 and #113145: the op's `T` attr is inferred
+    # from the value inputs and is independent of the variable's dtype, so a
+    # float32 op can be paired with a float64 variable. Both the dense and the
+    # sparse path then read the variable as `T` through Tensor::flat<T>(),
+    # which CHECK-fails and aborts the process.
+    #
+    # The narrower dtypes are the mixed-precision shape of the same bug, and
+    # the one the two issues actually report: a float32 training op applied to
+    # a half or bfloat16 variable.
+    #
+    # Pinned to CPU, variables included: ResourceSparseApplyMomentum is
+    # registered only on DEVICE_CPU, so on a GPU runner eager mode places it on
+    # GPU and fails with a "no kernel registered" InvalidArgumentError before
+    # reaching the dtype check under test. Scoping the variables as well keeps
+    # the resource on the same device as the kernel that reads it.
+    with ops.device('/CPU:0'):
+      for var_dtype, dtype_name in (
+          (dtypes.float64, 'double'),
+          (dtypes.bfloat16, 'bfloat16'),
+          (dtypes.float16, 'half'),
+      ):
+        var = resource_variable_ops.ResourceVariable(
+            constant_op.constant(1.0, shape=(4, 2), dtype=var_dtype)
+        )
+        accum = resource_variable_ops.ResourceVariable(
+            constant_op.constant(1.0, shape=(4, 2), dtype=var_dtype)
+        )
+        self.evaluate(variables.global_variables_initializer())
+        s = np.float32(0.1)
+        grad = np.zeros((4, 2), np.float32)
+        sparse_grad = np.zeros((1, 2), np.float32)
+        idx = constant_op.constant([0], dtypes.int32)
+        g = gen_training_ops
+        cases = [
+            lambda: g.resource_apply_gradient_descent(var.handle, s, grad),  # pylint: disable=cell-var-from-loop
+            lambda: g.resource_apply_adagrad(var.handle, accum.handle, s, grad),  # pylint: disable=cell-var-from-loop
+            lambda: g.resource_sparse_apply_adagrad(  # pylint: disable=cell-var-from-loop
+                var.handle, accum.handle, s, sparse_grad, idx
+            ),
+            lambda: g.resource_sparse_apply_momentum(  # pylint: disable=cell-var-from-loop
+                var.handle, accum.handle, s, sparse_grad, idx, s
+            ),
+        ]
+        for apply_op in cases:
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              r'(Trying to read a resource variable of dtype %s as float'
+              r'|Trying to read variable with wrong dtype)' % dtype_name,
+          ):
+            self.evaluate(apply_op())
+
 
 if __name__ == '__main__':
   googletest.main()

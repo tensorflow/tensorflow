@@ -637,6 +637,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:state_ops_gen",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",

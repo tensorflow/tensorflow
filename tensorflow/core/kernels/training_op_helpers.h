@@ -25,10 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
@@ -54,6 +56,25 @@ namespace tensorflow {
 // this function with `lock_held = true` to avoid double locking.
 template <typename Device, typename T>
 absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
+  // Checked before every early return below, not just before the copy. Callers
+  // read the variable as `T` after this function succeeds, and
+  // Tensor::flat<T>() CHECK-fails on a dtype mismatch, so the mismatch has to
+  // be rejected even on the paths where this function itself does no work.
+  // ResourceScatterNdUpdate is what makes the ordering load-bearing: it has no
+  // dtype validation of its own and relies entirely on this check, while an
+  // unshared variable (the common case) takes the RefCountIsOne() early return
+  // below.
+  //
+  // Safe without the mutex: a Var's dtype is fixed when it is constructed
+  // (`Var(DataType dtype) : tensor_(dtype)`), and the copy-on-read assignment
+  // further down allocates its replacement with that same dtype, so no
+  // concurrent writer can change what this reads.
+  if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to read a resource variable of dtype ",
+                     DataTypeString(var->tensor()->dtype()), " as ",
+                     DataTypeString(DataTypeToEnum<T>::v()), "."));
+  }
   if (var->copy_on_read_mode.load()) {
     return absl::OkStatus();
   }
@@ -285,6 +306,17 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     ResourceHandle handle;
     TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
+    // The op's `T` attr and the variable's dtype are independent: a graph can
+    // pair, say, a bfloat16 variable with a float32 training op. Both this
+    // function and every caller read the underlying tensor as `T`, and
+    // Tensor::flat<T>() CHECK-fails on a dtype mismatch, so reject the
+    // mismatch here rather than aborting the process.
+    if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Trying to read a resource variable of dtype ",
+                       DataTypeString(var->tensor()->dtype()), " as ",
+                       DataTypeString(DataTypeToEnum<T>::v()), "."));
+    }
     if (sparse) {
       var->mu()->assert_held_shared();
       *out = *var->tensor();
