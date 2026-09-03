@@ -18,13 +18,16 @@ import os
 import pathlib
 import zlib
 
+import numpy as np
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -191,6 +194,47 @@ class FixedLengthRecordDatasetTest(FixedLengthRecordDatasetTestBase,
             r"file \".*fixed_length_record.0.txt\" has body length 21 bytes, "
             r"which is not an exact multiple of the record length \(4 bytes\).")
         )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExcessiveBufferSize(self):
+    test_filenames = self._createFiles()
+    # A `buffer_size` this large would previously cause the C++ kernel to
+    # abort the process with `std::bad_alloc` instead of raising a catchable
+    # error. See https://github.com/tensorflow/tensorflow/issues/113159.
+    with self.assertRaisesRegex(ValueError, r"`buffer_size` must not exceed"):
+      readers.FixedLengthRecordDataset(
+          test_filenames,
+          self._record_bytes,
+          self._header_bytes,
+          self._footer_bytes,
+          buffer_size=readers._MAX_READER_BUFFER_SIZE_BYTES + 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExcessiveBufferSizeNumPy(self):
+    test_filenames = self._createFiles()
+    # NumPy integers must be caught too, not just plain Python `int`.
+    with self.assertRaisesRegex(ValueError, r"`buffer_size` must not exceed"):
+      readers.FixedLengthRecordDataset(
+          test_filenames,
+          self._record_bytes,
+          self._header_bytes,
+          self._footer_bytes,
+          buffer_size=np.int64(readers._MAX_READER_BUFFER_SIZE_BYTES + 1))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExcessiveBufferSizeTensor(self):
+    test_filenames = self._createFiles()
+    # Constant Tensors/EagerTensors must be caught too, not just plain Python
+    # `int`.
+    buffer_size_tensor = ops.convert_to_tensor(
+        readers._MAX_READER_BUFFER_SIZE_BYTES + 1, dtype=dtypes.int64)
+    with self.assertRaisesRegex(ValueError, r"`buffer_size` must not exceed"):
+      readers.FixedLengthRecordDataset(
+          test_filenames,
+          self._record_bytes,
+          self._header_bytes,
+          self._footer_bytes,
+          buffer_size=buffer_size_tensor)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPathlib(self):

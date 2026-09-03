@@ -411,6 +411,7 @@ tf_python_pybind_extension(
     visibility = ["//visibility:public"],
     deps = [
         ":converter_python_api",
+        ":tf_tfl_flatbuffer_helpers",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
