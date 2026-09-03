@@ -104,3 +104,15 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+tf_cc_test(
+    name = "xla_ops_test",
+    srcs = ["xla_ops_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
