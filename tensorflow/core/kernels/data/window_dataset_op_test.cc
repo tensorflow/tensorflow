@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -626,6 +627,37 @@ TEST_F(WindowDatasetOpTest, MalformedCheckpoint_TriggersOutOfBoundsRead) {
       << status.message();
 }
 
+// Regression test: large window_size and window_stride whose target buffer
+// size (window_size - 1) * window_stride + 1 overflows int64. Before the fix,
+// the overflow silently wrapped to a small value and emitted undersized
+// windows. After the fix, iteration must return InvalidArgument.
+WindowDatasetParams WindowDatasetParamsWithOverflowingSizeAndStride() {
+  // (2^32 + 1 - 1) * 2^32 + 1 = 2^64 + 1, which overflows int64/size_t.
+  const int64_t large_size = (static_cast<int64_t>(1) << 32) + 1;
+  const int64_t large_stride = static_cast<int64_t>(1) << 32;
+  return WindowDatasetParams(RangeDatasetParams(0, 3, 1),
+                             /*size=*/large_size,
+                             /*shift=*/1,
+                             /*stride=*/large_stride,
+                             /*drop_remainder=*/true,
+                             /*output_dtypes=*/{DT_VARIANT},
+                             /*output_shapes=*/{PartialTensorShape({})},
+                             /*node_name=*/kNodeName);
+}
+
+TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
+  auto dataset_params = WindowDatasetParamsWithOverflowingSizeAndStride();
+  TF_ASSERT_OK(Initialize(dataset_params));
+
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  EXPECT_THAT(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence),
+      tensorflow::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                    ::testing::HasSubstr("overflow")));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
+
