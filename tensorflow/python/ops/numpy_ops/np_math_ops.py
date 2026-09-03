@@ -529,25 +529,41 @@ def outer(a, b):
 @tf_export.tf_export('experimental.numpy.logaddexp', v1=[])
 @np_utils.np_doc('logaddexp')
 def logaddexp(x1, x2):
-  amax = maximum(x1, x2)
-  delta = x1 - x2
-  return np_array_ops.where(
-      isnan(delta),
-      x1 + x2,  # NaNs or infinities of the same sign.
-      amax + log1p(exp(-abs(delta))),
-  )
+
+  def f(x1, x2):
+    if not np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
+      float_dtype = np_utils.result_type(float)
+      x1 = math_ops.cast(x1, float_dtype)
+      x2 = math_ops.cast(x2, float_dtype)
+    amax = maximum(x1, x2)
+    delta = x1 - x2
+    return np_array_ops.where(
+        isnan(delta),
+        x1 + x2,  # NaNs or infinities of the same sign.
+        amax + log1p(exp(-abs(delta))),
+    )
+
+  return _bin_op(f, x1, x2)
 
 
 @tf_export.tf_export('experimental.numpy.logaddexp2', v1=[])
 @np_utils.np_doc('logaddexp2')
 def logaddexp2(x1, x2):
-  amax = maximum(x1, x2)
-  delta = x1 - x2
-  return np_array_ops.where(
-      isnan(delta),
-      x1 + x2,  # NaNs or infinities of the same sign.
-      amax + log1p(exp2(-abs(delta))) / np.log(2),
-  )
+
+  def f(x1, x2):
+    if not np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
+      float_dtype = np_utils.result_type(float)
+      x1 = math_ops.cast(x1, float_dtype)
+      x2 = math_ops.cast(x2, float_dtype)
+    amax = maximum(x1, x2)
+    delta = x1 - x2
+    return np_array_ops.where(
+        isnan(delta),
+        x1 + x2,  # NaNs or infinities of the same sign.
+        amax + log1p(exp2(-abs(delta))) / math_ops.cast(np.log(2), x1.dtype),
+    )
+
+  return _bin_op(f, x1, x2)
 
 
 @tf_export.tf_export('experimental.numpy.polyval', v1=[])
