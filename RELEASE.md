@@ -56,6 +56,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         (including the defaults) now raises an error unless automatic type
         promotion is enabled, which keeps the cost of promotion opt-in.
 
+*   `tf.nn.elu`
+
+    *   Fixes the second derivative computed by automatic differentiation for
+        small negative inputs. There `elu(x)` rounds to `0.0`, which made the
+        backward pass of the gradient take the positive branch and return `0`
+        instead of a value close to `1`. Fixes
+        [#124830](https://github.com/tensorflow/tensorflow/issues/124830).
+
 *   oneDNN (MKL) convolution and transpose kernels
 
     *   Raises `InvalidArgumentError` instead of aborting the process for a
