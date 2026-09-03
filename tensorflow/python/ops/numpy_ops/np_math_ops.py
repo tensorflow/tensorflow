@@ -1607,6 +1607,10 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
           [array_ops.shape(a), array_ops.shape(weights)],
       )
       weights_sum = math_ops.reduce_sum(weights, axis=axis)
+      control_flow_assert.Assert(
+          math_ops.reduce_all(math_ops.not_equal(weights_sum, 0)),
+          ['Weights sum to zero, cannot be normalized.'],
+      )
       avg = math_ops.reduce_sum(a * weights, axis=axis) / weights_sum
       return avg, weights_sum
 
@@ -1619,6 +1623,10 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
             array_ops.rank(weights) == 1, [array_ops.rank(weights)]
         )
         weights_sum = math_ops.reduce_sum(weights)
+        control_flow_assert.Assert(
+            math_ops.reduce_all(math_ops.not_equal(weights_sum, 0)),
+            ['Weights sum to zero, cannot be normalized.'],
+        )
         axes = ops.convert_to_tensor([[axis], [0]])
         avg = math_ops.tensordot(a, weights, axes) / weights_sum
         return avg, weights_sum
