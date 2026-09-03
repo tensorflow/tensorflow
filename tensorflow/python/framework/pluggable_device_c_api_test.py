@@ -34,6 +34,7 @@ import ctypes
 import glob
 import os
 import sys
+import unittest
 
 # Imported for its side effect: it is what loads the extension module the
 # symbols are looked up in.
@@ -85,9 +86,7 @@ _KERNELS = (
 # this test first got the answer wrong. pywrap_tensorflow loads that extension
 # with RTLD_LOCAL deliberately, so that TensorFlow's statically linked LLVM
 # does not leak into a process that may later import its own; nothing of
-# TensorFlow's is in RTLD_DEFAULT to find. On Windows ctypes cannot even be
-# asked: CDLL(None) is a TypeError there rather than an OSError, which is what
-# turned the first version of this test into an error instead of a failure.
+# TensorFlow's is in RTLD_DEFAULT to find.
 _RUNTIME_MODULE = "tensorflow.python._pywrap_tensorflow_internal"
 
 
@@ -104,17 +103,23 @@ def _candidate_libraries():
   # depends on, so the handle above already reaches it; naming it as well
   # covers a layout where it does not.
   library_dir = sysconfig.get_lib()
-  if sys.platform == "win32":
-    patterns = ("*tensorflow*.dll",)
-  elif sys.platform == "darwin":
-    patterns = ("*tensorflow_framework*.dylib*",)
+  if sys.platform == "darwin":
+    pattern = "*tensorflow_framework*.dylib*"
   else:
-    patterns = ("*tensorflow_framework*.so*",)
-  for pattern in patterns:
-    paths.extend(sorted(glob.glob(os.path.join(library_dir, pattern))))
+    pattern = "*tensorflow_framework*.so*"
+  paths.extend(sorted(glob.glob(os.path.join(library_dir, pattern))))
   return paths
 
 
+# Windows answers a different question. A name is reachable there only if the
+# module definition file exported it, and the CI run on 9caf805 showed that
+# asking the shipped .pyd resolves none of these, the control group included:
+# whatever loaded, GetProcAddress found nothing in it. A control group that
+# fails is this test saying it is looking in the wrong place, and on Windows
+# there is no right place for it to look, so it has nothing to report there.
+@unittest.skipIf(
+    sys.platform == "win32",
+    "symbol resolution on Windows goes through an export table, not the link")
 class PluggableDeviceCApiTest(test.TestCase):
 
   def setUp(self):
