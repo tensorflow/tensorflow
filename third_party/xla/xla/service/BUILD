@@ -2311,6 +2311,7 @@ xla_cc_test(
     srcs = ["hlo_schedule_test.cc"],
     deps = [
         ":buffer_value",
+        ":hlo_module_config",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -2325,6 +2326,8 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ],
 )
