@@ -53,6 +53,11 @@ class TPUDialect;
 namespace mlir {
 namespace tpu {
 
+inline constexpr StringRef kTpuVectorSubcoreGlobalBarrierName =
+    "__tpu_vector_subcore_global_barrier";
+inline constexpr StringRef kTpuScalarSubcoreGlobalBarrierName =
+    "__tpu_scalar_subcore_global_barrier";
+
 DEFINE_ABSL_STRINGIFY_FOR_ENUMS();
 
 struct TpuTilingFlags {
