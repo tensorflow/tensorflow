@@ -15,9 +15,13 @@
 """Conditional expressions (e.g. the ternary if statement)."""
 
 
+import functools
+
 from tensorflow.python.autograph.operators import control_flow
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 
 
 def if_exp(cond, if_true, if_false, expr_repr):
@@ -36,16 +40,38 @@ def _tf_if_exp(cond, if_true, if_false, expr_repr):
   def true_fn():
     true_val.append(if_true())
     if true_val and false_val:
-      control_flow.verify_single_cond_var(expr_repr, true_val[0], false_val[0])
+      _verify_tf_if_exp_cond_var(expr_repr, true_val[0], false_val[0])
     return true_val[0]
 
   def false_fn():
     false_val.append(if_false())
     if true_val and false_val:
-      control_flow.verify_single_cond_var(expr_repr, true_val[0], false_val[0])
+      _verify_tf_if_exp_cond_var(expr_repr, true_val[0], false_val[0])
     return false_val[0]
 
   return tf_cond.cond(cond, true_fn, false_fn)
+
+
+def _verify_tf_if_exp_cond_var(expr_repr, true_val, false_val):
+  """Verifies that both branches of a conditional expression are compatible."""
+  try:
+    nest.assert_same_structure(true_val, false_val, expand_composites=True)
+  except (TypeError, ValueError):
+    try:
+      true_val = variable_utils.convert_variables_to_tensors(true_val)
+      false_val = variable_utils.convert_variables_to_tensors(false_val)
+      nest.assert_same_structure(true_val, false_val, expand_composites=True)
+    except (TypeError, ValueError) as e:
+      raise ValueError(
+          'conditional expression "{}" must return the same nested structure '
+          'in both branches. If you only need side effects, use a statement '
+          '`if:` instead; otherwise, make both branches return the same '
+          'structure or use `tf.cond` explicitly.'.format(expr_repr)) from e
+
+  nest.map_structure(
+      functools.partial(control_flow.verify_single_cond_var, expr_repr),
+      true_val,
+      false_val)
 
 
 def _py_if_exp(cond, if_true, if_false):
