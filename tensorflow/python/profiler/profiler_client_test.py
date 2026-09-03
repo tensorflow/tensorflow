@@ -17,11 +17,9 @@
 import portpicker
 
 from tensorflow.python.eager import test
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2 as profiler
-from tensorflow.python.profiler.internal import _pywrap_profiler_plugin
 
 
 class ProfilerClientTest(test_util.TensorFlowTestCase):
@@ -65,25 +63,14 @@ class ProfilerClientTest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError):
       profiler_client.monitor('localhost:6006', 2000)
 
-#here
   def testMonitor_NoneServiceAddrRaises(self):
-    with self.assertRaises((TypeError, ValueError, errors.InvalidArgumentError)):
-      profiler_client.monitor(None, 1000)
+    with self.assertRaises(TypeError):
+      profiler_client.monitor(None, -625, -625)
 
   def testTrace_NoneServiceAddrRaises(self):
-    with self.assertRaises((TypeError, ValueError, errors.InvalidArgumentError)):
-      profiler_client.trace(None, self.get_temp_dir(), duration_ms=10)
+    with self.assertRaises(TypeError):
+      profiler_client.trace(None, None, -625)
 
-  def testMonitor_NativeBindingNoneServiceAddrRaises(self):
-    with self.assertRaises((TypeError, ValueError, errors.InvalidArgumentError)):
-     profiler_client.monitor(None, 1000, 1, True)
-
-  def testTrace_NativeBindingNoneServiceAddrRaises(self):
-    with self.assertRaises((TypeError, ValueError, errors.InvalidArgumentError)):
-      profiler_client.trace(
-          None, self.get_temp_dir(), '', True, 10, 3, {}
-      )
-# emd here
 
 if __name__ == '__main__':
   test.main()

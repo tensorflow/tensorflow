@@ -110,5 +110,6 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       profiler.start(None)
 
+
 if __name__ == '__main__':
   test.main()
