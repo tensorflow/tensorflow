@@ -134,6 +134,10 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
       std::optional<int> num_replicas_per_slice, int num_partitions,
       const MultiSliceConfig* multi_slice_config) const override;
 
+  bool IsMemorySpaceOnCpu(int memory_space_kind_id) const override {
+    return true;
+  }
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;

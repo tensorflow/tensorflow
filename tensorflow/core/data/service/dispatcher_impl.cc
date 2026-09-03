@@ -205,12 +205,16 @@ absl::Status ValidateDatasetId(const std::string& dataset_id) {
         absl::StrCat("Invalid dataset ID: ", dataset_id,
                      ". Dataset IDs must not contain '/'."));
   }
-#if defined(_WIN32)
-  if (absl::StrContains(dataset_id, '\\') ||
-      absl::StrContains(dataset_id, ':')) {
+  if (absl::StrContains(dataset_id, '\\')) {
     return absl::InvalidArgumentError(
         absl::StrCat("Invalid dataset ID: ", dataset_id,
-                     ". Dataset IDs must not contain '\\' or ':'."));
+                     ". Dataset IDs must not contain '\\'."));
+  }
+#if defined(_WIN32)
+  if (absl::StrContains(dataset_id, ':')) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not contain ':'."));
   }
 #endif
   return absl::OkStatus();

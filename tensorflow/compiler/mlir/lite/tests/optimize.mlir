@@ -5165,3 +5165,30 @@ func.func @Fuse4DResourceAddIntoDepthwiseConv2D(%arg0: tensor<1x32x32x4xf32>, %a
   // CHECK: %[[DW_CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %arg1, %[[NEW_BIAS]])
   // CHECK: return %[[DW_CONV]]
 }
+
+// CHECK-LABEL: @fuse_sum_mul_to_mean
+func.func @fuse_sum_mul_to_mean(%arg0: tensor<2x3x4xf32>) -> tensor<2x1x4xf32> {
+  %cst_axes = arith.constant dense<1> : tensor<1xi32>
+  %cst_factor = arith.constant dense<0.333333333> : tensor<1xf32>
+  %0 = "tfl.sum"(%arg0, %cst_axes) <{keep_dims = true}> : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<2x1x4xf32>
+  %1 = "tfl.mul"(%0, %cst_factor) <{fused_activation_function = "NONE"}> : (tensor<2x1x4xf32>, tensor<1xf32>) -> tensor<2x1x4xf32>
+  func.return %1 : tensor<2x1x4xf32>
+
+  // CHECK-NOT: tfl.sum
+  // CHECK-NOT: tfl.mul
+  // CHECK:     "tfl.mean"(%arg0, %{{.*}}) <{keep_dims = true}>
+}
+
+// CHECK-LABEL: @do_not_fuse_sum_mul_with_arbitrary_factor
+func.func @do_not_fuse_sum_mul_with_arbitrary_factor(%arg0: tensor<2x3x4xf32>) -> tensor<2x1x4xf32> {
+  %cst_axes = arith.constant dense<1> : tensor<1xi32>
+  %cst_factor = arith.constant dense<8.000000e-01> : tensor<1xf32>
+  %0 = "tfl.sum"(%arg0, %cst_axes) <{keep_dims = true}> : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<2x1x4xf32>
+  %1 = "tfl.mul"(%0, %cst_factor) <{fused_activation_function = "NONE"}> : (tensor<2x1x4xf32>, tensor<1xf32>) -> tensor<2x1x4xf32>
+  func.return %1 : tensor<2x1x4xf32>
+
+  // CHECK:     "tfl.sum"
+  // CHECK:     tfl.mul
+  // CHECK-NOT: "tfl.mean"
+}
+

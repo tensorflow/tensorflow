@@ -91,9 +91,12 @@ absl::StatusOr<bool> HloComputationDeduplicator::RunImpl(
        module->MakeComputationPostOrder(execution_threads)) {
     // Ignore entry computation since it is called from outside and computations
     // with large number of instructions or large-size constants due to increase
-    // in time taken to stringify.
+    // in time taken to stringify. Also ignore fusion computations, which need
+    // to have a 1:1 relationship between caller and computation, except if we
+    // run in the mode where we want to annotate duplicate fusion computations.
     if (comp->IsEntryComputation() || comp->instruction_count() > 128 ||
-        ContainsLargeConstants(comp)) {
+        ContainsLargeConstants(comp) ||
+        (!mark_fusion_duplications_ && comp->IsFusionComputation())) {
       continue;
     }
     // Don't deduplicate collectives and non-collectives.

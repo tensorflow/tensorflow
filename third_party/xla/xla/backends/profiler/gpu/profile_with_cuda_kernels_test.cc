@@ -110,6 +110,12 @@ void HandleRecords(PmSamples* samples) {
 
 void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
                                   bool enable_pm_sampling) {
+  if (enable_activity_hardware_tracing) {
+    if (auto status = CuptiTracer::EnableHES(); !status.ok()) {
+      LOG(WARNING) << "Failed to enable HES: " << status.message();
+    }
+  }
+
   uint32_t cupti_version = 0;
   cuptiGetVersion(&cupti_version);
   LOG(INFO) << "RUNTIME CUPTI version " << cupti_version

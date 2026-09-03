@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
 namespace xla::xtile {
 namespace {

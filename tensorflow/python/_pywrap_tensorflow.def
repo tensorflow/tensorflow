@@ -256,6 +256,7 @@ EXPORTS
  ?ComputeGradient@Tape@gradients@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@PEAVAbstractContext@3@V?$Span@QEAVAbstractTensorHandle@tensorflow@@@56@11V?$Span@PEAVAbstractTensorHandle@tensorflow@@@56@@Z
  ?Convert@PythonTensorConverter@tensorflow@@QEBA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@AEAW4DataType@2@PEA_N@Z
  ?Convert@tflite@@YAPEAU_object@@PEAU2@00_N0PEBVPyFunctionLibrary@quantization@tensorflow@@@Z
+ ?ConvertMlirBytecode@tflite@@YAPEAU_object@@PEAU2@00@Z
  ?ConvertPyObjectToAttributeType@tensorflow@@YA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@W4AttributeType@1@@Z
  ?ConvertPythonAPIParameters@tensorflow@@YA_NAEBVPythonAPIInfo@1@AEBVPythonTensorConverter@1@V?$Span@PEAU_object@@@lts_20260526@absl@@PEAUInferredAttributes@21@@Z
  ?ConvertToEagerTensor@tensorflow@@YAPEAUTFE_TensorHandle@@PEAUTFE_Context@@PEAU_object@@W4DataType@1@PEBD@Z

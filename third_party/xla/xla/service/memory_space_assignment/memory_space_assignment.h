@@ -95,21 +95,21 @@ Classes
     * We do not create AllocationValues for trivial HloPositions, e.g., ones
       defined by Tuple, GetTupleElement, and Bitcast instructions.
     * The HloPosition used to define the AllocationValue is referred to as the
-      AllocationValue's defining position.
+      AllocationValue's position.
       * Typically, this is also the defining position of the HloValue. However,
         it may not be. For example, we would create an AllocationValue with an
         HloPosition of a read-only while loop parameter, but the HloValue
         corresponding to that HloPosition would have a different defining
         position.
     * The uses of an AllocationValue are limited to the direct uses of the
-      AllocationValue's defining position.
+      AllocationValue's position.
     * An AllocationValue is associated with an AllocationSequence, describing
       what to do with the underlying tensor, in memory, over the lifetime of the
       AllocationValue.
 
   - (Use) Segment: Each AllocationValue and its uses are separated into periods
     of time called use segments. The first use segment is from the (inclusive)
-    time of the AllocationValue's defining position to its first use
+    time of the AllocationValue's position to its first use
     (inclusive). The second use segment is from the first use (inclusive) to
     the second use (inclusive), etc.
 

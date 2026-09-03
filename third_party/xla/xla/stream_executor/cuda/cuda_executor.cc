@@ -638,11 +638,25 @@ absl::StatusOr<int64_t> GetDevicePcieBandwidth(nvmlDevice_t nvml_device) {
   return lane_speed * link_width;
 }
 
+absl::StatusOr<unsigned int> GetNvLinkCount(nvmlDevice_t nvml_device) {
+  nvmlFieldValue_t field_value = {};
+  field_value.fieldId = NVML_FI_DEV_NVLINK_LINK_COUNT;
+  ABSL_RETURN_IF_ERROR(
+      ToStatus(nvmlDeviceGetFieldValues(nvml_device, 1, &field_value)));
+  ABSL_RETURN_IF_ERROR(ToStatus(field_value.nvmlReturn));
+  if (field_value.valueType != NVML_VALUE_TYPE_UNSIGNED_INT) {
+    return absl::InternalError(
+        absl::StrFormat("Unexpected NVLink count value type: %d",
+                        static_cast<int>(field_value.valueType)));
+  }
+  return field_value.value.uiVal;
+}
+
 absl::StatusOr<int> GetNumberOfActiveP2PNvlinks(nvmlDevice_t nvml_device) {
   int p2p_links = 0;
 
-  constexpr int kBlackwellNvLinkCount = 18;
-  for (unsigned int i = 0; i < kBlackwellNvLinkCount; i++) {
+  ABSL_ASSIGN_OR_RETURN(unsigned int nvlink_count, GetNvLinkCount(nvml_device));
+  for (unsigned int i = 0; i < nvlink_count; i++) {
     nvmlEnableState_t is_active = NVML_FEATURE_DISABLED;
     nvmlReturn_t result = nvmlDeviceGetNvLinkState(nvml_device, i, &is_active);
     if (result == NVML_ERROR_NOT_SUPPORTED) {
@@ -1926,8 +1940,8 @@ absl::StatusOr<std::string> CudaExecutor::GetInterconnectStatus() const {
   // 2. NVLink Status (as a proxy for IMEX/NVLink health)
   absl::StrAppend(&status_msg, "NVLinks: ");
   bool first = true;
-  constexpr int kMaxNvLinks = 32;
-  for (unsigned int i = 0; i < kMaxNvLinks; ++i) {
+  ABSL_ASSIGN_OR_RETURN(unsigned int nvlink_count, GetNvLinkCount(nvml_device));
+  for (unsigned int i = 0; i < nvlink_count; ++i) {
     nvmlEnableState_t isActive;
     nvmlReturn_t r = nvmlDeviceGetNvLinkState(nvml_device, i, &isActive);
     if (r == NVML_ERROR_INVALID_ARGUMENT) {

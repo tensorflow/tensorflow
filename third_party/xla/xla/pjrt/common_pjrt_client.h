@@ -109,9 +109,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual void CallOomHandlers() const {}
 
   virtual PjRtDynamicShapeKind GetDynamicShapeKind(
-      int memory_space_kind_id) const {
-    return PjRtDynamicShapeKind::kNotSupported;
-  }
+      int memory_space_kind_id) const;
 
   virtual void LaunchOnDevice(PjRtDevice* device,
                               absl::AnyInvocable<void()> execute_fn) const {
@@ -123,6 +121,9 @@ class CommonPjRtClient : public PjRtClient {
                                 absl::Status prepare_status) {
     return false;
   }
+
+  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   // Computes the memory requirements for storing shape on memory_space.
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(int memory_space_kind,
@@ -304,7 +305,7 @@ class CommonPjRtClient : public PjRtClient {
       const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
       PjRtMemorySpace* dst_memory_space);
 
-  virtual bool IsOnCpu(PjRtMemorySpace* memory_space) { return false; }
+  virtual bool IsOnCpu(PjRtMemorySpace* memory_space);
   virtual bool use_stream_based_compaction() const { return false; }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
@@ -371,9 +372,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
-      PjRtMemorySpace* memory_space, const Layout* device_layout) const {
-    return false;
-  }
+      PjRtMemorySpace* memory_space, const Layout* device_layout) const;
 
   virtual absl::StatusOr<PjRtDeviceEventRef> LinearizeHostBufferInto(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -1091,6 +1090,16 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt);
 
+  bool allow_fallback_for_donation() const override {
+    return allow_fallback_for_donation_;
+  }
+  bool supports_two_phase_launch() const override {
+    return supports_two_phase_launch_;
+  }
+  bool supports_predetermined_error() const override {
+    return supports_predetermined_error_;
+  }
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -1116,6 +1125,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   std::unique_ptr<PjRtRawClient> raw_client_;
+
+  bool allow_fallback_for_donation_ = false;
+  bool supports_two_phase_launch_ = true;
+  bool supports_predetermined_error_ = true;
 };
 
 }  // namespace xla

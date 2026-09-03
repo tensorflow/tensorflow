@@ -84,6 +84,22 @@ class MockCommandBuffer : public CommandBuffer {
               (const Command* command, DeviceAddressBase* dst,
                const DeviceAddressBase& src, uint64_t size),
               (override));
+  MOCK_METHOD(absl::StatusOr<const Command*>, CreateMemcpyD2H,
+              (void* dst, const DeviceAddressBase& src, uint64_t size,
+               absl::Span<const Command* const> dependencies),
+              (override));
+  MOCK_METHOD(absl::Status, UpdateMemcpyD2H,
+              (const Command* command, void* dst, const DeviceAddressBase& src,
+               uint64_t size),
+              (override));
+  MOCK_METHOD(absl::StatusOr<const Command*>, CreateMemcpyH2D,
+              (DeviceAddressBase * dst, const void* src, uint64_t size,
+               absl::Span<const Command* const> dependencies),
+              (override));
+  MOCK_METHOD(absl::Status, UpdateMemcpyH2D,
+              (const Command* command, DeviceAddressBase* dst, const void* src,
+               uint64_t size),
+              (override));
   MOCK_METHOD(absl::StatusOr<const Command*>, CreateMemset,
               (DeviceAddressBase * dst, BitPattern bit_pattern,
                size_t num_elements,

@@ -23,6 +23,7 @@ limitations under the License.*/
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
@@ -35,15 +36,19 @@ limitations under the License.*/
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
-#include "xla/backends/gpu/runtime/collective_kernel_api.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.pb.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
@@ -62,6 +67,7 @@ limitations under the License.*/
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -242,6 +248,43 @@ bool RequiresMultimem(CollectiveKernelSpec kernel_spec) {
   }
   return false;
 }
+
+absl::StatusOr<std::vector<void*>> CollectParamToPeers(
+    const GpuCliqueKey& clique_key, RankId rank,
+    stream_executor::Stream* stream,
+    std::vector<stream_executor::DeviceAddressBase> parameters) {
+  std::vector<void*> param_to_peers_ptrs;
+
+  size_t num_parameters = parameters.size();
+  // Exchange device parameters with all ranks in the clique.
+  ABSL_ASSIGN_OR_RETURN(
+      auto device_parameters,
+      GpuCliqueRendezvous::Join(clique_key, rank, std::move(parameters)));
+
+  // Collect pointers to device buffers from all participating ranks.
+  param_to_peers_ptrs.reserve(num_parameters * clique_key.num_devices());
+
+  absl::flat_hash_map<int, std::vector<stream_executor::DeviceAddressBase>>
+      peer_to_parameters(clique_key.num_devices());
+
+  using DeviceParameters = std::vector<stream_executor::DeviceAddressBase>;
+
+  for (auto peer = RankId(0); peer < RankId(clique_key.num_devices()); ++peer) {
+    ABSL_ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
+                     device_parameters->at<DeviceParameters>(peer));
+    peer_to_parameters[peer.value()] = std::move(peer_parameters);
+  }
+
+  for (int parameter = 0; parameter < num_parameters; ++parameter) {
+    for (int peer = 0; peer < clique_key.num_devices(); ++peer) {
+      param_to_peers_ptrs.push_back(
+          peer_to_parameters[peer][parameter].opaque());
+    }
+  }
+
+  return param_to_peers_ptrs;
+}
+
 }  // namespace
 
 absl::Status CollectiveKernelThunk::IsSupported(
@@ -455,8 +498,45 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
     const size_t num_parameters = parameters.size();
     const size_t param_to_peers_ptrs_size_bytes =
         num_parameters * clique_key.num_devices() * sizeof(uint64_t);
+    TF_RET_CHECK(params.collective_params != nullptr)
+        << "Collective params must not be null in "
+           "CollectiveKernelThunk::Initialize";
+    TF_RET_CHECK(params.collective_cliques != nullptr)
+        << "Collective cliques must not be null in "
+           "CollectiveKernelThunk::Initialize";
+    TF_RET_CHECK(params.collective_memory != nullptr)
+        << "Collective memory must not be null in "
+           "CollectiveKernelThunk::Initialize";
+
+    const bool use_symmetric_memory = absl::c_any_of(
+        kernel_spec_.scratch_buffers, [](const ScratchBufferSpec& spec) {
+          return spec.symmetric_memory_type ==
+                 SymmetricMemoryType::kLoadStoreAccessible;
+        });
+
+    if (use_symmetric_memory) {
+      ABSL_ASSIGN_OR_RETURN(GpuCommunicator * comm,
+                       params.collective_cliques->GetComm(clique_key, *rank));
+
+      if (memory_state->scratch_symmetric_memories.empty()) {
+        memory_state->scratch_symmetric_memories.reserve(
+            memory_state->scratch_allocations.size());
+        for (size_t i = 0; i < memory_state->scratch_allocations.size(); ++i) {
+          se::DeviceAddressBase addr =
+              memory_state->scratch_allocations[i].address();
+          ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symmetric_memory,
+                           comm->CreateSymmetricMemory(addr));
+          ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symmetric_memory,
+                           params.collective_cliques->Tie(
+                               clique_key, std::move(symmetric_memory)));
+          memory_state->scratch_symmetric_memories.push_back(
+              std::move(tied_symmetric_memory));
+        }
+      }
+    }
+
     std::vector<void*> multimem_addresses;
-    if (RequiresMultimem(kernel_spec_) && params.collective_memory != nullptr) {
+    if (RequiresMultimem(kernel_spec_)) {
       multimem_addresses.resize(num_parameters, nullptr);
       for (size_t i = 0; i < num_parameters; ++i) {
         auto [mmem, offset] = params.collective_memory->FindSymmetricMemory(
@@ -469,9 +549,41 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
         }
       }
     }
-    ABSL_ASSIGN_OR_RETURN(std::vector<void*> param_to_peers_ptrs,
-                     CollectParamToPeers(clique_key, state->rank, params.stream,
-                                         std::move(parameters)));
+
+    std::vector<void*> param_to_peers_ptrs;
+    if (use_symmetric_memory) {
+      static constexpr auto is_multimem_buffer =
+          [](const IoBufferSpec& spec) -> bool {
+        return spec.requires_multimem;
+      };
+      int32_t scratch_buffers_index =
+          absl::c_count_if(kernel_spec_.input_buffer_specs,
+                           is_multimem_buffer) +
+          absl::c_count_if(kernel_spec_.output_buffer_specs,
+                           is_multimem_buffer);
+      param_to_peers_ptrs.resize(num_parameters * clique_key.num_devices());
+      for (size_t i = scratch_buffers_index; i < num_parameters; ++i) {
+        const size_t scratch_index = i - scratch_buffers_index;
+        auto sym_mem =
+            memory_state->scratch_symmetric_memories[scratch_index].Lock();
+        TF_RET_CHECK(sym_mem != nullptr)
+            << "Symmetric memory for scratch buffer " << scratch_index
+            << " is no longer valid";
+        const size_t parameter_offset = i * clique_key.num_devices();
+        for (int device_rank = 0; device_rank < clique_key.num_devices();
+             ++device_rank) {
+          ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_address,
+                           sym_mem->peer_addr(RankId(device_rank)));
+          param_to_peers_ptrs[parameter_offset + device_rank] =
+              peer_address.opaque();
+        }
+      }
+    } else {
+      ABSL_ASSIGN_OR_RETURN(
+          param_to_peers_ptrs,
+          CollectParamToPeers(clique_key, state->rank, params.stream,
+                              std::move(parameters)));
+    }
     const size_t multimem_size_bytes =
         multimem_addresses.size() * sizeof(void*);
     state->metadata = params.executor->Allocate(

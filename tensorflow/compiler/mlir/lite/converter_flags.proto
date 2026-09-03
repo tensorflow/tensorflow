@@ -39,7 +39,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 72.
+// Next ID to use: 74.
 message ConverterFlags {
   reserved 54, 61;
 
@@ -390,4 +390,12 @@ message ConverterFlags {
   // If true, fold 16-bit float (fp16/bf16) to 32-bit float (fp32) casts on
   // large resource constants.
   optional bool fold_fp16_resource_casts = 71 [default = true];
+
+  // If true, enable debugging facilities such as IR cloning and file
+  // serialization.
+  optional bool enable_debug = 72 [default = false];
+
+  // Directory for debug artifacts and printed IR dumps when debug mode is
+  // enabled.
+  optional string debug_dir = 73;
 }

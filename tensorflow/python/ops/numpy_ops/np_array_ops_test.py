@@ -1314,6 +1314,11 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, tuple(range(6)), tuple(reversed(range(6))))
     _test(a, (), ())
 
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, -8, 0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, 0, 8)
+
   def testFlip(self):
     np.random.seed(0)
     random_seed.set_seed(0)

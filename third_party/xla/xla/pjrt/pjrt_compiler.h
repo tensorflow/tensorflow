@@ -467,6 +467,10 @@ class PjRtTopologyDescription {
   // GetMemorySpaceKindIds()[0] should be the default memory space id.
   int GetDefaultMemorySpaceKindId() const { return GetMemorySpaceKindIds()[0]; }
 
+  virtual bool IsMemorySpaceOnCpu(int memory_space_kind_id) const {
+    return false;
+  }
+
   virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
     return absl::UnimplementedError("ToProto is unsupported.");
   }

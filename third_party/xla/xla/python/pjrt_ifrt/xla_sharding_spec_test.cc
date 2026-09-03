@@ -42,6 +42,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 
@@ -206,6 +207,21 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithReplication) {
       ElementsAreArray(TEST_HloShardingSpecIndexDomainsSlowPath(*spec, shape)));
 }
 
+TEST_F(HloShardingSpecTest, UniqueIndexDomainsWithReplication) {
+  int num_shards = 6;
+  // Fully replicated.
+  auto xla_hlo_sharding = xla::HloSharding::Replicate();
+  std::shared_ptr<const HloShardingSpec> spec =
+      HloShardingSpec::Create(num_shards, xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(spec->UniqueIndexDomains(shape),
+              absl_testing::IsOkAndHolds(ElementsAre(FieldsAre(
+                  IndexDomain(shape), ElementsAre(0, 1, 2, 3, 4, 5)))));
+  EXPECT_THAT(spec->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 0, 0, 0, 0, 0)));
+}
+
 TEST_F(HloShardingSpecTest, DisassembleWithReplication) {
   int num_shards = 6;
   // Fully replicated.
@@ -244,6 +260,28 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithTile) {
       ElementsAreArray(TEST_HloShardingSpecIndexDomainsSlowPath(*spec, shape)));
 }
 
+TEST_F(HloShardingSpecTest, UniqueIndexDomainsWithTile) {
+  int num_shards = 6;
+  // 6-way sharded along axis 0, 1-way sharded along axis 1.
+  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({6, 1}));
+  std::shared_ptr<const HloShardingSpec> spec =
+      HloShardingSpec::Create(num_shards, xla_hlo_sharding);
+
+  Shape shape({12, 20});
+  EXPECT_THAT(
+      spec->UniqueIndexDomains(shape),
+      absl_testing::IsOkAndHolds(ElementsAre(
+          FieldsAre(IndexDomain(Index({0, 0}), Shape({2, 20})), ElementsAre(0)),
+          FieldsAre(IndexDomain(Index({2, 0}), Shape({2, 20})), ElementsAre(1)),
+          FieldsAre(IndexDomain(Index({4, 0}), Shape({2, 20})), ElementsAre(2)),
+          FieldsAre(IndexDomain(Index({6, 0}), Shape({2, 20})), ElementsAre(3)),
+          FieldsAre(IndexDomain(Index({8, 0}), Shape({2, 20})), ElementsAre(4)),
+          FieldsAre(IndexDomain(Index({10, 0}), Shape({2, 20})),
+                    ElementsAre(5)))));
+  EXPECT_THAT(spec->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5)));
+}
+
 TEST_F(HloShardingSpecTest, DisassembleWithTile) {
   int num_shards = 6;
   // 6-way sharded along axis 0, 1-way sharded along axis 1.
@@ -280,6 +318,28 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithUnevenTile) {
   EXPECT_THAT(
       index_domains,
       ElementsAreArray(TEST_HloShardingSpecIndexDomainsSlowPath(*spec, shape)));
+}
+
+TEST_F(HloShardingSpecTest, UniqueIndexDomainsWithUnevenTile) {
+  int num_shards = 6;
+  // 6-way sharded along axis 0, 1-way sharded along axis 1.
+  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({6, 1}));
+  std::shared_ptr<const HloShardingSpec> spec =
+      HloShardingSpec::Create(num_shards, xla_hlo_sharding);
+
+  Shape shape({11, 20});
+  EXPECT_THAT(
+      spec->UniqueIndexDomains(shape),
+      absl_testing::IsOkAndHolds(ElementsAre(
+          FieldsAre(IndexDomain(Index({0, 0}), Shape({2, 20})), ElementsAre(0)),
+          FieldsAre(IndexDomain(Index({2, 0}), Shape({2, 20})), ElementsAre(1)),
+          FieldsAre(IndexDomain(Index({4, 0}), Shape({2, 20})), ElementsAre(2)),
+          FieldsAre(IndexDomain(Index({6, 0}), Shape({2, 20})), ElementsAre(3)),
+          FieldsAre(IndexDomain(Index({8, 0}), Shape({2, 20})), ElementsAre(4)),
+          FieldsAre(IndexDomain(Index({10, 0}), Shape({1, 20})),
+                    ElementsAre(5)))));
+  EXPECT_THAT(spec->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5)));
 }
 
 TEST_F(HloShardingSpecTest, DisassembleWithUnevenTile) {
@@ -324,6 +384,45 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithPartialTile) {
   EXPECT_THAT(
       index_domains,
       ElementsAreArray(TEST_HloShardingSpecIndexDomainsSlowPath(*spec, shape)));
+}
+
+TEST_F(HloShardingSpecTest, UniqueIndexDomainsWithPartialTile) {
+  int num_shards = 6;
+  // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+  // replicated by 3 times.
+  auto xla_hlo_sharding =
+      xla::HloSharding::PartialTile(xla::TileAssignment({2, 1, 3}));
+  std::shared_ptr<const HloShardingSpec> spec =
+      HloShardingSpec::Create(num_shards, xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(spec->UniqueIndexDomains(shape),
+              absl_testing::IsOkAndHolds(ElementsAre(
+                  FieldsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
+                            ElementsAre(0, 1, 2)),
+                  FieldsAre(IndexDomain(Index({5, 0}), Shape({5, 20})),
+                            ElementsAre(3, 4, 5)))));
+  EXPECT_THAT(spec->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 0, 0, 1, 1, 1)));
+}
+
+TEST_F(HloShardingSpecTest, UniqueIndexDomainsManualFails) {
+  int num_shards = 6;
+  auto xla_hlo_sharding = xla::HloSharding::Manual();
+  std::shared_ptr<const HloShardingSpec> spec =
+      HloShardingSpec::Create(num_shards, xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(
+      spec->UniqueIndexDomains(shape),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Manual sharding does not support UniqueIndexDomains")));
+  EXPECT_THAT(
+      spec->ShardToUniqueIndexDomainIndex(),
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Manual sharding does not support "
+                                       "ShardToUniqueIndexDomainIndex")));
 }
 
 TEST_F(HloShardingSpecTest, DisassembleWithPartialTile) {

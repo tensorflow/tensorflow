@@ -45,7 +45,6 @@ namespace xla {
 
 IdentityElementType GetReductionIdentityElementType(
     const HloComputation& computation) {
-  // TODO(b/77635120): Add init values, for min, max, and their arg variants.
   const HloInstruction* const root = computation.root_instruction();
   if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
@@ -56,9 +55,15 @@ IdentityElementType GetReductionIdentityElementType(
 
   switch (root->opcode()) {
     case HloOpcode::kAdd:
+    case HloOpcode::kOr:
       return IdentityElementType::kZero;
     case HloOpcode::kMultiply:
+    case HloOpcode::kAnd:
       return IdentityElementType::kOne;
+    case HloOpcode::kMaximum:
+      return IdentityElementType::kMinimum;
+    case HloOpcode::kMinimum:
+      return IdentityElementType::kMaximum;
     default:
       return IdentityElementType::kUnknown;
   }
@@ -394,13 +399,7 @@ ConstraintPropagator::Run(
     }
   } while (before != propagator.states_);
 
-  // Extract only the parameters
-  absl::flat_hash_map<const HloInstruction*, ConstraintState> result;
-  for (const HloInstruction* param :
-       module.entry_computation()->parameter_instructions()) {
-    result[param] = propagator.states_[param];
-  }
-  return result;
+  return propagator.states_;
 }
 
 // Accurately modeling full relational semantics across multi-branch graphs
@@ -663,19 +662,29 @@ absl::Status ConstraintPropagator::SeedConstraints(
 
       case HloOpcode::kReduce:
       case HloOpcode::kReduceWindow: {
-        int64_t first_init = inst->operand_count() / 2;
-        if (inst->opcode() == HloOpcode::kReduceWindow) {
-          first_init = 1;
-        }
+        int64_t first_init = inst->opcode() == HloOpcode::kReduce
+                                 ? inst->operand_count() / 2
+                                 : inst->operand_count() - 1;
         IdentityElementType etype =
             GetReductionIdentityElementType(*inst->to_apply());
         for (int64_t i = first_init; i < inst->operand_count(); ++i) {
+          PrimitiveType elem_type = inst->operand(i)->shape().element_type();
           if (etype == IdentityElementType::kZero) {
             states_[inst->operand(i)].AddConstraint(
                 ConstraintInterval{0.0, 0.0, false});
           } else if (etype == IdentityElementType::kOne) {
             states_[inst->operand(i)].AddConstraint(
                 ConstraintInterval{1.0, 1.0, true});
+          } else if (etype == IdentityElementType::kMinimum) {
+            if (auto domain = GetTypeFiniteDomain(elem_type)) {
+              states_[inst->operand(i)].AddConstraint(
+                  ConstraintInterval{domain->min, domain->min, false});
+            }
+          } else if (etype == IdentityElementType::kMaximum) {
+            if (auto domain = GetTypeFiniteDomain(elem_type)) {
+              states_[inst->operand(i)].AddConstraint(
+                  ConstraintInterval{domain->max, domain->max, false});
+            }
           }
         }
         break;
@@ -684,12 +693,23 @@ absl::Status ConstraintPropagator::SeedConstraints(
       case HloOpcode::kSelectAndScatter: {
         IdentityElementType etype =
             GetReductionIdentityElementType(*inst->scatter());
+        PrimitiveType elem_type = inst->operand(2)->shape().element_type();
         if (etype == IdentityElementType::kZero) {
           states_[inst->operand(2)].AddConstraint(
               ConstraintInterval{0.0, 0.0, false});
         } else if (etype == IdentityElementType::kOne) {
           states_[inst->operand(2)].AddConstraint(
               ConstraintInterval{1.0, 1.0, true});
+        } else if (etype == IdentityElementType::kMinimum) {
+          if (auto domain = GetTypeFiniteDomain(elem_type)) {
+            states_[inst->operand(2)].AddConstraint(
+                ConstraintInterval{domain->min, domain->min, false});
+          }
+        } else if (etype == IdentityElementType::kMaximum) {
+          if (auto domain = GetTypeFiniteDomain(elem_type)) {
+            states_[inst->operand(2)].AddConstraint(
+                ConstraintInterval{domain->max, domain->max, false});
+          }
         }
         break;
       }
@@ -705,6 +725,15 @@ absl::Status ConstraintPropagator::SeedConstraints(
         ConstraintState source_state =
             states_[fused_computation->parameter_instruction(i)];
         states_[inst->operand(i)].Merge(source_state);
+      }
+    } else if (inst->opcode() == HloOpcode::kCall) {
+      const HloComputation* called_computation = inst->to_apply();
+      if (called_computation != nullptr) {
+        for (int i = 0; i < inst->operand_count(); ++i) {
+          ConstraintState source_state =
+              states_[called_computation->parameter_instruction(i)];
+          states_[inst->operand(i)].Merge(source_state);
+        }
       }
     }
   }
@@ -865,7 +894,11 @@ absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
 absl::Status ConstraintPropagator::PropagateConstraintsExact(
     const HloInstruction* instruction) {
   if (instruction->opcode() == HloOpcode::kFusion) {
-    return PropagateFusionBoundary(instruction);
+    return PropagateComputationBoundary(
+        instruction, instruction->fused_instructions_computation());
+  }
+  if (instruction->opcode() == HloOpcode::kCall) {
+    return PropagateComputationBoundary(instruction, instruction->to_apply());
   }
 
   ConstraintState output_state = states_[instruction];
@@ -989,41 +1022,40 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
   return absl::OkStatus();
 }
 
-absl::Status ConstraintPropagator::PropagateFusionBoundary(
-    const HloInstruction* fusion_instruction) {
-  const HloComputation* fused_comp =
-      fusion_instruction->fused_instructions_computation();
-  if (fused_comp == nullptr) {
+absl::Status ConstraintPropagator::PropagateComputationBoundary(
+    const HloInstruction* caller_instruction,
+    const HloComputation* callee_computation) {
+  if (callee_computation == nullptr) {
     return absl::OkStatus();
   }
 
   // 1. Output / Root binding:
-  const HloInstruction* fused_root =
-      fusion_instruction->fused_expression_root();
-  if (fused_root != nullptr) {
-    // Backward: outer constraint on fusion result flows into inner root.
-    ConstraintState fusion_state = states_[fusion_instruction];
-    states_[fused_root].Merge(fusion_state);
-    // Forward: internal constraint computed on root flows out to fusion result.
-    ConstraintState root_state = states_[fused_root];
-    states_[fusion_instruction].Merge(root_state);
+  const HloInstruction* callee_root = callee_computation->root_instruction();
+  if (callee_root != nullptr) {
+    ConstraintState caller_state = states_[caller_instruction];
+    ConstraintState root_state = states_[callee_root];
+    // Backward: outer constraint on caller result flows into inner root.
+    states_[callee_root].Merge(caller_state);
+    // Forward: internal constraint computed on root flows out to caller result.
+    states_[caller_instruction].Merge(root_state);
   }
 
   // 2. Operands / Parameters binding:
-  for (int64_t i = 0; i < fusion_instruction->operand_count(); ++i) {
-    const HloInstruction* operand = fusion_instruction->operand(i);
-    const HloInstruction* fused_param = fusion_instruction->fused_parameter(i);
-    if (fused_param == nullptr) {
+  for (int64_t i = 0; i < caller_instruction->operand_count(); ++i) {
+    const HloInstruction* operand = caller_instruction->operand(i);
+    const HloInstruction* callee_param =
+        callee_computation->parameter_instruction(i);
+    if (callee_param == nullptr) {
       continue;
     }
+    ConstraintState operand_state = states_[operand];
+    ConstraintState param_state = states_[callee_param];
     // Backward: constraints accumulated on the internal parameter flow out
     // to the caller operand.
-    ConstraintState param_state = states_[fused_param];
     states_[operand].Merge(param_state);
     // Forward: constraints established on the caller operand flow into the
     // internal parameter.
-    ConstraintState operand_state = states_[operand];
-    states_[fused_param].Merge(operand_state);
+    states_[callee_param].Merge(operand_state);
   }
 
   return absl::OkStatus();

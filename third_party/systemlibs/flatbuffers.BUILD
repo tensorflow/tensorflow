@@ -1,7 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 filegroup(
-    name = "LICENSE.txt",
+    name = "LICENSE",
     visibility = ["//visibility:public"],
 )
 

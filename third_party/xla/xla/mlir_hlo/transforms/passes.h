@@ -64,14 +64,6 @@ inline std::unique_ptr<Pass> createTileLoopsPass(
 }
 
 namespace hlo {
-using mlir::createAllocToArgPass;
-using mlir::createGenericHostToLLVMPass;
-using mlir::createUnbufferizePass;
-
-inline std::unique_ptr<Pass> createOneShotBufferizePass() {
-  return mlir::createOneShotBufferize();
-}
-
 #define GEN_PASS_REGISTRATION
 #include "transforms/passes.h.inc"
 

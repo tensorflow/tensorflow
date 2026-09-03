@@ -37,12 +37,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_stack_trace.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
@@ -61,6 +63,119 @@ absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
   return hlo_live_range;
+}
+
+/*static*/
+std::vector<const HloValue*> HloLiveRange::GetValuesDefined(
+    const HloInstruction* instruction, const HloDataflowAnalysis& dataflow) {
+  std::vector<const HloValue*> values;
+  const auto& value_set_tree = dataflow.GetInstructionValueSet(instruction);
+  for (const auto& entry : value_set_tree) {
+    if (dataflow.ValueIsDefinedAt(instruction, entry.first)) {
+      values.push_back(&dataflow.GetValueDefinedAt(instruction, entry.first));
+    }
+  }
+  return values;
+}
+
+/*static*/
+std::vector<const HloBuffer*> HloLiveRange::GetBuffersDefined(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis) {
+  std::vector<const HloBuffer*> buffers;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  for (const HloValue* value :
+       GetValuesDefined(instruction, alias_analysis.dataflow_analysis())) {
+    const HloBuffer* buffer = &alias_analysis.GetBufferContainingValue(*value);
+    if (seen.insert(buffer).second) {
+      buffers.push_back(buffer);
+    }
+  }
+  return buffers;
+}
+
+/*static*/
+int64_t HloLiveRange::GetBytesDefined(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_fn) {
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    return 0;
+  }
+  int64_t bytes = 0;
+  for (const HloBuffer* buffer :
+       GetBuffersDefined(instruction, alias_analysis)) {
+    if (buffer->IsHeapPressureImpacting()) {
+      bytes += buffer->ComputeSize(size_fn);
+    }
+  }
+  return bytes;
+}
+
+/*static*/
+std::vector<const HloBuffer*> HloLiveRange::GetBuffersUsed(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis) {
+  std::vector<const HloBuffer*> buffers;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  const auto& dataflow = alias_analysis.dataflow_analysis();
+  for (const HloInstruction* operand : instruction->operands()) {
+    HloValueSet value_set = dataflow.GetFlattenedValueSet(operand);
+    for (const HloValue* value : value_set.values()) {
+      const HloBuffer* buffer =
+          &alias_analysis.GetBufferContainingValue(*value);
+      if (seen.insert(buffer).second) {
+        buffers.push_back(buffer);
+      }
+    }
+  }
+  return buffers;
+}
+
+/*static*/
+int32_t HloLiveRange::GetTotalUsers(const HloBuffer& buffer,
+                                    const HloComputation* computation) {
+  int32_t total = 0;
+  for (const HloValue* value : buffer.values()) {
+    for (const HloUse& use : value->GetUses()) {
+      if (computation == nullptr || use.instruction->parent() == computation) {
+        ++total;
+      }
+    }
+  }
+  return total;
+}
+
+/*static*/
+int64_t HloLiveRange::GetParameterBytesAtStart(
+    const HloComputation& computation, const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_fn) {
+  int64_t bytes = 0;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  for (const HloInstruction* param : computation.parameter_instructions()) {
+    for (const HloBuffer* buffer : GetBuffersDefined(param, alias_analysis)) {
+      if (seen.insert(buffer).second && buffer->IsHeapPressureImpacting()) {
+        bytes += buffer->ComputeSize(size_fn);
+      }
+    }
+  }
+  return bytes;
+}
+
+/*static*/
+bool HloLiveRange::BufferLivesOut(const HloBuffer& buffer,
+                                  const HloAliasAnalysis& alias_analysis,
+                                  const HloComputation* computation) {
+  if (alias_analysis.BufferLivesOut(buffer)) {
+    return true;
+  }
+  if (computation != nullptr) {
+    for (const HloValue* value : buffer.values()) {
+      for (const HloUse& use : value->GetUses()) {
+        if (use.instruction->parent() != computation) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 void HloLiveRange::NormalizeAliasedBuffers() {
@@ -288,36 +403,26 @@ void HloLiveRange::CalculateBufferStartEndMap() {
               << definition_end_time;
     }
 
-    const InstructionValueSet& value_set_tree =
-        alias_analysis_.dataflow_analysis().GetInstructionValueSet(
-            &instruction);
+    for (const HloValue* value :
+         GetValuesDefined(&instruction, alias_analysis_.dataflow_analysis())) {
+      auto [end_time, end_position] =
+          ComputeValueLiveRangeEnd(*value, definition_end_time);
+      LiveRangeBounds live_range{start_time, end_time, end_position};
 
-    for (const auto& entry : value_set_tree) {
-      for (const HloValue* value : entry.second.values()) {
-        // The start time is only correct for the defining instruction.
-        if (value->defining_instruction() != &instruction) {
-          continue;
-        }
-
-        auto [end_time, end_position] =
-            ComputeValueLiveRangeEnd(*value, definition_end_time);
-        LiveRangeBounds live_range{start_time, end_time, end_position};
-
-        // Readonly entry parameters (parameters that don't alias) live across
-        // whole computation.
-        const HloModule& module = *computation->parent();
-        if (instruction.opcode() == HloOpcode::kParameter &&
-            computation == module.entry_computation() &&
-            !module.input_output_alias_config().ParameterHasAlias(
-                instruction.parameter_number(), value->index())) {
-          live_range.end = schedule_end_time();
-        } else {
-          live_range.end = std::max(live_range.end, GetLastUsageTime(*value));
-        }
-
-        CHECK_LE(live_range.start, live_range.end) << instruction.ToString();
-        CHECK(buffer_live_ranges_.insert({value, live_range}).second);
+      // Readonly entry parameters (parameters that don't alias) live across
+      // whole computation.
+      const HloModule& module = *computation->parent();
+      if (instruction.opcode() == HloOpcode::kParameter &&
+          computation == module.entry_computation() &&
+          !module.input_output_alias_config().ParameterHasAlias(
+              instruction.parameter_number(), value->index())) {
+        live_range.end = schedule_end_time();
+      } else {
+        live_range.end = std::max(live_range.end, GetLastUsageTime(*value));
       }
+
+      CHECK_LE(live_range.start, live_range.end) << instruction.ToString();
+      CHECK(buffer_live_ranges_.insert({value, live_range}).second);
     }
   }
 }

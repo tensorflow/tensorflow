@@ -1076,6 +1076,46 @@ foreach ReduceOp = [TFL_MeanOp, TFL_ReduceMaxOp, TFL_ReduceMinOp,
      (HasOneUse $reduce)]>;
 }
 
+def CanFuseSumMulToMean : Constraint<CPred<
+  "CanFuseSumMulToMean($0, $1, $2)">>;
+
+// Fuse Sum + Mul(1/N) -> Mean
+def FuseSumMulRhsIntoMean : Pat<
+  (TFL_MulOp
+    (TFL_SumOp:$sum $input, (Arith_ConstantOp ElementsAttr:$axes), $keep_dims),
+    (Arith_ConstantOp ElementsAttr:$factor),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (Arith_ConstantOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
+def FuseSumMulLhsIntoMean : Pat<
+  (TFL_MulOp
+    (Arith_ConstantOp ElementsAttr:$factor),
+    (TFL_SumOp:$sum $input, (Arith_ConstantOp ElementsAttr:$axes), $keep_dims),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (Arith_ConstantOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
+def FuseTflSumMulRhsIntoMean : Pat<
+  (TFL_MulOp
+    (TFL_SumOp:$sum $input, (TFL_ConstOp ElementsAttr:$axes), $keep_dims),
+    (TFL_ConstOp ElementsAttr:$factor),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (TFL_ConstOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
+def FuseTflSumMulLhsIntoMean : Pat<
+  (TFL_MulOp
+    (TFL_ConstOp ElementsAttr:$factor),
+    (TFL_SumOp:$sum $input, (TFL_ConstOp ElementsAttr:$axes), $keep_dims),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (TFL_ConstOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
 
 def IsSame : Constraint<CPred<"$0 == $1">>;
 def HasTwoUse : Constraint<CPred<

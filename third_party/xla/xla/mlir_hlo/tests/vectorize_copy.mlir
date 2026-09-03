@@ -44,7 +44,7 @@ func.func @do_not_vectorize_continuous_copy(%arg: memref<10x10xf32>) -> memref<1
 
 func.func @tile_to_continuous_memref(%arg: memref<3x512xf32, strided<[768, 1]>>)
     -> (memref<3x512xf32>) {
-  %alloc = memref.alloc() {alignment = 64 : i64} : memref<3x512xf32>
+  %alloc = memref.alloc() alignment = 64 : memref<3x512xf32>
   memref.copy %arg, %alloc : memref<3x512xf32, strided<[768, 1]>> to memref<3x512xf32>
   return %alloc: memref<3x512xf32>
 }

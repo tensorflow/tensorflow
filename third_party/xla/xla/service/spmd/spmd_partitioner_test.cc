@@ -10626,6 +10626,132 @@ ENTRY entry {
   }
 }
 
+// `_xla_compute_type` selects SparseCore offload and is read long after SPMD,
+// so a partitioned gather/scatter must carry it across.
+// `need_resolve_conflicts` picks between two entirely separate implementations,
+// and each builds its own replacement instruction, so both are exercised.
+namespace {
+
+void ExpectComputeTypeAttr(const HloInstruction* instr) {
+  ASSERT_NE(instr, nullptr);
+  std::optional<std::string> attr =
+      instr->get_frontend_attribute("_xla_compute_type");
+  ASSERT_TRUE(attr.has_value());
+  EXPECT_EQ(*attr, "sparseoffload");
+}
+
+}  // namespace
+
+TEST_P(SpmdPartitioningTest, PassthroughGatherPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0), sharding={devices=[1,2]<=[2]}
+  %indices = s32[3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,9}, sharding={devices=[1,2]<=[2]},
+    frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kGather));
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       GatherPartitionedOnTrivialSliceDimsPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[2,3,9] gather(%input, %indices), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+    slice_sizes={1,9}, sharding={replicated},
+    frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kGather));
+  }
+}
+
+TEST_P(SpmdPartitioningTest, PassthroughScatterPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0), sharding={devices=[1,2]<=[2]}
+  %indices = s32[3] parameter(1), sharding={replicated}
+  %updates = f32[3,9] parameter(2), sharding={devices=[1,2]<=[2]}
+  ROOT %scatter = f32[2,9] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, sharding={devices=[1,2]<=[2]},
+      frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kScatter));
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       ScatterPartitionedOnTrivialSliceDimsPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  %updates = f32[2,3,9] parameter(2), sharding={replicated}
+  ROOT %scatter = f32[17,9] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2, sharding={devices=[2,1]<=[2]},
+      frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kScatter));
+  }
+}
+
 TEST_P(SpmdPartitioningTest,
        ScatterPartitionedOnTrivialSliceDims_PartialReplicate) {
   absl::string_view hlo_string = R"(

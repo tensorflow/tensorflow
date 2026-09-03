@@ -193,37 +193,6 @@ TEST_F(CodegenOrchestratorTest, GetDefaultConfigFailsWhenNoBackendProvides) {
               StatusIs(absl::StatusCode::kNotFound));
 }
 
-class CodegenOrchestratorParamTest
-    : public CodegenOrchestratorTest,
-      public ::testing::WithParamInterface<autotuner::Backend> {};
-
-TEST_P(CodegenOrchestratorParamTest, ExcludeCublasConfig) {
-  CodegenOrchestrator::Options options;
-  options.exclude_cublas_config = true;
-
-  auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, backend()).WillRepeatedly(Return(GetParam()));
-  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
-  EXPECT_CALL(*backend, Compile(_, _)).Times(0);
-
-  CodegenOrchestrator::Config config{backend.get(),
-                                     GetTestConfig("test_config_1")};
-
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::move(backend));
-
-  ASSERT_OK_AND_ASSIGN(auto orchestrator, CodegenOrchestrator::Create(
-                                              std::move(backends), options));
-
-  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
-  EXPECT_THAT(orchestrator->Compile(*dummy_instr, config),
-              StatusIs(absl::StatusCode::kCancelled));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    ExcludeCublasConfigs, CodegenOrchestratorParamTest,
-    ::testing::Values(autotuner::Backend::CUBLASLT_FISSION,
-                      autotuner::Backend::HIPBLASLT_FISSION));
 
 TEST_F(CodegenOrchestratorTest, ConfigsWithRegisterSpillingAreAllowed) {
   CodegenOrchestrator::Options options;

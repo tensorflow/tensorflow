@@ -4518,6 +4518,7 @@ absl::Status Translator::AppendBufferData() {
   for (const auto& [index, buffer] : const_buffer_storage_.buffers()) {
     uint64_t hash = buffer->hash();
     if (hashcode_to_pos.find(hash) == hashcode_to_pos.end()) {
+      export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
       int64_t size = 0;
       int64_t buffer_offset = offset();
       auto status = buffer->ApplyData([this, &size](absl::string_view data) {

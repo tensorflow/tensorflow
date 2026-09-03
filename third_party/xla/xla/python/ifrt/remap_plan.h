@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
@@ -121,9 +122,26 @@ class RemapPlan {
   RemapPlan() : rep_(std::make_shared<Rep>()) {}
 
   RemapPlan(std::vector<ArraySpec> input_specs,
+            std::vector<ArraySpec> output_specs,
+            absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+                input_devices_for_output_map)
+      : rep_(std::make_shared<Rep>(std::move(input_specs),
+                                   std::move(output_specs),
+                                   std::move(input_devices_for_output_map))) {}
+
+  RemapPlan(std::vector<ArraySpec> input_specs,
+            std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings)
+      : rep_(std::make_shared<Rep>(std::move(input_specs),
+                                   std::move(output_specs),
+                                   std::move(mappings))) {}
+
+  ABSL_DEPRECATED(
+      "Use the constructor that takes `input_devices_for_output_map` without "
+      "`mappings` instead.")
+  RemapPlan(std::vector<ArraySpec> input_specs,
             std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings,
             absl::flat_hash_map<int, std::vector<InputDeviceRange>>
-                input_devices_for_output_map = {})
+                input_devices_for_output_map)
       : rep_(std::make_shared<Rep>(std::move(input_specs),
                                    std::move(output_specs), std::move(mappings),
                                    std::move(input_devices_for_output_map))) {}
@@ -215,9 +233,9 @@ class RemapPlan {
     // and for each input array I a device list containing all of the devices
     // that hold shards coming from I.
     //
-    // Information must be consistent with the information in `mappings`, i.e.,
-    // `input_devices_for_output_map` must duplicate, not replace, information
-    // in `mappings`.
+    // If `mappings` is not empty, information must be consistent with the
+    // information in `mappings`, i.e., `input_devices_for_output_map` must
+    // duplicate, not replace, information in `mappings`.
     //
     // Entries in `input_devices_for_output_map` are strictly optional, but
     // their presence may allow some implementations to be more efficient since
@@ -235,10 +253,18 @@ class RemapPlan {
     Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
         std::vector<Mapping> mappings,
         absl::flat_hash_map<int, std::vector<InputDeviceRange>>
-            input_devices_for_output_map)
+            input_devices_for_output_map = {})
         : input_specs(std::move(input_specs)),
           output_specs(std::move(output_specs)),
           mappings(std::move(mappings)),
+          input_devices_for_output_map(
+              std::move(input_devices_for_output_map)) {}
+
+    Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
+        absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+            input_devices_for_output_map)
+        : input_specs(std::move(input_specs)),
+          output_specs(std::move(output_specs)),
           input_devices_for_output_map(
               std::move(input_devices_for_output_map)) {}
 

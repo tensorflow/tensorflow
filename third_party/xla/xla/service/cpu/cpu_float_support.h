@@ -40,11 +40,30 @@ class CpuFloatSupport : public FloatSupport {
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {
-    if (LowPrecisionType() == BF16 || LowPrecisionType() == F16) {
+    if (LowPrecisionType() == BF16) {
       switch (hlo.opcode()) {
         case HloOpcode::kSort:
         case HloOpcode::kCompare:
         case HloOpcode::kSelect:
+        case HloOpcode::kBroadcast:
+        case HloOpcode::kConcatenate:
+        case HloOpcode::kCopy:
+        case HloOpcode::kDynamicSlice:
+        case HloOpcode::kDynamicUpdateSlice:
+        case HloOpcode::kGather:
+        case HloOpcode::kPad:
+        case HloOpcode::kReshape:
+        case HloOpcode::kReverse:
+        case HloOpcode::kScatter:
+        case HloOpcode::kSlice:
+        case HloOpcode::kTranspose:
+        case HloOpcode::kAbs:
+        case HloOpcode::kNegate:
+        case HloOpcode::kSign:
+        case HloOpcode::kMaximum:
+        case HloOpcode::kMinimum:
+        case HloOpcode::kClamp:
+        case HloOpcode::kSelectAndScatter:
           return true;
         default:
           break;
@@ -54,10 +73,29 @@ class CpuFloatSupport : public FloatSupport {
   }
 
   bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
-    if (LowPrecisionType() == BF16 || LowPrecisionType() == F16) {
+    if (LowPrecisionType() == BF16) {
       switch (hlo.opcode()) {
         case HloOpcode::kSort:
         case HloOpcode::kSelect:
+        case HloOpcode::kBroadcast:
+        case HloOpcode::kConcatenate:
+        case HloOpcode::kCopy:
+        case HloOpcode::kDynamicSlice:
+        case HloOpcode::kDynamicUpdateSlice:
+        case HloOpcode::kGather:
+        case HloOpcode::kPad:
+        case HloOpcode::kReshape:
+        case HloOpcode::kReverse:
+        case HloOpcode::kScatter:
+        case HloOpcode::kSlice:
+        case HloOpcode::kTranspose:
+        case HloOpcode::kAbs:
+        case HloOpcode::kNegate:
+        case HloOpcode::kSign:
+        case HloOpcode::kMaximum:
+        case HloOpcode::kMinimum:
+        case HloOpcode::kClamp:
+        case HloOpcode::kSelectAndScatter:
           return true;
         default:
           break;

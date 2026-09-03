@@ -132,7 +132,8 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const SparsityConfig& sparsity_config, const OpMetadata* metadata,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config, const OpMetadata* metadata,
     const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
@@ -144,7 +145,8 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
   return computation->AddInstruction(
       HloInstruction::CreateConvolve(
           convolve_shape, {lhs, rhs}, feature_group_count, batch_group_count,
-          window, dimension_numbers, precision_config, sparsity_config),
+          window, dimension_numbers, precision_config, sparsity_config,
+          block_scaling_config),
       metadata, frontend_attributes);
 }
 

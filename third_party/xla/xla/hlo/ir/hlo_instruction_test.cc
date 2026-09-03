@@ -24,11 +24,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -148,6 +151,60 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
   EXPECT_EQ(
       conv->ToString(),
       R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %lhs_indices, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1 idx=2} rhs={sparsity=1x4 dimension=0 stride=1 idx=3}})");
+}
+
+TEST_F(HloInstructionTest, BlockScalingConfigToString) {
+  {
+    BlockScalingConfig config;
+    EXPECT_EQ(BlockScalingConfigToString(config), "");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    // Unpopulated zero_idx, strides, steps
+    EXPECT_EQ(BlockScalingConfigToString(config), "lhs={scale_idx=2}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(0);
+    // zero_idx set to 0 should be printed when has_zero_idx() is true.
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "lhs={scale_idx=2 zero_idx=0}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(3);
+    config.mutable_lhs()->add_strides(1);
+    config.mutable_lhs()->add_strides(4);
+    config.mutable_lhs()->add_steps(1);
+    config.mutable_lhs()->add_steps(2);
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "lhs={scale_idx=2 zero_idx=3 strides=1x4 steps=1x2}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_rhs()->set_scale_idx(3);
+    config.mutable_rhs()->add_strides(2);
+    config.mutable_rhs()->add_strides(4);
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "rhs={scale_idx=3 strides=2x4}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(0);
+    config.mutable_lhs()->add_strides(1);
+    config.mutable_rhs()->set_scale_idx(3);
+    config.mutable_rhs()->set_zero_idx(1);
+    config.mutable_rhs()->add_strides(2);
+    config.mutable_rhs()->add_steps(4);
+    EXPECT_EQ(
+        BlockScalingConfigToString(config),
+        "lhs={scale_idx=2 zero_idx=0 strides=1} rhs={scale_idx=3 zero_idx=1 "
+        "strides=2 steps=4}");
+  }
 }
 
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
@@ -469,8 +526,8 @@ ENTRY main {
   ROOT call-done.0 = s32[] call-done(call-start.0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK(module->schedule().Verify());
 
@@ -550,8 +607,8 @@ ENTRY main {
   ROOT collective-permute.0 = (f32[32,32]{1,0}, f32[32,32]{1,0}) collective-permute(arg.0, arg.0), channel_id=388, source_target_pairs={{0,0},{4,1}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
 
   HloInstruction* cp = module->entry_computation()->root_instruction();
   ASSERT_EQ(cp->opcode(), HloOpcode::kCollectivePermute);
@@ -568,8 +625,7 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
       ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(
       root->ToString(),
@@ -588,8 +644,8 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
 }
 
 TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        R"(
     HloModule m
     ENTRY main {
       p0 = f32[] parameter(0)
@@ -631,8 +687,8 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
 }
 
 TEST_F(HloInstructionTest, CanonicalPrintingSupportsCustomCall) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        R"(
     HloModule custom_call_with_comp
 
     max_F32 {
@@ -847,8 +903,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   HloInstruction* start = FindInstruction(module.get(), "start");
   HloInstruction* update = FindInstruction(module.get(), "update");
   HloInstruction* done = FindInstruction(module.get(), "done");
@@ -919,8 +975,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   HloInstruction* start = FindInstruction(module.get(), "start");
   HloInstruction* update = FindInstruction(module.get(), "update");
   HloInstruction* done = FindInstruction(module.get(), "done");
@@ -965,6 +1021,34 @@ ENTRY main {
     EXPECT_EQ(instr->IsAsyncConsumer(), expected.is_consumer)
         << instr->ToString();
   }
+}
+
+TEST_F(HloInstructionTest, CompareProtoRoundTripWithOrder) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* cmp = builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {4}), p0, p1, ComparisonDirection::kLt,
+      ComparisonOrder::kTotal));
+  module->AddEntryComputation(builder.Build());
+  HloInstructionProto proto = cmp->ToProto();
+  EXPECT_EQ(proto.comparison_direction(), "LT");
+  EXPECT_EQ(proto.comparison_order(), "TOTAL");
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  instruction_map[p0->unique_id()] = p0;
+  instruction_map[p1->unique_id()] = p1;
+
+  ASSERT_OK_AND_ASSIGN(auto clone,
+                       HloInstruction::CreateFromProto(proto, instruction_map));
+  EXPECT_EQ(clone->opcode(), HloOpcode::kCompare);
+  const auto* compare_clone =
+      static_cast<const HloCompareInstruction*>(clone.get());
+  EXPECT_EQ(compare_clone->direction(), ComparisonDirection::kLt);
+  EXPECT_EQ(compare_clone->order(), ComparisonOrder::kTotal);
 }
 
 }  // namespace

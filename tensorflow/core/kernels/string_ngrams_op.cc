@@ -78,10 +78,17 @@ class StringNGramsOp : public tensorflow::OpKernel {
 
     const tensorflow::Tensor* data;
     OP_REQUIRES_OK(context, context->input("data", &data));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(data->shape()),
+                errors::InvalidArgument("data must be a vector, got shape: ",
+                                        data->shape().DebugString()));
     const auto& input_data = data->flat<tstring>().data();
 
     const tensorflow::Tensor* splits;
     OP_REQUIRES_OK(context, context->input("data_splits", &splits));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(splits->shape()),
+        errors::InvalidArgument("data_splits must be a vector, got shape: ",
+                                splits->shape().DebugString()));
     const auto& splits_vec = splits->flat<SPLITS_TYPE>();
 
     // Validate that the splits are valid indices into data, only if there are

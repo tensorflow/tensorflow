@@ -227,7 +227,7 @@ py_library(
         ":util",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/profiling/proto:model_runtime_info_py",
         "//tensorflow/lite/profiling/proto:profiling_info_py",

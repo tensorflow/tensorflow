@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -73,6 +74,16 @@ bool Sharding::operator==(const Sharding& other) const {
   }
   return HasSamePartitioning(other) && memory_kind_ == other.memory_kind_ &&
          *devices() == *other.devices();
+}
+
+absl::StatusOr<absl::InlinedVector<Sharding::IndexDomainAndShardIndices, 1>>
+Sharding::UniqueIndexDomains(const Shape& shape) const {
+  return sharding_spec()->UniqueIndexDomains(shape);
+}
+
+absl::StatusOr<absl::Span<const int>> Sharding::ShardToUniqueIndexDomainIndex()
+    const {
+  return sharding_spec()->ShardToUniqueIndexDomainIndex();
 }
 
 absl::StatusOr<ShardingRef> Sharding::FromProto(

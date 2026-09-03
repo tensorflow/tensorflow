@@ -75,7 +75,8 @@ absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
 // Reads dynamic shape metadata into an output AsyncValueRef.
 void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
                       tsl::AsyncValueRef<xla::Shape> output_shape,
-                      xla::Shape shape, PjRtDynamicShapeKind kind);
+                      xla::Shape shape, PjRtDynamicShapeKind kind,
+                      size_t host_alignment_bytes = 1);
 
 // Strips any metadata to give a logical shape.
 void StripMetadataForLogicalShape(xla::Shape& shape);

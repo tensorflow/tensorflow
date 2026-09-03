@@ -892,6 +892,24 @@ message SparsityConfig {
   TensorSparsityConfig rhs = 2;
 }
 
+// Describes the block scaling configuration for a convolution's operands.
+message BlockScalingConfig {
+  message TensorBlockScalingConfig {
+    // The operand index for the scale argument.
+    int32 scale_idx = 1;
+    // The operand index for the zero point argument.
+    optional int32 zero_idx = 2;
+    // The strides for the block scaling.
+    repeated int64 strides = 3;
+    // The steps for the block scaling.
+    repeated int64 steps = 4;
+  }
+  // Block scaling config for the LHS operand.
+  TensorBlockScalingConfig lhs = 1;
+  // Block scaling config for the RHS operand.
+  TensorBlockScalingConfig rhs = 2;
+}
+
 enum PaddingType {
   PADDING_INVALID = 0;
   PADDING_VALID = 1;  // Only valid portion of the base are covered.

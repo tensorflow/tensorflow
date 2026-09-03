@@ -16,6 +16,7 @@
 
 import enum
 import functools
+import os
 import pprint
 import shutil
 import sys
@@ -41,6 +42,7 @@ from tensorflow.lite.python.convert import build_conversion_flags as _build_conv
 from tensorflow.lite.python.convert import convert_graphdef as _convert_graphdef
 from tensorflow.lite.python.convert import convert_graphdef_with_arrays as _convert_graphdef_with_arrays
 from tensorflow.lite.python.convert import convert_jax_hlo as _convert_jax_hlo
+from tensorflow.lite.python.convert import convert_mlir_bytecode as _convert_mlir_bytecode
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import deduplicate_readonly_buffers as _deduplicate_readonly_buffers
@@ -641,6 +643,7 @@ class TFLiteConverterBase:
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
+    self._experimental_fold_fp16_resource_casts = True
     self._experimental_tf_quantization_mode = None
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
@@ -697,6 +700,8 @@ class TFLiteConverterBase:
     self.print_ir_module_scope = None
     self.elide_elementsattrs_if_larger = None
     self.serialize_debug_metadata = False
+    self.enable_debug = False
+    self.debug_dir = None
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -818,6 +823,7 @@ class TFLiteConverterBase:
         "unfold_large_splat_constant": (
             self._experimental_unfold_large_splat_constant
         ),
+        "fold_fp16_resource_casts": self._experimental_fold_fp16_resource_casts,
         "default_to_single_batch_in_tensor_list_ops": (
             self._experimental_default_to_single_batch_in_tensor_list_ops
         ),
@@ -843,6 +849,8 @@ class TFLiteConverterBase:
         "print_ir_after": self.print_ir_after,
         "print_ir_module_scope": self.print_ir_module_scope,
         "elide_elementsattrs_if_larger": self.elide_elementsattrs_if_larger,
+        "enable_debug": self.enable_debug,
+        "debug_dir": self.debug_dir,
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
@@ -1219,7 +1227,12 @@ class TFLiteConverterBase:
       self._increase_conversion_success_metric()
     self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
-    if self.exclude_conversion_metadata or self._experimental_use_buffer_offset:
+    if (
+        self.exclude_conversion_metadata
+        or self._experimental_use_buffer_offset
+        or result is None
+        or isinstance(result, (str, os.PathLike))
+    ):
       return result
     # TODO(b/286886803): add support for adding user metadata with
     # use_buffer_offset flags
@@ -2134,6 +2147,30 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
     )
 
 
+class TFLiteMlirBytecodeConverterV2(TFLiteConverterBaseV2):
+  """Converts the given MLIR bytecode into TensorFlow Lite model."""
+
+  def __init__(self, model_dir):
+    """Constructor for TFLiteConverter.
+
+    Args:
+      model_dir: Directory containing the MLIR bytecode and weights.
+    """
+    super(TFLiteMlirBytecodeConverterV2, self).__init__()
+    self._model_dir = model_dir
+
+  @_export_metrics
+  def convert(self, output_file_path=None):
+    """Converts the MLIR bytecode and saves directly to output_file_path without heap RAM spike."""
+    converter_kwargs = self._get_base_converter_args()
+    # Build conversion flags.
+    conversion_flags = _build_conversion_flags(**converter_kwargs)
+    if output_file_path is None:
+      output_file_path = os.path.join(self._model_dir, "model.tflite")
+    _convert_mlir_bytecode(conversion_flags, self._model_dir, output_file_path)
+    return output_file_path
+
+
 @_tf_export("lite.TFLiteConverter", v1=[])
 class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   """Converts a TensorFlow model into TensorFlow Lite model.
@@ -2389,6 +2426,19 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     )
     # pylint: enable=protected-access
     return TFLiteJaxConverterV2(serving_funcs, inputs)
+
+  @classmethod
+  def _from_mlir_bytecode(cls, model_dir):
+    """Creates a TFLiteConverter object from MLIR bytecode.
+
+    Args:
+      model_dir: Directory containing the MLIR bytecode and weights.
+
+    Returns:
+      TFLiteConverter object.
+    """
+
+    return TFLiteMlirBytecodeConverterV2(model_dir)
 
   # pylint: disable=useless-super-delegation
   def convert(self):

@@ -2097,8 +2097,13 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     # infer dtype if not explicitly provided
     if dtype is None:
       dtype_hierarchy = [
+          dtypes.int8,
+          dtypes.int16,
           dtypes.int32,
           dtypes.int64,
+          dtypes.uint16,
+          dtypes.uint32,
+          dtypes.uint64,
           dtypes.float16,
           dtypes.bfloat16,
           dtypes.float32,

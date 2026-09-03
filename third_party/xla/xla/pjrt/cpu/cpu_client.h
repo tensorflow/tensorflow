@@ -251,37 +251,14 @@ class PjRtCpuClient final : public CommonPjRtClientImpl {
         CommonPjRtClientImpl::raw_client());
   }
 
-  bool allow_fallback_for_donation() const override { return true; }
-  // This is needed because CPU currently doesn't have per-device dispatching
-  // threads for Execute() so two-phase launch can run into thread starvation.
-  bool supports_two_phase_launch() const override { return false; }
-  // TODO(parkers): implement proper predetermined error support.
-  bool supports_predetermined_error() const override { return false; }
-
-  PjRtDynamicShapeKind GetDynamicShapeKind(
-      int memory_space_kind_id) const override {
-    return PjRtDynamicShapeKind::kSuffix;
-  }
-
-  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
-      const override;
-
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
-
-  bool IsOnCpu(PjRtMemorySpace* memory_space) override { return true; }
 
   const xla::CpuTopologyDescription& topology() const {
     return *absl::down_cast<const CpuTopologyDescription*>(
         &CommonPjRtClientImpl::topology());
   }
-
-  bool BufferFromHostBufferSupportsZeroCopy(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
-      PjRtMemorySpace* memory_space,
-      const Layout* device_layout) const override;
 
  private:
   friend class PjRtCpuLoadedExecutable;

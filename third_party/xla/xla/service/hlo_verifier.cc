@@ -303,36 +303,66 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
+  auto check_idx_in_range = [&](int32_t idx, int32_t low, int32_t high,
+                                absl::string_view desc) -> absl::Status {
+    if (idx < low || idx >= high) {
+      return InvalidArgument("%s %d out of bounds", desc, idx);
+    }
+    return absl::OkStatus();
+  };
+
   if (convolution->sparsity_config().has_lhs()) {
-    int32_t idx = convolution->sparsity_config().lhs().idx();
-    if (idx < 2 || idx >= convolution->operand_count()) {
-      return InvalidArgument("Sparsity idx %d out of bounds for lhs", idx);
-    }
-    if (!convolution->operand(idx)->shape().IsArray()) {
-      return InvalidArgument(
-          "Expected array argument for lhs sparsity at index %d, but got %s",
-          idx, ShapeUtil::HumanString(convolution->operand(idx)->shape()));
-    }
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->sparsity_config().lhs().idx(), 2,
+        convolution->operand_count(), "Sparsity idx for lhs"));
   }
   if (convolution->sparsity_config().has_rhs()) {
-    int32_t idx = convolution->sparsity_config().rhs().idx();
-    if (idx < 2 || idx >= convolution->operand_count()) {
-      return InvalidArgument("Sparsity idx %d out of bounds for rhs", idx);
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->sparsity_config().rhs().idx(), 2,
+        convolution->operand_count(), "Sparsity idx for rhs"));
+  }
+  if (convolution->block_scaling_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->block_scaling_config().lhs().scale_idx(), 2,
+        convolution->operand_count(), "Block scaling scale_idx for lhs"));
+    if (convolution->block_scaling_config().lhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx_in_range(
+          convolution->block_scaling_config().lhs().zero_idx(), 2,
+          convolution->operand_count(), "Block scaling zero_idx for lhs"));
+      if (convolution->block_scaling_config().lhs().scale_idx() ==
+          convolution->block_scaling_config().lhs().zero_idx()) {
+        return InvalidArgument(
+            "LHS block scaling scale_idx and zero_idx cannot be the same (%d)",
+            convolution->block_scaling_config().lhs().scale_idx());
+      }
     }
-    if (!convolution->operand(idx)->shape().IsArray()) {
+  }
+  if (convolution->block_scaling_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx_in_range(
+        convolution->block_scaling_config().rhs().scale_idx(), 2,
+        convolution->operand_count(), "Block scaling scale_idx for rhs"));
+    if (convolution->block_scaling_config().rhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx_in_range(
+          convolution->block_scaling_config().rhs().zero_idx(), 2,
+          convolution->operand_count(), "Block scaling zero_idx for rhs"));
+      if (convolution->block_scaling_config().rhs().scale_idx() ==
+          convolution->block_scaling_config().rhs().zero_idx()) {
+        return InvalidArgument(
+            "RHS block scaling scale_idx and zero_idx cannot be the same (%d)",
+            convolution->block_scaling_config().rhs().scale_idx());
+      }
+    }
+  }
+  if (convolution->block_scaling_config().has_lhs() &&
+      convolution->block_scaling_config().has_rhs()) {
+    if (convolution->block_scaling_config().lhs().scale_idx() ==
+        convolution->block_scaling_config().rhs().scale_idx()) {
       return InvalidArgument(
-          "Expected array argument for rhs sparsity at index %d, but got %s",
-          idx, ShapeUtil::HumanString(convolution->operand(idx)->shape()));
+          "LHS and RHS block scaling scale_idx cannot be the same (%d)",
+          convolution->block_scaling_config().lhs().scale_idx());
     }
   }
-  if (convolution->sparsity_config().has_lhs() &&
-      convolution->sparsity_config().has_rhs()) {
-    if (convolution->sparsity_config().lhs().idx() ==
-        convolution->sparsity_config().rhs().idx()) {
-      return InvalidArgument("LHS and RHS sparsity idx cannot be the same (%d)",
-                             convolution->sparsity_config().lhs().idx());
-    }
-  }
+
   ABSL_ASSIGN_OR_RETURN(
       Shape expected,
       ShapeInference::InferConvolveShape(
@@ -3915,28 +3945,18 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
   }
 
   if (auto* comparison = DynCast<HloCompareInstruction>(instruction)) {
-    const Shape& operand_shape = comparison->operand(1)->shape();
+    const Shape& operand_shape = comparison->operand(0)->shape();
     PrimitiveType operand_element_type = operand_shape.element_type();
-    Comparison::Type default_comparison_type =
-        Comparison::DefaultComparisonType(operand_element_type);
-    if (primitive_util::IsFloatingPointType(operand_element_type)) {
-      if (comparison->type() != Comparison::Type::kFloat &&
-          comparison->type() != Comparison::Type::kFloatTotalOrder) {
+    if (primitive_util::IsIntegralType(operand_element_type) ||
+        operand_element_type == PRED) {
+      if (comparison->order() != ComparisonOrder::kTotal) {
         return FailedPrecondition(
-            "Expected comparison type %s or %s.\n"
-            "actual: %s\noperand: %s\n",
-            ComparisonTypeToString(Comparison::Type::kFloat),
-            ComparisonTypeToString(Comparison::Type::kFloatTotalOrder),
-            ComparisonTypeToString(comparison->type()),
+            "Expected comparison order %s for integral/pred operand, but got "
+            "%s.\noperand: %s\n",
+            ComparisonOrderToShortString(ComparisonOrder::kTotal),
+            ComparisonOrderToShortString(comparison->order()),
             ShapeUtil::HumanString(operand_shape));
       }
-    } else if (comparison->type() != default_comparison_type) {
-      return FailedPrecondition(
-          "Expected comparison type %s.\n"
-          "actual: %s\noperand: %s\n",
-          ComparisonTypeToString(default_comparison_type),
-          ComparisonTypeToString(comparison->type()),
-          ShapeUtil::HumanString(operand_shape));
     }
   }
   return absl::OkStatus();

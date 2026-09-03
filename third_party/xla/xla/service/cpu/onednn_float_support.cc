@@ -55,11 +55,18 @@ bool OneDnnFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
+    // Elementwise ops without precision loss.
+    case HloOpcode::kAbs:
+    case HloOpcode::kNegate:
+    case HloOpcode::kSign:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kClamp:
     // Other special ops.
     case HloOpcode::kBitcast:
       return true;
     case HloOpcode::kSort:
-      return LowPrecisionType() == BF16 || LowPrecisionType() == F16;
+      return LowPrecisionType() == BF16;
     default:
       return false;
   }

@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -69,6 +68,10 @@ struct IfrtIRProgram : RTTIExtends<IfrtIRProgram, Program> {
 
   // Returns true if the program exclusively owns the MLIR context.
   bool OwnsMlirContext() const { return mlir_context != nullptr; }
+
+  // Returns a fingerprint of the IFRT IR program. Two IFRT IR programs are
+  // equivalent if their fingerprints are the same. May ignore debug info.
+  absl::StatusOr<uint64_t> Fingerprint() const;
 
   // Key for the `fill_all_statuses` attribute in the custom_options attribute
   // map. If set to true, all executables will have their status filled if

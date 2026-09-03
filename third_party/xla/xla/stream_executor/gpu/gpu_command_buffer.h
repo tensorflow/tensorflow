@@ -164,6 +164,21 @@ class GpuCommandBuffer : public CommandBuffer {
                                const DeviceAddressBase& src,
                                uint64_t size) override;
 
+  absl::StatusOr<const Command*> CreateMemcpyD2H(
+      void* dst, const DeviceAddressBase& src, uint64_t size,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status UpdateMemcpyD2H(const Command* command, void* dst,
+                               const DeviceAddressBase& src,
+                               uint64_t size) override;
+
+  absl::StatusOr<const Command*> CreateMemcpyH2D(
+      DeviceAddressBase* dst, const void* src, uint64_t size,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status UpdateMemcpyH2D(const Command* command, DeviceAddressBase* dst,
+                               const void* src, uint64_t size) override;
+
   absl::StatusOr<const Command*> CreateMemset(
       DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
       absl::Span<const Command* const> dependencies) override;
@@ -346,6 +361,24 @@ class GpuCommandBuffer : public CommandBuffer {
   virtual absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
                                            DeviceAddressBase destination,
                                            DeviceAddressBase source,
+                                           uint64_t size) = 0;
+
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyD2HNode(
+      absl::Span<const GraphNodeHandle> dependencies, void* destination,
+      DeviceAddressBase source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyD2HNode(GraphNodeHandle node_handle,
+                                           void* destination,
+                                           DeviceAddressBase source,
+                                           uint64_t size) = 0;
+
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyH2DNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      DeviceAddressBase destination, const void* source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyH2DNode(GraphNodeHandle node_handle,
+                                           DeviceAddressBase destination,
+                                           const void* source,
                                            uint64_t size) = 0;
 
   virtual absl::Status PopulateDnnGraphNode(

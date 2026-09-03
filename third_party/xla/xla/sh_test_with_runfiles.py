@@ -27,17 +27,21 @@ class ShTestWithRunfiles(lit.formats.ShTest):
     created_symlinks = []
     if runfiles_env:
       rf_path = pathlib.Path(runfiles_env)
-      runfiles_dir = rf_path / "xla"
-      if runfiles_dir.is_dir():
-        dst = pathlib.Path(test.getExecPath()).parent
-        dst.mkdir(parents=True, exist_ok=True)
-        for item in runfiles_dir.iterdir():
-          target = dst / item.name
-          try:
-            target.symlink_to(item, target_is_directory=item.is_dir())
-            created_symlinks.append(target)
-          except FileExistsError:
-            pass
+
+      test_exec_dir = pathlib.Path(test.getExecPath()).parent
+      test_exec_dir.mkdir(parents=True, exist_ok=True)
+
+      # Symlink all directories from runfiles root to test_exec_dir.parent
+      # RUNPATH has "../+rocm_configure_ext+local_config_rocm/..." patterns
+      for item in rf_path.iterdir():
+        if item.is_dir():
+          test_exec_symlink = test_exec_dir.parent / item.name
+          if not test_exec_symlink.exists():
+            try:
+              test_exec_symlink.symlink_to(item, target_is_directory=True)
+              created_symlinks.append(test_exec_symlink)
+            except FileExistsError:
+              pass
 
       # Dynamically resolve hermetic cuda_nvcc in runfiles if present.
       # Static relative paths (e.g. %S/../../..) break for deeply nested targets
@@ -71,6 +75,12 @@ class ShTestWithRunfiles(lit.formats.ShTest):
           )
 
     result = super().execute(test, lit_config)
+
+    # Clean up created symlinks
     for target in created_symlinks:
-      target.unlink()
+      try:
+        target.unlink()
+      except FileNotFoundError:
+        pass
+
     return result

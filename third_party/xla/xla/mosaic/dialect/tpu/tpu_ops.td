@@ -335,6 +335,7 @@ def TPU_StridedLoadOp : TPU_Op<"strided_load", [DefaultMemRead]> {
     $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TPU_StridedStoreOp : TPU_Op<"strided_store", [DefaultMemWrite]> {
@@ -908,6 +909,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     - `rhs_dilation`: Dilation factor for the kernel/filter (defaults to 1).
     - `window_reversal`: Boolean flags indicating whether to reverse the kernel
       window along each spatial dimension.
+    - `feature_group_count`: Number of feature groups for grouped convolution.
+    - `batch_group_count`: Number of batch groups for grouped convolution.
     - `precision`: Optional contraction precision mode for TPU matrix multiplication.
   }];
   let arguments = (ins
@@ -920,6 +923,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     DenseI64ArrayAttr:$lhs_dilation,
     DenseI64ArrayAttr:$rhs_dilation,
     DenseBoolArrayAttr:$window_reversal,
+    DefaultValuedAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedAttr<I64Attr, "1">:$batch_group_count,
     OptionalAttr<TPU_ContractPrecisionEnum>:$precision
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);

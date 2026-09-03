@@ -259,6 +259,7 @@ tensorflow::ImportFunction
 
 [//tensorflow/compiler/mlir/lite/python:converter_python_api] # converter_python_api
 tflite::Convert
+tflite::ConvertMlirBytecode
 tflite::MlirQuantizeModel
 tflite::MlirSparsifyModel
 tflite::RegisterCustomOpdefs

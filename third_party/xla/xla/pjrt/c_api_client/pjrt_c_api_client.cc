@@ -748,6 +748,15 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tsl::profiler::TraceMe traceme("PjRtCApiClient::Compile(XlaComputation)");
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* const topology,
+                   GetTopologyDescription());
+  return InitializeArgsAndCompileAot(c_api_, this, &computation, options,
+                                     *topology);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
     MaybeOwningMlirModule module, CompileOptions options) {
   tsl::profiler::TraceMe traceme([&module]() {
     return absl::StrCat("PjRtCApiClient::CompileAndLoad(",

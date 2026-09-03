@@ -17,9 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
-#include <string>
 
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -30,90 +28,8 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 
 namespace mlir::TFL {
-
-LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
-                                  SmallVector<double, 4>& scales,
-                                  SmallVector<int64_t, 4>& zero_points,
-                                  int& num_bits, bool& is_signed,
-                                  bool& is_narrow_range) {
-  auto scale_attr = llvm::dyn_cast_or_null<DenseFPElementsAttr>(
-      op.getCompositeAttributes().get("scale"));
-  if (scale_attr == nullptr) {
-    return failure();
-  }
-  for (auto float_attr : scale_attr.getValues<FloatAttr>()) {
-    scales.push_back(float_attr.getValue().convertToDouble());
-  }
-
-  auto zero_point_attr = llvm::dyn_cast_or_null<DenseIntElementsAttr>(
-      op.getCompositeAttributes().get("zero_point"));
-  if (zero_point_attr == nullptr) {
-    for (int i = 0; i < scales.size(); ++i) {
-      zero_points.push_back(0);
-    }
-  } else if (zero_point_attr.isSplat()) {
-    for (int i = 0; i < scales.size(); ++i) {
-      zero_points.push_back(
-          zero_point_attr.getSplatValue<IntegerAttr>().getInt());
-    }
-  } else {
-    for (IntegerAttr zp : zero_point_attr.getValues<IntegerAttr>()) {
-      zero_points.push_back(zp.getInt());
-    }
-  }
-
-  auto dtype_attr = llvm::dyn_cast_or_null<StringAttr>(
-      op.getCompositeAttributes().get("dtype"));
-  if (dtype_attr == nullptr) {
-    return failure();
-  }
-  std::string dtype = dtype_attr.getValue().str();
-  if (dtype == "i2") {
-    num_bits = 2;
-    is_signed = true;
-  } else if (dtype == "i4") {
-    num_bits = 4;
-    is_signed = true;
-  } else if (dtype == "ui4") {
-    num_bits = 4;
-    is_signed = false;
-  } else if (dtype == "i8") {
-    num_bits = 8;
-    is_signed = true;
-  } else if (dtype == "i16") {
-    num_bits = 16;
-    is_signed = true;
-  } else {
-    return failure();
-  }
-  auto narrow_range_attr = llvm::dyn_cast_or_null<BoolAttr>(
-      op.getCompositeAttributes().get("narrow_range"));
-  if (narrow_range_attr == nullptr) {
-    return failure();
-  }
-  is_narrow_range = narrow_range_attr.getValue();
-
-  return success();
-}
-
-bool IsDrqFakeQuant(stablehlo::CompositeOp op) {
-  if (op.getName() != "quant.fake_quant") {
-    return false;
-  }
-  SmallVector<double, 4> scales;
-  SmallVector<int64_t, 4> zero_points;
-  int num_bits;
-  bool is_signed;
-  bool is_narrow_range;
-  if (failed(FillCompositeParams(op, scales, zero_points, num_bits, is_signed,
-                                 is_narrow_range))) {
-    return false;
-  }
-  return scales.empty() && zero_points.empty();
-}
 
 LogicalResult GetStorageParams(unsigned num_bits, bool narrow_range,
                                bool is_signed, MLIRContext* ctx,

@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stack>
@@ -580,6 +581,7 @@ std::string HloModule::ToString() const {
   print_options.set_print_inline_stack_frames(
       db_options.xla_hlo_print_inline_stack_frames());
   print_options.set_compact_gte(db_options.xla_dump_compact_gte());
+  print_options.set_sort_backend_config(true);
   return ToString(print_options);
 }
 
@@ -612,6 +614,18 @@ void HloModule::ToProto(HloModuleProto* proto, HloProtoOptions options) const {
     proto->set_entry_computation_id(entry_computation_->unique_id());
     *proto->mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
+  }
+
+  // Deduplicate backend configs if requested via options or via XLA flag.
+  // Do not override options where it's already manually set by the caller.
+  if (!options.deduplicate_backend_config &&
+      config().debug_options().has_xla_deduplicate_backend_configs_min_size()) {
+    int64_t min_size =
+        config().debug_options().xla_deduplicate_backend_configs_min_size();
+    if (min_size >= 0 && min_size < std::numeric_limits<int64_t>::max()) {
+      options.deduplicate_backend_config = true;
+      options.min_backend_config_size = min_size;
+    }
   }
 
   // Instantiate one shared deduplicator when either option is enabled.

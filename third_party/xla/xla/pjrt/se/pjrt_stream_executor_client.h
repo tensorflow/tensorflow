@@ -519,6 +519,14 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
     return PjRtDynamicShapeKind::kSuffix;
   }
 
+  bool BufferFromHostBufferSupportsZeroCopy(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
+      PjRtMemorySpace* memory_space,
+      const Layout* device_layout) const override {
+    return false;
+  }
+
   bool ShouldPerformZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape, PrimitiveType type,
       absl::Span<int64_t const> dims,

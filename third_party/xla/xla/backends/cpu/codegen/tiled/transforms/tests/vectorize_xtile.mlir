@@ -967,7 +967,7 @@ func.func @test_slice(%arg0: tensor<8x16xf32>) -> tensor<4x8xf32> {
 }
 // CHECK-LABEL: @test_slice
 // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %{{.*}} : tensor<8x16xf32> to vector<8x16xf32>
-// CHECK: %[[SLICE:.*]] = vector.extract_strided_slice %[[CAST]] {offsets = [2, 4], sizes = [4, 8], strides = [1, 1]} : vector<8x16xf32> to vector<4x8xf32>
+// CHECK: %[[SLICE:.*]] = vector.extract_strided_slice %[[CAST]] offsets = [2, 4], sizes = [4, 8], strides = [1, 1] : vector<8x16xf32> to vector<4x8xf32>
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[SLICE]] : vector<4x8xf32> to tensor<4x8xf32>
 // CHECK: return %[[RET]]
 
@@ -998,8 +998,8 @@ func.func @test_concatenate(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>) -> t
 // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<4x16xf32>
 // CHECK-DAG: %[[LHS:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<4x8xf32> to vector<4x8xf32>
 // CHECK-DAG: %[[RHS:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<4x8xf32> to vector<4x8xf32>
-// CHECK: %[[INSERT0:.*]] = vector.insert_strided_slice %[[LHS]], %[[CST]] {offsets = [0, 0], strides = [1, 1]} : vector<4x8xf32> into vector<4x16xf32>
-// CHECK: %[[INSERT1:.*]] = vector.insert_strided_slice %[[RHS]], %[[INSERT0]] {offsets = [0, 8], strides = [1, 1]} : vector<4x8xf32> into vector<4x16xf32>
+// CHECK: %[[INSERT0:.*]] = vector.insert_strided_slice %[[LHS]], %[[CST]] offsets = [0, 0], strides = [1, 1] : vector<4x8xf32> into vector<4x16xf32>
+// CHECK: %[[INSERT1:.*]] = vector.insert_strided_slice %[[RHS]], %[[INSERT0]] offsets = [0, 8], strides = [1, 1] : vector<4x8xf32> into vector<4x16xf32>
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[INSERT1]] : vector<4x16xf32> to tensor<4x16xf32>
 // CHECK: return %[[RET]]
 

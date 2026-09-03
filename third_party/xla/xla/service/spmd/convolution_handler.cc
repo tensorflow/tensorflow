@@ -993,10 +993,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvolution(
                        /*preferred_element_type=*/conv.shape().element_type()));
   *sharded_conv_shape.mutable_layout() = conv.shape().layout();
   CHECK(!conv.sparsity_config().has_lhs() && !conv.sparsity_config().has_rhs());
+  CHECK(!conv.block_scaling_config().has_lhs() &&
+        !conv.block_scaling_config().has_rhs());
   return HloInstruction::CreateConvolve(
       sharded_conv_shape, {sharded_lhs_hlo, sharded_rhs_hlo},
       feature_group_count, batch_group_count, window, conv_dnums,
-      conv.precision_config(), conv.sparsity_config());
+      conv.precision_config(), conv.sparsity_config(),
+      conv.block_scaling_config());
 }
 
 // Partition convolution.
@@ -1024,6 +1027,12 @@ absl::StatusOr<HloInstruction*> PartitionConvolution(
 
 absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
   if (hlo->sharding().IsSingleDevice()) {
+    return DefaultAction(hlo);
+  }
+  // TODO(b/535773961): Support sharding for scaled / sparse convolutions.
+  if (hlo->block_scaling_config().has_lhs() ||
+      hlo->block_scaling_config().has_rhs() ||
+      hlo->sparsity_config().has_lhs() || hlo->sparsity_config().has_rhs()) {
     return DefaultAction(hlo);
   }
   const dot_as_convolution_util::DotConvolutionDimsInfo dims_info =

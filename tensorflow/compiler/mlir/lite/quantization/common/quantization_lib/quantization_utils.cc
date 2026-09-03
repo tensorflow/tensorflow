@@ -334,18 +334,27 @@ TypeAttr RescaleQuantizedType(const Type input, const Attribute factor) {
   const auto element_type =
       quant::QuantizedType::getQuantizedElementType(input);
   if (!element_type) return {};
-  if (auto qtype = dyn_cast<quant::UniformQuantizedPerAxisType>(element_type)) {
+  if (const auto qtype =
+          dyn_cast<quant::UniformQuantizedPerAxisType>(element_type)) {
     const ArrayRef<double> scales = qtype.getScales();
-    // Broadcasting hasn't been implemented yet.
-    if (static_cast<int64_t>(scales.size()) != factor_values.getNumElements())
+    const int64_t num_factors = factor_values.getNumElements();
+    if (static_cast<int64_t>(scales.size()) != num_factors && num_factors != 1)
       return {};
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
-    auto scales_iter = scales.begin();
-    for (const auto& f : factor_values) {
-      new_scales.push_back(*scales_iter *
-                           std::fabs(FloatAttr::getValueAsDouble(f)));
-      ++scales_iter;
+    if (num_factors == 1) {
+      const double factor_val =
+          std::fabs(FloatAttr::getValueAsDouble(*factor_values.begin()));
+      for (const double scale : scales) {
+        new_scales.push_back(scale * factor_val);
+      }
+    } else {
+      auto scales_iter = scales.begin();
+      for (const auto& f : factor_values) {
+        new_scales.push_back(*scales_iter *
+                             std::fabs(FloatAttr::getValueAsDouble(f)));
+        ++scales_iter;
+      }
     }
     // We are assuming symmetric quantization.
     auto new_ele_type = quant::UniformQuantizedPerAxisType::get(
@@ -356,8 +365,21 @@ TypeAttr RescaleQuantizedType(const Type input, const Attribute factor) {
             quant::QuantizedType::castToExpressedType(input))) {
       return TypeAttr::get(new_type);
     }
+  } else if (const auto qtype =
+                 dyn_cast<quant::UniformQuantizedType>(element_type)) {
+    if (factor_values.getNumElements() != 1) return {};
+    const double factor_val =
+        std::fabs(FloatAttr::getValueAsDouble(*factor_values.begin()));
+    const double new_scale = qtype.getScale() * factor_val;
+    auto new_ele_type = quant::UniformQuantizedType::get(
+        qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
+        new_scale, qtype.getZeroPoint(), qtype.getStorageTypeMin(),
+        qtype.getStorageTypeMax());
+    if (const auto new_type = new_ele_type.castFromExpressedType(
+            quant::QuantizedType::castToExpressedType(input))) {
+      return TypeAttr::get(new_type);
+    }
   }
-  // Currently, we only support per-axis quantized type.
   return {};
 }
 
@@ -511,8 +533,8 @@ Type GetUniformQuantizedPerAxisTypeForWeight(
 
   const int dim_size = shape[quant_dim];
   const int slice_size =
-      std::accumulate(std::next(shape.begin(), quant_dim + 1), shape.end(), 1,
-                      std::multiplies<int64_t>());
+      std::accumulate(std::next(shape.begin(), quant_dim + 1), shape.end(),
+                      int64_t{1}, std::multiplies<int64_t>());
   SmallVector<double, 4> mins(dim_size, std::numeric_limits<double>::max());
   SmallVector<double, 4> maxs(dim_size, std::numeric_limits<double>::min());
   const auto fp = dyn_cast<DenseFPElementsAttr>(attr);

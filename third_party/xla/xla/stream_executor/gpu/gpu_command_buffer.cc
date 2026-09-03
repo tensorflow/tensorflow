@@ -292,6 +292,47 @@ absl::Status GpuCommandBuffer::UpdateMemcpyD2D(const Command* command,
   return UpdateMemcpyD2DNode(gpu_command->handle, *dst, src, size);
 }
 
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2H(
+    void* dst, const DeviceAddressBase& src, uint64_t size,
+    absl::Span<const Command* const> dependencies) {
+  ABSL_RETURN_IF_ERROR(CheckInState(State::kCreate));
+
+  ABSL_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                   CreateMemcpyD2HNode(ToGraphNodeDependencies(dependencies),
+                                       dst, src, size));
+
+  return AppendCommand(GpuCommand{handle});
+}
+
+absl::Status GpuCommandBuffer::UpdateMemcpyD2H(const Command* command,
+                                               void* dst,
+                                               const DeviceAddressBase& src,
+                                               uint64_t size) {
+  ABSL_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
+  return UpdateMemcpyD2HNode(gpu_command->handle, dst, src, size);
+}
+
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyH2D(
+    DeviceAddressBase* dst, const void* src, uint64_t size,
+    absl::Span<const Command* const> dependencies) {
+  ABSL_RETURN_IF_ERROR(CheckInState(State::kCreate));
+
+  ABSL_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                   CreateMemcpyH2DNode(ToGraphNodeDependencies(dependencies),
+                                       *dst, src, size));
+
+  return AppendCommand(GpuCommand{handle});
+}
+
+absl::Status GpuCommandBuffer::UpdateMemcpyH2D(const Command* command,
+                                               DeviceAddressBase* dst,
+                                               const void* src, uint64_t size) {
+  ABSL_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
+  return UpdateMemcpyH2DNode(gpu_command->handle, *dst, src, size);
+}
+
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemset(
     DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
     absl::Span<const Command* const> dependencies) {

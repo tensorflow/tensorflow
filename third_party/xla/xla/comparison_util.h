@@ -66,6 +66,8 @@ class Comparison {
   };
 
   friend absl::string_view ComparisonOrderToString(Comparison::Order order);
+  friend absl::string_view ComparisonOrderToShortString(
+      Comparison::Order order);
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Order& p) {
@@ -165,7 +167,7 @@ class Comparison {
   // Returns optional value because not all inversions may be supported.
   std::optional<Comparison> Inverse() const;
 
-  // Returns a string version of this comparison, e.g., ".GT.F32.TOTALORDER"
+  // Returns a string version of this comparison, e.g., ".GT.F32.TOTAL"
   std::string ToString(std::string prefix1 = ".", std::string prefix2 = ".",
                        std::string prefix3 = ".") const;
 
@@ -210,6 +212,10 @@ class Comparison {
     return GetComparator<T>()(a, b);
   }
 
+  // Returns the Comparison::Order corresponding to the deprecated
+  // Comparison::Type.
+  static Comparison::Order DefaultOrdering(Type type);
+
   // Returns the Comparison::Type for the given primitive type. This assumes
   // that each numerical representation follows the standard behavior, e.g.,
   // integers are total order and floats are partial order.
@@ -238,6 +244,8 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
+absl::string_view ComparisonOrderToString(Comparison::Order order);
+absl::string_view ComparisonOrderToShortString(Comparison::Order order);
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const ComparisonDirection& direction) {
@@ -246,6 +254,8 @@ void AbslStringify(Sink& sink, const ComparisonDirection& direction) {
 
 absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);
+absl::StatusOr<Comparison::Order> ShortStringToComparisonOrder(
+    absl::string_view order);
 absl::StatusOr<Comparison::Type> StringToComparisonType(
     absl::string_view comparison);
 

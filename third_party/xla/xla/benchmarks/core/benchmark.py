@@ -238,14 +238,22 @@ class Benchmark(abc.ABC):
     return profiler_results
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, repr=False)
 class BenchmarkConfig(abc.ABC):
   """Base class for benchmark configs."""
 
   def as_dict(self) -> dict[str, Any]:
     """Returns a dictionary representation of the config."""
+
+    def _is_dtype(val):
+      try:
+        jnp.dtype(val)
+        return True
+      except (TypeError, ValueError):
+        return False
+
     return {
-        k: dtype_to_str(v) if isinstance(v, jnp.dtype) else v
+        k: dtype_to_str(v) if _is_dtype(v) else v
         for k, v in dataclasses.asdict(self).items()
     }
 

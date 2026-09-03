@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 #define XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -85,9 +85,6 @@ absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
 
 // Returns a pretty string representation of the location.
 std::string GetPrettyLocation(mlir::Location loc);
-
-// Returns a fingerprint of the provided module.
-uint64_t MlirModuleFingerprint(mlir::ModuleOp module);
 
 // Extracts the XlaCompileOptions overrides for the given atom program module.
 // Returns nullptr if no overrides are found.
