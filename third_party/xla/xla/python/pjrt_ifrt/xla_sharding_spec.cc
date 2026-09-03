@@ -23,12 +23,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -53,7 +57,6 @@ char HloShardingSpec::ID = 0;            // NOLINT
 namespace {
 
 // Generates IndexDomains for an HloShardingSpec, using XLA HloSharding APIs.
-// Note that this is O(N^2) where N is the number of devices (shards).
 std::vector<IndexDomain> IndexDomainsSlowPath(
     const xla::HloSharding& hlo_sharding, int num_shards, const Shape& shape) {
   // Only shape dimensions are used.
@@ -107,6 +110,11 @@ HloShardingSpec::HloShardingSpec(int num_shards,
       ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsSingleDevice()) &&
        num_shards_ == 1);
 }
+
+HloShardingSpec::HloShardingSpec(const HloShardingSpec& other)
+    : RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec>(other),
+      xla_hlo_sharding_(other.xla_hlo_sharding_),
+      hash_(other.hash_.load(std::memory_order_relaxed)) {}
 
 absl::StatusOr<ShardingRef> HloShardingSpec::ToSharding(
     DeviceListRef devices, MemoryKind memory_kind) const {
@@ -279,6 +287,139 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
   }
 
   return result;
+}
+
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+HloShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  if (xla_hlo_sharding_.IsManual()) {
+    return absl::InvalidArgumentError(
+        "Manual sharding does not support UniqueIndexDomains");
+  }
+  if (xla_hlo_sharding_.IsUnreduced()) {
+    return absl::InvalidArgumentError(
+        "Unreduced sharding does not support UniqueIndexDomains");
+  }
+  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
+    return absl::InvalidArgumentError(
+        "Non-replicated subgroup (e.g., manual or unreduced subgroup) sharding "
+        "does not support UniqueIndexDomains");
+  }
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice()) {
+    absl::call_once(unique_shard_indices_once_, [this] {
+      cached_shard_indices_.reserve(num_shards_);
+      for (int i = 0; i < num_shards_; ++i) {
+        cached_shard_indices_.push_back(i);
+      }
+    });
+    return absl::InlinedVector<IndexDomainAndShardIndices, 1>{
+        IndexDomainAndShardIndices{
+            /*index_domain=*/IndexDomain(shape),
+            /*shard_indices=*/absl::MakeConstSpan(cached_shard_indices_),
+        },
+    };
+  }
+
+  const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();
+  if (shape.dims().size() != tiled_data_rank) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("shape must have %d dimensions, but has %d dimensions: "
+                        "shape=%v, sharding=%s",
+                        tiled_data_rank, shape.dims().size(), shape,
+                        xla_hlo_sharding_.ToString()));
+  }
+
+  absl::call_once(unique_shard_indices_once_, [this] {
+    const int64_t* flat_tile_assignment =
+        xla_hlo_sharding_.tile_assignment().array().data();
+    cached_shard_indices_.reserve(num_shards_);
+    for (int64_t i = 0; i < num_shards_; ++i) {
+      cached_shard_indices_.push_back(
+          static_cast<int>(flat_tile_assignment[i]));
+    }
+  });
+
+  const int64_t num_unique_tiles = xla_hlo_sharding_.NumTiles();
+  if (num_shards_ % num_unique_tiles != 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec has %d shards, but HloSharding has %d unique tiles, "
+        "which is not a divisor of the number of shards",
+        num_shards_, num_unique_tiles));
+  }
+  const int64_t num_replicas = num_shards_ / num_unique_tiles;
+
+  xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
+      xla::PrimitiveType::S32, shape.dims());
+  absl::InlinedVector<IndexDomainAndShardIndices, 1> unique_domains;
+  unique_domains.reserve(num_unique_tiles);
+  for (int64_t tile_idx = 0; tile_idx < num_unique_tiles; ++tile_idx) {
+    const int first_shard = cached_shard_indices_[tile_idx * num_replicas];
+    std::vector<int64_t> tile_offset =
+        xla_hlo_sharding_.TileOffsetForDevice(xla_shape, first_shard);
+    std::vector<int64_t> tile_limit =
+        xla_hlo_sharding_.TileLimitForDevice(xla_shape, first_shard);
+    Index::Elements origin(shape.dims().size());
+    Shape::Dimensions shard_shape(shape.dims().size());
+    for (int i = 0; i < shape.dims().size(); ++i) {
+      origin[i] = tile_offset[i];
+      shard_shape[i] = tile_limit[i] - tile_offset[i];
+    }
+    unique_domains.push_back(IndexDomainAndShardIndices{
+        /*index_domain=*/
+        IndexDomain(Index(std::move(origin)), Shape(std::move(shard_shape))),
+        /*shard_indices=*/
+        absl::MakeConstSpan(cached_shard_indices_)
+            .subspan(tile_idx * num_replicas, num_replicas),
+    });
+  }
+
+  return unique_domains;
+}
+
+absl::StatusOr<absl::Span<const int>>
+HloShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  if (xla_hlo_sharding_.IsManual()) {
+    return absl::InvalidArgumentError(
+        "Manual sharding does not support ShardToUniqueIndexDomainIndex");
+  }
+  if (xla_hlo_sharding_.IsUnreduced()) {
+    return absl::InvalidArgumentError(
+        "Unreduced sharding does not support ShardToUniqueIndexDomainIndex");
+  }
+  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
+    return absl::InvalidArgumentError(
+        "Non-replicated subgroup (e.g., manual or unreduced subgroup) sharding "
+        "does not support ShardToUniqueIndexDomainIndex");
+  }
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice()) {
+    absl::call_once(shard_to_unique_index_domain_index_once_, [this] {
+      cached_shard_to_unique_index_domain_index_.assign(num_shards_, 0);
+    });
+    return absl::MakeConstSpan(cached_shard_to_unique_index_domain_index_);
+  }
+
+  const int64_t num_unique_tiles = xla_hlo_sharding_.NumTiles();
+  if (num_shards_ % num_unique_tiles != 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec has %d shards, but HloSharding has %d unique tiles, "
+        "which is not a divisor of the number of shards",
+        num_shards_, num_unique_tiles));
+  }
+  const int64_t num_replicas = num_shards_ / num_unique_tiles;
+
+  absl::call_once(shard_to_unique_index_domain_index_once_, [&, this] {
+    cached_shard_to_unique_index_domain_index_.resize(num_shards_);
+    const int64_t* flat_tile_assignment =
+        xla_hlo_sharding_.tile_assignment().array().data();
+    for (int64_t tile_idx = 0; tile_idx < num_unique_tiles; ++tile_idx) {
+      const int64_t offset = tile_idx * num_replicas;
+      for (int64_t i = 0; i < num_replicas; ++i) {
+        const int device_idx =
+            static_cast<int>(flat_tile_assignment[offset + i]);
+        cached_shard_to_unique_index_domain_index_[device_idx] = tile_idx;
+      }
+    }
+  });
+  return absl::MakeConstSpan(cached_shard_to_unique_index_domain_index_);
 }
 
 std::string HloShardingSpec::DebugString() const {

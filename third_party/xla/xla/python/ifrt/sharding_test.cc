@@ -44,6 +44,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 
@@ -140,6 +141,19 @@ TEST_P(SingleDeviceShardingTest, IndexDomains) {
                                SingleDeviceShardSemantics::kAddressableShards));
     EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
   }
+}
+
+TEST_P(SingleDeviceShardingTest, UniqueIndexDomains) {
+  DeviceListRef device_list = GetDevices({0});
+  ShardingRef sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
+
+  Shape shape({10, 20});
+  EXPECT_THAT(
+      sharding->UniqueIndexDomains(shape),
+      IsOkAndHolds(ElementsAre(FieldsAre(IndexDomain(shape), ElementsAre(0)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              IsOkAndHolds(ElementsAre(0)));
 }
 
 TEST_P(SingleDeviceShardingTest, Disassemble) {
@@ -296,6 +310,19 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have index domain information")));
+}
+
+TEST_P(OpaqueShardingTest, UniqueIndexDomainsFails) {
+  DeviceListRef device_list = GetDevices({0, 1});
+  ShardingRef sharding = OpaqueSharding::Create(device_list, MemoryKind());
+
+  EXPECT_THAT(sharding->UniqueIndexDomains(Shape({30})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("does not support UniqueIndexDomains")));
+  EXPECT_THAT(
+      sharding->ShardToUniqueIndexDomainIndex(),
+      StatusIs(tsl::error::INVALID_ARGUMENT,
+               HasSubstr("does not support ShardToUniqueIndexDomainIndex")));
 }
 
 TEST_P(OpaqueShardingTest, Hash) {
@@ -668,6 +695,35 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
                                  "of index domains and addressable devices")));
 }
 
+TEST_P(ConcreteShardingTest, UniqueIndexDomains) {
+  DeviceListRef device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  // devices 0..3 are addressable, 4..5 are non-addressable.
+  std::vector<Shape> shard_shapes = {
+      Shape({10}), Shape({10}), Shape({10}),
+      Shape({10}), Shape({10}), Shape({10}),
+  };
+  std::vector<IndexDomain> index_domains{
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({10}), Shape({10})),
+      IndexDomain(Index({10}), Shape({10})),
+      IndexDomain(Index({20}), Shape({10})),
+      IndexDomain(Index({20}), Shape({10})),
+  };
+  ShardingRef sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes, index_domains);
+
+  EXPECT_THAT(
+      sharding->UniqueIndexDomains(Shape({30})),
+      IsOkAndHolds(ElementsAre(
+          FieldsAre(IndexDomain(Index({0}), Shape({10})), ElementsAre(0, 1)),
+          FieldsAre(IndexDomain(Index({10}), Shape({10})), ElementsAre(2, 3)),
+          FieldsAre(IndexDomain(Index({20}), Shape({10})),
+                    ElementsAre(4, 5)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              IsOkAndHolds(ElementsAre(0, 0, 1, 1, 2, 2)));
+}
+
 TEST_P(ConcreteShardingTest, Hash) {
   ASSERT_OK_AND_ASSIGN(
       auto dynamic_shape,
@@ -892,6 +948,38 @@ TEST_P(ConcreteEvenShardingTest, IndexDomainsFailsForNonFullyReplicated) {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "ConcreteEvenSharding does not have index domain information")));
+}
+
+TEST_P(ConcreteEvenShardingTest, UniqueIndexDomains) {
+  Shape shape({10, 20});
+
+  auto device_list = GetDevices({0, 4});
+  ASSERT_TRUE(device_list->devices()[0]->IsAddressable());
+  ASSERT_FALSE(device_list->devices()[1]->IsAddressable());
+
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), /*shape=*/shape, /*shard_shape=*/shape,
+      /*is_fully_replicated=*/true);
+
+  EXPECT_THAT(sharding->UniqueIndexDomains(shape),
+              IsOkAndHolds(ElementsAre(
+                  FieldsAre(IndexDomain(shape), ElementsAre(0, 1)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              IsOkAndHolds(ElementsAre(0, 0)));
+}
+
+TEST_P(ConcreteEvenShardingTest, UniqueIndexDomainsFailsForNonFullyReplicated) {
+  auto device_list = GetDevices({0, 1});
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({5}), /*is_fully_replicated=*/false);
+
+  EXPECT_THAT(sharding->UniqueIndexDomains(Shape({30})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("does not have index domain information")));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("does not have index domain information")));
 }
 
 TEST_P(ConcreteEvenShardingTest, Hash) {
@@ -1235,6 +1323,27 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
                             IndexDomain(Index({0, 0}), Shape({3, 6})),
                             IndexDomain(Index({3, 0}), Shape({3, 6}))));
   }
+}
+
+TEST_P(ShardingParamShardingTest, UniqueIndexDomains) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  // devices 0..3 are addressable, 4..5 are non-addressable.
+  // 2x1 tiled with replication 3.
+  ShardingParam param{/*dim_shards=*/{2, 1},
+                      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef sharding,
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
+
+  Shape shape({6, 6});
+  EXPECT_THAT(sharding->UniqueIndexDomains(shape),
+              IsOkAndHolds(ElementsAre(
+                  FieldsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
+                            ElementsAre(0, 1, 2)),
+                  FieldsAre(IndexDomain(Index({3, 0}), Shape({3, 6})),
+                            ElementsAre(3, 4, 5)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              IsOkAndHolds(ElementsAre(0, 0, 0, 1, 1, 1)));
 }
 
 TEST_P(ShardingParamShardingTest, IndexDomainZeroRank) {
