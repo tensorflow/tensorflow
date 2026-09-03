@@ -360,6 +360,17 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   a = asarray(a)
 
   maybe_rank = a.shape.rank
+  if maybe_rank is not None:
+    for name, axis in (('axis1', axis1), ('axis2', axis2)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `{name}` (received {name}={axis}) is out of bounds '
+            f'for input {a} of rank {maybe_rank}.'
+        )
+  if maybe_rank is not None and axis1 == axis2:
+    raise ValueError('axis1 and axis2 cannot be the same axis')
+
   if (
       maybe_rank is not None
       and offset == 0
@@ -813,6 +824,17 @@ def real(val):
 @np_utils.np_doc('repeat')
 def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
+    # 1-D of size 1), so validate against max(rank, 1).
+    validation_rank = 1 if maybe_rank < 1 else maybe_rank
+    normalized = axis + validation_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= validation_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input {a} of rank {maybe_rank}.'
+      )
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
@@ -1700,6 +1722,13 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   rank = arr.shape.rank
   if rank is None:
     rank = array_ops.rank(arr)
+  if isinstance(rank, int):
+    normalized = axis + rank if axis < 0 else axis
+    if normalized < 0 or normalized >= rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input {arr} of rank {rank}.'
+      )
   axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
