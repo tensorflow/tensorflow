@@ -190,7 +190,7 @@ tf_module {
   }
   member_method {
     name: "argmin"
-    argspec: "args=[\'a\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'a\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "argsort"
