@@ -393,9 +393,11 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   const bool map_append = (md.options().map_entry());
   std::string sig;
   if (!map_append) {
-    sig = StrCat("bool ProtoParseFromString(\n    const string& s,\n    ",
-                 GetQualifiedName(md), "* msg)");
-    SetOutput(&header_).Print(sig, "\n        TF_MUST_USE_RESULT;");
+    sig = StrCat(
+        "TF_MUST_USE_RESULT "
+        "bool ProtoParseFromString(\n    const string& s,\n    ",
+        GetQualifiedName(md), "* msg)");
+    SetOutput(&header_).Print(sig, ";");
 
     SetOutput(&cc_);
     Print().Print(sig, " {").Nest();

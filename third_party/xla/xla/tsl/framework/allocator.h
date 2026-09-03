@@ -284,7 +284,7 @@ class Allocator {
   //  true if implemented.
   //
   // REQUIRES: GetStats is overridden.
-  virtual bool ClearStats() TF_MUST_USE_RESULT { return false; }
+  TF_MUST_USE_RESULT virtual bool ClearStats() { return false; }
 
   virtual void SetSafeFrontier(uint64_t count) {}
 

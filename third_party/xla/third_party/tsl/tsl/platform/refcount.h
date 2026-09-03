@@ -88,7 +88,7 @@ class RefCountPtr;
 
 // Adds a new reference to a RefCounted pointer.
 template <typename T>
-ABSL_MUST_USE_RESULT RefCountPtr<T> GetNewRef(T* ptr) {
+[[nodiscard]] RefCountPtr<T> GetNewRef(T* ptr) {
   static_assert(std::is_base_of<RefCounted, T>::value);
 
   if (ptr == nullptr) return RefCountPtr<T>();
@@ -103,7 +103,7 @@ class ABSL_NULLABILITY_COMPATIBLE RefCountPtr
     : public std::unique_ptr<T, RefCountDeleter> {
  public:
   using std::unique_ptr<T, RefCountDeleter>::unique_ptr;
-  ABSL_MUST_USE_RESULT RefCountPtr GetNewRef() const {
+  [[nodiscard]] RefCountPtr GetNewRef() const {
     if (this->get() == nullptr) return RefCountPtr<T>();
     this->get()->Ref();
     return RefCountPtr<T>(this->get());

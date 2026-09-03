@@ -1549,7 +1549,7 @@ absl::Status CommonPjRtClient::PrepareArguments(
                 switch (ev.ptr().state()) {
                   case PJRT_DeviceEvent_State_Error:
                     is_error = true;
-                    ABSL_FALLTHROUGH_INTENDED;
+                    [[fallthrough]];
                   case PJRT_DeviceEvent_State_Unavailable:
                     if (extra_deps_seen.insert(ev.ptr().ToC().device_event)
                             .second) {
