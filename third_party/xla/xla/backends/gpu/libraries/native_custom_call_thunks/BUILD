@@ -92,6 +92,7 @@ xla_cc_test(
         ":native_custom_call_handler_registration",
         ":native_custom_call_handler_registry",
         "//xla:shape_util",
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_id",
         "//xla/ffi:attribute_map",
