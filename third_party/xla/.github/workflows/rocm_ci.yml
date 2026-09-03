@@ -180,7 +180,6 @@ jobs:
       ROCM_DISTRO_URL: ${{ needs.rocm-config.outputs.rocm-distro-url }}
       ROCM_DISTRO_HASH: ${{ needs.rocm-config.outputs.rocm-distro-hash }}
       EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/execute_ci_build_upstream.sh
-      GLOBAL_SYMBOL_VERSION_LDS_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/global_symbol_version.lds
       # Unique per run so a crashed run cannot collide with this one on a pooled node.
       CONTAINER_NAME: xla-${{ github.run_id }}-${{ github.run_attempt }}
       # Stable label so leftover containers from crashed runs can be swept on a pooled node.
@@ -199,18 +198,6 @@ jobs:
         run: |
           wget -O build_tools/rocm/execute_ci_build_upstream.sh "${EXECUTE_CI_BUILD_URL}"
           chmod +x build_tools/rocm/execute_ci_build_upstream.sh
-          wget -O build_tools/rocm/global_symbol_version.lds "${GLOBAL_SYMBOL_VERSION_LDS_URL}"
-          LDS_SHA=$(sha256sum build_tools/rocm/global_symbol_version.lds | cut -d' ' -f1)
-          # Workaround for the symbol clash with ROCm's libLLVM.so
-          {
-            echo "LLVM_SYMBOL_CLASH_WAR<<EOF"
-            echo "--dynamic_mode=default"
-            echo "--linkopt=-Wl,--version-script,/work/build_tools/rocm/global_symbol_version.lds"
-            echo "--sandbox_add_mount_pair=/work/build_tools/rocm/global_symbol_version.lds"
-            echo "--action_env=global_symbol_version_lds_CACHEBUSTER=${LDS_SHA}"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
       - *start_container
 
       - name: CPU Info
@@ -219,7 +206,6 @@ jobs:
       - name: Test XLA [single_gpu]
         timeout-minutes: 120
         run: |
-          # LLVM_SYMBOL_CLASH_WAR is intentionally unquoted so it splits into one flag per line.
           # shellcheck disable=SC2086
           docker exec "${CONTAINER_NAME}" build_tools/rocm/execute_ci_build_upstream.sh \
             --config=rocm_ci_hermetic \
@@ -232,7 +218,6 @@ jobs:
             --local_test_jobs=1 \
             --internal_spawn_scheduler \
             --strategy=TestRunner=dynamic \
-            ${LLVM_SYMBOL_CLASH_WAR} \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
@@ -241,7 +226,6 @@ jobs:
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |
-          # LLVM_SYMBOL_CLASH_WAR is intentionally unquoted so it splits into one flag per line.
           # shellcheck disable=SC2086
           docker exec "${CONTAINER_NAME}" build_tools/rocm/execute_ci_build_upstream.sh \
             --config=rocm_ci_hermetic \
@@ -252,7 +236,6 @@ jobs:
             --repo_env=ROCM_PATH="" \
             --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
             --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
-            ${LLVM_SYMBOL_CLASH_WAR} \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \
