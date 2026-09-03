@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_IMAGE_MIRROR_PAD_OP_H_
 #define TENSORFLOW_CORE_KERNELS_IMAGE_MIRROR_PAD_OP_H_
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
@@ -337,17 +339,25 @@ namespace functor {
 // values are replicated (offset == 0) or not replicated (offset == 1).
 template <typename Device, typename T, typename Tpaddings, int Dims>
 struct MirrorPad {
-  void operator()(const Device& device,
-                  typename TTypes<T, Dims, int32_t>::Tensor output,
-                  typename TTypes<T, Dims, int32_t>::ConstTensor input,
+  void operator()(const Device& device, typename TTypes<T, Dims>::Tensor output,
+                  typename TTypes<T, Dims>::ConstTensor input,
                   typename TTypes<Tpaddings>::ConstMatrix padding, int offset) {
-    Eigen::array<Eigen::IndexPair<int32_t>, Dims> padding_dims;
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output32, auto input32) {
+          // The padding_dims array must use the same index type as the
+          // tensor it applies to, or it silently narrows the very
+          // dimensions this indexing is widened to represent.
+          using Index = typename std::decay_t<decltype(output32)>::Index;
 
-    for (int i = 0; i < Dims; ++i) {
-      padding_dims[i] = Eigen::IndexPair<int32_t>(padding(i, 0), padding(i, 1));
-    }
+          Eigen::array<Eigen::IndexPair<Index>, Dims> padding_dims;
+          for (int i = 0; i < Dims; ++i) {
+            padding_dims[i] =
+                Eigen::IndexPair<Index>(padding(i, 0), padding(i, 1));
+          }
 
-    output.device(device) = MirrorPadOp(input, padding_dims, offset);
+          output32.device(device) = MirrorPadOp(input32, padding_dims, offset);
+        },
+        output, input);
   }
 
   template <typename PaddingDimensions, typename Derived>
@@ -364,74 +374,82 @@ struct MirrorPad {
 // values are replicated (offset == 0) or not replicated (offset == 1).
 template <typename Device, typename T, typename Tpaddings, int Dims>
 struct MirrorPadGrad {
-  void operator()(const Device& device,
-                  typename TTypes<T, Dims, int32_t>::Tensor output,
-                  typename TTypes<T, Dims, int32_t>::ConstTensor input,
+  void operator()(const Device& device, typename TTypes<T, Dims>::Tensor output,
+                  typename TTypes<T, Dims>::ConstTensor input,
                   typename TTypes<Tpaddings>::ConstMatrix paddings, int offset,
-                  typename TTypes<T, Dims, int32_t>::Tensor scratch) {
-    // Copy the gradient input into the scratch buffer.
-    scratch.device(device) = input;
+                  typename TTypes<T, Dims>::Tensor scratch) {
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output32, auto input32, auto scratch32) {
+          // The offset and extent arrays must use the same index type as the
+          // tensors they slice, or they silently narrow the very dimensions
+          // this indexing is widened to represent.
+          using Index = typename std::decay_t<decltype(scratch32)>::Index;
 
-    Eigen::array<int32_t, Dims> lhs_offsets;
-    Eigen::array<int32_t, Dims> rhs_offsets;
-    Eigen::array<int32_t, Dims> extents;
-    Eigen::array<bool, Dims> reverses;
+          // Copy the gradient input into the scratch buffer.
+          scratch32.device(device) = input32;
 
-    for (int i = 0; i < Dims; ++i) {
-      lhs_offsets[i] = 0;
-      rhs_offsets[i] = 0;
-      extents[i] = scratch.dimension(i);
-      reverses[i] = false;
-    }
+          Eigen::array<Index, Dims> lhs_offsets;
+          Eigen::array<Index, Dims> rhs_offsets;
+          Eigen::array<Index, Dims> extents;
+          Eigen::array<bool, Dims> reverses;
 
-    // At this point, the central part (non-padded area) does not include the
-    // gradients back-propagated through padded areas. Those gradient components
-    // need be added to the central part.
-    //
-    // Note that a gradient input element falls into a padded area iff in at
-    // least one dimension i, the coordinate x(i) is in the range (python-style)
-    // [:paddings(i,0)] or [-paddings(i,1):].
+          for (int i = 0; i < Dims; ++i) {
+            lhs_offsets[i] = 0;
+            rhs_offsets[i] = 0;
+            extents[i] = scratch32.dimension(i);
+            reverses[i] = false;
+          }
 
-    for (int i = 0; i < Dims; ++i) {
-      reverses[i] = true;
+          // At this point, the central part (non-padded area) does not include
+          // the gradients back-propagated through padded areas. Those gradient
+          // components need be added to the central part.
+          //
+          // Note that a gradient input element falls into a padded area iff in
+          // at least one dimension i, the coordinate x(i) is in the range
+          // (python-style) [:paddings(i,0)] or [-paddings(i,1):].
 
-      // This handles the case when coordinate in dimension i is in the range
-      // [:paddings(i,0)]. This portion is added to the range
-      // [paddings(i,0) + offset:2 * paddings(i,0) + offset].
-      if (paddings(i, 0) > 0) {
-        rhs_offsets[i] = 0;
-        lhs_offsets[i] = paddings(i, 0) + offset;
-        extents[i] = paddings(i, 0);
+          for (int i = 0; i < Dims; ++i) {
+            reverses[i] = true;
 
-        scratch.slice(lhs_offsets, extents).device(device) +=
-            scratch.slice(rhs_offsets, extents).reverse(reverses);
-      }
+            // This handles the case when coordinate in dimension i is in the
+            // range [:paddings(i,0)]. This portion is added to the range
+            // [paddings(i,0) + offset:2 * paddings(i,0) + offset].
+            if (paddings(i, 0) > 0) {
+              rhs_offsets[i] = 0;
+              lhs_offsets[i] = paddings(i, 0) + offset;
+              extents[i] = paddings(i, 0);
 
-      // This handles the case when coordinate in dimension i is in the range
-      // [-paddings(i,1):]. This portion is added to the range
-      // [-2 * paddings(i,1) - offset:-paddings(i,1) - offset].
-      if (paddings(i, 1) > 0) {
-        rhs_offsets[i] = scratch.dimension(i) - paddings(i, 1);
-        lhs_offsets[i] = rhs_offsets[i] - paddings(i, 1) - offset;
-        extents[i] = paddings(i, 1);
+              scratch32.slice(lhs_offsets, extents).device(device) +=
+                  scratch32.slice(rhs_offsets, extents).reverse(reverses);
+            }
 
-        scratch.slice(lhs_offsets, extents).device(device) +=
-            scratch.slice(rhs_offsets, extents).reverse(reverses);
-      }
+            // This handles the case when coordinate in dimension i is in the
+            // range [-paddings(i,1):]. This portion is added to the range
+            // [-2 * paddings(i,1) - offset:-paddings(i,1) - offset].
+            if (paddings(i, 1) > 0) {
+              rhs_offsets[i] = scratch32.dimension(i) - paddings(i, 1);
+              lhs_offsets[i] = rhs_offsets[i] - paddings(i, 1) - offset;
+              extents[i] = paddings(i, 1);
 
-      reverses[i] = false;
-      lhs_offsets[i] = paddings(i, 0);
-      rhs_offsets[i] = paddings(i, 0);
-      extents[i] = output.dimension(i);
+              scratch32.slice(lhs_offsets, extents).device(device) +=
+                  scratch32.slice(rhs_offsets, extents).reverse(reverses);
+            }
 
-      // At this point, scratch buffer contains gradient input as if paddings
-      // for dimension k = 0,...,i are zeros. Therefore after the loop
-      // termination, the central part of the scratch buffer contains the folded
-      // gradients.
-    }
+            reverses[i] = false;
+            lhs_offsets[i] = paddings(i, 0);
+            rhs_offsets[i] = paddings(i, 0);
+            extents[i] = output32.dimension(i);
 
-    // Copy the central part of the scratch buffer to the output.
-    output.device(device) = scratch.slice(rhs_offsets, extents);
+            // At this point, scratch buffer contains gradient input as if
+            // paddings for dimension k = 0,...,i are zeros. Therefore after the
+            // loop termination, the central part of the scratch buffer contains
+            // the folded gradients.
+          }
+
+          // Copy the central part of the scratch buffer to the output.
+          output32.device(device) = scratch32.slice(rhs_offsets, extents);
+        },
+        output, input, scratch);
   }
 };
 }  // namespace functor
