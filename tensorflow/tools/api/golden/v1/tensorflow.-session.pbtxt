@@ -17,6 +17,18 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__del__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'exec_type\', \'exec_value\', \'exec_tb\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'target\', \'graph\', \'config\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\'], "
   }
@@ -47,6 +59,7 @@ tf_class {
   member_method {
     name: "reset"
     argspec: "args=[\'target\', \'containers\', \'config\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "run"

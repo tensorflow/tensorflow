@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
@@ -36,7 +36,7 @@ namespace ifrt {
 // Wraps a computation that has been fully compiled and loaded for MPMD
 // execution.
 class MpmdLoadedExecutable
-    : public llvm::RTTIExtends<MpmdLoadedExecutable, LoadedExecutable> {
+    : public RTTIExtends<MpmdLoadedExecutable, LoadedExecutable> {
  public:
   // MPMD-specific interfaces.
 

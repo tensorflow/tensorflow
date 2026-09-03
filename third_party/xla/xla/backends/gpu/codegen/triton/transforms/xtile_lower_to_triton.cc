@@ -88,6 +88,19 @@ bool IsDotScaledCanonical(::xla::xtile::DotScaledOp op) {
          is_rank_2(op.getLhsScale()) && is_rank_2(op.getRhsScale());
 }
 
+// Removes unit dimensions from a dot result to produce the rank-2 canonical
+// form required by Triton. For example, tensor<1x128x256xf32> becomes
+// tensor<128x256xf32>.
+RankedTensorType CollapseUnitDims(RankedTensorType type) {
+  llvm::SmallVector<int64_t> shape;
+  for (int64_t dim : type.getShape()) {
+    if (dim != 1) {
+      shape.push_back(dim);
+    }
+  }
+  return RankedTensorType::get(shape, type.getElementType());
+}
+
 LogicalResult CanonicalDotScaled(::xla::xtile::DotScaledOp op,
                                  mlir::PatternRewriter& rewriter,
                                  ::xla::xtile::DotScaledOp& canonical_dot) {
@@ -140,10 +153,11 @@ LogicalResult CanonicalDotScaled(::xla::xtile::DotScaledOp op,
   }
 
   RankedTensorType result_type = mlir::cast<RankedTensorType>(op.getType());
-  RankedTensorType new_result_type = RankedTensorType::get(
-      {mlir::cast<ShapedType>(lhs.getType()).getShape()[0],
-       mlir::cast<ShapedType>(rhs.getType()).getShape()[1]},
-      result_type.getElementType());
+  RankedTensorType new_result_type = CollapseUnitDims(result_type);
+  if (new_result_type.getRank() != 2) {
+    return rewriter.notifyMatchFailure(op_loc,
+                                       "Failed to canonicalize result.");
+  }
 
   auto canonical_dims = mlir::stablehlo::DotDimensionNumbersAttr::get(
       rewriter.getContext(), {}, {}, {1}, {0});
@@ -404,9 +418,8 @@ class XTileLowerToTritonPass
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns
-        .add<CanonicalizeDotScaled, LowerDotScaled, LowerReshape, LowerScan>(
-            mlir_context);
+    patterns.add<CanonicalizeDotScaled, LowerDotScaled, LowerReshape, LowerScan,
+                 LowerTranspose>(mlir_context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();

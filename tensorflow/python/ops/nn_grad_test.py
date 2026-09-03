@@ -181,6 +181,25 @@ class DepthwiseConv2dTest(test.TestCase):
 
 class EluGradOpTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEluGradPreservesSmallNegativeValues(self):
+    test_cases = (
+        (dtypes.float32, -20.0, 1e-6),
+        (dtypes.float64, -40.0, 1e-14),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        inputs = constant_op.constant(value, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          elu = gen_nn_ops.elu(inputs)
+
+        elu_grad = tape.gradient(elu, inputs)
+        expected = np.exp(dtype.as_numpy_dtype(value))
+        self.assertAllClose(
+            expected, self.evaluate(elu_grad), rtol=rtol, atol=0
+        )
+
   @test_util.run_deprecated_v1
   def testEluGradGradWRTgrad_ys(self):
     inputs = constant_op.constant(
@@ -217,6 +236,57 @@ class EluGradOpTest(test.TestCase):
 
 
 class SeluGradOpTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSeluGradPreservesSmallNegativeGradients(self):
+    scale_alpha = 1.7580993408473768599402175208123
+    test_cases = (
+        (dtypes.float32, -20.0, 1e-6),
+        (dtypes.float64, -700.0, 1e-14),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        inputs = constant_op.constant(value, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          selu = gen_nn_ops.selu(inputs)
+
+        selu_grad = tape.gradient(selu, inputs)
+        np_dtype = dtype.as_numpy_dtype
+        expected = np_dtype(scale_alpha) * np.exp(np_dtype(value))
+        self.assertAllClose(
+            expected, self.evaluate(selu_grad), rtol=rtol, atol=0
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSeluGradEdgeCases(self):
+    scale = 1.0507009873554804934193349852946
+    scale_alpha = 1.7580993408473768599402175208123
+    for dtype in (dtypes.float32, dtypes.float64):
+      with self.subTest(dtype=dtype.name):
+        np_dtype = dtype.as_numpy_dtype
+        values = np.array(
+            [-np.inf, -2.0, -0.0, 0.0, 2.0, np.inf, np.nan], dtype=np_dtype
+        )
+        inputs = constant_op.constant(values, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          selu = gen_nn_ops.selu(inputs)
+
+        selu_grad = self.evaluate(tape.gradient(selu, inputs))
+        expected = np.array(
+            [
+                0.0,
+                np_dtype(scale_alpha) * np.exp(np_dtype(-2.0)),
+                scale,
+                scale,
+                scale,
+                scale,
+                np.nan,
+            ],
+            dtype=np_dtype,
+        )
+        self.assertAllClose(expected, selu_grad)
 
   @test_util.run_deprecated_v1
   def testSeluGradGradWRTgrad_ys(self):

@@ -26,10 +26,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
@@ -41,11 +41,13 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -168,23 +170,33 @@ struct CollectiveKernelThunkMetadata {
   std::vector<CollectiveThunk::Buffer> buffers;
 };
 
-CollectiveKernelSpec CreateCollectiveKernelSpec(int64_t num_elements,
-                                                int64_t signal_size,
-                                                int64_t remote_size,
-                                                bool is_multimem_enabled) {
+DebugOptions DefaultDebugOptions() {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  return debug_options;
+}
+
+CollectiveKernelSpec CreateCollectiveKernelSpec(
+    int64_t num_elements, int64_t signal_size, int64_t remote_size,
+    bool is_multimem_enabled,
+    const DebugOptions& debug_options = DefaultDebugOptions()) {
+  const SymmetricMemoryType sym_mem_type =
+      IsCrossHostOneShotKernelEnabled(debug_options,
+                                      DebugOptions::ALLCOLLECTIVES)
+          ? SymmetricMemoryType::kLoadStoreAccessible
+          : SymmetricMemoryType::kXlaRendezvous;
   return {
       /*operand_buffer_specs=*/{
           {/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
       /*result_buffer_specs=*/
       {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
       /*scratch_buffers=*/
-      {{signal_size, /*requires_multimem=*/false,
-        SymmetricMemoryType::kXlaRendezvous,
+      {{signal_size, /*requires_multimem=*/false, sym_mem_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
        {remote_size,
-        /*requires_multimem=*/is_multimem_enabled,
-        SymmetricMemoryType::kXlaRendezvous,
+        /*requires_multimem=*/is_multimem_enabled, sym_mem_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}},
       /*argument_descriptors=*/
@@ -198,7 +210,8 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(int64_t num_elements,
 }
 
 CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
-    int num_devices, int num_elements, bool is_multimem_enabled, bool use_ptx) {
+    int num_devices, int num_elements, bool is_multimem_enabled, bool use_ptx,
+    const DebugOptions& debug_options = DefaultDebugOptions()) {
   const int64_t input_size_bytes = num_elements * sizeof(uint64_t);
   Shape input_shape = ShapeUtil::MakeShape(U64, {num_elements});
   ReplicaGroup replica_group;
@@ -239,9 +252,8 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
   result.thunk = std::make_unique<CollectiveKernelThunk>(
       std::move(thunk_info), collective_config,
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
-                                 is_multimem_enabled),
-      /*is_async=*/false, result.buffers,
-      /*is_collective_kernel_enabled=*/true,
+                                 is_multimem_enabled, debug_options),
+      result.buffers, /*is_collective_kernel_enabled=*/true,
       /*kernel_name=*/kKernelName,
       /*launch_dimensions=*/launch_dimensions,
       /*shmem_bytes=*/0);
@@ -268,14 +280,14 @@ absl::StatusOr<std::vector<uint8_t>> CompilePtxToCubin(
     const DebugOptions& debug_options) {
   se::cuda::CompilationProviderOptions options =
       se::cuda::CompilationProviderOptions::FromDebugOptions(debug_options);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<se::cuda::CompilationProvider> compilation_provider,
       se::cuda::AssembleCompilationProvider(options));
   se::CudaComputeCapability cc =
       *device_description.gpu_compute_capability().cuda_compute_capability();
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(debug_options);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->Compile(cc, ptx_string, compilation_options));
   return std::move(assembly.cubin);
@@ -291,7 +303,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
       std::make_pair(LocalDeviceId(0), GlobalDeviceId(0)),
       std::make_pair(LocalDeviceId(1), GlobalDeviceId(1))});
 
-  ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  ABSL_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
   DeviceAssignment device_assignment(/*replica_count=*/metadata.num_devices,
@@ -305,7 +317,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   run_options.mutable_run_options()->set_gpu_executable_run_options(
       &gpu_options);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor->device_ordinal())));
@@ -329,9 +341,9 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
 
   if (!input_data.empty()) {
     VLOG(3) << "Copying input data to the device";
-    RETURN_IF_ERROR(stream->Memcpy(&input_buffer, input_data.data(),
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(&input_buffer, input_data.data(),
                                    metadata.input_data_size_bytes));
-    RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
 
   CollectiveCliqueRequests clique_requests;
@@ -341,28 +353,29 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
     all_replica_groups.add_replica_ids(i);
   }
   // Request a clique that covers all devices (this test runs on 2 gpus).
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       xla::gpu::GetGpuCliqueKey(
           collective_params, {all_replica_groups},
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID));
   std::vector<GlobalDeviceId> all_device_groups;
+  all_device_groups.reserve(metadata.num_devices);
   for (int i = 0; i < metadata.num_devices; ++i) {
     all_device_groups.push_back(GlobalDeviceId(i));
   }
-  RETURN_IF_ERROR(clique_requests.RequestClique(
+  ABSL_RETURN_IF_ERROR(clique_requests.RequestClique(
       clique_key, /*device_groups=*/{all_device_groups}));
   CollectiveMemoryRequests memory_requests(buffer_allocations);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
                                       &memory_requests, executor,
                                       &buffer_allocations};
 
-  RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
+  ABSL_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
   CollectiveMemoryCache collective_memory_cache;
   CollectiveCliques collective_cliques;
-  ASSIGN_OR_RETURN(collective_cliques, AcquireCollectiveCliques(
+  ABSL_ASSIGN_OR_RETURN(collective_cliques, AcquireCollectiveCliques(
                                            collective_params, clique_requests));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CollectiveMemory collective_memory,
       AcquireCollectiveMemory(collective_params, collective_cliques,
                               memory_requests, collective_memory_cache));
@@ -372,6 +385,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &buffer_allocations;
   initialize_params.collective_params = &collective_params;
+  initialize_params.collective_cliques = &collective_cliques;
   initialize_params.src = {kKernelSource};
   initialize_params.collective_memory = &collective_memory;
 
@@ -384,18 +398,18 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
 
   std::vector<uint8_t> cubin;
   if (!metadata.use_ptx) {
-    ASSIGN_OR_RETURN(cubin, CompilePtxToCubin(kKernelSource,
+    ABSL_ASSIGN_OR_RETURN(cubin, CompilePtxToCubin(kKernelSource,
                                               executor->GetDeviceDescription(),
                                               DebugOptions()));
     initialize_params.src.binary = cubin;
   }
-  RETURN_IF_ERROR(metadata.thunk->Initialize(initialize_params));
+  ABSL_RETURN_IF_ERROR(metadata.thunk->Initialize(initialize_params));
 
   auto execute_params = Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream.get(),
       /*command_buffer_trace_stream=*/nullptr, &collective_params,
       /*collective_cliques=*/nullptr, /*collective_memory=*/&collective_memory);
-  RETURN_IF_ERROR(metadata.thunk->ExecuteOnStream(execute_params));
+  ABSL_RETURN_IF_ERROR(metadata.thunk->ExecuteOnStream(execute_params));
   return output_buffer;
 }
 
@@ -474,7 +488,8 @@ TEST(CollectiveKernelThunkTest, MultiprocessTest) {
 
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/kDevicesCount, /*num_elements=*/kNumElements,
-      /*is_multimem_enabled=*/false, /*use_ptx=*/true);
+      /*is_multimem_enabled=*/false, /*use_ptx=*/true,
+      /*debug_options=*/DebugOptions());
   EXPECT_THAT(RunCollectiveKernelThunkOnDevices(metadata,
                                                 /*emulate_multiprocess=*/true),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -571,8 +586,7 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
       Thunk::ThunkInfo(), collective_config,
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
                                  is_multimem_enabled),
-      /*is_async=*/true, buffers,
-      /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
+      buffers, /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
       launch_dimensions);
 
   DeviceAssignment device_assignment(/*replica_count=*/1,
@@ -616,19 +630,29 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
                                       &allocations1};
   ASSERT_OK(collective_kernel_thunk->Prepare(prepare_params));
 
+  CollectiveMemoryCache collective_memory_cache;
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveCliques collective_cliques,
+      AcquireCollectiveCliques(collective_params, clique_requests));
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveMemory collective_memory,
+      AcquireCollectiveMemory(collective_params, collective_cliques,
+                              memory_requests, collective_memory_cache));
+
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = executor;
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &allocations1;
   initialize_params.collective_params = &collective_params;
+  initialize_params.collective_cliques = &collective_cliques;
   initialize_params.src.text = kKernelSource;
+  initialize_params.collective_memory = &collective_memory;
   ASSERT_OK(collective_kernel_thunk->Initialize(initialize_params));
   ASSERT_OK(stream->BlockHostUntilDone());
 
   Thunk::ExecuteParams params1 = Thunk::ExecuteParams::Create(
       run_options, allocations1, stream.get(), trace_stream.get(),
-      &collective_params, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+      &collective_params, &collective_cliques, &collective_memory);
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -649,8 +673,7 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
   BufferAllocations updated_allocations({src2, dst2}, 0, nullptr);
   Thunk::ExecuteParams params2 = Thunk::ExecuteParams::Create(
       run_options, updated_allocations, stream.get(), trace_stream.get(),
-      &collective_params, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+      &collective_params, &collective_cliques, &collective_memory);
   std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
   Command::RecordParams update_record_params = {state,
                                                 std::move(updated_allocs)};

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -210,17 +211,50 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
         .value();
   }
 
+  // Runs buffer assignment after coloring the value defined by
+  // `view_instruction_name` with `view_color` (and everything else color 0).
+  // When `dus_view_color` is set, buffers of that color are skipped (given no
+  // allocation). Used to exercise Options::dus_view_color without depending on
+  // any backend that supplies the real view color.
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithDusViewColor(
+      HloModule* module, absl::string_view view_instruction_name,
+      BufferValue::Color view_color,
+      std::optional<BufferValue::Color> dus_view_color) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.dus_view_color = dus_view_color;
+    opts.colorer = [name = std::string(view_instruction_name), view_color](
+                       HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+      for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
+        value->set_color(value->instruction()->name() == name
+                             ? view_color
+                             : BufferValue::Color(0));
+      }
+      return absl::OkStatus();
+    };
+    absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+        BufferAssigner::Run(
+            module, std::make_unique<DependencyHloOrdering>(module),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts));
+    CHECK_OK(assignment.status());
+    return std::move(assignment).value();
+  }
+
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
       HloModule* module, absl::Span<HloInstruction* const> instruction_sequence,
       int64_t alignment = 1,
       BufferAssigner::CanUseAllocation can_use_allocation =
-          BufferAssigner::DefaultCanUseAllocation()) {
+          BufferAssigner::DefaultCanUseAllocation(),
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value algorithm =
+          buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT) {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     CHECK_OK(schedule.Update());
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
     opts.can_use_allocation = std::move(can_use_allocation);
+    opts.buffer_assignment_algorithm = algorithm;
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                &BufferSizeBytes, &alias_info_,
@@ -835,6 +869,57 @@ ENTRY main {
   EXPECT_EQ(neg_2_buffer.index(), neg_1_buffer.index());
 }
 
+TEST_F(BufferAssignmentTest,
+       IntermediateValueWithMultiplePositionsCanBeReused) {
+  // Verifies that an intermediate value with multiple positions (e.g. passed
+  // into a while loop via a tuple as well as a subsequent elementwise
+  // instruction) can share its buffer with the subsequent instruction even when
+  // its end_position recorded in HloLiveRange points to a secondary position
+  // inside the loop.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+while_cond {
+  param = (s32[], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  five = s32[] constant(5)
+  ROOT cmp = pred[] compare(i, five), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  val = f32[100] get-tuple-element(param), index=1
+  one = s32[] constant(1)
+  i_next = s32[] add(i, one)
+  ROOT tuple = (s32[], f32[100]) tuple(i_next, val)
+}
+
+ENTRY main {
+  p0 = f32[100]{0} parameter(0)
+  x_intermediate = f32[100]{0} negate(p0)
+  zero = s32[] constant(0)
+  init_tuple = (s32[], f32[100]) tuple(zero, x_intermediate)
+  loop = (s32[], f32[100]) while(init_tuple), condition=while_cond, body=while_body
+  s = f32[100] get-tuple-element(loop), index=1
+  abs = f32[100] abs(s)
+  x_final = f32[100] add(x_intermediate, abs)
+  ROOT res = (f32[100], f32[100]) tuple(x_final, abs)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x_intermediate =
+      FindInstruction(module.get(), "x_intermediate");
+  HloInstruction* x_final = FindInstruction(module.get(), "x_final");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  BufferAllocation x_inter_buffer = GetAllocation(*buffers, x_intermediate, {});
+  BufferAllocation x_final_buffer = GetAllocation(*buffers, x_final, {});
+
+  EXPECT_EQ(x_inter_buffer.index(), x_final_buffer.index());
+}
+
 TEST_F(BufferAssignmentTest, CanUseAllocationDoesNotMixInputOutputColors) {
   // Even when a backend allows S(0) temps to be assigned to S(1) temp
   // allocations, input/output allocations must match raw colors. They are
@@ -947,6 +1032,98 @@ ENTRY main {
               ::testing::Contains(&neg1_value));
   EXPECT_THAT(neg0_allocation.CrossColorBuffers(),
               ::testing::Not(::testing::Contains(&neg0_value)));
+}
+
+TEST_F(BufferAssignmentTest, CrossColorReuseDoesNotPartiallyOverlapOperand) {
+  // Operand/user buffer sharing is only safe when the user is assigned the
+  // operand's exact chunk. Cross-color best-fit placement cannot use that
+  // exception because it may choose a different offset.
+  const char* const hlo_text = R"(
+HloModule test
+
+add_s {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p_d = f32[2048]{0} parameter(0)
+  p_a = f32[1024]{0} parameter(1)
+  p_k = f32[256]{0} parameter(2)
+  d = f32[2048]{0:S(1)} negate(p_d)
+  zero = f32[] constant(0)
+  d_sum = f32[] reduce(d, zero), dimensions={0}, to_apply=add_s
+  a = f32[1024]{0} negate(p_a)
+  b = f32[1024]{0} abs(a)
+  k = f32[256]{0:S(1)} negate(p_k)
+  k_sum = f32[] reduce(k, zero), dimensions={0}, to_apply=add_s
+  b_sum = f32[] reduce(b, zero), dimensions={0}, to_apply=add_s
+  partial = f32[] add(d_sum, k_sum)
+  ROOT out = f32[] add(partial, b_sum)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  HloInstruction* p_d = FindInstruction(module.get(), "p_d");
+  HloInstruction* p_a = FindInstruction(module.get(), "p_a");
+  HloInstruction* p_k = FindInstruction(module.get(), "p_k");
+  HloInstruction* d = FindInstruction(module.get(), "d");
+  HloInstruction* zero = FindInstruction(module.get(), "zero");
+  HloInstruction* d_sum = FindInstruction(module.get(), "d_sum");
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  HloInstruction* k = FindInstruction(module.get(), "k");
+  HloInstruction* k_sum = FindInstruction(module.get(), "k_sum");
+  HloInstruction* b_sum = FindInstruction(module.get(), "b_sum");
+  HloInstruction* partial = FindInstruction(module.get(), "partial");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  std::vector<HloInstruction*> sequence = {
+      p_d, p_a, p_k, d, zero, d_sum, a, b, k, k_sum, b_sum, partial, out};
+  auto assignment = RunBufferAssignmentWithInstructionSequence(
+      module.get(), sequence, /*alignment=*/1,
+      BufferAssigner::AllowCrossColorReuse(0, 1),
+      buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL);
+
+  const HloValue& d_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(d, {});
+  const HloValue& k_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(k, {});
+  const HloValue& a_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(a, {});
+  const HloValue& b_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(b, {});
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice d_slice,
+                       assignment->GetUniqueSlice(d, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice k_slice,
+                       assignment->GetUniqueSlice(k, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice a_slice,
+                       assignment->GetUniqueSlice(a, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice b_slice,
+                       assignment->GetUniqueSlice(b, {}));
+
+  EXPECT_EQ(d_value.shape().layout().memory_space(), 1);
+  EXPECT_EQ(k_value.shape().layout().memory_space(), 1);
+  EXPECT_EQ(a_value.shape().layout().memory_space(), 0);
+  EXPECT_EQ(b_value.shape().layout().memory_space(), 0);
+  EXPECT_EQ(d_slice.index(), k_slice.index());
+  EXPECT_EQ(d_slice.index(), a_slice.index());
+  EXPECT_EQ(d_slice.index(), b_slice.index());
+  EXPECT_EQ(d_slice.allocation()->color(), 1);
+  EXPECT_EQ(d_slice.allocation()->size(), 8192);
+  EXPECT_EQ(d_slice.offset(), 0);
+  EXPECT_EQ(k_slice.offset(), 0);
+  EXPECT_EQ(a_slice.offset(), 0);
+  EXPECT_EQ(b_slice.offset(), 4096);
+  EXPECT_EQ(a_slice.size(), 4096);
+  EXPECT_EQ(b_slice.size(), 4096);
+  EXPECT_FALSE(a_slice.OverlapsWith(b_slice));
+  EXPECT_THAT(d_slice.allocation()->CrossColorBuffers(),
+              ::testing::Contains(&a_value));
+  EXPECT_THAT(d_slice.allocation()->CrossColorBuffers(),
+              ::testing::Contains(&b_value));
 }
 
 TEST_F(BufferAssignmentTest,
@@ -2795,6 +2972,61 @@ ENTRY main {
   }
 }
 
+// Positive: when Options::dus_view_color is set, a buffer colored with that
+// color is a pointer stand-in and gets no allocation of its own, while other
+// buffers (e.g. the consumer) are still allocated normally.
+TEST_F(BufferAssignmentTest, DusViewColoredBufferAllocationSkipped) {
+  const char* const kHlo = R"(
+HloModule DusViewSkip
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  view = f32[100,10]{1,0} custom-call(p0), custom_call_target="view"
+  ROOT out = f32[100,10]{1,0} add(view, view)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+  const HloInstruction* out = FindInstruction(module.get(), "out");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusViewColor(module.get(), "view", kViewColor,
+                                          /*dus_view_color=*/kViewColor);
+
+  // The view buffer was skipped: no allocation of its own.
+  EXPECT_FALSE(assignment->HasTopLevelAllocation(view));
+  // The consumer is still allocated normally.
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(out));
+}
+
+// Negative: when Options::dus_view_color is unset (the shipped default), the
+// same colored buffer is allocated normally; the color carries no special
+// meaning on its own.
+TEST_F(BufferAssignmentTest, DusViewColorUnsetAllocatesBuffer) {
+  const char* const kHlo = R"(
+HloModule DusViewDisabled
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  view = f32[100,10]{1,0} custom-call(p0), custom_call_target="view"
+  ROOT out = f32[100,10]{1,0} add(view, view)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusViewColor(module.get(), "view", kViewColor,
+                                          /*dus_view_color=*/std::nullopt);
+
+  // No skip color set, so the buffer is allocated like any other.
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(view));
+}
+
 class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
@@ -4089,6 +4321,45 @@ TEST(BufferAllocationSliceProtoTest, FromProtoErrorAllocationNotFound) {
               absl_testing::StatusIs(
                   absl::StatusCode::kOutOfRange,
                   HasSubstr("Buffer allocation index 2 is out of range.")));
+}
+
+TEST(BufferAllocationSliceProtoTest, FromProtoErrorNegativeOffsetOrSize) {
+  std::vector<BufferAllocation> allocations;
+  allocations.push_back(
+      BufferAllocation(/*index=*/0, /*size=*/200, /*color=*/0));
+
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_buffer_allocation_index(0);
+  proto.set_offset(-1);
+  proto.set_size(60);
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice has negative offset/size")));
+
+  proto.set_offset(50);
+  proto.set_size(-1);
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice has negative offset/size")));
+}
+
+TEST(BufferAllocationSliceProtoTest, FromProtoErrorSliceOutOfRange) {
+  std::vector<BufferAllocation> allocations;
+  allocations.push_back(
+      BufferAllocation(/*index=*/0, /*size=*/200, /*color=*/0));
+
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_buffer_allocation_index(0);
+  proto.set_offset(150);
+  proto.set_size(60);
+
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice [offset=150, size=60] is out of "
+                            "range for allocation #0 of size 200")));
 }
 
 TEST(BufferAllocationTest, ToProto) {
@@ -5492,6 +5763,80 @@ void BM_FastMergeManagerStress(::testing::benchmark::State& state) {
 }
 
 BENCHMARK(BM_FastMergeManagerStress)->Range(1'000, 10'000'000);
+
+// Tests that BufferAssignment::FromProto rejects a malformed proto containing
+// an assigned buffer with a negative offset or size.
+//
+// Without the fix, such values bypass the CHECK_LE guards in AddAssignment
+// (e.g. CHECK_LE(-1, 1024) is true for any real allocation size) and get
+// stored in assigned_buffers_. They are later used in LLVM IR pointer
+// arithmetic:
+//   tempbuf_address_base + b()->getInt64(slice.offset())
+// producing an out-of-bounds address.
+//
+// The fix mirrors the check added to Slice::FromProto in PR #44653, applied
+// to the Assigned buffer path in BufferAssignment::FromProto that PR missed.
+TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeOffset) {
+  const char* const hlo_text = R"(
+    HloModule test
+    ENTRY e {
+      p0 = f32[4]{0} parameter(0)
+      ROOT neg = f32[4]{0} negate(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  // Get a valid proto via normal round-trip, then corrupt one offset field.
+  // This simulates a malformed serialized AOT executable supplied by an
+  // attacker to CpuAotLoader::LoadAotCompilationResult().
+  auto buffers = RunBufferAssignment(module.get());
+  auto proto = buffers->ToProto();
+
+  bool mutated = false;
+  for (auto& alloc : *proto.mutable_buffer_allocations()) {
+    if (alloc.assigned_size() > 0) {
+      alloc.mutable_assigned(0)->set_offset(-1);
+      mutated = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(mutated) << "Test setup: expected at least one assigned buffer";
+
+  // Must return an error — not crash via CHECK_LE, not silently store -1.
+  auto result = BufferAssignment::FromProto(proto, module.get(),
+                                            &BufferSizeBytes, &alias_info_);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
+}
+
+TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeSize) {
+  const char* const hlo_text = R"(
+    HloModule test
+    ENTRY e {
+      p0 = f32[4]{0} parameter(0)
+      ROOT neg = f32[4]{0} negate(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  auto buffers = RunBufferAssignment(module.get());
+  auto proto = buffers->ToProto();
+
+  bool mutated = false;
+  for (auto& alloc : *proto.mutable_buffer_allocations()) {
+    if (alloc.assigned_size() > 0) {
+      alloc.mutable_assigned(0)->set_size(-1);
+      mutated = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(mutated) << "Test setup: expected at least one assigned buffer";
+
+  auto result = BufferAssignment::FromProto(proto, module.get(),
+                                            &BufferSizeBytes, &alias_info_);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
+}
 
 }  // namespace
 }  // namespace xla

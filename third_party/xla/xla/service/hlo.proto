@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// LINT: LEGACY_NAMES
+
 // This proto file defines messages which represent the HLO module. This is a
 // full fidelity serialization of the c++ HLO constructs.
 //
@@ -126,7 +128,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 101
+// Next ID: 103
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -434,6 +436,12 @@ message HloInstructionProto {
   // For collective-broadcast: indicates the last operand is a scalar
   // root rank index rather than a data tensor to broadcast.
   bool has_dynamic_root = 100;
+
+  // Convolution block scaling config.
+  BlockScalingConfig block_scaling_config = 101;
+
+  // Comparison order (TOTAL, PARTIAL).
+  string comparison_order = 102;
 }
 
 // Serialization of HloComputation.
@@ -950,6 +958,14 @@ message HloPassMetadata {
   repeated KeyValueMetric kv_metrics = 11;
 }
 
+message X64ConfigProto {
+  // Only to support logging x64 values. Not needed for original value tracking
+  // route and not mirrored in DebugAttributes in hlo_module.h.
+  string xprecision_64bit_fragment = 1;
+  string original_log_instruction_name = 2;
+  string xprecision_64bit_original_type = 3;
+}
+
 message DebugAttributesProto {
   enum DebugLogModeProto {
     // No logging is performed.
@@ -959,7 +975,7 @@ message DebugAttributesProto {
     // not perturb the computation graph and the data logged is exactly what it
     // would be without logging.
     DEFAULT = 1;
-    // Same with DEFAULT, but fused value can logged at the expense of
+    // Same with DEFAULT, but fused value can be logged at the expense of
     // significant performance overhead.
     FUSION_DEBUGGER = 2;
     // Uses an optimization barrier to prevent fusion, preserving ordering but
@@ -983,10 +999,9 @@ message DebugAttributesProto {
   // The sharding of the operands of the custom call. This is used by the
   // runtime to unshard tensors logged in guaranteed mode.
   string operands_sharding = 5;
-}
-
-message DebugLogBackendConfigProto {
-  DebugAttributesProto debug_attributes_config = 64;
+  // The x64 config for the tensor. This is used by the runtime to reconstruct
+  // the 64-bit original value of the tensor in guaranteed mode.
+  X64ConfigProto x64_config = 6;
 }
 
 message DebugAttributeTableEntryProto {

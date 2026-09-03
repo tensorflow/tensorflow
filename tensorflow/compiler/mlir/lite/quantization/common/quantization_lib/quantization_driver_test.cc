@@ -69,7 +69,7 @@ constexpr absl::string_view kModuleTFLite = R"mlir(
   }
 )mlir";
 
-// TOOD: b/323478683 - Directly use types rather than creating a `unique_ptr`.
+// TODO: b/323478683 - Directly use types rather than creating a `unique_ptr`.
 std::unique_ptr<OpQuantSpec> GetOpQuantSpec(
     const mlir::Operation* op,
     bool disable_per_channel_for_dense_layers = false) {

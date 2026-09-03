@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "absl/container/flat_hash_map.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -41,6 +42,14 @@ struct NodeInfo {
   TfLiteFusedActivation activation;
 };
 
+struct DummyInputInfo {
+  int param_tensor_index;
+  uint32_t dummy_val_id;
+  int seq_axis;
+  size_t full_dims[YNN_MAX_TENSOR_RANK];
+  size_t rank;
+};
+
 // Generic helpers
 ynn_type GetYnnType(TfLiteType type);
 size_t YnnTypeElementCount(ynn_type type);
@@ -51,6 +60,9 @@ bool IsUnaryOp(int builtin_code);
 bool IsBinaryOp(int builtin_code);
 bool IsStablehloOp(int builtin_code);
 bool IsQuantized(const TfLiteTensor& tensor);
+// Check if a tensor is constant, or if `allow_prepare` is true, that a tensor
+// is constant between `Prepare` calls.
+bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare = false);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
                              bool allow_per_channel = false);
 bool IsTensorSupported(const TfLiteTensor& tensor,
@@ -61,6 +73,19 @@ bool IsActivationSupported(TfLiteFusedActivation activation,
                            TfLiteType output_type);
 TfLiteFusedActivation GetFusedActivation(const TfLiteRegistration* registration,
                                          const TfLiteNode* node);
+
+flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
+                                  const TfLiteNode* node);
+
+// Find a dummy input we can use for a particular runtime_bmm op. Often, many
+// runtime_bmm ops use the same params tensor, which can share a dummy input.
+TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
+                                   ynn_subgraph_t subgraph,
+                                   uint32_t& next_external_id,
+                                   std::vector<DummyInputInfo>& dummy_inputs,
+                                   int param_tensor_index, int seq_axis,
+                                   size_t rank, const size_t* full_dims,
+                                   ynn_type type, uint32_t* dummy_val_id_out);
 
 TfLiteStatus GetTfLiteTensorValueAsDouble(TfLiteContext* context,
                                           const TfLiteTensor& tensor, int index,

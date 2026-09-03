@@ -168,23 +168,6 @@ enum PrimitiveType {
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
-// In XLA:GPU we use different streams for different kinds of collective
-// operations, and include the async stream kind into the GPU clique key.
-//
-// We carefully isolate different kinds of collectives using separate
-// communicators and guarantee that all collective operations have a total order
-// that will not create a deadlock.
-enum AsyncStreamKind {
-  // Stream for asynchronous collective ops.
-  ASYNC_STREAM_KIND_COLLECTIVE = 0;
-  // One Stream for P2P Send and Recv ops.
-  ASYNC_STREAM_KIND_P2P0 = 1;
-  // Another Stream for P2P Send and Recv ops.
-  ASYNC_STREAM_KIND_P2P1 = 2;
-  // Stream for MemCpyP2P
-  ASYNC_STREAM_KIND_MEMCPYP2P = 3;
-}
-
 // There are broadly 4 modes that collective communication ops use to describe
 // which sets of devices are participating with a given device in the operation.
 // These modes are determined by the values of channel_id (optional) and
@@ -900,11 +883,31 @@ message SparsityConfig {
     // - If it is k, every N elements with distance k (i.e., 0,k,2k,...,(N-1)k)
     //   are a sparsity block.
     int64 stride = 4;
+    // The operand index for the indices argument.
+    int32 idx = 5;
   }
   // Sparsity config for the LHS operand.
   TensorSparsityConfig lhs = 1;
   // Sparsity config for the RHS operand.
   TensorSparsityConfig rhs = 2;
+}
+
+// Describes the block scaling configuration for a convolution's operands.
+message BlockScalingConfig {
+  message TensorBlockScalingConfig {
+    // The operand index for the scale argument.
+    int32 scale_idx = 1;
+    // The operand index for the zero point argument.
+    optional int32 zero_idx = 2;
+    // The strides for the block scaling.
+    repeated int64 strides = 3;
+    // The steps for the block scaling.
+    repeated int64 steps = 4;
+  }
+  // Block scaling config for the LHS operand.
+  TensorBlockScalingConfig lhs = 1;
+  // Block scaling config for the RHS operand.
+  TensorBlockScalingConfig rhs = 2;
 }
 
 enum PaddingType {

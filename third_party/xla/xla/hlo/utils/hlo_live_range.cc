@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,35 +34,153 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_stack_trace.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 /*static*/
 absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-    const HloComputation* computation, bool module_scoped_analysis) {
+    const HloComputation* computation, bool module_scoped_analysis,
+    absl::flat_hash_set<absl::string_view> execution_threads) {
   std::unique_ptr<HloLiveRange> hlo_live_range(
-      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
-  RETURN_IF_ERROR(hlo_live_range->FlattenSchedule(*computation));
+      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis,
+                       std::move(execution_threads)));
+  ABSL_RETURN_IF_ERROR(hlo_live_range->FlattenSchedule(*computation));
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
   return hlo_live_range;
 }
 
+/*static*/
+std::vector<const HloValue*> HloLiveRange::GetValuesDefined(
+    const HloInstruction* instruction, const HloDataflowAnalysis& dataflow) {
+  std::vector<const HloValue*> values;
+  const auto& value_set_tree = dataflow.GetInstructionValueSet(instruction);
+  for (const auto& entry : value_set_tree) {
+    if (dataflow.ValueIsDefinedAt(instruction, entry.first)) {
+      values.push_back(&dataflow.GetValueDefinedAt(instruction, entry.first));
+    }
+  }
+  return values;
+}
+
+/*static*/
+std::vector<const HloBuffer*> HloLiveRange::GetBuffersDefined(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis) {
+  std::vector<const HloBuffer*> buffers;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  for (const HloValue* value :
+       GetValuesDefined(instruction, alias_analysis.dataflow_analysis())) {
+    const HloBuffer* buffer = &alias_analysis.GetBufferContainingValue(*value);
+    if (seen.insert(buffer).second) {
+      buffers.push_back(buffer);
+    }
+  }
+  return buffers;
+}
+
+/*static*/
+int64_t HloLiveRange::GetBytesDefined(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_fn) {
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    return 0;
+  }
+  int64_t bytes = 0;
+  for (const HloBuffer* buffer :
+       GetBuffersDefined(instruction, alias_analysis)) {
+    if (buffer->IsHeapPressureImpacting()) {
+      bytes += buffer->ComputeSize(size_fn);
+    }
+  }
+  return bytes;
+}
+
+/*static*/
+std::vector<const HloBuffer*> HloLiveRange::GetBuffersUsed(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis) {
+  std::vector<const HloBuffer*> buffers;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  const auto& dataflow = alias_analysis.dataflow_analysis();
+  for (const HloInstruction* operand : instruction->operands()) {
+    HloValueSet value_set = dataflow.GetFlattenedValueSet(operand);
+    for (const HloValue* value : value_set.values()) {
+      const HloBuffer* buffer =
+          &alias_analysis.GetBufferContainingValue(*value);
+      if (seen.insert(buffer).second) {
+        buffers.push_back(buffer);
+      }
+    }
+  }
+  return buffers;
+}
+
+/*static*/
+int32_t HloLiveRange::GetTotalUsers(const HloBuffer& buffer,
+                                    const HloComputation* computation) {
+  int32_t total = 0;
+  for (const HloValue* value : buffer.values()) {
+    for (const HloUse& use : value->GetUses()) {
+      if (computation == nullptr || use.instruction->parent() == computation) {
+        ++total;
+      }
+    }
+  }
+  return total;
+}
+
+/*static*/
+int64_t HloLiveRange::GetParameterBytesAtStart(
+    const HloComputation& computation, const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_fn) {
+  int64_t bytes = 0;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  for (const HloInstruction* param : computation.parameter_instructions()) {
+    for (const HloBuffer* buffer : GetBuffersDefined(param, alias_analysis)) {
+      if (seen.insert(buffer).second && buffer->IsHeapPressureImpacting()) {
+        bytes += buffer->ComputeSize(size_fn);
+      }
+    }
+  }
+  return bytes;
+}
+
+/*static*/
+bool HloLiveRange::BufferLivesOut(const HloBuffer& buffer,
+                                  const HloAliasAnalysis& alias_analysis,
+                                  const HloComputation* computation) {
+  if (alias_analysis.BufferLivesOut(buffer)) {
+    return true;
+  }
+  if (computation != nullptr) {
+    for (const HloValue* value : buffer.values()) {
+      for (const HloUse& use : value->GetUses()) {
+        if (use.instruction->parent() != computation) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 void HloLiveRange::NormalizeAliasedBuffers() {
   absl::flat_hash_map<HloBuffer::Id,
-                      std::vector<std::pair<TimeBound*, HloValue::Id>>>
+                      std::vector<std::pair<LiveRangeBounds*, HloValue::Id>>>
       live_ranges_by_buffer;
   for (auto& entry : buffer_live_ranges_) {
     const HloValue& value = *entry.first;
@@ -72,15 +191,16 @@ void HloLiveRange::NormalizeAliasedBuffers() {
   for (auto& entry : live_ranges_by_buffer) {
     auto& aliased_live_ranges = entry.second;
     absl::c_sort(
-        aliased_live_ranges, [](std::pair<const TimeBound*, HloValue::Id> a,
-                                std::pair<const TimeBound*, HloValue::Id> b) {
+        aliased_live_ranges,
+        [](std::pair<const LiveRangeBounds*, HloValue::Id> a,
+           std::pair<const LiveRangeBounds*, HloValue::Id> b) {
           return std::forward_as_tuple(a.first->start, a.first->end, a.second) <
                  std::forward_as_tuple(b.first->start, b.first->end, b.second);
         });
 
     for (int64_t i = 0; i + 1 < aliased_live_ranges.size(); ++i) {
-      TimeBound& live_range1 = *aliased_live_ranges[i].first;
-      TimeBound& live_range2 = *aliased_live_ranges[i + 1].first;
+      LiveRangeBounds& live_range1 = *aliased_live_ranges[i].first;
+      LiveRangeBounds& live_range2 = *aliased_live_ranges[i + 1].first;
       live_range2.end = std::max(live_range1.end, live_range2.end);
       live_range1.end = std::min(live_range1.end, live_range2.start);
     }
@@ -91,6 +211,10 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 // number of each instruction in the schedule.
 absl::Status HloLiveRange::FlattenSchedule(
     const HloComputation& computation, const HloComputation* async_context) {
+  if (!HloInstruction::IsThreadIncluded(computation.execution_thread(),
+                                        execution_threads_)) {
+    return absl::OkStatus();
+  }
   auto it = schedule_.sequences().find(computation.unique_id());
   if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
@@ -118,27 +242,27 @@ absl::Status HloLiveRange::FlattenSchedule(
           instruction->opcode() == HloOpcode::kConditional) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          RETURN_IF_ERROR(FlattenSchedule(*called_computation, async_context));
+          ABSL_RETURN_IF_ERROR(FlattenSchedule(*called_computation, async_context));
         }
       } else if (instruction->IsAsynchronous()) {
         // For async operations, the async wrapped computation is flattened
         // before the first async instruction that has its operands and output
         // fully bound.
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             const bool is_first_fully_bound,
             hlo_instruction_utils::async::IsFirstFullyBound(instruction));
         if (is_first_fully_bound) {
           const HloComputation* called_computation =
               instruction->async_wrapped_computation();
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               FlattenSchedule(*called_computation, called_computation));
         }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         // Order of flattening matters here: for while loops, the condition
         // must be flattened first, then the body.
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             FlattenSchedule(*instruction->while_condition(), async_context));
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             FlattenSchedule(*instruction->while_body(), async_context));
       }
     }
@@ -153,10 +277,11 @@ absl::Status HloLiveRange::FlattenSchedule(
   return absl::OkStatus();
 }
 
-HloLiveRange::TimeBound HloLiveRange::GetLastPosition(
+std::pair<HloLiveRange::LogicalTime, HloPosition>
+HloLiveRange::ComputeValueLiveRangeEnd(
     const HloValue& value,
-    HloLiveRange::LogicalTime definition_end_time) const {
-  LogicalTime end_time = definition_end_time;
+    HloLiveRange::LogicalTime defining_instruction_end_time) const {
+  LogicalTime end_time = defining_instruction_end_time;
   const HloPosition* end_position = &value.defining_position();
   // Loop over the non-defining positions to find the final one.
   for (const HloPosition& position :
@@ -165,11 +290,15 @@ HloLiveRange::TimeBound HloLiveRange::GetLastPosition(
     LogicalTime position_time;
     if (position_inst->IsRoot()) {  // See comment above.
       auto it = computation_span_times_.find(position_inst->parent());
-      if (it == computation_span_times_.end()) continue;
+      if (it == computation_span_times_.end()) {
+        continue;
+      }
       position_time = it->second.end;
     } else {
       auto it = instruction_schedule_.find(position_inst);
-      if (it == instruction_schedule_.end()) continue;
+      if (it == instruction_schedule_.end()) {
+        continue;
+      }
       position_time = it->second;
     }
 
@@ -178,7 +307,7 @@ HloLiveRange::TimeBound HloLiveRange::GetLastPosition(
       end_position = &position;
     }
   }
-  return {-1, end_time, *end_position};
+  return {end_time, *end_position};
 }
 
 HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
@@ -190,17 +319,23 @@ HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
     // In module scoped mode when all call operations are flattened ignore uses
     // by call operation itself, and rely on the last usage time inferred from
     // the operations in the called computation.
-    if (module_scoped_analysis_ && used->opcode() == HloOpcode::kCall) continue;
+    if (module_scoped_analysis_ && used->opcode() == HloOpcode::kCall) {
+      if (computation_span_times_.contains(used->to_apply())) {
+        continue;
+      }
+    }
 
     // As an optimization, we deem a while's init value's live range ends as
     // soon as the loop body starts. This optimization is only applicable in
     // module scoped mode.
     if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
-      // The current live range is at the end of the while, move it to
-      // the beginning of the body.
-      used = used->while_body()->parameter_instruction(0);
-      VLOG(1) << "Moved value " << value.ToShortString()
-              << " to while param: " << used->ToString();
+      if (computation_span_times_.contains(used->while_body())) {
+        // The current live range is at the end of the while, move it to
+        // the beginning of the body.
+        used = used->while_body()->parameter_instruction(0);
+        VLOG(1) << "Moved value " << value.ToShortString()
+                << " to while param: " << used->ToString();
+      }
     }
 
     // It's possible that we didn't track the instruction `used`. This
@@ -238,44 +373,56 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     auto async_context_it = computations_in_async_context_.find(computation);
     if (async_context_it != computations_in_async_context_.end()) {
       const HloComputation* async_context = async_context_it->second;
-      auto async_start = async_context->GetUniqueCaller(HloOpcode::kAsyncStart);
-      CHECK(async_start) << "Async computations should have a unique caller.";
-      auto async_done = (*async_start)->async_chain_done();
-      auto async_done_it = instruction_schedule_.find(async_done);
-      CHECK(async_done_it != instruction_schedule_.end());
-      definition_end_time =
-          std::max(definition_end_time, async_done_it->second);
+      for (const HloInstruction* caller :
+           async_context->caller_instructions()) {
+        if (caller->IsAsynchronous()) {
+          const HloInstruction* async_done = nullptr;
+          if (caller->opcode() == HloOpcode::kAsyncStart ||
+              caller->opcode() == HloOpcode::kAsyncUpdate) {
+            async_done = caller->async_chain_done();
+          } else if (caller->opcode() == HloOpcode::kAsyncDone) {
+            async_done = caller;
+          }
+          if (async_done != nullptr) {
+            auto async_done_it = instruction_schedule_.find(async_done);
+            if (async_done_it != instruction_schedule_.end()) {
+              definition_end_time =
+                  std::max(definition_end_time, async_done_it->second);
+            } else {
+              definition_end_time =
+                  std::max(definition_end_time,
+                           computation_span_times_[computation].end);
+            }
+          } else {
+            definition_end_time = std::max(
+                definition_end_time, computation_span_times_[computation].end);
+          }
+        }
+      }
       VLOG(2) << "Setting the definition end time for op in async context: "
               << definition_end_time;
     }
 
-    const InstructionValueSet& value_set_tree =
-        alias_analysis_.dataflow_analysis().GetInstructionValueSet(
-            &instruction);
+    for (const HloValue* value :
+         GetValuesDefined(&instruction, alias_analysis_.dataflow_analysis())) {
+      auto [end_time, end_position] =
+          ComputeValueLiveRangeEnd(*value, definition_end_time);
+      LiveRangeBounds live_range{start_time, end_time, end_position};
 
-    for (const auto& entry : value_set_tree) {
-      for (const HloValue* value : entry.second.values()) {
-        // The start time is only correct for the defining instruction.
-        if (value->defining_instruction() != &instruction) continue;
-
-        TimeBound live_range = GetLastPosition(*value, definition_end_time);
-        live_range.start = start_time;
-
-        // Readonly entry parameters (parameters that don't alias) live across
-        // whole computation.
-        const HloModule& module = *computation->parent();
-        if (instruction.opcode() == HloOpcode::kParameter &&
-            computation == module.entry_computation() &&
-            !module.input_output_alias_config().ParameterHasAlias(
-                instruction.parameter_number(), value->index())) {
-          live_range.end = schedule_end_time();
-        } else {
-          live_range.end = std::max(live_range.end, GetLastUsageTime(*value));
-        }
-
-        CHECK_LE(live_range.start, live_range.end) << instruction.ToString();
-        CHECK(buffer_live_ranges_.insert({value, live_range}).second);
+      // Readonly entry parameters (parameters that don't alias) live across
+      // whole computation.
+      const HloModule& module = *computation->parent();
+      if (instruction.opcode() == HloOpcode::kParameter &&
+          computation == module.entry_computation() &&
+          !module.input_output_alias_config().ParameterHasAlias(
+              instruction.parameter_number(), value->index())) {
+        live_range.end = schedule_end_time();
+      } else {
+        live_range.end = std::max(live_range.end, GetLastUsageTime(*value));
       }
+
+      CHECK_LE(live_range.start, live_range.end) << instruction.ToString();
+      CHECK(buffer_live_ranges_.insert({value, live_range}).second);
     }
   }
 }
@@ -300,7 +447,11 @@ int64_t HloLiveRange::ComputePeakMemoryMoment() const {
     bool is_end;
     const HloValue* value;
     std::tie(time, is_end, value) = event;
-    auto buffer_size = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+    const Shape& shape = value->instruction()->shape();
+    if (shape.is_unbounded_dynamic()) {
+      return -1;
+    }
+    auto buffer_size = ShapeUtil::ByteSizeOf(shape, 8);
     if (is_end) {
       memory_usage -= buffer_size;
     } else {
@@ -336,6 +487,13 @@ std::string HloLiveRange::ToString() const {
   }
 
   int64_t peak_moment = ComputePeakMemoryMoment();
+
+  if (peak_moment < 0) {
+    absl::StrAppend(&output,
+                    "  Peak memory could not be determined due to unbounded "
+                    "dynamic shape.\n");
+    return output;
+  }
 
   absl::StrAppendFormat(&output, "  Live ranges at %lld (peak):\n",
                         peak_moment);

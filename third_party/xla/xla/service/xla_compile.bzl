@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Build macro that compile a Mhlo or StableHlo file into a Aot Result
 
 
@@ -82,32 +97,38 @@ def xla_aot_compile_gpu(
         name,
         module,
         gpu_targets,
-        autotune_results):
+        autotune_results,
+        xla_flags = ""):
     """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an AotCompilationResult for GPU
 
     Args:
         name: The name of the build rule.
         module: The MHLO or StableHLO file to compile.
         gpu_targets: The list of gpu targets.
-        autotune_results: AOT AutotuneResults
+        autotune_results: AOT AutotuneResults or AutotuneCache file.
+        xla_flags: Additional XLA_FLAGS to set during compilation.
     """
 
     res = []
     for target in gpu_targets:
         # Run xla_compile to generate the file containing an AotCompilationResult.
         compiled_binary = name + "_" + target
+        cmd = (
+            "$(location " + xla_compile_tool + ")" +
+            " --module_file=$(location " + module + ")" +
+            " --output_file=$(location " + compiled_binary + ")" +
+            " --platform=gpu" +
+            " --gpu_target_config=$(location " + gpu_target_config_map[target] + ")"
+        )
+        flags = "--xla_gpu_load_autotune_results_from=$(location " + autotune_results + ")"
+        if xla_flags:
+            flags = flags + " " + xla_flags
+        cmd = "XLA_FLAGS=\"" + flags + "\" " + cmd
         native.genrule(
             name = "gen_" + name + "_" + target,
             srcs = [module, gpu_target_config_map[target], autotune_results],
             outs = [name + "_" + target],
-            cmd = (
-                "$(location " + xla_compile_tool + ")" +
-                " --module_file=$(location " + module + ")" +
-                " --output_file=$(location " + compiled_binary + ")" +
-                " --platform=gpu" +
-                " --gpu_target_config=$(location " + gpu_target_config_map[target] + ")" +
-                " --autotune_results=$(location " + autotune_results + ")"
-            ),
+            cmd = cmd,
             tools = [xla_compile_tool],
             # copybara:comment_begin(oss-only)
             target_compatible_with = select({

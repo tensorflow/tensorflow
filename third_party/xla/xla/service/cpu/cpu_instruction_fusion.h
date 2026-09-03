@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/instruction_fusion.h"
@@ -46,6 +48,9 @@ class CpuInstructionFusion : public InstructionFusion {
  protected:
   FusionDecision ShouldFuse(HloInstruction* consumer,
                             int64_t operand_index) override;
+  HloInstructionSet ComputeGloballyUnfusible(
+      absl::Span<HloInstruction* const> post_order,
+      const HloReachabilityMap& reachability) override;
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 

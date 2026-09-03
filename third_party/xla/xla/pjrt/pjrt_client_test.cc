@@ -758,6 +758,45 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
   }
 }
 
+TEST(PjRtClientTest, RuntimeDonationDenialMustAliasFails) {
+  static constexpr char kProgram[] =
+      R"(
+HloModule RuntimeDonationDenialMustAliasFails,
+          input_output_alias={ {}: (0, {}, must-alias) }
+
+ENTRY RuntimeDonationDenialMustAliasFails() -> f32[2, 2] {
+    ROOT %param = f32[2, 2] parameter(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                          client->CompileAndLoad(xla_computation, {}));
+
+  std::vector<float> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  ExecuteOptions options;
+  options.non_donatable_input_indices.insert(0);
+  auto result =
+      pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}}, options);
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              ::testing::HasSubstr(
+                  "An input was configured to be must-alias at compile time "
+                  "but not donated at runtime"));
+}
+
 TEST(PjRtClientTest, GetDefaultLayout) {}
 
 TEST(PjRtClientTest, ClearPeakMemory) {
@@ -791,17 +830,21 @@ TEST(PjRtClientTest, ClearPeakMemory) {
   ASSERT_OK(buffer->GetReadyFuture().Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto alloc_stats, device->GetAllocatorStats());
-  EXPECT_EQ(alloc_stats.bytes_in_use, initial_stats.bytes_in_use + kAllocSize);
-  EXPECT_EQ(alloc_stats.peak_bytes_in_use,
+  ASSERT_EQ(alloc_stats.bytes_in_use, initial_stats.bytes_in_use + kAllocSize);
+  ASSERT_EQ(alloc_stats.peak_bytes_in_use,
             initial_stats.peak_bytes_in_use + kAllocSize);
-  EXPECT_EQ(alloc_stats.bytes_in_use, alloc_stats.peak_bytes_in_use);
+  ASSERT_EQ(alloc_stats.bytes_in_use, alloc_stats.peak_bytes_in_use);
+  ASSERT_EQ(alloc_stats.peak_allocated_bytes,
+            initial_stats.peak_allocated_bytes + kAllocSize);
 
   // dealloc
   buffer.reset();
 
   TF_ASSERT_OK_AND_ASSIGN(auto dealloc_stats, device->GetAllocatorStats());
-  EXPECT_EQ(initial_stats.bytes_in_use, dealloc_stats.bytes_in_use);
-  EXPECT_EQ(dealloc_stats.peak_bytes_in_use, alloc_stats.peak_bytes_in_use);
+  ASSERT_EQ(initial_stats.bytes_in_use, dealloc_stats.bytes_in_use);
+  ASSERT_EQ(dealloc_stats.peak_bytes_in_use, alloc_stats.peak_bytes_in_use);
+  ASSERT_EQ(dealloc_stats.peak_allocated_bytes,
+            alloc_stats.peak_allocated_bytes);
 
   absl::Status clear_status = device->ClearMemoryStats();
   if (!absl::IsUnimplemented(clear_status)) {
@@ -809,6 +852,8 @@ TEST(PjRtClientTest, ClearPeakMemory) {
     TF_ASSERT_OK_AND_ASSIGN(auto clear_stats, device->GetAllocatorStats());
     EXPECT_EQ(clear_stats.bytes_in_use, dealloc_stats.bytes_in_use);
     EXPECT_EQ(clear_stats.peak_bytes_in_use, dealloc_stats.bytes_in_use);
+    EXPECT_EQ(clear_stats.peak_allocated_bytes,
+              dealloc_stats.bytes_in_use + dealloc_stats.bytes_reserved);
   }
 }
 struct LinearizePackTestParam {

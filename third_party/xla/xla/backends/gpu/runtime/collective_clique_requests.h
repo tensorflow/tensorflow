@@ -42,23 +42,18 @@ class CollectiveCliqueRequests {
   struct BarrierRequirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const BarrierRequirements& reqs) {
-      absl::Format(
-          &sink, "{module_execution_barrier: %d, use_cross_device_barrier: %d}",
-          reqs.module_execution_barrier, reqs.use_cross_device_barrier);
+      absl::Format(&sink, "{use_cross_device_barrier: %d}",
+                   reqs.use_cross_device_barrier);
     }
 
     bool operator==(const BarrierRequirements& other) const {
-      return other.module_execution_barrier == module_execution_barrier &&
-             other.use_cross_device_barrier == use_cross_device_barrier;
+      return other.use_cross_device_barrier == use_cross_device_barrier;
     }
 
     bool operator<(const BarrierRequirements& other) const {
-      return std::tie(module_execution_barrier, use_cross_device_barrier) <
-             std::tie(other.module_execution_barrier,
-                      other.use_cross_device_barrier);
+      return use_cross_device_barrier < other.use_cross_device_barrier;
     }
 
-    bool module_execution_barrier = false;
     bool use_cross_device_barrier = false;
   };
 
@@ -113,7 +108,6 @@ class CollectiveCliqueRequests {
     absl::btree_set<GpuDeviceCommunicator::Requirements> dev_comms;
 
     // Requirements for barriers.
-    bool barrier_after_module_execution_requested = false;
     bool use_cross_device_barrier_requested = false;
   };
 
@@ -161,8 +155,6 @@ class CollectiveCliqueRequests {
 
   size_t size() const { return cliques_.size(); }
 
-  // Returns devices which requested a barrier after module execution.
-  absl::flat_hash_set<GlobalDeviceId> GetDevicesRequiringBarrier() const;
 
  private:
   absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;

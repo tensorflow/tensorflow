@@ -26,18 +26,29 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/synchronization/mutex.h"
+#include "riegeli/base/any.h"
+#include "riegeli/base/maker.h"
+#include "riegeli/bytes/cord_reader.h"
+#include "riegeli/bytes/string_reader.h"
+#include "riegeli/bytes/string_writer.h"
+#include "riegeli/bytes/wrapping_reader.h"
+#include "riegeli/messages/parse_message.h"
 #include "xla/client/local_client.h"
 #include "xla/layout.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/se/stream_executor_executable.pb.h"
 #include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/se/stream_executor_platform_id_mapping.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
@@ -45,54 +56,56 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
-#include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/stream_executor/platform_id.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_executable_and_options_writer.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 
 namespace xla {
+namespace {
+constexpr absl::string_view kPjRtStreamExecutorClientName =
+    "PjRtStreamExecutorClient";
+}  // namespace
 
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
+  absl::MutexLock lock(&mu_);
   if (IsEarlyExitCompilation(compile_options_)) {
     ExecutableAndOptionsProto proto;
-    ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                      compile_options_.ToProto());
+    *proto.mutable_pjrt_client_name() = kPjRtStreamExecutorClientName;
     std::string result;
-    if (!tsl::SerializeToStringDeterministic(proto, &result)) {
-      return absl::InternalError(
-          "Failed to serialize ExecutableAndOptionsProto");
-    }
+    ABSL_RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
+        proto, riegeli::Maker<riegeli::StringWriter>(&result)));
     return result;
   }
   std::string serialized;
-  if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
-          executables_)) {
-    const auto& aot_executables =
-        std::get<std::vector<std::unique_ptr<CompiledModule>>>(executables_);
-    if (aot_executables.empty()) {
+  if (std::holds_alternative<std::unique_ptr<CompiledModule>>(executables_)) {
+    const auto& aot_executable =
+        std::get<std::unique_ptr<CompiledModule>>(executables_);
+    if (aot_executable == nullptr) {
       return absl::InternalError("No local executable");
     }
-    if (aot_executables.size() != 1) {
-      return absl::UnimplementedError(
-          "PjRtStreamExecutorClient::SerializeExecutable unimplemented for "
-          "MPMD executables");
-    }
-    ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
+    ABSL_ASSIGN_OR_RETURN(serialized, aot_executable->SerializeAsString());
   } else {
-    const auto& local_executables =
-        std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
-    Executable* built_executable = local_executables[0]->executable();
+    const auto& local_executable =
+        std::get<std::shared_ptr<LocalExecutable>>(executables_);
+    if (local_executable == nullptr) {
+      return absl::InternalError("No local executable");
+    }
+    Executable* built_executable = local_executable->executable();
     CHECK(local_client_ != nullptr);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<CompiledModule> aot_result,
         local_client_->backend().compiler()->Export(built_executable));
 
-    ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
+    ABSL_ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
   }
-
   if (serialized.empty()) {
     return absl::InternalError(
         "PjRtStreamExecutorClient::SerializeExecutable proto serialization "
@@ -100,12 +113,12 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                    compile_options_.ToProto());
+  *proto.mutable_pjrt_client_name() = kPjRtStreamExecutorClientName;
   std::string result;
-  if (!tsl::SerializeToStringDeterministic(proto, &result)) {
-    return absl::InternalError("Failed to serialize ExecutableAndOptionsProto");
-  }
+  ABSL_RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
+      proto, riegeli::Maker<riegeli::StringWriter>(&result)));
   return result;
 }
 
@@ -119,80 +132,95 @@ StreamExecutorExecutable::GetCostAnalysis() const {
   return PjRtExecutableUtil::RunHloCostAnalysis(*this, &cost_analysis);
 }
 
+namespace {
+
+std::unique_ptr<CompiledModule> ExtractSingleModule(
+    std::vector<std::unique_ptr<CompiledModule>> executables) {
+  DCHECK_LE(executables.size(), 1);
+  return executables.empty() ? nullptr : std::move(executables[0]);
+}
+
+}  // namespace
+
 StreamExecutorExecutable::StreamExecutorExecutable(
     PjRtPlatformId platform_id, const CompileOptions& compile_options,
     std::vector<std::unique_ptr<CompiledModule>> executables, int num_replicas,
     int num_partitions, absl::string_view name, absl::string_view fingerprint,
     absl::string_view default_memory_kind)
+    : StreamExecutorExecutable(platform_id, compile_options,
+                               ExtractSingleModule(std::move(executables)),
+                               num_replicas, num_partitions, name, fingerprint,
+                               default_memory_kind) {}
+
+StreamExecutorExecutable::StreamExecutorExecutable(
+    PjRtPlatformId platform_id, const CompileOptions& compile_options,
+    std::unique_ptr<CompiledModule> executable, int num_replicas,
+    int num_partitions, absl::string_view name, absl::string_view fingerprint,
+    absl::string_view default_memory_kind)
     : platform_id_(platform_id),
       compile_options_(compile_options),
-      executables_(std::move(executables)),
+      executables_(std::move(executable)),
       num_replicas_(num_replicas),
       num_partitions_(num_partitions),
       name_(name),
       fingerprint_(fingerprint),
       default_memory_kind_(default_memory_kind) {
-  std::vector<std::shared_ptr<HloModule>> hlo_modules;
-  for (const auto& executable :
-       std::get<std::vector<std::unique_ptr<CompiledModule>>>(executables_)) {
-    hlo_modules.push_back(executable->shared_optimized_module());
+  const auto& mod = std::get<std::unique_ptr<CompiledModule>>(executables_);
+  if (mod != nullptr) {
+    hlo_module_ = mod->shared_optimized_module();
   }
-  hlo_modules_ = std::move(hlo_modules);
+  CHECK(hlo_module_ != nullptr);
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
     PjRtPlatformId platform_id, const CompileOptions& compile_options,
     std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-    std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+    std::shared_ptr<LocalExecutable> local_executable,
     LocalClient* local_client, int num_replicas, int num_partitions,
     absl::string_view name, absl::string_view fingerprint,
     absl::string_view default_memory_kind)
     : platform_id_(platform_id),
       compile_options_(compile_options),
       unoptimized_hlo_module_proto_(std::move(unoptimized_hlo_module_proto)),
-      executables_(std::move(local_executables)),
+      executables_(std::move(local_executable)),
       local_client_(local_client),
       num_replicas_(num_replicas),
       num_partitions_(num_partitions),
       name_(name),
       fingerprint_(fingerprint),
       default_memory_kind_(default_memory_kind) {
-  std::vector<std::shared_ptr<HloModule>> hlo_modules;
-  for (const auto& local_executable :
-       std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_)) {
-    hlo_modules.push_back(local_executable->executable()->shared_module());
+  const auto& local_exec =
+      std::get<std::shared_ptr<LocalExecutable>>(executables_);
+  if (local_exec != nullptr) {
+    hlo_module_ = local_exec->executable()->shared_module();
   }
-  hlo_modules_ = std::move(hlo_modules);
+  CHECK(hlo_module_ != nullptr);
 }
 
 absl::StatusOr<CompiledMemoryStats>
 StreamExecutorExecutable::GetCompiledMemoryStats() const {
+  absl::MutexLock lock(&mu_);
   CompiledMemoryStats memory_stats = CompiledMemoryStats();
-  if (auto* aot_executables =
-          std::get_if<std::vector<std::unique_ptr<CompiledModule>>>(
-              &executables_)) {
-    if (aot_executables->size() != 1) {
-      return Unimplemented(
-          "Retrieving CompiledMemoryStats is not supported for multiple "
-          "executables.");
+  if (auto* aot_executable =
+          std::get_if<std::unique_ptr<CompiledModule>>(&executables_)) {
+    if (*aot_executable == nullptr) {
+      return absl::InternalError("No compiled module.");
     }
-    return (*aot_executables)[0]->GetCompiledMemoryStats();
+    return (*aot_executable)->GetCompiledMemoryStats();
   }
 
-  const auto& local_executables =
-      std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
-  if (local_executables.size() != 1) {
-    return absl::UnimplementedError(
-        "Retrieving CompiledMemoryStats is not supported for multiple "
-        "executables.");
+  const auto& local_exec =
+      std::get<std::shared_ptr<LocalExecutable>>(executables_);
+  if (local_exec == nullptr) {
+    return absl::InternalError("No local executable.");
   }
   const BufferAssignmentProto* proto =
-      local_executables[0]->executable()->buffer_assignment_proto();
+      local_exec->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
     HloModuleProto hlo_module_proto =
-        local_executables[0]->executable()->module().ToProto();
-    ASSIGN_OR_RETURN(auto peak_memories,
+        local_exec->executable()->module().ToProto();
+    ABSL_ASSIGN_OR_RETURN(auto peak_memories,
                      ComputePeakMemorySizes(*proto, hlo_module_proto));
     memory_stats.peak_memory_in_bytes = peak_memories.padded;
     memory_stats.peak_unpadded_heap_bytes = peak_memories.unpadded;
@@ -202,22 +230,27 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
         ComputeIndefiniteAllocationsInBytes(*proto, /*memory_color=*/0);
   }
   memory_stats.PopulateBufferStatsFromAllocations(
-      local_executables[0]->executable()->GetAllocations());
-  memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+      local_exec->executable()->GetAllocations());
+  memory_stats.generated_code_size_in_bytes =
+      SizeOfGeneratedCodeInBytesLocked();
   return memory_stats;
 }
 
 int64_t StreamExecutorExecutable::SizeOfGeneratedCodeInBytes() const {
-  if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
-          executables_)) {
+  absl::MutexLock lock(&mu_);
+  return SizeOfGeneratedCodeInBytesLocked();
+}
+
+int64_t StreamExecutorExecutable::SizeOfGeneratedCodeInBytesLocked() const {
+  if (std::holds_alternative<std::unique_ptr<CompiledModule>>(executables_)) {
     return 0;
   }
-  int64_t size = 0;
-  for (auto& executable :
-       std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_)) {
-    size += executable->executable()->SizeOfGeneratedCodeInBytes();
+  const auto& local_exec =
+      std::get<std::shared_ptr<LocalExecutable>>(executables_);
+  if (local_exec == nullptr) {
+    return 0;
   }
-  return size;
+  return local_exec->executable()->SizeOfGeneratedCodeInBytes();
 }
 
 namespace {
@@ -247,14 +280,14 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind) {
   if (!shape.IsTuple()) {
-    ASSIGN_OR_RETURN(absl::string_view memory_kind,
+    ABSL_ASSIGN_OR_RETURN(absl::string_view memory_kind,
                      MemoryKindFromSimpleShape(shape, default_memory_kind));
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
   result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
         MemoryKindFromSimpleShape(element_shape, default_memory_kind));
     result.push_back(element_memory_kind);
@@ -266,7 +299,7 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 StreamExecutorExecutable::GetParameterMemoryKinds() const {
-  ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  ABSL_ASSIGN_OR_RETURN(auto modules, GetHloModules());
   // If no modules are available, we cannot determine memory kinds. Returning
   // Unimplemented here triggers a safe fallback in IFRT (executable.cc) to
   // avoid a crash when memory kinds are not available (e.g., when annotations
@@ -281,12 +314,12 @@ StreamExecutorExecutable::GetParameterMemoryKinds() const {
   out.reserve(modules.size());
   for (const auto& module : modules) {
     const ComputationLayout& comp_layout = module->entry_computation_layout();
-    ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+    ABSL_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
                      xla::FlattenedParameterLayouts(comp_layout));
     std::vector<absl::string_view>& memory_kinds = out.emplace_back();
     memory_kinds.reserve(layouts.size());
     for (const xla::Layout& layout : layouts) {
-      ASSIGN_OR_RETURN(absl::string_view memory_kind,
+      ABSL_ASSIGN_OR_RETURN(absl::string_view memory_kind,
                        MemoryKindFromLayout(layout, default_memory_kind_));
       memory_kinds.push_back(memory_kind);
     }
@@ -296,106 +329,186 @@ StreamExecutorExecutable::GetParameterMemoryKinds() const {
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 StreamExecutorExecutable::GetOutputMemoryKinds() const {
-  ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
+  ABSL_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
   std::vector<std::vector<absl::string_view>> out;
   out.reserve(shapes.size());
   for (const auto& shape : shapes) {
-    ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
+    ABSL_ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
                      MemoryKindsFromShape(shape, default_memory_kind_));
     out.push_back(memory_kind);
   }
   return out;
 }
 
-absl::StatusOr<std::unique_ptr<LocalExecutable>>
-StreamExecutorExecutable::ConsumeExecutable(
-    LocalClient* client, const CompileOptions& compile_options) {
-  RETURN_IF_ERROR(GetOrLoadExecutable(client, compile_options).status());
-  if (std::holds_alternative<std::vector<std::unique_ptr<LocalExecutable>>>(
-          executables_)) {
-    auto tmp = std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
-        std::move(executables_));
-    if (tmp.size() == 1) {
-      return std::move(tmp[0]);
-    }
-  }
-  return absl::UnimplementedError("Unsupported executable type.");
-}
-
-absl::StatusOr<LocalExecutable*> StreamExecutorExecutable::GetOrLoadExecutable(
-    LocalClient* client, const CompileOptions& compile_options) {
-  if (std::holds_alternative<std::vector<std::unique_ptr<LocalExecutable>>>(
-          executables_)) {
-    const auto& tmp =
-        std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
-    if (tmp.size() == 0) {
+absl::StatusOr<std::shared_ptr<LocalExecutable>>
+StreamExecutorExecutable::GetOrLoadExecutable(LocalClient* client) {
+  absl::MutexLock lock(&mu_);
+  if (std::holds_alternative<std::shared_ptr<LocalExecutable>>(executables_)) {
+    const auto& tmp = std::get<std::shared_ptr<LocalExecutable>>(executables_);
+    if (tmp == nullptr) {
       return absl::InternalError("No local executable");
     }
-    if (tmp.size() > 1) {
-      return absl::InternalError(
-          "ConsumeExecutable is not supported for more than one executable.");
-    }
-    return tmp[0].get();
-  } else if (std::holds_alternative<
-                 std::vector<std::unique_ptr<CompiledModule>>>(executables_)) {
-    auto aot_executables =
-        std::get<std::vector<std::unique_ptr<CompiledModule>>>(
-            std::move(executables_));
-    if (aot_executables.size() == 0) {
+    return tmp;
+  } else if (std::holds_alternative<std::unique_ptr<CompiledModule>>(
+                 executables_)) {
+    auto aot_executable =
+        std::get<std::unique_ptr<CompiledModule>>(std::move(executables_));
+    if (aot_executable == nullptr) {
       return absl::InternalError("No local executable");
     }
-    if (aot_executables.size() > 1) {
-      return absl::InternalError(
-          "ConsumeExecutable is not supported for more than one executable.");
-    }
-    std::vector<std::unique_ptr<LocalExecutable>> tmp;
-    ASSIGN_OR_RETURN(auto local_executable,
-                     client->Load(std::move(aot_executables[0]),
-                                  compile_options.executable_build_options));
-    tmp.push_back(std::move(local_executable));
-    auto* result = tmp[0].get();
-    executables_ = std::move(tmp);
-    return result;
+    ABSL_ASSIGN_OR_RETURN(auto local_executable,
+                     client->Load(std::move(aot_executable),
+                                  compile_options_.executable_build_options));
+    std::shared_ptr<LocalExecutable> shared_exec = std::move(local_executable);
+    executables_ = shared_exec;
+    local_client_ = client;
+    return shared_exec;
   }
   return absl::UnimplementedError("Unsupported executable type.");
 }
 
 absl::StatusOr<stream_executor::ExecutableAbiVersion>
 StreamExecutorExecutable::ExtractExecutableAbiVersion() const {
+  absl::MutexLock lock(&mu_);
   if (executables_.index() == 0) {
-    const std::vector<std::unique_ptr<CompiledModule>>& compiled_modules =
+    const std::unique_ptr<CompiledModule>& compiled_module =
         std::get<0>(executables_);
-    if (compiled_modules.empty()) {
-      return absl::InternalError("No compiled modules");
+    if (compiled_module == nullptr) {
+      return absl::InternalError("No compiled module");
     }
-
-    if (compiled_modules.size() > 1) {
-      return absl::InternalError(
-          "Can't extract the ABI version from multiple compiled modules");
-    }
-
-    return compiled_modules.front()->GetExecutableAbiVersion();
+    return compiled_module->GetExecutableAbiVersion();
   }
-  const std::vector<std::unique_ptr<LocalExecutable>>& local_executables =
+  const std::shared_ptr<LocalExecutable>& local_executable =
       std::get<1>(executables_);
-  if (local_executables.empty()) {
-    return absl::InternalError("No local executables");
+  if (local_executable == nullptr) {
+    return absl::InternalError("No local executable");
   }
 
-  if (local_executables.size() > 1) {
-    return absl::InternalError(
-        "Can't extract the ABI version from multiple local executables");
-  }
-
-  return local_executables.front()->executable()->GetExecutableAbiVersion();
+  return local_executable->executable()->GetExecutableAbiVersion();
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
 StreamExecutorExecutable::GetAbiVersion() const {
-  ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion executable_abi_version,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion executable_abi_version,
                    ExtractExecutableAbiVersion());
   return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
       platform_id_, std::move(executable_abi_version));
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromReader(
+    riegeli::Any<riegeli::Reader*> reader) {
+  std::unique_ptr<riegeli::Reader> reader_unique_ptr;
+  if (auto* ptr = reader.GetIf<std::unique_ptr<riegeli::Reader>>()) {
+    reader_unique_ptr = std::move(*ptr);
+  } else {
+    reader_unique_ptr = std::make_unique<
+        riegeli::WrappingReader<riegeli::Any<riegeli::Reader*>>>(
+        std::move(reader));
+  }
+
+  ExecutableAndOptionsProto proto;
+  // The serialized string may be of the new SplitProto format (which allows
+  // executables larger than 2GB) or the legacy format which is just a regular
+  // proto.
+  ABSL_ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader_unique_ptr));
+  if (is_split_proto) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        ReadSplitProto(std::move(reader_unique_ptr), proto),
+        "Failed to read serialized StreamExecutorExecutable");
+    return proto;
+  }
+
+  ABSL_RETURN_IF_ERROR(riegeli::ParseMessage(std::move(reader_unique_ptr), proto));
+  return proto;
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    absl::string_view serialized) {
+  return SerializedGpuExecutableFromReader(riegeli::StringReader<>(serialized));
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    const absl::Cord& serialized) {
+  return SerializedGpuExecutableFromReader(riegeli::CordReader<>(&serialized));
+}
+
+/*static*/ absl::StatusOr<absl::string_view>
+StreamExecutorExecutable::GetDefaultMemoryKind(
+    const PjRtTopologyDescription& topology) {
+  static int device_id = static_cast<int>(tsl::Fingerprint32("device"));
+  if (device_id == topology.GetDefaultMemorySpaceKindId()) {
+    return "device";
+  } else {
+    return Internal("Unknown default memory space kind: %d",
+                    topology.GetDefaultMemorySpaceKindId());
+  }
+}
+
+absl::StatusOr<std::unique_ptr<StreamExecutorExecutable>>
+StreamExecutorExecutable::Deserialize(riegeli::Any<riegeli::Reader*> reader,
+                                      const PjRtTopologyDescription& topology,
+                                      std::optional<CompileOptions> options) {
+  ABSL_ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
+                   SerializedGpuExecutableFromReader(std::move(reader)));
+  if (!proto.pjrt_client_name().empty() &&
+      proto.pjrt_client_name() != kPjRtStreamExecutorClientName) {
+    return Internal(
+        "Serialized executable is from an incompatible PjRt client type. "
+        "PjRt client type expected by the serialized executable: %s",
+        proto.pjrt_client_name());
+  }
+
+  CompileOptions compile_options;
+  if (options.has_value()) {
+    compile_options = *std::move(options);
+  } else {
+    ABSL_ASSIGN_OR_RETURN(compile_options,
+                     CompileOptions::FromProto(proto.compile_options()));
+  }
+  ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+
+  ABSL_ASSIGN_OR_RETURN(auto default_memory_space, GetDefaultMemoryKind(topology));
+
+  PjRtPlatformId platform_id = topology.platform_id();
+  if (IsEarlyExitCompilation(compile_options)) {
+    return std::make_unique<StreamExecutorExecutable>(
+        platform_id, std::move(compile_options), /*aot_executable=*/nullptr,
+        /*num_replicas=*/1, /*num_partitions=*/1, /*name=*/"",
+        /*fingerprint=*/"", default_memory_space);
+  }
+
+  std::string str = std::move(*proto.mutable_serialized_executable());
+  if (str.empty()) {
+    return InvalidArgument("Serialized executable is empty");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      stream_executor::PlatformId se_platform_id,
+      StreamExecutorPlatformIdMapping::Global().GetStreamExecutorPlatformId(
+          platform_id));
+
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                   Compiler::GetForPlatform(se_platform_id));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
+                   compiler->LoadAotCompilationResult(str));
+  if (aot_result == nullptr) {
+    return Internal("Failed to deserialize compiled module");
+  }
+  std::shared_ptr<HloModule> optimized_module =
+      aot_result->shared_optimized_module();
+  if (optimized_module == nullptr) {
+    return Internal("Deserialized compiled module has no optimized module");
+  }
+
+  int num_replicas = optimized_module->config().replica_count();
+  int num_partitions = optimized_module->config().num_partitions();
+  std::string name = optimized_module->name();
+  std::string fingerprint = optimized_module->GetFingerprint128();
+
+  return std::make_unique<StreamExecutorExecutable>(
+      platform_id, std::move(compile_options), std::move(aot_result),
+      num_replicas, num_partitions, std::move(name), std::move(fingerprint),
+      default_memory_space);
 }
 
 }  // namespace xla

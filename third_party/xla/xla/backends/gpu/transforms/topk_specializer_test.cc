@@ -72,9 +72,9 @@ class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
         %p.1.rhs.40629 = s32[] parameter(3)
         %constant.40630 = pred[] constant(true)
         %broadcast.40631 = pred[] broadcast(pred[] %constant.40630), dimensions={}
-        %p.0.lhs.40626 = f32[] parameter(0)
-        %p.0.rhs.40627 = f32[] parameter(1)
-        %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, type=TOTALORDER
+        %p.0.lhs.40626 = $3[] parameter(0)
+        %p.0.rhs.40627 = $3[] parameter(1)
+        %compare.40632 = pred[] compare($3[] %p.0.lhs.40626, $3[] %p.0.rhs.40627), direction=GT, type=TOTALORDER
         ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
       }
 
@@ -149,6 +149,12 @@ TEST_P(TopkTest, ProducesCorrectResult) {
 
   std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
   ToSortAndSlice(reference_module.get());
+  // Disable TopkRewriter, otherwise it will rewrite sort+slice back to TopK
+  // custom call and make test and reference modules identical.
+  reference_module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_disable_hlo_passes("topk-rewriter");
+
   EXPECT_TRUE(RunAndCompareTwoModules(
       std::move(topk_module), std::move(reference_module), std::nullopt));
 }

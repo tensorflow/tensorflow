@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_LATENCY_HIDING_SCHEDULER_H_
 
 #include <cstdint>
+#include <optional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -26,6 +28,9 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla {
+
+class DeviceAssignment;
+
 namespace gpu {
 
 // Breaks down higher level collectives into collective primitives.
@@ -38,20 +43,30 @@ HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
     int64_t pointer_size, std::optional<int64_t> memory_space = std::nullopt);
 
 // GPU overlap limit rule rule for scheduling candidate.
-// On top of the default rule, we do not allow collectives with more than 1
-// overlapping ranks to overlap. This is because the execution order of NCCL
+// On top of the default rule, we do not allow collectives that share more than
+// one global device to overlap. This is because the execution order of NCCL
 // kernels is not deterministic and cannot be controlled by launch order at the
-// moment. A cyclic dependency can be formed with at least 2 overlapping ranks.
+// moment. A cyclic dependency can be formed with at least 2 shared devices.
 bool GpuScheduleCrossesOverlapLimit(
     const DefaultSchedulerCore::SchedulingState& sched_state,
-    const HloGraphNode* node);
+    const HloGraphNode* node, const DeviceAssignment& device_assignment);
+
+// Returns true while an async device-to-device memcpy is in flight.
+bool IsGpuD2DOverlapWindowOpen(
+    const DefaultSchedulerCore::SchedulingState& sched_state);
+
+// GPU scheduling rule that prefers compute-bound work while an async
+// device-to-device memcpy is in flight.
+std::optional<DefaultSchedulerCore::CandidateResult>
+GpuD2DOverlapSchedulingRule(DefaultSchedulerCore::ScheduleCandidate& a,
+                            DefaultSchedulerCore::ScheduleCandidate& b);
 
 // GPU specific resources for latency hiding scheduler.
 //
-// We use two different set of resources to model the scheduling of asynchronous
-// collective operations and P2P Send and Recv operations. This corresponds to
-// the fact that the runtime use a stream to run asynchronous collective
-// operations and two other streams to run P2P Send and Recv operations.
+// Separate resources model asynchronous collective communication domains,
+// asynchronous compute and memcpy, and P2P Send and Recv streams. In
+// particular, default and scale-up-fabric collectives have independently
+// configurable capacities.
 enum class GpuResourceType {
   kGpuAsyncStreamCollectivesP2P = ResourceTypeToIndex(
       ResourceType::kTargetDefinedResourceTypeBegin),  // Resource for P2P
@@ -62,9 +77,11 @@ enum class GpuResourceType {
   kGpuAsyncStreamSend1,        // Another resource for P2P Send operation.
   kGpuAsyncStreamRecv0,        // A resource for P2P Recv operation.
   kGpuAsyncStreamRecv1,        // Another resource for P2P Recv operation.
-  kGpuAsyncStreamCollectives,  // The resource for collective operations.
-  kGpuAsyncStreamComputes,     // The resource for async compute operations.
-  kGpuAsyncStreamMemcpy,       // The resource for async memcpy operations.
+  kGpuAsyncStreamCollectives,  // Resource for collective operations.
+  kGpuAsyncStreamScaleUpCollectives,  // Resource for scale-up fabric
+                                      // collective operations.
+  kGpuAsyncStreamComputes,            // Resource for async compute operations.
+  kGpuAsyncStreamMemcpy,              // Resource for async memcpy operations.
   kGpuResourceTypeEnd,
 };
 
@@ -118,6 +135,10 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
   // this instruction.
   int64_t GetNumResourcesPerInstruction(
       int64_t resource_type, const HloInstruction& instr) const override;
+
+  // Returns a map of resource counts used by this instruction.
+  absl::flat_hash_map<int64_t, int64_t> GetNumResourcesPerInstruction(
+      const HloInstruction& instr) const override;
 };
 
 // GPU approximate latency estimator. It is a set of hardcoded heuristics

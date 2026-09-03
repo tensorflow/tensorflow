@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,14 +50,16 @@ class MockCommandBuffer : public CommandBuffer {
               (override));
   MOCK_METHOD(absl::StatusOr<const Command*>, CreateLaunch,
               (const ThreadDim& threads, const BlockDim& blocks,
+               const std::optional<ClusterDim>& cluster_dims,
                const Kernel& kernel, const KernelArgs& args,
                absl::Span<const Command* const> dependencies,
                StreamPriority priority),
               (override));
   MOCK_METHOD(absl::Status, UpdateLaunch,
               (const Command* command, const ThreadDim& threads,
-               const BlockDim& blocks, const Kernel& kernel,
-               const KernelArgs& args),
+               const BlockDim& blocks,
+               const std::optional<ClusterDim>& cluster_dims,
+               const Kernel& kernel, const KernelArgs& args),
               (override));
   MOCK_METHOD(absl::StatusOr<const Command*>, CreateChildCommand,
               (const CommandBuffer& nested,
@@ -80,6 +83,22 @@ class MockCommandBuffer : public CommandBuffer {
   MOCK_METHOD(absl::Status, UpdateMemcpyD2D,
               (const Command* command, DeviceAddressBase* dst,
                const DeviceAddressBase& src, uint64_t size),
+              (override));
+  MOCK_METHOD(absl::StatusOr<const Command*>, CreateMemcpyD2H,
+              (void* dst, const DeviceAddressBase& src, uint64_t size,
+               absl::Span<const Command* const> dependencies),
+              (override));
+  MOCK_METHOD(absl::Status, UpdateMemcpyD2H,
+              (const Command* command, void* dst, const DeviceAddressBase& src,
+               uint64_t size),
+              (override));
+  MOCK_METHOD(absl::StatusOr<const Command*>, CreateMemcpyH2D,
+              (DeviceAddressBase * dst, const void* src, uint64_t size,
+               absl::Span<const Command* const> dependencies),
+              (override));
+  MOCK_METHOD(absl::Status, UpdateMemcpyH2D,
+              (const Command* command, DeviceAddressBase* dst, const void* src,
+               uint64_t size),
               (override));
   MOCK_METHOD(absl::StatusOr<const Command*>, CreateMemset,
               (DeviceAddressBase * dst, BitPattern bit_pattern,

@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -40,10 +40,10 @@ bool IsCollectiveOp(const HloInstruction* instr) {
          hlo_query::IsAsyncCollectiveDoneOp(instr);
 }
 
-class GpuSpmdE2ECompileTest : public HloPjRtTestBase {
+class GpuSpmdE2ECompileTest : public HloTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }

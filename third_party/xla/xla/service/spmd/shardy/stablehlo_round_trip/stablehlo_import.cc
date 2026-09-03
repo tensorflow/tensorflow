@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/shape.h"
@@ -377,13 +378,13 @@ TensorShardingAttr convertToSdySharding(
 
     mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
     switch (namedSharding.reduction_op()) {
-      case xla::NamedSharding::ReductionOp::kSum:
+      case xla::ReductionOp::kSum:
         reductionOp = mlir::sdy::ReductionOp::SUM;
         break;
-      case xla::NamedSharding::ReductionOp::kMax:
+      case xla::ReductionOp::kMax:
         reductionOp = mlir::sdy::ReductionOp::MAX;
         break;
-      case xla::NamedSharding::ReductionOp::kMin:
+      case xla::ReductionOp::kMin:
         reductionOp = mlir::sdy::ReductionOp::MIN;
         break;
     }
@@ -415,14 +416,29 @@ TensorShardingAttr convertToSdySharding(
 
   if (hloSharding.IsReplicated() || hloSharding.IsManual() ||
       hloSharding.IsUnknown()) {
-    if (inlineMesh) {
-      return TensorShardingAttr::getFullyReplicated(
-          ctx, rank, globalMesh,
-          /*isClosed=*/!hloSharding.IsUnknown() && !openDims);
+    mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+    switch (hloSharding.reduction_op()) {
+      case xla::ReductionOp::kSum:
+        reductionOp = mlir::sdy::ReductionOp::SUM;
+        break;
+      case xla::ReductionOp::kMax:
+        reductionOp = mlir::sdy::ReductionOp::MAX;
+        break;
+      case xla::ReductionOp::kMin:
+        reductionOp = mlir::sdy::ReductionOp::MIN;
+        break;
     }
-    return TensorShardingAttr::getFullyReplicated(
-        ctx, rank, kGlobalMeshName,
-        /*isClosed=*/!hloSharding.IsUnknown() && !openDims);
+    SmallVector<DimensionShardingAttr> dimShardings(
+        rank, DimensionShardingAttr::get(
+                  ctx, {}, !hloSharding.IsUnknown() && !openDims));
+    if (inlineMesh) {
+      return TensorShardingAttr::get(ctx, globalMesh, dimShardings,
+                                     /*replicatedAxes=*/{},
+                                     /*unreducedAxes=*/{}, reductionOp);
+    }
+    return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
+                                   dimShardings, /*replicatedAxes=*/{},
+                                   /*unreducedAxes=*/{}, reductionOp);
   }
 
   CHECK(hloSharding.IsTiled());
@@ -507,12 +523,44 @@ TensorShardingAttr convertToSdySharding(
 
   SmallVector<AxisRefAttr> replicatedAxes;
   SmallVector<AxisRefAttr> unreducedAxes;
+  for (auto [localAxisIndex, subDimInfo] : llvm::enumerate(result->sub_dims)) {
+    if (subDimInfo.tile_dim_index >= rank) {
+      int64_t subgroupIndex = subDimInfo.tile_sub_dim_index;
+      if (subgroupIndex < hloSharding.subgroup_types().size()) {
+        auto subgroupType = hloSharding.subgroup_types()[subgroupIndex];
+        if (subgroupType == xla::OpSharding::REPLICATED) {
+          absl::c_copy(localAxisIndexToGlobalAxes[localAxisIndex],
+                       std::back_inserter(replicatedAxes));
+        } else if (subgroupType == xla::OpSharding::UNREDUCED) {
+          absl::c_copy(localAxisIndexToGlobalAxes[localAxisIndex],
+                       std::back_inserter(unreducedAxes));
+        }
+      }
+    }
+  }
+
+  mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+  if (!unreducedAxes.empty()) {
+    switch (hloSharding.reduction_op()) {
+      case xla::ReductionOp::kSum:
+        reductionOp = mlir::sdy::ReductionOp::SUM;
+        break;
+      case xla::ReductionOp::kMax:
+        reductionOp = mlir::sdy::ReductionOp::MAX;
+        break;
+      case xla::ReductionOp::kMin:
+        reductionOp = mlir::sdy::ReductionOp::MIN;
+        break;
+    }
+  }
+
   if (inlineMesh) {
     return TensorShardingAttr::get(ctx, globalMesh, dimShardings,
-                                   replicatedAxes, unreducedAxes);
+                                   replicatedAxes, unreducedAxes, reductionOp);
   }
   return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
-                                 dimShardings, replicatedAxes, unreducedAxes);
+                                 dimShardings, replicatedAxes, unreducedAxes,
+                                 reductionOp);
 }
 
 namespace {
@@ -575,13 +623,20 @@ LogicalResult importShardings(
         flatHloSharding = hloSharding.tuple_elements();
       }
       SmallVector<TensorShardingAttr> newShardings;
-      newShardings.reserve(op->getNumResults());
-      for (const auto& [resHloSharding, resType] :
-           llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
+      if (op->getNumResults() == 0) {
+        const xla::HloSharding& leafSharding = flatHloSharding.front();
         newShardings.push_back(convertToSdySharding(
-            resHloSharding, globalMesh, deviceIdToMaximalMeshName,
-            mlir::sdy::getTensorRank(resType),
-            /*openDims=*/false, inlineMesh));
+            leafSharding, globalMesh, deviceIdToMaximalMeshName,
+            /*rank=*/0, /*openDims=*/false, inlineMesh));
+      } else {
+        newShardings.reserve(op->getNumResults());
+        for (const auto& [resHloSharding, resType] :
+             llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
+          newShardings.push_back(convertToSdySharding(
+              resHloSharding, globalMesh, deviceIdToMaximalMeshName,
+              mlir::sdy::getTensorRank(resType),
+              /*openDims=*/false, inlineMesh));
+        }
       }
       mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
@@ -690,6 +745,8 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
                                 ArrayRef<bool> allowPropagationToResults,
                                 bool enableHloShardingV3) {
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,

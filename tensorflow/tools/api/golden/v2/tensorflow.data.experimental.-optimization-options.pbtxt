@@ -52,7 +52,15 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
 }

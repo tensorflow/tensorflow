@@ -24,10 +24,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -62,11 +67,15 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
       0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
   HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  HloInstruction* rhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {64, 256}), "rhs_indices"));
   SparsityConfig sparsity_config;
   sparsity_config.mutable_rhs()->set_block_size(4);
   sparsity_config.mutable_rhs()->set_num_non_zero(1);
   sparsity_config.mutable_rhs()->set_dimension(0);
   sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_rhs()->set_idx(2);
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
@@ -76,8 +85,9 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs,
+       /*rhs_indices=*/rhs_indices},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),
@@ -88,7 +98,7 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
 
   EXPECT_EQ(
       conv->ToString(),
-      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1}})");
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1 idx=2}})");
 }
 
 TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
@@ -100,15 +110,23 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
       0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
   HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  HloInstruction* lhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {256, 256}), "lhs_indices"));
+  HloInstruction* rhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(S32, {64, 256}), "rhs_indices"));
   SparsityConfig sparsity_config;
   sparsity_config.mutable_rhs()->set_block_size(4);
   sparsity_config.mutable_rhs()->set_num_non_zero(1);
   sparsity_config.mutable_rhs()->set_dimension(0);
   sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_rhs()->set_idx(3);
   sparsity_config.mutable_lhs()->set_block_size(4);
   sparsity_config.mutable_lhs()->set_num_non_zero(1);
   sparsity_config.mutable_lhs()->set_dimension(0);
   sparsity_config.mutable_lhs()->set_stride(1);
+  sparsity_config.mutable_lhs()->set_idx(2);
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
@@ -118,8 +136,10 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs,
+       /*lhs_indices=*/lhs_indices,
+       /*rhs_indices=*/rhs_indices},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),
@@ -130,7 +150,61 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
 
   EXPECT_EQ(
       conv->ToString(),
-      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1} rhs={sparsity=1x4 dimension=0 stride=1}})");
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %lhs_indices, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1 idx=2} rhs={sparsity=1x4 dimension=0 stride=1 idx=3}})");
+}
+
+TEST_F(HloInstructionTest, BlockScalingConfigToString) {
+  {
+    BlockScalingConfig config;
+    EXPECT_EQ(BlockScalingConfigToString(config), "");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    // Unpopulated zero_idx, strides, steps
+    EXPECT_EQ(BlockScalingConfigToString(config), "lhs={scale_idx=2}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(0);
+    // zero_idx set to 0 should be printed when has_zero_idx() is true.
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "lhs={scale_idx=2 zero_idx=0}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(3);
+    config.mutable_lhs()->add_strides(1);
+    config.mutable_lhs()->add_strides(4);
+    config.mutable_lhs()->add_steps(1);
+    config.mutable_lhs()->add_steps(2);
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "lhs={scale_idx=2 zero_idx=3 strides=1x4 steps=1x2}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_rhs()->set_scale_idx(3);
+    config.mutable_rhs()->add_strides(2);
+    config.mutable_rhs()->add_strides(4);
+    EXPECT_EQ(BlockScalingConfigToString(config),
+              "rhs={scale_idx=3 strides=2x4}");
+  }
+  {
+    BlockScalingConfig config;
+    config.mutable_lhs()->set_scale_idx(2);
+    config.mutable_lhs()->set_zero_idx(0);
+    config.mutable_lhs()->add_strides(1);
+    config.mutable_rhs()->set_scale_idx(3);
+    config.mutable_rhs()->set_zero_idx(1);
+    config.mutable_rhs()->add_strides(2);
+    config.mutable_rhs()->add_steps(4);
+    EXPECT_EQ(
+        BlockScalingConfigToString(config),
+        "lhs={scale_idx=2 zero_idx=0 strides=1} rhs={scale_idx=3 zero_idx=1 "
+        "strides=2 steps=4}");
+  }
 }
 
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
@@ -385,6 +459,33 @@ TEST_F(HloInstructionTest, AddFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
 }
 
+TEST_F(HloInstructionTest, DisjointReadWriteRegionsAttributes) {
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&instr));
+  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(nullptr));
+  SetDisjointReadWriteRegionsAttr(nullptr);  // Should be a no-op and not crash.
+
+  SetDisjointReadWriteRegionsAttr(&instr);
+  EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&instr));
+
+  // Test different key variations and case-insensitive values.
+  for (absl::string_view key :
+       {kXlaDisjointReadWriteRegions, "xla.disjoint_read_write_regions"}) {
+    for (absl::string_view val : {"true", "True", "1", "yes", "YES"}) {
+      HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
+      test_instr.set_frontend_attribute(key, val);
+      EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&test_instr))
+          << "Failed for key: " << key << " and val: " << val;
+    }
+    for (absl::string_view val : {"false", "0", "no", "invalid", ""}) {
+      HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
+      test_instr.set_frontend_attribute(key, val);
+      EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&test_instr))
+          << "Expected false for key: " << key << " and val: " << val;
+    }
+  }
+}
+
 TEST_F(HloInstructionTest, CustomCallInstructionStorage) {
   HloCustomCallInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}),
                                  /*operands=*/{}, "custom_call_target",
@@ -425,8 +526,8 @@ ENTRY main {
   ROOT call-done.0 = s32[] call-done(call-start.0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK(module->schedule().Verify());
 
@@ -506,8 +607,8 @@ ENTRY main {
   ROOT collective-permute.0 = (f32[32,32]{1,0}, f32[32,32]{1,0}) collective-permute(arg.0, arg.0), channel_id=388, source_target_pairs={{0,0},{4,1}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
 
   HloInstruction* cp = module->entry_computation()->root_instruction();
   ASSERT_EQ(cp->opcode(), HloOpcode::kCollectivePermute);
@@ -524,8 +625,7 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
       ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(
       root->ToString(),
@@ -544,8 +644,8 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
 }
 
 TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        R"(
     HloModule m
     ENTRY main {
       p0 = f32[] parameter(0)
@@ -587,8 +687,8 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
 }
 
 TEST_F(HloInstructionTest, CanonicalPrintingSupportsCustomCall) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        R"(
     HloModule custom_call_with_comp
 
     max_F32 {
@@ -750,6 +850,205 @@ TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
       HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), lhs.get(),
                                 rhs.get(), dnums, PrecisionConfig());
   EXPECT_TRUE(dot->SupportsPrecisionConfig());
+}
+
+TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  // Create a tuple that uses p0 twice.
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({p0, p0}));
+  module->AddEntryComputation(builder.Build());
+
+  // DetachFromOperands should not crash when operands are duplicated.
+  tuple->DetachFromOperands();
+
+  EXPECT_EQ(tuple->operand_count(), 0);
+  EXPECT_EQ(p0->user_count(), 0);
+
+  // Clean up the module to satisfy the HloVerifier on destruction.
+  module->entry_computation()->set_root_instruction(
+      p0, /*accept_different_shape=*/true);
+  *module->mutable_entry_computation_layout()->mutable_result_layout() =
+      ShapeLayout(p0->shape());
+  EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
+}
+
+TEST_F(HloInstructionTest, AsyncChainTraversalAndShapesWithIntermediaries) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  ROOT add = f32[2,4] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  start = ((f32[2,4]), (), s32[]) call-start(p0), to_apply=async_comp
+  barrier1 = ((f32[2,4]), (), s32[]) opt-barrier(start)
+  tup1 = (((f32[2,4]), (), s32[])) tuple(barrier1)
+  gte1 = ((f32[2,4]), (), s32[]) get-tuple-element(tup1), index=0
+  sharding_cc = ((f32[2,4]), (), s32[]) custom-call(gte1), custom_call_target="Sharding"
+  copy1 = ((f32[2,4]), (), s32[]) copy(sharding_cc)
+  update = ((f32[2,4], f32[2,4]), f32[2,4], ()) call-update(copy1, p1)
+  barrier2 = ((f32[2,4], f32[2,4]), f32[2,4], ()) opt-barrier(update)
+  tup2 = (((f32[2,4], f32[2,4]), f32[2,4], ())) tuple(barrier2)
+  gte2 = ((f32[2,4], f32[2,4]), f32[2,4], ()) get-tuple-element(tup2), index=0
+  ROOT done = f32[2,4] call-done(gte2)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  auto* async_start = Cast<HloAsyncInstruction>(start);
+  auto* async_update = Cast<HloAsyncInstruction>(update);
+  auto* async_done = Cast<HloAsyncInstruction>(done);
+
+  // Invariant navigation across intermediaries.
+  EXPECT_EQ(async_start->async_chain_done(), async_done);
+  EXPECT_EQ(async_start->async_chain_next(), async_update);
+  EXPECT_EQ(async_start->async_chain_start(), async_start);
+
+  EXPECT_EQ(async_update->async_chain_done(), async_done);
+  EXPECT_EQ(async_update->async_chain_next(), async_done);
+  EXPECT_EQ(async_update->async_chain_start(), async_start);
+
+  EXPECT_EQ(async_done->async_chain_done(), async_done);
+  EXPECT_EQ(async_done->async_chain_next(), nullptr);
+  EXPECT_EQ(async_done->async_chain_start(), async_start);
+
+  std::vector<HloAsyncInstruction*> chain = async_start->GetAsyncChain();
+  EXPECT_EQ(chain.size(), 3);
+  EXPECT_EQ(chain[0], async_start);
+  EXPECT_EQ(chain[1], async_update);
+  EXPECT_EQ(chain[2], async_done);
+
+  // UpdateChainShapes propagating through intermediaries.
+  Shape new_start_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 8}),
+                                  ShapeUtil::MakeShape(F32, {4, 8})}),
+       ShapeUtil::MakeShape(F32, {4, 8}), ShapeUtil::MakeShape(S32, {})});
+  *async_start->mutable_shape() = new_start_shape;
+  async_start->UpdateChainShapes();
+
+  EXPECT_EQ(update->shape(), new_start_shape);
+  EXPECT_EQ(done->shape(), ShapeUtil::MakeShape(F32, {4, 8}));
+
+  // Invariants preserved across module cloning.
+  std::unique_ptr<HloModule> cloned = module->Clone();
+  auto* cloned_start =
+      Cast<HloAsyncInstruction>(FindInstruction(cloned.get(), "start"));
+  auto* cloned_done =
+      Cast<HloAsyncInstruction>(FindInstruction(cloned.get(), "done"));
+  EXPECT_EQ(cloned_start->async_chain_done(), cloned_done);
+  EXPECT_EQ(cloned_done->async_chain_start(), cloned_start);
+}
+
+TEST_F(HloInstructionTest, AsyncPredicates) {
+  const char* const kHlo = R"(
+HloModule async_predicates_test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  ROOT add = f32[2,4] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  start = ((f32[2,4]), (), s32[]) call-start(p0), to_apply=async_comp
+  update = ((f32[2,4], f32[2,4]), f32[2,4], ()) call-update(start, p1)
+  done = f32[2,4] call-done(update)
+  ag_start = (f32[2,4], f32[4,4]) all-gather-start(p0), dimensions={0}
+  ag_done = f32[4,4] all-gather-done(ag_start)
+  ROOT non_async = f32[2,4] copy(p0)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+  HloInstruction* ag_start = FindInstruction(module.get(), "ag_start");
+  HloInstruction* ag_done = FindInstruction(module.get(), "ag_done");
+  HloInstruction* non_async = FindInstruction(module.get(), "non_async");
+
+  struct ExpectedPredicates {
+    bool is_producer;
+    bool is_start;
+    bool is_done;
+    bool is_consumer;
+  };
+
+  const std::vector<std::pair<const HloInstruction*, ExpectedPredicates>>
+      tests = {
+          {start,
+           {/*is_producer=*/true, /*is_start=*/true, /*is_done=*/false,
+            /*is_consumer=*/false}},
+          {update,
+           {/*is_producer=*/true, /*is_start=*/false, /*is_done=*/false,
+            /*is_consumer=*/true}},
+          {done,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/true,
+            /*is_consumer=*/true}},
+          {ag_start,
+           {/*is_producer=*/true, /*is_start=*/true, /*is_done=*/false,
+            /*is_consumer=*/false}},
+          {ag_done,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/true,
+            /*is_consumer=*/true}},
+          {non_async,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/false,
+            /*is_consumer=*/false}},
+      };
+
+  for (const auto& [instr, expected] : tests) {
+    EXPECT_EQ(instr->IsAsyncProducer(), expected.is_producer)
+        << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncStart(), expected.is_start) << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncDone(), expected.is_done) << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncConsumer(), expected.is_consumer)
+        << instr->ToString();
+  }
+}
+
+TEST_F(HloInstructionTest, CompareProtoRoundTripWithOrder) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* cmp = builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {4}), p0, p1, ComparisonDirection::kLt,
+      ComparisonOrder::kTotal));
+  module->AddEntryComputation(builder.Build());
+  HloInstructionProto proto = cmp->ToProto();
+  EXPECT_EQ(proto.comparison_direction(), "LT");
+  EXPECT_EQ(proto.comparison_order(), "TOTAL");
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  instruction_map[p0->unique_id()] = p0;
+  instruction_map[p1->unique_id()] = p1;
+
+  ASSERT_OK_AND_ASSIGN(auto clone,
+                       HloInstruction::CreateFromProto(proto, instruction_map));
+  EXPECT_EQ(clone->opcode(), HloOpcode::kCompare);
+  const auto* compare_clone =
+      static_cast<const HloCompareInstruction*>(clone.get());
+  EXPECT_EQ(compare_clone->direction(), ComparisonDirection::kLt);
+  EXPECT_EQ(compare_clone->order(), ComparisonOrder::kTotal);
 }
 
 }  // namespace

@@ -67,7 +67,7 @@ limitations under the License.
 #include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -422,6 +422,9 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
 
@@ -739,8 +742,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const override;
 
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override;
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override;
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     return pjrt::GetCompiledMemoryStats(c_api_, executable_.get());

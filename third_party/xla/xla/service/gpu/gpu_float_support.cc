@@ -143,8 +143,8 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         if (compute_capability_.IsCuda()) {
           return true;
         }
-        // gfx1250 has a native bf16 exponential instruction, so there is no
-        // need to upcast bf16 exp to f32.
+        // gfx1250 lowers bf16 exp as exp2(x * log2(e)) computed in f32, so
+        // there is no need to upcast bf16 exp to f32 in FloatNormalization.
         if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
           return rocm_cc->has_bf16_transcendental_support();
         }

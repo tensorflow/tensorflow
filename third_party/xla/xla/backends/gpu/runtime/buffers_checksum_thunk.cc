@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
@@ -61,7 +61,7 @@ absl::Status BuffersDebugChecksumThunk::Initialize(
     if (!kernels_.contains(params.executor)) {
       se::gpu::GpuKernelRegistry registry =
           se::gpu::GpuKernelRegistry::GetGlobalRegistry();
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto kernel,
           registry.LoadKernel<se::gpu::BufferDebugXorChecksumKernel>(
               params.executor));
@@ -123,7 +123,7 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
     se::DeviceAddress<uint8_t> device_buffer(
         params.buffer_allocations->GetDeviceAddress(buffer));
 
-    RETURN_IF_ERROR(kernel->Launch(
+    ABSL_RETURN_IF_ERROR(kernel->Launch(
         thread_dim, se::BlockDim(1, 1, 1), params.stream, log_entry_id,
         device_buffer, device_buffer.size(), buffer_debug_log.GetDeviceHeader(),
         buffer_debug_log.GetDeviceEntries()));

@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/int128.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
@@ -50,7 +50,7 @@ RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
     const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(se::DeviceAddressBase state_data,
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase state_data,
                    params.buffer_allocations->GetDeviceAddress(state_buffer_));
 
   if (state_data.size() != sizeof(absl::int128)) {

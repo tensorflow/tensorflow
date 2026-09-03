@@ -23,13 +23,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
 
 namespace xla {
@@ -37,9 +40,9 @@ namespace ifrt {
 
 // XLA-compatible sharding spec types.
 class XlaCompatibleShardingSpec
-    : public llvm::RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec> {
+    : public RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec> {
  public:
-  using llvm::RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec>::RTTIExtends;
+  using RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec>::RTTIExtends;
 
   static char ID;  // NOLINT
 };
@@ -48,7 +51,7 @@ class XlaCompatibleShardingSpec
 // in XLA. This class holds an `HloSharding` to be used with IFRT as a
 // `ShardingSpec`.
 class HloShardingSpec final
-    : public llvm::RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec> {
+    : public RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec> {
  public:
   // Creates an `HloShardingSpec` wrapper.
   static std::unique_ptr<HloShardingSpec> Create(
@@ -60,6 +63,9 @@ class HloShardingSpec final
   // ShardingSpec implementation.
 
   ~HloShardingSpec() override = default;
+
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
@@ -74,7 +80,15 @@ class HloShardingSpec final
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
+  absl::StatusOr<absl::InlinedVector<IndexDomainAndShardIndices, 1>>
+  UniqueIndexDomains(const Shape& shape) const override;
+
+  absl::StatusOr<absl::Span<const int>> ShardToUniqueIndexDomainIndex()
+      const override;
+
   static char ID;  // NOLINT
+
+  HloShardingSpec(const HloShardingSpec& other);
 
  private:
   HloShardingSpec(int num_shards, xla::HloSharding xla_hlo_sharding);
@@ -89,6 +103,11 @@ class HloShardingSpec final
   // May be written multiple times with the same non-zero value.
   static constexpr uint64_t kUnsetHash = 0;
   mutable std::atomic<uint64_t> hash_ = kUnsetHash;
+
+  mutable absl::once_flag unique_shard_indices_once_;
+  mutable std::vector<int> cached_shard_indices_;
+  mutable absl::once_flag shard_to_unique_index_domain_index_once_;
+  mutable std::vector<int> cached_shard_to_unique_index_domain_index_;
 };
 
 // Test only: returns `HloShardingSpec::IndexDomains()`, using

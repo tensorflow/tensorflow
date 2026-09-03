@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -68,35 +67,38 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 @tf_export('linalg.logdet')
 @dispatch.add_dispatch_support
 def logdet(matrix, name=None):
-  """Computes log of the determinant of a hermitian positive definite matrix.
+  """Computes log of the absolute value of the determinant of a square matrix.
+
+  This uses LU decomposition internally, so it works for general square
+  matrices and not just hermitian positive definite ones.
 
   ```python
   # Compute the determinant of a matrix while reducing the chance of over- or
-  underflow:
-  A = ... # shape 10 x 10
-  det = tf.exp(tf.linalg.logdet(A))  # scalar
+  # underflow:
+  A = tf.constant([[4., -1.], [2., 5.]])
+  tf.linalg.logdet(A)  # Yields 3.421000
+  tf.exp(tf.linalg.logdet(A))  # Yields 22.0
   ```
 
   Args:
-    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
-      or `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `Float` or `Complex`. A shape `[..., M, M]`
+      tensor.
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
-    The natural log of the determinant of `matrix`.
+    The natural log of the absolute value of the determinant of `matrix`.
+    For a singular matrix (determinant = 0), returns -inf.
 
   @compatibility(numpy)
-  Equivalent to numpy.linalg.slogdet, although no sign is returned since only
-  hermitian positive definite matrices are supported.
+  Equivalent to np.linalg.slogdet, returning only the log of the absolute
+  determinant without the sign.
   @end_compatibility
   """
-  # This uses the property that the log det(A) = 2*sum(log(real(diag(C))))
-  # where C is the cholesky decomposition of A.
+  # Use LU decomposition via slogdet to support general square matrices,
+  # not just hermitian positive definite ones.
   with ops.name_scope(name, 'logdet', [matrix]):
-    chol = gen_linalg_ops.cholesky(matrix)
-    return 2.0 * math_ops.reduce_sum(
-        math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        axis=[-1])
+    _, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
+    return log_abs_det
 
 
 @tf_export('linalg.adjoint')
@@ -1298,6 +1300,14 @@ def eigh_tridiagonal(alpha,
 
   """
   with ops.name_scope(name or 'eigh_tridiagonal'):
+    if select in ('i', 'v') and select_range is None:
+      # Both of these select modes index into select_range below. Reject the
+      # missing value here rather than letting it surface as a TypeError from
+      # subscripting None.
+      raise ValueError(
+          f"select_range must be specified when select is '{select}'; it is "
+          "only optional for select='a'."
+      )
 
     def _compute_eigenvalues(alpha, beta):
       """Computes all eigenvalues of a Hermitian tridiagonal matrix."""

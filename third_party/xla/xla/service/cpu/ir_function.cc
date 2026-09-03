@@ -37,44 +37,31 @@ namespace xla {
 namespace cpu {
 
 static std::vector<llvm::Type*> GetComputeFunctionParams(
-    llvm::Module* llvm_module, const int64_t num_dynamic_loop_bounds) {
+    llvm::Module* llvm_module) {
   llvm::Type* ptr_type =
       llvm::PointerType::getUnqual(llvm_module->getContext());
-  std::vector<llvm::Type*> compute_function_params(5, ptr_type);
-  if (num_dynamic_loop_bounds > 0) {
-    compute_function_params.push_back(ptr_type);
-  }
-  compute_function_params.push_back(ptr_type);
-  return compute_function_params;
+  return std::vector<llvm::Type*>(6, ptr_type);
 }
 
 IrFunction::IrFunction(const std::string& function_name,
                        llvm::Function::LinkageTypes linkage,
                        const HloModuleConfig& module_config,
-                       llvm::Module* llvm_module, llvm::IRBuilderBase* b,
-                       int64_t num_dynamic_loop_bounds)
-    : b_(b),
-      llvm_module_(llvm_module),
-      caller_insert_point_guard_(*b),
-      num_dynamic_loop_bounds_(num_dynamic_loop_bounds) {
+                       llvm::Module* llvm_module, llvm::IRBuilderBase* b)
+    : b_(b), llvm_module_(llvm_module), caller_insert_point_guard_(*b) {
   Initialize(function_name, linkage, module_config);
 }
 
 IrFunction::IrFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
-                       int64_t num_dynamic_loop_bounds,
                        llvm::Function* function,
-                       llvm::Value* dynamic_loop_bounds_arg,
                        llvm::BasicBlock* return_block)
     : b_(b),
       llvm_module_(llvm_module),
       caller_insert_point_guard_(*b),
-      num_dynamic_loop_bounds_(num_dynamic_loop_bounds),
       function_(function),
       result_arg_(nullptr),
       exec_run_options_arg_(nullptr),
       parameters_arg_(nullptr),
       buffer_table_arg_(nullptr),
-      dynamic_loop_bounds_arg_(dynamic_loop_bounds_arg),
       profile_counters_arg_(nullptr),
       status_arg_(nullptr),
       return_block_(return_block) {};
@@ -82,15 +69,6 @@ IrFunction::IrFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
 IrFunction::~IrFunction() {
   // Branch to function return.
   b_->CreateBr(return_block_);
-}
-
-DynamicLoopBounds IrFunction::GetDynamicLoopBounds() {
-  DynamicLoopBounds dynamic_loop_bounds(num_dynamic_loop_bounds_);
-  for (int i = 0; i < num_dynamic_loop_bounds_; ++i) {
-    dynamic_loop_bounds[i].first = GetDynamicLoopBound(i * 2 + 0);
-    dynamic_loop_bounds[i].second = GetDynamicLoopBound(i * 2 + 1);
-  }
-  return dynamic_loop_bounds;
 }
 
 void IrFunction::Initialize(const std::string& function_name,
@@ -160,7 +138,7 @@ void IrFunction::Initialize(const std::string& function_name,
   llvm::FunctionType* function_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(llvm_module_->getContext()),
       /*Params=*/
-      GetComputeFunctionParams(llvm_module_, num_dynamic_loop_bounds_),
+      GetComputeFunctionParams(llvm_module_),
       /*isVarArg=*/false);
 
   // Functions with local linkage get an inlining bonus.  Because we know
@@ -181,10 +159,6 @@ void IrFunction::Initialize(const std::string& function_name,
   buffer_table_arg_ = &*arg_iter;
   (++arg_iter)->setName("status");
   status_arg_ = &*arg_iter;
-  if (num_dynamic_loop_bounds_ > 0) {
-    (++arg_iter)->setName("dynamic_loop_bounds");
-    dynamic_loop_bounds_arg_ = &*arg_iter;
-  }
   (++arg_iter)->setName("prof_counters");
   profile_counters_arg_ = &*arg_iter;
 
@@ -212,16 +186,6 @@ void IrFunction::Initialize(const std::string& function_name,
       /*Name=*/"entry",
       /*Parent=*/function_,
       /*InsertBefore=*/return_block_));
-}
-
-llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
-  CHECK_GT(num_dynamic_loop_bounds_, 0);
-  CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
-  llvm::Type* int64_ty = b_->getInt64Ty();
-  auto gep = b_->CreateGEP(int64_ty, CHECK_NOTNULL(dynamic_loop_bounds_arg_),
-                           b_->getInt64(offset));
-  return b_->CreateLoad(int64_ty, gep,
-                        "dynamic_loop_bound_" + llvm::Twine(offset));
 }
 
 llvm::Value* EncodeArrayFunctionArguments(
@@ -272,7 +236,7 @@ absl::Status EmitCallToParallelForkJoin(
 
   // Build ParallelForkJoin function type.
   std::vector<llvm::Type*> compute_function_params =
-      GetComputeFunctionParams(module, /*num_dynamic_loop_bounds=*/0);
+      GetComputeFunctionParams(module);
   // Number of parallel compute functions.
   compute_function_params.push_back(b->getInt32Ty());
   // Array of partitions. There is an array element for each

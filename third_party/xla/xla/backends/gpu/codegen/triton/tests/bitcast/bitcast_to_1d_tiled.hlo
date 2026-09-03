@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation=false 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
-// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=false 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {

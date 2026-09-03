@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -62,11 +77,40 @@ xla_cc_binary(
         ":test_lib",
         "//xla/codegen/tools:test_lib",
         "//xla/hlo/analysis:symbolic_map",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_binary(
+    name = "fusion_to_tensorir",
+    testonly = 1,
+    srcs = ["fusion_to_tensorir.cc"],
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = [":codegen_tests"],
+    deps = [
+        "//xla/backends/gpu/codegen/tensor_ir:conversion",
+        "//xla/backends/gpu/codegen/tensor_ir:support",
+        "//xla/hlo/ir:hlo",
+        "//xla/tools:hlo_module_loader",
+        "@cuda_tile//:CudaTileDialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirTranslateMain",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateLib",
+        "@tensor_ir//:NVTensorIRCudaTilePipelines",
+        "@tensor_ir//:NVTensorIRDialect",
+        "@tensor_ir//:NVTensorIRToCudaTileConversion",
     ],
 )
 
@@ -120,10 +164,10 @@ xla_cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         "//xla/codegen/tools:test_lib",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:platform_port",
     ],

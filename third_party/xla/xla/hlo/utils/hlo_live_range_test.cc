@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "xla/comparison_util.h"
@@ -33,8 +34,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -45,7 +48,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TimeBound = HloLiveRange::TimeBound;
+using LiveRangeBounds = HloLiveRange::LiveRangeBounds;
 class HloLiveRangeTest : public HloHardwareIndependentTestBase {
  protected:
   HloLiveRangeTest() : module_(CreateNewVerifiedModule()) {}
@@ -73,8 +76,8 @@ class HloLiveRangeTest : public HloHardwareIndependentTestBase {
                                                                   index);
   }
 
-  HloLiveRange::TimeBound LiveRangeAt(const HloInstruction* instruction,
-                                      const ShapeIndex& index = {}) const {
+  HloLiveRange::LiveRangeBounds LiveRangeAt(
+      const HloInstruction* instruction, const ShapeIndex& index = {}) const {
     auto* value = BufferAt(instruction, index);
     return hlo_live_range_->buffer_live_ranges().at(value);
   }
@@ -117,10 +120,10 @@ TEST_F(HloLiveRangeTest, Multiply) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 3}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 3}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 3}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 3}));
   // Mul lives after parameters are defined to the end.
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 3}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 3}));
 }
 
 TEST_F(HloLiveRangeTest, MultiplyAdd) {
@@ -147,14 +150,14 @@ TEST_F(HloLiveRangeTest, MultiplyAdd) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 5}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 5}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 5}));
   // Mul starts after parameter are defined (Note: all parameters are defined at
   // 0, mul starts at 2 which is an arbitrary number).
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 4}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 4}));
   // Add lives after mul is defined to the end of the program.
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 5}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 5}));
 }
 
 TEST_F(HloLiveRangeTest, LiveOutBuffers) {
@@ -184,14 +187,14 @@ TEST_F(HloLiveRangeTest, LiveOutBuffers) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 6}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 6}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 6}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 6}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 6}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 6}));
   // Mul starts after parameter are defined (Note: all parameters are defined at
   // 0, mul starts at 2 which is an arbitrary number).
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 6}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 6}));
   // Add lives after mul is defined to the end of the program.
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 6}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 6}));
 }
 
 TEST_F(HloLiveRangeTest, InstructionScheduledAfterRoot) {
@@ -224,15 +227,15 @@ TEST_F(HloLiveRangeTest, InstructionScheduledAfterRoot) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 7}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 7}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 7}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 7}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 7}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 7}));
   // Live out buffers live through the computation.
 
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 7}));
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 7}));
-  EXPECT_EQ(LiveRangeAt(tuple), TimeBound({5, 7}));
-  EXPECT_EQ(LiveRangeAt(add2), TimeBound({6, 6}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 7}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 7}));
+  EXPECT_EQ(LiveRangeAt(tuple), LiveRangeBounds({5, 7}));
+  EXPECT_EQ(LiveRangeAt(add2), LiveRangeBounds({6, 6}));
 }
 
 TEST_F(HloLiveRangeTest, AliasedParameter) {
@@ -263,16 +266,16 @@ TEST_F(HloLiveRangeTest, AliasedParameter) {
   CheckSchedule();
 
   // Non-readonly parameter live like other normal buffers.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 2}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 2}));
 
   // Readonly parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 5}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 5}));
   // Mul starts after parameter are defined (Note: all parameters are defined at
   // 0, mul starts at 2 which is an arbitrary number).
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 4}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 4}));
   // Add lives after mul is defined to the end of the program.
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 5}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 5}));
 }
 
 TEST_F(HloLiveRangeTest, While) {
@@ -405,11 +408,11 @@ ENTRY %While {
                                   .value());
   }
 
-  absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+  absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>&
       buffer_live_ranges_0 = hlo_live_ranges[0]->buffer_live_ranges();
   for (const auto& iter : buffer_live_ranges_0) {
     for (size_t i = 1; i < num_runs; i++) {
-      absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+      absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>&
           buffer_live_ranges_i = hlo_live_ranges[i]->buffer_live_ranges();
       auto found_iter = buffer_live_ranges_i.find(iter.first);
       EXPECT_TRUE(found_iter != buffer_live_ranges_i.end())
@@ -869,6 +872,32 @@ ENTRY %main {
   EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
 }
 
+TEST_F(HloLiveRangeTest, ToStringComputationWithUnboundedDynamicShape) {
+  std::string hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
+
+ENTRY %main {
+  %paramA = f32[?] parameter(0)
+  ROOT %add = f32[?] add(%paramA, %paramA)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+  Analyze(schedule);
+
+  std::string expected_string = R"(HloLiveRange (max 2):
+  InstructionSequence:
+    0:paramA
+    1:add
+  BufferLiveRange:
+    paramA{}:0-2
+    add{}:1-2
+  Peak memory could not be determined due to unbounded dynamic shape.
+)";
+  EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
+}
+
 TEST_F(HloLiveRangeTest, AsyncCallLateBinding) {
   std::string hlo_string = R"(
 HloModule AsyncCall, is_scheduled=true,
@@ -954,5 +983,224 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   EXPECT_EQ(inst_ranges["negate_1"], std::make_pair(3, 15));
 }
 
+TEST_F(HloLiveRangeTest, ThreadedCall) {
+  std::string hlo_string = R"(
+HloModule ThreadedModule, is_scheduled=true
+
+%SubComp (param: f32[4]) -> f32[4] {
+  %param = f32[4] parameter(0)
+  ROOT %neg = f32[4] negate(%param)
+}, execution_thread="host"
+
+ENTRY %entry {
+  %p0 = f32[4] parameter(0)
+  %neg0 = f32[4] negate(%p0)
+  %call = f32[4] call(%neg0), to_apply=%SubComp
+  ROOT %copy = f32[4] copy(%call)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(schedule, *alias_analysis_,
+                                         module_->entry_computation(),
+                                         /*module_scoped_analysis=*/true,
+                                         /*execution_threads=*/{"main"}));
+
+  CheckSchedule();
+
+  // Verify that only instructions on "main" thread are in the schedule.
+  EXPECT_TRUE(absl::c_all_of(
+      hlo_live_range_->instruction_schedule(), [](const auto& inst_and_time) {
+        return inst_and_time.first->parent()->execution_thread() == "main";
+      }));
+
+  // Verify that entry instructions ARE in the schedule.
+  EXPECT_TRUE(hlo_live_range_->instruction_schedule().contains(
+      module_->entry_computation()->root_instruction()));
+
+  // Find instructions and verify live range of operand.
+  const HloInstruction* neg0 = FindInstruction(module_.get(), "neg0");
+  const HloInstruction* call = FindInstruction(module_.get(), "call");
+  ASSERT_NE(neg0, nullptr);
+  ASSERT_NE(call, nullptr);
+
+  const auto& inst_schedule = hlo_live_range_->instruction_schedule();
+  HloLiveRange::LogicalTime neg0_time = inst_schedule.at(neg0);
+  HloLiveRange::LogicalTime call_time = inst_schedule.at(call);
+
+  // Since SubComp is NOT flattened, neg0 live range should end at call_time.
+  EXPECT_EQ(LiveRangeAt(neg0), LiveRangeBounds({neg0_time, call_time}));
+}
+
+TEST_F(HloLiveRangeTest, ThreadedAsyncCall) {
+  std::string hlo_string = R"(
+HloModule ThreadedAsyncModule, is_scheduled=true
+
+%AsyncSubComp (param: f32[4]) -> f32[4] {
+  %param = f32[4] parameter(0)
+  ROOT %neg = f32[4] negate(%param)
+}, execution_thread="host"
+
+ENTRY %entry {
+  %p0 = f32[4] parameter(0)
+  %neg0 = f32[4] negate(%p0)
+  %async-start = ((f32[4]), f32[4], u32[]) async-start(%neg0),
+                 async_execution_thread="host", calls=%AsyncSubComp
+  %async-done = f32[4] async-done(%async-start), calls=%AsyncSubComp
+  ROOT %copy = f32[4] copy(%async-done)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+
+  EXPECT_EQ(module_->entry_computation()->execution_thread(), "main");
+  HloComputation* async_sub_comp =
+      module_->GetComputationWithName("AsyncSubComp");
+  ASSERT_NE(async_sub_comp, nullptr);
+  EXPECT_EQ(async_sub_comp->execution_thread(), "host");
+
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(schedule, *alias_analysis_,
+                                         module_->entry_computation(),
+                                         /*module_scoped_analysis=*/true,
+                                         /*execution_threads=*/{"main"}));
+
+  CheckSchedule();
+
+  // Find instructions.
+  const HloInstruction* neg0 = FindInstruction(module_.get(), "neg0");
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+  ASSERT_NE(neg0, nullptr);
+  ASSERT_NE(async_start, nullptr);
+  ASSERT_NE(async_done, nullptr);
+
+  // Get logical times.
+  const auto& inst_schedule = hlo_live_range_->instruction_schedule();
+  HloLiveRange::LogicalTime neg0_time = inst_schedule.at(neg0);
+  HloLiveRange::LogicalTime async_start_time = inst_schedule.at(async_start);
+  HloLiveRange::LogicalTime async_done_time = inst_schedule.at(async_done);
+
+  EXPECT_EQ(neg0_time, 1);
+  EXPECT_EQ(async_start_time, 2);
+  EXPECT_EQ(async_done_time, 3);
+
+  // Live range of neg0 should be extended to async_done_time.
+  EXPECT_EQ(LiveRangeAt(neg0), LiveRangeBounds({neg0_time, async_done_time}));
+}
+
+TEST_F(HloLiveRangeTest, WhileLoopInitLiveRangeWithScheduledBody) {
+  std::string hlo_string = R"(
+HloModule WhileModule, is_scheduled=true
+
+%WhileCond (param: f32[4]) -> pred[] {
+  %param = f32[4] parameter(0)
+  %c = f32[] constant(0)
+  ROOT %cmp = pred[] compare(%c, %c), direction=EQ
+}
+
+%WhileBody (param: f32[4]) -> f32[4] {
+  %param = f32[4] parameter(0)
+  %c = f32[] constant(1)
+  %b = f32[4] broadcast(%c), dimensions={}
+  ROOT %sub = f32[4] subtract(%param, %b)
+}
+
+ENTRY %entry {
+  %p0 = f32[4] parameter(0)
+  %neg0 = f32[4] negate(%p0)
+  ROOT %while = f32[4] while(%neg0), condition=%WhileCond, body=%WhileBody
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(schedule, *alias_analysis_,
+                                         module_->entry_computation(),
+                                         /*module_scoped_analysis=*/true,
+                                         /*execution_threads=*/{"main"}));
+
+  CheckSchedule();
+
+  const HloInstruction* neg0 = FindInstruction(module_.get(), "neg0");
+  ASSERT_NE(neg0, nullptr);
+  EXPECT_TRUE(hlo_live_range_->instruction_schedule().contains(neg0));
+}
+
+TEST_F(HloLiveRangeTest, HelpersTest) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = f32[100] parameter(0)
+  param1 = f32[200] parameter(1)
+  const = f32[10] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+  add0 = f32[100] add(param0, param0)
+  add1 = f32[200] add(param1, param1)
+  ROOT root = (f32[100], f32[200]) tuple(add0, add1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+
+  HloComputation* entry = module_->entry_computation();
+  const HloInstruction* param0 = entry->parameter_instruction(0);
+  const HloInstruction* param1 = entry->parameter_instruction(1);
+  const HloInstruction* const_inst = entry->GetInstructionWithName("const");
+  const HloInstruction* add0 = entry->GetInstructionWithName("add0");
+  const HloInstruction* add1 = entry->GetInstructionWithName("add1");
+  const HloInstruction* root = entry->root_instruction();
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), 8);
+  };
+
+  // 1. GetBuffersDefined
+  auto param0_buffers = HloLiveRange::GetBuffersDefined(param0, *aa);
+  EXPECT_EQ(param0_buffers.size(), 1);
+  auto param1_buffers = HloLiveRange::GetBuffersDefined(param1, *aa);
+  EXPECT_EQ(param1_buffers.size(), 1);
+  auto add0_buffers = HloLiveRange::GetBuffersDefined(add0, *aa);
+  EXPECT_EQ(add0_buffers.size(), 1);
+
+  // 2. GetBytesDefined
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(param0, *aa, size_fn), 0);
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(add0, *aa, size_fn), 400);
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(add1, *aa, size_fn), 800);
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(const_inst, *aa, size_fn), 0);
+
+  // 3. GetBuffersUsed
+  auto add0_used = HloLiveRange::GetBuffersUsed(add0, *aa);
+  EXPECT_EQ(add0_used.size(), 1);
+  EXPECT_EQ(add0_used[0], param0_buffers[0]);
+
+  // 4. GetParameterBytesAtStart
+  EXPECT_EQ(HloLiveRange::GetParameterBytesAtStart(*entry, *aa, size_fn), 1200);
+
+  // 5. GetTotalUsers
+  EXPECT_EQ(HloLiveRange::GetTotalUsers(*param0_buffers[0], entry), 2);
+
+  // 6. BufferLivesOut
+  EXPECT_FALSE(HloLiveRange::BufferLivesOut(*param0_buffers[0], *aa, entry));
+  auto root_buffers = HloLiveRange::GetBuffersDefined(root, *aa);
+  EXPECT_FALSE(root_buffers.empty());
+  EXPECT_TRUE(HloLiveRange::BufferLivesOut(*root_buffers[0], *aa, entry));
+}
 }  // namespace
 }  // namespace xla

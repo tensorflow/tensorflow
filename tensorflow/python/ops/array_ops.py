@@ -196,6 +196,19 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   Returns:
     A `Tensor`. Has the same type as `tensor`.
   """
+  # Reject scalar (rank-0) shape tensors for consistency between eager and
+  # tf.function modes. Use shape=[value] instead.
+  if (
+      (tensor_util.is_tf_type(shape) and shape.shape.ndims == 0)
+      or isinstance(shape, (int, np.integer))
+      or (isinstance(shape, np.ndarray) and shape.ndim == 0)
+  ):
+    raise ValueError(
+        "tf.reshape `shape` argument must be a 1-D tensor or a Python "
+        "list/tuple, but got a scalar (rank-0) tensor. If you intended to "
+        "reshape to a 1-D tensor with a single dimension, use "
+        "`shape=[value]` instead."
+    )
   result = gen_array_ops.reshape(tensor, shape, name)
   shape_util.maybe_set_static_shape(result, shape)
   return result
@@ -723,6 +736,10 @@ def shape_internal(input, name=None, optimize=True, out_type=None):
           if not out_type:
             return constant_op._tensor_shape_tensor_conversion_function(  # pylint: disable=protected-access
                 input_shape)
+          if out_type not in (dtypes.int32, dtypes.int64):
+            raise ValueError(
+                f"Argument `out_type` must be int32 or int64; got {out_type!r}"
+            )
           return constant(input_shape.as_list(), out_type, name=name)
       if not out_type:
         out_type = dtypes.int32
@@ -1516,26 +1533,36 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
     axis_value = tensor_util.constant_value(axis)
+    flattened_shape = None
     if axis_value is not None:
       axis = axis_value
       shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
-
-    leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
-    tensor = reshape(
-        tensor,
-        concat([
-            shape(tensor)[:axis], [leading_size],
-            shape(tensor)[axis + ndims_mask:]
-        ], 0))
-    # TODO(yongtang): tf.reshape in C++ kernel might have set the shape
-    # correctly, so the following may not be needed? It still might be possible
-    # that there are some edge case where tensor_util.constant_value resolves
-    # more cases than ShapeInference of tf.reshape in C++ kernel.
-    if axis_value is not None:
       first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
-      tensor.set_shape(
-          tensor_shape.as_shape(shape_tensor[:axis]).concatenate(
-              [first_dim]).concatenate(shape_tensor[axis + ndims_mask:]))
+      flattened_shape = (
+          shape_tensor[:axis]
+          .concatenate([first_dim])
+          .concatenate(shape_tensor[axis + ndims_mask :])
+      )
+
+    if flattened_shape is not None and flattened_shape.is_fully_defined():
+      tensor = reshape(tensor, flattened_shape)
+    else:
+      leading_size = gen_math_ops.prod(
+          shape(tensor)[axis : axis + ndims_mask], [0]
+      )
+      tensor = reshape(
+          tensor,
+          concat(
+              [
+                  shape(tensor)[:axis],
+                  [leading_size],
+                  shape(tensor)[axis + ndims_mask :],
+              ],
+              0,
+          ),
+      )
+    if flattened_shape is not None:
+      tensor.set_shape(flattened_shape)
 
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask, axis)
@@ -4149,7 +4176,9 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   Args:
     lengths: integer tensor, all its values <= maxlen.
     maxlen: scalar integer tensor, size of last dimension of returned tensor.
-      Default is the maximum value in `lengths`.
+      Default is the maximum value in `lengths`. When compiling with XLA (such
+      as with `tf.function(jit_compile=True)`), `maxlen` must be explicitly
+      provided and evaluate to a compile-time constant.
     dtype: output type of the resulting tensor.
     name: name of the op.
 
@@ -4235,9 +4264,26 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 
   Raises:
     ValueError: When both `squeeze_dims` and `axis` are specified.
+    TypeError: When `axis` is a Tensor instead of an int or list of ints.
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "squeeze_dims",
                                                 squeeze_dims)
+  # Validate that axis is not a Tensor or a list/tuple containing a Tensor.
+  # This avoids a confusing MemoryError and keeps eager and graph mode
+  # behavior consistent, since `int(tensor)` only works in eager mode.
+  if axis is not None:
+    if tensor_util.is_tf_type(axis):
+      raise TypeError(
+          "`axis` must be an integer or a list of integers, not a Tensor. "
+          f"Received: axis={axis} (type: {type(axis).__name__})"
+      )
+    if isinstance(axis, (list, tuple)) and any(
+        tensor_util.is_tf_type(x) for x in axis
+    ):
+      raise TypeError(
+          "`axis` must be an integer or a list of integers, and cannot "
+          f"contain Tensors. Received: axis={axis}"
+      )
   if np.isscalar(axis):
     axis = [axis]
   return gen_array_ops.squeeze(input, axis, name)
@@ -4314,6 +4360,7 @@ def squeeze_v2(input, axis=None, name=None):
   Raises:
     ValueError: The input cannot be converted to a tensor, or the specified
       axis cannot be squeezed.
+    TypeError: When `axis` is a Tensor instead of an int or list of ints.
   """
   # pylint: disable=redefined-builtin
   return squeeze(input, axis, name)
@@ -4755,7 +4802,8 @@ def gather(params,
   must be an integer tensor of any dimension (often 1-D).
 
   `Tensor.__getitem__` works for scalars, `tf.newaxis`, and
-  [python slices](https://numpy.org/doc/stable/reference/arrays.indexing.html#basic-slicing-and-indexing)
+  [python
+  slices](https://numpy.org/doc/stable/reference/arrays.indexing.html#basic-slicing-and-indexing)
 
   `tf.gather` extends indexing to handle tensors of indices.
 
@@ -4922,10 +4970,11 @@ def gather(params,
       `int64`. The values must be in range `[0, params.shape[axis])`.
     validate_indices: Deprecated, does nothing. Indices are always validated on
       CPU, never validated on GPU.
-
-      Caution: On CPU, if an out of bound index is found, an error is raised.
-      On GPU, if an out of bound index is found, a 0 is stored in the
-      corresponding output value.
+      Caution: On CPU, if an out of bound index is found, an error is raised. On
+        GPU, if an out of bound index is found, a 0 is stored in the
+        corresponding output value. Under XLA compilation (e.g.
+        `tf.function(jit_compile=True)`), out of bound indices are not checked
+        and result in implementation-defined behavior.
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports

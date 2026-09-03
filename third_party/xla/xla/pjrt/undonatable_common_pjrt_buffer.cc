@@ -74,6 +74,19 @@ UndonatableCommonPjRtBuffer::~UndonatableCommonPjRtBuffer() {
   raw_buffer_.release()->DecrefAfter(std::move(events));
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> UndonatableCommonPjRtBuffer::Create(
+    std::unique_ptr<PjRtBuffer> buffer) {
+  if (!buffer) {
+    return absl::InvalidArgumentError("buffer cannot be null");
+  }
+  auto* client = dynamic_cast<CommonPjRtClient*>(buffer->client());
+  if (!client) {
+    return absl::InvalidArgumentError(
+        "MakeUndonatable requires a client derived from CommonPjRtClient");
+  }
+  return client->MakeUndonatable(std::move(buffer));
+}
+
 // Hold-Free Inference Extensions
 
 PjRtRawBufferRef UndonatableCommonPjRtBuffer::AcquireRawBufferRef(
@@ -116,7 +129,7 @@ bool UndonatableCommonPjRtBuffer::IsOnCpu() const {
 // Lifecycle & Readiness
 
 Future<> UndonatableCommonPjRtBuffer::GetReadyFuture() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (definition_future_) {
     return definition_future_;
   }

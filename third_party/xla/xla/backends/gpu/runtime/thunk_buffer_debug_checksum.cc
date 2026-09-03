@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
@@ -140,7 +140,7 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
 absl::Status DumpBufferDebugChecksumLog(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
-    xla::ffi::Buffer<U8> log_buffer) {
+    ffi::BufferR1<U8> log_buffer) {
   VLOG(1) << "HLO computation ptr: " << hlo_computation;
   const HloModule* hlo_module = hlo_computation->parent();
   VLOG(1) << "HLO module ptr: " << hlo_module;
@@ -151,7 +151,7 @@ absl::Status DumpBufferDebugChecksumLog(
   auto buffer_debug_log =
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
           log_buffer.device_memory());
-  ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
+  ABSL_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
                    buffer_debug_log.ReadFromDevice(*stream));
   BufferDebugLogProto buffer_debug_log_proto =
       metadata_store->EntriesToProto(log_entries);
@@ -164,12 +164,12 @@ absl::Status DumpBufferDebugChecksumLog(
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugChecksumLogInitHandler,
-    [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
+    [](se::Stream* absl_nonnull stream, ffi::BufferR1<U8> log_buffer) {
       return se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
                  *stream, log_buffer.device_memory())
           .status();
     },
-    xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
+    xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<ffi::BufferR1<U8>>());
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
     BufferAllocation::Slice log_slice,
@@ -202,7 +202,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
       xla::ffi::Ffi::Bind()
           .Ctx<xla::ffi::Stream>()
           .Ctx<xla::ffi::CalledComputation>()
-          .Arg<xla::ffi::Buffer<U8>>()
+          .Arg<ffi::BufferR1<U8>>()
           .To(absl::bind_front(DumpBufferDebugChecksumLog, metadata_store));
   return CustomCallThunk::Create(
       Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_dump",
@@ -222,14 +222,14 @@ absl::Status RunChecksumPassInternal(
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
-  ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
                    allocator.NewEmptyAllocation(kLogSizeBytes));
   BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
 
-  ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+  ABSL_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
                    CreateDebugInitThunk(log_slice, hlo_module));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto buffer_debug_dump_thunk,
       CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
 
@@ -246,7 +246,7 @@ absl::Status RunChecksumPassInternal(
                                  metadata_store);
   };
 
-  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  ABSL_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
   std::unique_ptr<BuffersDebugChecksumThunk> output_buffers_check_thunk;
   if (debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs() &&

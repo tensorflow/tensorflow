@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_IR_TILE_ASSIGNMENT_H_
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
@@ -88,7 +89,11 @@ class IotaTileAssignment {
            transpose_perm() == other.transpose_perm();
   }
 
+  // Returns the device index at the given tile index.
   int64_t value_at(absl::Span<const int64_t> index) const;
+
+  // Returns the tile index for the given device index.
+  std::vector<int64_t> index_for(int64_t device_index) const;
 
   int64_t ndims() const { return ndims_; }
 
@@ -212,6 +217,8 @@ class TileAssignment {
   }
   int64_t operator()(absl::Span<const int64_t> indexes) const;
 
+  std::vector<int64_t> index_for(int64_t device) const;
+
   absl::Span<const int64_t> dimensions() const;
   int64_t num_dimensions() const;
   int64_t dim(int64_t n) const;
@@ -225,8 +232,7 @@ class TileAssignment {
   // overhead per element. Useful for hot code paths.
   template <class Fn>
   void TemplatedEach(const Fn& fn) const {
-    MaybeMaterializeFullArray();
-    array_->TemplatedEach(fn);
+    array().TemplatedEach(fn);
   }
 
   absl::Status EachStatus(
@@ -254,6 +260,9 @@ class TileAssignment {
   // Returns reference to the full array representation. If it holds iota
   // format, reference to a lazily materialized array is returned.
   const Array<int64_t>& array() const;
+  const Array<int64_t>* array_ptr() const {
+    return array_.load(std::memory_order_acquire);
+  }
   // Similar to array() but returns the underlying shared_ptr to avoid deep
   // copy.
   std::shared_ptr<const Array<int64_t>> shared_array() const;
@@ -286,7 +295,7 @@ class TileAssignment {
   mutable std::shared_ptr<const Array<int64_t>> shared_array_
       ABSL_GUARDED_BY(mu_);
   // Pointer to the storage of the fully materialized array format.
-  mutable const Array<int64_t>* array_ ABSL_GUARDED_BY(mu_) = nullptr;
+  mutable std::atomic<const Array<int64_t>*> array_{nullptr};
 };
 
 inline std::ostream& operator<<(std::ostream& out,

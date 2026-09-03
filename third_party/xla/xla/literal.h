@@ -38,9 +38,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -597,14 +597,14 @@ class LiteralBase {
     void WriteElement(NativeT element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
+      static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         WriteElement(element.real());
         WriteElement(element.imag());
       } else {
         constexpr PrimitiveType unsigned_type =
             primitive_util::UnsignedIntegralTypeForBitWidth(
-                primitive_util::BitWidth(primitive_type));
+                primitive_util::StorageBitWidth(primitive_type));
         using UnsignedT = primitive_util::NativeTypeOf<unsigned_type>;
         UnsignedT unsigned_element = absl::bit_cast<UnsignedT>(element);
         if constexpr (sizeof(UnsignedT) == 1) {
@@ -625,7 +625,7 @@ class LiteralBase {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
-      if constexpr (bits_per_element < 8) {
+      if constexpr (primitive_util::IsSubByteNonPredType(primitive_type)) {
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
 
@@ -688,7 +688,7 @@ class LiteralBase {
     ABSL_MUST_USE_RESULT bool ReadElement(NativeT& element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
+      static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         using ComponentT =
             primitive_util::NativeTypeOf<primitive_util::ComplexComponentType(
@@ -705,7 +705,7 @@ class LiteralBase {
       } else {
         constexpr PrimitiveType unsigned_type =
             primitive_util::UnsignedIntegralTypeForBitWidth(
-                primitive_util::BitWidth(primitive_type));
+                primitive_util::StorageBitWidth(primitive_type));
         using UnsignedT = primitive_util::NativeTypeOf<unsigned_type>;
         if constexpr (sizeof(UnsignedT) == 1) {
           if (at_end()) {
@@ -736,7 +736,7 @@ class LiteralBase {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
-      if constexpr (bits_per_element < 8) {
+      if constexpr (primitive_util::IsSubByteNonPredType(primitive_type)) {
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
 
@@ -800,8 +800,8 @@ class LiteralBase {
       if (!proto.ParseFromString(shape_bytes)) {
         return InvalidArgument("Failed to parse shape protobuf");
       }
-      ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto));
-      RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+      ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto));
+      ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
       return std::move(shape);
     }
 
@@ -1189,11 +1189,11 @@ class LiteralBase {
     template <typename Fn>
     absl::Status ForEachHelper(const Fn& func, const Piece& piece,
                                ShapeIndex* index) const {
-      RETURN_IF_ERROR(func(*index, piece));
+      ABSL_RETURN_IF_ERROR(func(*index, piece));
       if (auto* tuple_rep = piece.storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
-          RETURN_IF_ERROR(ForEachHelper(func, tuple_rep->children[i], index));
+          ABSL_RETURN_IF_ERROR(ForEachHelper(func, tuple_rep->children[i], index));
           index->pop_back();
         }
       }
@@ -1219,11 +1219,11 @@ class LiteralBase {
     template <typename Fn>
     absl::Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                       ShapeIndex* index) {
-      RETURN_IF_ERROR(func(*index, piece));
+      ABSL_RETURN_IF_ERROR(func(*index, piece));
       if (auto* tuple_rep = piece->storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               ForEachMutableHelper(func, &tuple_rep->children[i], index));
           index->pop_back();
         }
@@ -1497,11 +1497,8 @@ class MutableLiteralBase : public LiteralBase {
 
   // The literal may or may not own the storage of the shape. Creating/copying a
   // shape can incur significant overhead which in many case we'd like to avoid,
-  // esp. for small literals.
-  using MaybeOwningShapePtr = MaybeOwning<Shape>;
-
-  // The parent class borrows this shape.
-  MaybeOwningShapePtr shape_;
+  // esp. for small literals. The parent class borrows this shape.
+  tsl::MaybeOwning<Shape> shape_;
 
   // We do not add static type checking for internal generators as these
   // functions are not part of the public API and we construct generators from
@@ -1761,13 +1758,13 @@ bool LiteralBase::Piece::DeserializeData(
 // - If a piece is dynamic, we first write the sizes of the dynamic dimensions.
 //
 // - The elements of the piece are then written.  Elements smaller than a single
-//   byte (PRED, S4, U4) are packed into bytes.  Otherwise, they are written in
+//   byte (e.g. S4, U4) are packed into bytes.  Otherwise, they are written in
 //   little-endian byte order.
 template <typename OutputIterator>
 absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
                                                   OutputIterator output) const {
   SerializeState<OutputIterator> state(shape_proto, output);
-  RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
+  ABSL_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
       [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
         if (subshape.IsTuple()) {
@@ -1798,9 +1795,9 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
   if (!state.ReadElement(shape_size)) {
     return InvalidArgument("Failed to read shape size");
   }
-  ASSIGN_OR_RETURN(Shape shape, state.ReadShape(shape_size));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, state.ReadShape(shape_size));
   Literal literal(shape);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       literal.mutable_root_piece().ForEachMutableSubpieceWithStatus(
           [&](const ShapeIndex& shape_index, Piece* piece) -> absl::Status {
             const Shape& subshape = piece->subshape();

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -30,22 +29,21 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "riegeli/bytes/string_writer.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/platform_util.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -53,26 +51,17 @@ namespace gpu {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class GpuAotCompilationTest : public HloTestBaseLegacy,
-                              public ::testing::WithParamInterface<bool> {
+class GpuAotCompilationTest : public HloPjRtGpuTestBase {
  protected:
-  void SetUp() override { debug_options_ = GetDebugOptionsForTest(); }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
-    return debug_options;
+  void SetUp() override {
+    HloPjRtGpuTestBase::SetUp();
+    debug_options_ = GetDebugOptionsForTest();
   }
 
   DebugOptions debug_options_;
 };
-INSTANTIATE_TEST_SUITE_P(NewAotFlow, GpuAotCompilationTest, ::testing::Bool(),
-                         [](const ::testing::TestParamInfo<bool>& info) {
-                           return info.param ? "NewAotFlowEnabled"
-                                             : "NewAotFlowDisabled";
-                         });
 
-TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
+TEST_F(GpuAotCompilationTest, ExportAndLoadExecutable) {
   const absl::string_view hlo_string = R"hlo(
     HloModule Test
 
@@ -81,38 +70,31 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
       ROOT b = f32[100, 200] copy(a)
     }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  auto compiler = backend().compiler();
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Compile AOT.
-  AotCompilationOptions aot_options(compiler->PlatformId());
-  aot_options.set_executor(stream_exec);
+  AotCompilationOptions aot_options(stream_executor_platform_id());
+  aot_options.set_gpu_topology(
+      GetSingleDeviceGpuTopology("", gpu_target_config()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
-      compiler->CompileAheadOfTime(std::move(module), aot_options));
+      compiler()->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          aot_results[0]->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompiledModule> aot_result,
-      compiler->LoadAotCompilationResult(serialized_aot_result));
+      compiler()->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       std::move(*aot_result)
-          .LoadExecutable(compiler->PlatformId(),
-                          stream_exec->GetDeviceDescription(), debug_options_));
+          .LoadExecutable(stream_executor_platform_id(), device_description(),
+                          debug_options_));
 
   auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
@@ -120,7 +102,7 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
               Not(IsEmpty()));
 }
 
-TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
+TEST_F(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
   const absl::string_view hlo_string = R"hlo(
     HloModule Test
 
@@ -129,40 +111,31 @@ TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
       ROOT b = f32[100, 200] copy(a)
     }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  auto compiler = backend().compiler();
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Stream executor is not passed as an option.
-  Compiler::GpuTargetConfig gpu_target_config(stream_exec);
-  AotCompilationOptions aot_options(compiler->PlatformId());
+  AotCompilationOptions aot_options(stream_executor_platform_id());
   aot_options.set_gpu_topology(
-      GetSingleDeviceGpuTopology("", gpu_target_config));
+      GetSingleDeviceGpuTopology("", gpu_target_config()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
-      compiler->CompileAheadOfTime(std::move(module), aot_options));
+      compiler()->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          aot_results[0]->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompiledModule> aot_result,
-      compiler->LoadAotCompilationResult(serialized_aot_result));
+      compiler()->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       std::move(*aot_result)
-          .LoadExecutable(compiler->PlatformId(),
-                          stream_exec->GetDeviceDescription(), debug_options_));
+          .LoadExecutable(stream_executor_platform_id(), device_description(),
+                          debug_options_));
 }
 
 namespace {
@@ -222,12 +195,9 @@ std::string CreateTritonCustomCallBackendConfig() {
 
 }  // namespace
 
-TEST_P(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
-  auto triton_support =
-      EnsureTritonSupportsComputeCapability(backend()
-                                                .default_stream_executor()
-                                                ->GetDeviceDescription()
-                                                .gpu_compute_capability());
+TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
+  auto triton_support = EnsureTritonSupportsComputeCapability(
+      device_description().gpu_compute_capability());
   if (!triton_support.ok()) {
     GTEST_SKIP() << triton_support;
   }
@@ -246,48 +216,47 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
       absl::StrFormat(hlo_string_template,
                       absl::CEscape(CreateTritonCustomCallBackendConfig()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  auto compiler = backend().compiler();
-  auto platform_name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(platform_name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Compile AOT.
-  AotCompilationOptions aot_options(compiler->PlatformId());
-  aot_options.set_executor(stream_exec);
+  AotCompilationOptions aot_options(stream_executor_platform_id());
+  aot_options.set_gpu_topology(
+      GetSingleDeviceGpuTopology("", gpu_target_config()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
-      compiler->CompileAheadOfTime(std::move(module), aot_options));
+      compiler()->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          aot_results[0]->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<CompiledModule> aot_result,
-      compiler->LoadAotCompilationResult(serialized_aot_result));
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       aot_results[0]->SerializeAsString());
 
-  // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      std::move(*aot_result)
-          .LoadExecutable(compiler->PlatformId(),
-                          stream_exec->GetDeviceDescription(), debug_options_));
-  std::unique_ptr<OpaqueExecutable> wrapped_executable =
-      test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
+  // Load and execute via PjRt test runner.
+  ExecutableAndOptionsProto proto;
+  *proto.mutable_serialized_executable() = std::move(serialized_aot_result);
+  proto.set_pjrt_client_name("PjRtStreamExecutorClient");
+  proto.mutable_compile_options()
+      ->mutable_executable_build_options()
+      ->set_num_replicas(1);
+  proto.mutable_compile_options()
+      ->mutable_executable_build_options()
+      ->set_num_partitions(1);
+  std::string serialized_split_proto;
+  ASSERT_OK(WriteSplitExecutableAndOptions(
+      proto,
+      std::make_unique<riegeli::StringWriter<>>(&serialized_split_proto)));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<OpaqueExecutable> executable,
+      test_runner().DeserializeExecutable(serialized_split_proto));
 
   const xla::Literal literal_1 = xla::LiteralUtil::CreateR0<float>(1.0f);
   const xla::Literal literal_2 = xla::LiteralUtil::CreateR0<float>(2.0f);
   const xla::Literal literal_3 = xla::LiteralUtil::CreateR0<float>(3.0f);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result, test_runner_as_hlo_runner().ExecuteWithExecutable(
-                          wrapped_executable.get(), {&literal_1, &literal_3}));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       test_runner().ExecuteWithExecutable(
+                           executable.get(), {&literal_1, &literal_3}));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::MakeTuple({&literal_2, &literal_3}), result));

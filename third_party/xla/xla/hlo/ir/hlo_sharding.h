@@ -202,6 +202,14 @@ class HloSharding {
     return named_sharding_.has_value();
   }
 
+  ReductionOp reduction_op() const { return reduction_op_; }
+  void set_reduction_op(ReductionOp op) {
+    reduction_op_ = op;
+    if (named_sharding_.has_value()) {
+      named_sharding_->set_reduction_op(op);
+    }
+  }
+
   // Returns true if the sharding has tuple type.
   bool IsTuple() const { return tuple_; }
 
@@ -533,6 +541,7 @@ class HloSharding {
              replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
              subgroup_types_ == other.subgroup_types_ &&
              shard_group_ == other.shard_group_ &&
+             reduction_op_ == other.reduction_op_ &&
              named_sharding_ == other.named_sharding_;
     }
 
@@ -558,10 +567,11 @@ class HloSharding {
       return AbslHashValue(std::move(h),
                            V3ToV2Sharding(*sharding.named_sharding_));
     }
-    return H::combine(
-        std::move(h), sharding.replicated_, sharding.manual_, sharding.unknown_,
-        sharding.unreduced_, sharding.tile_assignment_.array(),
-        sharding.replicate_on_last_tile_dim_, sharding.shard_group_.ToString());
+    return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
+                      sharding.unknown_, sharding.unreduced_,
+                      sharding.tile_assignment_.array(),
+                      sharding.replicate_on_last_tile_dim_,
+                      sharding.shard_group_.ToString(), sharding.reduction_op_);
   }
 
   struct HashV2Wrapper {
@@ -588,7 +598,7 @@ class HloSharding {
             sharding.manual_, sharding.unknown_, sharding.unreduced_,
             sharding.tile_assignment_.array(),
             sharding.replicate_on_last_tile_dim_, sharding.subgroup_types_,
-            sharding.shard_group_.ToString());
+            sharding.shard_group_.ToString(), sharding.reduction_op_);
       }
       CHECK(sharding.tile_assignment_.iota().has_value());
       const IotaTileAssignment& iota = *sharding.tile_assignment_.iota();
@@ -597,7 +607,7 @@ class HloSharding {
           sharding.manual_, sharding.unknown_, sharding.unreduced_, iota.dims(),
           iota.reshape_dims(), iota.transpose_perm(),
           sharding.replicate_on_last_tile_dim_, sharding.subgroup_types_,
-          sharding.shard_group_.ToString());
+          sharding.shard_group_.ToString(), sharding.reduction_op_);
     }
   };
 
@@ -843,7 +853,23 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
+        reduction_op_(named_sharding.reduction_op()),
         named_sharding_(std::move(named_sharding)) {}
+
+ public:
+  void ExtractReductionOpFromMetadata() {
+    for (const auto& md : metadata_) {
+      if (md.op_type() == "sdy::reduction_op") {
+        if (md.op_name() == "MAX") {
+          reduction_op_ = ReductionOp::kMax;
+        } else if (md.op_name() == "MIN") {
+          reduction_op_ = ReductionOp::kMin;
+        } else {
+          reduction_op_ = ReductionOp::kSum;
+        }
+      }
+    }
+  }
 
  private:
   explicit HloSharding(bool manual, bool replicated, bool unknown,
@@ -856,7 +882,9 @@ class HloSharding {
         unknown_(unknown),
         unreduced_(unreduced),
         replicate_on_last_tile_dim_(false),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   // device_id values:
   // -2: magic number to mean unassigned device, used by spatial partitioning
   // -1: the id of the host
@@ -873,7 +901,9 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   explicit HloSharding(TileAssignment tile_assignment,
                        bool replicate_on_last_tile_dim,
                        absl::Span<const OpMetadata> metadata = {})
@@ -886,7 +916,9 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(replicate_on_last_tile_dim),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   explicit HloSharding(TileAssignment tile_assignment,
                        absl::Span<const OpSharding::Type> subgroup_types,
                        absl::Span<const OpMetadata> metadata = {})
@@ -900,7 +932,9 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   explicit HloSharding(std::vector<HloSharding> tuple_shardings)
       : tuple_elements_(std::move(tuple_shardings)),
         replicated_(false),
@@ -932,6 +966,8 @@ class HloSharding {
         << other.tile_assignment_.ToString();
   }
   friend class HloShardingTestHelper;
+
+  static absl::StatusOr<HloSharding> FromProtoInternal(const OpSharding& proto);
 
   // Checks that the number of elements in tuple_elements_ is consistent with
   // the argument `shape`.
@@ -998,6 +1034,7 @@ class HloSharding {
   // within the same shard group (i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.
   ShardGroup shard_group_ = NotShardGroup();
+  ReductionOp reduction_op_ = ReductionOp::kSum;
 
   // Optional field to migrate HloSharding to new NamedSharding representation.
   // If this field is populated, all other fields in HloSharding should be empty

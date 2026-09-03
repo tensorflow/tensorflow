@@ -127,7 +127,12 @@ fi
 
 # Run all "tfrun" commands under Docker. See setup_docker.sh for details
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
-  source ./ci/official/utilities/setup_docker.sh
+  if [[ "$KOKORO_JOB_CLUSTER" == *"DOCKER"* ]]; then
+    echo "==TFCI==: Detected Kokoro Docker cluster ($KOKORO_JOB_CLUSTER); skipping nested Docker container setup."
+    TFCI_DOCKER_ENABLE=0
+  else
+    source ./ci/official/utilities/setup_docker.sh
+  fi
 fi
 
 # Generate an overview page describing the build

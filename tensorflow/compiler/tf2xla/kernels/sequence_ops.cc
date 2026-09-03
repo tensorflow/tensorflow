@@ -48,7 +48,8 @@ constexpr int64_t kMaxRangeOutputBytes = 1LL << 40;  // 1 TiB
 
 // Reject oversized Range outputs before XLA materializes them (e.g. Iota).
 // Equivalent to the CPU check: size * sizeof(T) >= 1 TiB. Uses division so we
-// do not need MultiplyWithoutOverflow; safe for Range dtypes (sizeof 4 or 8).
+// do not need MultiplyWithoutOverflow; safe for Range dtypes (1, 2, 4, or 8
+// byte elements).
 template <typename T>
 absl::Status CheckRangeOutputSize(int64_t size) {
   if (size < 0 ||
@@ -71,11 +72,11 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
   T limit = limit_literal.Get<T>({});
   T delta = delta_literal.Get<T>({});
 
-  if (delta == 0) {
+  if (delta == static_cast<T>(0)) {
     return absl::InvalidArgumentError(
         absl::StrCat("Requires delta != 0: ", delta));
   }
-  if (delta > 0) {
+  if (delta > static_cast<T>(0)) {
     if (start > limit) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Requires start <= limit when delta > 0: ", start, "/", limit));
@@ -99,7 +100,8 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
                      ? static_cast<UT>(limit) - static_cast<UT>(start)
                      : static_cast<UT>(start) - static_cast<UT>(limit);
       UT abs_delta =
-          (delta > 0) ? static_cast<UT>(delta) : -static_cast<UT>(delta);
+          (delta > static_cast<T>(0)) ? static_cast<UT>(delta)
+                                      : -static_cast<UT>(delta);
       UT size_unsigned = (range - 1) / abs_delta + 1;
       if (size_unsigned >
           static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
@@ -110,7 +112,11 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
       size = static_cast<int64_t>(size_unsigned);
     }
   } else {
-    auto size_auto = std::ceil(std::abs((limit - start) / delta));
+    // Compute in double so half/bfloat16 ranges keep enough precision.
+    double start_f = static_cast<double>(start);
+    double limit_f = static_cast<double>(limit);
+    double delta_f = static_cast<double>(delta);
+    double size_auto = std::ceil(std::abs((limit_f - start_f) / delta_f));
     // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so casting
     // NaN to int64_t is undefined behavior without this check.
     if (std::isnan(size_auto)) {
@@ -162,6 +168,13 @@ class RangeOp : public XlaOpKernel {
     DataType type = input_type(0);
     absl::StatusOr<xla::XlaOp> output;
     switch (type) {
+      case DT_INT8:
+        output = CreateRangeTensor<int8_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_INT16:
+        output =
+            CreateRangeTensor<int16_t>(start, limit, delta, ctx->builder());
+        break;
       case DT_INT32:
         output =
             CreateRangeTensor<int32_t>(start, limit, delta, ctx->builder());
@@ -169,6 +182,26 @@ class RangeOp : public XlaOpKernel {
       case DT_INT64:
         output =
             CreateRangeTensor<int64_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_UINT16:
+        output =
+            CreateRangeTensor<uint16_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_UINT32:
+        output =
+            CreateRangeTensor<uint32_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_UINT64:
+        output =
+            CreateRangeTensor<uint64_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_HALF:
+        output =
+            CreateRangeTensor<Eigen::half>(start, limit, delta, ctx->builder());
+        break;
+      case DT_BFLOAT16:
+        output =
+            CreateRangeTensor<bfloat16>(start, limit, delta, ctx->builder());
         break;
       case DT_FLOAT:
         output = CreateRangeTensor<float>(start, limit, delta, ctx->builder());
@@ -192,7 +225,7 @@ class RangeOp : public XlaOpKernel {
       xla::XlaOp delta = ctx->Input(2);
       xla::XlaOp limit = ctx->Input(1);
       xla::XlaOp start = ctx->Input(0);
-      if (type == DT_INT32 || type == DT_INT64) {
+      if (DataTypeIsInteger(type)) {
         auto dynamic_size = (xla::Abs(limit - start) + xla::Abs(delta) -
                              xla::One(ctx->builder(), ctx->input_xla_type(0))) /
                             xla::Abs(delta);

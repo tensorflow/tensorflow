@@ -22,24 +22,28 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt/value_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -130,9 +134,9 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
       // Fast-path for fully replicated arrays. Assumes that
       // `MakeArrayFromHostBuffer` can handle fully replicated array creation.
       auto& [addressable_shard_indices, host_buffer] = spec.buffers.front();
-      RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      ABSL_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           ArrayRef array,
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
@@ -153,7 +157,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     // from it because the same instance may be used multiple times if the same
     // index domain shows up in `addressable_index_domains` multiple times.
     for (const auto& [addressable_shard_indices, host_buffer] : spec.buffers) {
-      RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      ABSL_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
       std::function<void()> on_done_with_host_buffer_per_device;
       if (host_buffer.on_done != nullptr) {
@@ -185,7 +189,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
         if (spec.array_spec.layout != nullptr) {
           layout = PjRtLayout::Create(spec.array_spec.layout);  // NOLINT
         }
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             shard, client->MakeArrayFromHostBuffer(
                        host_buffer.data, host_buffer.dtype, host_buffer.shape,
                        host_buffer.byte_strides, std::move(sharding),
@@ -201,7 +205,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
           num_processed_shards, " vs. ", addressable_devices.size()));
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         ArrayRef array,
         client->AssembleArrayFromSingleDeviceArrays(
             spec.array_spec.dtype, std::move(spec.array_spec.shape),
@@ -212,6 +216,77 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     arrays.push_back(std::move(array));
   }
   return arrays;
+}
+
+absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
+    Client* client, absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
+    ArrayCopySemantics semantics) {
+  for (int i = 1; i < specs.size(); ++i) {
+    if (specs[0].array != nullptr && specs[i].array != nullptr &&
+        specs[0].array->sharding().devices() !=
+            specs[i].array->sharding().devices()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "All arrays in CopyArraysToHostBufferShards must have the "
+          "same device list, but got ",
+          specs[0].array->sharding().devices(), " vs. ",
+          specs[i].array->sharding().devices()));
+    }
+  }
+
+  std::vector<tsl::Future<>> result;
+  result.reserve(specs.size());
+  for (Client::CopyArraysToHostBufferShardsSpec& spec : specs) {
+    if (spec.buffers.empty()) {  // Nothing to copy.
+      result.push_back(absl::OkStatus());
+      continue;
+    }
+    if (spec.array == nullptr) {
+      return absl::InvalidArgumentError(
+          "CopyArraysToHostBufferShards called with a null array.");
+    }
+    if (!spec.array->sharding().devices()->IsFullyAddressable()) {
+      return absl::InvalidArgumentError(
+          "CopyArraysToHostBufferShards called with an array with some "
+          "non-addressable devices.");
+    }
+    // Split the array into single-device arrays.
+    ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> single_device_arrays,
+                     spec.array->DisassembleIntoSingleDeviceArrays(
+                         semantics, SingleDeviceShardSemantics::kAllShards));
+
+    absl::InlinedVector<tsl::Future<>, 4> buffer_futures;
+    buffer_futures.reserve(spec.buffers.size());
+    for (auto& buffer : spec.buffers) {
+      Client::CopyArraysToHostBufferShardsSpec::ShardIndices& shard_indices =
+          buffer.first;
+      Client::MutableHostBuffer& host_buffer = buffer.second;
+      if (shard_indices.empty()) {
+        return absl::InvalidArgumentError(
+            "No source shard indices specified for a host buffer in "
+            "CopyArraysToHostBufferShards.");
+      }
+      // If multiple array source shards are specified, pick the first one to
+      // copy from.
+      const int64_t shard_idx = shard_indices.front();
+      if (shard_idx < 0 || shard_idx >= single_device_arrays.size()) {
+        return absl::OutOfRangeError(
+            absl::StrCat("Shard index ", shard_idx, " out of range [0, ",
+                         single_device_arrays.size(), ")"));
+      }
+      std::optional<absl::Span<const int64_t>> byte_strides;
+      if (host_buffer.byte_strides.has_value()) {
+        byte_strides = absl::MakeConstSpan(*host_buffer.byte_strides);
+      }
+      buffer_futures.push_back(
+          single_device_arrays[shard_idx]->CopyToHostBuffer(
+              host_buffer.data, byte_strides, semantics));
+    }
+    CHECK(!buffer_futures.empty());
+    result.push_back(buffer_futures.size() == 1
+                         ? std::move(buffer_futures.front())
+                         : tsl::JoinFutures(buffer_futures));
+  }
+  return result;
 }
 
 absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
@@ -230,10 +305,10 @@ LoadedExecutableExecuteBundle(
     if (bundle->IsDeleted()) {
       return absl::FailedPreconditionError("Bundle is deleted or donated.");
     }
-    ASSIGN_OR_RETURN(std::vector<ValueRef> values,
+    ABSL_ASSIGN_OR_RETURN(std::vector<ValueRef> values,
                      bundle->GetValues(ArrayCopySemantics::kReuseInput));
     for (const ValueRef& value : values) {
-      if (auto* array = llvm::dyn_cast<Array>(value.get())) {
+      if (auto* array = dyn_cast<Array>(value.get())) {
         arg_arrays.push_back(tsl::FormRef(array));
       } else {
         return absl::InvalidArgumentError(
@@ -243,7 +318,7 @@ LoadedExecutableExecuteBundle(
     }
   }
 
-  ASSIGN_OR_RETURN(LoadedExecutable::ExecuteResult result,
+  ABSL_ASSIGN_OR_RETURN(LoadedExecutable::ExecuteResult result,
                    executable->Execute(absl::MakeSpan(arg_arrays), options,
                                        /*devices=*/std::nullopt));
 
@@ -272,7 +347,7 @@ LoadedExecutableExecuteBundle(
         ++offset;
       }
 
-      ASSIGN_OR_RETURN(BundleRef bundle,
+      ABSL_ASSIGN_OR_RETURN(BundleRef bundle,
                        client->Bundle(absl::MakeSpan(values),
                                       ArrayCopySemantics::kDonateInput));
       output_bundles.push_back(std::move(bundle));
@@ -280,7 +355,7 @@ LoadedExecutableExecuteBundle(
   } else {
     std::vector<ValueRef> output_values =
         ToValues(absl::MakeSpan(result.outputs));
-    ASSIGN_OR_RETURN(BundleRef output_bundle,
+    ABSL_ASSIGN_OR_RETURN(BundleRef output_bundle,
                      client->Bundle(absl::MakeSpan(output_values),
                                     ArrayCopySemantics::kDonateInput));
     output_bundles.push_back(std::move(output_bundle));

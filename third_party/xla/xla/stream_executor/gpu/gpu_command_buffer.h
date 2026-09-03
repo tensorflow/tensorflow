@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -128,12 +130,15 @@ class GpuCommandBuffer : public CommandBuffer {
       StreamPriority priority) override;
 
   absl::StatusOr<const Command*> CreateLaunch(
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
       StreamPriority priority) override;
 
   absl::Status UpdateLaunch(const Command* command, const ThreadDim& threads,
-                            const BlockDim& blocks, const Kernel& kernel,
+                            const BlockDim& blocks,
+                            const std::optional<ClusterDim>& cluster_dims,
+                            const Kernel& kernel,
                             const KernelArgs& args) override;
 
   absl::StatusOr<const Command*> CreateChildCommand(
@@ -158,6 +163,21 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status UpdateMemcpyD2D(const Command* command, DeviceAddressBase* dst,
                                const DeviceAddressBase& src,
                                uint64_t size) override;
+
+  absl::StatusOr<const Command*> CreateMemcpyD2H(
+      void* dst, const DeviceAddressBase& src, uint64_t size,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status UpdateMemcpyD2H(const Command* command, void* dst,
+                               const DeviceAddressBase& src,
+                               uint64_t size) override;
+
+  absl::StatusOr<const Command*> CreateMemcpyH2D(
+      DeviceAddressBase* dst, const void* src, uint64_t size,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status UpdateMemcpyH2D(const Command* command, DeviceAddressBase* dst,
+                               const void* src, uint64_t size) override;
 
   absl::StatusOr<const Command*> CreateMemset(
       DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
@@ -258,7 +278,8 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Launches CUDA kernels with packed arguments.
   absl::StatusOr<const Command*> CreateLaunchWithPackedArgs(
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgsPackedArrayBase& packed_args,
       absl::Span<const Command* const> dependencies,
       StreamPriority priority = StreamPriority::Default);
@@ -266,7 +287,8 @@ class GpuCommandBuffer : public CommandBuffer {
   // Updates a kernel launch command with packed arguments.
   absl::Status UpdateLaunchWithPackedArgs(
       const Command* command, const ThreadDim& threads, const BlockDim& blocks,
-      const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args);
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& packed_args);
 
  protected:
   // Returns OK status if command buffer is not finalized and it is still
@@ -341,6 +363,24 @@ class GpuCommandBuffer : public CommandBuffer {
                                            DeviceAddressBase source,
                                            uint64_t size) = 0;
 
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyD2HNode(
+      absl::Span<const GraphNodeHandle> dependencies, void* destination,
+      DeviceAddressBase source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyD2HNode(GraphNodeHandle node_handle,
+                                           void* destination,
+                                           DeviceAddressBase source,
+                                           uint64_t size) = 0;
+
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyH2DNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      DeviceAddressBase destination, const void* source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyH2DNode(GraphNodeHandle node_handle,
+                                           DeviceAddressBase destination,
+                                           const void* source,
+                                           uint64_t size) = 0;
+
   virtual absl::Status PopulateDnnGraphNode(
       dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands) = 0;
 
@@ -372,15 +412,16 @@ class GpuCommandBuffer : public CommandBuffer {
   // Adds a new kernel launch node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgsPackedArrayBase& args) = 0;
 
   // Updates the kernel launch node with the given parameters. Will return an
   // error if the given node has not been created as a kernel launch node.
   virtual absl::Status UpdateKernelNode(
       GraphNodeHandle node_handle, const ThreadDim& threads,
-      const BlockDim& blocks, const Kernel& kernel,
-      const KernelArgsPackedArrayBase& args) = 0;
+      const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+      const Kernel& kernel, const KernelArgsPackedArrayBase& args) = 0;
 
   //===--------------------------------------------------------------------===//
 

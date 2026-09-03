@@ -107,19 +107,31 @@ CustomCallOp dynCastX64CombineCustomCall(Operation* op) {
   return customCallOp;
 }
 
+CustomCallOp getX64CombineUser(Operation* op) {
+  for (Operation* user : op->getUsers()) {
+    if (auto combineOp = dynCastX64CombineCustomCall(user)) {
+      return combineOp;
+    }
+  }
+  return nullptr;
+}
+
 CustomCallOp getX64CombineOnFuncResultSharding(
     CustomCallOp funcResultSharding) {
-  if (funcResultSharding.getNumResults() != 2 ||
-      !funcResultSharding.getResult(0).hasOneUse() ||
-      !funcResultSharding.getResult(1).hasOneUse()) {
-    return nullptr;
+  if (auto combineOp = getX64CombineUser(funcResultSharding)) {
+    return combineOp;
   }
-  Operation* lhsUser = *funcResultSharding.getResult(0).user_begin();
-  Operation* rhsUser = *funcResultSharding.getResult(1).user_begin();
-  if (lhsUser != rhsUser) {
-    return nullptr;
+  for (Operation* user : funcResultSharding->getUsers()) {
+    auto tupleOp = mlir::dyn_cast<stablehlo::TupleOp>(user);
+    if (!tupleOp) continue;
+    for (Operation* gteOp : tupleOp->getUsers()) {
+      if (!mlir::isa<stablehlo::GetTupleElementOp>(gteOp)) continue;
+      if (auto combineOp = getX64CombineUser(gteOp)) {
+        return combineOp;
+      }
+    }
   }
-  return dynCastX64CombineCustomCall(lhsUser);
+  return nullptr;
 }
 
 // TODO(kostiantynl): b/448858211 when API is fixed, use
@@ -149,15 +161,12 @@ bool handleFuncResultSharding(
 
   auto resultUses = funcResultSharding->getUses();
   bool anyChanged = false;
-  auto x64CombineOp = getX64CombineOnFuncResultSharding(funcResultSharding);
-  if (x64CombineOp) {
-    // X64Rewriter pass will pass through the two split 32-bit operands to
-    // the `xla.sdy.FuncResultSharding`, which will return two 32-bit results,
-    // that would then be passed to a `X64Combine` custom-call. Therefore, we
-    // need to look at the uses of the `X64Combine` instead to find the
-    // corresponding `func.return` op.
-    mlir::sdy::setShardings(x64CombineOp, shardingPerValueAttr);
-    resultUses = x64CombineOp->getUses();
+  if (CustomCallOp combineOp =
+          getX64CombineOnFuncResultSharding(funcResultSharding)) {
+    resultUses = combineOp->getUses();
+    if (!combineOp->hasAttr(kShardingAttr)) {
+      combineOp->setAttr(kShardingAttr, shardingPerValueAttr);
+    }
   } else if (auto* defOp = funcResultSharding.getOperand(0).getDefiningOp();
              defOp && funcResultSharding->use_empty()) {
     // It `funcResultSharding` has no uses, it is likely because it has a
@@ -180,7 +189,7 @@ bool handleFuncResultSharding(
       hasNonFuncReturnUses = true;
     }
   }
-  if (hasNonFuncReturnUses && !x64CombineOp) {
+  if (hasNonFuncReturnUses) {
     // If there are users that are not the func return op, which might happen
     // due to inlined func ops that originally had result shardings, we replace
     // the `xla.sdy.FuncResultSharding` with a `ShardingConstraintOp` to

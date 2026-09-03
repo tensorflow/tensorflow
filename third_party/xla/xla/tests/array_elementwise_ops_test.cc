@@ -24,6 +24,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -104,14 +105,16 @@ void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   }
 }
 
-class ArrayElementwiseOpTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+class ArrayElementwiseOpTest : public ClientLibraryTestRunnerMixin<
+                                   HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
   ErrorSpec error_spec_{60 * kEpsF32, 60 * kEpsF32};
   ErrorSpec strict_error_spec_{100 * kEpsF64, 100 * kEpsF64};
+
+  template <typename ComplexT>
+  void TestComplexTanhUlps(int64_t max_ulps = 2);
 };
 
 class ArrayElementwiseOpTestParamCount
@@ -215,18 +218,66 @@ TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
-TEST_F(ArrayElementwiseOpTest, IntPow) {
+TEST_F(ArrayElementwiseOpTest, IntPowConst) {
   XlaBuilder builder(TestName());
-  XlaOp lhs =
-      ConstantR1<int32_t>(&builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1});
-  XlaOp rhs =
-      ConstantR1<int32_t>(&builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2});
+  XlaOp lhs = ConstantR1<int32_t>(
+      &builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  XlaOp rhs = ConstantR1<int32_t>(
+      &builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
   Pow(lhs, rhs);
 
-  std::vector<int32_t> expected = {1, 1,  8, 27,      64, 125,
-                                   1, -8, 9, 9765625, 0,  1};
+  std::vector<int32_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
 
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
+}
+
+TEST_F(ArrayElementwiseOpTest, Int64PowConst) {
+  XlaBuilder builder(TestName());
+  XlaOp lhs = ConstantR1<int64_t>(
+      &builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  XlaOp rhs = ConstantR1<int64_t>(
+      &builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int64_t>(&builder, expected, {});
+}
+
+TEST_F(ArrayElementwiseOpTest, IntPow) {
+  XlaBuilder b(this->TestName());
+
+  const Literal lhs_literal = LiteralUtil::CreateR1<int32_t>(
+      {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  auto lhs = Parameter(&b, 0, lhs_literal.shape(), "lhs");
+  Literal rhs_literal = LiteralUtil::CreateR1<int32_t>(
+      {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  auto rhs = Parameter(&b, 1, rhs_literal.shape(), "rhs");
+  Pow(lhs, rhs);
+
+  std::vector<int32_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int32_t>(&b, expected, {&lhs_literal, &rhs_literal});
+}
+
+TEST_F(ArrayElementwiseOpTest, Int64Pow) {
+  XlaBuilder b(this->TestName());
+
+  const Literal lhs_literal = LiteralUtil::CreateR1<int64_t>(
+      {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  auto lhs = Parameter(&b, 0, lhs_literal.shape(), "lhs");
+  Literal rhs_literal = LiteralUtil::CreateR1<int64_t>(
+      {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  auto rhs = Parameter(&b, 1, rhs_literal.shape(), "rhs");
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int64_t>(&b, expected, {&lhs_literal, &rhs_literal});
 }
 
 TEST_F(ArrayElementwiseOpTest, IntPowLarge) {
@@ -1342,7 +1393,7 @@ TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
 
 template <typename T>
 class TotalOrderTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   void DoIt(ComparisonDirection direction) {
     this->SetFastMathDisabled(true);
@@ -2802,6 +2853,26 @@ TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
+// Regression test for https://github.com/openxla/xla/issues/44705. The two
+// compares are distinct instructions (as emitted by the frontend in the
+// issue, before CSE), their xor is always false, and the converted zeros
+// only become constants during compilation; atan2(0, 0) must still be 0,
+// not NaN.
+TEST_F(ArrayElementwiseOpTest, Atan2ZerosFromXorSelf) {
+  XlaBuilder builder(TestName());
+  XlaOp a;
+  auto a_data =
+      CreateR1Parameter<int32_t>({0, 1, 2, 3, 4}, 0, "a", &builder, &a);
+  auto zero = Broadcast(ConstantR0<int32_t>(&builder, 0), {5});
+  auto ne1 = Ne(a, zero);
+  auto ne2 = Ne(a, zero);
+  auto zeros = ConvertElementType(Xor(ne1, ne2), F32);
+  Atan2(zeros, zeros);
+
+  ComputeAndCompareR1<float>(&builder, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+                             {&a_data}, error_spec_);
+}
+
 TEST_F(ArrayElementwiseOpTest, ErfF32s) {
   XlaBuilder builder(TestName());
   auto kInf = std::numeric_limits<float>::infinity();
@@ -2880,6 +2951,91 @@ TEST_F(ArrayElementwiseOpTest, TanhF64sVector) {
 
   Tanh(input_literal);
   ComputeAndCompare(&builder, {}, strict_error_spec_);
+}
+
+template <typename T>
+std::vector<std::complex<T>> GetComplexTanhTestInputs() {
+  return {
+      // Small inputs where (exp(a))^2 - (exp(-a))^2 suffered precision loss
+      // due to exp2 cancellation on older TPUs:
+      {T(0.0017180424), T(0.0017180424)},
+      {T(-0.0017180424), T(0.0017180424)},
+      {T(0.0017180424), T(-0.0017180424)},
+      {T(-0.0017180424), T(-0.0017180424)},
+
+      // Other small magnitudes:
+      {T(1e-5), T(1e-5)},
+      {T(-1e-5), T(1e-5)},
+      {T(1e-4), T(1e-4)},
+      {T(-1e-4), T(-1e-4)},
+      {T(1e-3), T(1e-3)},
+      {T(-1e-3), T(-1e-3)},
+      {T(1e-2), T(1e-2)},
+      {T(0.05), T(0.05)},
+
+      // Points near or on axes:
+      {T(0.0), T(0.0)},
+      {T(1e-3), T(0.0)},
+      {T(0.0), T(1e-3)},
+      {T(-1e-3), T(0.0)},
+      {T(0.0), T(-1e-3)},
+
+      // Moderate inputs:
+      {T(0.5), T(0.5)},
+      {T(-0.5), T(0.5)},
+      {T(1.0), T(1.0)},
+      {T(2.0), T(-1.5)},
+
+      // Large inputs (overflow handling, Re(z) > 15 region where tanh(z) -> +/-
+      // 1):
+      {T(15.0), T(0.5)},
+      {T(-15.0), T(0.5)},
+      {T(20.0), T(1.0)},
+      {T(-20.0), T(1.0)},
+  };
+}
+
+template <typename ComplexT>
+void ArrayElementwiseOpTest::TestComplexTanhUlps(int64_t max_ulps) {
+  using RealT = typename ComplexT::value_type;
+  std::vector<ComplexT> xs = GetComplexTanhTestInputs<RealT>();
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<ComplexT>(&builder, xs);
+  Tanh(a);
+  ASSERT_OK_AND_ASSIGN(Literal actual, this->ExecuteAndTransfer(&builder, {}));
+  for (int64_t i = 0; i < xs.size(); ++i) {
+    ComplexT act = actual.Get<ComplexT>({i});
+    std::complex<double> zd(static_cast<double>(xs[i].real()),
+                            static_cast<double>(xs[i].imag()));
+    std::complex<double> ref = std::tanh(zd);
+    ComplexT exp(static_cast<RealT>(ref.real()),
+                 static_cast<RealT>(ref.imag()));
+
+    auto real_ulps = UlpDistance(act.real(), exp.real());
+    auto imag_ulps = UlpDistance(act.imag(), exp.imag());
+    ASSERT_TRUE(real_ulps.has_value())
+        << "NaN/Inf mismatch on real part for input " << xs[i];
+    ASSERT_TRUE(imag_ulps.has_value())
+        << "NaN/Inf mismatch on imag part for input " << xs[i];
+    EXPECT_LE(*real_ulps, max_ulps)
+        << "Real part ULP error exceeded for input " << xs[i]
+        << ": actual=" << act.real() << ", expected=" << exp.real()
+        << ", ulp_distance=" << *real_ulps;
+    EXPECT_LE(*imag_ulps, max_ulps)
+        << "Imag part ULP error exceeded for input " << xs[i]
+        << ": actual=" << act.imag() << ", expected=" << exp.imag()
+        << ", ulp_distance=" << *imag_ulps;
+  }
+}
+
+TEST_F(ArrayElementwiseOpTest, TanhC64s) { TestComplexTanhUlps<complex64>(); }
+
+TEST_F(ArrayElementwiseOpTest, TanhC128s) {
+  // Float64 transcendentals on TPU use software emulation, which has an error
+  // bound of up to 100 ULPs (matching strict_error_spec_). On platforms with
+  // native float64 units (CPU, GPU), enforce <= 2 ULPs.
+  const int64_t max_ulps = test::DeviceTypeIs(test::kTpu) ? 100 : 2;
+  TestComplexTanhUlps<complex128>(max_ulps);
 }
 
 TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {

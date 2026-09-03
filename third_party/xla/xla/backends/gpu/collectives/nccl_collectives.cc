@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -158,9 +158,9 @@ class NcclIdStore {
     // with other ranks by putting into KV store.
     if (root_processes.contains(process_id_)) {
       absl::Time set_clique_id_start = absl::Now();
-      ASSIGN_OR_RETURN(CliqueId clique_id,
+      ABSL_ASSIGN_OR_RETURN(CliqueId clique_id,
                        nccl_collectives.CreateUniqueCliqueId());
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           kv_store_->Set(kv_key(process_id_), clique_id.ToString()));
       absl::Time set_clique_id_done = absl::Now();
       VLOG(5) << absl::StreamFormat("Set NCCL clique id process=%v in %v",
@@ -174,7 +174,7 @@ class NcclIdStore {
     absl::Time get_clique_ids_start = absl::Now();
     CliqueIds clique_ids;
     for (ProcessId root : root_processes) {
-      ASSIGN_OR_RETURN(std::string id_str,
+      ABSL_ASSIGN_OR_RETURN(std::string id_str,
                        kv_store_->Get(kv_key(root), absl::Minutes(10)));
       clique_ids.Add(CliqueId(id_str));
     }
@@ -226,7 +226,7 @@ static std::string FormatNcclVersion(int nccl_version) {
 
 static absl::StatusOr<std::unique_ptr<Communicator>> Cast(
     absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm_or) {
-  ASSIGN_OR_RETURN(auto comm, std::move(comm_or));
+  ABSL_ASSIGN_OR_RETURN(auto comm, std::move(comm_or));
   return std::unique_ptr<Communicator>(comm.release());
 }
 
@@ -281,11 +281,11 @@ absl::Status NcclCollectives::GroupLaunch(
     }
   }
 
-  ASSIGN_OR_RETURN(bool launched, NcclGroupLaunch(group));
+  ABSL_ASSIGN_OR_RETURN(bool launched, NcclGroupLaunch(group));
   if (launched) {
     for (const GpuCommunicator* comm : comms) {
       auto* nccl_comm = absl::down_cast<const NcclCommunicator*>(comm);
-      RETURN_IF_ERROR(nccl_comm->PollUntilDone());
+      ABSL_RETURN_IF_ERROR(nccl_comm->PollUntilDone());
     }
   }
   return absl::OkStatus();
@@ -308,7 +308,7 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   comm_config.blocking = config.blocking_communicators ? 1 : 0;
   comm_config.splitShare = config.split_share;
 
-  ASSIGN_OR_RETURN(int nccl_version, GetLinkedNcclVersion());
+  ABSL_ASSIGN_OR_RETURN(int nccl_version, GetLinkedNcclVersion());
 
   const DebugOptions& opts = xla::GetDebugOptionsFromFlags();
   bool symmetric_buffers_enabled =
@@ -375,7 +375,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     return InvalidArgument("CliqueId is required to create NCCL communicators");
   }
 
-  ASSIGN_OR_RETURN(int nccl_version, GetLinkedNcclVersion());
+  ABSL_ASSIGN_OR_RETURN(int nccl_version, GetLinkedNcclVersion());
   VLOG(1) << absl::StreamFormat(
       "[%s] [ranks=%s] Initialize NCCL (compiled with %s, linked with %s) "
       "communicators for %d local devices (out of %d global devices); "
@@ -395,7 +395,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
         "asynchronous execution.");
   }
 
-  ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
+  ABSL_ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
 
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
@@ -423,11 +423,11 @@ NcclCollectives::CreateCommunicatorsWithCancel(
 
     std::vector<ncclUniqueId> nccl_unique_ids;
     for (const CliqueId& clique_id : clique_ids->data()) {
-      ASSIGN_OR_RETURN(nccl_unique_ids.emplace_back(),
+      ABSL_ASSIGN_OR_RETURN(nccl_unique_ids.emplace_back(),
                        AsNcclUniqueId(clique_id));
     }
 
-    ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+    ABSL_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsNcclConfig(gpu_config, stream_executors[i]));
 
     ncclComm_t comm;
@@ -471,10 +471,10 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     });
   }
 
-  ASSIGN_OR_RETURN(auto comms, JoinFutures(absl::MakeSpan(futures)).Await());
+  ABSL_ASSIGN_OR_RETURN(auto comms, JoinFutures(absl::MakeSpan(futures)).Await());
 
   if (auto* gxl = gxl_collectives()) {
-    RETURN_IF_ERROR(gxl->MaybeAttachGxlCommunicators(absl::MakeSpan(comms),
+    ABSL_RETURN_IF_ERROR(gxl->MaybeAttachGxlCommunicators(absl::MakeSpan(comms),
                                                      ranks, clique_key));
   }
 
@@ -503,7 +503,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
         keys.size());
   }
 
-  ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
+  ABSL_ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
 
   const auto& gpu_config =
       absl::down_cast<const GpuCollectives::Config&>(config);
@@ -527,7 +527,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
         device_ordinal, rank, static_cast<const void*>(parent_comm), color,
         key);
 
-    ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+    ABSL_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsNcclConfig(gpu_config, stream_executors[i]));
 
     ncclComm_t split_comm;
@@ -564,11 +564,11 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     });
   }
 
-  ASSIGN_OR_RETURN(auto split_comms,
+  ABSL_ASSIGN_OR_RETURN(auto split_comms,
                    JoinFutures(absl::MakeSpan(futures)).Await());
 
   if (auto* gxl = gxl_collectives()) {
-    RETURN_IF_ERROR(gxl->MaybeAttachSplitGxlCommunicators(
+    ABSL_RETURN_IF_ERROR(gxl->MaybeAttachSplitGxlCommunicators(
         comms, absl::MakeSpan(split_comms), ranks));
   }
 

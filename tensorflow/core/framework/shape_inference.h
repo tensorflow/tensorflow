@@ -690,7 +690,7 @@ class InferenceContext {
         << "Got idx: " << idx << " but only "
         << input_handle_shapes_and_types_.size() << " inputs.";
     input_handle_shapes_and_types_[idx] =
-        absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
 
   // Returns the output handle shapes and types, for the resource tensor output
@@ -720,7 +720,7 @@ class InferenceContext {
         << "Got idx: " << idx << " but only "
         << output_handle_shapes_and_types_.size() << " inputs.";
     output_handle_shapes_and_types_[idx] =
-        absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,

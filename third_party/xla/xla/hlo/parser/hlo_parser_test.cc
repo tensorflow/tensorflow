@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -32,11 +33,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2501,6 +2503,64 @@ ENTRY CollectiveBroadcast {
 )",
 /*replica_count=*/4,
 },
+// collective-reduce
+{
+"CollectiveReduce",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), replica_groups={{0,1},{2,3}}, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
+// collective-reduce with channel_id and use_global_device_ids
+{
+"CollectiveReduceWithChannelId",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=2
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/2,
+},
+// collective-reduce with has_dynamic_root (single data operand)
+{
+"CollectiveReduceDynamicRoot",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0}, s32[1]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  root = s32[1]{0} parameter(1)
+  ROOT cr = f32[8]{0} collective-reduce(input, root), replica_groups={{0,1},{2,3}}, has_dynamic_root=true, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
 // collective-permute
 {
 "CollectivePermute",
@@ -3084,7 +3144,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnVerifiedModule(
       /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
       ShapeUtil::ByteSizeOfElements);
-  RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
+  ABSL_RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
   return verified_module;
 }
 
@@ -3420,6 +3480,163 @@ ENTRY e {
   EXPECT_THAT(result.status().message(), HasSubstr("device_ids"));
 }
 
+TEST_F(HloParserTest, AllGatherEmptyDimensions) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,128]{0,1} all-gather(input), replica_groups={}, dimensions={}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ReduceScatterEmptyDimensions) {
+  const std::string original = R"(HloModule m
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT s = f32[] add(a, b)
+}
+ENTRY e {
+  input = f32[8,4] parameter(0)
+  ROOT rs = f32[4,4] reduce-scatter(input), replica_groups={}, to_apply=add, dimensions={}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, GetDimensionSizeEmptyDimensions) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[2,3] parameter(0)
+  ROOT gds = get-dimension-size(p), dimensions={}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ScanDimensionOutOfRange) {
+  const std::string original = R"(HloModule m
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT a = f32[] add(x, y)
+}
+ENTRY main {
+  input = f32[4] parameter(0)
+  init = f32[] parameter(1)
+  ROOT scan = scan(input, init), dimensions={-1}, num_carries=0, to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, RecvNonTupleShape) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  tok = token[] after-all()
+  ROOT recv = f32[10] recv(tok)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ConditionalNoOperands) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  ROOT c = f32[] conditional()
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, RngBitGeneratorNoOperands) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  ROOT r = (u64[2], u32[4]) rng-bit-generator(), algorithm=rng_three_fry
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ReduceWindowNoOperands) {
+  const std::string original = R"(HloModule m
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT s = f32[] add(a, b)
+}
+ENTRY e {
+  ROOT rw = reduce-window(), to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+TEST_F(HloParserTest, ShardingDeviceCountExceedsTileAssignment) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[4,4] parameter(0)
+  ROOT c = f32[4,4] copy(p), sharding={devices=[2,2]0,1,2,3,4,5,6,7,8,9}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("does not match the tile assignment size"));
+}
+
+TEST_F(HloParserTest, ShardingIotaSizeMismatchesTileAssignment) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[4,4] parameter(0)
+  ROOT c = f32[4,4] copy(p), sharding={devices=[2,2]<=[16]}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("does not match the tile assignment dimensions "
+                        "product"));
+}
+
+TEST_F(HloParserTest, CollectiveDeviceListIotaSizeMismatch) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[8] parameter(0)
+  ROOT ag = f32[16] all-gather(p), dimensions={0},
+      replica_groups=[2,2]<=[16]
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("does not match the tile assignment dimensions "
+                        "product"));
+}
+
+TEST_F(HloParserTest, WindowRhsReversalWrongSize) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[1,2,2,1] parameter(0)
+  filter = f32[1,1,1,1] parameter(1)
+  ROOT conv = f32[1,2,2,1] convolution(input, filter),
+      window={size=1x1 rhs_reversal=1}, dim_labels=b01f_01io->b01f
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("rhs_reversal"));
+}
+
+TEST_F(HloParserTest, ConvDimLabelDigitExceedsSpatialDims) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[1,2,1] parameter(0)
+  filter = f32[1,1,1] parameter(1)
+  ROOT conv = f32[1,2,1] convolution(input, filter),
+      window={size=1}, dim_labels=9?????????_io->bf
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("dimension numbers"));
+}
+
 TEST_F(HloParserTest, CompactGteRoundTrip) {
   const std::string original =
       R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
@@ -3510,6 +3727,50 @@ ENTRY %configuration_test() -> s32[] {
                            ->entry_computation()
                            ->root_instruction()
                            ->raw_backend_config_string());
+}
+
+TEST_F(HloParserTest, CompareWithOrder) {
+  const std::string original = R"(HloModule CompareWithOrder
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, order=TOTAL
+})";
+  auto result = ParseAndReturnVerifiedModule(original);
+  ASSERT_OK(result.status());
+  const HloInstruction* root =
+      result.value()->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  const auto* compare = static_cast<const HloCompareInstruction*>(root);
+  EXPECT_EQ(compare->direction(), ComparisonDirection::kGt);
+  EXPECT_EQ(compare->order(), ComparisonOrder::kTotal);
+}
+
+TEST_F(HloParserTest, CompareBothTypeAndOrderFails) {
+  const std::string original = R"(HloModule CompareBothTypeAndOrderFails
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, type=FLOAT, order=TOTAL
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(
+      result.status().message(),
+      "Cannot specify both 'type' and 'order' attributes on compare");
+}
+
+TEST_F(HloParserTest, CompareTotalOrderRejected) {
+  const std::string original = R"(HloModule CompareTotalOrderRejected
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, order=TOTALORDER
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "expects comparison order but sees: TOTALORDER");
 }
 
 TEST_F(HloParserTest, LiteralDimensionsError) {
@@ -4516,6 +4777,20 @@ TEST_F(HloParserTest, ParseSharding) {
   EXPECT_EQ(sharding.ToString(), original);
 }
 
+TEST_F(HloParserTest, ParseNamedShardingUnreducedMax) {
+  const std::string original = "{mesh['x'=2], [{}], unreduced=max{'x'}}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.ToString(), original);
+}
+
+TEST_F(HloParserTest, ParseNamedShardingScalarUnreducedMax) {
+  const std::string original = "{mesh['x'=2,'y'=2], unreduced=max{'x', 'y'}}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.ToString(), "{mesh['x'=2,'y'=2], unreduced=max}");
+}
+
 TEST_F(HloParserTest, ParseShardingPartialReplication) {
   const std::string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
@@ -4859,6 +5134,68 @@ ENTRY %test_entry () -> f32[10,20] {
               HasSubstr("DynamicReshape requires at least one operand."));
 }
 
+TEST_F(HloParserTest, ParseReshapeElementCountMismatch) {
+  // Regression test for https://github.com/openxla/xla/issues/46955: this
+  // used to crash on a fatal CHECK instead of returning a parse error.
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[4,8] parameter(0)
+  ROOT %result = f32[31] reshape(%a)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects the same number of elements in result shape "
+                        "f32[31] and operand shape f32[4,8]"));
+}
+
+TEST_F(HloParserTest, ParseDynamicReshapeElementCountMismatch) {
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[4,<=8] parameter(0)
+  %size = s32[] parameter(1)
+  ROOT %result = f32[4,<=7] dynamic-reshape(%a, %size, %size)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects the same number of elements in result shape "
+                        "f32[4,<=7] and operand shape f32[4,<=8]"));
+}
+
+TEST_F(HloParserTest, ParseDynamicReshapeDimSizeOperandCountMismatch) {
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[4,<=8] parameter(0)
+  %size = s32[] parameter(1)
+  ROOT %result = f32[4,<=8] dynamic-reshape(%a, %size)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects one dim size operand per result dimension; "
+                        "got 1 for 2 result dimensions"));
+}
+
+TEST_F(HloParserTest, ParseReshapeUnboundedDynamicOperandStillParses) {
+  // An unbounded dynamic operand exempts the element-count check, matching
+  // HloInstruction::CreateReshape and CreateFromProto.
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[?] parameter(0)
+  ROOT %result = f32[3] reshape(%a)
+}
+)";
+  EXPECT_OK(ParseAndReturnUnverifiedModule(original).status());
+}
+
 TEST_F(HloParserTest, ParseCollectiveDeviceListV1) {
   const std::string original = "{{0,1},{2,3}}";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
@@ -5140,6 +5477,18 @@ TEST(HloParserSingleOpTest, ConvolutionWithKind) {
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
   EXPECT_EQ(convolution->convolution_kind(), CONVOLUTION_KIND_FPROP);
+}
+
+TEST(HloParserSingleOpTest, ConvolutionWithAlgorithm) {
+  const std::string text =
+      R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, algorithm=dot_bf16_bf16_f32)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  auto* convolution =
+      Cast<HloConvolutionInstruction>(computation->root_instruction());
+  EXPECT_EQ(convolution->precision_config().algorithm(),
+            PrecisionConfig::ALG_DOT_BF16_BF16_F32);
 }
 
 TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
@@ -6276,12 +6625,7 @@ ENTRY AsyncStartAndAsyncDone {
   ROOT async-done = f32[2,3] custom-call-done(tuple)
 }
   )";
-  EXPECT_THAT(
-      ParseAndReturnUnverifiedModule(hlo_string).status(),
-      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("AsyncUpdate and AsyncDone expect an "
-                                       "asynchronous operation as their first "
-                                       "operand.")));
+  EXPECT_OK(ParseAndReturnUnverifiedModule(hlo_string).status());
 }
 
 TEST_F(HloParserTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
@@ -6296,11 +6640,7 @@ ENTRY AsyncStartAndAsyncDone {
   ROOT async-done = f32[2,3] custom-call-done(tuple)
 }
   )";
-  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              absl_testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("AsyncUpdate and AsyncDone expect an asynchronous "
-                            "operation as their first operand.")));
+  EXPECT_OK(ParseAndReturnUnverifiedModule(hlo_string).status());
 }
 
 TEST_F(HloParserTest, AsyncUpdateZeroOperandsRejected) {
@@ -6345,6 +6685,84 @@ ENTRY AsyncDoneZeroOperandsRejected {
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("No operand found for AsyncUpdate and "
                                        "AsyncDone")));
+}
+
+TEST_F(HloParserTest, AsyncDoneAsOperandToAsyncUpdateRejected) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneAsOperandToAsyncUpdateRejected {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-done = f32[3,2] async-done(async-start)
+  ROOT async-update = ((f32[2,3]), f32[3,2], s32[]) async-update(async-done)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.")));
+}
+
+TEST_F(HloParserTest, AsyncDoneAsOperandToAsyncDoneRejected) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneAsOperandToAsyncDoneRejected {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-done.0 = f32[3,2] async-done(async-start)
+  ROOT async-done.1 = f32[3,2] async-done(async-done.0)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWithTransparentIntermediaries) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneWithTransparentIntermediaries {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  barrier = ((f32[2,3]), f32[3,2], s32[]) opt-barrier(async-start)
+  tup = (((f32[2,3]), f32[3,2], s32[])) tuple(barrier)
+  gte = ((f32[2,3]), f32[3,2], s32[]) get-tuple-element(tup), index=0
+  copy = ((f32[2,3]), f32[3,2], s32[]) copy(gte)
+  ROOT async-done = f32[3,2] async-done(copy)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* done = module->entry_computation()->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  const HloInstruction* producer =
+      hlo_instruction_utils::async::FindAsyncProducer(done->operand(0));
+  ASSERT_NE(producer, nullptr);
+  EXPECT_EQ(producer->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(hlo_instruction_utils::async::FindAsyncStart(done), producer);
 }
 
 TEST_F(HloParserTest, AsyncUpdateWithSyntaxSugarWrongOp) {
@@ -6400,11 +6818,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   ROOT %async-done.1 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.1)
 }
   )";
-  EXPECT_THAT(
-      ParseAndReturnUnverifiedModule(hlo_string).status(),
-      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                             HasSubstr("Computation async_wrapped is called by "
-                                       "more than one async op")));
+  EXPECT_OK(ParseAndReturnVerifiedModule(hlo_string).status());
 }
 
 TEST_F(HloParserTest, AsyncUpdateWrongComputation) {
@@ -6944,6 +7358,71 @@ TEST_F(HloParserTest, SparsityConfig_Both) {
   EXPECT_EQ(config.rhs().num_non_zero(), 3);
   EXPECT_EQ(config.rhs().dimension(), 0);
   EXPECT_EQ(config.rhs().stride(), 1);
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_RHSOnly) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %scale = f32[2,1] parameter(2)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %scale), dim_labels=bf_io->bf,
+      block_scaling_config={rhs={scale_idx=2 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.rhs().scale_idx(), 2);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_Both) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %lhs_scale = f32[1,1] parameter(2)
+    %rhs_scale = f32[2,1] parameter(3)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), dim_labels=bf_io->bf,
+      block_scaling_config={lhs={scale_idx=2 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.lhs().scale_idx(), 2);
+  EXPECT_THAT(config.lhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.lhs().steps(), ::testing::ElementsAre(1, 1));
+  EXPECT_EQ(config.rhs().scale_idx(), 3);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_RoundTrip) {
+  const char* const hlo_string = R"(
+HloModule BlockScalingConfigModule
+ENTRY BlockScalingConfig {
+  %input = f32[1,2] parameter(0)
+  %filter = f32[2,2] parameter(1)
+  %lhs_scale = f32[1,1] parameter(2)
+  %rhs_scale = f32[2,1] parameter(3)
+  ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), window={size=1x1}, dim_labels=bf_io->bf, block_scaling_config={lhs={scale_idx=2 zero_idx=3 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto config_before =
+      module->entry_computation()->root_instruction()->block_scaling_config();
+  std::string printed = module->ToString();
+  ASSERT_OK_AND_ASSIGN(auto parsed_module,
+                       ParseAndReturnUnverifiedModule(printed));
+  auto config_after = parsed_module->entry_computation()
+                          ->root_instruction()
+                          ->block_scaling_config();
+  EXPECT_EQ(config_after.DebugString(), config_before.DebugString());
 }
 
 TEST_F(HloParserTest, DesugarParsingTest_DotStart) {
@@ -7836,6 +8315,256 @@ ENTRY Entry {
       async_computation->root_instruction()->shape(),
       ShapeUtil::MakeTupleShape(
           {ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})})));
+}
+TEST_F(HloParserTest, LoopCrossingAsync) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsync
+
+async_computation {
+  p = f32[1024] parameter(0)
+  ROOT custom-call = f32[1024] custom-call(p), custom_call_target="foo"
+}
+
+while_cond {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(10)
+  ROOT cmp = pred[] compare(count, limit), direction=LT
+}
+
+while_body {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  one = s32[] constant(1)
+  new_count = s32[] add(count, one)
+  
+  async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(param), index=1
+  
+  async_update = ((f32[1024]), f32[1024], s32[]) async-update(async_state), calls=async_computation
+  
+  ROOT body_root = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(new_count, async_update)
+}
+
+ENTRY main {
+  p0 = f32[1024] parameter(0)
+  async-start = ((f32[1024]), f32[1024], s32[]) async-start(p0), calls=async_computation
+  
+  start_count = s32[] constant(0)
+  iter_init = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(start_count, async-start)
+  
+  while_loop = (s32[], ((f32[1024]), f32[1024], s32[])) while(iter_init), condition=while_cond, body=while_body
+  
+  final_async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(while_loop), index=1
+  
+  ROOT async-done = f32[1024] async-done(final_async_state), calls=async_computation
+}
+  )";
+  HloModuleConfig config;
+  config.set_content_aware_computation_sorting(true);
+  auto test_name =
+      ::testing::UnitTest::GetInstance()->current_test_info()->name();
+
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnVerifiedModule(
+                                        test_name, hlo_string, config));
+  EXPECT_NE(module, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(true)),
+          config));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_no_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)),
+          config));
+
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+  EXPECT_EQ(roundtrip_no_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+}
+
+TEST_F(HloParserTest, LoopCrossingAsyncDynamicUpdateSliceSyntaxSugar) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsyncDynamicUpdateSliceSyntaxSugar
+
+while_cond (state: (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]))) -> pred[] {
+  state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) parameter(0)
+  ROOT cond = pred[] constant(true)
+}
+
+while_body (state: (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]))) -> (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) {
+  state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) parameter(0)
+  val = f32[10,10]{1,0} get-tuple-element(state), index=0
+  async_state = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) get-tuple-element(state), index=1
+
+  async_update = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-update(async_state)
+  done = f32[10,10]{1,0} dynamic-update-slice-done(async_update)
+  
+  slice = f32[2,2]{1,0} constant({ {1.0, 2.0}, {3.0, 4.0} })
+  zero = s32[] constant(0)
+  next_start = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-start(done, slice, zero, zero)
+  ROOT next_state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) tuple(done, next_start)
+}
+
+ENTRY Entry (p0: f32[10,10], p1: f32[2,2], idx0: s32[], idx1: s32[]) -> f32[10,10] {
+  p0 = f32[10,10]{1,0} parameter(0)
+  p1 = f32[2,2]{1,0} parameter(1)
+  idx0 = s32[] parameter(2)
+  idx1 = s32[] parameter(3)
+  async_start = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-start(p0, p1, idx0, idx1)
+  init = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) tuple(p0, async_start)
+  loop = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[10,10]{1,0} dynamic-update-slice-done(post_loop_async)
+}
+  )";
+  HloModuleConfig config;
+  config.set_content_aware_computation_sorting(true);
+  auto test_name =
+      ::testing::UnitTest::GetInstance()->current_test_info()->name();
+
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnVerifiedModule(
+                                        test_name, hlo_string, config));
+  EXPECT_NE(module, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(true)),
+          config));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_no_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)),
+          config));
+
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+  EXPECT_EQ(roundtrip_no_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+}
+
+TEST_F(HloParserTest, LoopCrossingAsyncDynamicUpdateSliceExplicit) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsyncDynamicUpdateSliceExplicit
+
+async_dus (base: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
+  base = f32[100]{0} parameter(0)
+  update = f32[10]{0} parameter(1)
+  idx = s32[] parameter(2)
+  ROOT dynamic-update-slice = f32[100]{0} dynamic-update-slice(base, update, idx)
+}
+
+while_cond (state: (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[]))) -> pred[] {
+  state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) parameter(0)
+  count = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(5)
+  ROOT cond = pred[] compare(count, limit), direction=LT
+}
+
+while_body (state: (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[]))) -> (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) {
+  state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) parameter(0)
+  count = s32[] get-tuple-element(state), index=0
+  one = s32[] constant(1)
+  next_count = s32[] add(count, one)
+
+  async_state = ((f32[100], f32[10], s32[]), f32[100], s32[]) get-tuple-element(state), index=1
+
+  async-update = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-update(async_state), calls=async_dus
+  done = f32[100]{0} async-done(async-update), calls=async_dus
+
+  update = f32[10]{0} constant({1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0})
+  next_start = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-start(done, update, next_count), calls=async_dus
+  ROOT next_state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) tuple(next_count, next_start)
+}
+
+ENTRY Entry (p0: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
+  p0 = f32[100]{0} parameter(0)
+  update = f32[10]{0} parameter(1)
+  idx = s32[] parameter(2)
+  async-start = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-start(p0, update, idx), calls=async_dus
+  init_count = s32[] constant(0)
+  init = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) tuple(init_count, async-start)
+  loop = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[100], f32[10], s32[]), f32[100], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[100]{0} async-done(post_loop_async), calls=async_dus
+}
+  )";
+  HloModuleConfig config;
+  config.set_content_aware_computation_sorting(true);
+  auto test_name =
+      ::testing::UnitTest::GetInstance()->current_test_info()->name();
+
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnVerifiedModule(
+                                        test_name, hlo_string, config));
+  EXPECT_NE(module, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(true)),
+          config));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto roundtrip_no_sugar,
+      xla::ParseAndReturnVerifiedModule(
+          test_name,
+          module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)),
+          config));
+
+  auto fp_options = HloPrintOptions::Fingerprint();
+  EXPECT_EQ(roundtrip_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+  EXPECT_EQ(roundtrip_no_sugar->ToString(fp_options),
+            module->ToString(fp_options));
+}
+
+TEST_F(HloParserTest, AsyncUpdateWithAliasing) {
+  const char* const hlo_string = R"(
+HloModule module
+
+async_computation {
+  p0 = f32[32,32] parameter(0)
+  ROOT custom-call = (f32[32,32]) custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY main {
+  p = f32[32,32] parameter(0)
+  async-start = ((f32[32,32]), (f32[32,32]), s32[]) async-start(p), calls=async_computation
+  async-update = ((f32[32,32]), (f32[32,32]), s32[]) async-update(async-start), output_to_operand_aliasing={{2}: (0, {2})}
+  ROOT async-done = (f32[32,32]) async-done(async-update)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto root = module->entry_computation()->root_instruction();
+  auto async_update = Cast<HloAsyncUpdateInstruction>(root->operand(0));
+  EXPECT_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_FALSE(async_update->output_to_operand_aliasing().empty());
+  const auto& aliasing = async_update->output_to_operand_aliasing();
+  EXPECT_EQ(aliasing.size(), 1);
+  EXPECT_EQ(aliasing[0].first, ShapeIndex({2}));
+  EXPECT_EQ(aliasing[0].second.first, 0);                 // operand 0
+  EXPECT_EQ(aliasing[0].second.second, ShapeIndex({2}));  // index 2
+}
+
+TEST_F(HloParserTest, AsyncDoneWithFrontendAttributes) {
+  const char* const hlo_string =
+      R"(%all-to-all-done.3 = bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)S(1)} async-done(((bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)}), bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)S(1)}, u32[]{:S(2)}, u32[]{:S(2)}) %all-to-all-start.3), frontend_attributes={is_spmd_generated="true"})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAsyncDone);
+  EXPECT_EQ(root->frontend_attributes().map_size(), 1);
+  EXPECT_EQ(root->frontend_attributes().map().at("is_spmd_generated"), "true");
 }
 }  // namespace
 }  // namespace xla

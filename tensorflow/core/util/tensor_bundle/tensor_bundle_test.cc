@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -196,6 +197,50 @@ absl::Status FlipEndiannessBit(const std::string& prefix) {
   TF_RETURN_IF_ERROR(builder->Finish());
   TF_RETURN_IF_ERROR(env->RenameFile(metadata_tmp_path, MetaFilename(prefix)));
   return metadata_file->Close();
+}
+
+// Rewrites the bundle's metadata file, replacing the recorded shape of the
+// entry stored under <key> with <new_shape>. Used to simulate a crafted
+// checkpoint whose full-tensor shape disagrees with the shapes of its stored
+// slices.
+absl::Status RewriteEntryShape(const std::string& prefix,
+                               const std::string& key,
+                               const TensorShape& new_shape) {
+  Env* env = Env::Default();
+  const std::string metadata_tmp_path = Prefix("rewrite_tmp_path");
+  std::unique_ptr<WritableFile> metadata_file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(metadata_tmp_path, &metadata_file));
+  std::unique_ptr<table::TableBuilder> builder;
+  {
+    const std::string filename = MetaFilename(prefix);
+    uint64_t file_size;
+    TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
+    std::unique_ptr<RandomAccessFile> file;
+    TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
+
+    table::Table* table = nullptr;
+    TF_RETURN_IF_ERROR(
+        table::Table::Open(table::Options(), file.get(), file_size, &table));
+    std::unique_ptr<table::Table> table_deleter(table);
+    std::unique_ptr<table::Iterator> iter(table->NewIterator());
+
+    builder = std::make_unique<table::TableBuilder>(table::Options(),
+                                                    metadata_file.get());
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (iter->key() == key) {
+        BundleEntryProto entry;
+        CHECK(entry.ParseFromArray(iter->value().data(), iter->value().size()));
+        new_shape.AsProto(entry.mutable_shape());
+        builder->Add(iter->key(), entry.SerializeAsString());
+      } else {
+        builder->Add(iter->key(), iter->value());
+      }
+    }
+  }
+  TF_RETURN_IF_ERROR(builder->Finish());
+  builder.reset();
+  TF_RETURN_IF_ERROR(metadata_file->Close());
+  return env->RenameFile(metadata_tmp_path, MetaFilename(prefix));
 }
 
 template <typename T>
@@ -389,6 +434,38 @@ TEST(TensorBundleTest, SwapBytes) {
 
   TF_EXPECT_OK(ByteSwapTensor(&forward_complex128));
   test::ExpectTensorEqual<complex128>(forward_complex128, swapped_complex128);
+}
+
+// ByteSwapTensorProto reaches ByteSwapBuffer with num_of_elem == -1, so the
+// element count is derived from the byte size. For complex dtypes that count
+// already covers both components, so it must not be doubled again or the swap
+// runs past the end of the tensor_content buffer.
+TEST(TensorBundleTest, ByteSwapTensorProtoComplex) {
+  Tensor forward_complex64 =
+      Constant_2x3<complex64>(std::complex<float>(1.5f, -2.5f));
+  Tensor forward_complex128 =
+      Constant_2x3<complex128>(std::complex<double>(3.5, -4.5));
+
+  for (const Tensor* forward : {&forward_complex64, &forward_complex128}) {
+    TensorProto proto;
+    forward->AsProtoTensorContent(&proto);
+    const size_t content_size = proto.tensor_content().size();
+
+    // Swapping twice must restore the original bytes without overrunning the
+    // content buffer (an out-of-bounds write is caught here under ASAN).
+    TF_EXPECT_OK(ByteSwapTensorProto(&proto));
+    EXPECT_EQ(proto.tensor_content().size(), content_size);
+    TF_EXPECT_OK(ByteSwapTensorProto(&proto));
+    EXPECT_EQ(proto.tensor_content().size(), content_size);
+
+    Tensor roundtrip(forward->dtype());
+    ASSERT_TRUE(roundtrip.FromProto(proto));
+    if (forward->dtype() == DT_COMPLEX64) {
+      test::ExpectTensorEqual<complex64>(roundtrip, *forward);
+    } else {
+      test::ExpectTensorEqual<complex128>(roundtrip, *forward);
+    }
+  }
 }
 
 // Basic test of alternate-endianness support. Generates a bundle in
@@ -648,6 +725,37 @@ TEST(TensorBundleTest, PartitionedVariables) {
     TF_ASSERT_OK(reader.LookupSlice("foo", distinct_slice, &val));
     test::ExpectTensorEqual<float>(val,
                                    Constant<float>(1., TensorShape({5, 2})));
+  }
+}
+
+// A crafted checkpoint can record a full-tensor shape that is inconsistent with
+// the shapes of the tensor's stored slices. Reading such a slice must not walk
+// the stored-slice buffer using the (larger) geometry implied by the full
+// shape, which would read out of bounds.
+TEST(TensorBundleTest, SliceShapeMismatch) {
+  const TensorShape kFullShape({5, 10});
+  const TensorSlice slice1 = TensorSlice::ParseOrDie("-:0,1");
+  const TensorSlice slice2 = TensorSlice::ParseOrDie("-:1,9");
+  {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape, slice1,
+                                 Constant<float>(0., TensorShape({5, 1}))));
+    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape, slice2,
+                                 Constant<float>(1., TensorShape({5, 9}))));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  // Enlarge the recorded full shape. Applying either stored slice to it now
+  // yields more rows than the stored slice buffers actually hold.
+  const TensorShape kTamperedShape({50, 10});
+  TF_ASSERT_OK(RewriteEntryShape(Prefix("foo"), "foo", kTamperedShape));
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    Tensor val(DT_FLOAT, kTamperedShape);
+    const absl::Status status = reader.Lookup("foo", &val);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.ToString(), "Stored slice shape"))
+        << status;
   }
 }
 

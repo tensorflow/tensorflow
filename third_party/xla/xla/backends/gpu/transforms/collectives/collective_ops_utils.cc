@@ -29,17 +29,19 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/side_effect_util.h"
@@ -264,12 +266,16 @@ bool IsGPUSyncCollective(const HloInstruction& instr) {
 absl::StatusOr<GPUCommunicationType> CommunicationType(
     int num_devices_per_partition, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version) {
-  if (!gpu_version.IsCuda()) {
-    return absl::FailedPreconditionError("Only CUDA is supported.");
+  const bool is_supported_rocm =
+      gpu_version.IsRocm() &&
+      gpu_version.rocm_compute_capability()->gfx9_mi300_series();
+  if (!gpu_version.IsCuda() && !is_supported_rocm) {
+    return absl::FailedPreconditionError(
+        "Only CUDA and ROCm gfx942 (MI300) and gfx950 (MI350) are supported.");
   }
 
   if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CollectiveMetadata comm,
         CommunicationContext(*collective, num_devices_per_partition));
     if (IsSingleHost(comm)) {
@@ -325,6 +331,20 @@ bool IsSpmdGenerated(const HloInstruction& instr) {
   return backend_config->collective_backend_config().is_spmd_generated();
 }
 
+bool IsCrossHostOneShotKernelEnabled(
+    const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type) {
+  if (!op_type.has_value()) {
+    return false;
+  }
+  return absl::c_linear_search(
+             debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(),
+             *op_type) ||
+         absl::c_linear_search(
+             debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(),
+             DebugOptions::ALLCOLLECTIVES);
+}
+
 bool IsAllReplicasLocal(int64_t gpus_per_host,
                         absl::Span<const ReplicaGroup> replica_groups,
                         CollectiveOpGroupMode group_mode,
@@ -370,6 +390,29 @@ bool IsTritonCollectiveKernel(
              CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT ||
          kernel_strategy ==
              CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
+}
+
+absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
+    const DebugOptions& debug_options) {
+  absl::flat_hash_set<HloOpcode> instructions_to_annotate;
+  for (auto collective :
+       debug_options.xla_gpu_experimental_use_collective_kernels()) {
+    switch (collective) {
+      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE: {
+        instructions_to_annotate.insert(HloOpcode::kAllReduce);
+        instructions_to_annotate.insert(HloOpcode::kAllReduceStart);
+        break;
+      }
+      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER:
+        instructions_to_annotate.insert(HloOpcode::kAllGather);
+        break;
+      default:
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Unsupported collective: %s",
+            xla::DebugOptions::CollectiveKernelType_Name(collective)));
+    }
+  }
+  return instructions_to_annotate;
 }
 
 }  // namespace gpu

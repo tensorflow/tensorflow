@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
@@ -7,20 +22,19 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def workspace():
     tf_http_archive(
         name = "rules_proto",
-        sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
-        strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
+        sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
+        strip_prefix = "rules_proto-7.1.0",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+            "https://github.com/bazelbuild/rules_proto/archive/refs/tags/7.1.0.tar.gz",
         ),
-        patch_file = ["//third_party:rules_proto.patch"],
     )
 
     # https://github.com/bazelbuild/bazel-skylib/releases
     tf_http_archive(
         name = "bazel_skylib",
-        sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
+        sha256 = "3b5b49006181f5f8ff626ef8ddceaa95e9bb8ad294f7b5d7b11ea9f7ddaf8c59",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.9.0/bazel-skylib-1.9.0.tar.gz",
         ),
     )
 
@@ -49,22 +63,21 @@ def workspace():
 
     tf_http_archive(
         name = "rules_cc",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_cc/releases/download/0.2.0/rules_cc-0.2.0.tar.gz"),
-        strip_prefix = "rules_cc-0.2.0",
-        sha256 = "ae244f400218f4a12ee81658ff246c0be5cb02c5ca2de5519ed505a6795431e9",
-        patch_file = [
-            "@xla//third_party/py:rules_cc_protobuf.patch",
-        ],
+        sha256 = "69e05df29f0010ba248ef8dafc1f084c8fd2f5c553da634422d8167f5c4b277b",
+        strip_prefix = "rules_cc-0.2.20",
+        urls = tf_mirror_urls(
+            "https://github.com/bazelbuild/rules_cc/releases/download/0.2.20/rules_cc-0.2.20.tar.gz",
+        ),
     )
 
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "6b1b294cbecb98a08bcfe59641461f72e113db30fa91b44fcc49d98099b5ba65",
-        strip_prefix = "rules_ml_toolchain-b11745590f513ec55b32e2d126073576fde18c71",
+        sha256 = "75ccb7c4dc699343f02d02f0b5baa6dac09c013d46b92b60f18563448ea59e77",
+        strip_prefix = "rules_ml_toolchain-73cb731fed3ccf7551beac710bf1c5dbeb8be298",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/b11745590f513ec55b32e2d126073576fde18c71.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/73cb731fed3ccf7551beac710bf1c5dbeb8be298.tar.gz",
         ),
     )
 

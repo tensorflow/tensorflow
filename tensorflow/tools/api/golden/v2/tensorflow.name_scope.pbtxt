@@ -7,6 +7,14 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'type_arg\', \'value_arg\', \'traceback_arg\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }

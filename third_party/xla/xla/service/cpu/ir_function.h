@@ -61,37 +61,20 @@ class IrFunction {
   IrFunction(const std::string& function_name,
              llvm::Function::LinkageTypes linkage,
              const HloModuleConfig& module_config, llvm::Module* llvm_module,
-             llvm::IRBuilderBase* b, int64_t num_dynamic_loop_bounds);
+             llvm::IRBuilderBase* b);
 
   // Initialize an llvm::Function with existing function, created somewhere
   // else, omit any extra work.
   IrFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
-             int64_t num_dynamic_loop_bounds, llvm::Function* function,
+             llvm::Function* function,
              // Function argument IR values.
              // llvm::Argument* result_arg, llvm::Value* exec_run_options_arg,
              // llvm::Value* parameters_arg, llvm::Value* buffer_table_arg,
-             llvm::Value* dynamic_loop_bounds_arg,
              // llvm::Value* profile_counters_arg, llvm::Value* status_arg,
              //  Basic block containing return.
              llvm::BasicBlock* return_block);
 
   ~IrFunction();
-
-  // Emit IR to read and return the set of IR values representing the dynamic
-  // loop bounds argument of this function. These bounds delimit the subset
-  // of the output that will be written by the computation's root instruction at
-  // runtime. This is used for parallel computations, where a single computation
-  // is partitioned into N calls to a function with parallel loop bounds, and
-  // then called N times in parallel with loop bounds limiting each call to
-  // producing 1/N of the output.
-  //
-  // Each element in returned vector is a pair of ir values representing the
-  // loop bounds for a specific dimension, where the first element of the pair
-  // is the dimension start index, and the second element of the pair is the
-  // dimension limit.
-  //
-  // EX: [dimension_i_index_start_ir_value, // dimension_i_index_limit_ir_value]
-  DynamicLoopBounds GetDynamicLoopBounds();
 
   // Returns the encapculated llvm::Function.
   llvm::Function* function() { return function_; }
@@ -126,15 +109,10 @@ class IrFunction {
                   llvm::Function::LinkageTypes linkage,
                   const HloModuleConfig& module_config);
 
-  // Emit ir to read and return the ir value for the dynamic loop bound at
-  // 'offset' from the "dynamic_loop_bounds" argument of this function.
-  llvm::Value* GetDynamicLoopBound(int64_t offset);
-
   llvm::IRBuilderBase* b_;
   llvm::Module* llvm_module_;
   llvm::IRBuilderBase::InsertPointGuard caller_insert_point_guard_;
 
-  int64_t num_dynamic_loop_bounds_ = 0;
   // Encapsulated llvm::Function.
   llvm::Function* function_;
   // Function argument IR values.
@@ -142,7 +120,6 @@ class IrFunction {
   llvm::Value* exec_run_options_arg_;
   llvm::Value* parameters_arg_;
   llvm::Value* buffer_table_arg_;
-  llvm::Value* dynamic_loop_bounds_arg_ = nullptr;
   llvm::Value* profile_counters_arg_;
   llvm::Value* status_arg_;
   // Basic block containing return.

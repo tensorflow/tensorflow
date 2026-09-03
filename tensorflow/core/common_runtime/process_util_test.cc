@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/process_util.h"
 
+#include <memory>
+
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -29,9 +32,18 @@ TEST(ProcessUtilTest, ThreadPool) {
   SessionOptions opts;
   opts.config.set_inter_op_parallelism_threads(10);
 
-  thread::ThreadPool* pool = NewThreadPoolFromSessionOptions(opts);
+  std::unique_ptr<thread::ThreadPool> pool(
+      NewThreadPoolFromSessionOptions(opts));
   EXPECT_EQ(10, pool->NumThreads());
-  delete pool;
+}
+
+TEST(ProcessUtilTest, ThreadPoolNegative) {
+  SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(-1);
+
+  std::unique_ptr<thread::ThreadPool> pool(
+      NewThreadPoolFromSessionOptions(opts));
+  EXPECT_GT(pool->NumThreads(), 0);
 }
 
 }  // anonymous namespace

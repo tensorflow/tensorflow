@@ -17,10 +17,13 @@
 import math
 import warnings
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
+
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
@@ -87,10 +90,11 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
       targets.get_shape().assert_is_compatible_with(log_input.get_shape())
-    except ValueError:
+    except ValueError as exc:
       raise ValueError(
           "`log_input` and `targets` must have the same shape, received "
-          f"({log_input.get_shape()} vs {targets.get_shape()}).")
+          f"({log_input.get_shape()} vs {targets.get_shape()})."
+      ) from exc
 
     result = math_ops.exp(log_input) - log_input * targets
     if compute_full_loss:
@@ -124,10 +128,12 @@ def sigmoid_cross_entropy_with_logits(
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
-    except ValueError:
-      raise ValueError("`logits` and `labels` must have the same shape, "
-                       f"received ({logits.get_shape()} vs "
-                       f"{labels.get_shape()}).")
+    except ValueError as exc:
+      raise ValueError(
+          "`logits` and `labels` must have the same shape, "
+          f"received ({logits.get_shape()} vs "
+          f"{labels.get_shape()})."
+      ) from exc
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -321,10 +327,12 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
-    except ValueError:
-      raise ValueError("`logits` and `labels` must have the same shape, "
-                       f"received ({logits.get_shape()} vs "
-                       f"{labels.get_shape()}).")
+    except ValueError as exc:
+      raise ValueError(
+          "`logits` and `labels` must have the same shape, "
+          f"received ({logits.get_shape()} vs "
+          f"{labels.get_shape()})."
+      ) from exc
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -472,12 +480,15 @@ def swish(features, beta=1.0):
       with ops.control_dependencies([dy]):
         sigmoid_features = math_ops.sigmoid(beta * features)
 
-      activation_grad = (
-          sigmoid_features * (1.0 + (beta * features) *
-                              (1.0 - sigmoid_features)))
+      activation_grad = sigmoid_features * (
+          1.0 + (beta * features) * (1.0 - sigmoid_features)
+      )
       beta_grad = math_ops.reduce_sum(
-          dy * math_ops.square(features) * sigmoid_features *
-          (1.0 - sigmoid_features))
+          dy
+          * math_ops.square(features)
+          * sigmoid_features
+          * (1.0 - sigmoid_features)
+      )
       return (dy * activation_grad, beta_grad)
 
     return features * math_ops.sigmoid(beta * features), grad
@@ -485,7 +496,7 @@ def swish(features, beta=1.0):
   return swish_impl(features, beta)
 
 
-# pylint: disable=redefined-builtin
+# pylint: disable=redefined-builtin,redefined-outer-name
 @tf_export("linalg.normalize")
 @dispatch.add_dispatch_support
 def normalize(tensor, ord="euclidean", axis=None, name=None):
@@ -863,17 +874,17 @@ def depthwise_conv2d_v2(input,
 
   Args:
     input: 4-D with shape according to `data_format`.
-    filter: 4-D with shape
-      `[filter_height, filter_width, in_channels, channel_multiplier]`.
-    strides: 1-D of size 4.  The stride of the sliding window for each
-      dimension of `input`.
+    filter: 4-D with shape `[filter_height, filter_width, in_channels,
+      channel_multiplier]`.
+    strides: 1-D of size 4.  The stride of the sliding window for each dimension
+      of `input`.
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
       and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
-      for more information. When explicit padding is used and data_format
-      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding)
+      for more information. When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
       data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`.
@@ -1262,6 +1273,14 @@ def moments(
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
+    if context.executing_eagerly():
+      axes = axes.numpy().tolist()
+
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is not None:
+        axes = axes_const.tolist()
   with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
@@ -1273,11 +1292,16 @@ def moments(
     # Note: stop_gradient does not change the gradient that gets
     #       backpropagated to the mean from the variance calculation,
     #       because that gradient is zero
-    variance = math_ops.reduce_mean(
-        math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
-        axes,
-        keepdims=True,
-        name="variance")
+    diff = math_ops.subtract(y, array_ops.stop_gradient(mean))
+    variance = math_ops.maximum(
+        math_ops.subtract(
+            math_ops.reduce_mean(math_ops.square(diff), axes, keepdims=True),
+            math_ops.square(math_ops.reduce_mean(diff, axes, keepdims=True)),
+        ),
+        math_ops.cast(0, y.dtype),
+        name="variance",
+    )
+
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
@@ -1348,6 +1372,14 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
+    if context.executing_eagerly():
+      axes = axes.numpy().tolist()
+
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is not None:
+        axes = axes_const.tolist()
   with ops.name_scope(name, "weighted_moments", [x, frequency_weights, axes]):
     x = ops.convert_to_tensor(x, name="x")
     frequency_weights = ops.convert_to_tensor(

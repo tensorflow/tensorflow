@@ -208,7 +208,11 @@ class HloRematerialization : public HloPassInterface {
 
   // Get the peak memory for the computation.
   int64_t ComputationPeakMemory(const HloComputation* computation) const {
-    return computation_peak_memory_.at(computation);
+    if (auto it = computation_peak_memory_.find(computation);
+        it != computation_peak_memory_.end()) {
+      return it->second;
+    }
+    return 0;
   }
 
   HloRematerialization::RematAlgorithm remat_algorithm() const {

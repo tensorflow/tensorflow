@@ -24,10 +24,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -146,7 +146,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.allocations = {BufferAllocation(0, 1024, 0)};
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
             device_description_));
@@ -162,7 +162,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         )pb");
     params.buffer_allocations_debug_summary = "dummy_summary";
 
-    ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));
     return executable->ToProto();
   }

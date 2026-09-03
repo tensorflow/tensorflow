@@ -1739,22 +1739,20 @@ Status BaseGPUDeviceFactory::CreateDevices(
                                   : std::make_optional(allowed_devices)));
 
   bool should_create_new_pjrt_client = true;
-  xla::StreamExecutorGpuClient* pjrt_se_client = nullptr;
   auto obtained_pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
   if (obtained_pjrt_client.ok()) {
-    pjrt_se_client =
-        absl::down_cast<xla::StreamExecutorGpuClient*>(*obtained_pjrt_client);
     // TODO(b/291943099): This check may not be enough because the virtual
     // device options can change while the device count remains the same.
     // However, it's most likely that in real use cases, CreateDevices() won't
     // be called more than once with different options being set. If such use
     // cases exist we may need to update the check here.
-    if (pjrt_se_client->addressable_device_count() == tf_device_specs.size()) {
+    if ((*obtained_pjrt_client)->addressable_device_count() ==
+        tf_device_specs.size()) {
       should_create_new_pjrt_client = false;
     } else {
       LOG(WARNING) << "A PjRt GPU Client was previously created, but the "
                       "addressable device count: "
-                   << pjrt_se_client->addressable_device_count()
+                   << (*obtained_pjrt_client)->addressable_device_count()
                    << " is not equal to tf_device_specs size: "
                    << tf_device_specs.size()
                    << ". This usually only happens in unit tests and we will "
@@ -1844,9 +1842,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
       VLOG(3) << "should_create_new_pjrt_client="
               << should_create_new_pjrt_client << " for device ordinal " << di
               << ". Re-using local_device_state";
-      auto* pjrt_se_client =
-          absl::down_cast<xla::StreamExecutorGpuClient*>(*obtained_pjrt_client);
-      local_device_state = &(pjrt_se_client->device_state(di));
+      auto* pjrt_se_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+          absl::down_cast<xla::CommonPjRtClient*>(*obtained_pjrt_client)
+              ->raw_client());
+      local_device_state = pjrt_se_client->device_state(xla::LocalDeviceId(di));
+      if (!local_device_state) {
+        return absl::InternalError(absl::StrCat(
+            "GPU local device state for tf_device_id: ", tf_device_id.value(),
+            " does not exist."));
+      }
     }
 
     // CreateGPUDevice sets stream to `gpu_allocator` and preallocates
@@ -1921,37 +1925,18 @@ Status BaseGPUDeviceFactory::CreateDevices(
       // Otherwise, once a client is created by the first call, it is the only
       // client that is created/used and future calls skip this code block.
       int node_id = gpu_options.experimental().node_id();
-      std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices =
-          xla::BuildLocalDevices(std::move(local_device_states),
-                                 /*node_id=*/node_id);
+      xla::GpuClientOptions options;
+      options.node_id = node_id;
+      ASSIGN_OR_RETURN(auto pjrt_client,
+                       xla::GetSharedStreamExecutorGpuClient(
+                           options, xla_client, std::move(local_device_states),
+                           std::move(allocator_adapter),
+                           std::move(pjrt_gpu_host_allocator)));
 
       auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
       pjrt_rollout_config.AllowForDeviceInXlaLaunch(DEVICE_GPU);
       pjrt_rollout_config.AllowForDeviceInXlaCompileOnDemand(DEVICE_GPU);
       pjrt_rollout_config.AllowForDeviceInXlaCompileAndRun(DEVICE_GPU);
-
-      // Creates PJRT GPU client and places it into a TF global resource
-      // manager.
-      auto gpu_run_options =
-          std::make_unique<xla::gpu::GpuExecutableRunOptions>();
-#if TENSORFLOW_USE_ROCM
-      auto platform_name = xla::RocmName();
-#elif TENSORFLOW_USE_SYCL
-      auto pjrt_platform_name = xla::SyclName();
-#else   // TENSORFLOW_USE_ROCM
-      auto platform_name = xla::CudaName();
-#endif  // TENSORFLOW_USE_ROCM
-      std::unique_ptr<xla::PjRtClient> pjrt_client =
-          std::make_unique<xla::StreamExecutorGpuClient>(
-              platform_name, xla_client, std::move(pjrt_devices),
-              /*process_index=*/numa_node,
-              /*allocator=*/std::move(allocator_adapter),
-              /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
-              /*should_stage_host_to_device_transfers=*/true,
-              /*gpu_run_options=*/std::move(gpu_run_options),
-              /*kv_store=*/nullptr,
-              /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
-              /*num_nodes=*/std::nullopt);
 
       return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));

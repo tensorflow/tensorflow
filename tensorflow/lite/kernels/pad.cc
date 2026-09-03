@@ -573,6 +573,28 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         }
       }
     } break;
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2: {
+      uint8_t pad_value =
+          op_context.constant_values == nullptr
+              ? 0
+              : *GetTensorData<uint8_t>(op_context.constant_values);
+      if (kernel_type == kReference) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(reference_ops, PadImageStyle, uint8_t, pad_value);
+        } else {
+          TF_LITE_PAD(reference_ops, Pad, uint8_t, pad_value);
+        }
+      } else if (kernel_type == kGenericOptimized) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(optimized_ops, PadImageStyle, uint8_t, pad_value);
+        } else {
+          TF_LITE_PAD(optimized_ops, Pad, uint8_t, pad_value);
+        }
+      }
+    } break;
+#endif
     case kTfLiteUInt8: {
       TF_LITE_ENSURE_OK(context,
                         EvalInt<uint8_t>(context, op_context, op_params));

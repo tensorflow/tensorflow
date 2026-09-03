@@ -91,7 +91,7 @@ PACKAGE_STATIC_DEPS = [
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",
     "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-    "@com_github_grpc_grpc//:__subpackages__",
+    "@grpc//:__subpackages__",
     "@com_google_absl//:__subpackages__",
     "@com_google_googleapis//:__subpackages__",
     "@com_google_protobuf//:__subpackages__",
@@ -1044,6 +1044,7 @@ package_group(
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/odml/model_explorer/...",
         "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
@@ -1052,7 +1053,7 @@ package_group(
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
-    ],
+    ] + if_oss(["public"]),
 )
 
 package_group(
@@ -1126,7 +1127,7 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
+        "//conditions:default": ["@grpc"],
     }),
 )
 
@@ -1134,7 +1135,7 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+        "//conditions:default": ["@grpc//:grpc++"],
     }),
 )
 # copybara:comment_end
@@ -1588,6 +1589,7 @@ exports_files(
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
         "tf_private_symbols.lds",
+        "tf_framework_version_script.lds",
     ],
 )
 

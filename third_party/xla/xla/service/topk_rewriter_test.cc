@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -699,8 +700,8 @@ TEST_F(TopkRewriterTest, TopKDecomposition) {
 HloModule topk
 
 ENTRY TopK {
-  x = bf16[10,10]{0,1} parameter(0)
-  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
 }
 
 )";
@@ -723,6 +724,39 @@ ENTRY TopK {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
+}
+
+TEST_F(TopkRewriterTest, TopKDecompositionPacked) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+ENTRY TopK {
+  x = bf16[10,10]{0,1} parameter(0)
+  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                          TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+
+  // Check that the decomposition generated a single-operand unstable sort of
+  // type S32.
+  int sort_count = 0;
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kSort) {
+      sort_count++;
+      EXPECT_EQ(inst->operand_count(), 1);
+      EXPECT_EQ(inst->operand(0)->shape().element_type(), S32);
+      EXPECT_FALSE(Cast<HloSortInstruction>(inst)->is_stable());
+    }
+  }
+  EXPECT_EQ(sort_count, 1);
 }
 
 TEST_F(TopkRewriterTest, TopKIsNotIncorrectlyCSEd) {
@@ -775,8 +809,8 @@ TEST_F(TopkRewriterTest, TopKDecompositionUnstable) {
 HloModule topk
 
 ENTRY TopK {
-  x = bf16[8,2048]{0,1} parameter(0)
-  ROOT topk = (bf16[8,24]{0,1}, s32[8,24]{0,1}) topk(x), k=24, largest=true, is_stable=false
+  x = f32[8,2048]{0,1} parameter(0)
+  ROOT topk = (f32[8,24]{0,1}, s32[8,24]{0,1}) topk(x), k=24, largest=true, is_stable=false
 }
 )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
@@ -849,6 +883,55 @@ ENTRY cluster {
 
   EXPECT_EQ(cc->custom_call_target(), "TopK");
   EXPECT_EQ(cc->raw_backend_config_string(), "{is_stable = false}");
+}
+
+TEST_F(TopkRewriterTest, RewriteNonZeroStartSlice) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,1] slice(%get-tuple-element.28), slice={[0:8], [4:5]}
+  %get-tuple-element.30 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,1] slice(%get-tuple-element.30), slice={[0:8], [4:5]}
+  ROOT %tuple.32 = (f32[8,1], s32[8,1]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  const HloInstruction* cc = module->entry_computation()
+                                 ->root_instruction()
+                                 ->operand(0)
+                                 ->operand(0)
+                                 ->operand(0);
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, NoRewriteStridedNonZeroStartSlice) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(%p0, %p1), direction=GT
+}
+ENTRY cluster {
+  %arg.1 = f32[8,1234567] parameter(0)
+  %sort.2 = f32[8,1234567] sort(%arg.1), dimensions={1}, is_stable=true, to_apply=%compare
+  ROOT %slice.3 = f32[8,4] slice(%sort.2), slice={[0:8:1], [2:10:2]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

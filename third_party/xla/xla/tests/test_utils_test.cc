@@ -29,13 +29,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -271,6 +273,39 @@ ENTRY cluster_13361217111314620287__.11 {
   for (const auto index : indices) {
     EXPECT_GE(index, -1);
     EXPECT_LE(index, 100);
+  }
+}
+
+TEST_F(TestUtilsTest, MakeDataflowConstrainedArgumentsForTupleParam) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule cluster_tuple_gather, entry_computation_layout={((s32[10], bf16[100,256]))->(bf16[10,256])}
+
+ENTRY cluster {
+  arg_tuple.1 = (s32[10], bf16[100,256]) parameter(0)
+  get-tuple-element.0 = s32[10] get-tuple-element(arg_tuple.1), index=0
+  get-tuple-element.1 = bf16[100,256] get-tuple-element(arg_tuple.1), index=1
+  gather.2 = bf16[10,256] gather(get-tuple-element.1, get-tuple-element.0),
+    offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={1,256}
+  ROOT tuple.3 = (bf16[10,256]) tuple(gather.2)
+}
+)")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeDataflowConstrainedArguments(module.get()));
+  ASSERT_EQ(args.size(), 1);
+  ASSERT_TRUE(args[0].shape().IsTuple());
+  ASSERT_EQ(args[0].shape().tuple_shapes().size(), 2);
+
+  const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
+  EXPECT_TRUE(ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10})))
+      << ShapeUtil::HumanString(indices_shape);
+  const std::vector<Literal> results = args[0].DecomposeTuple();
+  auto indices = results[0].data<int32_t>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, 0);
+    EXPECT_LE(index, 99);
   }
 }
 
@@ -535,6 +570,26 @@ ENTRY main {
   });
 }
 
+TEST_F(TestUtilsTest, MakeDataflowConstrainedArgumentsForLogConvert) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  convert = f32[8,128] convert(param_0)
+  ROOT log = f32[8,128] log(convert)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeDataflowConstrainedArguments(module.get(),
+                                       /*engine=*/nullptr,
+                                       /*use_large_range=*/false));
+  ASSERT_EQ(args.size(), 1);
+  args[0].EachCell<int32_t>([](absl::Span<int64_t const> indices,
+                               int32_t value) { EXPECT_GE(value, 1); });
+}
+
 // Probabilistic test to verify that we are randomly sampling the whole
 // range for small bitwidth floats like f4e2m1. The chance of not getting
 // all 16 possible values in 1024 trials is astronomically small.
@@ -565,6 +620,67 @@ ENTRY %module (param: f4e2m1fn[1024]) -> f4e2m1fn[1024] {
 
   const int64_t num_possible_values = 16;
   EXPECT_EQ(values.size(), num_possible_values);
+}
+
+// Tests that max reduction uses MinValue as the identity element through copy
+// pass-through.
+TEST_F(TestUtilsTest, ReduceMaxIdentityElement) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule ReduceMaxIdentityModule
+
+max_BF16 (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT maximum = bf16[] maximum(lhs, rhs)
+}
+
+ENTRY entry {
+  param_0 = bf16[4,5,128,256] parameter(0)
+  param_1 = bf16[] parameter(1)
+  copy = bf16[] copy(param_1)
+  ROOT reduce-window = bf16[3,4,128,256] reduce-window(param_0, copy),
+    window={size=2x2x1x1 pad=0_0x0_0x0_0x0_0}, to_apply=max_BF16
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_EQ(args[1].Get<bfloat16>({}),
+            LiteralUtil::MinValue(BF16).Get<bfloat16>({}));
+}
+
+// Tests that min reduction uses MaxValue as the identity element through copy
+// pass-through and fusion.
+TEST_F(TestUtilsTest, ReduceMinIdentityElement) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule ReduceMinIdentityModule
+
+min_F32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT minimum = f32[] minimum(lhs, rhs)
+}
+
+fused_computation (param_0: f32[4,5,128,256], param_1: f32[]) -> f32[3,4,128,256] {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT reduce-window = f32[3,4,128,256] reduce-window(param_0, param_1),
+    window={size=2x2x1x1 pad=0_0x0_0x0_0x0_0}, to_apply=min_F32
+}
+
+ENTRY entry {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  copy = f32[] copy(param_1)
+  ROOT fusion = f32[3,4,128,256] fusion(param_0, copy), kind=kOutput, calls=fused_computation
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_EQ(args[1].Get<float>({}), LiteralUtil::MaxValue(F32).Get<float>({}));
 }
 
 }  // namespace

@@ -50,7 +50,7 @@ ENTRY main (p0: pred[]) -> f32[] {
   ROOT %result = f32[] select(%p0, %nan, %zero)
 }
 )hlo";
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(kHlo));
     // Disable fusion pipeline to prevent fusing the select with nan constant.
     // The tests need to distinguish reports from the intermediate thunk
     // (select) and the output.

@@ -70,7 +70,6 @@ API docstring: tensorflow.math
 import builtins
 import numpy as np
 
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -551,6 +550,10 @@ def multiply(x, y, name=None):
    * InvalidArgumentError: When `x` and `y` have incompatible shapes or types.
   """
 
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
   return gen_math_ops.mul(x, y, name)
 
 
@@ -720,6 +723,10 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
     A `Tensor`.
   """
   with ops.name_scope(name, "Pow", [x]) as name:
+    if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+    elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+      y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
     return gen_math_ops._pow(x, y, name=name)
 
 
@@ -1124,53 +1131,47 @@ def saturate_cast(value, dtype, name=None):
     # in_dtype is real, but out_dtype could be complex.
     out_real_dtype = dtype.real_dtype
 
-    # TODO: b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
-    #                     behavior.
-    if (
-        forward_compat.forward_compatible(2024, 11, 1)
-        or in_dtype.min < out_real_dtype.min
-        or in_dtype.max > out_real_dtype.max
-    ):
-      # The output min/max may not actually be representable in the
-      # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
-      # behavior when trying to cast a value outside the valid range of the
-      # target type. We work around this by nudging the min/max to fall within
-      # the valid output range.  The catch is that we may actually saturate
-      # to a value less than the true saturation limit, but this is the best we
-      # can do in order to avoid UB without introducing a separate SaturateCast
-      # op.
-      np_dtype = in_dtype.as_numpy_dtype
+    # b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
+    #               behavior.
+    # The output min/max may not actually be representable in the
+    # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
+    # behavior when trying to cast a value outside the valid range of the
+    # target type. We work around this by nudging the min/max to fall within
+    # the valid output range.  The catch is that we may actually saturate
+    # to a value less than the true saturation limit, but this is the best we
+    # can do in order to avoid UB without introducing a separate SaturateCast
+    # op.
+    np_dtype = in_dtype.as_numpy_dtype
 
-      # We promote types *before* comparison in order to not lose precision.
-      # The Try/Except block is mostly to work around bfloat16 types which are
-      # not numpy dtypes.
-      try:
-        promoted_type = np.promote_types(
-            np_dtype, out_real_dtype.as_numpy_dtype
-        )
-      except TypeError:
-        # On newer numpy versions this is DTypePromotionError.
-        # Fall back to just floats. This should be sufficient in most cases
-        # since we only expect to hit this error in cases of bloat16.
-        promoted_type = float
+    # We promote types *before* comparison in order to not lose precision.
+    # The Try/Except block is mostly to work around bfloat16 types which are
+    # not numpy dtypes.
+    try:
+      promoted_type = np.promote_types(np_dtype, out_real_dtype.as_numpy_dtype)
+    except TypeError:
+      # On newer numpy versions this is DTypePromotionError.
+      # Fall back to just floats. This should be sufficient in most cases
+      # since we only expect to hit this error in cases of bloat16.
+      promoted_type = float
 
-      min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
-      promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
-      if promoted[0] < promoted[1]:
-        min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
+    min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
+    promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
+    if promoted[0] < promoted[1]:
+      min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
 
-      max_limit = np_dtype(np.minimum(float(in_dtype.max),
-                                      float(out_real_dtype.max)))
-      promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
-      if promoted[0] > promoted[1]:
-        max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
+    max_limit = np_dtype(
+        np.minimum(float(in_dtype.max), float(out_real_dtype.max))
+    )
+    promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
+    if promoted[0] > promoted[1]:
+      max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
 
-      value = gen_math_ops._clip_by_value(
-          value,
-          ops.convert_to_tensor(min_limit, dtype=in_dtype),
-          ops.convert_to_tensor(max_limit, dtype=in_dtype),
-          name="clamp",
-      )
+    value = gen_math_ops._clip_by_value(
+        value,
+        ops.convert_to_tensor(min_limit, dtype=in_dtype),
+        ops.convert_to_tensor(max_limit, dtype=in_dtype),
+        name="clamp",
+    )
     return cast(value, dtype, name=name)
 
 
@@ -2096,8 +2097,13 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     # infer dtype if not explicitly provided
     if dtype is None:
       dtype_hierarchy = [
+          dtypes.int8,
+          dtypes.int16,
           dtypes.int32,
           dtypes.int64,
+          dtypes.uint16,
+          dtypes.uint32,
+          dtypes.uint64,
           dtypes.float16,
           dtypes.bfloat16,
           dtypes.float32,
@@ -2158,6 +2164,25 @@ def _may_reduce_to_scalar(keepdims, axis, output):
       axis is None):
     output.set_shape(())
   return output
+
+
+def _check_keepdims(keepdims):
+  """Validate and normalize the keepdims argument.
+
+  Args:
+    keepdims: The keepdims value to validate.
+
+  Returns:
+    A bool value for keepdims.
+
+  Raises:
+    TypeError: If keepdims is not None or a bool.
+  """
+  if keepdims is None:
+    return False
+  if not isinstance(keepdims, (bool, np.bool_)):
+    raise TypeError(f"Expected bool for argument 'keepdims' not {keepdims}.")
+  return bool(keepdims)
 
 
 @tf_export(v1=["math.reduce_sum", "reduce_sum"])
@@ -2312,7 +2337,7 @@ def reduce_sum_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._sum(input_tensor, dims, keepdims, name=name))
@@ -2355,7 +2380,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
   """
-  keepdims = bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.euclidean_norm(
@@ -2636,7 +2661,7 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
 
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.mean(
@@ -2799,7 +2824,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.prod
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.prod(
@@ -2982,11 +3007,15 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
 
+  Note: When computing gradients, if multiple elements are equal to the
+    minimum value along the reduced axes, the gradient is distributed equally
+    among all such elements.
+
   @compatibility(numpy)
   Equivalent to np.min
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._min(
@@ -3103,6 +3132,10 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   Returns:
     The reduced tensor.
+
+  Note: When computing gradients, if multiple elements are equal to the
+    maximum value along the reduced axes, the gradient is distributed equally
+    among all such elements.
   """
   return reduce_max_with_dims(input_tensor, axis, keepdims, name,
                               _ReductionDims(input_tensor, axis))
@@ -3113,7 +3146,7 @@ def reduce_max_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._max(input_tensor, dims, keepdims, name=name))
@@ -3217,7 +3250,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.all
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._all(
@@ -3323,7 +3356,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.any
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._any(
@@ -5561,6 +5594,11 @@ def polyval(coeffs, x, name=None):
     p = coeffs[0]
     for c in coeffs[1:]:
       p = c + p * x
+    # For single-coefficient polynomials, the loop above never executes,
+    # so x is unused. Add x*0 to broadcast against x's shape and
+    # propagate NaN, matching numpy.polyval behavior.
+    if len(coeffs) == 1:
+      p = p + x * 0
     return p
 
 

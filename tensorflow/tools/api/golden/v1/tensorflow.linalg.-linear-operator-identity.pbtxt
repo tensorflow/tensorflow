@@ -85,8 +85,20 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__getitem__"
+    argspec: "args=[\'self\', \'slices\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'num_rows\', \'batch_shape\', \'dtype\', \'is_non_singular\', \'is_self_adjoint\', \'is_positive_definite\', \'is_square\', \'assert_proper_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'True\', \'True\', \'True\', \'False\', \'LinearOperatorIdentity\'], "
+  }
+  member_method {
+    name: "__matmul__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "add_to_tensor"
@@ -183,5 +195,6 @@ tf_class {
   member_method {
     name: "with_name_scope"
     argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
 }
