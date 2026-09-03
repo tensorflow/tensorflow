@@ -443,7 +443,9 @@ def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
 
   y = _bin_op(f, x1, x2)
   if not np.issubdtype(y.dtype.as_numpy_dtype, np.inexact):
-    y = y.astype(np_utils.result_type(float))
+    # See the note in `_scalar`: `astype` is unavailable without the
+    # `enable_numpy_methods_on_tensor()` opt-in.
+    y = math_ops.cast(y, np_utils.result_type(float))
   return y
 
 
@@ -527,25 +529,41 @@ def outer(a, b):
 @tf_export.tf_export('experimental.numpy.logaddexp', v1=[])
 @np_utils.np_doc('logaddexp')
 def logaddexp(x1, x2):
-  amax = maximum(x1, x2)
-  delta = x1 - x2
-  return np_array_ops.where(
-      isnan(delta),
-      x1 + x2,  # NaNs or infinities of the same sign.
-      amax + log1p(exp(-abs(delta))),
-  )
+
+  def f(x1, x2):
+    if not np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
+      float_dtype = np_utils.result_type(float)
+      x1 = math_ops.cast(x1, float_dtype)
+      x2 = math_ops.cast(x2, float_dtype)
+    amax = maximum(x1, x2)
+    delta = x1 - x2
+    return np_array_ops.where(
+        isnan(delta),
+        x1 + x2,  # NaNs or infinities of the same sign.
+        amax + log1p(exp(-abs(delta))),
+    )
+
+  return _bin_op(f, x1, x2)
 
 
 @tf_export.tf_export('experimental.numpy.logaddexp2', v1=[])
 @np_utils.np_doc('logaddexp2')
 def logaddexp2(x1, x2):
-  amax = maximum(x1, x2)
-  delta = x1 - x2
-  return np_array_ops.where(
-      isnan(delta),
-      x1 + x2,  # NaNs or infinities of the same sign.
-      amax + log1p(exp2(-abs(delta))) / np.log(2),
-  )
+
+  def f(x1, x2):
+    if not np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
+      float_dtype = np_utils.result_type(float)
+      x1 = math_ops.cast(x1, float_dtype)
+      x2 = math_ops.cast(x2, float_dtype)
+    amax = maximum(x1, x2)
+    delta = x1 - x2
+    return np_array_ops.where(
+        isnan(delta),
+        x1 + x2,  # NaNs or infinities of the same sign.
+        amax + log1p(exp2(-abs(delta))) / math_ops.cast(np.log(2), x1.dtype),
+    )
+
+  return _bin_op(f, x1, x2)
 
 
 @tf_export.tf_export('experimental.numpy.polyval', v1=[])
@@ -1169,7 +1187,7 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
       )
     if n < 0:
       raise ValueError(
-          f'Argument `order` must be a non-negative integer. Received: axis={n}'
+          f'Argument `n` must be a non-negative integer. Received: n={n}'
       )
     slice1 = [slice(None)] * nd
     slice2 = [slice(None)] * nd
@@ -1422,6 +1440,14 @@ def concatenate(arys, axis=0):  # pylint: disable=missing-function-docstring
     )
   dtype = np_utils.result_type(*arys)
   arys = [np_array_ops.array(array, dtype=dtype) for array in arys]
+  if axis is None:
+    # NumPy flattens every input before concatenating when axis is None.
+    # Reshaping an already flat array is a no-op, so skip the op dispatch.
+    arys = [
+        array if array.shape.ndims == 1 else array_ops.reshape(array, [-1])
+        for array in arys
+    ]
+    axis = 0
   return array_ops.concat(arys, axis)
 
 
@@ -1557,7 +1583,9 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
   default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
-      a = a.astype(np_utils.result_type(a.dtype, default_float_type))
+      # See the note in `_scalar`: `astype` is unavailable without the
+      # `enable_numpy_methods_on_tensor()` opt-in.
+      a = math_ops.cast(a, np_utils.result_type(a.dtype, default_float_type))
     avg = math_ops.reduce_mean(a, axis=axis)
     if returned:
       if axis is None:

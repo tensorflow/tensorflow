@@ -207,6 +207,30 @@ class MathTest(test.TestCase, parameterized.TestCase):
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
 
+  def testLogaddexp(self):
+    self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
+    self._testBinaryOp(np_math_ops.logaddexp2, np.logaddexp2, 'logaddexp2')
+
+  def testLogaddexpNonFloatInputs(self):
+    int_args = [
+        ([1, 2, 3], [4, 5, 6]),
+        (np.array([1, 2], dtype=np.int32), np.array([3, 4], dtype=np.int32)),
+        (np.array([1, 2], dtype=np.int64), np.array([3, 4], dtype=np.int64)),
+        (1, 2),
+        ([1.0, 2.0], [3.0, 4.0]),
+    ]
+    for x1, x2 in int_args:
+      self.match(
+          np_math_ops.logaddexp(x1, x2),
+          np.logaddexp(np.asarray(x1), np.asarray(x2)),
+          msg='logaddexp({}, {})'.format(x1, x2),
+      )
+      self.match(
+          np_math_ops.logaddexp2(x1, x2),
+          np.logaddexp2(np.asarray(x1), np.asarray(x2)),
+          msg='logaddexp2({}, {})'.format(x1, x2),
+      )
+
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
     if check_dtype:
@@ -422,6 +446,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
         ],
     )
     self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
+
+  def testDiffErrorMessage(self):
+    # Verify the error message for negative n mentions the parameter correctly.
+    x = np_array_ops.array([1, 2, 3])
+    with self.assertRaisesRegex(
+        ValueError,
+        r'Argument `n` must be a non-negative integer\. Received: n=-1',
+    ):
+      np_math_ops.diff(x, n=-1)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
@@ -657,6 +690,16 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testConcatenateAxisNone(self):
+    a = np_array_ops.array([1, 2])
+    b = np_array_ops.array([[3], [4]])
+    self.assertAllEqual(
+        np_math_ops.concatenate([a, b], axis=None), [1, 2, 3, 4]
+    )
+    self.assertAllEqual(
+        np_math_ops.concatenate(np_array_ops.array([[5, 6]]), axis=None), [5, 6]
+    )
 
   def testIsInfFamilyNonFloatInputs(self):
     # A non-floating input has no infinities, but the result must still be an

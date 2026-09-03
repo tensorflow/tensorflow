@@ -1311,5 +1311,165 @@ ENTRY main {
   EXPECT_DOUBLE_EQ(x_int.min, -128.0);
   EXPECT_DOUBLE_EQ(x_int.max, 127.0);
 }
+TEST_F(ConstraintPropagatorTest,
+       FusionBoundaryPropagatesConstraintsToCallerOperands) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%inner_computation (inner_param: f32[8,128]) -> f32[8,128] {
+  %inner_param = f32[8,128] parameter(0)
+  ROOT %sqrt = f32[8,128] sqrt(%inner_param)
+}
+
+ENTRY main {
+  %param_0 = f32[8,128] parameter(0)
+  ROOT %fusion = f32[8,128] fusion(%param_0), kind=kLoop, calls=%inner_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositive());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest,
+       NestedFusionBoundaryPropagatesConstraintsAcrossMultipleLevels) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%innermost_computation (p: f32[8,128]) -> f32[8,128] {
+  %p = f32[8,128] parameter(0)
+  ROOT %sqrt = f32[8,128] sqrt(%p)
+}
+
+%outer_computation (p_outer: f32[8,128]) -> f32[8,128] {
+  %p_outer = f32[8,128] parameter(0)
+  ROOT %inner_fusion = f32[8,128] fusion(%p_outer), kind=kLoop, calls=%innermost_computation
+}
+
+ENTRY main {
+  %param_0 = f32[8,128] parameter(0)
+  ROOT %outer_fusion = f32[8,128] fusion(%param_0), kind=kOutput, calls=%outer_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositive());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, CallPropagates) {
+  const char* hlo = R"(
+HloModule TestModule
+
+%sc_gather_comp (operand: f32[32,128], indices: s32[256]) -> f32[256,128] {
+  %operand = f32[32,128] parameter(0)
+  %indices = s32[256] parameter(1)
+  ROOT %gather = f32[256,128] gather(%operand, %indices),
+    offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={1,128}
+}
+
+ENTRY main {
+  %operand = f32[32,128] parameter(0)
+  %indices = s32[256] parameter(1)
+  ROOT %call = f32[256,128] call(%operand, %indices), to_apply=%sc_gather_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto indices_int =
+      states[module->entry_computation()->parameter_instruction(1)]
+          .GetConstraintInterval();
+  EXPECT_FALSE(indices_int.IsEmpty());
+  EXPECT_DOUBLE_EQ(indices_int.min, 0.0);
+  EXPECT_DOUBLE_EQ(indices_int.max, 31.0);
+}
+
+TEST_F(ConstraintPropagatorTest, ReduceMaxIdentityElementConstraint) {
+  const char* hlo = R"(
+HloModule TestModule
+max_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT max = bf16[] maximum(x, y)
+}
+ENTRY main {
+  param_0 = bf16[4,5,128,256] parameter(0)
+  init_val = bf16[] parameter(1)
+  ROOT reduce = bf16[4,5] reduce(param_0, init_val), dimensions={2,3},
+    to_apply=max_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto init_int = states[module->entry_computation()->parameter_instruction(1)]
+                      .GetConstraintInterval();
+  EXPECT_FALSE(init_int.IsEmpty());
+  EXPECT_EQ(init_int.min, -65504.0);
+  EXPECT_EQ(init_int.max, -65504.0);
+}
+
+TEST_F(ConstraintPropagatorTest, ReduceMinIdentityElementConstraint) {
+  const char* hlo = R"(
+HloModule TestModule
+min_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT min = bf16[] minimum(x, y)
+}
+ENTRY main {
+  param_0 = bf16[4,5,128,256] parameter(0)
+  init_val = bf16[] parameter(1)
+  ROOT reduce = bf16[4,5] reduce(param_0, init_val), dimensions={2,3},
+    to_apply=min_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto init_int = states[module->entry_computation()->parameter_instruction(1)]
+                      .GetConstraintInterval();
+  EXPECT_FALSE(init_int.IsEmpty());
+  EXPECT_EQ(init_int.min, 65504.0);
+  EXPECT_EQ(init_int.max, 65504.0);
+}
+
+TEST_F(ConstraintPropagatorTest, GetReductionIdentityElementTypeMaxAndMin) {
+  const char* hlo = R"(
+HloModule TestModule
+max_computation {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT max = f32[] maximum(x, y)
+}
+min_computation {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT min = f32[] minimum(x, y)
+}
+ENTRY main {
+  x = f32[] parameter(0)
+  ROOT root = f32[] negate(x)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_EQ(GetReductionIdentityElementType(
+                *module->GetComputationWithName("max_computation")),
+            IdentityElementType::kMinimum);
+  EXPECT_EQ(GetReductionIdentityElementType(
+                *module->GetComputationWithName("min_computation")),
+            IdentityElementType::kMaximum);
+}
 }  // namespace
 }  // namespace xla

@@ -1802,8 +1802,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // compatible with Epilogue Fusion. DEPRECATED: This standalone function has
   // been moved to GemmRewriterVisitor as a member function to allow
   bool SupportsEpilogueFusion(PrimitiveType type) {
-    // ROCm doesn't support F64 epilogue fusion
-    if (gpu_version_.IsRocm() && type == F64) {
+    // ROCm/oneAPI doesn't support F64 epilogue fusion
+    if ((gpu_version_.IsRocm() || gpu_version_.IsOneAPI()) && type == F64) {
       return false;
     }
 

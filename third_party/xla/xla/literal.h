@@ -597,14 +597,14 @@ class LiteralBase {
     void WriteElement(NativeT element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
+      static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         WriteElement(element.real());
         WriteElement(element.imag());
       } else {
         constexpr PrimitiveType unsigned_type =
             primitive_util::UnsignedIntegralTypeForBitWidth(
-                primitive_util::BitWidth(primitive_type));
+                primitive_util::StorageBitWidth(primitive_type));
         using UnsignedT = primitive_util::NativeTypeOf<unsigned_type>;
         UnsignedT unsigned_element = absl::bit_cast<UnsignedT>(element);
         if constexpr (sizeof(UnsignedT) == 1) {
@@ -625,7 +625,7 @@ class LiteralBase {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
-      if constexpr (bits_per_element < 8) {
+      if constexpr (primitive_util::IsSubByteNonPredType(primitive_type)) {
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
 
@@ -688,7 +688,7 @@ class LiteralBase {
     ABSL_MUST_USE_RESULT bool ReadElement(NativeT& element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
+      static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         using ComponentT =
             primitive_util::NativeTypeOf<primitive_util::ComplexComponentType(
@@ -705,7 +705,7 @@ class LiteralBase {
       } else {
         constexpr PrimitiveType unsigned_type =
             primitive_util::UnsignedIntegralTypeForBitWidth(
-                primitive_util::BitWidth(primitive_type));
+                primitive_util::StorageBitWidth(primitive_type));
         using UnsignedT = primitive_util::NativeTypeOf<unsigned_type>;
         if constexpr (sizeof(UnsignedT) == 1) {
           if (at_end()) {
@@ -736,7 +736,7 @@ class LiteralBase {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
-      if constexpr (bits_per_element < 8) {
+      if constexpr (primitive_util::IsSubByteNonPredType(primitive_type)) {
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
 
@@ -1758,7 +1758,7 @@ bool LiteralBase::Piece::DeserializeData(
 // - If a piece is dynamic, we first write the sizes of the dynamic dimensions.
 //
 // - The elements of the piece are then written.  Elements smaller than a single
-//   byte (PRED, S4, U4) are packed into bytes.  Otherwise, they are written in
+//   byte (e.g. S4, U4) are packed into bytes.  Otherwise, they are written in
 //   little-endian byte order.
 template <typename OutputIterator>
 absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,

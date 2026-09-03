@@ -146,6 +146,8 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<int> GetMemorySpaceKindForShape(
       const xla::Shape& shape) const override;
 
+  bool IsMemorySpaceOnCpu(int memory_space_kind_id) const override;
+
  private:
   std::unique_ptr<PjRtStreamExecutorDeviceDescription> CreateDeviceDescription(
       int device_id) const;

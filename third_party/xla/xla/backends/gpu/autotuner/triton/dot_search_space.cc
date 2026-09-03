@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "google/protobuf/repeated_field.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
@@ -155,11 +156,23 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   return result;
 }
 
+std::vector<TritonGemmConfig>
+TritonDotFusionSearchSpace::GenerateAndOptimizeConfigs(
+    absl::Span<const TritonGemmConfig> hints,
+    bool autotune_warp_specialization) const {
+  std::vector<TritonGemmConfig> gemm_configs =
+      GenerateConfigs(autotune_warp_specialization);
+  if (hints.empty()) {
+    return gemm_configs;
+  }
+  return OptimizeConfigSet(gemm_configs, hints);
+}
+
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
-    const std::vector<TritonGemmConfig>& configs,
-    const std::vector<TritonGemmConfig>& hints) const {
+    absl::Span<const TritonGemmConfig> configs,
+    absl::Span<const TritonGemmConfig> hints) const {
   if (hints.empty() || configs.empty()) {
-    return configs;
+    return std::vector<TritonGemmConfig>(configs.begin(), configs.end());
   }
 
   absl::flat_hash_set<TritonGemmConfig> filter;
@@ -195,7 +208,7 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
                  "sufficiently match the hints. Maybe the hints set does "
                  "not contain a good representative set of valid configs? "
                  "Working around this by using the full hints set instead.";
-    return hints;
+    return std::vector<TritonGemmConfig>(hints.begin(), hints.end());
   }
   return result_configs;
 }

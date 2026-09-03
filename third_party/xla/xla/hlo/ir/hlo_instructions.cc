@@ -946,10 +946,10 @@ HloCopyStartInstruction::CloneWithNewOperandsImpl(
 
 HloCompareInstruction::HloCompareInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    ComparisonDirection direction, std::optional<Comparison::Type> type)
+    ComparisonDirection direction, std::optional<ComparisonOrder> order)
     : HloInstruction(HloOpcode::kCompare, shape),
-      compare_(type.has_value()
-                   ? Comparison(direction, *type)
+      compare_(order.has_value()
+                   ? Comparison(direction, lhs->shape().element_type(), *order)
                    : Comparison(direction, lhs->shape().element_type())) {
   AppendOperand(lhs);
   AppendOperand(rhs);
@@ -959,6 +959,8 @@ void HloCompareInstruction::ToProto(HloInstructionProto* proto) const {
   HloInstruction::ToProto(proto);
   proto->set_comparison_direction(
       ComparisonDirectionToString(compare_.GetDirection()));
+  proto->set_comparison_order(
+      ComparisonOrderToShortString(compare_.GetOrder()));
   proto->set_comparison_type(ComparisonTypeToString(compare_.GetType()));
 }
 
@@ -983,7 +985,8 @@ bool HloCompareInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloCompareInstruction&>(other);
-  return direction() == casted_other.direction();
+  return direction() == casted_other.direction() &&
+         order() == casted_other.order();
 }
 
 std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
@@ -991,7 +994,7 @@ std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return std::make_unique<HloCompareInstruction>(
-      shape, new_operands[0], new_operands[1], direction(), type());
+      shape, new_operands[0], new_operands[1], direction(), order());
 }
 
 namespace {
@@ -3541,7 +3544,9 @@ HloConvolutionInstruction::HloConvolutionInstruction(
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind)
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config,
+    ConvolutionKind convolution_kind)
     : HloInstruction(HloOpcode::kConvolution, shape),
       feature_group_count_(feature_group_count),
       batch_group_count_(batch_group_count),
@@ -3549,6 +3554,7 @@ HloConvolutionInstruction::HloConvolutionInstruction(
       convolution_dimension_numbers_(dimension_numbers),
       precision_config_(precision_config),
       sparsity_config_(sparsity_config),
+      block_scaling_config_(block_scaling_config),
       convolution_kind_(convolution_kind) {
   if (window_util::HasBaseDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-base-dilated"));
@@ -3584,6 +3590,7 @@ void HloConvolutionInstruction::ToProto(HloInstructionProto* proto) const {
     proto->set_conv_kind(convolution_kind_);
   }
   *proto->mutable_sparsity_config() = sparsity_config_;
+  *proto->mutable_block_scaling_config() = block_scaling_config_;
 }
 
 void HloConvolutionInstruction::PrintExtraAttributesImpl(
@@ -3624,6 +3631,13 @@ void HloConvolutionInstruction::PrintExtraAttributesImpl(
       printer->Append("}");
     });
   }
+  if (block_scaling_config_.has_lhs() || block_scaling_config_.has_rhs()) {
+    printer.Next([this](Printer* printer) {
+      printer->Append("block_scaling_config={");
+      printer->Append(BlockScalingConfigToString(block_scaling_config_));
+      printer->Append("}");
+    });
+  }
 }
 
 bool HloConvolutionInstruction::IdenticalSlowPath(
@@ -3649,7 +3663,9 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
          protobuf_util::HaveSameSerialization(
              precision_config(), casted_other.precision_config()) &&
          protobuf_util::HaveSameSerialization(sparsity_config(),
-                                              casted_other.sparsity_config());
+                                              casted_other.sparsity_config()) &&
+         protobuf_util::HaveSameSerialization(
+             block_scaling_config(), casted_other.block_scaling_config());
 }
 
 std::unique_ptr<HloInstruction>
@@ -3659,7 +3675,7 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
   return std::make_unique<HloConvolutionInstruction>(
       shape, new_operands, feature_group_count_, batch_group_count_, window(),
       convolution_dimension_numbers_, precision_config_, sparsity_config_,
-      convolution_kind_);
+      block_scaling_config_, convolution_kind_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(

@@ -377,7 +377,9 @@ def _tf_library(
     sed_replace = (
         "-e \"s|{{TFCOMPILE_HEADER}}|$(location " + header_file + ")|g\" " +
         "-e \"s|{{TFCOMPILE_CPP_CLASS}}|" + cpp_class + "|g\" " +
-        "-e \"s|{{TFCOMPILE_NAME}}|" + no_ns_name + "|g\" "
+        "-e \"s|{{TFCOMPILE_NAME}}|" + no_ns_name + "|g\" " +
+        "-e \"s!bazel-out/[^/]*/bin/!!g\" " +
+        "-e \"s!bazel-out/[^/]*/genfiles/!!g\" "
     )
 
     if gen_test:

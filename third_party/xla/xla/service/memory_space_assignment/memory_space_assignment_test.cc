@@ -710,6 +710,51 @@ TEST_F(MemorySpaceAssignmentTest, ViewExtendedUseTimeWalksTransitiveReaders) {
       schedule.at(viewbc));
 }
 
+TEST_F(MemorySpaceAssignmentTest, ViewUsePrefetchDeadlineClampedToViewTime) {
+  // A view use extends the allocation end time through the view's transitive
+  // readers (`consumer` below), but a prefetched copy is materialized right
+  // before the view instruction itself. The prefetch deadline must therefore
+  // be the view's own time, not the extended reader time: with the extended
+  // deadline the picker may place the copy interval entirely after the
+  // c0/c1/c2 chain below has freed the heap, while the copy instructions
+  // actually run before `view`, inside the chain's live range, and the
+  // verifier fails with a chunk overlap.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[8]{0} parameter(0)
+    p1 = f32[32]{0} parameter(1)
+    c0 = f32[32]{0} negate(p1)
+    view = f32[8]{0:S(5)} custom-call(p0), custom_call_target="tpu_get_view"
+    viewbc = f32[8]{0:S(5)} bitcast(view)
+    c1 = f32[32]{0} negate(c0)
+    c2 = f32[32]{0} negate(c1)
+    cs = f32[8]{0} slice(c2), slice={[0:8]}
+    d0 = f32[8]{0} negate(cs)
+    d1 = f32[8]{0} negate(d0)
+    d2 = f32[8]{0} negate(d1)
+    consumer = f32[8]{0} add(viewbc, d2)
+    ROOT t = (f32[8]{0}, f32[8]{0}) tuple(consumer, d2)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.dus_view_color = 5;
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+      /*min_overlap_count=*/2, /*max_overlap_count=*/10);
+  ASSERT_OK(AssignMemorySpaceAndReturnStatus(module.get(), std::move(options),
+                                             /*buffer_interval_compare=*/{},
+                                             &prefetch_interval_picker)
+                .status());
+  // The c0/c1/c2 chain keeps the whole heap busy across `view`, so no legal
+  // prefetch window exists: the base must stay in default memory.
+  HloInstruction* view = FindInstruction(module.get(), "view");
+  ASSERT_NE(view, nullptr);
+  EXPECT_THAT(view->operand(0), op::Parameter(0));
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        SyncDynamicSliceReplacementWithLateIndexOperand) {
   absl::string_view hlo_string = R"hlo(
@@ -1505,8 +1550,8 @@ ENTRY entry {
   options_result_modifier.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value_to_update->defining_instruction()
-                    ->name() == "p0" &&
+        if (request.allocation_value_to_update->position()
+                    .instruction->name() == "p0" &&
             request.use->hlo_use.instruction->name() == "add0") {
           result = AllocationResult::kFailRequiresUncommit;
         }
@@ -1528,7 +1573,7 @@ ENTRY entry {
   options_request_modifier.max_retries = 1;
   options_request_modifier
       .allocation_request_modifier_testing_fn = [](AllocationRequest& request) {
-    if (request.allocation_value_to_update->defining_instruction()->name() ==
+    if (request.allocation_value_to_update->position().instruction->name() ==
             "p0" &&
         request.use->hlo_use.instruction->name() == "add0") {
       // Schedule the copy-done before negate4 (scheduled at 6).
@@ -1602,7 +1647,7 @@ ENTRY entry {
   options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "p0_copy" &&
             request.use->hlo_use.instruction->name() == "concat") {
           result = AllocationResult::kFailRequiresUncommit;
@@ -8337,11 +8382,11 @@ TEST_F(MemorySpaceAssignmentTest,
   // default memory, and creates a new one which is wrong.
   bool marked_inefficient = false;
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
+    if (absl::c_find(positions,
                      HloPosition{FindInstruction(module.get(), "while1"),
-                                 {1}}) != defining_positions.end() &&
+                                 {1}}) != positions.end() &&
         !marked_inefficient) {
       LOG(INFO) << "Marking the use inefficient.";
       marked_inefficient = true;
@@ -8378,11 +8423,10 @@ TEST_F(MemorySpaceAssignmentTest, InefficientAllocationRetryWithoutProgress) {
   Options options = DefaultMemorySpaceOptions();
   // The hook flags the add instruction's use of p0 as inefficient.
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
-                     HloPosition{FindInstruction(module.get(), "p0"), {}}) !=
-        defining_positions.end()) {
+    if (absl::c_find(positions, HloPosition{FindInstruction(module.get(), "p0"),
+                                            {}}) != positions.end()) {
       return {HloUse{FindInstruction(module.get(), "add"), 1}};
     }
     return {};
@@ -17806,7 +17850,7 @@ ENTRY entry {
   memory_space_options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "negate0" &&
             retry_number <= 0 && result == AllocationResult::kSuccess) {
           result = AllocationResult::kFailOutOfMemory;
@@ -19517,6 +19561,57 @@ ENTRY main {
       },
       preset_assignments.get(), alias_analysis.get()));
 }
+
+TEST_F(MemorySpaceAssignmentTest, AsyncBarrierAliasingCycle) {
+  absl::string_view hlo_string = R"hlo(
+HloModule sc_async_barrier_aliasing, is_scheduled=true
+
+  sc_custom_call_comp {
+    ROOT %custom_call = (f32[32,128,8]{1,2,0}, u32[], u32[]) custom-call(),
+      custom_call_target="SparseCoreBarrierStart",
+      custom_call_has_side_effect=true
+  }
+
+  sc_main {
+    %input = f32[32,128,8]{1,2,0} parameter(0)
+    %output = f32[32,128,8]{1,2,0} parameter(1)
+    %send_sflag = u32[] parameter(2)
+    %recv_sflag = u32[] parameter(3)
+    ROOT %a2a-result = f32[32,128,8]{1,2,0} custom-call(%input, %output, %send_sflag, %recv_sflag),
+      custom_call_target="SparseCoreBarrierDoneAndCollective",
+      output_to_operand_aliasing={{}: (1, {})}
+  }
+
+ENTRY %Comp_spmd {
+  %p0 = f32[32,128,8]{1,2,0} parameter(0)
+  %p1 = f32[32,128,8]{1,2,0} parameter(1)
+
+  %sc_custom_call_start = ((), (f32[32,128,8]{1,2,0}, u32[], u32[]), s32[]) call-start(),
+    to_apply=%sc_custom_call_comp
+  %sc_custom_call_done = (f32[32,128,8]{1,2,0}, u32[], u32[]) call-done(%sc_custom_call_start)
+  %send_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=1
+  %recv_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=2
+
+  %sc_start = ((f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}, u32[], u32[]), f32[32,128,8]{1,2,0}, s32[])
+    call-start(%p0, %p1, %send_sflag, %recv_sflag),
+      to_apply=%sc_main,
+      output_to_operand_aliasing={
+        {0,1}: (1, {}), // update output buffer at {0,0}
+        {0,2}: (2, {}), // update send_sflag
+        {0,3}: (3, {}), // update recv_sflag
+        {1}: (1, {})}   // update output buffer at {1}
+  %sc_output = f32[32,128,8]{1,2,0} call-done(%sc_start)
+  %neg = f32[32,128,8]{1,2,0} negate(%sc_output)
+
+  ROOT %root = (f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}) tuple(%neg, %p0)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
+}
+
 }  // namespace
 
 }  // namespace memory_space_assignment

@@ -3923,7 +3923,6 @@ cc_library(
     hdrs = ["export_hlo.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//xla:autotune_results_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description_proto_cc",
         "@com_google_absl//absl/strings",

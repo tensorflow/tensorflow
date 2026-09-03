@@ -221,6 +221,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
         "//xla/error:error_codes",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/c:pjrt_c_api_device_event_hdrs",

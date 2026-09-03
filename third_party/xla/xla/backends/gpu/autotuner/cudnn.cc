@@ -153,6 +153,11 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     return true;
   }
 
+  if (hero->shape().element_type() == PrimitiveType::F64) {
+    VLOG(1) << "cuDNN GEMM fusion does not support F64.";
+    return false;
+  }
+
   stream_executor::CudaComputeCapability compute_capability =
       target_config.device_description.cuda_compute_capability();
   if ((compute_capability.IsAtLeastAmpere() &&

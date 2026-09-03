@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <any>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <utility>
@@ -37,6 +38,15 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+inline constexpr size_t kDefaultMaxBufferBytes =
+    4ULL * 1024 * 1024 * 1024;  // 4GB
+
+struct DrainedBuffer {
+  std::vector<std::any> chunks;
+  uint64_t cumulative_dropped_chunks = 0;
+  uint64_t cumulative_dropped_bytes = 0;
+};
+
 template <typename ProfilerType>
 class ContinuousProfilerOrchestrator : public ProfilerInterface {
  public:
@@ -45,8 +55,10 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   static constexpr absl::Duration kMaxPollingInterval = absl::Seconds(5);
 
   explicit ContinuousProfilerOrchestrator(
-      std::unique_ptr<ProfilerType> profiler)
+      std::unique_ptr<ProfilerType> profiler,
+      size_t max_buffer_bytes = kDefaultMaxBufferBytes)
       : profiler_(std::move(profiler)),
+        max_buffer_bytes_(max_buffer_bytes),
         is_running_(false),
         polling_interval_(kDefaultPollingInterval) {}
 
@@ -77,10 +89,10 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   // Stops background thread and profiling.
   absl::Status Stop() override {
     absl::Status status = StopInternal();
-    auto result = profiler_->Consume();
+    absl::StatusOr<ConsumeResult> result = profiler_->Consume();
     if (result.ok()) {
       absl::MutexLock lock(mutex_);
-      circular_buffer_.push_back(std::move(result->data));
+      PushChunkLocked(std::move(*result));
     } else if (!absl::IsUnimplemented(result.status())) {
       LOG(WARNING) << "Final Consume failed during Stop: " << result.status();
     }
@@ -129,18 +141,87 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   ProfilerType* profiler() { return profiler_.get(); }
   const ProfilerType* profiler() const { return profiler_.get(); }
 
-  std::vector<std::any> PopBuffer() {
+  size_t max_buffer_bytes() const { return max_buffer_bytes_; }
+
+  size_t total_buffered_bytes() const {
     absl::MutexLock lock(mutex_);
-    std::vector<std::any> chunks;
-    chunks.reserve(circular_buffer_.size());
-    for (auto& item : circular_buffer_) {
-      chunks.push_back(std::move(item));
-    }
-    circular_buffer_.clear();
-    return chunks;
+    return total_buffered_bytes_;
   }
 
+  uint64_t dropped_chunks_count() const {
+    absl::MutexLock lock(mutex_);
+    return dropped_chunks_count_;
+  }
+
+  uint64_t dropped_bytes_count() const {
+    absl::MutexLock lock(mutex_);
+    return dropped_bytes_count_;
+  }
+
+  DrainedBuffer PopBufferWithTelemetry() {
+    std::deque<std::any> local_buffer;
+    uint64_t dropped_chunks = 0;
+    uint64_t dropped_bytes = 0;
+    {
+      absl::MutexLock lock(mutex_);
+      local_buffer.swap(circular_buffer_);
+      chunk_sizes_.clear();
+      total_buffered_bytes_ = 0;
+      dropped_chunks = dropped_chunks_count_;
+      dropped_bytes = dropped_bytes_count_;
+    }
+
+    std::vector<std::any> chunks;
+    chunks.reserve(local_buffer.size());
+    for (auto& item : local_buffer) {
+      if (item.has_value()) {
+        chunks.push_back(std::move(item));
+      }
+    }
+    return DrainedBuffer{
+        .chunks = std::move(chunks),
+        .cumulative_dropped_chunks = dropped_chunks,
+        .cumulative_dropped_bytes = dropped_bytes,
+    };
+  }
+
+  std::vector<std::any> PopBuffer() { return PopBufferWithTelemetry().chunks; }
+
  private:
+  void PushChunkLocked(ConsumeResult chunk)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    if (!chunk.data.has_value()) {
+      return;
+    }
+
+    if (chunk.estimated_size_bytes > max_buffer_bytes_) {
+      LOG_EVERY_N_SEC(WARNING, 30)
+          << "ContinuousProfilerOrchestrator rejected chunk of size "
+          << chunk.estimated_size_bytes << " bytes exceeding max buffer limit "
+          << max_buffer_bytes_ << " bytes.";
+      dropped_chunks_count_ += 1;
+      dropped_bytes_count_ += chunk.estimated_size_bytes;
+      return;
+    }
+
+    while (!circular_buffer_.empty() &&
+           (total_buffered_bytes_ + chunk.estimated_size_bytes >
+            max_buffer_bytes_)) {
+      size_t front_size = chunk_sizes_.front();
+      total_buffered_bytes_ = (total_buffered_bytes_ > front_size)
+                                  ? total_buffered_bytes_ - front_size
+                                  : 0;
+      dropped_chunks_count_ += 1;
+      dropped_bytes_count_ += front_size;
+      circular_buffer_.pop_front();
+      chunk_sizes_.pop_front();
+    }
+
+    total_buffered_bytes_ += chunk.estimated_size_bytes;
+    circular_buffer_.push_back(std::move(chunk.data));
+    chunk_sizes_.push_back(chunk.estimated_size_bytes);
+  }
+
   void IngestionLoop() {
     LOG(INFO) << "ContinuousProfilerOrchestrator::IngestionLoop started";
     while (true) {
@@ -152,14 +233,9 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
 
       absl::MutexLock lock(mutex_);
       if (result.ok()) {
-        circular_buffer_.push_back(std::move(result->data));
-
-        // Cap circular buffer to prevent infinite memory growth.
-        if (circular_buffer_.size() > 100) {
-          circular_buffer_.pop_front();
-        }
-
-        AdjustIntervalLocked(result->estimated_size_bytes);
+        const size_t chunk_size = result->estimated_size_bytes;
+        PushChunkLocked(std::move(*result));
+        AdjustIntervalLocked(chunk_size);
       }
 
       if (!is_running_) break;
@@ -195,6 +271,7 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   }
 
   std::unique_ptr<ProfilerType> profiler_;
+  const size_t max_buffer_bytes_;
 
   mutable absl::Mutex mutex_;
   absl::CondVar cv_;
@@ -203,6 +280,10 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
 
   absl::Duration polling_interval_ ABSL_GUARDED_BY(mutex_);
   std::deque<std::any> circular_buffer_ ABSL_GUARDED_BY(mutex_);
+  std::deque<size_t> chunk_sizes_ ABSL_GUARDED_BY(mutex_);
+  size_t total_buffered_bytes_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint64_t dropped_chunks_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint64_t dropped_bytes_count_ ABSL_GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace profiler

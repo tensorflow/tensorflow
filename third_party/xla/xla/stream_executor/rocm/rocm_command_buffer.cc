@@ -217,6 +217,71 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
       "Failed to set memcpy d2d node params");
 }
 
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2HNode(
+    absl::Span<const GraphNodeHandle> dependencies, void* destination,
+    DeviceAddressBase source, uint64_t size) {
+  VLOG(2) << "Add memcpy d2h node to a graph " << graph_
+          << "; dst: " << destination << "; src: " << source.opaque()
+          << "; size: " << size << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  ABSL_RETURN_IF_ERROR(ToStatus(
+      hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(), deps.size(),
+                              destination, AsDevicePtr(source), size,
+                              hipMemcpyDeviceToHost),
+      "Failed to add memcpy d2h node to a HIP graph"));
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateMemcpyD2HNode(GraphNodeHandle node_handle,
+                                                    void* destination,
+                                                    DeviceAddressBase source,
+                                                    uint64_t size) {
+  VLOG(2) << "Set memcpy d2h node params " << node_handle
+          << " in graph executable " << exec_ << "; dst: " << destination
+          << "; src: " << source.opaque() << "; size: " << size;
+
+  return ToStatus(hipGraphExecMemcpyNodeSetParams1D(
+                      exec_, ToHipGraphHandle(node_handle), destination,
+                      AsDevicePtr(source), size, hipMemcpyDeviceToHost),
+                  "Failed to set memcpy d2h node params");
+}
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyH2DNode(
+    absl::Span<const GraphNodeHandle> dependencies,
+    DeviceAddressBase destination, const void* source, uint64_t size) {
+  VLOG(2) << "Add memcpy h2d node to a graph " << graph_
+          << "; dst: " << destination.opaque() << "; src: " << source
+          << "; size: " << size << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  ABSL_RETURN_IF_ERROR(
+      ToStatus(hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(),
+                                       deps.size(), AsDevicePtr(destination),
+                                       source, size, hipMemcpyHostToDevice),
+               "Failed to add memcpy h2d node to a HIP graph"));
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateMemcpyH2DNode(
+    GraphNodeHandle node_handle, DeviceAddressBase destination,
+    const void* source, uint64_t size) {
+  VLOG(2) << "Set memcpy h2d node params " << node_handle
+          << " in graph executable " << exec_
+          << "; dst: " << destination.opaque() << "; src: " << source
+          << "; size: " << size;
+
+  return ToStatus(
+      hipGraphExecMemcpyNodeSetParams1D(exec_, ToHipGraphHandle(node_handle),
+                                        AsDevicePtr(destination), source, size,
+                                        hipMemcpyHostToDevice),
+      "Failed to set memcpy h2d node params");
+}
+
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateClonedChildNode(
     absl::Span<const GraphNodeHandle> dependencies,
     const CommandBuffer& nested) {

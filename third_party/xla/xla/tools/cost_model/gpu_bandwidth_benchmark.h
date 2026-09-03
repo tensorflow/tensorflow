@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 
 namespace xla::gpu {
@@ -29,6 +30,10 @@ struct BandwidthEntry {
   int64_t dma_size_bytes = 0;
   float bandwidth_fraction = 0.0f;
 };
+
+// Returns theoretical peak GPU memory bandwidth in bytes per second for
+// `device_id`.
+absl::StatusOr<double> GetPeakBandwidthBytesPerSec(int device_id);
 
 // Formats bandwidth table entries into a human-readable table.
 std::string FormatBandwidthTable(absl::Span<const BandwidthEntry> entries);

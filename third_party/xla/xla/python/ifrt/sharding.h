@@ -21,13 +21,17 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
@@ -148,6 +152,25 @@ class Sharding : public RTTIExtends<Sharding, Serializable> {
   virtual absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const = 0;
+
+  using IndexDomainAndShardIndices = ShardingSpec::IndexDomainAndShardIndices;
+
+  // Breaks a shape up into unique `IndexDomain`s and the shard indices mapped
+  // to it. The result is calculated for all shards.
+  //
+  // The result is valid for the lifetime of this `Sharding`.
+  absl::StatusOr<absl::InlinedVector<IndexDomainAndShardIndices, 1>>
+  UniqueIndexDomains(const Shape& shape) const ABSL_ATTRIBUTE_LIFETIME_BOUND;
+
+  // Inverse of `UniqueIndexDomains()` for `shard_indices`. Does not take
+  // `shape` because the result is independent of `shape`.
+  //
+  // Suppose `j` be `unique_index_domain_indices[shard_i]`. Then,
+  // `unique_index_domains[j].shard_indices` contains `shard_i`.
+  //
+  // The result is valid for the lifetime of this `Sharding`.
+  absl::StatusOr<absl::Span<const int>> ShardToUniqueIndexDomainIndex() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND;
 
   template <typename H>
   friend H AbslHashValue(H h, const Sharding& value) {

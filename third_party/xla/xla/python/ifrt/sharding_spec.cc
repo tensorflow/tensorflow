@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/sharding_spec.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -26,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -244,6 +247,23 @@ absl::StatusOr<std::vector<IndexDomain>> SingleDeviceShardingSpec::IndexDomains(
   return std::vector<IndexDomain>{IndexDomain(shape)};
 }
 
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+SingleDeviceShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  static constexpr std::array<int, 1> kShardIndices({0});
+  return absl::InlinedVector<IndexDomainAndShardIndices, 1>{
+      IndexDomainAndShardIndices{
+          /*index_domain=*/IndexDomain(shape),
+          /*shard_indices=*/absl::MakeConstSpan(kShardIndices),
+      },
+  };
+}
+
+absl::StatusOr<absl::Span<const int>>
+SingleDeviceShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  static constexpr std::array<int, 1> kShardToUniqueIndexDomainIndex({0});
+  return absl::MakeConstSpan(kShardToUniqueIndexDomainIndex);
+}
+
 std::string SingleDeviceShardingSpec::DebugString() const {
   return "SingleDeviceShardingSpec()";
 }
@@ -311,6 +331,18 @@ absl::StatusOr<std::vector<IndexDomain>> OpaqueShardingSpec::IndexDomains(
       "OpaqueShardingSpec does not have index domain information");
 }
 
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+OpaqueShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  return absl::InvalidArgumentError(
+      "OpaqueShardingSpec does not support UniqueIndexDomains");
+}
+
+absl::StatusOr<absl::Span<const int>>
+OpaqueShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  return absl::InvalidArgumentError(
+      "OpaqueShardingSpec does not support ShardToUniqueIndexDomainIndex");
+}
+
 std::string OpaqueShardingSpec::DebugString() const {
   return absl::StrFormat("OpaqueShardingSpec(num_shards: %d)", num_shards_);
 }
@@ -369,6 +401,13 @@ ConcreteShardingSpec::ConcreteShardingSpec(
           num_shards, /*is_fully_replicated=*/false),
       shape_(std::move(dynamic_shape)),
       shard_shapes_(std::move(shard_dynamic_shapes)) {}
+
+ConcreteShardingSpec::ConcreteShardingSpec(const ConcreteShardingSpec& other)
+    : RTTIExtends<ConcreteShardingSpec, ShardingSpec>(other),
+      shape_(other.shape_),
+      shard_shapes_(other.shard_shapes_),
+      shard_shape_(other.shard_shape_),
+      index_domains_(other.index_domains_) {}
 
 absl::StatusOr<ShardingRef> ConcreteShardingSpec::ToSharding(
     DeviceListRef devices, MemoryKind memory_kind) const {
@@ -474,6 +513,76 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteShardingSpec::IndexDomains(
   return *index_domains_;
 }
 
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+ConcreteShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  if (!index_domains_.has_value()) {
+    return absl::InvalidArgumentError(
+        "ConcreteShardingSpec does not have index domain information");
+  }
+  if (has_static_shape() && this->shape() != shape) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec has index domains for shape %v, but was asked "
+        "to get unique index domains for shape %v",
+        this->shape(), shape));
+  }
+  absl::call_once(unique_shard_indices_once_, [this] {
+    absl::flat_hash_map<IndexDomain, int> index_domain_to_unique_idx;
+    std::vector<std::vector<int>> shard_indices;
+    for (int i = 0; i < index_domains_->size(); ++i) {
+      const IndexDomain& domain = (*index_domains_)[i];
+      auto [it, inserted] =
+          index_domain_to_unique_idx.try_emplace(domain, shard_indices.size());
+      if (inserted) {
+        shard_indices.emplace_back();
+      }
+      shard_indices[it->second].push_back(i);
+    }
+    cached_shard_indices_.reserve(index_domains_->size());
+    cached_shard_indices_offsets_.reserve(shard_indices.size() + 1);
+    for (const auto& indices : shard_indices) {
+      cached_shard_indices_offsets_.push_back(cached_shard_indices_.size());
+      cached_shard_indices_.insert(cached_shard_indices_.end(), indices.begin(),
+                                   indices.end());
+    }
+    cached_shard_indices_offsets_.push_back(cached_shard_indices_.size());
+  });
+
+  const int num_unique = cached_shard_indices_offsets_.size() - 1;
+  absl::InlinedVector<IndexDomainAndShardIndices, 1> unique_domains;
+  unique_domains.reserve(num_unique);
+  for (int i = 0; i < num_unique; ++i) {
+    const int offset = cached_shard_indices_offsets_[i];
+    const int count = cached_shard_indices_offsets_[i + 1] - offset;
+    const int first_shard = cached_shard_indices_[offset];
+    unique_domains.push_back(IndexDomainAndShardIndices{
+        /*index_domain=*/(*index_domains_)[first_shard],
+        /*shard_indices=*/
+        absl::MakeConstSpan(cached_shard_indices_).subspan(offset, count),
+    });
+  }
+  return unique_domains;
+}
+
+absl::StatusOr<absl::Span<const int>>
+ConcreteShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  if (!index_domains_.has_value()) {
+    return absl::InvalidArgumentError(
+        "ConcreteShardingSpec does not have index domain information");
+  }
+  absl::call_once(shard_to_unique_index_domain_index_once_, [this] {
+    absl::flat_hash_map<IndexDomain, int> domain_to_unique_idx;
+    cached_shard_to_unique_index_domain_index_.reserve(index_domains_->size());
+    for (int i = 0; i < index_domains_->size(); ++i) {
+      const IndexDomain& domain = (*index_domains_)[i];
+      auto it =
+          domain_to_unique_idx.try_emplace(domain, domain_to_unique_idx.size())
+              .first;
+      cached_shard_to_unique_index_domain_index_.push_back(it->second);
+    }
+  });
+  return absl::MakeConstSpan(cached_shard_to_unique_index_domain_index_);
+}
+
 std::string ConcreteShardingSpec::DebugString() const {
   return std::visit(
       [this](const auto& shape, const auto& shard_shapes) {
@@ -507,6 +616,12 @@ ConcreteEvenShardingSpec::ConcreteEvenShardingSpec(int num_shards, Shape shape,
                                                           is_fully_replicated),
       shape_(std::move(shape)),
       shard_shape_(std::move(shard_shape)) {}
+
+ConcreteEvenShardingSpec::ConcreteEvenShardingSpec(
+    const ConcreteEvenShardingSpec& other)
+    : RTTIExtends<ConcreteEvenShardingSpec, ShardingSpec>(other),
+      shape_(other.shape_),
+      shard_shape_(other.shard_shape_) {}
 
 absl::StatusOr<ShardingRef> ConcreteEvenShardingSpec::ToSharding(
     DeviceListRef devices, MemoryKind memory_kind) const {
@@ -584,6 +699,39 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenShardingSpec::IndexDomains(
       "ConcreteEvenShardingSpec does not have index domain information");
 }
 
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+ConcreteEvenShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  if (!IsFullyReplicated() || this->shape() != shard_shape() ||
+      this->shape() != shape) {
+    return absl::InvalidArgumentError(
+        "ConcreteEvenShardingSpec does not have index domain information");
+  }
+  absl::call_once(unique_shard_indices_once_, [this] {
+    cached_shard_indices_.reserve(num_shards_);
+    for (int i = 0; i < num_shards_; ++i) {
+      cached_shard_indices_.push_back(i);
+    }
+  });
+  return absl::InlinedVector<IndexDomainAndShardIndices, 1>{
+      IndexDomainAndShardIndices{
+          /*index_domain=*/IndexDomain(shape),
+          /*shard_indices=*/absl::MakeConstSpan(cached_shard_indices_),
+      },
+  };
+}
+
+absl::StatusOr<absl::Span<const int>>
+ConcreteEvenShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  if (!IsFullyReplicated() || this->shape() != shard_shape()) {
+    return absl::InvalidArgumentError(
+        "ConcreteEvenShardingSpec does not have index domain information");
+  }
+  absl::call_once(shard_to_unique_index_domain_index_once_, [this] {
+    cached_shard_to_unique_index_domain_index_.assign(num_shards_, 0);
+  });
+  return absl::MakeConstSpan(cached_shard_to_unique_index_domain_index_);
+}
+
 std::string ConcreteEvenShardingSpec::DebugString() const {
   return absl::StrFormat(
       "ConcreteEvenShardingSpec(num_shards: %d, shape: %v, "
@@ -609,6 +757,11 @@ ShardingParamShardingSpec::ShardingParamShardingSpec(
     : RTTIExtends<ShardingParamShardingSpec, ShardingSpec>(
           num_shards, ComputeIsFullyReplicated(sharding_param)),
       sharding_param_(std::move(sharding_param)) {}
+
+ShardingParamShardingSpec::ShardingParamShardingSpec(
+    const ShardingParamShardingSpec& other)
+    : RTTIExtends<ShardingParamShardingSpec, ShardingSpec>(other),
+      sharding_param_(other.sharding_param_) {}
 
 absl::StatusOr<ShardingRef> ShardingParamShardingSpec::ToSharding(
     DeviceListRef devices, MemoryKind memory_kind) const {
@@ -720,6 +873,90 @@ ShardingParamShardingSpec::IndexDomains(const Shape& shape) const {
     result.push_back(IndexDomain(origins[index / replication], local_shape));
   }
   return result;
+}
+
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+ShardingParamShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  ABSL_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+
+  absl::call_once(unique_shard_indices_once_, [this] {
+    absl::InlinedVector<int, 4> device_list;
+    sharding_param_.minor_to_major().ToDeviceList(device_list);
+    if (device_list.size() != num_shards_) {
+      cached_shard_indices_ = absl::InvalidArgumentError(absl::StrFormat(
+          "ShardingParamShardingSpec has %d shards, but sharding param has %d "
+          "shards",
+          num_shards_, device_list.size()));
+      return;
+    }
+    cached_shard_indices_ =
+        std::vector<int>(device_list.begin(), device_list.end());
+  });
+  ABSL_RETURN_IF_ERROR(cached_shard_indices_.status());
+
+  std::vector<Index> tile_indices =
+      GetTileIndices(sharding_param_.dim_shards());
+  const int num_unique_tiles = tile_indices.size();
+  if (num_shards_ % num_unique_tiles != 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ShardingParamShardingSpec has %d shards, but sharding param has %d "
+        "unique tiles, which is not a divisor of the number of shards",
+        num_shards_, num_unique_tiles));
+  }
+  const int replication = num_shards_ / num_unique_tiles;
+
+  absl::InlinedVector<IndexDomainAndShardIndices, 1> unique_domains;
+  unique_domains.reserve(num_unique_tiles);
+  for (int tile_idx = 0; tile_idx < num_unique_tiles; ++tile_idx) {
+    const Index& tile_index = tile_indices[tile_idx];
+    unique_domains.push_back(IndexDomainAndShardIndices{
+        /*index_domain=*/IndexDomain(tile_index * local_shape.dims(),
+                                     local_shape),
+        /*shard_indices=*/
+        absl::MakeConstSpan(*cached_shard_indices_)
+            .subspan(tile_idx * replication, replication),
+    });
+  }
+
+  return unique_domains;
+}
+
+absl::StatusOr<absl::Span<const int>>
+ShardingParamShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  absl::call_once(shard_to_unique_index_domain_index_once_, [this] {
+    std::vector<Index> tile_indices =
+        GetTileIndices(sharding_param_.dim_shards());
+    const int num_unique_tiles = tile_indices.size();
+    absl::InlinedVector<int, 4> device_list;
+    sharding_param_.minor_to_major().ToDeviceList(device_list);
+    if (device_list.size() != num_shards_) {
+      cached_shard_to_unique_index_domain_index_ = absl::InvalidArgumentError(
+          absl::StrFormat("ShardingParamShardingSpec has %d shards, but "
+                          "sharding param has %d shards",
+                          num_shards_, device_list.size()));
+      return;
+    }
+    if (device_list.size() % num_unique_tiles != 0) {
+      cached_shard_to_unique_index_domain_index_ =
+          absl::InvalidArgumentError(absl::StrFormat(
+              "ShardingParamShardingSpec has %d shards, but sharding param has "
+              "%d unique tiles, which is not a divisor of the number of shards",
+              num_shards_, num_unique_tiles));
+      return;
+    }
+    const int replication = device_list.size() / num_unique_tiles;
+
+    std::vector<int> shard_to_unique_index_domain_index(num_shards_);
+    for (int i = 0; i < device_list.size(); ++i) {
+      const int device_idx = device_list[i];
+      const int tile_idx = i / replication;
+      shard_to_unique_index_domain_index[device_idx] = tile_idx;
+    }
+    cached_shard_to_unique_index_domain_index_ =
+        std::move(shard_to_unique_index_domain_index);
+  });
+  ABSL_RETURN_IF_ERROR(cached_shard_to_unique_index_domain_index_.status());
+  return absl::MakeConstSpan(*cached_shard_to_unique_index_domain_index_);
 }
 
 std::string ShardingParamShardingSpec::DebugString() const {

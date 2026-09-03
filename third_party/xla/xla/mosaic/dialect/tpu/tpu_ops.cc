@@ -591,7 +591,9 @@ struct MemRefSqueezeFoldCast : public OpRewritePattern<MemRefSqueezeOp> {
     }
     for (auto [source_dim, result_dim] :
          llvm::zip(cast_source_type.getShape(), cast_result_type.getShape())) {
-      if (source_dim == result_dim) continue;
+      if (source_dim == result_dim) {
+        continue;
+      }
       if (ShapedType::isDynamic(source_dim) &&
           !ShapedType::isDynamic(result_dim)) {
         // The result type must be more dynamic than the source type.
@@ -847,6 +849,16 @@ LogicalResult StridedLoadOp::verify() {
                                         /*min_stride=*/0);
 }
 
+OpFoldResult StridedLoadOp::fold(FoldAdaptor adaptor) {
+  if (llvm::all_of(getStrides(), [](int32_t s) { return s == 1; })) {
+    OpBuilder builder(*this);
+    return tpu::VectorLoadOp::create(builder, getLoc(), getType(), getBase(),
+                                     getIndices())
+        .getResult();
+  }
+  return nullptr;
+}
+
 LogicalResult StridedStoreOp::verify() {
   return verifyStridedOp<StridedStoreOp>(*this, getBase().getType(),
                                          getValueToStore().getType(),
@@ -869,10 +881,11 @@ LogicalResult verifyStoreOp(Op op) {
       return op.emitError(
           "Not implemented: masked store with non-32-bit element type");
     }
-    if (value_ty.getShape() != op.getMask().getType().getShape())
+    if (value_ty.getShape() != op.getMask().getType().getShape()) {
       return op.emitOpError("Expected mask shape to match result shape: (")
              << value_ty.getShape() << "). Got: ("
              << op.getMask().getType().getShape() << ").";
+    }
   }
   return success();
 }
@@ -1419,21 +1432,47 @@ LogicalResult ConvOp::verify() {
     return emitOpError("Expected window attributes size to match spatial dims");
   }
 
+  const int64_t feature_group_count = getFeatureGroupCount();
+  const int64_t batch_group_count = getBatchGroupCount();
+  if (feature_group_count <= 0) {
+    return emitOpError("Expected feature_group_count to be positive");
+  }
+  if (batch_group_count <= 0) {
+    return emitOpError("Expected batch_group_count to be positive");
+  }
+  if (feature_group_count > 1 && batch_group_count > 1) {
+    return emitOpError(
+        "At most one of batch_group_count and feature_group_count may be > 1");
+  }
+
   // Contracting feature dimension size match
   const int64_t in_feat = lhs_ty.getDimSize(dnums.getInputFeatureDimension());
   const int64_t kernel_in_feat =
       rhs_ty.getDimSize(dnums.getKernelInputFeatureDimension());
-  if (in_feat != kernel_in_feat) {
+  if (in_feat % feature_group_count != 0) {
+    return emitOpError(
+        absl::StrFormat("LHS feature dimension size (%d) must be divisible by "
+                        "feature_group_count (%d)",
+                        in_feat, feature_group_count));
+  }
+  if (in_feat / feature_group_count != kernel_in_feat) {
     return emitOpError(absl::StrFormat(
-        "LHS feature dimension size (%d) must match kernel input feature "
-        "dimension size (%d)",
-        in_feat, kernel_in_feat));
+        "LHS feature dimension size divided by feature_group_count "
+        "(%d / %d = %d) must match kernel input feature dimension size (%d)",
+        in_feat, feature_group_count, in_feat / feature_group_count,
+        kernel_in_feat));
   }
 
   // Output feature dimension size match
   const int64_t out_feat = acc_ty.getDimSize(dnums.getOutputFeatureDimension());
   const int64_t kernel_out_feat =
       rhs_ty.getDimSize(dnums.getKernelOutputFeatureDimension());
+  if (kernel_out_feat % (feature_group_count * batch_group_count) != 0) {
+    return emitOpError(absl::StrFormat(
+        "Kernel output feature dimension size (%d) must be divisible by "
+        "feature_group_count * batch_group_count (%d)",
+        kernel_out_feat, feature_group_count * batch_group_count));
+  }
   if (out_feat != kernel_out_feat) {
     return emitOpError(absl::StrFormat(
         "ACC output feature dimension size (%d) must match kernel output "
@@ -1444,11 +1483,17 @@ LogicalResult ConvOp::verify() {
   // Batch dimension size match
   const int64_t in_batch = lhs_ty.getDimSize(dnums.getInputBatchDimension());
   const int64_t out_batch = acc_ty.getDimSize(dnums.getOutputBatchDimension());
-  if (in_batch != out_batch) {
+  if (in_batch % batch_group_count != 0) {
+    return emitOpError(
+        absl::StrFormat("LHS batch dimension size (%d) must be divisible by "
+                        "batch_group_count (%d)",
+                        in_batch, batch_group_count));
+  }
+  if (in_batch / batch_group_count != out_batch) {
     return emitOpError(absl::StrFormat(
-        "LHS batch dimension size (%d) must match ACC output batch dimension "
-        "size (%d)",
-        in_batch, out_batch));
+        "LHS batch dimension size divided by batch_group_count (%d / %d = %d) "
+        "must match ACC output batch dimension size (%d)",
+        in_batch, batch_group_count, in_batch / batch_group_count, out_batch));
   }
 
   // Spatial dimension output size formula matching
@@ -1529,15 +1574,16 @@ LogicalResult ScanOp::verify() {
   if (input_ty.getElementType().isInteger(1) &&
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
-  } else if (getKind() != ReductionKind::kSum &&
-             getKind() != ReductionKind::kMax &&
-             getKind() != ReductionKind::kMin) {
+  }
+  if (getKind() != ReductionKind::kSum && getKind() != ReductionKind::kMax &&
+      getKind() != ReductionKind::kMin) {
     return emitOpError("Only sum, max and min reductions are supported.");
   }
 
   if (getMask() == nullptr) {
     return success();
-  } else if (input_ty.getElementType().isInteger(1)) {
+  }
+  if (input_ty.getElementType().isInteger(1)) {
     return emitOpError("Mask is not supported for i1 vector inputs.");
   }
 
@@ -1798,11 +1844,11 @@ LogicalResult EnqueueIndirectDMAOp::verify() {
   if (is_gather) {
     return verifyGather(getOperation(), /*operand_shape=*/source_ty.getShape(),
                         /*offsets_shape=*/offsets_shape,
-                        /*results_memory_space=*/target_ty.getShape());
+                        /*result_shape=*/target_ty.getShape());
   }
-  return verifyScatter(getOperation(), /*updates_ty=*/source_ty.getShape(),
+  return verifyScatter(getOperation(), /*updates_shape=*/source_ty.getShape(),
                        /*offsets_shape=*/offsets_shape,
-                       /*operand_ty=*/target_ty.getShape());
+                       /*operand_shape=*/target_ty.getShape());
 }
 
 void WaitDMA2Op::build(OpBuilder& builder, OperationState& state,
