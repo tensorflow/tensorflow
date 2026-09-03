@@ -64,6 +64,7 @@ all_dtypes = number_dtypes + bool_dtypes
 
 python_scalar_dtypes = [tnp.bool_, tnp.int_, tnp.float64, tnp.complex128]
 # pylint: disable=unnecessary-lambda,g-long-lambda,expression-not-assigned
+# pylint: disable=line-too-long,used-before-assignment,function-redefined
 
 def _valid_dtypes_for_shape(shape, dtypes):
   # Not all (shape, dtype) pairs are valid. In particular, Python scalars only
