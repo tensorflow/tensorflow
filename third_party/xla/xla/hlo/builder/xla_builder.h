@@ -79,6 +79,13 @@ struct XlaBuilderFriend {
                                std::string execution_thread,
                                XlaComputationId called_computation,
                                const Shape& shape);
+  static XlaOp BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, XlaComputationId called_computation,
+      const Shape& shape,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_operand_aliasing);
+
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, XlaOp operands,
                                 const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, XlaOp operands,

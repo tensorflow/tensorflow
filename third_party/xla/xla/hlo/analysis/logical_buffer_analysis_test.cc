@@ -634,50 +634,47 @@ TEST_F(LogicalBufferAnalysisTest, AsyncAliasedEmptyTupleBecomesValued) {
   VerifyBufferDefinedAt(update, {1, 0});
 }
 
-TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBinding) {
+// Verifies that omitting output_to_operand_aliasing on an AsyncStart wrapping
+// DUS causes LogicalBufferAnalysis to mint a brand-new logical buffer for
+// Output {1} (causing memory doubling and copy insertion), whereas annotating
+// it prevents new buffer definition.
+TEST_F(LogicalBufferAnalysisTest, AsyncDUSBufferAllocationWithoutAliasing) {
   absl::string_view hlo_str = R"(
   HloModule module
 
   async_computation {
-    p0 = f32[4] parameter(0)
-    ROOT ccall = f32[4] custom-call(p0), custom_call_target="bar"
+    p0 = f32[1024] parameter(0)
+    p1 = f32[256] parameter(1)
+    p2 = s32[] parameter(2)
+    ROOT dus = f32[1024] dynamic-update-slice(p0, p1, p2)
   }
 
   ENTRY entry {
-    p0 = f32[4] parameter(0)
-    async-start = ((), (), s32[]) async-start(), calls=async_computation,
-                            async_execution_thread="sparsecore"
-    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, p0)
-    ROOT async-done = f32[4] async-done(async-update)
+    p0 = f32[1024] parameter(0)
+    p1 = f32[256] parameter(1)
+    p2 = s32[] parameter(2)
+    start_unannotated = ((f32[1024], f32[256], s32[]), f32[1024], s32[]) async-start(p0, p1, p2),
+        calls=async_computation
+    done_unannotated = f32[1024] async-done(start_unannotated)
+    start_annotated = ((f32[1024], f32[256], s32[]), f32[1024], s32[]) async-start(p0, p1, p2),
+        calls=async_computation, output_to_operand_aliasing={ {1}: (0, {}) }
+    done_annotated = f32[1024] async-done(start_annotated)
+    ROOT tuple = (f32[1024], f32[1024]) tuple(done_unannotated, done_annotated)
   }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
 
-  HloInstruction* p0 = FindInstruction(module.get(), "p0");
-  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
-  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
-  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  HloInstruction* unannotated =
+      FindInstruction(module.get(), "start_unannotated");
+  HloInstruction* annotated = FindInstruction(module.get(), "start_annotated");
 
-  VerifyBufferDefinedAt(p0, {});
+  // Output {1} defines a new buffer when unannotated:
+  VerifyBufferDefinedAt(unannotated, {1});
 
-  VerifyBufferDefinedAt(async_start, {});
-  VerifyBufferDefinedAt(async_start, {0});
-  VerifyBufferDefinedAt(async_start, {1});
-  VerifyBufferDefinedAt(async_start, {2});
-
-  // Verify update buffers:
-  // - {} (top-level tuple) -> defined (always defined for new async-update)
-  // - {2} (context) -> defined by async-update if it has no explicit aliasing
-  // - all other subshapes are compatible with start -> not defined
-  VerifyBufferDefinedAt(async_update, {});
-  VerifyBufferDefinedAt(async_update, {0});
-  VerifyNoBufferDefinedAt(async_update, {0, 0});
-  // {1} is defined in async-update.
-  VerifyBufferDefinedAt(async_update, {1});
-  VerifyBufferDefinedAt(async_update, {2});
-
-  VerifyBufferDefinedAt(async_done, {});
+  // Output {1} is aliased to operand 0 when annotated, so NO new buffer is
+  // defined:
+  VerifyNoBufferDefinedAt(annotated, {1});
 }
 
 TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBindingWithAliasing) {
