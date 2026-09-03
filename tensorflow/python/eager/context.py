@@ -2220,19 +2220,37 @@ class Context:
 
     self._thread_local_data.function_call_options = None
 
+  def _validate_thread_count(self, num_threads):
+    """Validate thread count parameter.
+
+    Args:
+      num_threads: The number of threads to validate.
+
+    Raises:
+      TypeError: If num_threads is not an integer (including booleans).
+      ValueError: If num_threads is not in the range [0, 10000].
+    """
+    if isinstance(num_threads, bool) or not isinstance(
+        num_threads, compat.integral_types):
+      raise TypeError(
+          f"num_threads must be an integer, got {type(num_threads).__name__}."
+      )
+    if not (0 <= num_threads <= 10000):
+      raise ValueError(
+          f"num_threads must be in the range [0, 10000], got {num_threads}. "
+          "Setting an excessively large number of threads can cause system "
+          "instability or crashes."
+      )
+
   @property
   def intra_op_parallelism_threads(self):
     return self.config.intra_op_parallelism_threads
 
   @intra_op_parallelism_threads.setter
   def intra_op_parallelism_threads(self, num_threads):
+    self._validate_thread_count(num_threads)
     if self._intra_op_parallelism_threads == num_threads:
       return
-
-    if num_threads < 0:
-      raise ValueError(
-          "Intra op parallelism threads must be >= 0, but got %d" % num_threads
-      )
 
     if self._context_handle is not None:
       raise RuntimeError(
@@ -2247,13 +2265,11 @@ class Context:
 
   @inter_op_parallelism_threads.setter
   def inter_op_parallelism_threads(self, num_threads):
+    # None keeps the default behavior.
+    if num_threads is not None:
+      self._validate_thread_count(num_threads)
     if self._inter_op_parallelism_threads == num_threads:
       return
-
-    if num_threads is not None and num_threads < 0:
-      raise ValueError(
-          "Inter op parallelism threads must be >= 0, but got %d" % num_threads
-      )
 
     if self._context_handle is not None:
       raise RuntimeError(
