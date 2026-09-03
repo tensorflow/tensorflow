@@ -15,11 +15,17 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <cstddef>
+#include <string>
+#include <type_traits>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/kernel_shape_util.h"

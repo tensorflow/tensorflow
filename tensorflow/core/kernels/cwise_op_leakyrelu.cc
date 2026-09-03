@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 #define _USE_MATH_DEFINES
-#include <cmath>
-#include <functional>
 #include <type_traits>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
