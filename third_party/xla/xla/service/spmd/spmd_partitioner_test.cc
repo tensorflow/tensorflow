@@ -13063,6 +13063,30 @@ ENTRY entry {
   EXPECT_TRUE(has_fft);
 }
 
+TEST_P(SpmdPartitioningTest, Fft3DReplicatedShardingDoesNotCrash) {
+  // FFT instruction with replicated sharding, gspmd should not attempt to
+  // index empty sharding.dimensions().
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = c64[1,1,8] constant({{{(0,0),(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7)}}}),
+    sharding={replicated}
+  ROOT fft = c64[1,1,8] fft(c64[1,1,8] constant), fft_type=FFT, fft_length={8},
+    sharding={replicated}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  bool has_fft = false;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFft) has_fft = true;
+  }
+  EXPECT_TRUE(has_fft);
+}
+
 TEST_P(SpmdPartitioningTest, DotInputsAreIdentical) {
   absl::string_view hlo_string = R"(
 HloModule module
