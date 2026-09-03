@@ -2334,6 +2334,19 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "subprocess_compilation_provider_test",
+    srcs = ["subprocess_compilation_provider_test.cc"],
+    deps = [
+        ":compilation_options",
+        ":cuda_compute_capability",
+        ":subprocess_compilation_provider",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # compilation_provider_test is split into two targets since only a subset of the tests need a GPU to run.
 cc_library(
     name = "compilation_provider_test_lib",
