@@ -7928,6 +7928,64 @@ ENTRY main {
             "f32[64]");
 }
 
+TEST_F(HloParserTest,
+       DesugarParsingTest_CallStart_LayoutSyncFromCalledComputation) {
+  const char* const hlo = R"(
+HloModule main
+
+comp {
+  ROOT root = f32[16,8]{1,0} parameter(0)
+}
+
+ENTRY main {
+  arg.0 = f32[16,8]{0,1} parameter(0)
+  call-start = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) call-start(arg.0), async_execution_thread="thread", to_apply=comp
+  call-update = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) call-update(call-start)
+  ROOT call-done = f32[16,8]{0,1} call-done(call-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* async_done = module->entry_computation()->root_instruction();
+  HloComputation* async_wrapped = async_done->async_wrapped_computation();
+  ASSERT_NE(async_wrapped, nullptr);
+  // Parameters and root of the async-wrapped computation must synchronize their
+  // layouts with the called computation `comp` ({1,0}), even if call-start
+  // initially specified a different layout ({0,1}).
+  EXPECT_EQ(async_wrapped->parameter_instruction(0)->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
+  EXPECT_EQ(async_wrapped->root_instruction()->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
+}
+
+TEST_F(HloParserTest,
+       DesugarParsingTest_FusionStart_LayoutSyncFromFusedComputation) {
+  const char* const hlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[16,8]{0,1} parameter(0)
+  fusion-start = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) fusion-start(arg.0), kind=kLoop, calls={
+    p0 = f32[16,8]{1,0} parameter(0)
+    ROOT root = f32[16,8]{1,0} negate(p0)
+  }
+  fusion-update = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) fusion-update(fusion-start)
+  ROOT fusion-done = f32[16,8]{0,1} fusion-done(fusion-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* async_done = module->entry_computation()->root_instruction();
+  HloComputation* async_wrapped = async_done->async_wrapped_computation();
+  ASSERT_NE(async_wrapped, nullptr);
+  EXPECT_EQ(async_wrapped->parameter_instruction(0)->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
+  EXPECT_EQ(async_wrapped->root_instruction()->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
+}
+
 TEST_F(HloParserTest, DeeplyNestedOperandsExceedsRecursionLimit) {
   constexpr int kTestRecursionDepth = 10;
   std::string deeply_nested = "f32[] ";
