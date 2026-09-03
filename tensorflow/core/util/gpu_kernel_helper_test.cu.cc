@@ -61,6 +61,8 @@ __global__ void Count1D(GpuLaunchConfig config, int bufsize,
 __global__ void Count1DInt64(GpuLaunchConfig64 config, int bufsize,
                              int* __restrict__ outbuf) {
   GPU_1D_KERNEL_LOOP(x, config.virtual_thread_count, int64_t) {
+    static_assert(std::is_same<decltype(x), int64_t>::value,
+                  "Expected int64_t index");
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }

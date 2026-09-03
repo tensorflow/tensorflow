@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/roll_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
