@@ -130,6 +130,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
     return self._testBinaryOp(
         np_math_ops.vdot, np.vdot, 'vdot', operands=operands)
 
+  def testVDotComplexConjugation(self):
+    a = np_array_ops.array([1+2j, 3+4j], dtype=np.complex64)
+    b = np_array_ops.array([5+6j, 7+8j], dtype=np.complex64)
+    self.match(np_math_ops.vdot(a, b), np.vdot(a, b))
+
   def testLcm(self):
     a = np_array_ops.array(6, dtype=np.int8)
     b = np_array_ops.array(22, dtype=np.int8)
