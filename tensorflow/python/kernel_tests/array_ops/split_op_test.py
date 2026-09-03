@@ -22,6 +22,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -119,6 +120,29 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(r[0], value[0:2])
     self.assertAllEqual(r[1], value[2:4])
     self.assertAllEqual(r[2], value[4:])
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "XLA shape inference rejects the reshape to an INT64_MAX dimension, so "
+      "the test cannot reach the SplitV kernel under XLA")
+  def testSizeSplitsOverflowRaises(self):
+    # Regression test for GitHub issue 126126. The cumulative sum of
+    # size_splits was computed with unchecked signed addition, so a wrapped
+    # total could equal the input dimension, pass validation, and reach a
+    # fatal `Tensor::Slice` invariant in the aligned slicing path. It must
+    # raise instead.
+    i64_max = (1 << 63) - 1
+    value = array_ops.reshape(
+        constant_op.constant([], dtype=dtypes.float32),
+        constant_op.constant([i64_max, 0], dtype=dtypes.int64))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "overflow"):
+      self.evaluate(
+          gen_array_ops.SplitV(
+              value=value,
+              size_splits=constant_op.constant(
+                  [i64_max, i64_max, i64_max, 2], dtype=dtypes.int64),
+              axis=constant_op.constant(0, dtype=dtypes.int32),
+              num_split=4))
 
   @test_util.run_in_graph_and_eager_modes
   def testListOfScalarTensors(self):
