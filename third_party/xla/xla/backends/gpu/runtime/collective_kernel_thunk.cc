@@ -296,14 +296,18 @@ absl::Status CollectiveKernelThunk::IsSupported(
     return absl::FailedPreconditionError(
         absl::StrFormat("Empty kernel name ('%s')", kernel_name_));
   }
-  // Check if peer access is supported for all devices in the clique.
+  // Check if peer access is supported for all devices in the clique managed by
+  // the current process.
   for (const GlobalDeviceId& device : clique_key.devices()) {
-    ABSL_ASSIGN_OR_RETURN(const int peer_device_id,
-                     GetLocalDeviceId(device, collective_params));
-    if (!executor.CanEnablePeerAccessTo(peer_device_id)) {
+    auto peer_device_id = GetLocalDeviceId(device, collective_params);
+    if (!peer_device_id.ok()) {
+      // Device is managed by a different process in multi-process setups.
+      continue;
+    }
+    if (!executor.CanEnablePeerAccessTo(*peer_device_id)) {
       return absl::FailedPreconditionError(absl::StrFormat(
           "Peer access is not supported from device %d to device %d",
-          executor.device_ordinal(), peer_device_id));
+          executor.device_ordinal(), *peer_device_id));
     }
   }
   return absl::OkStatus();

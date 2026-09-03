@@ -26,10 +26,10 @@ bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_jvm_external", version = "6.8")
-bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "protobuf", version = "34.1", repo_name = "com_google_protobuf")
 single_version_override(
     module_name = "protobuf",
-    version = "31.1",
+    version = "34.1",
 )
 
 bazel_dep(name = "google_cloud_cpp", version = "3.0.0-rc1", repo_name = "com_github_googlecloudplatform_google_cloud_cpp")

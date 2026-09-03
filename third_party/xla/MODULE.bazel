@@ -81,8 +81,9 @@ single_version_override(
         "//third_party/protobuf:fix_message_lite_incomplete_type.patch",
         # The following patch is needed to fix package loading for `bazel query "deps(//xla/...)"`.
         "//third_party/protobuf:fix_python_dist_package.patch",
+        "//third_party/protobuf:nodiscard.patch",
     ],
-    version = "32.1",
+    version = "34.1",
 )
 
 # Use an unreleased version of googletest
