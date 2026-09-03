@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1140,5 +1141,66 @@ ENTRY %entry {
   EXPECT_TRUE(hlo_live_range_->instruction_schedule().contains(neg0));
 }
 
+TEST_F(HloLiveRangeTest, HelpersTest) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = f32[100] parameter(0)
+  param1 = f32[200] parameter(1)
+  const = f32[10] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+  add0 = f32[100] add(param0, param0)
+  add1 = f32[200] add(param1, param1)
+  ROOT root = (f32[100], f32[200]) tuple(add0, add1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+
+  HloComputation* entry = module_->entry_computation();
+  const HloInstruction* param0 = entry->parameter_instruction(0);
+  const HloInstruction* param1 = entry->parameter_instruction(1);
+  const HloInstruction* const_inst = entry->GetInstructionWithName("const");
+  const HloInstruction* add0 = entry->GetInstructionWithName("add0");
+  const HloInstruction* add1 = entry->GetInstructionWithName("add1");
+  const HloInstruction* root = entry->root_instruction();
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), 8);
+  };
+
+  // 1. GetBuffersDefined
+  auto param0_buffers = HloLiveRange::GetBuffersDefined(param0, *aa);
+  EXPECT_EQ(param0_buffers.size(), 1);
+  auto param1_buffers = HloLiveRange::GetBuffersDefined(param1, *aa);
+  EXPECT_EQ(param1_buffers.size(), 1);
+  auto add0_buffers = HloLiveRange::GetBuffersDefined(add0, *aa);
+  EXPECT_EQ(add0_buffers.size(), 1);
+
+  // 2. GetBytesDefined
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(param0, *aa, size_fn), 0);
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(add0, *aa, size_fn), 400);
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(add1, *aa, size_fn), 800);
+  EXPECT_EQ(HloLiveRange::GetBytesDefined(const_inst, *aa, size_fn), 0);
+
+  // 3. GetBuffersUsed
+  auto add0_used = HloLiveRange::GetBuffersUsed(add0, *aa);
+  EXPECT_EQ(add0_used.size(), 1);
+  EXPECT_EQ(add0_used[0], param0_buffers[0]);
+
+  // 4. GetParameterBytesAtStart
+  EXPECT_EQ(HloLiveRange::GetParameterBytesAtStart(*entry, *aa, size_fn), 1200);
+
+  // 5. GetTotalUsers
+  EXPECT_EQ(HloLiveRange::GetTotalUsers(*param0_buffers[0], entry), 2);
+
+  // 6. BufferLivesOut
+  EXPECT_FALSE(HloLiveRange::BufferLivesOut(*param0_buffers[0], *aa, entry));
+  auto root_buffers = HloLiveRange::GetBuffersDefined(root, *aa);
+  EXPECT_FALSE(root_buffers.empty());
+  EXPECT_TRUE(HloLiveRange::BufferLivesOut(*root_buffers[0], *aa, entry));
+}
 }  // namespace
 }  // namespace xla

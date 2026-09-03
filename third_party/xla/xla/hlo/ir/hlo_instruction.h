@@ -440,6 +440,7 @@ class HloInstruction {
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
       const SparsityConfig& sparsity_config = SparsityConfig(),
+      const BlockScalingConfig& block_scaling_config = BlockScalingConfig(),
       ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Creates an FFT op, of the type indicated by fft_type.
@@ -476,7 +477,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       Comparison::Direction direction,
-      std::optional<Comparison::Type> type = std::nullopt);
+      std::optional<ComparisonOrder> order = std::nullopt);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -2534,6 +2535,10 @@ class HloInstruction {
   const SparsityConfig& sparsity_config() const;
   void set_sparsity_config(const SparsityConfig& config);
 
+  // Delegates to HloConvolutionInstruction::block_scaling_config.
+  const BlockScalingConfig& block_scaling_config() const;
+  void set_block_scaling_config(const BlockScalingConfig& config);
+
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
   bool IsAsynchronous() const { return HloOpcodeIsAsync(opcode_); }
@@ -2957,6 +2962,9 @@ std::string RaggedDotDimensionNumbersToString(
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
+
+std::string BlockScalingConfigToString(
+    const BlockScalingConfig& block_scaling_config);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);

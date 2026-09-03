@@ -78,6 +78,7 @@ class GemmFusionTestBase : public HloHardwareIndependentTestBase {
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(false);
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.set_xla_gpu_experimental_gemm_fusion_v2(false);
     return debug_options;
   }
 
@@ -96,15 +97,16 @@ class GemmFusionTest : public GemmFusionTestBase,
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmFusionTestBase::GetDebugOptionsForTest();
-    if (GetParam()) {
-      debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
-    }
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        GetParam());
     return debug_options;
   }
 };
 
-// Create a parameterized test that makes sure that both the legacy and the new
-// implementation of dot fusion are working as expected.
+// While we launch, create a parameterized test to test all combinations. This
+// test class has 2 parameters:
+// 1. Whether to use Gemm Fusion V1 or V2.
+// 2. Whether to use symbolic analysis or tiling propagation.
 class GemmFusionTestVersioned
     : public GemmFusionTestBase,
       public ::testing::WithParamInterface<std::tuple<bool, bool>> {
@@ -113,9 +115,8 @@ class GemmFusionTestVersioned
     DebugOptions debug_options = GemmFusionTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_gemm_fusion_v2(
         std::get<0>(GetParam()));
-    if (std::get<1>(GetParam())) {
-      debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
-    }
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        std::get<1>(GetParam()));
     return debug_options;
   }
 };
@@ -128,9 +129,8 @@ class GemmFusionTestV2 : public GemmFusionTestBase,
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmFusionTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_gemm_fusion_v2(true);
-    if (GetParam()) {
-      debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
-    }
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        GetParam());
     return debug_options;
   }
 };

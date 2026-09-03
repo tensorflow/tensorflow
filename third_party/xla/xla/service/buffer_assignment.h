@@ -701,11 +701,7 @@ class BufferAssignment {
   int64_t HloBufferSize(const HloBuffer& buffer) {
     auto [it, inserted] = cached_buffer_sizes_.try_emplace(buffer.id());
     if (inserted) {
-      int64_t result = 0;
-      for (const HloValue* value : buffer.values()) {
-        result = std::max(result, buffer_size_(*value));
-      }
-      it->second = result;
+      it->second = buffer.ComputeSize(buffer_size_);
     }
     return it->second;
   }

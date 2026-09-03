@@ -699,7 +699,6 @@ cc_library(
         "//xla/pjrt/gpu:se_gpu_topology_description",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
-        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",
         "//xla/python:debug_callback_partitioner",  # To register "DebugCallbackCustomCallPartitioner" custom partitioning handler.
@@ -832,6 +831,7 @@ xla_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/pjrt/se:pjrt_stream_executor_client",
         "//xla/service:custom_call_target_registry",
         "//xla/service:device_assignment",
         "//xla/stream_executor/gpu:gpu_init",
@@ -839,6 +839,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

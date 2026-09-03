@@ -347,7 +347,7 @@ absl::Status HeapSimulator::RunComputation(
     if (!buffer_live_ranges.contains(value)) {
       continue;
     }
-    if (IgnoreBuffer(value)) {
+    if (!IsHeapPressureImpacting(value)) {
       continue;
     }
 
@@ -380,10 +380,7 @@ absl::Status HeapSimulator::RunComputation(
 
   // Populate buffer sizes with the maximum size of the constituent HloValues.
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
-    int64_t size = 0;
-    for (const HloValue* value : buffer.values()) {
-      size = std::max(size, (*size_fn_)(*value));
-    }
+    int64_t size = buffer.ComputeSize(*size_fn_);
     const HloValue* first_value = nullptr;
     for (const HloValue* value : buffer.values()) {
       buffer_groups_.emplace(value, size);
@@ -443,7 +440,7 @@ absl::Status HeapSimulator::RunComputation(
               continue;
             }
 
-            if (IgnoreBuffer(operand_value)) {
+            if (!IsHeapPressureImpacting(operand_value)) {
               continue;
             }
 
@@ -519,17 +516,9 @@ HeapSimulator::HeapSimulator(
 
 HeapSimulator::~HeapSimulator() {}
 
-bool HeapSimulator::IgnoreBuffer(const HloValue* buffer) const {
-  // Buffers for constants are ignored unless the alloc_constants option is
-  // set. Also ignore buffers that we're not meant to assign.
-  //
-  // TODO(b/32248867): For consistency, constants should get allocations.
-  if (!options_.alloc_constants &&
-      buffer->instruction()->opcode() == HloOpcode::kConstant) {
-    return true;
-  }
-  return options_.buffers_to_assign != nullptr &&
-         !options_.buffers_to_assign->contains(buffer);
+bool HeapSimulator::IsHeapPressureImpacting(const HloValue* buffer) const {
+  return HloBuffer::IsHeapPressureImpacting(*buffer, options_.alloc_constants,
+                                            options_.buffers_to_assign);
 }
 
 // Alloc always calls the underlying heap algorithm.

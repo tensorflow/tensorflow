@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
 #include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
-#include "xla/backends/gpu/runtime/collective_kernel_api.h"
+#include "xla/backends/gpu/runtime/multi_gpu_barrier.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"

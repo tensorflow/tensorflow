@@ -167,6 +167,9 @@ bool TensorResponse::ParseTensorSubmessage(
                  .ok()) {
           return false;
         }
+        if (shape.num_elements() != 0) {
+          return false;
+        }
         Tensor t(allocator_, tensor_meta->dtype(), shape);
         tensor_ = std::move(t);
       }

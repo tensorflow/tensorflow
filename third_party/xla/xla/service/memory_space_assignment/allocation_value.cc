@@ -27,7 +27,7 @@ std::string AllocationValue::ToString() const {
   absl::StrAppend(
       &out, (requires_contiguous_allocation_ ? " (contiguous alloc)" : ""));
   absl::StrAppend(&out, "\n position:\n");
-  absl::StrAppend(&out, "  ", defining_position_.ToString(), "\n");
+  absl::StrAppend(&out, "  ", position_.ToString(), "\n");
   absl::StrAppend(&out, " uses:\n");
   for (const Use& use : uses_) {
     absl::StrAppend(&out, "  ", use.hlo_use.ToString(), "\n");
@@ -37,7 +37,7 @@ std::string AllocationValue::ToString() const {
 
 std::string AllocationValue::ToShortString() const {
   return absl::StrCat("computation = ", computation()->name(),
-                      ", position = ", defining_position_.ToString(),
+                      ", position = ", position_.ToString(),
                       ", value = ", value_->ToShortString(),
                       (requires_contiguous_allocation_ ? " (cont alloc)" : ""));
 }

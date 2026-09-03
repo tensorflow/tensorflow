@@ -180,6 +180,7 @@ cc_library(
         ":autotune_fingerprint",
         ":autotuner_cache_interface",
         ":autotuning_proto_cc",
+        ":backends_proto_cc",
         ":codegen_orchestrator",
         ":config_runner",
         ":config_selector",
@@ -554,12 +555,15 @@ cc_library(
     srcs = ["config_selector.cc"],
     hdrs = ["config_selector.h"],
     deps = [
+        ":backends_proto_cc",
         ":config_runner",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

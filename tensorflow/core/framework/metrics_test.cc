@@ -158,4 +158,21 @@ TEST(Metrics, TFDataPrefetchBufferSize) {
   EXPECT_EQ(gauge.Read("node_1"), 3);
 }
 
+TEST(Metrics, UpdateXlaCompilationTime) {
+  CellReader<int64_t> start_counter(
+      "/tensorflow/core/xla_compilation_start_time");
+  CellReader<int64_t> end_counter("/tensorflow/core/xla_compilation_end_time");
+  CellReader<int64_t> counter("/tensorflow/core/xla_compilations");
+  CellReader<int64_t> time_counter(
+      "/tensorflow/core/xla_compilation_time_usecs");
+
+  tensorflow::metrics::UpdateXlaCompilationStartTime(100);
+  tensorflow::metrics::UpdateXlaCompilationTime(500, 600);
+
+  EXPECT_EQ(start_counter.Read(), 100);
+  EXPECT_EQ(end_counter.Read(), 600);
+  EXPECT_EQ(counter.Read(), 1);
+  EXPECT_EQ(time_counter.Read(), 500);
+}
+
 }  // namespace

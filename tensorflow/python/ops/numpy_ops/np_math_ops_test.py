@@ -423,6 +423,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
     )
     self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
 
+  def testDiffErrorMessage(self):
+    # Verify the error message for negative n mentions the parameter correctly.
+    x = np_array_ops.array([1, 2, 3])
+    with self.assertRaisesRegex(
+        ValueError,
+        r'Argument `n` must be a non-negative integer\. Received: n=-1',
+    ):
+      np_math_ops.diff(x, n=-1)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
@@ -670,6 +679,16 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         np_math_ops.count_nonzero(x, axis=-1, keepdims=False), [1, 2])
     self.assertAllEqual(np_math_ops.count_nonzero(x, keepdims=False), 3)
+
+  def testConcatenateAxisNone(self):
+    a = np_array_ops.array([1, 2])
+    b = np_array_ops.array([[3], [4]])
+    self.assertAllEqual(
+        np_math_ops.concatenate([a, b], axis=None), [1, 2, 3, 4]
+    )
+    self.assertAllEqual(
+        np_math_ops.concatenate(np_array_ops.array([[5, 6]]), axis=None), [5, 6]
+    )
 
   def testIsInfFamilyNonFloatInputs(self):
     # A non-floating input has no infinities, but the result must still be an

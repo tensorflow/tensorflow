@@ -214,7 +214,10 @@ class HeapSimulator {
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
       HloLiveRange* live_range);
 
-  bool IgnoreBuffer(const HloValue* buffer) const;
+  // Returns whether the buffer should be allocated space in the heap simulation
+  // (excludes constants unless alloc_constants is set, and respects the
+  // buffers_to_assign filter).
+  bool IsHeapPressureImpacting(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
   void Free(const HloValue* buffer, const HloInstruction* instruction);
   // ShareBuffer indicates that a new buffer is defined and it has to be the

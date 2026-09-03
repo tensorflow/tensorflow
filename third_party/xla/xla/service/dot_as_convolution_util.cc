@@ -188,7 +188,8 @@ CreateShardedConvForDotGeneralConvolution(
       sharded_conv_shape, operands,
       /*feature_group_count=*/conv.feature_group_count(),
       /*batch_group_count=*/conv.batch_group_count(), window, conv_dnums,
-      conv.precision_config(), conv.sparsity_config());
+      conv.precision_config(), conv.sparsity_config(),
+      conv.block_scaling_config());
 }
 
 DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
