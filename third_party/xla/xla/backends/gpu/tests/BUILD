@@ -296,6 +296,7 @@ xla_test(
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:error_spec",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/stream_executor:device_description",
