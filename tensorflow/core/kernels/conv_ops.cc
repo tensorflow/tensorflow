@@ -210,6 +210,44 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
   dimensions->pad_cols_before = pad_cols_before;
   dimensions->pad_cols_after = pad_cols_after;
 
+  if (params.padding == Padding::VALID) {
+    int64_t effective_filter_rows = (filter_rows - 1) * dilation_rows + 1;
+    int64_t effective_filter_cols = (filter_cols - 1) * dilation_cols + 1;
+    TF_REQUIRES(
+        input_rows >= effective_filter_rows,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_size (", input_rows,
+            ") must be at least effective_filter_size (",
+            effective_filter_rows, ") for VALID padding.")));
+    TF_REQUIRES(
+        input_cols >= effective_filter_cols,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_size (", input_cols,
+            ") must be at least effective_filter_size (",
+            effective_filter_cols, ") for VALID padding.")));
+  }
+
+  if (params.padding == Padding::EXPLICIT) {
+    int64_t effective_filter_rows = (filter_rows - 1) * dilation_rows + 1;
+    int64_t effective_filter_cols = (filter_cols - 1) * dilation_cols + 1;
+    TF_REQUIRES(
+        input_rows + pad_rows_before + pad_rows_after >=
+            effective_filter_rows,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_size + padding (",
+            input_rows + pad_rows_before + pad_rows_after,
+            ") must be at least effective_filter_size (",
+            effective_filter_rows, ") for EXPLICIT padding.")));
+    TF_REQUIRES(
+        input_cols + pad_cols_before + pad_cols_after >=
+            effective_filter_cols,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_size + padding (",
+            input_cols + pad_cols_before + pad_cols_after,
+            ") must be at least effective_filter_size (",
+            effective_filter_cols, ") for EXPLICIT padding.")));
+  }
+
   return absl::OkStatus();
 }
 
