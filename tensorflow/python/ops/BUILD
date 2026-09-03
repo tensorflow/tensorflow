@@ -2047,6 +2047,7 @@ py_library(
         ":math_ops",
         ":math_ops_gen",
         ":special_math_ops",
+        ":sqrt_ops",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -2109,6 +2110,21 @@ py_library(
         "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "sqrt_ops",
+    srcs = ["sqrt_ops.py"],
+    strict_deps = True,
+    deps = [
+        ":array_ops",
+        ":math_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:record",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
     ],
 )
 
@@ -2679,6 +2695,7 @@ tf_py_strict_test(
         ":sparse_grad",
         ":sparse_ops",
         ":sparse_ops_gen",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
