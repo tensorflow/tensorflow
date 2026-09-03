@@ -350,7 +350,9 @@ def stateless_random_uniform(
       are `"philox"` for [the Philox
       algorithm](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf),
       `"threefry"` for [the ThreeFry
-      algorithm](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf),
+      algorithm](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+      (on CPU/GPU, ThreeFry requires XLA via `tf.function(jit_compile=True)`;
+      eager non-XLA kernels do not implement ThreeFry),
       and `"auto_select"` (default) for the system to automatically select an
       algorithm based the device type. Values of `tf.random.Algorithm` can also
       be used. Note that with `"auto_select"`, the outputs of this function may
