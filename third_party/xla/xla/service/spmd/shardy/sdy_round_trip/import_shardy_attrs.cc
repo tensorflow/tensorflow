@@ -207,7 +207,8 @@ bool handleFuncResultSharding(
 }
 
 // The sharding information is in the `kXlaShardingAttr` attribute.
-void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
+void convertShardyAttrsWithHloShardingV3(FuncOp funcOp,
+                                         const SymbolTable& symbolTable) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
@@ -215,8 +216,8 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
               parseShardingFromString(oldSharding), funcOp.getContext())) {
         funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
       }
+      funcOp.removeArgAttr(argNum, kXlaShardingAttr);
     }
-    funcOp.removeArgAttr(argNum, kXlaShardingAttr);
   }
 
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
@@ -224,10 +225,12 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
       if (auto sdySharding = convertToSdyShardingAttr(
               parseShardingFromString(oldSharding), funcOp.getContext())) {
-        funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+        if (!mlir::sdy::isSingleDeviceSharding(sdySharding, symbolTable)) {
+          funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+        }
       }
+      funcOp.removeResultAttr(resNum, kXlaShardingAttr);
     }
-    funcOp.removeResultAttr(resNum, kXlaShardingAttr);
   }
 
   if (funcOp.isExternal()) {
@@ -410,9 +413,10 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
 // This should happen after the meshes were created from the `ModuleOp` attrs
 // (see `SdyRoundTripImportShardyAttrsPass`).
 void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
-                        bool enableHloShardingV3) {
+                        bool enableHloShardingV3,
+                        const SymbolTable& symbolTable) {
   if (enableHloShardingV3) {
-    convertShardyAttrsWithHloShardingV3(funcOp);
+    convertShardyAttrsWithHloShardingV3(funcOp, symbolTable);
   } else {
     convertShardyAttrsWithoutHloShardingV3(funcOp, rewriter);
   }
@@ -635,7 +639,7 @@ class SdyRoundTripImportShardyAttrsPass
     }
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      convertShardyAttrs(funcOp, rewriter, enableHloShardingV3);
+      convertShardyAttrs(funcOp, rewriter, enableHloShardingV3, symbolTable);
     }
 
     llvm::DenseSet<FuncOp> modifiedCallees;

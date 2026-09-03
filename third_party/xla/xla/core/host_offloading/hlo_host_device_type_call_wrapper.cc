@@ -80,13 +80,17 @@ absl::StatusOr<bool> OffloadHostInstructions(
     const HloHostDeviceTypeCallWrapper::Options& options) {
   auto should_offload_to_host_compute =
       [&](const HloInstruction* instr) -> bool {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      return false;
+    }
     if (host_offload_utils::ComputeTypeIsHost(instr)) {
       return true;
     }
     while (IsPassThroughShardingOp(*instr)) {
       instr = instr->operand(0);
     }
-    return host_offload_utils::ComputeTypeIsHost(instr);
+    return instr->opcode() != HloOpcode::kParameter &&
+           host_offload_utils::ComputeTypeIsHost(instr);
   };
 
   ABSL_ASSIGN_OR_RETURN(auto offloaded_instructions_and_calls,
