@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #include "absl/strings/string_view.h"
 #include "lib/include/jxl/codestream_header.h"  // from @jpegxl
@@ -63,10 +64,23 @@ bool DecodeHeader(absl::string_view encoded, int* width, int* height,
     if (JXL_DEC_SUCCESS != JxlDecoderGetBasicInfo(dec.get(), &info)) {
       return false;
     }
-    *width = info.xsize;
-    *height = info.ysize;
+    // `info.xsize`, `info.ysize` and `info.num_color_channels` are uint32_t,
+    // while the callers hold these values in `int`. Reject anything that does
+    // not fit rather than narrowing: a value above INT_MAX becomes negative,
+    // and the caller then builds a TensorShape from it, which CHECK-fails and
+    // aborts the process. The channel bound also leaves room for the alpha
+    // channel added below so that sum cannot overflow either.
+    const uint32_t max_int =
+        static_cast<uint32_t>(std::numeric_limits<int>::max());
+    if (info.xsize > max_int || info.ysize > max_int ||
+        info.num_color_channels > max_int - (info.alpha_bits != 0 ? 1 : 0)) {
+      return false;
+    }
+    *width = static_cast<int>(info.xsize);
+    *height = static_cast<int>(info.ysize);
     if (channels != nullptr) {
-      *channels = info.num_color_channels + (info.alpha_bits != 0);
+      *channels =
+          static_cast<int>(info.num_color_channels) + (info.alpha_bits != 0);
     }
     return true;
   }
