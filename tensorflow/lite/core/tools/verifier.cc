@@ -526,6 +526,7 @@ bool VerifyOperators(const Vector<Offset<Operator>>& operators, size_t len,
 }
 
 bool IsConstantTensor(const Tensor& tensor, const Model& model) {
+  if (tensor.external_buffer() > 0) return true;
   if (!tensor.buffer() || !model.buffers()) return false;
   if (tensor.buffer() > 0 && tensor.buffer() < model.buffers()->size()) {
     auto* buffer = model.buffers()->Get(tensor.buffer());
