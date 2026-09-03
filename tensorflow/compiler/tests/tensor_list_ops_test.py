@@ -20,6 +20,7 @@ import os
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -46,11 +47,16 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
   def testMapFnOverEmptyTensor(self):
     # End to end case for GitHub issue 109648: map_fn over a zero length
     # tensor compiles its loop body even though it never runs, and the
-    # TensorListGetItem in that body used to fail compilation.
-    with self.session() as sess, self.test_scope():
+    # TensorListGetItem in that body used to fail compilation. The whole
+    # function is jit-compiled so the list stays inside XLA rather than
+    # crossing the XLA/TF boundary at the unstack and stack ops.
+    @def_function.function(jit_compile=True)
+    def f(x):
+      return map_fn.map_fn(lambda t: t + 1.0, x)
+
+    with self.session() as sess:
       x = array_ops.zeros([0], dtype=dtypes.float32)
-      y = map_fn.map_fn(lambda t: t + 1.0, x)
-      self.assertAllEqual(sess.run(y).shape, (0,))
+      self.assertAllEqual(sess.run(f(x)).shape, (0,))
 
   def testElementShape(self):
     with self.session() as sess, self.test_scope():
