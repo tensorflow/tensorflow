@@ -2747,6 +2747,6 @@ tf_py_strict_test(
         ":one_device_strategy",
         "//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy",
         "//tensorflow/python/framework:config",
-        "//tensorflow/python/platform:test",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
