@@ -667,6 +667,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
 
+  def testCountNonzeroKeepdims(self):
+    x = np_array_ops.array([[0, 1], [1, 1]])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=0, keepdims=True), [[1, 2]])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=-1, keepdims=True), [[1], [2]])
+    self.assertAllEqual(np_math_ops.count_nonzero(x, keepdims=True), [[3]])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=0, keepdims=False), [1, 2])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=-1, keepdims=False), [1, 2])
+    self.assertAllEqual(np_math_ops.count_nonzero(x, keepdims=False), 3)
+
   def testConcatenateAxisNone(self):
     a = np_array_ops.array([1, 2])
     b = np_array_ops.array([[3], [4]])
