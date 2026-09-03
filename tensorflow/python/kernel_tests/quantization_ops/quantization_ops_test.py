@@ -276,6 +276,22 @@ class QuantizedAvgPoolingOpTest(test_util.TensorFlowTestCase):
               strides=strides,
               padding=padding))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_window_attributes(self):
+    inputs = constant_op.constant(
+        np.uint8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+    for ksize, strides in (([1], [1, 1, 1, 1]), ([1, 1, 1, 1], [1])):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                  "ksize|stride"):
+        self.evaluate(
+            nn_ops.quantized_avg_pool(
+                input=inputs,
+                min_input=0.0,
+                max_input=1.0,
+                ksize=ksize,
+                strides=strides,
+                padding="SAME"))
+
 
 class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
 
@@ -308,6 +324,22 @@ class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
               ksize=ksize,
               strides=strides,
               padding=padding))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_window_attributes(self):
+    inputs = constant_op.constant(
+        np.uint8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+    for ksize, strides in (([1], [1, 1, 1, 1]), ([1, 1, 1, 1], [1])):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                  "ksize|stride"):
+        self.evaluate(
+            nn_ops.quantized_max_pool(
+                input=inputs,
+                min_input=0.0,
+                max_input=1.0,
+                ksize=ksize,
+                strides=strides,
+                padding="SAME"))
 
 
 class RequantizeOpTest(test_util.TensorFlowTestCase):
