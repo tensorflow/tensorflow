@@ -1609,6 +1609,31 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
   const auto& sched_state = sched_state_;
   HloGraphNode* an = a.node;
   HloGraphNode* bn = b.node;
+
+  // Update the resource_constrained of the candidate before any
+  // target specific rule is applied so rules can access the
+  // up-to-date value.
+  UpdateCandidateResourceConstrained(sched_state, a, an);
+  UpdateCandidateResourceConstrained(sched_state, b, bn);
+
+  const SchedulerConfig& config = sched_state.config;
+  if (config.force_delay_over_memory_pressure) {
+    if (ABSL_PREDICT_FALSE(core_->early_target_scheduling_rule_ != nullptr)) {
+      if (auto value = InvokeTargetSchedulingFunction(
+              core_->early_target_scheduling_rule_, a, b, reason)) {
+        return *value;
+      }
+    }
+
+    // Schedule according to ForceDelayAfterTarget when we executed the
+    // early target scheduling rule.
+    if (auto res = CmpDirectional(
+            core_->top_down_scheduling_, an->GetForceDelayAfterTarget(),
+            bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget", reason)) {
+      return *res;
+    }
+  }
+
   // Schedule according to ForceEarly.
   if (auto res =
           CmpDirectional(core_->top_down_scheduling_, !an->GetForceEarly(),
@@ -1641,29 +1666,6 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     }
   }
 
-  // Update the resource_constrained of the candidate before any
-  // target specific rule is applied so rules can access the
-  // up-to-date value.
-  UpdateCandidateResourceConstrained(sched_state, a, an);
-  UpdateCandidateResourceConstrained(sched_state, b, bn);
-
-  const SchedulerConfig& config = sched_state.config;
-  if (config.force_delay_over_memory_pressure) {
-    if (ABSL_PREDICT_FALSE(core_->early_target_scheduling_rule_ != nullptr)) {
-      if (auto value = InvokeTargetSchedulingFunction(
-              core_->early_target_scheduling_rule_, a, b, reason)) {
-        return *value;
-      }
-    }
-
-    // Schedule according to ForceDelayAfterTarget when we executed the
-    // early target scheduling rule.
-    if (auto res = CmpDirectional(
-            core_->top_down_scheduling_, an->GetForceDelayAfterTarget(),
-            bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget", reason)) {
-      return *res;
-    }
-  }
 
   std::pair<int64_t, int64_t> a_increase = {0, 0};
   std::pair<int64_t, int64_t> b_increase = {0, 0};
