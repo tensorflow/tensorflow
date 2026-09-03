@@ -642,6 +642,13 @@ class TensorArrayTest(test.TestCase):
             r"dynamically resizeable"):
           self.evaluate(ta.split([1.0], [1]).flow)
 
+  def testTensorArraySplitRejectsNegativeLengths(self):
+    with self.session():
+      ta = _make_ta(2, "negative_lengths")
+      with self.assertRaisesOpError(
+          "Expected lengths to be non-negative, but found -1 at index 0"):
+        self.evaluate(ta.split([], [-1, 1]).flow)
+
   def _testTensorArrayWriteGradientAddMultipleAdds(self, dtype):
     with self.cached_session():
       ta = tensor_array_ops.TensorArray(
