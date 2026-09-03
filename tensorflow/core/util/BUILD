@@ -550,8 +550,13 @@ cc_library(
     srcs = ["port.cc"],
     hdrs = ["port.h"],
     copts = tf_copts(),
+    defines = select({
+        "//third_party/KDNN:enable_kdnn_arm64": ["ENABLE_KDNN=true"],  # copybara:comment_replace "//tensorflow/third_party/KDNN:enable_kdnn_arm64": ["ENABLE_KDNN=true"],
+        "//conditions:default": ["ENABLE_KDNN=false"],
+    }),
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],

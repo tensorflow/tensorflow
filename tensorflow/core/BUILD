@@ -103,6 +103,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
+load("//third_party/KDNN:build_defs.bzl", "if_enable_kdnn")  # copybara:comment_replace load("//tensorflow/third_party/KDNN:build_defs.bzl", "if_enable_kdnn")
 load(
     "//tensorflow:tensorflow.default.bzl",
     "cc_header_only_library",
@@ -670,6 +671,8 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
+    ]) + if_enable_kdnn([
+        "//tensorflow/core/kernels:kdnn_kernels",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
     ]) + if_cuda([
@@ -1055,6 +1058,7 @@ filegroup(
         "training_ops_op_lib",
         "uniform_quant_ops_op_lib",
         "word2vec_ops",
+        "kdnn_nn_ops_op_lib",
     ]
 ]
 

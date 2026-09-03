@@ -205,3 +205,7 @@ load(
 nvshmem_redist_init_repository(
     nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
 )
+
+# KDNN is optional and is fetched only when a target selects its deps.
+load("//third_party/KDNN:repository.bzl", "kdnn_repository")  # copybara:comment_replace load("//tensorflow/third_party/KDNN:repository.bzl", "kdnn_repository")
+kdnn_repository(name = "kdnn")
