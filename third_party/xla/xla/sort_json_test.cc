@@ -46,5 +46,11 @@ TEST(SortJsonTest, SortsJson) {
               absl_testing::IsOkAndHolds(R"({"a":"a","a":"a}"})"));
 }
 
+TEST(SortJsonTest, SortsTuningKnobs) {
+  EXPECT_THAT(SortJson(R"({"algorithm":{"tuning_knobs":{"3":"0","2":"2"}}})"),
+              absl_testing::IsOkAndHolds(
+                  R"({"algorithm":{"tuning_knobs":{"2":"2","3":"0"}}})"));
+}
+
 }  // namespace
 }  // namespace xla

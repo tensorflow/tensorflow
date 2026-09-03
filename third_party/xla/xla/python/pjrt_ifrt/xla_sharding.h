@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_XLA_SHARDING_H_
 #define XLA_PYTHON_PJRT_IFRT_XLA_SHARDING_H_
 
-#include <atomic>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,7 +24,6 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"

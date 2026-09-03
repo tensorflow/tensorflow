@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/export.pb.h"

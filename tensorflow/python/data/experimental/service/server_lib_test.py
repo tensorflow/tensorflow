@@ -166,7 +166,8 @@ class ServerLibTest(test.TestCase):
   def testWorkerDestroyedWithoutStart(self):
     dispatcher = server_lib.DispatchServer()
     worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address), start=False)
+        server_lib.WorkerConfig(dispatcher._address), start=False
+    )
     del worker
 
   def testDispatcherNumWorkers(self):

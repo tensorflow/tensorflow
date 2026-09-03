@@ -17,6 +17,8 @@ limitations under the License.
 #include <limits>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "Eigen/LU"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"

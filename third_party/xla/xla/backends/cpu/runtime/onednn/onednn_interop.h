@@ -40,9 +40,6 @@ namespace xla::cpu {
     }                                               \
   } while (0)
 
-// Statically initializes XNNPACK for the current process.
-absl::Status InitializeXnnPack();
-
 // Converts oneDNN status to absl::Status.
 inline absl::Status OneDnnStatusToStatus(dnnl::graph::status status) {
   if (ABSL_PREDICT_TRUE(status == dnnl::graph::status::success)) {

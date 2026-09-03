@@ -33,6 +33,10 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -48,7 +52,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -332,6 +335,50 @@ std::vector<HloBuffer> CreateBuffers(const HloDataflowAnalysis& dataflow,
 
 HloAliasAnalysis::HloAliasAnalysis(const HloModule* module) : module_(module) {}
 
+bool HloAliasAnalysis::HasLinearCallerChainToRoot(
+    const HloComputation* computation) const {
+  absl::flat_hash_set<const HloComputation*> visited;
+  auto update_has_linear_caller_chain_to_root = [&visited, this](bool value) {
+    for (const HloComputation* visited_computation : visited) {
+      has_linear_caller_chain_to_root_[visited_computation] = value;
+    }
+  };
+
+  while (computation != module_->entry_computation()) {
+    // Check cache.
+    auto it = has_linear_caller_chain_to_root_.find(computation);
+    if (it != has_linear_caller_chain_to_root_.end()) {
+      update_has_linear_caller_chain_to_root(it->second);
+      return it->second;
+    }
+    if (!visited.insert(computation).second ||
+        computation->caller_instructions().size() != 1) {
+      // Recursive computation, or more than one caller, or dead code with zero
+      // callers.
+      update_has_linear_caller_chain_to_root(false);
+      return false;
+    }
+    // Move to the next computation in the caller chain.
+    computation = computation->caller_instructions()[0]->parent();
+  }
+  update_has_linear_caller_chain_to_root(true);
+  return true;
+}
+
+bool HloAliasAnalysis::MultipleBuffersAllowedBeforeInlining(
+    absl::Span<const HloBuffer* const> buffers) const {
+  for (const HloBuffer* buffer : buffers) {
+    for (const HloValue* value : buffer->values()) {
+      for (const HloPosition& position : value->positions()) {
+        if (!HasLinearCallerChainToRoot(position.instruction->parent())) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   std::vector<const HloBuffer*> buffers = ComputeBuffersAt(instruction, index);
@@ -357,6 +404,27 @@ std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
   // Sort and uniquify vector before returning.
   absl::c_sort(buffers, HloBuffer::IdLessThan);
   buffers.erase(std::unique(buffers.begin(), buffers.end()), buffers.end());
+
+  if (buffers.size() > 1 && !MultipleBuffersAllowedBeforeInlining(buffers)) {
+    std::string fingerprint = module_ != nullptr
+                                  ? std::string(module_->GetFingerprint128())
+                                  : "unknown";
+    const bool is_leaf = ShapeUtil::IsLeafIndex(instruction->shape(), index);
+
+    std::string buffers_str = absl::StrJoin(
+        buffers, "\n", [](std::string* out, const HloBuffer* buffer) {
+          absl::StrAppend(out, "    ", buffer->ToString());
+        });
+
+    std::string crash_message =
+        absl::StrCat("More than one buffer found at position:\n",
+                     "  HLO Module Fingerprint: ", fingerprint, "\n",
+                     "  Instruction: ", instruction->name(), "\n",
+                     "  Shape Index: ", index.ToString(), "\n",
+                     "  Is Leaf Index: ", is_leaf ? "true" : "false", "\n",
+                     "  HLO Buffers:\n", buffers_str, "\n");
+    LOG(FATAL) << crash_message;
+  }
 
   return buffers;
 }

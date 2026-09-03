@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 #define XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 
-#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
-    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+#if defined(__FLT16_MANT_DIG__) && defined(__has_attribute) &&    \
+    __has_attribute(ext_vector_type) && defined(__has_builtin) && \
+    __has_builtin(__builtin_vectorelements)
 
 #include <cstddef>
 #include <cstdint>

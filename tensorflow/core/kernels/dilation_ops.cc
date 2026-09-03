@@ -53,6 +53,9 @@ void ParseAttributes(OpKernelConstruction* context,
   OP_REQUIRES(context, (*strides)[0] == 1 && (*strides)[3] == 1,
               absl::UnimplementedError(
                   "Stride is only supported across spatial dimensions."));
+  OP_REQUIRES(context, (*strides)[1] >= 1 && (*strides)[2] >= 1,
+              absl::InvalidArgumentError(
+                  "Strides in the spatial dimensions must be >= 1."));
 
   OP_REQUIRES_OK(context, context->GetAttr("rates", rates));
   OP_REQUIRES(context, rates->size() == 4,
@@ -61,6 +64,9 @@ void ParseAttributes(OpKernelConstruction* context,
   OP_REQUIRES(context, (*rates)[0] == 1 && (*rates)[3] == 1,
               absl::UnimplementedError(
                   "Rate is only supported across spatial dimensions."));
+  OP_REQUIRES(context, (*rates)[1] >= 1 && (*rates)[2] >= 1,
+              absl::InvalidArgumentError(
+                  "Rates in the spatial dimensions must be >= 1."));
 
   OP_REQUIRES_OK(context, context->GetAttr("padding", padding));
 }
@@ -103,10 +109,12 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32_t>& strides,
 
   // Effective filter size, after introducing rate - 1 zeros between each
   // non-zero filter element.
-  const int filter_rows_eff =
-      filter_rows + (filter_rows - 1) * (*rate_rows - 1);
-  const int filter_cols_eff =
-      filter_cols + (filter_cols - 1) * (*rate_cols - 1);
+  const int64_t filter_rows_eff =
+      static_cast<int64_t>(filter_rows) +
+      static_cast<int64_t>(filter_rows - 1) * (*rate_rows - 1);
+  const int64_t filter_cols_eff =
+      static_cast<int64_t>(filter_cols) +
+      static_cast<int64_t>(filter_cols - 1) * (*rate_cols - 1);
 
   OP_REQUIRES_OK(context, GetWindowedOutputSize(
                               input_rows, filter_rows_eff, /*dilation_rate=*/1,

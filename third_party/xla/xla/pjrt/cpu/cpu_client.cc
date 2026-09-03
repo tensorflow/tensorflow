@@ -423,6 +423,21 @@ PjRtCpuRawClient::PjRtCpuRawClient(
           tsl::Env::Default(), "XLAPjRtCpuClient", num_threads)) {}
 
 PjRtCpuRawClient::~PjRtCpuRawClient() {}
+
+PjRtPluginAttributes GetDefaultCpuPluginAttributes() {
+  PjRtPluginAttributes attrs;
+  attrs.pjrt_c_api_major_version = 0;
+  attrs.pjrt_c_api_minor_version = 0;
+  attrs.attributes["serialize_with_sdy"] = true;
+  attrs.attributes["allow_fallback_for_donation"] = true;
+  // This is needed because CPU currently doesn't have per-device dispatching
+  // threads for Execute() so two-phase launch can run into thread starvation.
+  attrs.attributes["supports_two_phase_launch"] = false;
+  // TODO(parkers): implement proper predetermined error support.
+  attrs.attributes["supports_predetermined_error"] = false;
+  return attrs;
+}
+
 PjRtCpuClient::PjRtCpuClient(
     int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
     std::unique_ptr<PjRtCpuRawClient> raw_client,
@@ -430,7 +445,8 @@ PjRtCpuClient::PjRtCpuClient(
     : CommonPjRtClientImpl(
           xla::CpuPlatformId(), std::string(xla::CpuPlatformName()),
           std::string(xla::CpuPlatformVersion()), process_index,
-          std::move(topology), std::move(raw_client), /*kv_store=*/nullptr) {
+          std::move(topology), std::move(raw_client), /*kv_store=*/nullptr,
+          GetDefaultCpuPluginAttributes()) {
   std::vector<std::unique_ptr<PjRtDevice>> generic_devices;
   generic_devices.reserve(devices.size());
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
@@ -465,11 +481,6 @@ PjRtCpuClient::PjRtCpuClient(
 }
 
 PjRtCpuClient::~PjRtCpuClient() { VLOG(1) << "PjRtCpuClient destroyed."; }
-
-absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
-PjRtCpuClient::GetHloCostAnalysis() const {
-  return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
-}
 
 // Find the root instruction of the entry computation.
 static const InstructionValueSet& GetRootValueSet(
@@ -1037,14 +1048,6 @@ PjRtCpuRawClient::CompileInternal(
 absl::StatusOr<PjRtDeviceEventRef> PjRtCpuRawClient::CreateDeviceEvent(
     PjRtMemorySpace* memory_space, Future<void> dependency) {
   return ToCpuEvent(std::move(dependency));
-}
-
-bool PjRtCpuClient::BufferFromHostBufferSupportsZeroCopy(
-    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
-    PjRtMemorySpace* memory_space, const Layout* device_layout) const {
-  return AbstractCpuBuffer::BufferFromHostBufferSupportsZeroCopy(
-      data, type, dims, byte_strides, shape);
 }
 
 absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()

@@ -43,6 +43,7 @@ namespace {
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 
@@ -99,6 +100,17 @@ TEST_P(SingleDeviceShardingSpecTest, IndexDomains) {
   Shape shape({10, 20});
   ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
   EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
+}
+
+TEST_P(SingleDeviceShardingSpecTest, UniqueIndexDomains) {
+  ShardingSpecRef sharding = SingleDeviceShardingSpec::Create();
+
+  Shape shape({10, 20});
+  EXPECT_THAT(sharding->UniqueIndexDomains(shape),
+              absl_testing::IsOkAndHolds(
+                  ElementsAre(FieldsAre(IndexDomain(shape), ElementsAre(0)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0)));
 }
 
 TEST_P(SingleDeviceShardingSpecTest, Disassemble) {
@@ -181,6 +193,21 @@ TEST_P(OpaqueShardingSpecTest, IndexDomainsFails) {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "OpaqueShardingSpec does not have index domain information")));
+}
+
+TEST_P(OpaqueShardingSpecTest, UniqueIndexDomains) {
+  ShardingSpecRef sharding = OpaqueShardingSpec::Create(num_shards());
+
+  EXPECT_THAT(
+      sharding->UniqueIndexDomains(Shape({30})),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("OpaqueShardingSpec does not support UniqueIndexDomains")));
+  EXPECT_THAT(
+      sharding->ShardToUniqueIndexDomainIndex(),
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("OpaqueShardingSpec does not support "
+                                       "ShardToUniqueIndexDomainIndex")));
 }
 
 TEST_P(OpaqueShardingSpecTest, Hash) {
@@ -371,6 +398,44 @@ TEST_P(ConcreteShardingSpecTest, IndexDomainsMissing) {
               "ConcreteShardingSpec does not have index domain information")));
 }
 
+TEST_P(ConcreteShardingSpecTest, UniqueIndexDomains) {
+  std::vector<Shape> shard_shapes{Shape({10}), Shape({10}), Shape({20})};
+  std::vector<IndexDomain> index_domains{
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({10}), Shape({20})),
+  };
+  ShardingSpecRef sharding =
+      ConcreteShardingSpec::Create(Shape({30}), shard_shapes, index_domains);
+
+  EXPECT_THAT(
+      sharding->UniqueIndexDomains(Shape({30})),
+      absl_testing::IsOkAndHolds(ElementsAre(
+          FieldsAre(IndexDomain(Index({0}), Shape({10})), ElementsAre(0, 1)),
+          FieldsAre(IndexDomain(Index({10}), Shape({20})), ElementsAre(2)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 0, 1)));
+}
+
+TEST_P(ConcreteShardingSpecTest, UniqueIndexDomainsMissing) {
+  std::vector<Shape> shard_shapes{Shape({10}), Shape({20})};
+  ShardingSpecRef sharding =
+      ConcreteShardingSpec::Create(Shape({30}), shard_shapes);
+
+  EXPECT_THAT(
+      sharding->UniqueIndexDomains(Shape({30})),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "ConcreteShardingSpec does not have index domain information")));
+  EXPECT_THAT(
+      sharding->ShardToUniqueIndexDomainIndex(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "ConcreteShardingSpec does not have index domain information")));
+}
+
 TEST_P(ConcreteShardingSpecTest, Hash) {
   ASSERT_OK_AND_ASSIGN(
       auto dynamic_shape,
@@ -503,6 +568,38 @@ TEST_P(ConcreteEvenShardingSpecTest, IndexDomainsFails) {
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("ConcreteEvenShardingSpec does not have "
                                        "index domain information")));
+}
+
+TEST_P(ConcreteEvenShardingSpecTest, UniqueIndexDomains) {
+  {
+    // Fully replicated.
+    ShardingSpecRef sharding = ConcreteEvenShardingSpec::Create(
+        /*num_shards=*/2, Shape({30}), Shape({30}),
+        /*is_fully_replicated=*/true);
+
+    EXPECT_THAT(sharding->UniqueIndexDomains(Shape({30})),
+                absl_testing::IsOkAndHolds(ElementsAre(
+                    FieldsAre(IndexDomain(Shape({30})), ElementsAre(0, 1)))));
+    EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+                absl_testing::IsOkAndHolds(ElementsAre(0, 0)));
+  }
+  {
+    // Not fully replicated.
+    ShardingSpecRef sharding = ConcreteEvenShardingSpec::Create(
+        /*num_shards=*/2, Shape({30}), Shape({15}),
+        /*is_fully_replicated=*/false);
+
+    EXPECT_THAT(sharding->UniqueIndexDomains(Shape({30})),
+                absl_testing::StatusIs(
+                    tsl::error::INVALID_ARGUMENT,
+                    HasSubstr("ConcreteEvenShardingSpec does not have index "
+                              "domain information")));
+    EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+                absl_testing::StatusIs(
+                    tsl::error::INVALID_ARGUMENT,
+                    HasSubstr("ConcreteEvenShardingSpec does not have index "
+                              "domain information")));
+  }
 }
 
 TEST_P(ConcreteEvenShardingSpecTest, Hash) {
@@ -676,6 +773,49 @@ TEST_P(ShardingParamShardingSpecTest, IndexDomainWithReplication) {
                             IndexDomain(Index({3, 0}), Shape({3, 6})),
                             IndexDomain(Index({3, 0}), Shape({3, 6})),
                             IndexDomain(Index({3, 0}), Shape({3, 6}))));
+  }
+}
+
+TEST_P(ShardingParamShardingSpecTest, UniqueIndexDomains) {
+  {
+    // 2x3 tiled with replication 1.
+    ShardingParam param{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+    ShardingSpecRef sharding = ShardingParamShardingSpec::Create(param);
+
+    Shape shape({4, 9});
+    EXPECT_THAT(sharding->UniqueIndexDomains(shape),
+                absl_testing::IsOkAndHolds(ElementsAre(
+                    FieldsAre(IndexDomain(Index({0, 0}), Shape({2, 3})),
+                              ElementsAre(0)),
+                    FieldsAre(IndexDomain(Index({0, 3}), Shape({2, 3})),
+                              ElementsAre(1)),
+                    FieldsAre(IndexDomain(Index({0, 6}), Shape({2, 3})),
+                              ElementsAre(2)),
+                    FieldsAre(IndexDomain(Index({2, 0}), Shape({2, 3})),
+                              ElementsAre(3)),
+                    FieldsAre(IndexDomain(Index({2, 3}), Shape({2, 3})),
+                              ElementsAre(4)),
+                    FieldsAre(IndexDomain(Index({2, 6}), Shape({2, 3})),
+                              ElementsAre(5)))));
+    EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+                absl_testing::IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5)));
+  }
+  {
+    // 2x1 tiled with replication 3.
+    ShardingParam param{/*dim_shards=*/{2, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+    ShardingSpecRef sharding = ShardingParamShardingSpec::Create(param);
+
+    Shape shape({4, 9});
+    EXPECT_THAT(sharding->UniqueIndexDomains(shape),
+                absl_testing::IsOkAndHolds(ElementsAre(
+                    FieldsAre(IndexDomain(Index({0, 0}), Shape({2, 9})),
+                              ElementsAre(0, 1, 2)),
+                    FieldsAre(IndexDomain(Index({2, 0}), Shape({2, 9})),
+                              ElementsAre(3, 4, 5)))));
+    EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+                absl_testing::IsOkAndHolds(ElementsAre(0, 0, 0, 1, 1, 1)));
   }
 }
 

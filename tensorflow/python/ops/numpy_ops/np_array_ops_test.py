@@ -230,6 +230,13 @@ class ArrayCreationTest(test.TestCase):
                 np_array_ops.eye(n, m, k, dtype=dtype),
                 np.eye(n, m, k, dtype=dtype))
 
+    # Test M=0 and N=0 zero-dimension edge cases
+    for n in (0, 1, 3):
+      for m in (0, 1, 3):
+        self.match(np_array_ops.eye(n, m), np.eye(n, m))
+        for k in range(-n - 1, m + 2):
+          self.match(np_array_ops.eye(n, m, k), np.eye(n, m, k))
+
   def testIdentity(self):
     n_max = 3
 
@@ -1313,6 +1320,11 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, tuple(range(6)), tuple(range(6)))
     _test(a, tuple(range(6)), tuple(reversed(range(6))))
     _test(a, (), ())
+
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, -8, 0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, 0, 8)
 
   def testFlip(self):
     np.random.seed(0)

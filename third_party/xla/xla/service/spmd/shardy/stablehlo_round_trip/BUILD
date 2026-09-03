@@ -128,6 +128,7 @@ cc_library(
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
+        "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@com_google_absl//absl/algorithm:container",

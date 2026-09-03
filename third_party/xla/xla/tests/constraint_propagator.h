@@ -30,10 +30,17 @@ limitations under the License.
 
 namespace xla {
 
-enum class IdentityElementType { kUnknown, kZero, kOne };
+enum class IdentityElementType {
+  kUnknown,
+  kZero,
+  kOne,
+  kMinimum,
+  kMaximum,
+};
 
 // Returns the identity element type for the given reduction computation.
-// Add => 0, Mul => 1, etc.. Returns kUnknown otherwise.
+// Add => 0, Mul => 1, Max => MinValue, Min => MaxValue. Returns kUnknown
+// otherwise.
 IdentityElementType GetReductionIdentityElementType(
     const HloComputation& computation);
 
@@ -108,11 +115,12 @@ class ConstraintPropagator {
   // formatting can simply propagate the exact constraints to their operands.
   absl::Status PropagateConstraintsExact(const HloInstruction* instruction);
 
-  // Propagates constraints bidirectionally across a kFusion instruction
-  // boundary, mapping caller operands to callee fused parameters and caller
-  // result to the fused expression root.
-  absl::Status PropagateFusionBoundary(
-      const HloInstruction* fusion_instruction);
+  // Propagates constraints bidirectionally across a subcomputation boundary
+  // (e.g. kFusion or kCall), mapping caller operands to callee parameters and
+  // caller result to the callee root instruction.
+  absl::Status PropagateComputationBoundary(
+      const HloInstruction* caller_instruction,
+      const HloComputation* callee_computation);
 
   // Propagates constraints from the output of an instruction to its operands.
   // This is approximate and introduces approximations for ops like add, sub,

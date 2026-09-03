@@ -63,11 +63,11 @@ class HostStreamFactoryRegistrar {
 #define REGISTER_HOST_STREAM_FACTORY(factory, priority) \
   INTERNAL_REGISTER_HOST_STREAM_FACTORY(factory, priority, __COUNTER__)
 
-#define INTERNAL_REGISTER_HOST_STREAM_FACTORY(factory, priority, ctr) \
-  ABSL_ATTRIBUTE_UNUSED static ::stream_executor::host::              \
-      HostStreamFactoryRegistrar<factory>                             \
-      INTERNAL_REGISTER_LOCAL_HOST_STREAM_FACTORY_NAME(ctr) {         \
-    priority                                                          \
+#define INTERNAL_REGISTER_HOST_STREAM_FACTORY(factory, priority, ctr)          \
+  [[maybe_unused]] static ::stream_executor::host::HostStreamFactoryRegistrar< \
+      factory>                                                                 \
+  INTERNAL_REGISTER_LOCAL_HOST_STREAM_FACTORY_NAME(ctr) {                      \
+    priority                                                                   \
   }
 
 // __COUNTER__ must go through another macro to be properly expanded

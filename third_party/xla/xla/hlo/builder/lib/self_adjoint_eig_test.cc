@@ -269,6 +269,119 @@ TEST_F(SelfAdjointEigTest, Wrong_Type_Int) {
   EXPECT_FALSE(result.w.valid());
 }
 
+TEST_F(SelfAdjointEigTest, Test_Large_Magnitude_2x2) {
+  XlaBuilder builder(TestName());
+  float v = 1e20f;
+  Array2D<float> input{{v, v}, {v, v}};
+  std::vector<float> expected{0.0f, 2e20f};
+
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(input, 0, "a", &builder, &a);
+  auto result = SelfAdjointEig(a, /*lower=*/true, /*max_iter=*/15,
+                               /*tol=*/1e-5, /*sort_eigenvalues=*/true);
+  Add(result.w, ZerosLike(result.w));
+
+  ComputeAndCompareR1<float>(&builder, expected, {&a_data},
+                             ErrorSpec(1e15f, 1e-4f));
+}
+
+TEST_F(SelfAdjointEigTest, Test_Large_Magnitude_3x3) {
+  XlaBuilder builder(TestName());
+  float v = 1e20f;
+  Array2D<float> input{{v, v, v}, {v, v, v}, {v, v, v}};
+  std::vector<float> expected{0.0f, 0.0f, 3e20f};
+
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(input, 0, "a", &builder, &a);
+  auto result = SelfAdjointEig(a, /*lower=*/true, /*max_iter=*/15,
+                               /*tol=*/1e-5, /*sort_eigenvalues=*/true);
+  Add(result.w, ZerosLike(result.w));
+
+  ComputeAndCompareR1<float>(&builder, expected, {&a_data},
+                             ErrorSpec(1e15f, 1e-4f));
+}
+
+TEST_F(SelfAdjointEigTest, Test_Large_Magnitude_Complex_3x3) {
+  XlaBuilder builder(TestName());
+  float v = 1e20f;
+  Array<complex64> input = {
+      {complex64{v, 0.0f}, complex64{v, -v}, complex64{0.0f, 0.0f}},
+      {complex64{v, v}, complex64{v, 0.0f}, complex64{0.0f, 0.0f}},
+      {complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}, complex64{v, 0.0f}},
+  };
+  const Literal a_literal = LiteralUtil::CreateFromArray(input);
+  XlaOp a = Parameter(&builder, 0, a_literal.shape(), "a");
+  auto result = SelfAdjointEig(a);
+  ComputeMatmulVWVt(result, &builder);
+
+  ComputeAndCompareLiteral(&builder, LiteralUtil::CreateFromArray(input),
+                           {&a_literal}, ErrorSpec(1e15f, 1e-4f));
+}
+
+TEST_F(SelfAdjointEigTest, Test_Small_Magnitude_2x2) {
+  XlaBuilder builder(TestName());
+  float v = 1e-20f;
+  Array2D<float> input{{v, v}, {v, v}};
+  std::vector<float> expected{0.0f, 2e-20f};
+
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(input, 0, "a", &builder, &a);
+  auto result = SelfAdjointEig(a, /*lower=*/true, /*max_iter=*/15,
+                               /*tol=*/1e-5, /*sort_eigenvalues=*/true);
+  Add(result.w, ZerosLike(result.w));
+
+  ComputeAndCompareR1<float>(&builder, expected, {&a_data},
+                             ErrorSpec(1e-25f, 1e-4f));
+}
+
+TEST_F(SelfAdjointEigTest, Test_Small_Magnitude_Complex_3x3) {
+  XlaBuilder builder(TestName());
+  float v = 1e-20f;
+  Array<complex64> input = {
+      {complex64{v, 0.0f}, complex64{v, -v}, complex64{0.0f, 0.0f}},
+      {complex64{v, v}, complex64{v, 0.0f}, complex64{0.0f, 0.0f}},
+      {complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}, complex64{v, 0.0f}},
+  };
+  const Literal a_literal = LiteralUtil::CreateFromArray(input);
+  XlaOp a = Parameter(&builder, 0, a_literal.shape(), "a");
+  auto result = SelfAdjointEig(a);
+  ComputeMatmulVWVt(result, &builder);
+
+  ComputeAndCompareLiteral(&builder, LiteralUtil::CreateFromArray(input),
+                           {&a_literal}, ErrorSpec(1e-25f, 1e-4f));
+}
+
+TEST_F(SelfAdjointEigTest, Test_Zero_Matrix_2x2) {
+  XlaBuilder builder(TestName());
+  Array2D<float> input{{0.0f, 0.0f}, {0.0f, 0.0f}};
+  std::vector<float> expected{0.0f, 0.0f};
+
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(input, 0, "a", &builder, &a);
+  auto result = SelfAdjointEig(a, /*lower=*/true, /*max_iter=*/15,
+                               /*tol=*/1e-5, /*sort_eigenvalues=*/true);
+  Add(result.w, ZerosLike(result.w));
+
+  ComputeAndCompareR1<float>(&builder, expected, {&a_data},
+                             ErrorSpec(1e-6f, 1e-6f));
+}
+
+TEST_F(SelfAdjointEigTest, Test_Zero_Matrix_Complex_3x3) {
+  XlaBuilder builder(TestName());
+  Array<complex64> input = {
+      {complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}},
+      {complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}},
+      {complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}, complex64{0.0f, 0.0f}},
+  };
+  const Literal a_literal = LiteralUtil::CreateFromArray(input);
+  XlaOp a = Parameter(&builder, 0, a_literal.shape(), "a");
+  auto result = SelfAdjointEig(a);
+  ComputeMatmulVWVt(result, &builder);
+
+  ComputeAndCompareLiteral(&builder, LiteralUtil::CreateFromArray(input),
+                           {&a_literal}, ErrorSpec(1e-6f, 1e-6f));
+}
+
 Array2D<float> GenerateRandomSymmetricMatrix(int size) {
   Array2D<float> result{size, size, 0.0};
   // TODO(b/128001705): This seed should not be needed but makes the test

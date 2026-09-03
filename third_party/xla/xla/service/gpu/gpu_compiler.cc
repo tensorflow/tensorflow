@@ -2367,8 +2367,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   }
   std::optional<std::string> optimized_fingerprint;
   if (should_upload_hlo_modules) {
-    optimized_fingerprint =
-        MaybeUploadOptimizedGpuSymbols(module.get(), AutotuneResults());
+    optimized_fingerprint = MaybeUploadOptimizedGpuSymbols(module.get());
   }
   if (unoptimized_fingerprint.has_value() &&
       optimized_fingerprint.has_value()) {
