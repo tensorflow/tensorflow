@@ -1074,3 +1074,10 @@ func.func @concat_requantize_inputs_and_outputs_if_different_scales(%arg0: tenso
 
 // -----
 
+// CHECK-LABEL: FailINF
+func.func @FailINF(%arg0: tensor<1x1xf32>) -> tensor<1x1xf32> {
+  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.0, 0x7f800000]> : tensor<2xf32>} : (tensor<1x1xf32>) -> tensor<1x1xf32>
+  return %0 : tensor<1x1xf32>
+}
+// CHECK: %[[STATS:.*]] = "quantfork.stats"(%arg0) <{layerStats = dense<[0.000000e+00, 0x7F800000]> : tensor<2xf32>}>
+// CHECK: return %[[STATS]]
