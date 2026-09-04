@@ -22,8 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -34,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/rtti.h"
@@ -43,7 +40,6 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt/value_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
-#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -216,77 +212,6 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     arrays.push_back(std::move(array));
   }
   return arrays;
-}
-
-absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
-    Client* client, absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
-    ArrayCopySemantics semantics) {
-  for (int i = 1; i < specs.size(); ++i) {
-    if (specs[0].array != nullptr && specs[i].array != nullptr &&
-        specs[0].array->sharding().devices() !=
-            specs[i].array->sharding().devices()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "All arrays in CopyArraysToHostBufferShards must have the "
-          "same device list, but got ",
-          specs[0].array->sharding().devices(), " vs. ",
-          specs[i].array->sharding().devices()));
-    }
-  }
-
-  std::vector<tsl::Future<>> result;
-  result.reserve(specs.size());
-  for (Client::CopyArraysToHostBufferShardsSpec& spec : specs) {
-    if (spec.buffers.empty()) {  // Nothing to copy.
-      result.push_back(absl::OkStatus());
-      continue;
-    }
-    if (spec.array == nullptr) {
-      return absl::InvalidArgumentError(
-          "CopyArraysToHostBufferShards called with a null array.");
-    }
-    if (!spec.array->sharding().devices()->IsFullyAddressable()) {
-      return absl::InvalidArgumentError(
-          "CopyArraysToHostBufferShards called with an array with some "
-          "non-addressable devices.");
-    }
-    // Split the array into single-device arrays.
-    ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> single_device_arrays,
-                     spec.array->DisassembleIntoSingleDeviceArrays(
-                         semantics, SingleDeviceShardSemantics::kAllShards));
-
-    absl::InlinedVector<tsl::Future<>, 4> buffer_futures;
-    buffer_futures.reserve(spec.buffers.size());
-    for (auto& buffer : spec.buffers) {
-      Client::CopyArraysToHostBufferShardsSpec::ShardIndices& shard_indices =
-          buffer.first;
-      Client::MutableHostBuffer& host_buffer = buffer.second;
-      if (shard_indices.empty()) {
-        return absl::InvalidArgumentError(
-            "No source shard indices specified for a host buffer in "
-            "CopyArraysToHostBufferShards.");
-      }
-      // If multiple array source shards are specified, pick the first one to
-      // copy from.
-      const int64_t shard_idx = shard_indices.front();
-      if (shard_idx < 0 || shard_idx >= single_device_arrays.size()) {
-        return absl::OutOfRangeError(
-            absl::StrCat("Shard index ", shard_idx, " out of range [0, ",
-                         single_device_arrays.size(), ")"));
-      }
-      std::optional<absl::Span<const int64_t>> byte_strides;
-      if (host_buffer.byte_strides.has_value()) {
-        byte_strides = absl::MakeConstSpan(*host_buffer.byte_strides);
-      }
-      buffer_futures.push_back(
-          single_device_arrays[shard_idx]->CopyToHostBuffer(
-              host_buffer.data, byte_strides, semantics));
-    }
-    CHECK(!buffer_futures.empty());
-    result.push_back(buffer_futures.size() == 1
-                         ? std::move(buffer_futures.front())
-                         : tsl::JoinFutures(buffer_futures));
-  }
-  return result;
 }
 
 absl::StatusOr<LoadedExecutable::ExecuteBundleResult>

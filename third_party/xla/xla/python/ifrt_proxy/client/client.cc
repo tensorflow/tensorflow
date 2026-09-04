@@ -45,7 +45,6 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -258,12 +257,6 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::MakeErrorArrays(
     const absl::Status& error,
     absl::Span<const xla::ifrt::ArraySpec> array_specs) {
   return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs);
-}
-
-absl::StatusOr<std::vector<tsl::Future<>>> Client::CopyArraysToHostBufferShards(
-    absl::Span<CopyArraysToHostBufferShardsSpec> specs,
-    ArrayCopySemantics semantics) {
-  return xla::ifrt::ClientCopyArraysToHostBufferShards(this, specs, semantics);
 }
 
 absl::StatusOr<xla::ifrt::ArrayRef> Client::AssembleArrayFromSingleDeviceArrays(

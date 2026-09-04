@@ -1211,13 +1211,6 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
   return arrays;
 }
 
-absl::StatusOr<std::vector<tsl::Future<>>>
-PjRtClient::CopyArraysToHostBufferShards(
-    absl::Span<CopyArraysToHostBufferShardsSpec> specs,
-    ArrayCopySemantics semantics) {
-  return ClientCopyArraysToHostBufferShards(this, specs, semantics);
-}
-
 absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     DType dtype, Shape shape, ShardingRef sharding, absl::Span<ArrayRef> arrays,
     ArrayCopySemantics array_copy_semantics,
