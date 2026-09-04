@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
 
