@@ -1061,7 +1061,8 @@ TEST_P(ShardingParamShardingTest, GetShardShape) {
   EXPECT_THAT(sharding->GetShardShape(Shape({6, 6, 6})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("Numbers of dimensions don't match. From "
-                                 "Shape 3 vs from ShardingParam 2")));
+                                 "Shape [6,6,6] vs from ShardingParam "
+                                 "2x3 to [1, 0] on 3x2")));
 }
 
 TEST_P(ShardingParamShardingTest, GetShardShapeWithUnreducedAxes) {
@@ -1077,7 +1078,8 @@ TEST_P(ShardingParamShardingTest, GetShardShapeWithUnreducedAxes) {
   EXPECT_THAT(sharding->GetShardShape(Shape({6, 6, 6})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("Numbers of dimensions don't match. From "
-                                 "Shape 3 vs from ShardingParam 2")));
+                                 "Shape [6,6,6] vs from ShardingParam "
+                                 "2x1 to [1, 0] on 3x2 unreduced [1]")));
 }
 
 TEST_P(ShardingParamShardingTest, HasSamePartitioning) {
@@ -1201,7 +1203,8 @@ TEST_P(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
                   Shape({6, 6, 6}), SingleDeviceShardSemantics::kAllShards),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("Numbers of dimensions don't match. From "
-                                 "Shape 3 vs from ShardingParam 2")));
+                                 "Shape [6,6,6] vs from ShardingParam "
+                                 "2x3 to [1, 0] on 3x2")));
 }
 
 TEST_P(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {

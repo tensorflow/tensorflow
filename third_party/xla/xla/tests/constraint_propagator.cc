@@ -1291,8 +1291,19 @@ void ConstraintPropagator::PropagateReduceApprox(
     int64_t num_inputs = instruction->operand_count() / 2;
     int64_t num_elements = 1;
     const Shape& operand_shape = instruction->operand(0)->shape();
-    for (int64_t dim : instruction->dimensions()) {
-      num_elements *= operand_shape.dimensions(dim);
+    if (instruction->opcode() == HloOpcode::kReduce) {
+      for (int64_t dim : instruction->dimensions()) {
+        num_elements *= operand_shape.dimensions(dim);
+      }
+    } else if (instruction->opcode() == HloOpcode::kReduceWindow) {
+      const Window& window = instruction->window();
+      for (int64_t d = 0;
+           d < window.dimensions_size() && d < operand_shape.dimensions_size();
+           ++d) {
+        int64_t win_size = window.dimensions(d).size();
+        int64_t op_dim = operand_shape.dimensions(d);
+        num_elements *= std::max<int64_t>(1, std::min(win_size, op_dim));
+      }
     }
     if (num_elements > 1) {
       std::optional<HloOpcode> root_op =
@@ -1633,8 +1644,11 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     const HloInstruction* instruction) {
   ConstraintInterval output_interval =
       states_[instruction].GetConstraintInterval();
+  // Exempt reductions: tuple-shaped outputs have no top-level interval and
+  // resolve bounds from downstream GTE users.
   if ((output_interval.IsEmpty() || output_interval.IsUnconstrained()) &&
-      instruction->opcode() != HloOpcode::kReduce) {
+      instruction->opcode() != HloOpcode::kReduce &&
+      instruction->opcode() != HloOpcode::kReduceWindow) {
     return absl::OkStatus();
   }
   switch (instruction->opcode()) {
@@ -1648,6 +1662,7 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
       PropagateMultiplyApprox(instruction, output_interval);
       break;
     case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
       PropagateReduceApprox(instruction, output_interval);
       break;
     case HloOpcode::kConvolution:

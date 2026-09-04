@@ -392,6 +392,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Go through all the uses in the AllocationValues and find the aliasing
+  // positions. For asynchronous computations (async-start and async-update),
+  // maps caller operands to callee parameters based on operand numbers and
+  // previously bound operands.
+  static void FindAliases(std::vector<AllocationValue>* allocation_values,
+                          bool has_async_pipelined_while_loops = false);
+
   // Block prefetching is an MSA feature that allows processing all prefetches
   // in one pass within a block of memory space in the alternate memory. This
   // guarantees FIFO ordering of all prefetches and allows for more aggressive
@@ -490,10 +497,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   virtual void CreateAllocationValuesFromColocatedIntervals(
       absl::Span<const MsaBufferInterval* const> colocated_intervals,
       std::vector<AllocationValue>& allocation_values);
-
-  // Go through all the uses in the AllocationValues and find the aliasing
-  // positions.
-  void FindAliases(std::vector<AllocationValue>* allocation_values) const;
 
   AllocationSequence* allocations() { return allocations_; }
   const Options& options() const { return options_; }
@@ -1907,6 +1910,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // allocation attempt.
   absl::flat_hash_map<int64_t, AliasedOffset*>
       pipelined_while_buffer_id_to_aliased_offset_;
+
+  // Mapping from HloBuffer ID to assigned alternate memory offset to ensure
+  // exact offset colocation across aliased positions of the same buffer.
+  // Maintained only during the current allocation attempt.
+  absl::flat_hash_map<int64_t, AliasedOffset*> buffer_id_to_aliased_offset_;
 
   // We have released the chunks corresponding to the allocations in the list.
   // When we uncommit the current pending state following a
