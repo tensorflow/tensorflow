@@ -2343,7 +2343,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         // async_execution_thread only needs to be populated for async-start,
         // as the rest of the async chain will reference the root op.
         if (!async_execution_thread) {
-          async_execution_thread = HloInstruction::kMainExecutionThread;
+          if (async_computation && *async_computation &&
+              !(*async_computation)->IsMainThread()) {
+            async_execution_thread =
+                std::string((*async_computation)->execution_thread());
+          } else {
+            async_execution_thread = HloInstruction::kMainExecutionThread;
+          }
         }
         auto instr = builder->AddInstruction(HloInstruction::CreateAsyncStart(
             *shape, operands, *async_computation, *async_execution_thread));
@@ -9208,6 +9214,9 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
 void HloParserImpl::UpdateAsyncWrappedComputation(
     HloComputation* async_wrapped_computation,
     const HloComputation* called_computation) {
+  if (called_computation == nullptr || async_wrapped_computation == nullptr) {
+    return;
+  }
   // Update the parameters of the async wrapped computation
   for (int i = 0; i < called_computation->num_parameters(); ++i) {
     if (i < async_wrapped_computation->num_parameters()) {
@@ -9232,6 +9241,10 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
   const Shape& result_shape = called_computation->root_instruction()->shape();
   if (!ShapeUtil::Compatible(*root_shape, result_shape)) {
     *root_shape = result_shape;
+  }
+  if (!called_computation->IsMainThread()) {
+    async_wrapped_computation->SetExecutionThread(
+        called_computation->execution_thread());
   }
 }
 
