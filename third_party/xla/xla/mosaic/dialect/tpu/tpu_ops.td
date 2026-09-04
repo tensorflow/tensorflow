@@ -133,7 +133,9 @@ class TPU_Op<string mnemonic, list<Trait> traits = []> :
 def DefaultMemWrite : MemoryEffects<[MemWrite<DefaultResource>]>;
 def DefaultMemRead : MemoryEffects<[MemRead<DefaultResource>]>;
 
-def TPU_AllReduceOp : TPU_Op<"all_reduce", [Pure]> {
+def CompilerInternalOp : NativeOpTrait<"CompilerInternalOp">;
+
+def TPU_AllReduceOp : TPU_Op<"all_reduce", [Pure, CompilerInternalOp]> {
   let arguments = (ins AnyVectorOfNonZeroRank:$input, I64Attr:$dim, TPU_ReductionKindAttr:$kind);
   let results = (outs AnyVectorOfNonZeroRank:$output);
   let assemblyFormat = [{
@@ -240,7 +242,7 @@ def TPU_SortOp : TPU_Op<"sort", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TPU_StoreOp : TPU_Op<"store", [DefaultMemWrite, AttrSizedOperandSegments]> {
+def TPU_StoreOp : TPU_Op<"store", [DefaultMemWrite, AttrSizedOperandSegments, CompilerInternalOp]> {
   let arguments = (ins
     TPU_Vreg:$valueToStore,
     AnyMemRef:$base,
@@ -256,7 +258,7 @@ def TPU_StoreOp : TPU_Op<"store", [DefaultMemWrite, AttrSizedOperandSegments]> {
   }];
 }
 
-def TPU_LoadOp : TPU_Op<"load", [DefaultMemRead]> {
+def TPU_LoadOp : TPU_Op<"load", [DefaultMemRead, CompilerInternalOp]> {
   let arguments = (ins
     AnyMemRef:$base,
     Variadic<Index>:$indices,
@@ -604,7 +606,7 @@ def TPU_BroadcastInSublanesOp : TPU_Op<"broadcast_in_sublanes", [Pure]> {
 //
 // Bits    28  24  20  16  12   8   4   0
 //       ------------abcd------------efgh
-def TPU_UnpackSubelementsOp : TPU_Op<"unpack_subelements", [Pure]> {
+def TPU_UnpackSubelementsOp : TPU_Op<"unpack_subelements", [Pure, CompilerInternalOp]> {
   let arguments = (ins
     AnyVectorOfNonZeroRank:$source,
     I32Attr:$index,
@@ -679,7 +681,7 @@ def TPU_UnpackSubelementsOp : TPU_Op<"unpack_subelements", [Pure]> {
 //  [ (B000 B001 B100 B101) (B010 B011 B110 B111) ... ]
 //  [ (B200 B201 B300 B301) (B210 B211 B310 B311) ... ]
 //  ...
-def TPU_PackSubelementsOp : TPU_Op<"pack_subelements", [Pure, SameTypeOperands]> {
+def TPU_PackSubelementsOp : TPU_Op<"pack_subelements", [Pure, SameTypeOperands, CompilerInternalOp]> {
   let arguments = (ins
     Variadic<TPU_Vreg>:$sources,
     DenseI32ArrayAttr:$positions,
@@ -1012,7 +1014,7 @@ def TPU_BitcastOp : TPU_Op<"bitcast", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TPU_BitcastVregOp : TPU_Op<"bitcast_vreg", [Pure]> {
+def TPU_BitcastVregOp : TPU_Op<"bitcast_vreg", [Pure, CompilerInternalOp]> {
   let arguments = (ins TPU_Vreg:$input);
   let results = (outs TPU_Vreg:$output);
   let assemblyFormat = [{ $input attr-dict `:` type($input) `->` type($output) }];
@@ -1100,7 +1102,7 @@ def TPU_ReducePrecisionOp : TPU_Op<"reduce_precision", [Pure, ElementwiseMappabl
   let hasFolder = 1;
 }
 
-def TPU_RollVectorsOp : TPU_Op<"roll_vectors", [Pure]> {
+def TPU_RollVectorsOp : TPU_Op<"roll_vectors", [Pure, CompilerInternalOp]> {
   let arguments = (ins Variadic<AnyVectorOfAnyRank>:$input);
   let results = (outs AnyVectorOfAnyRank:$output);
   let assemblyFormat = [{
@@ -1108,7 +1110,7 @@ def TPU_RollVectorsOp : TPU_Op<"roll_vectors", [Pure]> {
   }];
 }
 
-def TPU_UnrollVectorsOp : TPU_Op<"unroll_vectors", [Pure]> {
+def TPU_UnrollVectorsOp : TPU_Op<"unroll_vectors", [Pure, CompilerInternalOp]> {
   let arguments = (ins AnyVectorOfAnyRank:$input);
   let results = (outs Variadic<AnyVectorOfAnyRank>:$output);
   let hasCanonicalizeMethod = 1;
@@ -1291,7 +1293,7 @@ def TPU_AssumeLayoutOp : TPU_Op<"assume_layout", [Pure]> {
   }];
 }
 
-def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure]> {
+def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, CompilerInternalOp]> {
   let description = [{
     Erases the layout attribute and, optionally, the memory space from a memref.
     The resulting memref is otherwise identical to the input.

@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
 #include "xla/mosaic/serde.h"
 
@@ -773,6 +774,21 @@ void MosaicSerdePass::runOnOperation() {
            .serialize_version = serialize_version},
           /*keep_version_attr=*/keep_version_attr))) {
     signalPassFailure();
+    return;
+  }
+  if (!serialize) {
+    const auto walk_result = module.walk([](Operation* op) {
+      if (op->hasTrait<mlir::OpTrait::CompilerInternalOp>()) {
+        op->emitOpError(
+            "is compiler-internal and not allowed in deserialized module");
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    if (walk_result.wasInterrupted()) {
+      signalPassFailure();
+      return;
+    }
   }
 }
 
