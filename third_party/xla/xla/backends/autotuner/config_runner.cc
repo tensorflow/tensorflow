@@ -97,7 +97,7 @@ ConfigRunner::ProfileAll(
                          /*is_trusted_config=*/true,
                          /*allow_new_cluster=*/true);
   }
-
+  VLOG(2) << "trusted clusters size: " << clusters.size();
   const bool has_trusted_reference = !clusters.empty();
   for (auto it = first_untrusted; it != profile_order.end(); ++it) {
     const int i = *it;
