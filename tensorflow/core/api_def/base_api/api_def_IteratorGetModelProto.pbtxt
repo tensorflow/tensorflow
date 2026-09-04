@@ -4,7 +4,7 @@ op {
   in_arg {
     name: "iterator"
     description: <<END
-An resource from an dataset iterator.
+An resource from a dataset iterator.
 END
   }
   out_arg {

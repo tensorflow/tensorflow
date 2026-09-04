@@ -12934,7 +12934,7 @@ inline void DepthwiseConvDotProduct3x3Impl(
   // Note that this data is adjusted in a per-depth process before the main
   // filters. The adjustment accounts for a non-symmetric input offset.
   //
-  // Kernel subroutines need to be able to operate consistently on an bias
+  // Kernel subroutines need to be able to operate consistently on a bias
   // array. Where there is no bias, we provide one filled with zeros.
   constexpr int kMinBiasLoad = 8;
   int32_t zero_bias_data[kMinBiasLoad];

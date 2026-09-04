@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// NoOpStatsPublisher provides an dummy/no-op implementation of
+// NoOpStatsPublisher provides a dummy/no-op implementation of
 // StatsPublisherInterface.
 class NoOpStatsPublisher : public StatsPublisherInterface {
  public:

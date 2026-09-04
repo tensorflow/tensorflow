@@ -53,7 +53,7 @@ class LoopEmitter {
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
               llvm::IRBuilderBase* b);
 
-  // Constructs a LoopEmitter from an body_emitter that generates
+  // Constructs a LoopEmitter from a body_emitter that generates
   // element of the given target array in the dynamic dimension.
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
               std::vector<llvm::Value*> dynamic_dims, llvm::IRBuilderBase* b);

@@ -314,7 +314,7 @@ HloSharding PropagateShardingAlongDimsAndReplicateOthers(
     const HloSharding& source_sharding, absl::Span<const int64_t> source_dims,
     absl::Span<const int64_t> target_dims, int64_t target_shape_rank);
 
-// Returns the iota dimension if maybe_iota is an kIota instruction or
+// Returns the iota dimension if maybe_iota is a kIota instruction or
 // equivalent to kIota.
 std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
                                            const CallGraph& call_graph);

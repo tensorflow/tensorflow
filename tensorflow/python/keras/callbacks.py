@@ -1596,7 +1596,7 @@ class BackupAndRestore(Callback):
   beginning of a new model.fit() run.
   Note that user is responsible to bring jobs back up.
   This callback is important for the backup and restore mechanism for fault
-  tolerance purpose. And the model to be restored from an previous checkpoint is
+  tolerance purpose. And the model to be restored from a previous checkpoint is
   expected to be the same as the one used to back up. If user changes arguments
   passed to compile or fit, the checkpoint saved for fault tolerance can become
   invalid.

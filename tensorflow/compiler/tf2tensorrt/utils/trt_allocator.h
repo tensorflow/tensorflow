@@ -40,7 +40,7 @@ namespace tensorrt {
 class TRTBaseAllocator : public nvinfer1::IGpuAllocator {
   // Base allocator class so we can have a virtual destructor;
  public:
-  // python wrapper seems to be not happy with an pure virtual destructor;
+  // python wrapper seems to be not happy with a pure virtual destructor;
   virtual ~TRTBaseAllocator() = default;
 };
 

@@ -1872,7 +1872,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   }
 
   if (user->opcode() == HloOpcode::kReshape) {
-    // Prefer the user layout that makes the reshape an bitcast. If any
+    // Prefer the user layout that makes the reshape a bitcast. If any
     // dimension bound is 1 in the user shape, there may be several such
     // layouts. So if 'operand_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy

@@ -158,7 +158,7 @@ class DataServiceWorkerImpl {
   // Updates the distributed snapshot tasks according to the heartbeat response.
   absl::Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response)
       TF_LOCKS_EXCLUDED(mu_);
-  // Creates an dataset iterator for snapshot writers.
+  // Creates a dataset iterator for snapshot writers.
   absl::StatusOr<std::unique_ptr<StandaloneTaskIterator>>
   MakeSnapshotTaskIterator(const SnapshotTaskDef& snapshot_task,
                            const DatasetDef& dataset_def) const;

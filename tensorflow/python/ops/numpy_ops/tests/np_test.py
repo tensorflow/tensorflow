@@ -427,7 +427,7 @@ def _promote_like_lnp(fun, inexact=False):
   """Decorator that promotes the arguments of `fun` to `tnp.result_type(*args)`.
 
   tnp and onp have different type promotion semantics; this decorator allows
-  tests make an onp reference implementation act more like an tnp
+  tests make an onp reference implementation act more like a tnp
   implementation.
   """
   def wrapper(*args, **kw):

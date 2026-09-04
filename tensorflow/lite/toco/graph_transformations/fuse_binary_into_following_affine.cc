@@ -167,7 +167,7 @@ absl::Status FuseBinaryIntoFollowingAffine::Run(Model* model,
 
   CHECK_EQ(binary_op->inputs.size(), 2);
 
-  // We only can fuse an binary when the two operands break down as follows:
+  // We only can fuse a binary when the two operands break down as follows:
   //   1. One operand is the (variable) output of a typical affine (linear plus
   //   bias)
   //      op of a finite list of possible types: at the moment Conv,
