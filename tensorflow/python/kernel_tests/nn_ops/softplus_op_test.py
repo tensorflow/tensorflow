@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop as backprop_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -115,6 +116,21 @@ class SoftplusTest(test.TestCase):
           x, [2, 5], grad, [2, 5], x_init_value=x_init)
     print("softplus (float) gradient of gradient err = ", err)
     self.assertLess(err, 5e-5)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDoubleGradGradPreservesSmallValue(self):
+    x = constant_op.constant(37.42994775023705, dtype=dtypes.float64)
+    with backprop_lib.GradientTape() as outer_tape:
+      outer_tape.watch(x)
+      with backprop_lib.GradientTape() as inner_tape:
+        inner_tape.watch(x)
+        y = nn_ops.softplus(x)
+      grad = inner_tape.gradient(y, x)
+    grad_grad = outer_tape.gradient(grad, x)
+
+    self.assertAllClose(
+        5.551115123125775e-17, self.evaluate(grad_grad), rtol=1e-14,
+        atol=0)
 
   @test_util.run_deprecated_v1
   def testGradGradGrad(self):
