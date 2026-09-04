@@ -28,7 +28,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -48,6 +51,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/array.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // for CopyOp
+#include "xla/mlir_hlo/utils/hlo_utils.h"
 #include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
@@ -261,10 +265,25 @@ getAxesCoordinateAndSize(OpBuilder& builder, mlir::Location loc,
   return {axisCoordinates, axisSizes};
 }
 
+mlir::TypedAttr getReductionIdentityAttr(mlir::Type elementType,
+                                         sdy::ReductionOp reductionOp,
+                                         OpBuilder& builder) {
+  switch (reductionOp) {
+    case sdy::ReductionOp::SUM:
+      return builder.getZeroAttr(elementType);
+    case sdy::ReductionOp::MAX:
+      return mlir::hlo::getScalarLimitOfType(elementType,
+                                             mlir::hlo::kInfinityLowest);
+    case sdy::ReductionOp::MIN:
+      return mlir::hlo::getScalarLimitOfType(elementType,
+                                             mlir::hlo::kInfinityMax);
+  }
+  llvm_unreachable("unknown ReductionOp");
+}
+
 void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
                                mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
-  CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
   // If the mesh does not have iota device ids, we need an extra step to convert
   // partition id to logical device id. We do not support this case for now.
@@ -287,11 +306,13 @@ void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
         RankedTensorType outputType =
             outSharding.getLocalTensorType(fullType, mesh);
 
-        Value zero = stablehlo::ConstantOp::create(
+        Value identityVal = stablehlo::ConstantOp::create(
             blockBuilder, loc,
-            blockBuilder.getZeroAttr(outputType.getElementType()));
+            getReductionIdentityAttr(outputType.getElementType(),
+                                     outSharding.getReductionOp(),
+                                     blockBuilder));
         Value broadcast = stablehlo::BroadcastOp::create(
-            blockBuilder, loc, outputType, zero, outputType.getShape());
+            blockBuilder, loc, outputType, identityVal, outputType.getShape());
 
         auto [axisCoordinates, axisSizes] =
             getAxesCoordinateAndSize(blockBuilder, loc, mesh);
@@ -340,7 +361,6 @@ void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
 void convertReplicatedToUnreduced(sdy::ReplicatedToUnreducedOp op,
                                   mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
-  CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
 
   mlir::Location loc = op.getLoc();
@@ -371,12 +391,15 @@ void convertReplicatedToUnreduced(sdy::ReplicatedToUnreducedOp op,
         CHECK(pred != nullptr) << "No replicated-to-unreduced axes.";
 
         RankedTensorType type = mlir::cast<RankedTensorType>(arg.getType());
-        Value zeroVal = stablehlo::ConstantOp::create(
-            blockBuilder, loc, blockBuilder.getZeroAttr(type.getElementType()));
-        Value zeroBroadcast = stablehlo::BroadcastOp::create(
-            blockBuilder, loc, type, zeroVal, type.getShape());
+        Value identityVal = stablehlo::ConstantOp::create(
+            blockBuilder, loc,
+            getReductionIdentityAttr(type.getElementType(),
+                                     outSharding.getReductionOp(),
+                                     blockBuilder));
+        Value broadcastIdentity = stablehlo::BroadcastOp::create(
+            blockBuilder, loc, type, identityVal, type.getShape());
         return stablehlo::SelectOp::create(blockBuilder, loc, pred, arg,
-                                           zeroBroadcast);
+                                           broadcastIdentity);
       });
   rewriter.replaceOp(op, manualComputation);
 }
