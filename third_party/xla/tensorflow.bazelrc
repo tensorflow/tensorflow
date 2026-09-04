@@ -143,7 +143,7 @@ common --incompatible_enforce_config_setting_visibility
 # common --incompatible_config_setting_private_default_visibility
 
 # Print a stacktrace when a test is killed
-test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
+build --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
 
 # Default options should come above this line.
@@ -300,7 +300,8 @@ common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
 common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
-common:rocm_ci_hermetic --dynamic_mode=off
+common:rocm_ci_hermetic --dynamic_mode=fully
+common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
 common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
@@ -514,7 +515,7 @@ common:rbe_base --spawn_strategy=remote,worker,standalone,local
 # Attempt to minimize the amount of data transfer between bazel and the remote
 # workers:
 common:rbe_base --remote_download_toplevel
-test:rbe_base --test_env=USER=anon
+build:rbe_base --test_env=USER=anon
 
 # TODO(kanglan): Check if we want to merge rbe_linux into rbe_linux_cpu.
 common:rbe_linux --config=rbe_base
