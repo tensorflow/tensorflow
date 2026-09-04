@@ -512,7 +512,7 @@ TEST(PjRtStreamExecutorClientTest, MakeAllocationReadyEventAsync) {
                        data.data(), S32, {1024}, /*byte_strides=*/std::nullopt,
                        PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
                        nullptr, memory_space, /*device_layout=*/nullptr));
-
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
   Shape shape = buffer->on_device_shape();
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           client->CreateAliasBuffer(shape, memory_space));
@@ -670,6 +670,9 @@ TEST(PjRtStreamExecutorClientTest, CrossHostSendBuffersCleanupAfterFailure) {
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           /*memory_space=*/memory_space,
           /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK(buffer0->GetReadyFuture().Await());
+  TF_ASSERT_OK(buffer1->GetReadyFuture().Await());
 
   // Delete buffer1 so that AcquireScopedRawBuffer fails on it mid-loop in
   // CrossHostSendBuffers.

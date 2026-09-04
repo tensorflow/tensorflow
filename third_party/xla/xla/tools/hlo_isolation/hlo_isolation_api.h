@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
+#include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 
 namespace xla {
@@ -60,6 +61,7 @@ struct ModuleIsolationOptions {
   double rel_error_bound = 0.1;
   bool run_hlo_passes = false;
   int64_t max_module_size_bytes = 0;
+  bool reject_unconstrained_ops = false;
 
   std::function<absl::StatusOr<Literal>(
       std::unique_ptr<HloModule> module, HloRunnerInterface* runner,
@@ -152,7 +154,6 @@ int64_t GetFusionCountInNestedFusion(const HloInstruction* fusion_instr);
 bool ModuleContainsLargeKeyValueSort(const HloModule& module);
 bool ModuleTestsFloatsForEquality(const HloModule& module);
 bool ComputationHasRng(const HloComputation* computation);
-bool LiteralContainsInfOrNan(const LiteralSlice& literal);
 bool ModuleContainsConstantInfOrNan(const HloModule& module);
 
 }  // namespace hlo_isolation

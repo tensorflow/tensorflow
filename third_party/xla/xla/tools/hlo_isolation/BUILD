@@ -29,11 +29,28 @@ xla_py_proto_library(
 )
 
 cc_library(
+    name = "hlo_inf_nan_intent_analyzer",
+    testonly = True,
+    srcs = ["hlo_inf_nan_intent_analyzer.cc"],
+    hdrs = ["hlo_inf_nan_intent_analyzer.h"],
+    deps = [
+        "//xla:comparison_util",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_isolation_api",
     testonly = True,
     srcs = ["hlo_isolation_api.cc"],
     hdrs = ["hlo_isolation_api.h"],
     deps = [
+        ":hlo_inf_nan_intent_analyzer",
         ":hlo_isolation_proto_cc",
         "//xla:comparison_util",
         "//xla:error_spec",
@@ -125,6 +142,22 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_inf_nan_intent_analyzer_test",
+    srcs = ["hlo_inf_nan_intent_analyzer_test.cc"],
+    deps = [
+        ":hlo_inf_nan_intent_analyzer",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 
