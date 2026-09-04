@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -71,13 +70,20 @@ Semaphore::ScopedReservation::ScopedReservation(
   semaphore_ = other.semaphore_;
   amount_ = other.amount_;
   other.semaphore_ = nullptr;
+  other.amount_ = 0;
 }
 
 Semaphore::ScopedReservation& Semaphore::ScopedReservation::operator=(
     ScopedReservation&& other) noexcept {
-  semaphore_ = other.semaphore_;
-  amount_ = other.amount_;
-  other.semaphore_ = nullptr;
+  if (this != &other) {
+    if (semaphore_) {
+      semaphore_->Release(amount_);
+    }
+    semaphore_ = other.semaphore_;
+    amount_ = other.amount_;
+    other.semaphore_ = nullptr;
+    other.amount_ = 0;
+  }
   return *this;
 }
 
