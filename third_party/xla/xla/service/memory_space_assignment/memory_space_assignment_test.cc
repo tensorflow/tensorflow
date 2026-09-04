@@ -18683,6 +18683,205 @@ ENTRY entry {
             kDefaultMemorySpace);
 }
 
+// Tests that FindAliases correctly maps operands to parameters for async-start,
+// async-update, call, and conditional instructions:
+// 1. Operands bound with async-start map 1-to-1 to initial parameters.
+// 2. Operand 0 of async-update (the async context token) does not alias
+//    parameters.
+// 3. Operands bound with async-update map 1-to-1 to subsequent parameters,
+//    offset by the number of previously bound operands.
+// 4. Operands of synchronous call map 1-to-1 to callee parameters by operand
+//    index, and operands 1..N of conditional map to branch_computation(i - 1)
+//    parameter 0.
+TEST_F(MemorySpaceAssignmentTest, FindAliasesAsyncStartAndAsyncUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  p2 = f32[4]{0} parameter(2)
+  p3 = f32[4]{0} parameter(3)
+  ROOT tuple = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(p0, p1, p2, p3)
+}
+
+call_computation {
+  cp0 = f32[4]{0} parameter(0)
+  cp1 = f32[4]{0} parameter(1)
+  ROOT call_tuple = (f32[4]{0}, f32[4]{0}) tuple(cp0, cp1)
+}
+
+branch0_computation {
+  ROOT bp0 = f32[4]{0} parameter(0)
+}
+
+branch1_computation {
+  ROOT bp1 = f32[4]{0} parameter(0)
+}
+
+ENTRY entry {
+  param0 = f32[4]{0} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+  param2 = f32[4]{0} parameter(2)
+  param3 = f32[4]{0} parameter(3)
+  param_pred = pred[] parameter(4)
+  async-start = ((f32[4]{0}, f32[4]{0}), (), s32[]) async-start(param0, param1), calls=async_computation
+  async-update = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), (), s32[]) async-update(async-start, param2, param3), calls=async_computation
+  async-done = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) async-done(async-update), calls=async_computation
+  sync-call = (f32[4]{0}, f32[4]{0}) call(param0, param1), to_apply=call_computation
+  cond = f32[4]{0} conditional(param_pred, param2, param3), true_computation=branch0_computation, false_computation=branch1_computation
+  ROOT root = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), (f32[4]{0}, f32[4]{0}), f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(async-done, sync-call, cond, param0, param1, param2, param3)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  HloInstruction* param2 = FindInstruction(module.get(), "param2");
+  HloInstruction* param3 = FindInstruction(module.get(), "param3");
+  HloInstruction* pred = FindInstruction(module.get(), "param_pred");
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  HloInstruction* sync_call = FindInstruction(module.get(), "sync-call");
+  HloInstruction* cond = FindInstruction(module.get(), "cond");
+
+  HloComputation* async_comp =
+      module->GetComputationWithName("async_computation");
+  HloInstruction* p0 = async_comp->parameter_instruction(0);
+  HloInstruction* p1 = async_comp->parameter_instruction(1);
+  HloInstruction* p2 = async_comp->parameter_instruction(2);
+  HloInstruction* p3 = async_comp->parameter_instruction(3);
+
+  HloComputation* call_comp =
+      module->GetComputationWithName("call_computation");
+  HloInstruction* cp0 = call_comp->parameter_instruction(0);
+  HloInstruction* cp1 = call_comp->parameter_instruction(1);
+
+  HloComputation* branch0_comp =
+      module->GetComputationWithName("branch0_computation");
+  HloInstruction* bp0 = branch0_comp->parameter_instruction(0);
+  HloComputation* branch1_comp =
+      module->GetComputationWithName("branch1_computation");
+  HloInstruction* bp1 = branch1_comp->parameter_instruction(0);
+
+  std::vector<AllocationValue> allocation_values;
+  // Allocation values for parameters of the async, call, and branch
+  // computations.
+  allocation_values.emplace_back(nullptr, HloPosition{p0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p1, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p2, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p3, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{cp0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{cp1, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{bp0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{bp1, {}}, 16);
+
+  // Allocation values for caller operands passed to async-start (operands 0 and
+  // 1) and sync-call (operands 0 and 1).
+  AllocationValue val_param0(nullptr, HloPosition{param0, {}}, 16);
+  val_param0.uses().push_back(AllocationValue::Use{HloUse{async_start, 0}, 1});
+  val_param0.uses().push_back(AllocationValue::Use{HloUse{sync_call, 0}, 4});
+  allocation_values.push_back(std::move(val_param0));
+
+  AllocationValue val_param1(nullptr, HloPosition{param1, {}}, 16);
+  val_param1.uses().push_back(AllocationValue::Use{HloUse{async_start, 1}, 1});
+  val_param1.uses().push_back(AllocationValue::Use{HloUse{sync_call, 1}, 4});
+  allocation_values.push_back(std::move(val_param1));
+
+  // Allocation values for async-start bound operand elements ({0, 0} and
+  // {0, 1}) consumed as operand 0 of async-update.
+  AllocationValue val_async_start_0(nullptr, HloPosition{async_start, {0, 0}},
+                                    16);
+  val_async_start_0.uses().push_back(
+      AllocationValue::Use{HloUse{async_update, 0, {0, 0}}, 2});
+  allocation_values.push_back(std::move(val_async_start_0));
+
+  AllocationValue val_async_start_1(nullptr, HloPosition{async_start, {0, 1}},
+                                    16);
+  val_async_start_1.uses().push_back(
+      AllocationValue::Use{HloUse{async_update, 0, {0, 1}}, 2});
+  allocation_values.push_back(std::move(val_async_start_1));
+
+  // Allocation values for caller operands passed to async-update (operands 1
+  // and 2) and conditional (operands 1 and 2).
+  AllocationValue val_param2(nullptr, HloPosition{param2, {}}, 16);
+  val_param2.uses().push_back(AllocationValue::Use{HloUse{async_update, 1}, 2});
+  val_param2.uses().push_back(AllocationValue::Use{HloUse{cond, 1}, 5});
+  allocation_values.push_back(std::move(val_param2));
+
+  AllocationValue val_param3(nullptr, HloPosition{param3, {}}, 16);
+  val_param3.uses().push_back(AllocationValue::Use{HloUse{async_update, 2}, 2});
+  val_param3.uses().push_back(AllocationValue::Use{HloUse{cond, 2}, 5});
+  allocation_values.push_back(std::move(val_param3));
+
+  AllocationValue val_pred(nullptr, HloPosition{pred, {}}, 1);
+  val_pred.uses().push_back(AllocationValue::Use{HloUse{cond, 0}, 5});
+  allocation_values.push_back(std::move(val_pred));
+
+  // Allocation values for async-update bound operand elements ({0, 0}, {0, 1},
+  // {0, 2}, and {0, 3}) consumed by async-done.
+  for (int64_t i = 0; i < 4; ++i) {
+    AllocationValue val_async_update(nullptr, HloPosition{async_update, {0, i}},
+                                     16);
+    val_async_update.uses().push_back(
+        AllocationValue::Use{HloUse{async_done, 0, {0, i}}, 3});
+    allocation_values.push_back(std::move(val_async_update));
+  }
+
+  MsaAlgorithm::FindAliasesForTesting(&allocation_values);
+
+  auto find_val = [&](const HloInstruction* inst,
+                      ShapeIndex index = {}) -> const AllocationValue& {
+    for (const auto& v : allocation_values) {
+      if (v.position().instruction == inst && v.position().index == index) {
+        return v;
+      }
+    }
+    LOG(FATAL) << "Not found: " << inst->name() << " " << index.ToString();
+  };
+
+  // 1. Verify 1-to-1 mapping for async-start operands:
+  // param0 (operand 0) aliases {async_start, {0, 0}} and callee parameter p0.
+  EXPECT_THAT(find_val(param0).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {0, 0}},
+                                     HloPosition{p0, {}}));
+  // param1 (operand 1) aliases {async_start, {0, 1}} and callee parameter p1.
+  EXPECT_THAT(find_val(param1).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {0, 1}},
+                                     HloPosition{p1, {}}));
+
+  // 2. Verify operand 0 of async-update (the async context tuple) aliases
+  // matching elements in async_update, and does not alias any callee parameter:
+  EXPECT_THAT(find_val(async_start, {0, 0}).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 0}}));
+  EXPECT_THAT(find_val(async_start, {0, 1}).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 1}}));
+
+  // 3. Verify late-bound parameter offset calculation for async-update
+  // operands: param2 (operand 1 of async-update) aliases {async_update, {0, 2}}
+  // and callee parameter p2 (1 - 1 + 2 = 2).
+  EXPECT_THAT(find_val(param2).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 2}},
+                                     HloPosition{p2, {}}));
+  // param3 (operand 2 of async-update) aliases {async_update, {0, 3}} and
+  // callee parameter p3 (2 - 1 + 2 = 3).
+  EXPECT_THAT(find_val(param3).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 3}},
+                                     HloPosition{p3, {}}));
+
+  // 4. Verify 1-to-1 mapping for synchronous call and conditional operands:
+  EXPECT_THAT(find_val(param0).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{cp0, {}}));
+  EXPECT_THAT(find_val(param1).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{cp1, {}}));
+  EXPECT_THAT(find_val(pred).uses()[0].aliases, ::testing::IsEmpty());
+  EXPECT_THAT(find_val(param2).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{bp0, {}}));
+  EXPECT_THAT(find_val(param3).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{bp1, {}}));
+}
+
 // Tests a case where some operands bound in async-start/update are allowed
 // in alternate memory while others are restricted to default memory.
 // TODO(b/538345137): Re-enable this test once b/538345137 is fixed.
@@ -19808,6 +20007,146 @@ TEST_F(MemorySpaceAssignmentTest, FindBestChunkCandidatesEmptyChunkCandidates) {
   EXPECT_THAT(result, ::testing::IsEmpty());
 }
 
+// Tests that when a PinnedAllocation in alternate memory is assigned an offset,
+// its HloBuffer ID is recorded in buffer_id_to_aliased_offset_ so that
+// subsequent allocations belonging to the same HloBuffer adopt the exact same
+// physical offset even when a lower offset (0) becomes free.
+TEST_F(MemorySpaceAssignmentTest,
+       PinnedAllocationBufferIdToAliasedOffsetColocation) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  blocker = f32[2,3]{1,0} negate(p1)
+  val0 = f32[2,3]{1,0} negate(p0)
+  cc0 = f32[2,3]{1,0} custom-call(val0), custom_call_target="CustomCall", output_to_operand_aliasing={{}: (0, {})}
+  blocker_use = f32[2,3]{1,0} tanh(blocker)
+  user0 = f32[2,3]{1,0} tanh(cc0)
+  cc1 = f32[2,3]{1,0} custom-call(val0), custom_call_target="CustomCall", output_to_operand_aliasing={{}: (0, {})}
+  user1 = f32[2,3]{1,0} tanh(cc1)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(blocker_use, user0, user1)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* blocker = FindInstruction(module.get(), "blocker");
+  HloInstruction* val0 = FindInstruction(module.get(), "val0");
+  HloInstruction* cc0 = FindInstruction(module.get(), "cc0");
+  HloInstruction* cc1 = FindInstruction(module.get(), "cc1");
+
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {HloPosition{blocker, {}}, kAlternateMemorySpace},
+      {HloPosition{val0, {}}, kAlternateMemorySpace},
+      {HloPosition{cc0, {}}, kAlternateMemorySpace},
+      {HloPosition{cc1, {}}, kAlternateMemorySpace},
+  };
+
+  // Ensure blocker is assigned first so it occupies offset 0 during [2, 5],
+  // forcing val0 and cc0 to be pinned at offset 24.
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "blocker" }
+      override_options { assign_first: true }
+    }
+  )pb";
+  ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                       ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  // Without buffer_id_to_aliased_offset_ tracking for PinnedAllocations, val0
+  // and cc0 are placed at offset 24 (while blocker occupies offset 0), whereas
+  // cc1 (allocated after blocker expires) would be placed at offset 0,
+  // triggering a CHECK_EQ(chunk.offset, seen_buffer_offset_it->second) failure
+  // (0 vs. 24) in ExportAndColorBuffers.
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpaceUsingCostAnalysis(
+          module.get(), std::move(memory_space_options), std::nullopt,
+          std::nullopt, msa_sort_order_overrides);
+
+  auto get_chunk_offset = [&](const HloInstruction* inst) -> int64_t {
+    for (const auto& [pos, chunk] : preset_assignments->chunks()) {
+      if (pos.instruction == inst && pos.index.empty()) {
+        return chunk.offset;
+      }
+    }
+    return -1;
+  };
+
+  EXPECT_EQ(blocker->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(val0->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(cc0->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(cc1->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  EXPECT_EQ(get_chunk_offset(blocker), 24);
+  EXPECT_EQ(get_chunk_offset(val0), 72);
+}
+
+// Tests that when a use inside an embedded computation called from an
+// async_wrapped_computation is colored in alternate memory, MSA recognizes the
+// overlap between the ReservedAllocation and the async/embedded computation
+// span, releases the ReservedAllocation, and prefetches the late-bound
+// async-update operand into alternate memory before async-start.
+TEST_F(MemorySpaceAssignmentTest,
+       AlternateMemoryColoringInAsyncEmbeddedComputation) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+embedded_callee {
+  emb_p0 = f32[8,3]{1,0} parameter(0)
+  ROOT neg = f32[8,3]{1,0} negate(emb_p0)
+}
+
+async_computation {
+  async_p0 = f32[8,3]{1,0} parameter(0)
+  ROOT call_op = f32[8,3]{1,0} call(async_p0), to_apply=embedded_callee
+}
+
+ENTRY entry {
+  p0 = f32[8,3]{1,0} parameter(0)
+  p1 = f32[8,3]{1,0} parameter(1)
+  add0 = f32[8,3]{1,0} add(p1, p1)
+  tanh0 = f32[8,3]{1,0} tanh(add0)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  async-update = ((f32[8,3]{1,0}), f32[8,3]{1,0}, s32[]) async-update(async-start, p0), calls=async_computation
+  async-done = f32[8,3]{1,0} async-done(async-update), calls=async_computation
+  ROOT tuple = (f32[8,3]{1,0}, f32[8,3]{1,0}) tuple(async-done, tanh0)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  // Restrict alternate memory capacity to two f32[8,3] buffers (2 * 96 = 192
+  // bytes: one for `emb_p0` and one for `neg` output) so that the 96-byte
+  // ReservedAllocation in embedded_callee must be released by
+  // FreeAlternateMemoryColoringReservedAllocations for the prefetch to fit.
+  memory_space_options.max_size_in_bytes = 192;
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->opcode() == HloOpcode::kParameter &&
+               !position.instruction->parent()->IsEntryComputation();
+      };
+
+  HloInstruction* neg = FindInstruction(module.get(), "neg");
+  HloUse neg_use{neg, 0, {}};
+  memory_space_options.buffer_colorings = {{neg_use, kAlternateMemorySpace}};
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+
+  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
+  EXPECT_EQ(async_update->operand(1)->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(async_update->operand(1)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(neg->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
 }  // namespace
 
 }  // namespace memory_space_assignment
