@@ -335,6 +335,18 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
+tf_cuda_only_cc_test(
+    name = "conv_2d_gpu_test",
+    size = "small",
+    srcs = ["conv_2d_gpu_test.cu.cc"],
+    features = if_cuda(["-layering_check"]),
+    deps = [
+        ":conv_2d",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "conv_2d_hdrs",
     hdrs = ["conv_2d.h"],
