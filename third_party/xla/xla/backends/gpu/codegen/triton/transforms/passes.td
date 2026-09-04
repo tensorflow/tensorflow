@@ -249,6 +249,19 @@ def XTileLowerToTritonPass
   ];
 }
 
+def XTileStripMineScanPass
+    : Pass<"xtile-strip-mine-scan", "mlir::ModuleOp"> {
+  let summary = "Tiles xtile.scan operations into scf loops over tiles.";
+  let dependentDialects = [
+    "::mlir::scf::SCFDialect",
+    "::mlir::triton::TritonDialect",
+    "::mlir::arith::ArithDialect",
+  ];
+  let options = [
+    Option<"tile_size_", "tile-size", "int64_t", "128", "The size of the tile for strip-mining scan ops">,
+  ];
+}
+
 def ArithFP8ConversionToTritonPass
     : Pass<"arith-fp8-conversion-to-triton", "mlir::ModuleOp"> {
   let summary =
