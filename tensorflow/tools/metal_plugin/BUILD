@@ -67,6 +67,7 @@ objc_library(
         "MetalPerformanceShaders",
         "MetalPerformanceShadersGraph",
     ],
+    tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     # The kernels register themselves from static initialisers and nothing in
     # plugin_init.cc names a symbol of theirs, so without this the linker drops
@@ -97,6 +98,7 @@ tf_cc_shared_object(
     name = "metal_plugin.so",
     srcs = ["src/plugin_init.cc"],
     includes = ["src"],
+    tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     visibility = ["//visibility:public"],
     deps = [
@@ -117,6 +119,7 @@ objc_library(
     includes = ["src"],
     non_arc_srcs = ["tests/stream_executor_test.mm"],
     sdk_frameworks = ["Foundation"],
+    tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     deps = [
         "//tensorflow/c:tf_status_headers",
