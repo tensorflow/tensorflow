@@ -75,6 +75,43 @@ def LowerToIfrtRestoreVariablePass: Pass<"lower-to-ifrt-restore-variable", "mlir
   let constructor = "CreateLowerToIfrtRestoreVariablePass()";
  }
 
+def TfPruneUnobservedVariableUpdatesPass
+    : Pass<"tf-prune-unobserved-variable-updates", "mlir::ModuleOp"> {
+  let summary = "Prunes variable self-update cycles whose value is provably "
+                "never observed";
+
+  let description = [{
+    This pass removes read-modify-write cycles on resource variables (e.g.
+    Keras metric accumulators: `tf.ReadVariableOp` -> `tf.AddV2` ->
+    `tf.AssignVariableOp` on the same variable) when the variable's value is
+    provably never observed anywhere in the module. Such cycles otherwise
+    prevent `SinkVariableAsNamedArrayPass` from lowering the variable's reads
+    to `tf.IfrtLoadVariableOp`, because that lowering requires the variable to
+    be immutable after restore.
+
+    A variable, identified by the (container, shared_name) of its
+    `tf.VarHandleOp`s, is pruned only if all of the following hold:
+
+    1. Every use of every handle of the variable, module-wide, is one of
+       `tf.ReadVariableOp`, `tf.AssignVariableOp`, `tf.IfrtRestoreVariableOp`
+       (a write-only restore) or a resource-forwarding `tf.Identity`.
+    2. The value produced by every `tf.ReadVariableOp` of the variable flows
+       only through side-effect-free, region-free ops and terminates
+       exclusively in `tf.AssignVariableOp`s writing back to the same
+       variable.
+
+    The analysis fails closed: if any resource value in the module cannot be
+    attributed to a `tf.VarHandleOp` (e.g. resource function arguments), the
+    pass emits a warning and prunes nothing.
+
+    This pass is expected to run after resource ops are decomposed (so that
+    `tf.AssignAddVariableOp` and friends are already in read-modify-write
+    form) and before `SinkVariableAsNamedArrayPass`.
+  }];
+
+  let constructor = "CreateTfPruneUnobservedVariableUpdatesPass()";
+}
+
 def TfRestorePruningPass
     : Pass<"tf-restore-pruning", "mlir::func::FuncOp"> {
   let summary = "Prune unused`tf.RestoreV2` ops";
