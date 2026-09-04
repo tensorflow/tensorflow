@@ -101,6 +101,16 @@ TfLiteStatus ResizeOutputAndTemporaryTensors(
   const int filter_output_channels = SizeOfDimension(filter, 3);
   TF_LITE_ENSURE_EQ(context, shape_data[4], filter_output_channels);
 
+  int unused_output_size = 0;
+  TF_LITE_ENSURE_OK(
+      context,
+      CheckedShapeProductToInt(
+          context,
+          {shape_data[0], shape_data[1], shape_data[2], shape_data[3],
+           shape_data[4]},
+          "Conv3DTranspose output shape has too many elements.",
+          unused_output_size));
+
   // Compute padding.
   const RuntimeShape& filter_shape = GetTensorShape(filter);
   const int depth = shape_data[1];
