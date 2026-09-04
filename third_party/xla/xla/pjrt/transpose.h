@@ -262,6 +262,10 @@ class TransposePlan {
     // 2 = deep inner loop
     int contiguity = 0;
 
+    // If true, this loop iterates over the elements inside a tile (whether or
+    // not there is a trailing partial tile).
+    bool is_tile_interior = false;
+
     bool operator==(const Loop& other) const;
 
     std::string ToString() const;
@@ -353,6 +357,7 @@ class TransposePlan {
   absl::InlinedVector<int64_t, 4> b_tiling_;
   bool a_is_tiled_ = false;
   bool b_is_tiled_ = false;
+  bool is_identity_permutation_ = true;
 
   // Per-chunk loop nests. Each loop nest has its own start/end bounds
   // representing one chunk of the work.
