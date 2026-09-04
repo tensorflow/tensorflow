@@ -106,22 +106,6 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "cpu_external_constants_test",
-    srcs = ["cpu_external_constants_test.cc"],
-    deps = [
-        ":cpu_pjrt_codegen_test",
-        "//xla:array2d",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/cpu:cpu_options",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:test",
-    ],
-)
-
 xla_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],

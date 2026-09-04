@@ -17,9 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_CPU_IR_EMITTER2_H_
 
 #include <cstdint>
-#include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -31,15 +29,12 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Value.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -110,9 +105,6 @@ class IrEmitter2 {
 
   absl::Span<const ComparatorInfo> comparators() const { return comparators_; }
 
-  // Emits a host kernel for the pad instruction.
-  absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
-
   // Emits a host kernel for the given fusion instruction.
   absl::StatusOr<KernelInfo> EmitFusionHostKernel(
       const HloFusionInstruction* fusion);
@@ -137,47 +129,12 @@ class IrEmitter2 {
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       const HloInstruction* instr);
 
-  // Parallel partition bounds for parallelized outer dimensions:
-  //   vector<[i64 lower_bound, i64 upper_bound]>
-  using ParallelPartitionBounds =
-      std::vector<std::pair<llvm::Value*, llvm::Value*>>;
-
-  // A config for running kernel in parallel. We rely on partitioning iteration
-  // space along the outer dimension(s) and run each partition as a separate
-  // task inside a runtime-managed thread pool.
-  struct ParallelConfig {
-    std::vector<int64_t> outer_dimension_partitions;
-  };
-
-  // Returns parallel config for the given instruction or std::nullopt if
-  // the instruction has to be compiled to a single threaded loop.
-  std::optional<ParallelConfig> GetParallelConfig(const HloInstruction* instr);
-
-  // Emits LLVM IR that computes parallel partition bounds from the call frame's
-  // block and thread dimensions and parallel execution config.
-  ParallelPartitionBounds EmitParallelPartitionBounds(
-      llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
-      const ParallelConfig& parallel_config, const Shape& shape,
-      absl::string_view name);
-
-  // Emits LLVM IR using elemental loop emitter and the given element generator.
-  // If the instruction is parallelized, it will emit a parallel loop partition
-  // and return the requested number of execution threads.
-  absl::StatusOr<se::ThreadDim> EmitElementalLoops(
-      llvm::IRBuilderBase& b, const HloInstruction* instr,
-      const KernelPrototype& kernel_prototype,
-      const llvm_ir::ElementGenerator& element_generator);
-
-  bool fast_min_max() const;
-
   // Returns the number of bytes within the shape.
   int64_t ByteSizeOf(const Shape& shape) const;
 
   // Given a load instruction, annotate the load's result with the invariant
   // load metadata.
   void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* instr) const;
-
-  CpuElementalIrEmitter ElementalIrEmmiterFactory(llvm::IRBuilderBase* b) const;
 
   const HloModule& hlo_module_;
   llvm::Module* module_;
