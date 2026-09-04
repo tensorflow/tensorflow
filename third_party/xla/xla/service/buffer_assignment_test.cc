@@ -4470,7 +4470,7 @@ TEST(ComputePeakMemoryTest, SimpleAllocation) {
   HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
-  LogicalBufferProto* buffer = proto.add_logical_buffers();
+  BufferValueProto* buffer = proto.add_logical_buffers();
   buffer->set_id(0);
   buffer->mutable_defined_at()->set_instruction_id(10);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/10);
@@ -4494,7 +4494,7 @@ TEST(ComputePeakMemoryTest, PaddedAllocation) {
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   absl::flat_hash_map<int64_t, int64_t> logical_buffer_unpadded_sizes;
-  LogicalBufferProto* buffer = proto.add_logical_buffers();
+  BufferValueProto* buffer = proto.add_logical_buffers();
   buffer->set_id(0);
   buffer->mutable_defined_at()->set_instruction_id(10);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/36);
@@ -4518,7 +4518,7 @@ TEST(ComputePeakMemoryTest, MultipleBuffersSomePadded) {
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
 
   // Buffer 0 - padded
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(64);
@@ -4528,7 +4528,7 @@ TEST(ComputePeakMemoryTest, MultipleBuffersSomePadded) {
   event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
 
   // Buffer 1 - not padded
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(20);
@@ -4561,7 +4561,7 @@ TEST(ComputePeakMemoryTest, MultipleBuffers) {
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
 
   // Buffer 0
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
@@ -4571,7 +4571,7 @@ TEST(ComputePeakMemoryTest, MultipleBuffers) {
   event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
 
   // Buffer 1
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(20);
@@ -4581,7 +4581,7 @@ TEST(ComputePeakMemoryTest, MultipleBuffers) {
   event2->set_kind(HeapSimulatorTrace::Event::ALLOC);
 
   // Buffer 2
-  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  BufferValueProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
   buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(30);
@@ -4617,14 +4617,14 @@ TEST(ComputePeakMemoryTest, SharedBuffers) {
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
 
   // Buffer 0
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
 
   // Buffer 1
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
@@ -4672,31 +4672,31 @@ TEST(ComputePeakMemoryTest, SharedChain) {
   HeapSimulatorTrace::Event* e;
 
   // Buffer 0
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   // Buffer 1
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
   SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
   // Buffer 2
-  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  BufferValueProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
   buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(10);  // same as buffer 0
   SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
   // Buffer 3
-  LogicalBufferProto* buffer3 = proto.add_logical_buffers();
+  BufferValueProto* buffer3 = proto.add_logical_buffers();
   buffer3->set_id(3);
   buffer3->mutable_defined_at()->set_instruction_id(13);
   buffer3->set_size(300);
   SetUnpaddedSize(computation, /*id=*/13, /*size=*/buffer3->size());
   // Buffer 4
-  LogicalBufferProto* buffer4 = proto.add_logical_buffers();
+  BufferValueProto* buffer4 = proto.add_logical_buffers();
   buffer4->set_id(4);
   buffer4->mutable_defined_at()->set_instruction_id(14);
   buffer4->set_size(4000);
@@ -4756,31 +4756,31 @@ TEST(ComputePeakMemoryTest, SharedChainReverseOrder) {
   HeapSimulatorTrace::Event* e;
 
   // Buffer 0
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   // Buffer 1
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
   SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
   // Buffer 2
-  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  BufferValueProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
   buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(10);  // same as buffer 0
   SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
   // Buffer 3
-  LogicalBufferProto* buffer3 = proto.add_logical_buffers();
+  BufferValueProto* buffer3 = proto.add_logical_buffers();
   buffer3->set_id(3);
   buffer3->mutable_defined_at()->set_instruction_id(13);
   buffer3->set_size(300);
   SetUnpaddedSize(computation, /*id=*/13, /*size=*/buffer3->size());
   // Buffer 4
-  LogicalBufferProto* buffer4 = proto.add_logical_buffers();
+  BufferValueProto* buffer4 = proto.add_logical_buffers();
   buffer4->set_id(4);
   buffer4->mutable_defined_at()->set_instruction_id(14);
   buffer4->set_size(4000);
@@ -4836,7 +4836,7 @@ TEST(ComputePeakMemoryTest, SharingAllocatesBuffers) {
   HeapSimulatorTrace::Event* e;
 
   // Buffer 0
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
@@ -4844,14 +4844,14 @@ TEST(ComputePeakMemoryTest, SharingAllocatesBuffers) {
   // logical_buffer_unpadded_sizes[buffer0->id()] = buffer0->size();
 
   // Buffer 1
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
   SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
 
   // Buffer 2
-  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  BufferValueProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
   buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(200);
@@ -4900,13 +4900,13 @@ TEST(ComputePeakMemoryTest, ProtoWithNoEvents) {
   proto.add_heap_simulator_traces();
 
   // Buffer 0
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(42);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   // Buffer 1
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(23);
@@ -4921,7 +4921,7 @@ TEST(ComputePeakMemoryTest, BufferAllocations) {
   HloModuleProto hlo;
   HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
-  LogicalBufferProto* buffer42 = proto.add_logical_buffers();
+  BufferValueProto* buffer42 = proto.add_logical_buffers();
   buffer42->set_id(42);
   buffer42->mutable_defined_at()->set_instruction_id(42);
   buffer42->set_size(1024);
@@ -4952,27 +4952,27 @@ TEST(ComputePeakMemoryTest, MultipleAssignments) {
   BufferAssignmentProto proto;
   HloModuleProto hlo;
   HloComputationProto* computation = hlo.add_computations();
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(1);
   SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
-  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  BufferValueProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
   buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(22);
   SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
-  LogicalBufferProto* buffer3 = proto.add_logical_buffers();
+  BufferValueProto* buffer3 = proto.add_logical_buffers();
   buffer3->set_id(3);
   buffer3->mutable_defined_at()->set_instruction_id(13);
   buffer3->set_size(333);
   SetUnpaddedSize(computation, /*id=*/13, /*size=*/buffer3->size());
-  LogicalBufferProto* buffer4 = proto.add_logical_buffers();
+  BufferValueProto* buffer4 = proto.add_logical_buffers();
   buffer4->set_id(4);
   buffer4->mutable_defined_at()->set_instruction_id(14);
   buffer4->set_size(4444);
   SetUnpaddedSize(computation, /*id=*/14, /*size=*/buffer4->size());
-  LogicalBufferProto* buffer5 = proto.add_logical_buffers();
+  BufferValueProto* buffer5 = proto.add_logical_buffers();
   buffer5->set_id(5);
   buffer5->mutable_defined_at()->set_instruction_id(15);
   buffer5->set_size(55555);
@@ -4997,12 +4997,12 @@ TEST(ComputePeakMemoryTest, ShareParameter) {
   HloModuleProto hlo;
   HloComputationProto* computation = hlo.add_computations();
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(1024);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(1024);
@@ -5031,7 +5031,7 @@ TEST(ComputePeakMemoryTest, StaticBufferAlsoGetsAllocated) {
   HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(1024);
@@ -5060,12 +5060,12 @@ TEST(ComputePeakMemoryTest, ParamBufferAndAllocationBuffer) {
   HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(123);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(321);
@@ -5092,7 +5092,7 @@ TEST(ComputePeakMemoryTest, LargeResult) {
   HloModuleProto hlo;
   HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(1LL << 33);
@@ -5112,13 +5112,13 @@ TEST(ComputeLogicalBufferUnpaddedSizesTest, Basic) {
   HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
 
-  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  BufferValueProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
   buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(123);
   SetUnpaddedSize(computation, /*id=*/10, /*size=*/100);
 
-  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  BufferValueProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
   buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(456);
