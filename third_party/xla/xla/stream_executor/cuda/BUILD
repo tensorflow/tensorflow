@@ -65,11 +65,6 @@ package(
     licenses = ["notice"],
 )
 
-package_group(
-    name = "friends",
-    packages = stream_executor_friends(),
-)
-
 bool_flag(
     name = "enable_libnvptxcompiler_support",
     build_setting_default = if_google(
