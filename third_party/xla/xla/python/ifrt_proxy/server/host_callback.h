@@ -112,6 +112,8 @@ class RemoteLoadedHostCallback
   // deserialized into `RmeoteLoadedHostCallback` using `CreateFromSerialized`.
   absl::StatusOr<std::string> Serialize() const override;
 
+  static char ID;  // NOLINT
+
  private:
   // Implements the interface required by `xla::HostCallback`.
   absl::Status Execute(void** result_ptrs, void** operand_ptrs);
