@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
