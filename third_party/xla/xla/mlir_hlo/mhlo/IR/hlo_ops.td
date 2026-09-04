@@ -282,6 +282,22 @@ def MHLO_AsinhOp : MHLO_UnaryElementwiseOp<"asinh",
   let hasFolder = 1;
 }
 
+def MHLO_AtanOp : MHLO_UnaryElementwiseOp<"atan",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Atan operation";
+
+  let description = [{
+     Performs element-wise atan operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.atan %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cbrt operation";
