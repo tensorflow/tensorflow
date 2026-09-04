@@ -55,10 +55,9 @@ LogicalResult VerifyTypeRangesAreCompatible(Operation *op,
 // Fold Arithmetic Op if one of the operands is a constant known to be an
 // Identity (e.g. X+0, X*1, etc...). For commutative operations fold if
 // known identity value is either lhs or rhs.
-template <
-    typename OpT,
-    typename std::enable_if<llvm::is_one_of<
-        OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
+template <typename OpT,
+          std::enable_if_t<llvm::is_one_of<OpT, AddV2Op, SubOp, MulOp, DivOp,
+                                           RealDivOp>::value>* = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
   auto lhs_type = mlir::cast<ShapedType>(arithmetic_op.getX().getType());
@@ -86,7 +85,7 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
 
   // Check that we have a constant operand on one side (candidate for identity).
   const bool is_commutative =
-      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
+      (std::is_same_v<OpT, AddV2Op> || std::is_same_v<OpT, MulOp>);
   auto lhs_attr = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
   auto rhs_attr = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
   if (!rhs_attr && !(is_commutative && lhs_attr)) return {};
@@ -94,8 +93,8 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
   // Mul and Div ops have identity value one while AddV2 and SubOp have identity
   // value zero.
   const int identity =
-      (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value ||
-       std::is_same<OpT, RealDivOp>::value)
+      (std::is_same_v<OpT, MulOp> || std::is_same_v<OpT, DivOp> ||
+       std::is_same_v<OpT, RealDivOp>)
           ? 1
           : 0;
 
