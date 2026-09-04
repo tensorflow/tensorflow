@@ -26,7 +26,7 @@ finiteness, and that the values are not all identical.
 """
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.compat import v2 as tf
 
 RNG = np.random.default_rng(11)
 
