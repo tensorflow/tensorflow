@@ -605,7 +605,8 @@ class SdyRoundTripImportShardyAttrsPass
       for (NamedAttribute mesh : sdyMeshes) {
         auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
         symbolTable.insert(mlir::sdy::MeshOp::create(
-            rewriter, moduleOp.getLoc(), mesh.getName(), meshAttr));
+            rewriter, moduleOp.getLoc(), mesh.getName(), meshAttr,
+            /*sym_visibility=*/nullptr));
       }
       removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
     }
