@@ -86,6 +86,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
@@ -188,6 +189,7 @@ struct TransposePlan::Node {
 
 template <typename T, int inner_bs,
           TransposePlan::Transformation transformation>
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
                  char* __restrict b, int64_t ldb, int outer_bs_b,
                  void* __restrict scratch, int bits_per_element) {
@@ -253,6 +255,7 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
 // following by iterating over the linked Node data structure.
 template <typename T, int inner_bs,
           TransposePlan::Transformation transformation>
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
                int outer_bs_b, TransposePlan::Node const* __restrict node,
                void* __restrict scratch, int bits_per_element) {
@@ -462,6 +465,7 @@ void TransposeConstStride1(const char* __restrict a, char* __restrict b,
 }
 
 template <typename T, TransposePlan::Transformation transformation>
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void TransposePlan::ExecuteTyped(const char* a, char* b,
                                  absl::Span<Node const> nodes,
                                  int bits_per_element) const {
@@ -516,6 +520,7 @@ struct uint128 {
 };
 static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
 
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b,
                                  bool input_is_global,
                                  bool output_is_global) const {
@@ -619,6 +624,7 @@ void TransposePlan::ExecuteInternal(
   }
 }
 
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void TransposePlan::Execute(
     const void* a, void* b,
     std::optional<absl::FunctionRef<void(std::function<void()>)>> schedule_work)
