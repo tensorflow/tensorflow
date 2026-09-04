@@ -81,6 +81,8 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
       return DebugOptions::COLLECTIVEBROADCAST;
     case Thunk::kCollectivePermute:
       return DebugOptions::COLLECTIVEPERMUTE;
+    case Thunk::kCollectiveReduce:
+      return DebugOptions::ALLREDUCE;
     case Thunk::kRaggedAllToAll:
       return DebugOptions::RAGGEDALLTOALL;
     case Thunk::kReduceScatter:
@@ -122,6 +124,15 @@ CommandBufferConfig GetCommandBufferConfig(
   CommandBufferConfig config{
       std::move(commands), std::move(enabled_collectives), device_info,
       debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
+
+  // oneAPI command buffers are not implemented yet. Hence, disable command
+  // buffer conversion for the oneAPI backend.
+  // TODO(intel-tf): Remove this fallback once oneAPI command buffers are
+  // implemented.
+  if (device_info.gpu_compute_capability().IsOneAPI()) {
+    config.enabled_commands.clear();
+    return config;
+  }
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -195,6 +206,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kAllToAll:
     case Thunk::kCollectiveBroadcast:
     case Thunk::kCollectivePermute:
+    case Thunk::kCollectiveReduce:
     case Thunk::kRaggedAllToAll:
     case Thunk::kReduceScatter:
     case Thunk::kRecv:
