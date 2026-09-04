@@ -1,0 +1,39 @@
+--- a/test/Conversion/amd/async-ops-alias-scopes.mlir
++++ b/test/Conversion/amd/async-ops-alias-scopes.mlir
+@@ -16,7 +16,7 @@
+     %ptr = tt.splat %arg0 : !tt.ptr<f32> -> tensor<64x1x!tt.ptr<f32>, #blocked>
+     %mask = tt.splat %maskVal : i1 -> tensor<64x1xi1, #blocked>
+ 
+-    // COMMON: rocdl.global.load.async.lds {{.*}} <{alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: rocdl.global.load.async.lds {{.*}} <alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // Check that store for 'other' has alias information set
+     // COMMON: llvm.store {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}, noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %0 = ttg.async_copy_global_to_local %ptr, %arg1 mask %mask other %other : tensor<64x1x!tt.ptr<f32>, #blocked> -> <64x1xf32, #shared, #smem, mutable>
+@@ -42,7 +42,7 @@
+     %mask = tt.splat %maskVal : i1 -> tensor<8x64xi1, #blocked>
+     %other = arith.constant dense<1.000000e+00> : tensor<8x64xf32, #blocked>
+ 
+-    // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}} <{alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}} <alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // Check that store for 'other' has alias information set
+     // COMMON: llvm.store {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}, noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %65 = amdg.buffer_load_to_local %arg1[%arg2] mask=%mask other=%other into %arg3 : <f32>[tensor<8x64xi32, #blocked>] tensor<8x64xf32, #blocked> -> <8x64xf32, #shared, #smem, mutable>
+@@ -76,7 +76,7 @@
+ 
+     // Test lowering path in AMD's MemoryOpToLLVM pattern
+     // GFX942: llvm.load {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+-    // GFX950: rocdl.ds.read.tr16.b64 {{.*}} <{alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // GFX950: rocdl.ds.read.tr16.b64 {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %5 = ttg.local_load %arg2 token %3 : !ttg.memdesc<16x16xf16, #shared, #smem, mutable> -> tensor<16x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 8}>>
+ 
+     // Stores to keep the local_loads
+@@ -108,7 +108,7 @@
+     // We need the splat to allow the AxisAnalysis to work during lowering
+     %ptr = tt.splat %arg0 : !tt.ptr<f32> -> tensor<64x1x!tt.ptr<f32>, #blocked>
+ 
+-    // COMMON: rocdl.global.load.async.lds {{.*}} <{alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: rocdl.global.load.async.lds {{.*}} <alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %0 = ttg.async_copy_global_to_local %ptr, %arg1 : tensor<64x1x!tt.ptr<f32>, #blocked> -> <64x1xf32, #shared, #smem, mutable>
+     %1 = ttg.async_commit_group tokens %0
+ 
+
