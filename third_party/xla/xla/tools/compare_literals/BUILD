@@ -44,6 +44,7 @@ xla_cc_binary(
     srcs = ["compare_literals_main.cc"],
     deps = [
         ":compare_literals_lib",
+        ":compare_model_literals_lib",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
@@ -63,6 +64,41 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "compare_model_literals_lib",
+    srcs = ["compare_model_literals.cc"],
+    hdrs = ["compare_model_literals.h"],
+    deps = [
+        ":compare_literals_lib",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@jsoncpp_git//:jsoncpp_compat",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "compare_model_literals_test",
+    srcs = ["compare_model_literals_test.cc"],
+    deps = [
+        ":compare_model_literals_lib",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
