@@ -237,5 +237,34 @@ TEST(SimpleCacheOp2Test, ShiftSlotsInCache) {
   ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
+TEST(SimpleCacheOp2Test, BoundsCheckValidation) {
+  // Test large position offset overflow
+  {
+    SimpleCacheOpModel m({TensorType_INT64, {2}},
+                         {TensorType_FLOAT32, {1, 2, 2, 3}},
+                         {TensorType_FLOAT32, {1, 2, 2, 3}});
+
+    m.SetPosition({5000, 5001});
+    m.SetKey({1, 5, -6, 2, 4, 3, 2, 6, -7, 3, 5, 4});
+    m.SetValue({4, 2, -4, 2, 4, 2, 9, 8, -9, 8, 9, 1});
+    EXPECT_EQ(m.Invoke(), kTfLiteError);
+  }
+
+  // Test sequence length exceeding max entries
+  {
+    const int seq_len = kDefaultMaxNumCacheEntries + 1;
+    SimpleCacheOpModel m({TensorType_INT64, {seq_len}},
+                         {TensorType_FLOAT32, {1, seq_len, 2, 3}},
+                         {TensorType_FLOAT32, {1, seq_len, 2, 3}});
+
+    std::vector<int64_t> pos(seq_len);
+    for (int i = 0; i < seq_len; ++i) pos[i] = i;
+    m.SetPosition(pos);
+    m.SetKey(std::vector<float>(seq_len * 2 * 3, 1.0f));
+    m.SetValue(std::vector<float>(seq_len * 2 * 3, 1.0f));
+    EXPECT_EQ(m.Invoke(), kTfLiteError);
+  }
+}
+
 }  // namespace
 }  // namespace tflite
