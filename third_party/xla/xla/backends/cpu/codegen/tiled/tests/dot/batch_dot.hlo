@@ -1,0 +1,38 @@
+// RUN: true
+// FUTURE_EXEC: fusion_to_xtile %s | FileCheck %s
+// FUTURE_EXEC: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// FUTURE_EXEC:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// FUTURE_EXEC: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// FUTURE_EXEC:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
+// FUTURE_EXEC: test_correctness %s
+
+fusion {
+  p0 = f32[4,32,16] parameter(0)
+  p1 = f32[4,16,64] parameter(1)
+  ROOT dot = f32[4,32,64] dot(p0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+// CHECK:        xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[LHS:[^:]+]]: memref<4x32x16xf32>,
+// CHECK-SAME:     %[[RHS:[^:]+]]: memref<4x16x64xf32>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<4x32x64xf32>,
+// CHECK-SAME:     %[[PID:[^:]+]]: index)
+
+// CHECK-VECTOR: func.func @wrapped_fusion
+// CHECK-LLVM: llvm.func @wrapped_fusion
+
+ENTRY main {
+  p0 = f32[4,32,16] parameter(0)
+  p1 = f32[4,16,64] parameter(1)
+  ROOT fusion = f32[4,32,64] fusion(p0, p1), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "8", "8"]}],
+          "num_ctas":"4"
+        }
+      }
+    }
+}
