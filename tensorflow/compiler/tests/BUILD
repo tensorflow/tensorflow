@@ -2428,6 +2428,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:image_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
