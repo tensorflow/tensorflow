@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -95,6 +96,39 @@ using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::TensorShardingAttr;
+
+bool shardingOverlapsWithManualAxes(TensorShardingAttr sharding,
+                                    ArrayRef<StringAttr> manualAxes) {
+  if (!sharding) {
+    return false;
+  }
+  auto isManual = [&](StringRef axisName) {
+    for (auto manualAxis : manualAxes) {
+      if (manualAxis.getValue() == axisName) {
+        return true;
+      }
+    }
+    return false;
+  };
+  for (auto dimSharding : sharding.getDimShardings()) {
+    for (auto axis : dimSharding.getAxes()) {
+      if (isManual(axis.getName())) {
+        return true;
+      }
+    }
+  }
+  for (auto axis : sharding.getReplicatedAxes()) {
+    if (isManual(axis.getName())) {
+      return true;
+    }
+  }
+  for (auto axis : sharding.getUnreducedAxes()) {
+    if (isManual(axis.getName())) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
 void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
@@ -173,16 +207,33 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
 
   funcOp.front().walk([&](Operation* op) {
     ArrayRef<StringAttr> manualAxes;
-    if (ManualAxesAttr manualAxesAttr =
-            op->getAttrOfType<ManualAxesAttr>(kManualAxes)) {
+    ManualAxesAttr manualAxesAttr =
+        op->getAttrOfType<ManualAxesAttr>(kManualAxes);
+    if (manualAxesAttr) {
       manualAxes = manualAxesAttr.getValue();
       op->removeAttr(kManualAxes);
     }
 
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
-      setHloShardingAttr(op, shardings, getMeshAttr, manualAxes,
-                         enableHloShardingV3, simplifyReplicatedShardings);
+      bool overlaps = false;
+      if (enableHloShardingV3 && manualAxesAttr) {
+        for (auto sharding : shardings) {
+          if (shardingOverlapsWithManualAxes(sharding, manualAxes)) {
+            overlaps = true;
+            break;
+          }
+        }
+      }
+
+      if (overlaps) {
+        setHloShardingAttr(op, shardings, getMeshAttr, /*manualAxes=*/{},
+                           enableHloShardingV3, simplifyReplicatedShardings);
+        setFrontendAttribute(op, kManualAxes, manualAxesAttr);
+      } else {
+        setHloShardingAttr(op, shardings, getMeshAttr, manualAxes,
+                           enableHloShardingV3, simplifyReplicatedShardings);
+      }
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
                mlir::isa<stablehlo::WhileOp, stablehlo::CaseOp,
@@ -418,6 +469,15 @@ NamedSharding convertToNamedSharding(
     return NamedSharding::Manual(mesh);
   }
 
+  auto isManual = [&](StringRef axisName) {
+    for (auto manualAxis : manualAxes) {
+      if (manualAxis.getValue() == axisName) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   SmallVector<NamedSharding::DimensionSharding> dimShardings;
   dimShardings.reserve(sdySharding.getDimShardings().size());
   for (mlir::sdy::DimensionShardingAttr dimSharding :
@@ -425,7 +485,9 @@ NamedSharding convertToNamedSharding(
     SmallVector<AxisRef> axes;
     axes.reserve(dimSharding.getAxes().size());
     for (AxisRefAttr axisRefAttr : dimSharding.getAxes()) {
-      axes.push_back(toAxisRef(axisRefAttr, axisNameToIndex));
+      if (!isManual(axisRefAttr.getName())) {
+        axes.push_back(toAxisRef(axisRefAttr, axisNameToIndex));
+      }
     }
     dimShardings.push_back(
         NamedSharding::DimensionSharding(axes, dimSharding.getIsClosed()));
@@ -434,13 +496,17 @@ NamedSharding convertToNamedSharding(
   SmallVector<AxisRef> replicatedAxes;
   replicatedAxes.reserve(sdySharding.getReplicatedAxes().size());
   for (AxisRefAttr axisRefAttr : sdySharding.getReplicatedAxes()) {
-    replicatedAxes.push_back(toAxisRef(axisRefAttr, axisNameToIndex));
+    if (!isManual(axisRefAttr.getName())) {
+      replicatedAxes.push_back(toAxisRef(axisRefAttr, axisNameToIndex));
+    }
   }
 
   SmallVector<AxisRef> unreducedAxes;
   unreducedAxes.reserve(sdySharding.getUnreducedAxes().size());
   for (AxisRefAttr axisRefAttr : sdySharding.getUnreducedAxes()) {
-    unreducedAxes.push_back(toAxisRef(axisRefAttr, axisNameToIndex));
+    if (!isManual(axisRefAttr.getName())) {
+      unreducedAxes.push_back(toAxisRef(axisRefAttr, axisNameToIndex));
+    }
   }
 
   SmallVector<AxisRef> manualAxesSharding;

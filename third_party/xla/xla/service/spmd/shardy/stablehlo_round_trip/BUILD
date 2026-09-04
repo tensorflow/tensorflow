@@ -30,6 +30,7 @@ cc_library(
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
