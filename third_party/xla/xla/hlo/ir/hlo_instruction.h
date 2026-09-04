@@ -307,6 +307,7 @@ class HloInstruction {
 
   inline static constexpr char kMainExecutionThread[] = "main";
   inline static constexpr char kHostThread[] = "host";
+  inline static constexpr char kParallelExecutionThread[] = "parallel";
   // Iota based id unique inside parent computation.
   using LocalId = int32_t;
 
