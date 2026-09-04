@@ -671,7 +671,7 @@ TEST_F(HloInstructionUtilsTest, IsTopKStable) {
       p.1.rhs = s32[] parameter(3)
       p.0.lhs = f32[] parameter(0)
       p.0.rhs = f32[] parameter(1)
-      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, type=TOTALORDER
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
     }
 
     ENTRY main {
