@@ -488,5 +488,38 @@ TEST(ResizeBilinearOpTest, ModelWithIncorrectSizeTensorShapeIsRejected) {
 #endif
 }
 
+TEST(ResizeBilinearOpTest, DynamicResizeWithInvalidSizeTensorFails) {
+  class DynamicResizeBilinearOpModel : public SingleOpModel {
+   public:
+    DynamicResizeBilinearOpModel() {
+      input_ = AddInput({TensorType_FLOAT32, {1, 1, 2, 1}});
+      size_ = AddInput({TensorType_INT32, {2}});
+      output_ = AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(BuiltinOperator_RESIZE_BILINEAR,
+                   BuiltinOptions_ResizeBilinearOptions,
+                   CreateResizeBilinearOptions(builder_, false, false).Union());
+      BuildInterpreter({GetShape(input_), GetShape(size_)});
+      PopulateTensor(size_, {1, 3});
+    }
+
+    void SetSizeTensorLength(int length) {
+      TfLiteTensor* size_tensor = interpreter_->tensor(size_);
+      size_tensor->dims->data[0] = length;
+    }
+
+    int GetInputIndex() const { return input_; }
+
+   private:
+    int input_;
+    int size_;
+    int output_;
+  };
+
+  DynamicResizeBilinearOpModel m;
+  m.PopulateTensor<float>(m.GetInputIndex(), {3, 6});
+  m.SetSizeTensorLength(1);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite
