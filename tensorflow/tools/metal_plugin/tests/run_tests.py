@@ -41,7 +41,7 @@ def say(message):
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN = os.environ.get(
     "METAL_PLUGIN",
-    os.path.join(os.path.dirname(HERE), "build", "libmetal_plugin.dylib"))
+    os.path.join(os.path.dirname(HERE), ".build", "libmetal_plugin.dylib"))
 
 _failures = 0
 

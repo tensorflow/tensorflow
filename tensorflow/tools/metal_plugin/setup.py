@@ -70,7 +70,7 @@ class BuildPlugin(build_py):
     super().run()
     target = Path(self.build_lib) / "tensorflow-plugins"
     target.mkdir(parents=True, exist_ok=True)
-    self.copy_file(str(HERE / "build" / "libmetal_plugin.dylib"),
+    self.copy_file(str(HERE / ".build" / "libmetal_plugin.dylib"),
                    str(target / "libmetal_plugin.dylib"))
 
 

@@ -180,7 +180,7 @@ Then either point TensorFlow at it directly:
 
 ```python
 from tensorflow.python.framework import load_library
-load_library.load_pluggable_device_library("build/libmetal_plugin.dylib")
+load_library.load_pluggable_device_library(".build/libmetal_plugin.dylib")
 ```
 
 or install it so that `import tensorflow` finds it:

@@ -20,7 +20,7 @@ TF_LIB explicitly)
 endif
 SDK := $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null)
 
-BUILD := build
+BUILD := .build
 OUT := $(BUILD)/libmetal_plugin.dylib
 
 # Which TensorFlow the objects in $(BUILD) were compiled against.
