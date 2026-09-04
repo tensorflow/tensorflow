@@ -15,6 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <algorithm>
+#include <functional>
+#include <numeric>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include <limits>
