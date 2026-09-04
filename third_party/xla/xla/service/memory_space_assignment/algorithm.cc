@@ -10704,7 +10704,7 @@ std::optional<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidate(
   std::vector<Chunk> chunks = FindBestChunkCandidates(request, preferred_offset,
                                                       &sliced_buffer_interval);
   CHECK_LE(chunks.size(), 1);
-  if (chunks.empty() || chunks[0].chunk_end() > options_.max_size_in_bytes) {
+  if (chunks.empty()) {
     return std::nullopt;
   }
   return chunks[0];
@@ -10713,6 +10713,58 @@ std::optional<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidate(
 std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
     const AllocationRequest& request, const AliasedOffset* preferred_offset,
     SlicedBufferInterval* alternate_mem_interval) const {
+  // Find the maximum size across all shape aliases to ensure that aliased uses
+  // and values (e.g. while-loop state or parent buffers) have sufficient
+  // headroom at the chosen offset.
+  int64_t max_alias_size = request.size;
+  if (request.required_copy_for_slice &&
+      request.required_copy_allocation_for != nullptr &&
+      request.required_copy_allocation_for->operand_count() > 0) {
+    const Shape& parent_shape =
+        request.required_copy_allocation_for->operand(0)->shape();
+    max_alias_size =
+        std::max(max_alias_size,
+                 GetShapeSizeBytes(options_.cost_analysis, parent_shape));
+  }
+  if (request.use != nullptr) {
+    for (const auto& alias : request.use->aliases) {
+      max_alias_size =
+          std::max(max_alias_size,
+                   GetShapeSizeBytes(options_.cost_analysis, alias.shape()));
+    }
+  }
+  if (request.allocation_value != nullptr) {
+    for (const auto& use : request.allocation_value->uses()) {
+      for (const auto& alias : use.aliases) {
+        max_alias_size =
+            std::max(max_alias_size,
+                     GetShapeSizeBytes(options_.cost_analysis, alias.shape()));
+      }
+    }
+  }
+  if (request.allocation_value_to_update != nullptr) {
+    for (const auto& use : request.allocation_value_to_update->uses()) {
+      for (const auto& alias : use.aliases) {
+        max_alias_size =
+            std::max(max_alias_size,
+                     GetShapeSizeBytes(options_.cost_analysis, alias.shape()));
+      }
+    }
+  }
+
+  auto get_min_chunk_start = [](absl::Span<const Chunk> chunks) -> int64_t {
+    CHECK(!chunks.empty());
+    return absl::c_min_element(chunks,
+                               [](const Chunk& c1, const Chunk& c2) {
+                                 return c1.offset < c2.offset;
+                               })
+        ->offset;
+  };
+
+  auto has_sufficient_headroom = [&](int64_t offset, int64_t size) -> bool {
+    return size <= available_heap_size() - offset;
+  };
+
   int64_t end_time = request.end_time;
   if (!preferred_offset) {
     // First find the earliest use that is the same or later than the end time.
@@ -10741,21 +10793,50 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
     (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
           alternate_mem_interval->UpdateEndTime(use);
-          std::vector<Chunk> chunk_candidates =
-              FindChunkCandidates(*alternate_mem_interval);
-          int64_t max_chunk_end =
-              absl::c_max_element(chunk_candidates, [](const Chunk& c1,
-                                                       const Chunk& c2) {
-                return c1.chunk_end() < c2.chunk_end();
-              })->chunk_end();
-          if (max_chunk_end <= options_.max_size_in_bytes) {
-            if (use > latest_matching_use) {
-              last_chunk_candidates = std::move(chunk_candidates);
-              latest_matching_use = use;
+          std::vector<Chunk> chunk_candidates;
+          // If this buffer aliases with larger tensors (e.g. a slice aliasing
+          // with a full parent tensor or while-loop parameter/root) and is
+          // unsliced (num_slices == 1), perform joint placement: evaluate
+          // candidate chunks using max_alias_size so that we select a mutually
+          // viable base offset with sufficient headroom for both this buffer
+          // and its larger aliased tensors in Alternate Memory (VMEM).
+          if (max_alias_size > request.size &&
+              alternate_mem_interval->num_slices() == 1) {
+            MsaBufferInterval joint_interval =
+                alternate_mem_interval->full_buffer_interval();
+            joint_interval.size = max_alias_size;
+            SlicedBufferInterval joint_sliced_interval =
+                SlicedBufferInterval::CreateMutableInterval(joint_interval);
+            joint_sliced_interval.UpdateEndTime(use);
+            std::vector<Chunk> joint_chunks =
+                FindChunkCandidates(joint_sliced_interval);
+            if (!joint_chunks.empty()) {
+              int64_t min_chunk_start = get_min_chunk_start(joint_chunks);
+              if (has_sufficient_headroom(min_chunk_start, max_alias_size)) {
+                chunk_candidates = {
+                    Chunk::FromOffsetSize(min_chunk_start, request.size)};
+              }
             }
-            return true;
+          } else {
+            chunk_candidates = FindChunkCandidates(*alternate_mem_interval);
+            if (!chunk_candidates.empty()) {
+              int64_t min_chunk_start = get_min_chunk_start(chunk_candidates);
+              // Clear candidates if the chunk and all its aliased shapes cannot
+              // fit within the available heap without overflowing into reserved
+              // memory.
+              if (!has_sufficient_headroom(min_chunk_start, max_alias_size)) {
+                chunk_candidates.clear();
+              }
+            }
           }
-          return false;
+          if (chunk_candidates.empty()) {
+            return false;
+          }
+          if (use > latest_matching_use) {
+            last_chunk_candidates = std::move(chunk_candidates);
+            latest_matching_use = use;
+          }
+          return true;
         });
     if (!last_chunk_candidates.empty()) {
       VLOG(3) << "FindBestChunkCandidates earliest use = " << earliest_use
@@ -10771,26 +10852,51 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
     alternate_mem_interval->UpdateEndTime(end_time);
     return last_chunk_candidates;
   }
-  // If a preferred offset is given, try to find an allocation at that offset
-  // only.
+  // If a preferred offset is given, evaluate allocations targeting that
+  // preferred offset. If the buffer aliases with larger tensors (max_alias_size
+  // > request.size) and is unsliced (num_slices == 1), query the preferred
+  // offset using max_alias_size to ensure the offset has sufficient headroom
+  // for the full aliased tensor, and truncate the returned chunk to
+  // request.size.
   alternate_mem_interval->UpdateEndTime(end_time);
-  std::vector<Chunk> chunk_candidates =
-      FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
-  int64_t candidates_start =
-      absl::c_min_element(chunk_candidates, [](const Chunk& c1,
-                                               const Chunk& c2) {
-        return c1.offset < c2.offset;
-      })->offset;
-  int64_t max_chunk_end =
-      absl::c_max_element(chunk_candidates, [](const Chunk& c1,
-                                               const Chunk& c2) {
-        return c1.chunk_end() < c2.chunk_end();
-      })->chunk_end();
-  if (candidates_start == preferred_offset->offset &&
-      max_chunk_end <= options_.max_size_in_bytes) {
-    return chunk_candidates;
+  std::vector<Chunk> chunk_candidates;
+  if (max_alias_size > request.size &&
+      alternate_mem_interval->num_slices() == 1) {
+    // Joint preferred offset evaluation: for unsliced buffers that alias with
+    // larger tensors, query the heap simulator using max_alias_size at
+    // preferred_offset->offset to confirm the full aliased tensor will fit at
+    // this offset.
+    MsaBufferInterval joint_interval =
+        alternate_mem_interval->full_buffer_interval();
+    joint_interval.size = max_alias_size;
+    SlicedBufferInterval joint_sliced_interval =
+        SlicedBufferInterval::CreateMutableInterval(joint_interval);
+    joint_sliced_interval.UpdateEndTime(end_time);
+    std::vector<Chunk> joint_chunks =
+        FindChunkCandidates(joint_sliced_interval, preferred_offset->offset);
+    if (!joint_chunks.empty()) {
+      int64_t min_chunk_start = get_min_chunk_start(joint_chunks);
+      if (min_chunk_start == preferred_offset->offset &&
+          has_sufficient_headroom(min_chunk_start, max_alias_size)) {
+        chunk_candidates = {
+            Chunk::FromOffsetSize(min_chunk_start, request.size)};
+      }
+    }
+  } else {
+    chunk_candidates =
+        FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
+    if (!chunk_candidates.empty()) {
+      int64_t min_chunk_start = get_min_chunk_start(chunk_candidates);
+      // Clear candidates if the allocation does not match the preferred offset
+      // or if any aliased shape lacks sufficient headroom in the heap.
+      if (min_chunk_start != preferred_offset->offset ||
+          !has_sufficient_headroom(min_chunk_start, max_alias_size)) {
+        chunk_candidates.clear();
+      }
+    }
   }
-  return {};
+
+  return chunk_candidates;
 }
 
 bool MsaAlgorithm::IsPositionColoredInAlternateMemory(
