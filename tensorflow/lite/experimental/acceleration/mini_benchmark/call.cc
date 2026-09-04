@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <stddef.h>
 
+#include <cstdint>
 #include <cstring>
 #include <sstream>
-#include <string>
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
