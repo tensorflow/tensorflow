@@ -1509,6 +1509,120 @@ TEST(GroupEventsTest, SubprocessGroupingNoMatchTest) {
                                               ::testing::Pair("producer", 1)));
 }
 
+TEST(GroupEventsTest, GroupTensorFlowLoopWithCrossThreadRegionTest) {
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kIterNum0 = 0;
+  constexpr int64_t kIterNum1 = 1;
+  constexpr int64_t kContextId = 12345;
+  constexpr int64_t kThreadpoolEvent =
+      static_cast<int64_t>(ContextType::kThreadpoolEvent);
+
+  XSpace space;
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
+  host_plane_builder.ReserveLines(2);
+
+  XLineBuilder main_thread = host_plane_builder.GetOrCreateLine(0);
+  // First step dispatch.
+  CreateXEvent(&host_plane_builder, &main_thread, "dispatch_0", 10, 20,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kContextId},
+                {StatType::kIsRoot, int64_t{1}}});
+  // Second step dispatch.
+  CreateXEvent(&host_plane_builder, &main_thread, "dispatch_1", 30, 20,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kContextId},
+                {StatType::kIsRoot, int64_t{1}}});
+
+  XLineBuilder worker_thread = host_plane_builder.GetOrCreateLine(1);
+  // Encompassing Region event (the causal bridge!).
+  CreateXEvent(&host_plane_builder, &worker_thread, kThreadpoolListenerRegion,
+               5, 100,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kContextId}});
+
+  // First step loop root inside the region!
+  CreateXEvent(&host_plane_builder, &worker_thread,
+               HostEventType::kExecutorStateProcess, 15, 30,
+               {{StatType::kStepId, kStepId}, {StatType::kIterNum, kIterNum0}});
+
+  // Second step loop root inside the region!
+  CreateXEvent(&host_plane_builder, &worker_thread,
+               HostEventType::kExecutorStateProcess, 55, 30,
+               {{StatType::kStepId, kStepId}, {StatType::kIterNum, kIterNum1}});
+
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
+
+  // Without the fix, the swallowing bug would cause both steps to be collapsed
+  // into group 0, resulting in group_metadata_map.size() == 1.
+  // With the fix, we expect exactly 2 distinct step groups!
+  EXPECT_EQ(group_metadata_map.size(), 2);
+  ASSERT_TRUE(group_metadata_map.contains(0));
+  EXPECT_EQ(group_metadata_map.at(0).name, "0");
+  ASSERT_TRUE(group_metadata_map.contains(1));
+  EXPECT_EQ(group_metadata_map.at(1).name, "1");
+}
+
+TEST(GroupEventsTest, GroupTensorFlowCustomLoopWithCrossThreadRegionTest) {
+  constexpr int64_t kStepId0 = 0;
+  constexpr int64_t kStepId1 = 1;
+  constexpr int64_t kContextId = 12345;
+  constexpr int64_t kThreadpoolEvent =
+      static_cast<int64_t>(ContextType::kThreadpoolEvent);
+
+  XSpace space;
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  SetXPlanePidIfNotSet(*host_plane, 1);
+  XPlaneBuilder host_plane_builder(host_plane);
+  host_plane_builder.ReserveLines(2);
+
+  XLineBuilder main_thread = host_plane_builder.GetOrCreateLine(0);
+  // First step dispatch.
+  CreateXEvent(&host_plane_builder, &main_thread, "dispatch_0", 10, 20,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kContextId},
+                {StatType::kIsRoot, int64_t{1}}});
+  // Second step dispatch.
+  CreateXEvent(&host_plane_builder, &main_thread, "dispatch_1", 30, 20,
+               {{StatType::kProducerType, kThreadpoolEvent},
+                {StatType::kProducerId, kContextId},
+                {StatType::kIsRoot, int64_t{1}}});
+
+  XLineBuilder worker_thread = host_plane_builder.GetOrCreateLine(1);
+  // Encompassing Region event (the causal bridge!).
+  CreateXEvent(&host_plane_builder, &worker_thread, kThreadpoolListenerRegion,
+               5, 100,
+               {{StatType::kConsumerType, kThreadpoolEvent},
+                {StatType::kConsumerId, kContextId}});
+
+  // First step loop root inside the region!
+  CreateXEvent(&host_plane_builder, &worker_thread,
+               HostEventType::kExecutorStateProcess, 15, 30,
+               {{StatType::kStepId, kStepId0}});
+
+  // Second step loop root inside the region!
+  CreateXEvent(&host_plane_builder, &worker_thread,
+               HostEventType::kExecutorStateProcess, 55, 30,
+               {{StatType::kStepId, kStepId1}});
+
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
+
+  // Without the fix, the swallowing bug would collapse them into group 0!
+  // With the fix, we expect exactly 2 distinct step groups!
+  EXPECT_EQ(group_metadata_map.size(), 2);
+  ASSERT_TRUE(group_metadata_map.contains(0));
+  EXPECT_EQ(group_metadata_map.at(0).name, "dispatch_0 0");
+  ASSERT_TRUE(group_metadata_map.contains(1));
+  EXPECT_EQ(group_metadata_map.at(1).name, "dispatch_1 1");
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl
