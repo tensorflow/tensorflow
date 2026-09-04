@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -59,9 +58,9 @@ TEST_F(MultiOutputFusionTest, TrivialReusedInput) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kTrivialReusedInput));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kTrivialReusedInput));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
   EXPECT_TRUE(changed);
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -98,9 +97,9 @@ TEST_F(MultiOutputFusionTest, DoesNotFuseInsideScanBody) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
   EXPECT_FALSE(changed) << hlo_module->ToString();
 
@@ -139,9 +138,9 @@ TEST_F(MultiOutputFusionTest, DoesNotFuseInsideSortComparator) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
   EXPECT_FALSE(changed) << hlo_module->ToString();
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
@@ -36,9 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -59,11 +58,11 @@ class GenericTransferManagerTest : public ::testing::Test {
       : transfer_manager_(se::host::kHostPlatformId,
                           /*pointer_size=*/sizeof(void*)) {}
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         se::Platform * platform,
         se::PlatformManager::PlatformWithId(se::host::kHostPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream());
+    ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream());
     allocator_ =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             stream_executor_);
@@ -85,8 +84,8 @@ class GenericTransferManagerTest : public ::testing::Test {
 TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
   ScopedShapedBuffer buffer = AllocateBuffer(ShapeUtil::MakeShape(U16, {2, 2}));
   Literal literal = LiteralUtil::CreateR2<uint16_t>({{1, 2}, {3, 4}});
-  TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
-                                                         buffer));
+  ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
+                                                      buffer));
 
   se::DeviceAddressBase device_mem = buffer.buffers().element({});
   auto* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
@@ -119,8 +118,8 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
     transfer_manager_.pack_subbyte_types_ = pack;
     ScopedShapedBuffer buffer =
         AllocateBuffer(ShapeUtil::MakeShape(S4, {2, 2}));
-    TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(),
-                                                           literal, buffer));
+    ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
+                                                        buffer));
     se::DeviceAddressBase device_mem = buffer.buffers().element({});
     ASSERT_EQ(device_mem.size(), pack ? 2 : 4);
     auto* device_ptr = static_cast<int8_t*>(device_mem.opaque());
@@ -143,7 +142,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDevice) {
     device_ptr[i] = i + 1;
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal literal,
       transfer_manager_.TransferManager::TransferLiteralFromDevice(
           stream_.get(), buffer));
@@ -172,7 +171,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
       device_ptr[3] = 4;
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Literal literal,
         transfer_manager_.TransferManager::TransferLiteralFromDevice(
             stream_.get(), buffer));
@@ -184,8 +183,8 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
 
 TEST_F(GenericTransferManagerTest, ChooseCompactLayoutForShape) {
   auto shape = ShapeUtil::MakeShape(S4, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto compact_shape,
-                          transfer_manager_.ChooseCompactLayoutForShape(shape));
+  ASSERT_OK_AND_ASSIGN(auto compact_shape,
+                       transfer_manager_.ChooseCompactLayoutForShape(shape));
   EXPECT_TRUE(Shape::Equal().IgnoreLayout()(compact_shape, shape));
   EXPECT_EQ(compact_shape.layout().element_size_in_bits(), 4);
 }

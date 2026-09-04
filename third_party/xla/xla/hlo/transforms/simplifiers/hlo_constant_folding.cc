@@ -449,6 +449,160 @@ absl::StatusOr<bool> PropagateIdenticalConstantArguments(
 
 }  // namespace
 
+absl::StatusOr<bool> HloConstantFolding::RunOnComputation(
+    HloComputation* computation, HloEvaluator* evaluator,
+    absl::flat_hash_map<HloComputation*, bool>& is_foldable_computation) {
+  bool changed = false;
+
+  // If the computation is only used by call instructions, check whether for
+  // any of the parameters of the computation, the argument passed by the
+  // call-sites is always the same constant. In that case, we can sink the
+  // parameter into the computation before we perform constant folding on its
+  // body.
+  if (absl::c_all_of(computation->caller_instructions(),
+                     [](HloInstruction* instruction) {
+                       return instruction->opcode() == HloOpcode::kCall;
+                     })) {
+    ABSL_ASSIGN_OR_RETURN(bool did_change,
+                     PropagateIdenticalConstantArguments(computation));
+    changed |= did_change;
+  }
+  // Instructions removed while folding earlier entries of the snapshot
+  // iterated below. Removed entries (e.g. the get-tuple-element users of a
+  // folded tuple shaped producer, which appear after the producer in post
+  // order) are recognized by pointer identity and skipped without being
+  // dereferenced.
+  absl::flat_hash_set<const HloInstruction*> removed_instructions;
+  for (auto* instruction : computation->MakeInstructionPostOrder()) {
+    if (removed_instructions.contains(instruction)) {
+      continue;
+    }
+    // Skip dead code.
+    if (instruction->IsDead()) {
+      continue;
+    }
+
+    // We only handle instructions where
+    //
+    //  - at least one operand is a constant, and
+    //  - all other operands are either constants or broadcast(constant).
+    //
+    // Why this particular set of rules around broadcasts?
+    //
+    //  - We don't want to fold broadcast(constant) on its own, because in
+    //    general it's "simpler" to remember that it's a broadcast.  Also,
+    //    algsimp will fold an all-one-value constant into a broadcast, so
+    //    we'd just end up fighting with it.
+    //
+    //  - We don't want to fold an op where all operands are broadcasts of
+    //    constants, because algsimp will transform op(broadcast(constant) =>
+    //    broadcast(op(constant)).  Then we can constant-fold the smaller op.
+    //
+    //  - So the only remaining case is where some but not all operands are
+    //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
+    //
+    if (options_.level == HloConstantFolding::Level::kDefault &&
+        !AnyOperandsConstant(instruction)) {
+      continue;
+    }
+    if (!AllOperandsConstantOrBroadcastConstant(instruction)) {
+      continue;
+    }
+
+    // Don't fold Constant, Parameter, and Tuple instructions.  Tuple
+    // constants are not directly supported by any backends, hence folding
+    // Tuple is not useful and would in fact be expanded back into kTuple by
+    // Algebraic Simplifier.
+    //
+    // (We do allow folding subcomputations that contain these instructions.)
+    if (instruction->opcode() == HloOpcode::kParameter ||
+        instruction->opcode() == HloOpcode::kConstant ||
+        instruction->opcode() == HloOpcode::kTuple) {
+      continue;
+    }
+
+    if (!IsFoldable(instruction, options_, is_foldable_computation)) {
+      continue;
+    }
+
+    // In layout sensitive mode a tuple shaped constant may never be
+    // materialized: fold a tuple shaped producer by rewriting each of its
+    // get-tuple-element users to a leaf constant instead.
+    const bool rewrite_tuple_users =
+        options_.is_layout_sensitive && instruction->shape().IsTuple();
+    if (rewrite_tuple_users && !CanRewriteTupleUsers(instruction)) {
+      continue;
+    }
+    VLOG(5) << "Constant folding: " << instruction->ToString();
+
+    absl::Duration slow_timeout =
+        absl::Seconds(uint64_t{1} << slow_op_counter_.load());
+    SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
+#if NDEBUG
+      absl::string_view explanation_msg =
+          "This isn't necessarily a bug; constant-folding is "
+          "inherently a trade-off between compilation time and speed "
+          "at runtime. XLA has some guards that attempt to keep "
+          "constant folding from taking too long, but fundamentally "
+          "you'll always be able to come up with an input program that "
+          "takes a long time.\n\n"
+          "If you'd like to file a bug, run with envvar "
+          "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.";
+#else
+      absl::string_view explanation_msg =
+          "XLA was built without compiler optimizations, which can be "
+          "slow. Try rebuilding with -c opt.";
+#endif
+      return absl::StrFormat(
+          "Constant folding an instruction is taking > %s:\n\n"
+          "  %s\n\n"  // instruction->name() or instruction->ToString()
+          "%s",       // explanation_msg
+          absl::FormatDuration(slow_timeout), instruction->ToString(),
+          explanation_msg);
+    });
+
+    // Currently we skip unimplemented operations.
+    Literal result;
+    if (!evaluator->TryEvaluate(
+            instruction, &result,
+            /*recursively_evaluate_nonconstant_operands=*/true)) {
+      VLOG(2) << "Constant folding failed for instruction: "
+              << instruction->ToString();
+      continue;
+    }
+
+    slow_alarm.cancel();
+    if (slow_alarm.fired()) {
+      slow_op_counter_++;
+    }
+
+    VLOG(4) << "Constant folded: " << instruction->ToString();
+    changed = true;
+    if (rewrite_tuple_users) {
+      std::vector<Literal> leaves = result.DecomposeTuple();
+      std::vector<HloInstruction*> users(instruction->users().begin(),
+                                         instruction->users().end());
+      for (HloInstruction* user : users) {
+        if (!user->IsDead()) {
+          HloInstruction* leaf_constant =
+              user->AddInstruction(MakeFoldedConstant(
+                  leaves[user->tuple_index()].Clone(), user->shape()));
+          ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(leaf_constant));
+        }
+        ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
+            *computation, user, removed_instructions));
+      }
+    } else {
+      HloInstruction* new_constant = instruction->AddInstruction(
+          MakeFoldedConstant(std::move(result), instruction->shape()));
+      ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
+      ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
+          *computation, instruction, removed_instructions));
+    }
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> HloConstantFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -470,168 +624,12 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
 
   // Visit computations in reverse post-order, so that we can propagate constant
   // arguments from callers to callees.
-  absl::flat_hash_set<const HloComputation*> live_computations;
   for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
     HloComputation* computation = *it;
-    // If all callers were folded, skip instruction folding entirely.
-    if (!computation->IsEntryComputation()) {
-      bool has_live_caller =
-          absl::c_any_of(computation->caller_instructions(),
-                         [&](const HloInstruction* caller) {
-                           return live_computations.contains(caller->parent());
-                         });
-      if (!has_live_caller) {
-        continue;
-      }
-    }
-    live_computations.insert(computation);
-
-    // If the computation is only used by call instructions, check whether for
-    // any of the parameters of the computation, the argument passed by the
-    // call-sites is always the same constant. In that case, we can sink the
-    // parameter into the computation before we perform constant folding on its
-    // body.
-    if (absl::c_all_of(computation->caller_instructions(),
-                       [](HloInstruction* instruction) {
-                         return instruction->opcode() == HloOpcode::kCall;
-                       })) {
-      ABSL_ASSIGN_OR_RETURN(bool did_change,
-                       PropagateIdenticalConstantArguments(computation));
-      changed |= did_change;
-    }
-    // Instructions removed while folding earlier entries of the snapshot
-    // iterated below. Removed entries (e.g. the get-tuple-element users of a
-    // folded tuple shaped producer, which appear after the producer in post
-    // order) are recognized by pointer identity and skipped without being
-    // dereferenced.
-    absl::flat_hash_set<const HloInstruction*> removed_instructions;
-    for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      if (removed_instructions.contains(instruction)) {
-        continue;
-      }
-      // Skip dead code.
-      if (instruction->IsDead()) {
-        continue;
-      }
-
-      // We only handle instructions where
-      //
-      //  - at least one operand is a constant, and
-      //  - all other operands are either constants or broadcast(constant).
-      //
-      // Why this particular set of rules around broadcasts?
-      //
-      //  - We don't want to fold broadcast(constant) on its own, because in
-      //    general it's "simpler" to remember that it's a broadcast.  Also,
-      //    algsimp will fold an all-one-value constant into a broadcast, so
-      //    we'd just end up fighting with it.
-      //
-      //  - We don't want to fold an op where all operands are broadcasts of
-      //    constants, because algsimp will transform op(broadcast(constant) =>
-      //    broadcast(op(constant)).  Then we can constant-fold the smaller op.
-      //
-      //  - So the only remaining case is where some but not all operands are
-      //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
-      //
-      if (options_.level == HloConstantFolding::Level::kDefault &&
-          !AnyOperandsConstant(instruction)) {
-        continue;
-      }
-      if (!AllOperandsConstantOrBroadcastConstant(instruction)) {
-        continue;
-      }
-
-      // Don't fold Constant, Parameter, and Tuple instructions.  Tuple
-      // constants are not directly supported by any backends, hence folding
-      // Tuple is not useful and would in fact be expanded back into kTuple by
-      // Algebraic Simplifier.
-      //
-      // (We do allow folding subcomputations that contain these instructions.)
-      if (instruction->opcode() == HloOpcode::kParameter ||
-          instruction->opcode() == HloOpcode::kConstant ||
-          instruction->opcode() == HloOpcode::kTuple) {
-        continue;
-      }
-
-      if (!IsFoldable(instruction, options_, is_foldable_computation)) {
-        continue;
-      }
-
-      // In layout sensitive mode a tuple shaped constant may never be
-      // materialized: fold a tuple shaped producer by rewriting each of its
-      // get-tuple-element users to a leaf constant instead.
-      const bool rewrite_tuple_users =
-          options_.is_layout_sensitive && instruction->shape().IsTuple();
-      if (rewrite_tuple_users && !CanRewriteTupleUsers(instruction)) {
-        continue;
-      }
-      VLOG(5) << "Constant folding: " << instruction->ToString();
-
-      absl::Duration slow_timeout =
-          absl::Seconds(uint64_t{1} << slow_op_counter_.load());
-      SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
-#if NDEBUG
-        absl::string_view explanation_msg =
-            "This isn't necessarily a bug; constant-folding is "
-            "inherently a trade-off between compilation time and speed "
-            "at runtime. XLA has some guards that attempt to keep "
-            "constant folding from taking too long, but fundamentally "
-            "you'll always be able to come up with an input program that "
-            "takes a long time.\n\n"
-            "If you'd like to file a bug, run with envvar "
-            "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.";
-#else
-        absl::string_view explanation_msg =
-            "XLA was built without compiler optimizations, which can be "
-            "slow. Try rebuilding with -c opt.";
-#endif
-        return absl::StrFormat(
-            "Constant folding an instruction is taking > %s:\n\n"
-            "  %s\n\n"  // instruction->name() or instruction->ToString()
-            "%s",       // explanation_msg
-            absl::FormatDuration(slow_timeout), instruction->ToString(),
-            explanation_msg);
-      });
-
-      // Currently we skip unimplemented operations.
-      Literal result;
-      if (!evaluator->TryEvaluate(
-              instruction, &result,
-              /*recursively_evaluate_nonconstant_operands=*/true)) {
-        VLOG(2) << "Constant folding failed for instruction: "
-                << instruction->ToString();
-        continue;
-      }
-
-      slow_alarm.cancel();
-      if (slow_alarm.fired()) {
-        slow_op_counter_++;
-      }
-
-      VLOG(4) << "Constant folded: " << instruction->ToString();
-      changed = true;
-      if (rewrite_tuple_users) {
-        std::vector<Literal> leaves = result.DecomposeTuple();
-        std::vector<HloInstruction*> users(instruction->users().begin(),
-                                           instruction->users().end());
-        for (HloInstruction* user : users) {
-          if (!user->IsDead()) {
-            HloInstruction* leaf_constant =
-                user->AddInstruction(MakeFoldedConstant(
-                    leaves[user->tuple_index()].Clone(), user->shape()));
-            ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(leaf_constant));
-          }
-          ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
-              *computation, user, removed_instructions));
-        }
-      } else {
-        HloInstruction* new_constant = instruction->AddInstruction(
-            MakeFoldedConstant(std::move(result), instruction->shape()));
-        ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
-        ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
-            *computation, instruction, removed_instructions));
-      }
-    }
+    ABSL_ASSIGN_OR_RETURN(bool computation_changed,
+                     RunOnComputation(computation, evaluator.get(),
+                                      is_foldable_computation));
+    changed |= computation_changed;
   }
   return changed;
 }
