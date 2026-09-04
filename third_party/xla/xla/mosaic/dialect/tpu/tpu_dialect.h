@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
@@ -145,6 +146,11 @@ LogicalResult verifyScatter(Operation* op, ArrayRef<int64_t> updates_shape,
 #include "xla/mosaic/dialect/tpu/tpu_passes.h.inc"
 
 constexpr std::string_view kLeadingTileRows = "leading_tile_rows";
+// Unit attribute of a memref function argument whose tiles are stored strip
+// major: the tiles of every 128 lane column strip are contiguous (tile stride 1
+// along the second minor dimension) and the strips follow each other. Together
+// with kLeadingTileRows this describes XLA's dynamic tiling T(*,128)(rows,128).
+constexpr absl::string_view kStripMajorTiles = "strip_major_tiles";
 
 }  // namespace tpu
 }  // namespace mlir

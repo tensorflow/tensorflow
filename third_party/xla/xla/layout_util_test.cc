@@ -355,6 +355,34 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
             "bf16[8,2,3,1004]{3,2,1,0:T(2,*,*,128)}");
 }
 
+TEST_F(LayoutUtilTest, CombineDimensionTile) {
+  // T(*,128)(8,128) on [20,256]: the top level tile spans all rows, rounded
+  // up to the next tile level, so it resolves to (24,128).
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {20, 256}, {1, 0},
+      {Tile({Tile::kCombineDimension, 128}), Tile({8, 128})});
+  EXPECT_THAT(LayoutUtil::ResolvedTiles(shape),
+              ElementsAre(Tile({24, 128}), Tile({8, 128})));
+  EXPECT_EQ(ShapeUtil::ArraySize(shape), 24 * 256 * 4);
+  // (1, 0) is row 1 of the first column strip.
+  EXPECT_EQ(LayoutUtil::LinearIndex(shape, {1, 0}), 128);
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {1, 0}), 128);
+  // (0, 128) is row 0 of the second column strip, which starts after all 24
+  // padded rows of the first strip.
+  EXPECT_EQ(LayoutUtil::LinearIndex(shape, {0, 128}), 24 * 128);
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {0, 128}), 24 * 128);
+  EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape, 24 * 128 + 1),
+              ElementsAre(0, 129));
+  // Only the top level tile may combine dimensions.
+  Shape nested = ShapeUtil::MakeShape(F32, {20, 256});
+  *nested.mutable_layout() =
+      Layout({1, 0}, {Tile({Tile::kCombineDimension, 128}),
+                      Tile({Tile::kCombineDimension, 128})});
+  auto status = LayoutUtil::ValidateLayoutInShape(nested);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("top level tile"));
+}
+
 TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {0, 1});
   auto status =

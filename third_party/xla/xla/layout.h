@@ -52,7 +52,7 @@ class Tile {
     Tile tile;
     tile.dimensions_.reserve(tile_proto.dimensions_size());
     for (int64_t dimension : tile_proto.dimensions()) {
-      TF_RET_CHECK(dimension >= 0);
+      TF_RET_CHECK(dimension >= 0 || dimension == kCombineDimension);
       tile.add_dimensions(dimension);
     }
     return tile;
@@ -71,10 +71,8 @@ class Tile {
 
   // Prints the Tile in the following format:
   // (dimension_1,dimension_2,...).
-  // For example, (*,*,2,*,8) means that the tile has 2 dimensions, and the
-  // dimension sizes are 2 and 8. '*' means the corresponding dimension in
-  // the shape should be combined with the next more minor dimension before
-  // tiling.
+  // For example, (*,128) prints a tile whose first dimension is
+  // kCombineDimension (see below) and whose second dimension is 128.
   void Print(Printer* printer) const;
   std::string ToString() const;
 
@@ -94,8 +92,11 @@ class Tile {
     return *this;
   }
 
-  // This dimension size means the corresponding dimension in the shape is
-  // combined with the next minor dimension before tiling is applied.
+  // This dimension size means the tile spans the whole corresponding dimension
+  // of the shape, i.e. the dimension is combined into the tile. The next tile
+  // level (if any) pads the combined dimension within the tile. For example,
+  // f32[R,C]{1,0:T(*,128)(8,128)} stores each 128 lane column strip
+  // contiguously with all of its RoundUp(R,8) rows.
   static constexpr int64_t kCombineDimension =
       std::numeric_limits<int64_t>::min();
 
