@@ -255,6 +255,13 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   // Compute some constants for various pieces of the cache.
   RuntimeShape shape(GetTensorShape(key));
   const int64_t num_slots_needed = shape.Dims(1);
+  if (num_slots_needed <= 0 || num_slots_needed > max_num_entries) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "num_slots_needed (%d) must be positive and <= max_num_entries (%d)",
+        num_slots_needed, max_num_entries);
+    return kTfLiteError;
+  }
   const int elements_in_one_entry = shape.Dims(2) * shape.Dims(3);
   const int elements_in_one_block =
       op_data->max_num_entries * elements_in_one_entry;
@@ -328,6 +335,14 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
 
   // Recompute the first slot in case any shifting occurred.
   first_slot = input_first_idx - op_data->first_slot_index;
+  if (first_slot < 0 || first_slot + num_slots_needed > max_num_entries) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Invalid first_slot (%d) or num_slots_needed (%d) for "
+        "max_num_entries (%d)",
+        first_slot, num_slots_needed, max_num_entries);
+    return kTfLiteError;
+  }
   const int64_t bytes_offset_for_cache = first_slot * num_bytes_per_tensor;
 
   // 4. Put the key and value in their respective caches.
