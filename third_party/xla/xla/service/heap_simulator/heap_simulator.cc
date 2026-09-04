@@ -342,6 +342,17 @@ absl::Status HeapSimulator::RunComputation(
 
   auto& buffer_live_ranges = hlo_live_range->buffer_live_ranges();
 
+  // A value used as the base of a "view" (a value colored options_.view_color,
+  // an address into the base's buffer with no storage of its own) is read
+  // through the view by the view's consumers at later schedule times. Extend
+  // the base's live range to the view's last transitive reader before the
+  // define/free events are laid out, so the buffer cannot be recycled while a
+  // reader still loads from it.
+  if (options_.view_color.has_value()) {
+    ExtendViewBaseLiveRanges(hlo_live_range, dataflow_analysis,
+                             *options_.view_color);
+  }
+
   for (const HloValue* value : dataflow_analysis.values()) {
     // Ignore buffers that are not tracked.
     if (!buffer_live_ranges.contains(value)) {

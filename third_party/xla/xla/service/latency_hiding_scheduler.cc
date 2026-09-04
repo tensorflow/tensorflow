@@ -3476,6 +3476,44 @@ void HloScheduleGraph::AnnotateGraph(
   }
 }
 
+bool DefaultSchedulerCore::DefaultSchedulingInstructionCrossesOverlapLimit(
+    const SchedulingState& sched_state, const HloGraphNode* node) {
+  if (!node->HasRecursiveResources()) {
+    return false;
+  }
+  const HloInstruction& instr = node->GetInstr();
+  const bool is_nested_sync_comp = !instr.called_computations().empty() &&
+                                   instr.opcode() != HloOpcode::kAsyncStart &&
+                                   instr.opcode() != HloOpcode::kAsyncDone;
+
+  auto& num_resources_needed = node->GetRecursiveResources();
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [resource, count] : num_resources_needed) {
+    auto it = sched_state.max_concurrent_resource.find(resource);
+    if (it == sched_state.max_concurrent_resource.end()) {
+      continue;
+    }
+    if (is_nested_sync_comp &&
+        sched_state.async_tracker->IsInorderResource(resource)) {
+      int64_t total_capacity =
+          sched_state.async_tracker->GetNumAvailableResources(resource);
+      if (it->second < total_capacity) {
+        VLOG(5) << "In-order resource " << resource
+                << " currently has outer in-flight operations (available "
+                << it->second << " < total " << total_capacity
+                << "). Cannot schedule nested computation " << instr.name();
+        return true;
+      }
+    }
+    if (count > it->second) {
+      VLOG(5) << "Cross overlap limit for resource: " << resource
+              << " count: " << count << " limit: " << it->second;
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::Status DefaultSchedulerCore::InitializeScheduler(
     const HloModule* module) {
   module_ = module;
@@ -3545,24 +3583,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
 
   if (!scheduling_instruction_crosses_overlap_limit_) {
     scheduling_instruction_crosses_overlap_limit_ =
-        [](const SchedulingState& sched_state, const HloGraphNode* node) {
-          if (!node->HasRecursiveResources()) {
-            return false;
-          }
-          auto& num_resources_needed = node->GetRecursiveResources();
-          for (const auto& [resource, count] : num_resources_needed) {
-            auto it = sched_state.max_concurrent_resource.find(resource);
-            if (it == sched_state.max_concurrent_resource.end()) {
-              continue;
-            }
-            if (count > it->second) {
-              VLOG(5) << "Cross overlap limit for resource: " << resource
-                      << " count: " << count << " limit: " << it->second;
-              return true;
-            }
-          }
-          return false;
-        };
+        DefaultSchedulingInstructionCrossesOverlapLimit;
     is_default_scheduling_instruction_crosses_overlap_limit_ = true;
   }
   return absl::OkStatus();
