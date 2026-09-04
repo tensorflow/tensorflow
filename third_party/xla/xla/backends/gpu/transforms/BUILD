@@ -274,6 +274,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:ir_emission_utils",
@@ -1854,6 +1855,7 @@ cc_library(
     srcs = ["explicit_stream_annotation_async_wrapper.cc"],
     hdrs = ["explicit_stream_annotation_async_wrapper.h"],
     deps = [
+        ":stream_attribute_async_wrapper",
         "//xla:side_effect_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -1876,6 +1878,7 @@ xla_cc_test(
     srcs = ["explicit_stream_annotation_async_wrapper_test.cc"],
     deps = [
         ":explicit_stream_annotation_async_wrapper",
+        ":stream_attribute_async_wrapper",
         "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -3635,6 +3638,8 @@ cc_library(
     srcs = ["topk_specializer.cc"],
     hdrs = ["topk_specializer.h"],
     deps = [
+        "//xla:comparison_util",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -3650,6 +3655,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -3658,6 +3664,9 @@ cc_library(
 xla_test(
     name = "topk_specializer_test",
     srcs = ["topk_specializer_test.cc"],
+    backend_tags = {
+        "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
+    },
     backends = ["gpu"],
     shard_count = 10,
     deps = [
@@ -3666,6 +3675,7 @@ xla_test(
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/testlib:filecheck",
         "//xla/service:topk_rewriter",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",

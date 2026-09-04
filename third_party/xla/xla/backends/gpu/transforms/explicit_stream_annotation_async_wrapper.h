@@ -32,8 +32,6 @@ namespace xla::gpu {
 // asynchronized, using AsyncStart/Done pairs to achieve asynchronous execution.
 class ExplicitStreamAnnotationAsyncWrapper : public HloModulePass {
  public:
-  inline static constexpr char kMainExecutionThread[] = "main";
-
   absl::string_view name() const override {
     return "explicit-stream-annotation-async-wrapper";
   }
