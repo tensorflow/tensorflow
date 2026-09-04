@@ -15,24 +15,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "xla/client/client_library.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
@@ -113,31 +115,40 @@ TEST(ConvertGraphDefToXla, Sum) {
   GraphDef graph_def = SumGraph();
   tf2xla::Config config = SumConfig();
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          xla::GetPjRtCpuClient(xla::CpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
+
   xla::XlaComputation computation;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, compiler, &computation,
+                                    client.get()));
 
   // Set up arguments.
   auto x_literal = xla::LiteralUtil::CreateR0<int32_t>(10);
   auto y_literal = xla::LiteralUtil::CreateR0<int32_t>(32);
-  auto x_global_or = client->TransferToServer(x_literal);
-  auto y_global_or = client->TransferToServer(y_literal);
-  TF_EXPECT_OK(x_global_or.status());
-  TF_EXPECT_OK(y_global_or.status());
-  std::unique_ptr<xla::GlobalData> x_global = std::move(x_global_or.value());
-  std::unique_ptr<xla::GlobalData> y_global = std::move(y_global_or.value());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto x_buf,
+      client->BufferFromHostLiteral(x_literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto y_buf,
+      client->BufferFromHostLiteral(y_literal, client->memory_spaces()[0]));
 
   // Execute and check result.
-  auto result_or =
-      client->ExecuteAndTransfer(computation, {x_global.get(), y_global.get()});
-  TF_EXPECT_OK(result_or.status());
-  xla::Literal result = std::move(result_or.value());
-  EXPECT_EQ("(\ns32[] 42\n)", result.ToString());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_exec,
+      client->CompileAndLoad(computation, xla::CompileOptions{}));
+  xla::ExecuteOptions execute_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto results,
+      loaded_exec->Execute({{x_buf.get(), y_buf.get()}}, execute_options));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, results[0][0]->ToLiteralSync());
+  EXPECT_EQ(42, result->Get<int32_t>({}));
 
   config.mutable_feed(0)->mutable_id()->set_output_index(
       123); /* invalid output_index */
-  EXPECT_TRUE(absl::IsInvalidArgument(
-      ConvertGraphDefToXla(graph_def, config, client, &computation)));
+  EXPECT_TRUE(absl::IsInvalidArgument(ConvertGraphDefToXla(
+      graph_def, config, compiler, &computation, client.get())));
 }
 
 GraphDef EinsumGraph(DataType dtype = DT_FLOAT) {
@@ -180,9 +191,10 @@ TEST(ConvertGraphDefToXla, EinsumIsConvertedToDotWithDefaultPrecision) {
   GraphDef graph_def = EinsumGraph();
   tf2xla::Config config = EinsumConfig();
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
   xla::XlaComputation computation;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, compiler, &computation));
 
   int num_dots = 0;
   const xla::HloModuleProto& module_proto = computation.proto();
@@ -209,9 +221,10 @@ TEST_F(ConvertGraphDefToXlaWithTF32Disabled,
   GraphDef graph_def = EinsumGraph();
   tf2xla::Config config = EinsumConfig();
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
   xla::XlaComputation computation;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, compiler, &computation));
 
   int num_dots = 0;
   const xla::HloModuleProto& module_proto = computation.proto();
@@ -238,9 +251,10 @@ TEST_F(ConvertGraphDefToXlaWithTF32Disabled,
   GraphDef graph_def = EinsumGraph(DT_BFLOAT16);
   tf2xla::Config config = EinsumConfig();
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
   xla::XlaComputation computation;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, compiler, &computation));
 
   int num_dots = 0;
   const xla::HloModuleProto& module_proto = computation.proto();
@@ -300,9 +314,10 @@ TEST(ConvertGraphDefToXla, Conv2DIsConvertedToConvolutionWithDefaultPrecision) {
   GraphDef graph_def = Conv2DGraph();
   tf2xla::Config config = Conv2DConfig();
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
   xla::XlaComputation computation;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, compiler, &computation));
 
   int num_convolutions = 0;
   const xla::HloModuleProto& module_proto = computation.proto();
@@ -329,9 +344,10 @@ TEST_F(ConvertGraphDefToXlaWithTF32Disabled,
   GraphDef graph_def = Conv2DGraph();
   tf2xla::Config config = Conv2DConfig();
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
   xla::XlaComputation computation;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, compiler, &computation));
 
   int num_convolutions = 0;
   const xla::HloModuleProto& module_proto = computation.proto();
@@ -362,30 +378,39 @@ TEST(ConvertGraphDefToXla, SumWithUnusedArgument) {
   (*unused->mutable_attr())["dtype"] = TypeAttrValue(DT_INT32);
   config.add_feed()->mutable_id()->set_node_name("unused");
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          xla::GetPjRtCpuClient(xla::CpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
+
   xla::XlaComputation computation;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, compiler, &computation,
+                                    client.get()));
 
   // Set up arguments.
   auto x_literal = xla::LiteralUtil::CreateR0<int32_t>(10);
   auto y_literal = xla::LiteralUtil::CreateR0<int32_t>(32);
-  auto x_global_or = client->TransferToServer(x_literal);
-  auto y_global_or = client->TransferToServer(y_literal);
-  auto unused_global_or = client->TransferToServer(y_literal);
-  TF_EXPECT_OK(x_global_or.status());
-  TF_EXPECT_OK(y_global_or.status());
-  TF_EXPECT_OK(unused_global_or.status());
-  std::unique_ptr<xla::GlobalData> x_global = std::move(x_global_or.value());
-  std::unique_ptr<xla::GlobalData> y_global = std::move(y_global_or.value());
-  std::unique_ptr<xla::GlobalData> unused_global =
-      std::move(unused_global_or.value());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto x_buf,
+      client->BufferFromHostLiteral(x_literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto y_buf,
+      client->BufferFromHostLiteral(y_literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto unused_buf,
+      client->BufferFromHostLiteral(y_literal, client->memory_spaces()[0]));
 
   // Execute and check result.
-  auto result_or = client->ExecuteAndTransfer(
-      computation, {x_global.get(), y_global.get(), unused_global.get()});
-  TF_EXPECT_OK(result_or.status());
-  xla::Literal result = std::move(result_or.value());
-  EXPECT_EQ("(\ns32[] 42\n)", result.ToString());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_exec,
+      client->CompileAndLoad(computation, xla::CompileOptions{}));
+  xla::ExecuteOptions execute_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto results,
+      loaded_exec->Execute({{x_buf.get(), y_buf.get(), unused_buf.get()}},
+                           execute_options));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, results[0][0]->ToLiteralSync());
+  EXPECT_EQ(42, result->Get<int32_t>({}));
 }
 
 }  // namespace

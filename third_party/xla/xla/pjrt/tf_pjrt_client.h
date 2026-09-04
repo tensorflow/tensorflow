@@ -182,6 +182,14 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
   void Delete() override { return wrapped_->Delete(); }
   bool IsDeleted() const override { return wrapped_->IsDeleted(); }
 
+  PjRtExecutable* GetExecutable() const override {
+    return wrapped_->GetExecutable();
+  }
+
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    return wrapped_->GetCompiledMemoryStats();
+  }
+
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();
   }

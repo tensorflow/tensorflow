@@ -16,10 +16,6 @@ limitations under the License.
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
-// TODO(b/282059652): This test currently only runs inside Google because PJRT
-// in GPU device is not buildable in open-source environment. Resolve the issue
-// and enable the test in open-source.
-#if defined(PLATFORM_GOOGLE)
 
 #include <cstdint>
 #include <memory>
@@ -130,7 +126,6 @@ class PjRtExecutionUtilGpuTest : public OpsTestBase {
       delete tensor;
     }
     tensors_.clear();
-    device_context_->Unref();
     core::ScopedUnref device_compiler_ref(device_compiler_);
     core::ScopedUnref profiler_ref(profiler_);
   }
@@ -224,8 +219,8 @@ TEST_F(PjRtExecutionUtilGpuTest, PreparePjRtExecutableArguments) {
   std::vector<int> input_mapping{3, 4};
   std::vector<VariableInfo> variables;
 
-  auto pjrt_device =
-      pjrt_client_->LookupAddressableDevice(device_->parsed_name().id);
+  auto pjrt_device = pjrt_client_->LookupAddressableDevice(
+      xla::LocalDeviceId(device_->parsed_name().id));
   TF_EXPECT_OK(pjrt_device.status());
 
   std::vector<xla::PjRtBuffer*> exec_args;
@@ -252,5 +247,4 @@ TEST_F(PjRtExecutionUtilGpuTest, PreparePjRtExecutableArguments) {
 }  // namespace
 }  // namespace tensorflow
 
-#endif  // PLATFORM_GOOGLE
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

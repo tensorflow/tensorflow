@@ -15,38 +15,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 
-#include <map>
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/aot/aot_only_var_handle_op.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -56,8 +49,9 @@ namespace {
 // graph symbolically, with each op building up the XLA HLO.
 absl::Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
                                const tf2xla::Config& config,
-                               xla::Client* client,
-                               xla::XlaComputation* computation) {
+                               xla::PjRtCompiler* compiler,
+                               xla::XlaComputation* computation,
+                               xla::PjRtClient* client) {
   XlaOpRegistry::RegisterCompilationKernels();
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(
@@ -69,19 +63,20 @@ absl::Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   PopulateXlaArgs(config, &xla_args);
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
+  compiler_options.compiler = compiler;
   compiler_options.client = client;
   compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
 
-  XlaCompiler compiler(compiler_options);
+  XlaCompiler xla_compiler(compiler_options);
 
   XlaCompiler::CompilationResult result;
 
   XlaCompiler::CompileOptions options;
   options.alias_resource_update = true;
-  TF_RETURN_IF_ERROR(compiler.CompileGraph(
+  TF_RETURN_IF_ERROR(xla_compiler.CompileGraph(
       options, "tfcompile", std::move(graph), xla_args, &result));
   *computation = std::move(*result.computation);
 
@@ -159,13 +154,14 @@ absl::Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
 
 absl::Status ConvertGraphDefToXla(GraphDef graph_def,
                                   const tf2xla::Config& config,
-                                  xla::Client* client,
-                                  xla::XlaComputation* computation) {
+                                  xla::PjRtCompiler* compiler,
+                                  xla::XlaComputation* computation,
+                                  xla::PjRtClient* client) {
   std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(ConvertVarHandlesToAotVarHandles(&graph_def));
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
-  TF_RETURN_IF_ERROR(
-      ConvertGraphToXla(std::move(graph), config, client, computation));
+  TF_RETURN_IF_ERROR(ConvertGraphToXla(std::move(graph), config, compiler,
+                                       computation, client));
   return absl::OkStatus();
 }
 

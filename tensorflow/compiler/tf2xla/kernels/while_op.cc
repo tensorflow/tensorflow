@@ -159,7 +159,7 @@ absl::Status ConvertLoopInvariantsToConst(
     const NameAttrList& cond_name_attr,
     std::vector<XlaCompiler::Argument>* args,
     std::vector<bool>* compile_time_const_arg_indices,
-    int* num_compile_time_const_args, xla::Client* client) {
+    int* num_compile_time_const_args) {
   std::vector<bool> loop_invariants(ctx->num_inputs());
   GetLoopInvariants(ctx, body_name_attr, &loop_invariants);
 
@@ -381,7 +381,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ConvertLoopInvariantsToConst(
                             ctx, body_name_attr_, cond_name_attr_, &arguments,
                             &compile_time_const_arg_indices,
-                            &num_compile_time_const_args, compiler->client()));
+                            &num_compile_time_const_args));
   }
 
   VLOG(1) << "Compiling body";

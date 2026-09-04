@@ -96,8 +96,6 @@ class PjRtExecutionUtilTest : public OpsTestBase {
 
     // Add and setup the XLA_CPU device.
     auto device_type = DeviceType(DEVICE_XLA_CPU);
-    rollout_config.AllowForDeviceInXlaLaunch(device_type);
-    rollout_config.AllowForDeviceInXlaCompileOnDemand(device_type);
 
     auto jit_device_type = DeviceType(DEVICE_CPU_XLA_JIT);
     auto device =

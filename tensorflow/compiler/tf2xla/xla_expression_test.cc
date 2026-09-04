@@ -15,19 +15,29 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <set>
+#include <string>
 
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "xla/client/client_library.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -36,7 +46,8 @@ namespace {
 class XlaExpressionTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    client_ = xla::ClientLibrary::LocalClientOrDie();
+    TF_ASSERT_OK_AND_ASSIGN(client_,
+                            xla::GetXlaPjrtCpuClient(xla::CpuClientOptions()));
     builder_ = std::make_unique<xla::XlaBuilder>("acomputation");
     constant_ = test::AsScalar<int32_t>(42);
     op_ = xla::ConstantR0<int32_t>(builder_.get(), 7);
@@ -50,7 +61,7 @@ class XlaExpressionTest : public ::testing::Test {
         /*tensor_array_multiple_writes_aggregate=*/false);
   }
 
-  xla::Client* client_;
+  std::unique_ptr<xla::PjRtClient> client_;
   std::unique_ptr<xla::XlaBuilder> builder_;
   Tensor constant_;
   xla::XlaOp op_;
@@ -86,10 +97,16 @@ TEST_F(XlaExpressionTest, AsXlaOp) {
       XlaExpression::Constant(constant_).AsXlaOp(builder_.get());
   TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation computation,
                           builder_->BuildConstantSubGraph(const_as_op));
-  TF_ASSERT_OK_AND_ASSIGN(xla::Literal value,
-                          client_->ComputeConstant(computation));
+  ASSERT_NE(client_, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_exec,
+      client_->CompileAndLoad(computation, xla::CompileOptions{}));
+  xla::ExecuteOptions execute_options;
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          loaded_exec->Execute({{}}, execute_options));
+  TF_ASSERT_OK_AND_ASSIGN(auto value, results[0][0]->ToLiteralSync());
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
-      xla::LiteralUtil::CreateR0<int32_t>(42), value));
+      xla::LiteralUtil::CreateR0<int32_t>(42), *value));
 }
 
 TEST_F(XlaExpressionTest, GetShape) {
@@ -110,27 +127,27 @@ TEST_F(XlaExpressionTest, GetShape) {
 }
 
 TEST_F(XlaExpressionTest, ResolveConstant) {
-  EXPECT_FALSE(XlaExpression().ResolveConstant(client_).ok());
-  EXPECT_FALSE(XlaExpression::Invalid().ResolveConstant(client_).ok());
+  EXPECT_FALSE(XlaExpression().ResolveConstant(client_.get()).ok());
+  EXPECT_FALSE(XlaExpression::Invalid().ResolveConstant(client_.get()).ok());
 
   EXPECT_FALSE(XlaExpression::Resource(resource_.get())
-                   .ResolveConstant(client_)
+                   .ResolveConstant(client_.get())
                    ->has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::optional<Tensor> op_constant,
-      XlaExpression::XlaOp(op_, DT_INT32).ResolveConstant(client_));
+      XlaExpression::XlaOp(op_, DT_INT32).ResolveConstant(client_.get()));
   ASSERT_TRUE(op_constant.has_value());
   test::ExpectTensorEqual<int32_t>(test::AsScalar<int32_t>(7), *op_constant);
 
   TF_ASSERT_OK_AND_ASSIGN(std::optional<Tensor> op_nonconstant,
                           XlaExpression::XlaOp(non_constant_op_, DT_FLOAT)
-                              .ResolveConstant(client_));
+                              .ResolveConstant(client_.get()));
   EXPECT_FALSE(op_nonconstant.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::optional<Tensor> constant_constant,
-      XlaExpression::Constant(constant_).ResolveConstant(client_));
+      XlaExpression::Constant(constant_).ResolveConstant(client_.get()));
   ASSERT_TRUE(constant_constant.has_value());
   test::ExpectTensorEqual<int32_t>(constant_, *constant_constant);
 }
@@ -138,11 +155,11 @@ TEST_F(XlaExpressionTest, ResolveConstant) {
 TEST_F(XlaExpressionTest, ResolveConstantOnResource) {
   XlaExpression constant_resource =
       XlaExpression::ConstantResource(constant_, resource_.get());
-  EXPECT_TRUE(constant_resource.ResolveConstant(client_).ok());
+  EXPECT_TRUE(constant_resource.ResolveConstant(client_.get()).ok());
   EXPECT_TRUE(resource_->SetZeroValue(builder_.get()).ok());
   LOG(ERROR) << "Resource is overwritten: " << resource_->IsOverwritten();
   absl::StatusOr<std::optional<Tensor>> resolved_constant =
-      constant_resource.ResolveConstant(client_);
+      constant_resource.ResolveConstant(client_.get());
   EXPECT_TRUE(resolved_constant.ok());
   EXPECT_FALSE(resolved_constant->has_value());
 }

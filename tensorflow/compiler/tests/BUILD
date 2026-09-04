@@ -110,10 +110,6 @@ py_test(
     ],
 )
 
-#LINT.IfChange(combined_tests)
-# If you add a new tf_xla_py_strict_test please either add the test file to one of the combined test
-# targets that matches in all tags and other settings or add a new combined test target.
-
 tf_xla_combined_py_test(
     name = "combined_ops_test_a",
     size = "medium",
@@ -2584,13 +2580,12 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
@@ -2615,13 +2610,12 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
@@ -2645,13 +2639,12 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
@@ -2742,23 +2735,21 @@ tf_xla_py_strict_test(
 )
 
 # copybara:uncomment_begin(google-only)
-# tf_xla_py_strict_test(
-#     name = "xla_dump_to_sponge_test",
-#     size = "medium",
-#     srcs = ["xla_dump_to_sponge_test.py"],
-#     tags = [
-#         "optonly",
-#     ],
-#     deps = [
-#         ":xla_test",
-#         "//third_party/py/numpy",
-#         "//tensorflow/python/ops:array_ops",
-#         "//tensorflow/python/ops:math_ops",
-#         "//tensorflow/python/platform:test",
-#     ],
-# )
-# copybara:uncomment_end
-#LINT.ThenChange(:combined_tests)
+tf_xla_py_strict_test(
+    name = "xla_dump_to_sponge_test",
+    size = "medium",
+    srcs = ["xla_dump_to_sponge_test.py"],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
 
 cuda_py_strict_test(
     name = "xla_device_gpu_test",

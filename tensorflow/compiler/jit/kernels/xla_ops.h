@@ -16,24 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_KERNELS_XLA_OPS_H_
 #define TENSORFLOW_COMPILER_JIT_KERNELS_XLA_OPS_H_
 
-#include <atomic>
 #include <vector>
 
-#include "tensorflow/compiler/jit/device_compiler.h"
-#include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
-#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
-
 
 // XlaLocalLaunchBase is almost the same as XlaLocalLaunchOp.
 // The only difference is that it does not require arguments to follow
@@ -76,8 +68,8 @@ class XlaLocalLaunchBase : public AsyncOpKernel {
 // Once all inputs are present, and their shapes are known, the op can
 // use a 'DeviceCompiler' to compile and execute code which is specific
 // to the shapes of input Tensors.
-// XlaLocalLaunchOp uses xla::LocalClient::Compile() and
-// xla::LocalExecutable::Run(), and passes arguments into/out of XLA in device
+// XlaLocalLaunchOp uses xla::PjRtClient and
+// xla::PjRtLoadedExecutable, and passes arguments into/out of XLA in device
 // memory.
 class XlaLocalLaunchOp : public XlaLocalLaunchBase {
  public:
@@ -125,9 +117,6 @@ class XlaRunOp : public OpKernel {
   explicit XlaRunOp(OpKernelConstruction* ctx);
 
   void Compute(OpKernelContext* ctx) override;
-
- private:
-  const XlaPlatformInfo platform_info_;
 };
 
 class XlaMergeOp : public OpKernel {

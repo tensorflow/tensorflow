@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
@@ -21,8 +20,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "clean_dep",
-    "if_google",
+    "if_cuda_or_rocm",
     "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -278,30 +276,11 @@ tf_cuda_library(
             "@xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
             "@xla//xla/tsl/platform:statusor",
         ],
-    }) + if_google(
-        # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
-        # Clean up so that PJRT can run on ARM (and remove "#if defined(PLATFORM_GOOGLE) ..." use
-        # from gpu_util.cc).
-        # Also it won't build with WeightWatcher which tracks OSS build binaries.
-        # TODO(b/290533709): Clean up this build rule.
-        selects.with_or({
-            clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
-            (
-                clean_dep("//tensorflow:linux_x86_64"),
-            ): [
-                "//tensorflow/core",
-                "//tensorflow/core/framework:resource_base",
-                "@xla//xla/pjrt/distributed:key_value_store_interface",
-                "@xla//xla/pjrt:local_device_state",
-                "@xla//xla/service:gpu_topology",
-                "@xla//xla/pjrt:pjrt_client",
-                "@xla//xla/pjrt:pjrt_compiler",
-                "@xla//xla/service/gpu:gpu_executable_run_options",
-                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-            ],
-            "//conditions:default": [],
-        }),
-    ),
+    }) + if_cuda_or_rocm([
+        "@xla//xla/pjrt/distributed:key_value_store_interface",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/framework:resource_base",
+    ]),
 )
 
 tf_cc_test(
