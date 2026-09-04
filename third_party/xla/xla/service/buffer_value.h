@@ -153,12 +153,11 @@ class BufferValue {
 
   virtual std::string ToString() const = 0;
 
-  // TODO(lauj) rename LogicalBufferProto to BufferValueProto.
-  LogicalBufferProto ToProto(const SizeFunction& size_fn) const;
+  BufferValueProto ToProto(const SizeFunction& size_fn) const;
 
-  // Returns the LogicalBufferProto::Location that serializes the given
+  // Returns the BufferValueProto::Location that serializes the given
   // instruction and index.
-  static LogicalBufferProto::Location ToLocationProto(
+  static BufferValueProto::Location ToLocationProto(
       const HloInstruction& instruction, const ShapeIndex& index);
 
   static constexpr Color kInvalidColor = -1;
