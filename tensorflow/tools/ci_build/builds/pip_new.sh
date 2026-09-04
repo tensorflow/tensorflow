@@ -508,7 +508,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.4.0" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.6.0" || \
     die "Error: gast install, upgrade FAILED"
 
 }
