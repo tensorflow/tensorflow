@@ -51,6 +51,7 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kAbs, ynn_unary_abs},
           {HloOpcode::kCeil, ynn_unary_ceil},
           {HloOpcode::kConvert, ynn_unary_convert},
+          {HloOpcode::kCos, ynn_unary_cos},
           {HloOpcode::kErf, ynn_unary_erf},
           {HloOpcode::kExp, ynn_unary_exp},
           {HloOpcode::kExpm1, ynn_unary_expm1},
@@ -60,10 +61,12 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kLogistic, ynn_unary_sigmoid},
           {HloOpcode::kNegate, ynn_unary_negate},
           {HloOpcode::kRoundNearestEven, ynn_unary_round},
-          {HloOpcode::kRsqrt, ynn_unary_reciprocal_square_root},
+          {HloOpcode::kRsqrt, ynn_unary_rsqrt},
           {HloOpcode::kSign, ynn_unary_sign},
-          {HloOpcode::kSqrt, ynn_unary_square_root},
+          {HloOpcode::kSin, ynn_unary_sin},
+          {HloOpcode::kSqrt, ynn_unary_sqrt},
           {HloOpcode::kTanh, ynn_unary_tanh},
+          {HloOpcode::kTan, ynn_unary_tan},
       });
   return *unary_op_map;
 }
