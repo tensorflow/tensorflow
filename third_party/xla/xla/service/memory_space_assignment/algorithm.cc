@@ -10776,19 +10776,24 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
   alternate_mem_interval->UpdateEndTime(end_time);
   std::vector<Chunk> chunk_candidates =
       FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
-  int64_t candidates_start =
-      absl::c_min_element(chunk_candidates, [](const Chunk& c1,
-                                               const Chunk& c2) {
-        return c1.offset < c2.offset;
-      })->offset;
-  int64_t max_chunk_end =
-      absl::c_max_element(chunk_candidates, [](const Chunk& c1,
-                                               const Chunk& c2) {
-        return c1.chunk_end() < c2.chunk_end();
-      })->chunk_end();
-  if (candidates_start == preferred_offset->offset &&
-      max_chunk_end <= options_.max_size_in_bytes) {
-    return chunk_candidates;
+  // Ensure that chunk candidates exist before querying min/max elements to
+  // prevent undefined behavior or segmentation faults when chunk_candidates is
+  // empty.
+  if (!chunk_candidates.empty()) {
+    int64_t candidates_start =
+        absl::c_min_element(chunk_candidates, [](const Chunk& c1,
+                                                 const Chunk& c2) {
+          return c1.offset < c2.offset;
+        })->offset;
+    int64_t max_chunk_end =
+        absl::c_max_element(chunk_candidates, [](const Chunk& c1,
+                                                 const Chunk& c2) {
+          return c1.chunk_end() < c2.chunk_end();
+        })->chunk_end();
+    if (candidates_start == preferred_offset->offset &&
+        max_chunk_end <= options_.max_size_in_bytes) {
+      return chunk_candidates;
+    }
   }
   return {};
 }
