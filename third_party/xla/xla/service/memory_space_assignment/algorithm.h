@@ -127,18 +127,6 @@ struct AllocationSegmentContext {
   bool only_extend_existing_allocation;
 };
 
-// Returns the latest schedule time at which `view` (a value colored
-// `view_color`, see Options::dus_view_color) still has its underlying storage
-// read through it: the max schedule time over the transitive closure of the
-// view's readers, following users that are themselves view colored. Exposed
-// for testing.
-//
-// REQUIRES: view->shape().IsTuple() == false.
-int64_t ViewExtendedTransitiveUseTime(
-    const HloInstruction* view, int64_t view_color,
-    const absl::flat_hash_map<const HloInstruction*, int64_t>&
-        instruction_schedule);
-
 // Compare asynchronous copies such that an earlier start time has the same or
 // earlier end time and an earlier end time has the same or earlier start time.
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b);
@@ -1775,7 +1763,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   }
 
   bool IsBlockPrefetchingEnabled() const;
-
+  bool IsWindowPrefetchValue(const HloValue* value) const {
+    return window_prefetch_values_set_.contains(value);
+  }
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
   // Edge time indices store start and end times allocations in alternate
@@ -1818,6 +1808,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
   // in the BufferIntervalTree, which also considers fragmentation.
   std::vector<int64_t> peak_memory_usage_;
+
   // The data structure that contains AliasedOffset objects and Allocation to
   // AliasedOffset map for efficient lookup.
   std::list<AliasedOffset> aliased_offsets_;
@@ -1839,6 +1830,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // fingerprint.
   absl::flat_hash_map<uint64_t, std::vector<const HloInstruction*>>
       repeated_inst_map_;
+  std::vector<std::unique_ptr<HloValue>> window_prefetch_values_;
+  absl::flat_hash_set<const HloValue*> window_prefetch_values_set_;
 
   // Loop-optimized allocations found by MemoryBoundLoopOptimizer. These
   // allocation objects describe the allocations for one iteration of the loop,
