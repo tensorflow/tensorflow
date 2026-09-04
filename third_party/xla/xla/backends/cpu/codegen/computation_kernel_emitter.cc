@@ -158,6 +158,11 @@ ComputationKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_computation_kernel_module"), *ctx);
 
+  llvm_module->setTargetTriple(
+      target_machine_->target_machine()->getTargetTriple());
+  llvm_module->setDataLayout(
+      target_machine_->target_machine()->createDataLayout());
+
   ABSL_ASSIGN_OR_RETURN(std::string kernel_name,
                    kernel_api_ir_builder.GetKernelName(instr_, "_kernel"));
 
