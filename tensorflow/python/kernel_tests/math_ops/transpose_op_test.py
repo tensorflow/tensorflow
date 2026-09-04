@@ -528,10 +528,12 @@ class TransposeTest(test.TestCase):
     tf.concat([[num_dims - 1], tf.range(num_dims - 1)], axis=0), the
     autopacking of [num_dims - 1] previously failed on GPU with:
       "ConcatOp: Can't concatenate scalars (use tf.stack instead)"
-    because the GPU Pack kernel does not support 0-D inputs.
+    because the GPU Pack kernel did not support 0-D scalar inputs.
 
-    The fix ensures that scalar tensors inside a Python list are reshaped to
-    [1] before being concatenated, making the operation device-agnostic.
+    The fix adds an explicit scalar-input path in the C++ GPU PackOp kernel
+    (tensorflow/core/kernels/pack_op.cc) that writes each scalar element
+    directly into the output vector via Eigen chip operations, bypassing the
+    ConcatGPU helper that was incompatible with 0-D inputs.
     """
 
     @def_function.function(input_signature=[
