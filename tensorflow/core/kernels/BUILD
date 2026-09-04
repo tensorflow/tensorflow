@@ -2238,6 +2238,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -3349,7 +3351,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_reader_op",
     prefix = "identity_reader_op",
-    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
+    deps = IO_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
