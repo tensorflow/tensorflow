@@ -320,6 +320,8 @@ enum StatType {
   kDevCapPeakVmemWrBwGigabytesPerSecond,
   kDevCapPeakSramRdBwGigabytesPerSecond,
   kDevCapPeakSramWrBwGigabytesPerSecond,
+  kDevCapPeakSpmemRdBwGigabytesPerSecond,
+  kDevCapPeakSpmemWrBwGigabytesPerSecond,
   kDevVendor,
   kDevHasMegacore,
   kDevHasMergedVmem,
