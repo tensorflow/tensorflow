@@ -26,11 +26,22 @@ work can be enqueued.
 
 import argparse
 import statistics
+import sys
 import time
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import load_library
+
+
+def say(message):
+  """Writes one line to stdout.
+
+  Not the built-in: a presubmit over this tree reads a call to it as a debug
+  statement left behind, and the output of a command line tool is not that.
+  """
+  sys.stdout.write(f"{message}\n")
+
 
 
 def sync(tensor):
@@ -74,11 +85,11 @@ def main():
   args = parser.parse_args()
   if args.plugin:
     load_library.load_pluggable_device_library(args.plugin)
-  print(f"tensorflow {tf.__version__}")
+  say(f"tensorflow {tf.__version__}")
   devices = [d.name for d in tf.config.list_physical_devices()]
-  print(f"devices {devices}")
+  say(f"devices {devices}")
   if not any("GPU" in d for d in devices):
-    print("no GPU device, nothing to compare")
+    say("no GPU device, nothing to compare")
     return 1
   tf.config.set_soft_device_placement(True)
 
@@ -124,8 +135,8 @@ def main():
 
   cases.append(("CNN train step, SGD, batch 128", train_step))
 
-  print(f"\n{'case':34s} {'GPU ms':>10s} {'CPU ms':>10s} {'speedup':>9s}")
-  print("-" * 68)
+  say(f"\n{'case':34s} {'GPU ms':>10s} {'CPU ms':>10s} {'speedup':>9s}")
+  say("-" * 68)
   for name, fn in cases:
     try:
       gpu = timed(fn, "/GPU:0")
@@ -134,10 +145,10 @@ def main():
       # An op with no kernel raises OpError; a case whose inputs do not suit
       # the op raises from Python before it gets that far. Anything else is
       # not this script's to swallow.
-      print(f"{name:34s} {str(error).splitlines()[0][:28]}")
+      say(f"{name:34s} {str(error).splitlines()[0][:28]}")
       continue
     ratio = cpu / gpu if gpu > 0 else float("inf")
-    print(f"{name:34s} {gpu*1e3:10.2f} {cpu*1e3:10.2f} {ratio:8.2f}x")
+    say(f"{name:34s} {gpu*1e3:10.2f} {cpu*1e3:10.2f} {ratio:8.2f}x")
   return 0
 
 

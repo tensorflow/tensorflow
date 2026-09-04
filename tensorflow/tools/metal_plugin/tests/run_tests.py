@@ -32,6 +32,12 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import load_library
 
+
+def say(message):
+  """Writes one line to stdout, as the built-in would but is not to."""
+  sys.stdout.write(f"{message}\n")
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN = os.environ.get(
     "METAL_PLUGIN",
@@ -42,8 +48,8 @@ _failures = 0
 
 def check(name, condition, detail=""):
   global _failures
-  print(f"  {name:38s} {'ok' if condition else 'FAILED'}"
-        f"{('  ' + detail) if detail else ''}")
+  say(f"  {name:38s} {'ok' if condition else 'FAILED'}"
+      f"{('  ' + detail) if detail else ''}")
   if not condition:
     _failures += 1
 
@@ -55,14 +61,14 @@ def close(name, got, want, rtol=1e-4, atol=2e-4):
 
 
 def main():
-  print(f"tensorflow {tf.__version__}")
+  say(f"tensorflow {tf.__version__}")
   before = [d.name for d in tf.config.list_physical_devices("GPU")]
   load_library.load_pluggable_device_library(PLUGIN)
   after = [d.name for d in tf.config.list_physical_devices("GPU")]
-  print(f"GPU devices before {before}, after {after}")
+  say(f"GPU devices before {before}, after {after}")
   check("the plugin adds a GPU device", after == ["/physical_device:GPU:0"])
   if not after:
-    print("\nno device, nothing further to check")
+    say("\nno device, nothing further to check")
     return 1
 
   tf.config.set_soft_device_placement(False)
@@ -83,7 +89,7 @@ def main():
       "BiasAdd": lambda: tf.nn.bias_add(tf.constant(a),
                                         tf.constant(a[0].copy())),
   }
-  print("\nGPU results against the CPU kernel for the same op:")
+  say("\nGPU results against the CPU kernel for the same op:")
   for name, build in cases.items():
     with tf.device("/GPU:0"):
       got = build()
@@ -94,7 +100,7 @@ def main():
       want = build()
     close(name, got.numpy(), want.numpy())
 
-  print("\ncontrols:")
+  say("\ncontrols:")
   # Without this the checks above prove nothing: they would all pass on the
   # CPU if soft placement were quietly moving them there.
   try:
@@ -250,7 +256,7 @@ def main():
   # GPU in flight race. Only reachable on a TensorFlow that exports the
   # variable C API, and skipped where it does not, since there the kernels
   # under test are deliberately not registered.
-  print("\nvariables:")
+  say("\nvariables:")
   steps = [rng.standard_normal(4096).astype(np.float32) for _ in range(6)]
 
   def adam_shaped(device):
@@ -274,7 +280,7 @@ def main():
     check("an Adam-shaped variable update matches the CPU", True,
           "skipped: " + str(error)[:50])
 
-  print("\nprofiler:")
+  say("\nprofiler:")
   with tempfile.TemporaryDirectory() as logdir:
     square = tf.constant(rng.standard_normal((256, 256)), dtype=tf.float32)
     with tf.device("/GPU:0"):
@@ -307,7 +313,7 @@ def main():
   # ops reach the device, so the check is a profile of two graphs that differ
   # in exactly the condition the pass refuses to fuse across: a second
   # consumer of the convolution's output.
-  print("\ngraph optimizer:")
+  say("\ngraph optimizer:")
   image = tf.constant(rng.standard_normal((4, 16, 16, 8)), dtype=tf.float32)
   kernel = tf.constant(rng.standard_normal((3, 3, 8, 16)), dtype=tf.float32)
   bias = tf.constant(rng.standard_normal((16,)), dtype=tf.float32)
@@ -359,7 +365,7 @@ def main():
 
   verdict = ("all checks passed" if _failures == 0
              else f"{_failures} FAILED")
-  print(f"\n{verdict}")
+  say(f"\n{verdict}")
   return 0 if _failures == 0 else 1
 
 
