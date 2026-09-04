@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tsl_cc_test",
@@ -54,5 +55,15 @@ tsl_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla/tsl:package_groups_bzl",
+        "//xla/tsl/testing/default:build_defs_bzl",
     ],
 )
