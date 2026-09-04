@@ -2475,6 +2475,16 @@ MsaAlgorithm::GetContiguousLiveRangesForBuffer(const HloBuffer* buffer) const {
       ShapeIndex operand_index = use.operand_index;
       HloPosition source_position =
           GetNonTrivialSourcePosition(HloPosition{operand, operand_index});
+      // Async chains forward the value defined by the wrapped instruction
+      // without defining a new one, and the buffer cannot move while the
+      // async operation may still be writing it. Attribute chain internal
+      // uses to the defining position so the chain forms one contiguous
+      // range; ordinary consumers after the chain may still move the buffer.
+      if (source_position != value->defining_position() &&
+          IsAsyncOperationStateUse(use) &&
+          absl::c_linear_search(value->positions(), source_position)) {
+        source_position = value->defining_position();
+      }
       bool is_pipelined_async =
           (has_async_pipelined_while_loops_ &&
            IsBufferAliasedToAsyncPipelinedWhileLoop(value) &&
@@ -2498,9 +2508,16 @@ MsaAlgorithm::GetContiguousLiveRangesForBuffer(const HloBuffer* buffer) const {
       if (options_.position_requires_contiguous_allocation_fn(position) ||
           is_pipelined_async_pos) {
         if (!(contiguous_positions_to_uses.contains(position))) {
-          LOG(WARNING) << "Position " << position.ToString()
-                       << " is required to be contiguous but has no uses, "
-                          "this should not happen.";
+          // Positions that merely forward the value (e.g. the async chain of
+          // a wrapped instruction) are covered by the defining position's
+          // range, so a missing entry is expected for them.
+          if (position == value->defining_position() ||
+              !contiguous_positions_to_uses.contains(
+                  value->defining_position())) {
+            LOG(WARNING) << "Position " << position.ToString()
+                         << " is required to be contiguous but has no uses, "
+                            "this should not happen.";
+          }
           contiguous_positions_to_uses[position] = {};
         }
       }
