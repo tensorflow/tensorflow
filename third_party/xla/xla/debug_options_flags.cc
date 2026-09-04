@@ -2788,6 +2788,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),
                 debug_options->xla_gpu_mock_custom_calls(),
                 "Replace custom calls with noop operations."));
+  flag_list->push_back(
+      tsl::Flag("xla_cpu_mock_custom_calls",
+                bool_setter_for(&DebugOptions::set_xla_cpu_mock_custom_calls),
+                debug_options->xla_cpu_mock_custom_calls(),
+                "Replace custom calls with noop operations on CPU."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_while_loop_double_buffering",
       bool_setter_for(

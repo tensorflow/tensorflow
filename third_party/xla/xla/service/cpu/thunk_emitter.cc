@@ -1234,9 +1234,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   ABSL_ASSIGN_OR_RETURN(auto op_buffers, GetOpBuffers<CustomCallThunk::OpBuffers>(
                                         instruction, buffer_assignment_));
 
-  return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
-                                            custom_call_target, op_buffers,
-                                            backend_config_str, version);
+  absl::StatusOr<std::unique_ptr<CustomCallThunk>> custom_call_thunk =
+      CustomCallThunk::Create(ThunkInfo(instruction), custom_call_target,
+                              op_buffers, backend_config_str, version);
+
+  ThunkSequence thunks;
+  if (custom_call_thunk.ok()) {
+    thunks.push_back(std::move(*custom_call_thunk));
+  }
+  if (hlo_module_config_.debug_options().xla_cpu_mock_custom_calls()) {
+    // xla_cpu_mock_custom_calls=true means we won't emit thunks for custom
+    // call targets that couldn't be found.
+    return thunks;
+  }
+  if (!custom_call_thunk.ok()) {
+    return custom_call_thunk.status();
+  }
+  return thunks;
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
