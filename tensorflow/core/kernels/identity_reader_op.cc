@@ -15,9 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/io_ops.cc.
 
-#include <memory>
+#include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_base.pb.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
