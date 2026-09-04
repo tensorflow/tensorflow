@@ -1515,7 +1515,12 @@ message OriginalValueProto {
   repeated OriginalValueElementProto elements = 1;
   // If true, the annotated instruction is a synthetic call and elements should
   // be ignored.
-  bool is_synthetic_call = 2;
+  // Deprecated: Use an empty string in call_hierarchy instead.
+  bool is_synthetic_call = 2 [deprecated = true];
+  // The call hierarchy of the original call instructions that produced this
+  // value. Format: "<call_instruction_name>#$" where "#$" is a placeholder
+  // for loop unrolling iteration count.
+  optional string call_hierarchy = 3;
 }
 
 message GemmPerfTableEntry {

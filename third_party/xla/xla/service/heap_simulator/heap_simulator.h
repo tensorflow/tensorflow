@@ -144,6 +144,13 @@ class HeapSimulator {
     // If 'buffers_to_assign' is provided, only those buffers are assigned
     // offsets, otherwise all buffers defined by the instructions are assigned.
     const absl::flat_hash_set<const HloValue*>* buffers_to_assign;
+    // Memory space color marking "view" values (address stand-ins aliasing
+    // into their first operand's buffer, see
+    // BufferAssigner::Options::dus_view_color). When set, a value used as a
+    // view's base is kept live until the view's last transitive reader: those
+    // readers read the value's buffer through the view, so it must not be
+    // recycled before them.
+    std::optional<int64_t> view_color;
   };
 
   // Returns the minimum memory required to compute an HLO module where all

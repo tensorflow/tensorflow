@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -69,14 +71,13 @@ ENTRY %main (param: s32[2,8], param.1: s32[8,8]) -> s32[2,8] {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* entry_computation = module->entry_computation();
   HloInstruction* root = entry_computation->root_instruction();
   HloInstruction* new_root = entry_computation->AddInstruction(root->Clone());
   new_root->set_original_value(nullptr);
 
-  TF_ASSERT_OK(root->ReplaceAllUsesWith(new_root));
+  ASSERT_OK(root->ReplaceAllUsesWith(new_root));
   EXPECT_NE(new_root->original_value(), nullptr);
 }
 
@@ -99,8 +100,8 @@ TEST_F(PropagateOriginalValueTest, CallInlinerMultipleCallSites) {
 
   ENTRY main () -> f32[] {
     lhs = f32[] constant(42)
-    call.1 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.1"}}
-    call.2 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.2"}}
+    call.1 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.1"},["call.1"]}
+    call.2 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.2"},["call.2"]}
     ROOT add = f32[] add(f32[] call.1, f32[] call.2)
   })";
 

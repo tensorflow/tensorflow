@@ -111,8 +111,16 @@ void PopulateCallMapForCallLikeInstruction(
     const HloInstruction& optimized_instr,
     absl::flat_hash_map<std::string, std::vector<ScopeInstruction>>& call_map) {
   if (optimized_instr.original_value()) {
-    auto scope_instructions_str =
-        optimized_instr.original_value()->GetOriginalCallLikeInstructions();
+    std::optional<std::string> scope_instructions_str =
+        optimized_instr.original_value()->call_hierarchy();
+    if (!scope_instructions_str.has_value() &&
+        !optimized_instr.original_value()->IsEmpty()) {
+      const auto& first_leaf =
+          optimized_instr.original_value()->original_arrays().begin()->second;
+      if (first_leaf.has_value()) {
+        scope_instructions_str = first_leaf->instruction_name;
+      }
+    }
     if (scope_instructions_str.has_value()) {
       std::vector<std::string> scope_names =
           absl::StrSplit(*scope_instructions_str, '/');

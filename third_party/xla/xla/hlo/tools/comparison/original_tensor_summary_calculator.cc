@@ -251,11 +251,11 @@ void PopulateCallMapForCallLikeInstruction(
     absl::flat_hash_map<std::string, std::string>&
         original_instruction_name_by_optimized_instruction_name) {
   if (optimized_instr.original_value()) {
-    auto scope_instructions_str =
-        optimized_instr.original_value()->GetOriginalCallLikeInstructions();
-    if (scope_instructions_str.has_value()) {
+    std::optional<std::string> call_hierarchy_str =
+        optimized_instr.original_value()->call_hierarchy();
+    if (call_hierarchy_str.has_value()) {
       std::vector<std::string> scope_names =
-          absl::StrSplit(*scope_instructions_str, '/');
+          absl::StrSplit(*call_hierarchy_str, '/');
       std::vector<ScopeInstruction> scope_instructions;
       scope_instructions.reserve(scope_names.size());
       for (const auto& scope_name : scope_names) {

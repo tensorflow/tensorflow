@@ -825,6 +825,67 @@ ENTRY entry {
             "{\"while.5#*/add.1\"})");
 }
 
+TEST_F(WhileLoopInvariantCodeMotionTest,
+       HoistWithOriginalValueAndCallHierarchy) {
+  const char* const hlo_string = R"(
+HloModule licm_ov_call_hierarchy_test
+
+body {
+  p_body = (s32[2], s32[2]) parameter(0)
+  gte0 = s32[2] get-tuple-element(p_body), index=0
+  c = s32[2] constant({1, 1}), origin={{"c.1"}}
+  add = s32[2] add(gte0, c), origin={{"add.1"},["inner#$"]}
+  ROOT tuple = (s32[2], s32[2]) tuple(gte0, add)
+}
+
+cond {
+  p_cond = (s32[2], s32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p_entry_0 = s32[2] parameter(0)
+  while_init = (s32[2], s32[2]) tuple(p_entry_0, p_entry_0)
+  ROOT while0 = (s32[2], s32[2]) while(while_init), condition=cond, body=body, origin={({"while.5" {0}}, {"while.5" {1}}),["w1#$"]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = m->GetComputationWithName("body");
+  HloInstruction* c = body->GetInstructionWithName("c");
+
+  ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloInstruction* transformed_while;
+  FindOnlyWhileInstruction(m->entry_computation(), &transformed_while);
+
+  HloInstruction* hoisted_c = nullptr;
+  HloInstruction* hoisted_add = nullptr;
+  for (auto* instr : m->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kConstant &&
+        instr->shape() == c->shape()) {
+      hoisted_c = instr;
+    }
+    if (instr->opcode() == HloOpcode::kAdd) {
+      hoisted_add = instr;
+    }
+  }
+  ASSERT_NE(hoisted_c, nullptr);
+  ASSERT_NE(hoisted_add, nullptr);
+  ASSERT_NE(hoisted_c->original_value(), nullptr);
+  EXPECT_EQ(hoisted_c->original_value()->ToString(),
+            "{\"w1#*/c.1\"},[\"w1#*\"]");
+  ASSERT_NE(hoisted_add->original_value(), nullptr);
+  EXPECT_EQ(hoisted_add->original_value()->ToString(),
+            "{\"w1#*/add.1\"},[\"w1#*/inner#$\"]");
+  ASSERT_NE(transformed_while->original_value(), nullptr);
+  EXPECT_EQ(transformed_while->original_value()->ToString(),
+            "({\"while.5\" {0}}, {\"while.5\" {1}}, {\"w1#*/c.1\"}, "
+            "{\"w1#*/add.1\"}),[\"w1#$\"]");
+}
+
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsGetRngSeed) {
   const char* const hlo_string = R"(
 HloModule licm_get_rng_seed_test
