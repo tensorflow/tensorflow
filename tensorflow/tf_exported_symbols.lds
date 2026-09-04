@@ -1,5 +1,5 @@
 *tensorflow*
-*absl*kSeed*;
+*absl*kSeed*
 *toco*
 *perftools*gputools*
 *tf_*
@@ -22,3 +22,15 @@
 *mlir*shape*
 *mlir*scf*
 *mlir*quant*
+*GENERAL_NAME*
+*OPENSSL*
+*BIO_*
+*EVP_*
+*CRYPTO_*
+*SSL_*
+*X509*
+*ASN1_*
+*sk_*
+*ERR_*
+*PEM_*
+*bssl*
