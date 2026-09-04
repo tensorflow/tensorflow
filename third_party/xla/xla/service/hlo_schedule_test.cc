@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -664,6 +665,103 @@ ENTRY %test (arg.0: (f32[], f32[])) -> f32[] {
   ASSERT_IS_NOT_OK(module->schedule().Verify());
   ASSERT_OK(module->schedule().Update());
   ASSERT_OK(module->schedule().Verify());
+}
+
+TEST_F(HloScheduleTest, UpdateScheduleWithReplacedOperandsScheduledLater) {
+  // Test that when an instruction's operands are replaced with instructions
+  // that were scheduled later (or newly added instructions depending on
+  // instructions scheduled later), Update() properly invalidates and reorders
+  // them in topological order.
+  const std::string module_str = R"(
+HloModule m, is_scheduled=true
+
+ENTRY %test {
+  %c0 = f32[] constant(1.0)
+  %x1 = f32[] negate(%c0)
+  %inst_a = f32[] add(%x1, %c0)
+  %x0 = f32[] copy(%c0)
+  ROOT %inst_b = f32[] add(%inst_a, %x0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* c0 = entry->GetInstructionWithName("c0");
+  HloInstruction* x0 = entry->GetInstructionWithName("x0");
+  HloInstruction* x1 = entry->GetInstructionWithName("x1");
+  HloInstruction* inst_a = entry->GetInstructionWithName("inst_a");
+
+  // Create inst_c = add(x0, c0) and replace uses of x1 with inst_c.
+  HloInstruction* inst_c = entry->AddInstruction(
+      HloInstruction::CreateBinary(c0->shape(), HloOpcode::kAdd, x0, c0));
+  ASSERT_OK(x1->ReplaceAllUsesWith(inst_c));
+  ASSERT_OK(entry->RemoveInstruction(x1));
+
+  // Before Update(), the schedule has inst_a before x0 (and before inst_c).
+  ASSERT_IS_NOT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Update());
+  ASSERT_OK(module->schedule().Verify());
+
+  // Verify inst_a is scheduled after x0 and inst_c.
+  const auto& seq = module->schedule().sequence(entry).instructions();
+  auto pos = [&](const HloInstruction* inst) {
+    return std::distance(seq.begin(), absl::c_find(seq, inst));
+  };
+  EXPECT_LT(pos(x0), pos(inst_c));
+  EXPECT_LT(pos(inst_c), pos(inst_a));
+}
+
+TEST_F(HloScheduleTest, UpdateSchedulePreservesOrderWhenNewOperandAdded) {
+  // Tests that when an instruction's operand is replaced with a newly added
+  // instruction, Update() preserves the relative schedule order among existing
+  // scheduled instructions rather than prematurely promoting the consumer ASAP.
+  //
+  // This models the regression observed in JAX polydiv
+  // (lax_numpy_test_gpu_b200) where CopyInsertion added a copy for an initial
+  // buffer and rewired the first in-place slice update. A naive invalidation
+  // approach that evicts any instruction with an unscheduled operand caused the
+  // slice update to be emitted prematurely before intermediate instructions,
+  // disrupting the in-place execution sequence.
+  const std::string module_str = R"(
+HloModule m, is_scheduled=true
+
+ENTRY %test {
+  %c0 = f32[] constant(1.0)
+  %x0 = f32[] negate(%c0)
+  %interm = f32[] negate(%x0)
+  %inst_a = f32[] add(%c0, %x0)
+  ROOT %inst_b = f32[] add(%inst_a, %interm)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* c0 = entry->GetInstructionWithName("c0");
+  HloInstruction* interm = entry->GetInstructionWithName("interm");
+  HloInstruction* inst_a = entry->GetInstructionWithName("inst_a");
+
+  // In the original schedule, %interm is scheduled before %inst_a.
+  const auto& orig_seq = module->schedule().sequence(entry).instructions();
+  auto get_pos = [](const std::vector<HloInstruction*>& seq,
+                    const HloInstruction* inst) {
+    return std::distance(seq.begin(), absl::c_find(seq, inst));
+  };
+  ASSERT_LT(get_pos(orig_seq, interm), get_pos(orig_seq, inst_a));
+
+  // Add new_copy = copy(c0) and replace operand 0 of inst_a (%c0) with
+  // new_copy.
+  HloInstruction* new_copy = entry->AddInstruction(
+      HloInstruction::CreateUnary(c0->shape(), HloOpcode::kCopy, c0));
+  ASSERT_OK(inst_a->ReplaceOperandWith(0, new_copy));
+
+  ASSERT_OK(module->schedule().Update());
+  ASSERT_OK(module->schedule().Verify());
+
+  // new_copy must be placed before inst_a, but inst_a must not be prematurely
+  // promoted before %interm; the original relative ordering must be preserved.
+  const auto& new_seq = module->schedule().sequence(entry).instructions();
+  EXPECT_LT(get_pos(new_seq, new_copy), get_pos(new_seq, inst_a));
+  EXPECT_LT(get_pos(new_seq, interm), get_pos(new_seq, inst_a));
 }
 
 std::unique_ptr<HloModule> BuildBenchmarkModule(int64_t num_instructions) {
