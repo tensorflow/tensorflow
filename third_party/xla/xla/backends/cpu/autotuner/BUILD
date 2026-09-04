@@ -142,6 +142,28 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "ynnpack_backend",
+    srcs = ["ynnpack_backend.cc"],
+    hdrs = ["ynnpack_backend.h"],
+    deps = [
+        ":cpu_codegen_backend",
+        "//third_party/gloop/util/status:status_macros",
+        "//xla:util",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/cpu:ynn_fusion_options_proto_cc",
+        "//xla/backends/cpu/transforms:library_fusion_kinds",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "cpu_autotuner",
     srcs = ["cpu_autotuner.cc"],
     hdrs = ["cpu_autotuner.h"],
@@ -149,6 +171,7 @@ cc_library(
         ":cpu_codegen_backend",
         ":cpu_profiler",
         ":llvm_kernel_backend",
+        ":ynnpack_backend",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner",
@@ -179,6 +202,25 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "ynnpack_backend_test",
+    srcs = ["ynnpack_backend_test.cc"],
+    deps = [
+        ":cpu_codegen_backend",
+        ":ynnpack_backend",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/cpu:ynn_fusion_options_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:cpu_compiler",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
