@@ -996,9 +996,8 @@ cc_library(
     name = "casts",
     hdrs = ["casts.h"],
     deps = [
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-    ],
+        ":platform",
+    ] + tf_platform_deps("casts"),
 )
 
 cc_library(
