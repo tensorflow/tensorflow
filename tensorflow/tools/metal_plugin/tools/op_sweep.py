@@ -43,6 +43,12 @@ from tensorflow.python.framework import op_def_registry
 
 import recipes
 
+
+def say(message):
+  """Writes one line to stdout, as the built-in would but is not to."""
+  sys.stdout.write(f"{message}\n")
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
@@ -596,9 +602,9 @@ def main():
   tf.config.set_soft_device_placement(False)
   devices = [d.name for d in tf.config.list_physical_devices("GPU")]
   if not devices:
-    print("no GPU device after loading the plugin, nothing to sweep")
+    say("no GPU device after loading the plugin, nothing to sweep")
     return 1
-  print(f"sweeping against {devices[0]}")
+  say(f"sweeping against {devices[0]}")
   global NAMED, RANDOM, NO_CPU
   NAMED = by_name()
   NAMED.update(recipes.build())
@@ -621,16 +627,16 @@ def main():
 
   wrong_attrs = invalid_constraints(ops)
   if wrong_attrs:
-    print(f"\n=== registrations constraining an attribute the op lacks "
-          f"({len(wrong_attrs)})")
+    say(f"\n=== registrations constraining an attribute the op lacks "
+        f"({len(wrong_attrs)})")
     for name in sorted(wrong_attrs):
-      print(f"  {name:38s} {', '.join(wrong_attrs[name])}")
+      say(f"  {name:38s} {', '.join(wrong_attrs[name])}")
 
   duplicates = duplicate_registrations(ops)
   if duplicates:
-    print(f"\n=== duplicate GPU registrations ({len(duplicates)})")
+    say(f"\n=== duplicate GPU registrations ({len(duplicates)})")
     for name in sorted(duplicates):
-      print(f"  {name:38s} {duplicates[name]} extra, so the op cannot run")
+      say(f"  {name:38s} {duplicates[name]} extra, so the op cannot run")
 
   results = {}
   details = {}
@@ -818,22 +824,22 @@ def main():
   if os.environ.get("SWEEP_VERBOSE"):
     for kind in (UNEXERCISED, NO_RECIPE):
       named = sorted(n for n, v in results.items() if v == kind)
-      print(f"\n=== {kind} ({len(named)})")
+      say(f"\n=== {kind} ({len(named)})")
       for n in named:
-        print(f"  {n:38s} {details[n]}")
+        say(f"  {n:38s} {details[n]}")
 
   for kind in (MISMATCH, GPU_ERROR):
     named = sorted(n for n, v in results.items() if v == kind)
     if named:
-      print(f"\n=== {kind} ({len(named)})")
+      say(f"\n=== {kind} ({len(named)})")
       for n in named:
-        print(f"  {n:38s} {details[n]}")
+        say(f"  {n:38s} {details[n]}")
 
-  print("\n=== summary")
+  say("\n=== summary")
   for kind in order:
-    print(f"  {kind:22s} {counts[kind]}")
-  print(f"  {'duplicates':22s} {len(duplicates)}")
-  print(f"  {'wrong-attr constraints':22s} {len(wrong_attrs)}")
+    say(f"  {kind:22s} {counts[kind]}")
+  say(f"  {'duplicates':22s} {len(duplicates)}")
+  say(f"  {'wrong-attr constraints':22s} {len(wrong_attrs)}")
   return (1 if counts[MISMATCH] or counts[GPU_ERROR] or duplicates
           or wrong_attrs else 0)
 

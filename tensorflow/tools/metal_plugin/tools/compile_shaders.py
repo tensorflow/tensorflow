@@ -26,6 +26,12 @@ import pathlib
 import re
 import sys
 
+
+def say(message):
+  """Writes one line to stdout, as the built-in would but is not to."""
+  sys.stdout.write(f"{message}\n")
+
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SOURCE = (ROOT / "src/tensorflow/core/common_runtime/metal/kernels" /
           "metal_shader_library.mm")
@@ -41,8 +47,8 @@ def extract_shader_source(text: str) -> str:
 
 def main() -> int:
   shader = extract_shader_source(SOURCE.read_text())
-  print(f"shader source: {len(shader)} bytes, "
-        f"{shader.count('kernel void')} kernels")
+  say(f"shader source: {len(shader)} bytes, "
+      f"{shader.count('kernel void')} kernels")
 
   objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
   ctypes.cdll.LoadLibrary(ctypes.util.find_library("Metal"))
@@ -95,9 +101,9 @@ def main() -> int:
       description = ctypes.c_void_p(msg(error, sel_desc))
       sel_utf8 = ctypes.c_void_p(objc.sel_registerName(b"UTF8String"))
       msg.restype = ctypes.c_char_p
-      print(msg(description, sel_utf8).decode(), file=sys.stderr)
+      sys.stderr.write(msg(description, sel_utf8).decode() + "\n")
     sys.exit("the Metal shader library failed to compile")
-  print("the Metal shader library compiles")
+  say("the Metal shader library compiles")
   return 0
 
 
