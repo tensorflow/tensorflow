@@ -20,6 +20,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -39,9 +40,10 @@ class ReverseSequenceTest(test.TestCase):
                            use_gpu=False,
                            expected_err_re=None):
     with self.cached_session(use_gpu=use_gpu):
-      ans = array_ops.reverse_sequence(
-          x, batch_axis=batch_axis, seq_axis=seq_axis, seq_lengths=seq_lengths)
       if expected_err_re is None:
+        ans = array_ops.reverse_sequence(
+            x, batch_axis=batch_axis, seq_axis=seq_axis, seq_lengths=seq_lengths
+        )
         tf_ans = self.evaluate(ans)
         if ans.dtype == dtypes.string:
           self.assertAllEqual(tf_ans, truth)
@@ -50,6 +52,12 @@ class ReverseSequenceTest(test.TestCase):
         self.assertShapeEqual(truth, ans)
       else:
         with self.assertRaisesOpError(expected_err_re):
+          ans = array_ops.reverse_sequence(
+              x,
+              batch_axis=batch_axis,
+              seq_axis=seq_axis,
+              seq_lengths=seq_lengths,
+          )
           self.evaluate(ans)
 
   def _testBothReverseSequence(self,
@@ -197,6 +205,42 @@ class ReverseSequenceTest(test.TestCase):
                                 "batch_dim == seq_dim == 0"):
       output = array_ops.reverse_sequence([[1, 2], [3, 4]], [2, 2], seq_axis=0)
       self.evaluate(output)
+
+  def testOutOfBounds(self):
+    x = np.asarray([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+    seq_lengths = np.asarray([4, 4], dtype=np.int32)
+    expected_truth = np.asarray([[3, 2, 1], [6, 5, 4]], dtype=np.float32)
+
+    # In XLA, out-of-bounds seq_lengths are always clamped.
+    # In non-XLA, CPU throws an InvalidArgumentError, while GPU clamps.
+
+    with ops.device("/device:CPU:0"):
+      with self.cached_session(use_gpu=False):
+        if test_util.is_xla_enabled():
+          xla_truth = np.asarray([[3, 3, 2], [6, 6, 5]], dtype=np.float32)
+          ans = array_ops.reverse_sequence(
+              x, batch_axis=0, seq_axis=1, seq_lengths=seq_lengths
+          )
+          self.assertAllClose(self.evaluate(ans), xla_truth, atol=1e-10)
+        else:
+          expected_err = r"seq_lens\([0-9]+\) > input\.dims\([0-9]+\)"
+          with self.assertRaisesOpError(expected_err):
+            ans = array_ops.reverse_sequence(
+                x, batch_axis=0, seq_axis=1, seq_lengths=seq_lengths
+            )
+            self.evaluate(ans)
+
+    if test.is_gpu_available():
+      with ops.device("/device:GPU:0"):
+        with self.cached_session(use_gpu=True):
+          ans = array_ops.reverse_sequence(
+              x, batch_axis=0, seq_axis=1, seq_lengths=seq_lengths
+          )
+          if test_util.is_xla_enabled():
+            xla_truth = np.asarray([[3, 3, 2], [6, 6, 5]], dtype=np.float32)
+            self.assertAllClose(self.evaluate(ans), xla_truth, atol=1e-10)
+          else:
+            self.assertAllClose(self.evaluate(ans), expected_truth, atol=1e-10)
 
 
 if __name__ == "__main__":
