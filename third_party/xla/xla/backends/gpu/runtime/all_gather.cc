@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Alignment.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
@@ -59,6 +61,13 @@ absl::Status IsAllGatherKernelSupported(int64_t num_elements,
         primitive_util::LowercasePrimitiveTypeName(element_type)));
   }
 
+  const int64_t byte_size =
+      num_elements * primitive_util::ByteWidth(element_type);
+  if (byte_size > kMaxAllGatherSizeBytes) {
+    return absl::UnimplementedError(
+        "Custom all-gather strategy is only supported for small inputs.");
+  }
+
   // The total transfer size in bits must be aligned to
   // kBitsPerMemoryTransaction (128 bits = 16 bytes) so each thread can
   // load/store a complete transaction.
@@ -84,13 +93,22 @@ absl::Status IsAllGatherKernelSupported(
   }
   // Check if the device supports Triton collective codegen:
   // CUDA: Requires compute capability 9.0+ (Hopper or newer)
-  // ROCm: All versions with Triton support are enabled
   if (!device_info.cuda_compute_capability().IsAtLeastHopper() &&
       !device_info.gpu_compute_capability().IsRocm()) {
     return absl::UnimplementedError(absl::StrFormat(
         "Triton collective codegen requires CUDA compute capability >= 9.0 "
-        "(Hopper or newer) or a ROCm device with Triton support. Got: %s.",
+        "(Hopper or newer) or a supported ROCm device. Got: %s.",
         device_info.gpu_compute_capability().ToString()));
+  }
+  // ROCm: the cross-device barrier relies on a system-scope release store
+  // becoming visible to peers without extra cache maintenance, which gfx90a
+  // does not guarantee.
+  if (const auto* rocm_cc =
+          device_info.gpu_compute_capability().rocm_compute_capability();
+      rocm_cc != nullptr && !rocm_cc->has_peer_visible_atomics()) {
+    return absl::UnimplementedError(
+        absl::StrCat("Collective kernels are not supported on ",
+                     rocm_cc->gfx_version(), "."));
   }
   // TODO(b/383125489): Support variadic arguments.
   if (num_operands != 1) {
@@ -142,11 +160,9 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
         "Collective kernels are only supported on devices with NVLink/UALink "
         "support.");
   }
-  ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
-                   GetCollectiveOpGroupMode(all_gather));
-  const bool is_local = IsAllReplicasLocal(
-      gpu_topology.num_devices_per_process(), all_gather->replica_groups(),
-      group_mode, device_assignment);
+  ABSL_ASSIGN_OR_RETURN(
+      const bool is_local,
+      IsAllReplicasLocal(gpu_topology, *all_gather, device_assignment));
   ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
       is_collective_kernel_enabled, device_info, num_operands, num_devices,
       num_elements, element_type, is_local, all_gather->replica_groups()));
@@ -205,28 +221,37 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
   const int64_t remote_size =
       xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
 
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+  const SymmetricMemoryType sym_mem_type =
+      IsCrossHostOneShotKernelEnabled(debug_options, DebugOptions::ALLGATHER)
+          ? SymmetricMemoryType::kLoadStoreAccessible
+          : SymmetricMemoryType::kXlaRendezvous;
+
   CollectiveKernelSpec kernel_spec = {
-      /* .input_buffer_specs= */ {
-          {/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-      /* .output_buffer_specs= */
-      {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /* .codegen_config= */ {
+          /* .copy_input_to_scratch= */ true,
+          /* .emit_entry_barrier= */ true,
+          /* .input_buffer_specs= */
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /* .output_buffer_specs= */
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /* .argument_descriptors= */
+          {{KernelArgType::kScratchBuffer,
+            /*index=*/1},  // scratch buffer as input
+           {KernelArgType::kOutputBuffer, /*index=*/0},
+           {KernelArgType::kRuntimeRank},
+           {KernelArgType::kInvocationCount},
+           {KernelArgType::kScratchBuffer,
+            /*index=*/0}},  // signal buffers only
+          /* .sync_count_increment= */ 1u},
       /* .scratch_buffers= */
-      {{signal_size, /*requires_multimem=*/false,  // Signal flags
-        SymmetricMemoryType::kXlaRendezvous,
+      {{signal_size, /*requires_multimem=*/false, sym_mem_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
-       {remote_size, /*requires_multimem=*/false,  // Symmetric remote buffer
-        SymmetricMemoryType::kXlaRendezvous,
+       {remote_size, /*requires_multimem=*/false, sym_mem_type,
         /*should_memzero=*/false,
-        /*should_double_buffer=*/true}},
-      /* .argument_descriptors= */
-      {{KernelArgType::kInputBuffer, /*index=*/0},   // buffers[0].source_buffer
-       {KernelArgType::kOutputBuffer, /*index=*/0},  // buffers[0].dst_buffer
-       {KernelArgType::kRuntimeRank},
-       {KernelArgType::kInvocationCount},
-       {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
-       {KernelArgType::kScratchBuffer, /*index=*/1}},  // remote buffers
-      /* .sync_count_increment= */ 1u};  // AllGather is always one-shot
+        /*should_double_buffer=*/true}}};
   return kernel_spec;
 }
 

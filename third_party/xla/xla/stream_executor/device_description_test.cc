@@ -138,6 +138,13 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_tdm_support());
   EXPECT_FALSE(RocmComputeCapability{"gfx942"}.has_tdm_support());
   EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_tdm_support());
+
+  EXPECT_TRUE(RocmComputeCapability{"gfx942"}.has_peer_visible_atomics());
+  EXPECT_TRUE(RocmComputeCapability{"gfx950"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx90a"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx908"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_peer_visible_atomics());
 }
 
 TEST(GpuComputeCapability, ProtoConversion) {

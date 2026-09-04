@@ -290,6 +290,7 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       debug_options.xla_gpu_use_new_autotune_cache_format();
   options.compile_all_supported_configs =
       debug_options.xla_compile_all_supported_configs();
+  options.force_config = debug_options.xla_force_config();
 
   return options;
 }
