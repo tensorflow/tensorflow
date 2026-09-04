@@ -122,6 +122,11 @@ enum class ResourceHazardType {
   // ops that are valuable for selective overlap.
   kSelective = 3,
   kUnshareable = 4,
+  // An in-order resource (e.g. hardware FIFO command queue) where operations
+  // are processed sequentially. Instructions calling a synchronous nested
+  // computation using this resource cannot be scheduled while any outer
+  // asynchronous operation on this resource is in flight.
+  kInOrder = 5,
 };
 
 template <typename T, typename = typename std::enable_if_t<std::is_enum_v<T>>>
@@ -426,6 +431,13 @@ class AsyncTracker {
 
   // Returns whether the provided node occupies a selective resource.
   bool OccupiesSelectiveResource(const HloGraphNode* node) const;
+
+  // Returns whether the resource is an in-order resource (e.g. hardware FIFO
+  // command queue) where operations are processed sequentially and cannot be
+  // interleaved across nested computation boundaries.
+  bool IsInorderResource(int64_t resource_type) const {
+    return GetResourceHazardType(resource_type) == ResourceHazardType::kInOrder;
+  }
 
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
     return get_canonical_async_op_(hlo);
@@ -1946,6 +1958,8 @@ class DefaultSchedulerCore : public SchedulerCore {
   static bool DeleteOccupierFromResource(
       HloGraphNode::TimeCost current_time, HloEdge& edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
+  static bool DefaultSchedulingInstructionCrossesOverlapLimit(
+      const SchedulingState& sched_state, const HloGraphNode* node);
   int64_t GetMemoryPeak() override {
     return module_pressure_state_->GetMemoryPeak();
   }

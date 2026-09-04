@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "riegeli/bytes/fd_writer.h"
 #include "riegeli/records/record_writer.h"
