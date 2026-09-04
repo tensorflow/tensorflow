@@ -34,7 +34,7 @@ import sys
 import collections
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.compat import v2 as tf
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import load_library
 from tensorflow.python.eager import context

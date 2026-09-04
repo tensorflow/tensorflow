@@ -29,7 +29,7 @@ import os
 import sys
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.compat import v2 as tf
 from tensorflow.python.framework import load_library
 
 
