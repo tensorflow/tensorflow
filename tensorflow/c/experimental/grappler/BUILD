@@ -32,8 +32,9 @@ cc_library(
     hdrs = ["grappler.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:c_api_macros_hdrs",
+        "//tensorflow/c:tf_buffer_hdrs",
         "//tensorflow/c:tf_status_headers",
     ],
 )
