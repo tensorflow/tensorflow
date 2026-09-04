@@ -404,8 +404,11 @@ class Tensor {
   /// `AsProtoField()` fills in the repeated field for `proto.dtype()`, while
   /// `AsProtoTensorContent()` encodes the content in `proto.tensor_content()`
   /// in a compact form.
-  void AsProtoField(TensorProto* proto) const;
-  void AsProtoTensorContent(TensorProto* proto) const;
+  ///
+  /// Both return `true` on success, or `false` if serialization fails (for
+  /// example, if a variant within the tensor fails to encode).
+  bool AsProtoField(TensorProto* proto) const;
+  bool AsProtoTensorContent(TensorProto* proto) const;
 
   /// \brief Return the tensor data as an `Eigen::Tensor` with the type and
   /// sizes of this `Tensor`.
