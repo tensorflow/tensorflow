@@ -36,24 +36,22 @@
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1949,11 +1949,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
-     if not is_cuda():
-         return
-     assert f"atom.global.{sem_str}" in h.asm["ptx"]
+@@ -1989,7 +1989,13 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
+ 
+ @pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
+                     reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
+-@pytest.mark.skipif(is_sm12x(), reason="scalar multi-CTA atomic_cas is not supported on sm12x (consumer Blackwell)")
++@pytest.mark.skipif(is_sm12x(), reason="scalar multi-CTA atomic_cas is not supported on sm120 (consumer Blackwell)")
 +# According to MIG specification, cluster multi-CTA is not supported internally on H100/B200 MIG slices.
 +# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/gpus-multi 
 +# because the operations for inter- CTA synchronization are not supported on MIG.
- 
--
--@pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
--                    reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
--@pytest.mark.skipif(is_sm12x(), reason="scalar multi-CTA atomic_cas is not supported on sm120 (consumer Blackwell)")
++
 +@pytest.mark.skipif(True,
 +                    reason="num_ctas > 1 (Cluster Multi-CTA) is not supported internally on H100/B200 MIG slices")
  def test_scalar_atomic_cas_multicta_result(device):
  
      @triton.jit
-@@ -1969,8 +1970,8 @@ def test_scalar_atomic_cas_multicta_result(device):
+@@ -2005,8 +2011,8 @@ def test_scalar_atomic_cas_multicta_result(device):
      torch.testing.assert_close(output, torch.full_like(output, 7))
  
  
@@ -64,7 +62,7 @@
  @pytest.mark.parametrize("size", [1, 4, 16, 128, 512])
  def test_tensor_atomic_cas_multicta_result(size, device):
  
-@@ -2021,8 +2022,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
+@@ -2057,8 +2063,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
  
  
  @pytest.mark.interpreter
@@ -100,4 +98,26 @@
          check=True,
          capture_output=True,
          env=env,
+
+--- a/python/triton/_test_runner.py
++++ b/python/triton/_test_runner.py
+@@ -211,9 +211,17 @@
+ 
+ 
+ def _suite(args):
++    old_junit_dir = os.environ.get("TRITON_TEST_JUNIT_DIR")
+     if args.junit_dir is not None:
+         os.environ["TRITON_TEST_JUNIT_DIR"] = args.junit_dir
+-    return {"unit": _unit, "gsan": _gsan, "gluon": _gluon}[args.name](args)
++    try:
++        return {"unit": _unit, "gsan": _gsan, "gluon": _gluon}[args.name](args)
++    finally:
++        if args.junit_dir is not None:
++            if old_junit_dir is not None:
++                os.environ["TRITON_TEST_JUNIT_DIR"] = old_junit_dir
++            else:
++                os.environ.pop("TRITON_TEST_JUNIT_DIR", None)
+ 
+ 
+ def _report(args):
 
