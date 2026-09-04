@@ -235,7 +235,7 @@ Status LibjpegDecoder::DecodeImage(const tflite::StringRef& encoded,
 
   // Decoding the data in a buffer as large as the largest allowed JPEG
   // image row to avoid overflows in case  we are reading a wrong value for the
-  // image size in the header or we are receiving an image with an header
+  // image size in the header or we are receiving an image with a header
   // deliberately incorrect to cause a buffer overflow.
   // Using 4 channels because the decode color process can handle 3 or 4
   // channels:
