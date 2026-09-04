@@ -414,6 +414,21 @@ def MHLO_ErfOp: MHLO_UnaryElementwiseOp<"erf",
   }];
   let hasFolder = 1;
 }
+
+def MHLO_ErfcOp: MHLO_UnaryElementwiseOp<"erfc",
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+  let summary = "Erfc operation";
+  let description = [{
+    Performs element-wise erfc operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.erfc %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
 def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Exp operation";

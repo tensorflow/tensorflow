@@ -146,6 +146,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
         HloOpcode::kCos,
         HloOpcode::kCosh,
         HloOpcode::kErf,
+        HloOpcode::kErfc,
         HloOpcode::kExp,
         HloOpcode::kExpm1,
         HloOpcode::kFloor,
@@ -879,16 +880,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
     case HloOpcode::kAllGather:
-      if (instr.shape().element_type() == S4) {
-        return CodegenDecision::Forbid("S4 is not supported.");
-      }
-      return instr.GetModule()
-                     ->config()
-                     .debug_options()
-                     .xla_gpu_experimental_enable_tiling_propagation()
-                 ? CodegenDecision::Allow()
-                 : CodegenDecision::Forbid(absl::StrCat(
-                       HloOpcodeString(instr.opcode()), " is not supported"));
+      return CodegenDecision(instr.shape().element_type() != S4,
+                             "S4 is not supported.");
     default:
       // Not all instructions have a special handling.
       break;

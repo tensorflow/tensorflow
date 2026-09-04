@@ -103,6 +103,11 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
   return xla::cpu::EmitErf(module(), *b(), prim_type, value);
 }
 
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErfc(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("erfc");
+}
+
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value, absl::string_view name) {
   if (prim_type == F64) {
