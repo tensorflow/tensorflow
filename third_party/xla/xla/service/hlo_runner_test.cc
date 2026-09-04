@@ -119,7 +119,7 @@ class FakeClient : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       absl::string_view serialized,
-      std::optional<CompileOptions> options) override {
+      std::optional<CompileOptions>&& options) override {
     deserialize_callback_(serialized);
     return std::make_unique<Executable>();
   }

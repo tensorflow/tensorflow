@@ -482,7 +482,7 @@ AOTInterceptionPjrtClient::GetDefaultDeviceAssignment(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 AOTInterceptionPjrtClient::DeserializeExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
+    absl::string_view serialized, std::optional<CompileOptions>&& options) {
   return inner_client_->DeserializeExecutable(serialized, std::move(options));
 }
 
