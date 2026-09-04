@@ -510,16 +510,6 @@ inline std::unique_ptr<KernelArgsPackedArray> PackKernelArgs(
   return packed;
 }
 
-inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArray>> PackKernelArgs(
-    absl::Span<const DeviceAddressBase> args, const KernelMetadata& metadata) {
-  return PackKernelArgs(args, metadata.shared_memory_bytes().value_or(0));
-}
-
-inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArray>> PackKernelArgs(
-    absl::Span<const KernelArg> args, const KernelMetadata& metadata) {
-  return PackKernelArgs(args, metadata.shared_memory_bytes().value_or(0));
-}
-
 //===----------------------------------------------------------------------===//
 // Kernel arguments tuple for statically know argument types
 //===----------------------------------------------------------------------===//
