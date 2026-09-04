@@ -80,5 +80,32 @@ TEST(SemaphoreTest, ConcurrentTest) {
   a_done.WaitForNotification();
 }
 
+TEST(SemaphoreTest, ScopedReservationMoveAssignment) {
+  Semaphore semaphore(10);
+  EXPECT_EQ(semaphore.value(), 10);
+  {
+    auto r1 = semaphore.ScopedAcquire(5);
+    EXPECT_EQ(semaphore.value(), 5);
+    auto r2 = semaphore.ScopedAcquire(3);
+    EXPECT_EQ(semaphore.value(), 2);
+    r1 = std::move(r2);
+    EXPECT_EQ(semaphore.value(), 7);
+  }
+  EXPECT_EQ(semaphore.value(), 10);
+}
+
+TEST(SemaphoreTest, ScopedReservationSelfMoveAssignment) {
+  Semaphore semaphore(10);
+  EXPECT_EQ(semaphore.value(), 10);
+  {
+    auto r1 = semaphore.ScopedAcquire(5);
+    EXPECT_EQ(semaphore.value(), 5);
+    auto* r1_ptr = &r1;
+    r1 = std::move(*r1_ptr);
+    EXPECT_EQ(semaphore.value(), 5);
+  }
+  EXPECT_EQ(semaphore.value(), 10);
+}
+
 }  // namespace
 }  // namespace xla
