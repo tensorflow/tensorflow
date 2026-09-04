@@ -991,6 +991,29 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertIn(input2, writes3)
     self.assertNotIn(input0, writes3)
 
+  def testResourceInputInReadsAndWritesNoResolver(self):
+    from tensorflow.python.framework import auto_control_deps_utils as acd_utils
+    from unittest import mock
+
+    attr = acd_utils.READ_ONLY_RESOURCE_INPUTS_ATTR
+
+    input0 = mock.MagicMock()
+    input0.dtype = dtypes.resource
+
+    def get_attr(name):
+      if name == attr:
+        return [0]
+      raise ValueError()
+
+    op = mock.MagicMock()
+    op.type = "SomeOp"
+    op.inputs = [input0, input0]
+    op.get_attr.side_effect = get_attr
+
+    resource_inputs = list(acd._get_resource_inputs(op))
+    self.assertEqual(len(resource_inputs), 1)
+    self.assertEqual(resource_inputs[0], (input0, acd.ResourceType.READ_WRITE))
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()
