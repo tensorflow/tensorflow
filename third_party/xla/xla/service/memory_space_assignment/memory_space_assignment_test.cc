@@ -18685,6 +18685,131 @@ ENTRY entry {
             kDefaultMemorySpace);
 }
 
+// Tests that FindAliases correctly maps operands to parameters for async-start
+// and async-update:
+// 1. Operands bound with async-start map 1-to-1 to initial parameters.
+// 2. Operand 0 of async-update (the async context token) does not alias
+// parameters.
+// 3. Operands bound with async-update map 1-to-1 to subsequent parameters,
+// offset
+//    by the number of previously bound operands.
+TEST_F(MemorySpaceAssignmentTest, FindAliasesAsyncStartAndAsyncUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  p2 = f32[4]{0} parameter(2)
+  p3 = f32[4]{0} parameter(3)
+  ROOT tuple = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(p0, p1, p2, p3)
+}
+
+ENTRY entry {
+  param0 = f32[4]{0} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+  param2 = f32[4]{0} parameter(2)
+  param3 = f32[4]{0} parameter(3)
+  async-start = ((f32[4]{0}, f32[4]{0}), (), s32[]) async-start(param0, param1), calls=async_computation
+  async-update = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), (), s32[]) async-update(async-start, param2, param3), calls=async_computation
+  async-done = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) async-done(async-update), calls=async_computation
+  ROOT root = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(async-done, param0, param1, param2, param3)
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  HloInstruction* param2 = FindInstruction(module.get(), "param2");
+  HloInstruction* param3 = FindInstruction(module.get(), "param3");
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+
+  HloComputation* async_comp =
+      module->GetComputationWithName("async_computation");
+  HloInstruction* p0 = async_comp->parameter_instruction(0);
+  HloInstruction* p1 = async_comp->parameter_instruction(1);
+  HloInstruction* p2 = async_comp->parameter_instruction(2);
+  HloInstruction* p3 = async_comp->parameter_instruction(3);
+
+  std::vector<AllocationValue> allocation_values;
+  // Allocation values for parameters of the async computation.
+  allocation_values.emplace_back(nullptr, HloPosition{p0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p1, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p2, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p3, {}}, 16);
+
+  // Allocation values for caller operands passed to async-start (operands 0 and
+  // 1).
+  AllocationValue val_param0(nullptr, HloPosition{param0, {}}, 16);
+  val_param0.uses().push_back(AllocationValue::Use{HloUse{async_start, 0}, 1});
+  allocation_values.push_back(std::move(val_param0));
+
+  AllocationValue val_param1(nullptr, HloPosition{param1, {}}, 16);
+  val_param1.uses().push_back(AllocationValue::Use{HloUse{async_start, 1}, 1});
+  allocation_values.push_back(std::move(val_param1));
+
+  // Allocation value for async-start consumed as operand 0 of async-update.
+  AllocationValue val_async_start(nullptr, HloPosition{async_start, {}}, 16);
+  val_async_start.uses().push_back(
+      AllocationValue::Use{HloUse{async_update, 0}, 2});
+  allocation_values.push_back(std::move(val_async_start));
+
+  // Allocation values for caller operands passed to async-update (operands 1
+  // and 2).
+  AllocationValue val_param2(nullptr, HloPosition{param2, {}}, 16);
+  val_param2.uses().push_back(AllocationValue::Use{HloUse{async_update, 1}, 2});
+  allocation_values.push_back(std::move(val_param2));
+
+  AllocationValue val_param3(nullptr, HloPosition{param3, {}}, 16);
+  val_param3.uses().push_back(AllocationValue::Use{HloUse{async_update, 2}, 2});
+  allocation_values.push_back(std::move(val_param3));
+
+  // Allocation value for async-update consumed by async-done.
+  AllocationValue val_async_update(nullptr, HloPosition{async_update, {}}, 16);
+  val_async_update.uses().push_back(
+      AllocationValue::Use{HloUse{async_done, 0}, 3});
+  allocation_values.push_back(std::move(val_async_update));
+
+  MsaAlgorithm::FindAliases(&allocation_values);
+
+  auto find_val = [&](const HloInstruction* inst) -> const AllocationValue& {
+    for (const auto& v : allocation_values) {
+      if (v.position().instruction == inst) return v;
+    }
+    LOG(FATAL) << "Not found: " << inst->name();
+  };
+
+  // 1. Verify 1-to-1 mapping for async-start operands:
+  // param0 (operand 0) aliases async_start and callee parameter p0.
+  EXPECT_THAT(find_val(param0).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {}},
+                                     HloPosition{p0, {}}));
+  // param1 (operand 1) aliases async_start and callee parameter p1.
+  EXPECT_THAT(find_val(param1).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {}},
+                                     HloPosition{p1, {}}));
+
+  // 2. Verify operand 0 of async-update (the async context token) aliases
+  // async_update, but does not alias any callee parameter:
+  EXPECT_THAT(find_val(async_start).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {}}));
+
+  // 3. Verify late-bound parameter offset calculation for async-update
+  // operands: param2 (operand 1 of async-update) aliases async_update and
+  // callee parameter p2 (1 - 1 + 2 = 2).
+  EXPECT_THAT(find_val(param2).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {}},
+                                     HloPosition{p2, {}}));
+  // param3 (operand 2 of async-update) aliases async_update and callee
+  // parameter p3 (2 - 1 + 2 = 3).
+  EXPECT_THAT(find_val(param3).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {}},
+                                     HloPosition{p3, {}}));
+}
+
 // Tests a case where some operands bound in async-start/update are allowed
 // in alternate memory while others are restricted to default memory.
 // TODO(b/538345137): Re-enable this test once b/538345137 is fixed.
