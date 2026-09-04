@@ -464,6 +464,26 @@ ENTRY entry {
               op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
 }
 
+TEST_P(DotHandlerTest, MXCustomCall_Unreduced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[1,8]<=[8]}
+  lhs_scale = f8e4m3fn[1024,16]{1,0} parameter(1), sharding={devices=[1,8]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={unreduced}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall({"__op$block_scaled_dot"}));
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
 TEST_P(DotHandlerTest, MXCustomCall_BatchNonContractingAndBatchNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/shape_inference.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -513,11 +514,14 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
           PartitionedHlo(rhs_with_halo, rhs.base_shape(), rhs.state()), b,
           new_window));
 
-  auto ar = collective_ops_creator.create_all_reduce(
-      b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module),
-      CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
-  ar->set_sharding(HloSharding::Replicate());
-  return PartitionedHlo(ar, output_base_shape, lhs.state())
+  HloInstruction* result = conv;
+  if (!conv->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    result = collective_ops_creator.create_all_reduce(
+        b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module),
+        CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
+  }
+  result->set_sharding(HloSharding::Replicate());
+  return PartitionedHlo(result, output_base_shape, lhs.state())
       .Reshard(output_sharding)
       .hlo();
 }
@@ -738,11 +742,14 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
                                   PartitionedHlo(lhs_with_halo,
                                                  lhs.base_shape(), lhs.state()),
                                   rhs, b, new_window));
-  auto ar = lhs.state().collective_ops_creator.create_all_reduce(
-      b, conv, MakeBinaryAdd(output_base_shape.element_type(), module),
-      CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
-  ar->set_sharding(HloSharding::Replicate());
-  return PartitionedHlo(ar, output_base_shape, lhs.state())
+  HloInstruction* result = conv;
+  if (!conv->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    result = lhs.state().collective_ops_creator.create_all_reduce(
+        b, conv, MakeBinaryAdd(output_base_shape.element_type(), module),
+        CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
+  }
+  result->set_sharding(HloSharding::Replicate());
+  return PartitionedHlo(result, output_base_shape, lhs.state())
       .Reshard(output_sharding)
       .hlo();
 }
