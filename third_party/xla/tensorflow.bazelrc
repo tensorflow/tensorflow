@@ -142,6 +142,13 @@ common --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # common --incompatible_config_setting_private_default_visibility
 
+# external_include_paths feature forces passing external repositories headers
+# via -isystem alters how Clang resolves their file paths. This feature with
+# old versions of rules_cc triggering errors.
+# Following lines can be removed after rules_cc will be updated to >= 0.2.22
+common --features=-external_include_paths
+common --host_features=-external_include_paths
+
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
@@ -300,7 +307,8 @@ common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
 common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
-common:rocm_ci_hermetic --dynamic_mode=off
+common:rocm_ci_hermetic --dynamic_mode=fully
+common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
 common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"

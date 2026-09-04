@@ -29,7 +29,7 @@ constexpr absl::string_view kModuleStr =
   %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
     %lhs = f32[] parameter(0)
     %rhs = f32[] parameter(1)
-    ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, type=TOTALORDER
+    ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, order=TOTAL
   }
 
   %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {

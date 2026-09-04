@@ -115,8 +115,9 @@ def main():
       default="gemma2_2b_en",
       help=(
           "Preset name of the model to benchmark. This was tested with"
-          " the following models: gemma2_2b_en, gemma3_1b, gemma4_2b"
-          "  gpt_oss_20b_en, mixtral_8_7b_en, qwen3_14b_en, qwen2_1.5b_en."
+          " the following models: gemma2_2b_en, gemma3_1b, gemma4_2b,"
+          "  gpt_oss_20b_en, mistral_7b_en  mixtral_8_7b_en, "
+          "  qwen3_14b_en, qwen2_1.5b_en."
           " Llama models also should work."
           " See https://keras.io/keras_hub/presets/"
           " for the full list of presets."
@@ -149,6 +150,9 @@ def main():
   elif "llama" in model_name:
     lm = keras_hub.models.LlamaCausalLM.from_preset(model_name)
     tokenizer = keras_hub.models.LlamaTokenizer.from_preset(model_name)
+  elif "mistral" in model_name:
+    lm = keras_hub.models.MistralCausalLM.from_preset(model_name)
+    tokenizer = keras_hub.models.MistralTokenizer.from_preset(model_name)
   elif "mixtral" in model_name:
     lm = keras_hub.models.MixtralCausalLM.from_preset(model_name)
     tokenizer = keras_hub.models.MixtralTokenizer.from_preset(model_name)
