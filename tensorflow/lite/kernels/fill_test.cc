@@ -197,6 +197,12 @@ TEST(FillOpTest, FillString) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
 
+TEST(FillOpTest, FillStringOverflow) {
+  FillOpModel<int32_t, std::string> m(TensorType_INT32, {2}, {65537, 65537}, "AB",
+                                      TestType::kDynamic);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 TEST_P(FillOpTest, FillInt8) {
   FillOpModel<int64_t, int8_t> m(TensorType_INT64, {3}, {2, 2, 2}, 5,
                                  GetParam());
