@@ -358,6 +358,7 @@ def _tf_library(
             "@xla//xla/backends/cpu/runtime:sort_lib",
             "@xla//xla/backends/cpu/runtime:topk_lib",
             "@xla//xla/backends/cpu/runtime:convolution_lib",
+            "@xla//xla/backends/cpu/runtime:msan_emulated_tls",
             "@xla//xla/service/cpu:runtime_matmul",
             "@xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
