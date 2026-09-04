@@ -269,6 +269,8 @@ absl::Status CheckRaggedAllToAllBounds(
   int device_ordinal = stream.parent()->device_ordinal();
   se::StreamExecutor* stream_executor = stream.parent();
 
+  ABSL_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+
   se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
   PrimitiveType element_type = buffers[0].element_type;
 
@@ -306,10 +308,12 @@ absl::Status CheckRaggedAllToAllBounds(
     int64_t recv_sz = recv_sizes_host[i];
 
     TF_RET_CHECK(in_offset >= 0 && out_offset >= 0)
-        << "RaggedAllToAll: Negative offsets detected!";
+        << "RaggedAllToAll: Negative offsets detected! (in_offset=" << in_offset
+        << ", out_offset=" << out_offset << ", index=" << i << ")";
 
     TF_RET_CHECK(send_sz >= 0 && recv_sz >= 0)
-        << "RaggedAllToAll: Negative sizes detected!";
+        << "RaggedAllToAll: Negative sizes detected! (send_sz=" << send_sz
+        << ", recv_sz=" << recv_sz << ", index=" << i << ")";
 
     max_read_index = std::max(max_read_index, in_offset + send_sz);
     max_write_index = std::max(max_write_index, out_offset + send_sz);
