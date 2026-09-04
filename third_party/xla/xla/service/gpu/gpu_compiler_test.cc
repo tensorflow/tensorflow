@@ -397,6 +397,7 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   constexpr absl::string_view kInvalidTextProto = "Invalid!";
 
   HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_autotune_level(4);
   // Check that it writes the results on the first compilation.
   TF_EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
   {
@@ -420,12 +421,14 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 }
 
 TEST_P(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_autotune_level(4);
   EXPECT_OK(GetOptimizedModuleForExecutable(R"(
 e {
   a = f32[64,128] parameter(0)
   t = f32[128,64] transpose(a), dimensions={1,0}
 })",
-                                            GetModuleConfigForTest())
+                                            config)
                 .status());
 
   ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,

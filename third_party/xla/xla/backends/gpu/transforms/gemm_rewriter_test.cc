@@ -143,7 +143,17 @@ ENTRY e {
   EXPECT_TRUE(filecheck_result.value());
 }
 
-TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
+class AutotunedGemmRewriteTest : public GemmRewriteTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(4);
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    return debug_options;
+  }
+};
+
+TEST_F(AutotunedGemmRewriteTest, TestBatchedAutotuning) {
   if (HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP()
         << "There is no autotuning starting with the Nvidia Ampere generation";
@@ -401,6 +411,7 @@ class CublasLtGemmRewriteTest
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_autotune_level(4);
     return debug_options;
   }
 
@@ -3553,6 +3564,7 @@ class SmallDotGemmRewriteTest : public GemmRewriteTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
+    debug_options.set_xla_gpu_autotune_level(4);
     return debug_options;
   }
 };
