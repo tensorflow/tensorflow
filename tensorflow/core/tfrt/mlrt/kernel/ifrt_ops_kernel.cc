@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
@@ -292,7 +293,6 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   auto& resource_handle = variable_handler_tensor().scalar<ResourceHandle>()();
   std::string runtime_name =
       ifrt_serving::GetRuntimeNameFromVarHandle(resource_handle);
-
   if (used_by_host()) {
     std::optional<IfrtModelContext*> ifrt_model_context =
         context().resource_context().GetResource<IfrtModelContext>(
@@ -301,46 +301,51 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
       return absl::FailedPreconditionError(
           "LoadVariableOp: failed to fetch IfrtModelContext: ");
     }
-    ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
-        (*ifrt_model_context)->GetRestoreTensorRegistry();
-    if (ifrt_restore_tensor_registry.SetUsedByHost(runtime_name).ok()) {
-      tsl::Future<tensorflow::Tensor> restored_tensor_future =
-          ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
+    auto* resource_manager = context()
+                                 .fallback_request_state()
+                                 .device_manager()
+                                 .HostCPU()
+                                 ->resource_manager();
+    auto& registry = (*ifrt_model_context)->GetRestoreTensorRegistry();
 
-      restored_tensor_future.OnReady(
-          [tensor_promise = std::move(tensor_promise)](
-              absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
-            if (!restored_tensor.ok()) {
+    // Mark as host-used if present so FreezeCleanup won't prune it.
+    registry.SetUsedByHost(runtime_name).IgnoreError();
+
+    registry.GetRestoredTensor(runtime_name)
+        .OnReady(
+            [tensor_promise = std::move(tensor_promise), resource_handle,
+             resource_manager, runtime_name](
+                absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
+              // Success from Registry
+              if (restored_tensor.ok()) {
+                std::move(tensor_promise)
+                    .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                        tensorflow::tfrt_stub::FallbackTensor(
+                            *restored_tensor));
+                return;
+              }
+
+              // Fallback to ResourceManager (for NotFound or
+              // Frozen/Unavailable)
+              Var* raw_var = nullptr;
+              if (resource_manager &&
+                  resource_manager
+                      ->Lookup(resource_handle.container(),
+                               resource_handle.name(), &raw_var)
+                      .ok()) {
+                core::RefCountPtr<Var> variable(raw_var);
+                if (variable->tensor()) {
+                  std::move(tensor_promise)
+                      .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                          tensorflow::tfrt_stub::FallbackTensor(
+                              *variable->tensor()));
+                  return;
+                }
+              }
+
+              // Not found in either
               std::move(tensor_promise).SetError(restored_tensor.status());
-              return;
-            }
-            std::move(tensor_promise)
-                .Set<tensorflow::tfrt_stub::FallbackTensor>(
-                    tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
-          });
-    } else {
-      // If not at IfrtRestoreTensorRegistry, try ResourceManager
-      auto resource_manager = context()
-                                  .fallback_request_state()
-                                  .device_manager()
-                                  .HostCPU()
-                                  ->resource_manager();
-      DCHECK(resource_manager);
-      Var* variable;
-      TF_RETURN_IF_ERROR(resource_manager->Lookup(
-          resource_handle.container(), resource_handle.name(), &variable));
-      if (tensorflow::Tensor* t = variable->tensor(); t != nullptr) {
-        std::move(tensor_promise)
-            .Set<tensorflow::tfrt_stub::FallbackTensor>(
-                tensorflow::tfrt_stub::FallbackTensor(*t));
-      } else {
-        std::move(tensor_promise)
-            .SetError(absl::InternalError(
-                absl::StrCat("Variable ", resource_handle.name(),
-                             " is not found in either "
-                             "IfrtRestoreTensorRegistry or ResourceManager")));
-      }
-    }
+            });
   } else {
     // If not used by host, set the future to be ready immediately with an empty
     // tensor so that it does not block the graph execution.

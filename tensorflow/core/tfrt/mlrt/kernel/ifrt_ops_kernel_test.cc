@@ -475,12 +475,12 @@ TEST_P(KernelTest, IfrtLoadVariableOpCanGetTensorFromResourceManager) {
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
 
-  tsl::core::RefCountPtr<Var> variable(new Var(DT_INT32));
+  auto* variable = new Var(DT_INT32);
   *variable->tensor() = input_tensor;
   variable->is_initialized = true;
   ASSERT_OK(
       fallback_state_->device_manager().HostCPU()->resource_manager()->Create(
-          std::string(kContainer), std::string(kSharedName), &(*variable)));
+          std::string(kContainer), std::string(kSharedName), variable));
 
   std::vector<mlrt::Value> args;
   std::vector<uint8_t> last_uses;

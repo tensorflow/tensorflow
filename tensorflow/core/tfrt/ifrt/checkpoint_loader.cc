@@ -21,11 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -39,11 +42,15 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
@@ -60,6 +67,53 @@ namespace ifrt_serving {
 namespace {
 
 static constexpr int kNumRestoreClusters = 4;
+
+// Assigns a tensor to a resource variable directly in the ResourceManager.
+absl::Status AssignVariable(
+    const tensorflow::tfrt_stub::FallbackTensor& var_handle_tensor,
+    tensorflow::Tensor& in_tensor, tensorflow::ResourceMgr* resource_manager) {
+  if (resource_manager == nullptr) {
+    return absl::InternalError("resource_manager must not be null");
+  }
+  const ResourceHandle& var_handle =
+      var_handle_tensor.tensor().scalar<tensorflow::ResourceHandle>()();
+  tensorflow::Var* variable = nullptr;
+  TF_RETURN_IF_ERROR(resource_manager->LookupOrCreate<tensorflow::Var>(
+      var_handle.container(), var_handle.name(), &variable,
+      [&in_tensor](tensorflow::Var** ptr) {
+        *ptr = new tensorflow::Var(in_tensor.dtype());
+        return absl::OkStatus();
+      }));
+  core::RefCountPtr<tensorflow::Var> var_ref(variable);
+  mutex_lock ml(*variable->mu());
+  *variable->tensor() = in_tensor;
+  variable->is_initialized = true;
+  return absl::OkStatus();
+}
+
+void MaterializeVarOnReady(
+    tsl::Future<tensorflow::Tensor> host_tensor_future,
+    const tensorflow::tfrt_stub::FallbackTensor& var_handle_tensor,
+    tensorflow::ResourceMgr* resource_manager,
+    tsl::Promise<void> ready_promise) {
+  host_tensor_future.OnReady(
+      [var_handle_tensor, resource_manager,
+       ready_promise = std::move(ready_promise)](
+          const absl::StatusOr<tensorflow::Tensor>& tensor_status) mutable {
+        if (!tensor_status.ok()) {
+          std::move(ready_promise).Set(tensor_status.status());
+          return;
+        }
+        tensorflow::Tensor tensor_to_assign = *tensor_status;
+        absl::Status s = AssignVariable(var_handle_tensor, tensor_to_assign,
+                                        resource_manager);
+        if (!s.ok()) {
+          std::move(ready_promise).Set(s);
+          return;
+        }
+        std::move(ready_promise).Set();
+      });
+}
 
 // A shard of variables to be restored.
 struct RestoreVariableShard {
@@ -95,6 +149,17 @@ struct AsyncState {
   // the corresponding promise will be nullopt.
   std::vector<std::optional<tsl::Promise<DtypeAndShape>>>
       dtype_and_shape_results;
+
+  void SetError(const absl::Status& status, int start_idx = 0) {
+    for (int j = start_idx; j < host_tensor_results.size(); ++j) {
+      std::move(host_tensor_results[j]).Set(status);
+    }
+    for (int j = start_idx; j < dtype_and_shape_results.size(); ++j) {
+      if (dtype_and_shape_results[j].has_value()) {
+        std::move(*dtype_and_shape_results[j]).Set(status);
+      }
+    }
+  }
 };
 
 // Returns a casted tensor if successful.
@@ -154,14 +219,7 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
   auto& op_kernel_context = async_state->context;
   if (!op_kernel_context.status().ok()) {
     LOG(ERROR) << "failed to run restore op: " << op_kernel_context.status();
-    for (auto& result : async_state->host_tensor_results) {
-      std::move(result).Set(op_kernel_context.status());
-    }
-    for (auto& result : async_state->dtype_and_shape_results) {
-      if (result.has_value()) {
-        std::move(*result).Set(op_kernel_context.status());
-      }
-    }
+    async_state->SetError(op_kernel_context.status());
     return;
   }
   DCHECK_EQ(shard.var_handles.size(), op_kernel_context.num_outputs());
@@ -173,24 +231,14 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
 
     if (op_kernel_context.mutable_output(i)->dtype() !=
         shard.restored_dtypes[i]) {
+      auto err = absl::InvalidArgumentError(
+          absl::StrCat("The restored tensor has a different dtype than the "
+                       "variable handle: ",
+                       op_kernel_context.mutable_output(i)->dtype(), " vs. ",
+                       shard.restored_dtypes[i]));
       LOG(ERROR) << "checkpoint_loader: dtype mismatch: "
-                 << shard.var_handles[i].tensor().DebugString() << ", "
-                 << op_kernel_context.mutable_output(i)->dtype() << " vs. "
-                 << shard.restored_dtypes[i];
-      std::move(async_state->host_tensor_results[i])
-          .Set(absl::InvalidArgumentError(
-              absl::StrCat("The restored tensor has a different dtype than the "
-                           "variable handle: ",
-                           op_kernel_context.mutable_output(i)->dtype(),
-                           " vs. ", shard.restored_dtypes[i])));
-      if (async_state->dtype_and_shape_results[i].has_value()) {
-        std::move(*async_state->dtype_and_shape_results[i])
-            .Set(absl::InvalidArgumentError(absl::StrCat(
-                "The restored tensor has a different dtype than the "
-                "variable handle: ",
-                op_kernel_context.mutable_output(i)->dtype(), " vs. ",
-                shard.restored_dtypes[i])));
-      }
+                 << shard.var_handles[i].tensor().DebugString() << ", " << err;
+      async_state->SetError(err, /*start_idx=*/i);
       return;
     }
     const ResourceHandle& var_handle =
@@ -216,12 +264,7 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
                async_state->process_function_library_runtime,
                async_state->run_state.params);
       if (!cast_output.ok()) {
-        std::move(async_state->host_tensor_results[i])
-            .Set(cast_output.status());
-        if (async_state->dtype_and_shape_results[i].has_value()) {
-          std::move(*async_state->dtype_and_shape_results[i])
-              .Set(cast_output.status());
-        }
+        async_state->SetError(cast_output.status(), /*start_idx=*/i);
         return;
       } else {
         dtype_and_shape.dtype = cast_output->dtype();
@@ -239,7 +282,11 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
 absl::Status RunShard(RestoreVariableShard shard,
                       IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
                       tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
-                      tf_mlrt::Context& context, bool use_async_restore) {
+                      tf_mlrt::Context& context, bool use_async_restore,
+                      bool materialize_variables_in_resource_manager,
+                      std::vector<tsl::Future<void>>* mutable_ready_futures,
+                      std::vector<CheckpointLoader::MaterializedVariable>*
+                          materialized_variables) {
   if (!ifrt_restore_tensor_registry) {
     return absl::InternalError("ifrt_restore_tensor_registry must not be null");
   }
@@ -289,6 +336,9 @@ absl::Status RunShard(RestoreVariableShard shard,
       fallback_request_state.device_manager(),
       fallback_request_state.process_function_library_runtime());
 
+  tensorflow::ResourceMgr* host_resource_manager =
+      fallback_request_state.device_manager().HostCPU()->resource_manager();
+
   for (int i = 0; i < num_outputs; ++i) {
     auto [host_tensor_promise, host_tensor_future] =
         tsl::MakePromise<tensorflow::Tensor>();
@@ -300,22 +350,34 @@ absl::Status RunShard(RestoreVariableShard shard,
     std::string runtime_name =
         ifrt_serving::GetRuntimeNameFromVarHandle(var_handle);
 
+    if (materialize_variables_in_resource_manager) {
+      // Register in the registry (weights still need it for H2D) AND
+      // materialize in the ResourceManager. Device-only copies are deleted
+      // later by FreezeCleanup.
+      auto [ready_promise, ready_future] = tsl::MakePromise<void>();
+      MaterializeVarOnReady(
+          host_tensor_future,  // copy; the original is registered below.
+          shard.var_handles[i], host_resource_manager,
+          std::move(ready_promise));
+      if (mutable_ready_futures != nullptr) {
+        mutable_ready_futures->push_back(std::move(ready_future));
+      }
+      if (materialized_variables != nullptr) {
+        materialized_variables->push_back(
+            CheckpointLoader::MaterializedVariable{
+                runtime_name, var_handle.container(), var_handle.name()});
+      }
+    }
+
     ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
         restored_tensor_info = {false, std::move(dtype_and_shape_future),
                                 std::move(host_tensor_future)};
     if (auto status = ifrt_restore_tensor_registry->TryRegister(
             runtime_name, restored_tensor_info);
         !status.ok()) {
-      // Propagate errors so that if already-registered futures are being waited
-      // on, they can be unblocked.
-      for (auto& result : async_state->host_tensor_results) {
-        std::move(result).Set(status);
-      };
-      for (auto& result : async_state->dtype_and_shape_results) {
-        if (result.has_value()) {
-          std::move(*result).Set(status);
-        }
-      };
+      std::move(host_tensor_promise).Set(status);
+      std::move(dtype_and_shape_promise).Set(status);
+      async_state->SetError(status);
       return status;
     }
     absl::StatusOr<ifrt_serving::DtypeAndShape> var_handle_dtype_and_shape =
@@ -425,11 +487,73 @@ absl::Status CheckpointLoader::Load(
     shard.shape_and_slices = vector_to_tensor(shape_and_slices);
     shards.push_back(std::move(shard));
   }
+  std::vector<tsl::Future<void>> mutable_ready_futures;
+  std::vector<MaterializedVariable> materialized_variables;
   for (const auto& shard : shards) {
-    TF_RETURN_IF_ERROR(RunShard(shard, ifrt_restore_tensor_registry_,
-                                checkpoint_loader_work_queue_, context,
-                                use_async_restore_));
+    TF_RETURN_IF_ERROR(RunShard(
+        shard, ifrt_restore_tensor_registry_, checkpoint_loader_work_queue_,
+        context, use_async_restore_, materialize_variables_in_resource_manager_,
+        &mutable_ready_futures, &materialized_variables));
   }
+  if (!mutable_ready_futures.empty() || !materialized_variables.empty()) {
+    absl::MutexLock lock(&mutable_variables_mu_);
+    for (auto& future : mutable_ready_futures) {
+      mutable_variable_ready_futures_.push_back(std::move(future));
+    }
+    for (auto& materialized : materialized_variables) {
+      materialized_variables_.push_back(std::move(materialized));
+    }
+    host_resource_manager_ = context.fallback_request_state()
+                                 .device_manager()
+                                 .HostCPU()
+                                 ->resource_manager();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckpointLoader::AwaitMutableVariables() {
+  std::vector<tsl::Future<void>> futures;
+  {
+    absl::MutexLock lock(&mutable_variables_mu_);
+    futures = mutable_variable_ready_futures_;
+  }
+  if (futures.empty()) {
+    return absl::OkStatus();
+  }
+  return tsl::JoinFutures(absl::MakeSpan(futures)).Await();
+}
+
+absl::Status CheckpointLoader::FreezeCleanup(
+    const absl::flat_hash_set<std::string>& device_variables,
+    const absl::flat_hash_set<std::string>& host_needed) {
+  // Wait for all in-flight asynchronous assignments to finish before deleting.
+  TF_RETURN_IF_ERROR(AwaitMutableVariables());
+
+  absl::MutexLock lock(&mutable_variables_mu_);
+  mutable_variable_ready_futures_.clear();
+  if (host_resource_manager_ == nullptr) {
+    LOG(INFO) << "CheckpointLoader::FreezeCleanup: host_resource_manager_ is "
+                 "null, skipping cleanup.";
+    return absl::OkStatus();
+  }
+  std::vector<MaterializedVariable> kept;
+  for (const MaterializedVariable& materialized : materialized_variables_) {
+    bool is_device_var = device_variables.contains(materialized.runtime_name);
+    bool is_host_needed = host_needed.contains(materialized.runtime_name);
+    // Only delete if the variable has been loaded to TPU device AND is not
+    // needed on host. Host-only variables (like metrics, counters, total_3, or
+    // CPU subgraphs) MUST remain in ResourceManager.
+    if (!is_device_var || is_host_needed) {
+      kept.push_back(materialized);
+      continue;
+    }
+    absl::Status status = host_resource_manager_->Delete<tensorflow::Var>(
+        materialized.container, materialized.name);
+    if (!status.ok() && !absl::IsNotFound(status)) {
+      return status;
+    }
+  }
+  materialized_variables_ = std::move(kept);
   return absl::OkStatus();
 }
 
