@@ -1,0 +1,17 @@
+Remove redundant defaulted copy/move constructors to preserve aggregate status.
+
+diff --git a/tools/cuda-tile-tblgen/CudaTileOp.h b/tools/cuda-tile-tblgen/CudaTileOp.h
+--- a/tools/cuda-tile-tblgen/CudaTileOp.h
++++ b/tools/cuda-tile-tblgen/CudaTileOp.h
+@@ -55,11 +55,6 @@
+   std::optional<std::vector<std::string>> selectedVariants;
+   ParameterType type;
+ 
+-  OperationParameter(const OperationParameter &other) = default;
+-  OperationParameter(OperationParameter &&other) = default;
+-  OperationParameter &operator=(const OperationParameter &other) = default;
+-  OperationParameter &operator=(OperationParameter &&other) = default;
+-
+   std::string getDescription() const;
+   TileIRType getTypeDescription() const;
+ };
