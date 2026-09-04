@@ -127,18 +127,6 @@ struct AllocationSegmentContext {
   bool only_extend_existing_allocation;
 };
 
-// Returns the latest schedule time at which `view` (a value colored
-// `view_color`, see Options::dus_view_color) still has its underlying storage
-// read through it: the max schedule time over the transitive closure of the
-// view's readers, following users that are themselves view colored. Exposed
-// for testing.
-//
-// REQUIRES: view->shape().IsTuple() == false.
-int64_t ViewExtendedTransitiveUseTime(
-    const HloInstruction* view, int64_t view_color,
-    const absl::flat_hash_map<const HloInstruction*, int64_t>&
-        instruction_schedule);
-
 // Compare asynchronous copies such that an earlier start time has the same or
 // earlier end time and an earlier end time has the same or earlier start time.
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b);
@@ -1913,6 +1901,23 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // kFailRequiresUncommit, we need to re-reserve those chunks.
   std::vector<ReservedAllocation*> pending_deallocated_reserved_allocations_;
 };
+
+// Helper to inspect the async wrapped opcode of a pipelined while loop position
+// or tuple index.
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, const HloPosition& pos,
+    const HloAliasAnalysis& alias_analysis);
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, int64_t tuple_idx,
+    const HloAliasAnalysis& alias_analysis);
+
+// Returns true if the position in an async pipelined while loop corresponds to
+// a buffer that is intended to reside in alternate memory (e.g., prefetched
+// dynamic-slice output, or dynamic-update-slice update slice). Base tensors of
+// dynamic-slice or dynamic-update-slice and dynamic-update-slice outputs
+// reside in default memory (HBM) on TPU and return false.
+bool IsAsyncPipelinedWhileAlternateMemoryPosition(
+    const HloPosition& pos, const HloAliasAnalysis& alias_analysis);
 
 }  // namespace memory_space_assignment
 }  // namespace xla

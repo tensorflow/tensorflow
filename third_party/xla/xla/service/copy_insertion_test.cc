@@ -742,6 +742,109 @@ TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
               op::Tuple(op::Copy(op::Constant()), op::Copy(op::Constant())));
 }
 
+TEST_F(WhileCopyInsertionTest, DisableWhileLoopCopiesReplicatedInitBuffers) {
+  const std::string& hlo_string = R"(
+HloModule ReplicatedInitBuffers
+
+%Body (loop_state: (s32[], f32[8], f32[8])) -> (s32[], f32[8], f32[8]) {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %v1 = f32[8] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %c_add = f32[8] broadcast(%f1)
+  %next_v1 = f32[8] add(%v1, %c_add)
+  %v2 = f32[8] get-tuple-element(%loop_state), index=2
+  %next_v2 = f32[8] add(%v2, %c_add)
+  ROOT %tuple = (s32[], f32[8], f32[8]) tuple(%next_indvar, %next_v1, %next_v2)
+}
+
+%Condition (loop_state: (s32[], f32[8], f32[8])) -> pred[] {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> f32[8] {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %shared_init = f32[8] broadcast(%zero)
+  %init_tuple = (s32[], f32[8], f32[8]) tuple(%indvar_init, %shared_init, %shared_init)
+  %while = (s32[], f32[8], f32[8]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT %out = f32[8] get-tuple-element(%while), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Loop body should have zero copies.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  EXPECT_EQ(CountControlEdges(*module), 0);
+
+  // In init tuple, index 1 and index 2 share the same broadcast buffer.
+  // The first occurrence of the buffer should not be copied, but the duplicate
+  // index must be copied to ensure distinct buffers.
+  auto while_hlo = module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Negate(), op::Broadcast(),
+                                               op::Copy(op::Broadcast())));
+  EXPECT_EQ(CountCopies(*module), 1);
+}
+
+TEST_F(WhileCopyInsertionTest, DisableWhileLoopCopiesDistinctInitBuffers) {
+  const std::string& hlo_string = R"(
+HloModule DistinctInitBuffers
+
+%Body (loop_state: (s32[], f32[8], f32[8])) -> (s32[], f32[8], f32[8]) {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %v1 = f32[8] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %c_add = f32[8] broadcast(%f1)
+  %next_v1 = f32[8] add(%v1, %c_add)
+  %v2 = f32[8] get-tuple-element(%loop_state), index=2
+  %next_v2 = f32[8] add(%v2, %c_add)
+  ROOT %tuple = (s32[], f32[8], f32[8]) tuple(%next_indvar, %next_v1, %next_v2)
+}
+
+%Condition (loop_state: (s32[], f32[8], f32[8])) -> pred[] {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> f32[8] {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %one = f32[] constant(1.0)
+  %init1 = f32[8] broadcast(%zero)
+  %init2 = f32[8] broadcast(%one)
+  %init_tuple = (s32[], f32[8], f32[8]) tuple(%indvar_init, %init1, %init2)
+  %while = (s32[], f32[8], f32[8]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT %out = f32[8] get-tuple-element(%while), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Loop body should have zero copies.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  EXPECT_EQ(CountControlEdges(*module), 0);
+
+  // All buffers are distinct; no copies should be added anywhere.
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
 // Tests Copy Insertion when a while feeds another while
 //                         PARAMETER
 //                        |        |
