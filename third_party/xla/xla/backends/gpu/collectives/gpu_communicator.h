@@ -304,6 +304,17 @@ class GpuCommunicator : public Communicator {
 
   virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
 
+  virtual stream_executor::DeviceAddressBase GetCliqueSemaphore(
+      int device) const {
+    return stream_executor::DeviceAddressBase{};
+  }
+
+  virtual void InitializeCliqueSemaphore(
+      int device, tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory, RankId rank) {}
+
+  virtual bool IsCliqueSemaphoreInitialized(int device) const { return false; }
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
     absl::Format(&sink, "%s", comm.ToString());
