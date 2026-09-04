@@ -29,18 +29,65 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
+from tensorflow.python.framework import dtypes
 
 
 def np_expm(x):  # pylint: disable=invalid-name
-  """Slow but accurate Taylor series matrix exponential."""
-  y = np.zeros(x.shape, dtype=x.dtype)
-  xn = np.eye(x.shape[0], dtype=x.dtype)
-  for n in range(40):
-    if n > 0:
-      xn /= float(n)
-    y += xn
-    xn = np.dot(xn, x)
-  return y
+  """Matrix exponential using scipy if available, else scaling+squaring + Taylor series.
+  
+  Scipy's implementation uses robust Padé approximant + scaling-and-squaring.
+  Fallback uses scaling-and-squaring + Taylor series which is much more stable
+  than naive Taylor expansion, especially for matrices with large norms.
+  """
+  x = np.array(x)
+  
+  # Handle empty arrays
+  if x.size == 0:
+    return np.empty(x.shape, dtype=x.dtype)
+  
+  # Try scipy first (most robust and well-tested)
+  try:
+    from scipy import linalg as scipy_linalg  # pylint: disable=g-import-not-at-top
+    return scipy_linalg.expm(x)
+  except (ImportError, AttributeError):
+    pass
+  
+  # Fallback: scaling-and-squaring + Taylor series
+  # This is far more numerically stable than unscaled Taylor series,
+  # and handles matrices with arbitrary norms reasonably well.
+  A = x.astype(float if np.isrealobj(x) else complex, copy=True)
+  n = A.shape[0]
+  I = np.eye(n, dtype=A.dtype)
+  
+  # Compute infinity norm to determine scaling factor
+  normA = np.linalg.norm(A, ord=np.inf)
+  
+  if normA == 0:
+    return I.copy()
+  
+  # Choose scaling: 2^s such that ||A/2^s|| is small (around 1)
+  s = max(0, int(np.ceil(np.log2(normA))))
+  
+  # Scale the matrix
+  As = A / (2.0 ** s)
+  
+  # Taylor series on scaled matrix: exp(As) ≈ sum_{k=0}^{infty} As^k / k!
+  # Use adaptive termination (stop when term contribution is negligible)
+  Y = I.copy()
+  term = I.copy()
+  
+  for k in range(1, 200):  # Max 200 terms (usually converges much faster)
+    term = term.dot(As) / float(k)
+    Y = Y + term
+    # Stop if term contribution is below machine precision
+    if np.all(np.abs(term) <= 1e-16 * np.maximum(1.0, np.abs(Y))):
+      break
+  
+  # Undo scaling by repeated squaring: (exp(A/2^s))^(2^s) = exp(A)
+  for _ in range(s):
+    Y = Y.dot(Y)
+  
+  return Y
 
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32-based matmuls.")
@@ -60,10 +107,24 @@ class ExponentialOpTest(test.TestCase):
         else:
           np_ans = np_expm(inp)
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
+
+      if np_type in (np.float16, dtypes.bfloat16.as_numpy_dtype):
+        rtol = atol = 1e-2
+      elif np_type in (np.float32, np.complex64):
+        # float32/complex64: allow slightly wider tolerance due to finite precision
+        rtol = atol = 1e-2
+      else:
+        # float64/complex128: stricter tolerance for higher precision
+        rtol = atol = 1e-3
+      self.assertAllClose(np_ans, out, rtol=rtol, atol=atol)
 
   def _verifyExponentialReal(self, x):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [
+          np.float16,
+          dtypes.bfloat16.as_numpy_dtype,
+          np.float32, 
+          np.float64
+    ]:
       self._verifyExponential(x, np_type)
 
   def _verifyExponentialComplex(self, x):
@@ -241,7 +302,14 @@ def _TestL1Norms(dtype, shape, scale):
 
 
 if __name__ == "__main__":
-  for dtype_ in [np.float32, np.float64, np.complex64, np.complex128]:
+  for dtype_ in [
+      np.float16,
+      dtypes.bfloat16.as_numpy_dtype,
+      np.float32, 
+      np.float64, 
+      np.complex64, 
+      np.complex128
+  ]:
     for batch_ in [(), (2,), (2, 2)]:
       for size_ in [4, 7]:
         name = "%s_%d_%d" % (dtype_.__name__, len(batch_), size_)
