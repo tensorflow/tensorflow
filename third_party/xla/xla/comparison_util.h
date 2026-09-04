@@ -216,6 +216,9 @@ class Comparison {
   // Comparison::Type.
   static Comparison::Order DefaultOrdering(Type type);
 
+  // Returns the expected Comparison::Order for each primitive type.
+  static Comparison::Order DefaultOrdering(PrimitiveType type);
+
   // Returns the Comparison::Type for the given primitive type. This assumes
   // that each numerical representation follows the standard behavior, e.g.,
   // integers are total order and floats are partial order.

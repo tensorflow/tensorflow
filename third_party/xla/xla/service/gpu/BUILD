@@ -2150,6 +2150,7 @@ xla_test(
         "h100": [
             "full",
         ],
+        "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
     },
     backends = ["gpu"],
     shard_count = 2,
