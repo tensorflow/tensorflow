@@ -242,12 +242,15 @@ absl::Status RunAndCompareInternal(
             .status());
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto args,
-                   copy_result_on_failure(
-                       MakeFakeArguments(test_module.get(), engine,
-                                         options.use_large_float_range,
-                                         options.treat_gte_as_data_formatting),
-                       ModuleResult::kOtherError, test_run_result));
+  FakeArgumentsOptions fake_arguments_options;
+  fake_arguments_options.engine = engine;
+  fake_arguments_options.use_large_range = options.use_large_float_range;
+  fake_arguments_options.treat_gte_as_data_formatting =
+      options.treat_gte_as_data_formatting;
+  ABSL_ASSIGN_OR_RETURN(auto args, copy_result_on_failure(
+                                  MakeFakeArguments(test_module.get(),
+                                                    fake_arguments_options),
+                                  ModuleResult::kOtherError, test_run_result));
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {

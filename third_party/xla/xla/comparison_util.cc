@@ -45,18 +45,6 @@ PrimitiveType DefaultPrimitiveType(Comparison::Type type) {
   }
 }
 
-// Returns the expected ordering for each primitive type.
-Comparison::Order DefaultPrimitiveOrdering(PrimitiveType type) {
-  if (primitive_util::IsFloatingPointType(type) ||
-      primitive_util::IsComplexType(type)) {
-    return Comparison::Order::kPartial;
-  }
-  if (primitive_util::IsIntegralType(type) || type == PRED) {
-    return Comparison::Order::kTotal;
-  }
-  LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
-}
-
 // Returns the converse of `direction`.
 Comparison::Direction Converse(Comparison::Direction direction) {
   switch (direction) {
@@ -223,6 +211,18 @@ Comparison::Order Comparison::DefaultOrdering(Comparison::Type type) {
   }
 }
 
+// Returns the expected ordering for each primitive type.
+Comparison::Order Comparison::DefaultOrdering(PrimitiveType type) {
+  if (primitive_util::IsFloatingPointType(type) ||
+      primitive_util::IsComplexType(type)) {
+    return Comparison::Order::kPartial;
+  }
+  if (primitive_util::IsIntegralType(type) || type == PRED) {
+    return Comparison::Order::kTotal;
+  }
+  LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
+}
+
 namespace {
 Comparison::Type ComparisonTypeFromPrimitiveTypeAndOrder(
     PrimitiveType type, Comparison::Order order) {
@@ -251,7 +251,7 @@ Comparison::Comparison(Direction dir, PrimitiveType type, Order order)
 Comparison::Comparison(Direction dir, PrimitiveType type)
     : dir_(dir),
       primitive_type_(type),
-      order_(DefaultPrimitiveOrdering(type)),
+      order_(DefaultOrdering(type)),
       type_(DefaultComparisonType(type)) {}
 
 Comparison::Comparison(Direction dir, Type type)
