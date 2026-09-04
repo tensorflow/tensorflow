@@ -77,7 +77,7 @@ class ResolveSvdfTest : public ::testing::Test {
     AddNewNode("Output2", "Const", {"Svdf2/Relu"});
   }
 
-  ~ResolveSvdfTest() override {}
+  ~ResolveSvdfTest() override = default;
 
  protected:
   void AddNewNode(const std::string& name, const std::string& op,

@@ -89,7 +89,7 @@ bool FindCluster(const ClusterFactoryInterface& cluster_factory,
 std::unique_ptr<GraphDef> MaybeResolveClusters(
     const GraphDef& graph_def,
     const std::vector<ClusterFactoryInterface*>& cluster_factories) {
-  std::unique_ptr<GraphDef> pruned_graph(new GraphDef);
+  std::unique_ptr<GraphDef> pruned_graph = std::make_unique<GraphDef>();
   // The structure to keep track of which cluster each node is assigned to, and
   // to initialize them to all un-assigned,
   std::unordered_map<std::string, bool> is_node_in_cluster;
