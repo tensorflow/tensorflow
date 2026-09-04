@@ -175,6 +175,7 @@ message HostExecuteStartThunkProto {
 
 message HostExecuteDoneThunkProto {
   uint64 async_events_unique_id = 1;
+  repeated ShapedSliceProto results = 2;
 }
 
 message DynamicSliceFusionThunkProto {
