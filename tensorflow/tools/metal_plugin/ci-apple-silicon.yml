@@ -1,0 +1,91 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+name: Metal plugin
+
+# Kept alongside the plugin rather than in .github/workflows, because
+# TensorFlow's CI has no Apple silicon GPU runner to run it on. Copy it there,
+# or run the same three steps by hand, on a machine that has one:
+#
+#   make -j4 && make check-symbols && make test
+#
+# That is the thing an out-of-tree plugin can offer that TensorFlow's own CI
+# cannot: the Metal shaders compiled by the Metal runtime, and the kernels
+# executed on a real GPU.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The job only reads the tree and builds it, as in every other workflow here.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # The project lives in its own directory and its Makefile uses relative
+    # paths, so every step runs from there rather than from the repository
+    # root.
+    working-directory: tensorflow/tools/metal_plugin
+
+jobs:
+  build-and-test:
+    # macos-15 rather than macos-14: the backend aliases an MTLBuffer through
+    # MPSNDArray with packed rows, and both initWithBuffer:offset:descriptor:
+    # and preferPackedRows arrived in the macOS 15 SDK. The 14.5 SDK on the
+    # macos-14 image does not declare them, so the build fails to compile
+    # rather than falling back at runtime.
+    runs-on: macos-15   # Apple silicon
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      # Pinned to a commit rather than a tag, as every action in
+      # .github/workflows is: a tag is a movable reference, so an unpinned use
+      # runs whatever that tag points at on the day the job runs.
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install TensorFlow
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "tensorflow>=2.16" numpy pytest
+
+      - name: Report what we are building against
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          python -c "import tensorflow as tf; print(tf.__version__); print(tf.sysconfig.get_include()); print(tf.sysconfig.get_lib())"
+          sw_vers
+          system_profiler SPDisplaysDataType | head -20
+
+      - name: Build
+        run: make PYTHON=$(which python) -j4
+
+      - name: Check exported symbols
+        run: make PYTHON=$(which python) check-symbols
+
+      - name: Compile the Metal shader library
+        # Separate from the build: the shaders are compiled by the Metal
+        # runtime, not by clang, so a syntax error in them only shows up on a
+        # machine with a GPU.
+        run: python tools/compile_shaders.py
+
+      - name: Run on-device tests
+        run: make PYTHON=$(which python) test
