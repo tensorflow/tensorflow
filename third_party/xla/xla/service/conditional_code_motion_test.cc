@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -2637,6 +2638,49 @@ ENTRY main {
     ASSERT_TRUE(other_changed);
     EXPECT_EQ(baseline_str, other_modules[i]->ToString());
   }
+}
+
+TEST_F(ConditionalCodeMotionTest, OriginalValuePreservedOnMoveIn) {
+  absl::string_view hlo_string = R"(
+HloModule TestModule
+
+on_true {
+  arg_tuple.1 = (f32[10]) parameter(0)
+  get-tuple-element.1 = f32[10] get-tuple-element(arg_tuple.1), index=0
+  add.1 = f32[10] add(get-tuple-element.1, get-tuple-element.1)
+  ROOT tuple.3 = (f32[10]) tuple(add.1)
+}
+
+on_false {
+  arg_tuple.2 = (f32[10]) parameter(0)
+  get-tuple-element.2 = f32[10] get-tuple-element(arg_tuple.2), index=0
+  mul.1 = f32[10] multiply(get-tuple-element.2, get-tuple-element.2)
+  ROOT tuple.4 = (f32[10]) tuple(mul.1)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (f32[10]) parameter(1)
+  tuple.2 = (f32[10]) parameter(2)
+  conditional = (f32[10]) conditional(pred.1, tuple.1, tuple.2),
+    true_computation=on_true, false_computation=on_false
+  get-first-index = f32[10] get-tuple-element(conditional), index=0
+  ROOT pow.1 = f32[10] power(get-first-index, get-first-index)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      inst->set_original_value(OriginalValue::CreateFromInstruction(inst));
+    }
+  }
+
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_OK(verifier().Run(module.get()).status());
 }
 
 }  // namespace conditional_opt
