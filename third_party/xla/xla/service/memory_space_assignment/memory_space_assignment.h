@@ -218,37 +218,47 @@ Useful logging and error messages
 namespace xla {
 namespace memory_space_assignment {
 
-// This class contains pre-set assignments determined by memory space
-// assignment. It contains two data structures: (1) a chunks vector that maps a
-// defining HloPosition to a Chunk (offset and size), and (2) an assignment_info
-// vector that maps the memory space to information like its allocated size and
-// heap memory trace. If there is only one alternate memory space like there is
-// currently, there will be one entry in assignment_info.
+// Encapsulates pre-set memory space assignments determined by
+// MemorySpaceAssignment.
+//
+// PresetAssignments stores pre-allocated memory chunks (offsets and sizes) in
+// alternate memory spaces for HLO positions, instruction-scoped temporary
+// allocations, and post-module operations. Additionally, it tracks
+// per-memory-space metadata such as total allocated capacity and heap
+// simulator traces.
 class PresetAssignments {
  public:
-  // Contains per-memory-space information like the allocated size and heap
-  // simulator trace.
+  // Per-memory-space metadata including allocated capacity and execution
+  // traces.
   struct AssignmentInformation {
+    // Peak size (in bytes) allocated across all chunks in this memory space
+    // (i.e., max(chunk.offset + chunk.size)).
     int64_t size;
+    // Trace of allocation and free events produced by HeapSimulator.
     HeapSimulatorTrace heap_simulator_trace;
   };
 
   PresetAssignments() = default;
 
+  // Creates a deep copy of this PresetAssignments instance.
   std::unique_ptr<PresetAssignments> ClonePresetAssignments() const {
     return std::make_unique<PresetAssignments>(*this);
   }
 
+  // Registers an alternate memory chunk assignment for a defining HLO position.
   void add_chunk(const HloPosition& position,
                  const HeapSimulator::Chunk& chunk) {
     chunks_.emplace_back(position, chunk);
   }
 
+  // Registers a scoped alternate memory chunk allocation for an instruction.
   void add_scoped_allocation_chunk(HloInstruction* instruction,
                                    const HeapSimulator::Chunk& chunk) {
     scoped_allocation_chunks_.emplace_back(instruction, chunk);
   }
 
+  // Returns a pointer to the AssignmentInformation for the specified memory
+  // space, creating a new entry if one does not already exist.
   AssignmentInformation* assignment_information_for_space(
       int64_t memory_space) {
     for (auto& space_and_info : assignment_info_) {
@@ -260,34 +270,39 @@ class PresetAssignments {
     return &assignment_info_.back().second;
   }
 
+  // Returns all registered alternate memory chunks mapped to HLO positions.
   absl::Span<const std::pair<HloPosition, HeapSimulator::Chunk>> chunks()
       const {
     return chunks_;
   }
 
+  // Returns all registered instruction-scoped alternate memory chunks.
   absl::Span<const std::pair<HloInstruction*, HeapSimulator::Chunk>>
   scoped_allocation_chunks() const {
     return scoped_allocation_chunks_;
   }
 
+  // Returns assignment information entries for all tracked memory spaces.
   absl::Span<const std::pair<int64_t, AssignmentInformation>>
   assignment_informations() const {
     return assignment_info_;
   }
 
-  // A chunk of alternate memory that has been allocated for post-module
-  // scoped operations.
+  // Returns the alternate memory chunk allocated for post-module scoped
+  // operations, if any.
   std::optional<HeapSimulator::Chunk>
   post_module_scoped_alternate_memory_chunk() const {
     return post_module_scoped_alternate_memory_chunk_;
   }
 
+  // Sets the alternate memory chunk allocated for post-module scoped
+  // operations.
   void set_post_module_scoped_alternate_memory_chunk(
       const HeapSimulator::Chunk& chunk) {
     post_module_scoped_alternate_memory_chunk_ = chunk;
   }
 
-  // Get debugging information.
+  // Accessors for debugging and diagnostics strings.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
   std::string instruction_schedule_str() const {
@@ -295,12 +310,21 @@ class PresetAssignments {
   }
 
  private:
+  // Mappings from defining HLO positions to allocated alternate memory chunks
+  // (offset and size). Used during buffer coloring to apply layout offsets.
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
+  // Mappings from instructions to temporary alternate memory chunk allocations
+  // scoped to the execution of specific instructions.
   std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
       scoped_allocation_chunks_;
+  // Optional memory chunk reserved for post-module scoped operations in
+  // alternate memory.
   std::optional<HeapSimulator::Chunk>
       post_module_scoped_alternate_memory_chunk_ = std::nullopt;
+  // Per-memory-space metadata mapping memory space ID to AssignmentInformation
+  // (total size and HeapSimulatorTrace timeline).
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
+  // Debug strings capturing buffer details, allocation decisions, and schedule.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
@@ -330,7 +354,8 @@ class MemorySpaceAssignment {
 
   virtual ~MemorySpaceAssignment() = default;
 
-  // Runs the MemorySpaceAssignment pass.
+  // Runs the MemorySpaceAssignment pass and returns the resulting
+  // PresetAssignments.
   static absl::StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
@@ -447,6 +472,7 @@ class MemorySpaceAssignment {
   const Options& options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
+  // Pre-set memory space assignments populated during buffer export.
   std::unique_ptr<PresetAssignments> preset_assignments_;
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>>
       alternate_memory_assignments_;
