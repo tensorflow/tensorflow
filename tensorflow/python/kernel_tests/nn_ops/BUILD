@@ -827,6 +827,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["softmax_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",

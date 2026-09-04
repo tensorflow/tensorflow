@@ -319,7 +319,11 @@ def _LogSoftmaxGrad(op: ops.Operation, grad):
     The gradients w.r.t. the input.
   """
   softmax = math_ops.exp(op.outputs[0])
-  return grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
+  result = grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
+  if result.dtype == dtypes.float64:
+    # Remove the zero-sum residual left by cancellation at saturated logits.
+    result = result - math_ops.reduce_sum(result, -1, keepdims=True) * softmax
+  return result
 
 
 @ops.RegisterGradient("BiasAdd")
