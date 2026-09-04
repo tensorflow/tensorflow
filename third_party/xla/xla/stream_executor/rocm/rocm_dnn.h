@@ -287,12 +287,12 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<float>& estimated_variance,
       const DeviceAddress<float>& side_input,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceAddress<float>* y,
-      DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
-      DeviceAddress<float>* saved_mean, DeviceAddress<float>* saved_inv_var,
-      bool is_training, ScratchAllocator* reserve_space_allocator,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceAddress<float>* y, DeviceAddress<float>* batch_mean,
+      DeviceAddress<float>* batch_var, DeviceAddress<float>* saved_mean,
+      DeviceAddress<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationForward(
@@ -302,12 +302,12 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<float>& estimated_variance,
       const DeviceAddress<Eigen::half>& side_input,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceAddress<Eigen::half>* y,
-      DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
-      DeviceAddress<float>* saved_mean, DeviceAddress<float>* saved_inv_var,
-      bool is_training, ScratchAllocator* reserve_space_allocator,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceAddress<Eigen::half>* y, DeviceAddress<float>* batch_mean,
+      DeviceAddress<float>* batch_var, DeviceAddress<float>* saved_mean,
+      DeviceAddress<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationForward(
@@ -317,12 +317,12 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<float>& estimated_variance,
       const DeviceAddress<Eigen::bfloat16>& side_input,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceAddress<Eigen::bfloat16>* y,
-      DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
-      DeviceAddress<float>* saved_mean, DeviceAddress<float>* saved_inv_var,
-      bool is_training, ScratchAllocator* reserve_space_allocator,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceAddress<Eigen::bfloat16>* y, DeviceAddress<float>* batch_mean,
+      DeviceAddress<float>* batch_var, DeviceAddress<float>* saved_mean,
+      DeviceAddress<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
@@ -331,7 +331,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
       const DeviceAddress<float>& variance, const DeviceAddress<float>& y,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       dnn::ActivationMode activation_mode, DeviceAddress<float>* x_backprop,
       DeviceAddress<float>* scale_backprop,
       DeviceAddress<float>* offset_backprop,
@@ -345,7 +345,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
       const DeviceAddress<float>& inv_var, const DeviceAddress<Eigen::half>& y,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       dnn::ActivationMode activation_mode,
       DeviceAddress<Eigen::half>* x_backprop,
       DeviceAddress<float>* scale_backprop,
@@ -361,7 +361,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<float>& mean, const DeviceAddress<float>& inv_var,
       const DeviceAddress<Eigen::bfloat16>& y,
       const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       dnn::ActivationMode activation_mode,
       DeviceAddress<Eigen::bfloat16>* x_backprop,
       DeviceAddress<float>* scale_backprop,
@@ -461,7 +461,7 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   absl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
                          const dnn::RnnStateTensorDescriptor& probs_desc,
-                         const DeviceAddressBase probs_data,
+                         DeviceAddressBase probs_data,
                          absl::Span<const int> labels_data,
                          absl::Span<const int> labels_lengths_data,
                          absl::Span<const int> input_lengths_data,
@@ -485,12 +485,11 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<U>& estimated_mean,
       const DeviceAddress<U>& estimated_variance,
       const DeviceAddress<T>& side_input, const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceAddress<T>* y,
-      DeviceAddress<U>* batch_mean, DeviceAddress<U>* batch_var,
-      DeviceAddress<U>* saved_mean, DeviceAddress<U>* saved_inv_var,
-      bool is_training);
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
+      double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceAddress<T>* y, DeviceAddress<U>* batch_mean,
+      DeviceAddress<U>* batch_var, DeviceAddress<U>* saved_mean,
+      DeviceAddress<U>* saved_inv_var, bool is_training);
 
   template <class T, class U>
   absl::Status DoBatchNormalizationBackwardImpl(
@@ -498,7 +497,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceAddress<T>& y_backprop, const DeviceAddress<T>& x,
       const DeviceAddress<U>& scale, const DeviceAddress<U>& mean,
       const DeviceAddress<U>& variance, const dnn::BatchDescriptor& x_desc,
-      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const dnn::BatchDescriptor& scale_offset_desc, double epsilon,
       DeviceAddress<T>* x_backprop, DeviceAddress<U>* scale_backprop,
       DeviceAddress<U>* offset_backprop);
 
@@ -548,7 +547,7 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   absl::Status DoCtcLossImpl(
       Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
-      const DeviceAddressBase probs_data, absl::Span<const int> labels_data,
+      DeviceAddressBase probs_data, absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data, DeviceAddressBase costs_data,
       const MIOpenRnnStateTensorDescriptor& grads_desc,

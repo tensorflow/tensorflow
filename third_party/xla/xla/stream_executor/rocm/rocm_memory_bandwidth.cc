@@ -30,14 +30,20 @@ int64_t GetRocmMemoryBandwidth(const RocmComputeCapability& cc,
   // clock` lands at spec peak, so those arches fall through to it. On
   // HBM3/HBM3e (gfx942 MI300X, gfx950 MI350X) and GDDR6 (gfx1201) the formula
   // falls short of spec peak, so an explicit per-gfx value is used instead.
-  if (cc.gfx9_mi300()) return 5300 * kGbps;  // MI300X, HBM3
+  if (cc.gfx9_mi300()) {
+    return 5300 * kGbps;  // MI300X, HBM3
+  }
   // TODO: MI355X shares gfx950 with MI350X but has a higher peak; the per-board
   // value can be read from amd_smi gpu_metrics. Postponed because amd_smi
   // embeds a copy of rocm_smi and exports the same symbols, which clash with
   // the rocm_smi that RCCL pulls into the process. Revisit once the ROCm floor
   // is >= 7.13 (where RCCL no longer depends on rocm_smi).
-  if (cc.gfx9_mi350()) return 6810 * kGbps;     // MI350X, HBM3e
-  if (cc.gfx12_discrete()) return 640 * kGbps;  // RX 9070 XT, GDDR6
+  if (cc.gfx9_mi350()) {
+    return 6810 * kGbps;  // MI350X, HBM3e
+  }
+  if (cc.gfx12_discrete()) {
+    return 640 * kGbps;  // RX 9070 XT, GDDR6
+  }
 
   // mem_bandwidth = 2 * mem_bus_width_in_bytes * mem_clock_rate_in_hz
   return 2 * (mem_bus_width_bits / 8) * (mem_clock_khz * 1000);

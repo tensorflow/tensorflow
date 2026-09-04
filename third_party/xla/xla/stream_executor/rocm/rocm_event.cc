@@ -96,7 +96,8 @@ Event::Status RocmEvent::PollForStatus() {
 
   if (res == hipSuccess) {
     return Event::Status::kComplete;
-  } else if (res == hipErrorNotReady) {
+  }
+  if (res == hipErrorNotReady) {
     return Event::Status::kPending;
   }
 
