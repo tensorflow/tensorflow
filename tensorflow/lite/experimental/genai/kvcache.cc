@@ -252,9 +252,18 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   int current_num_entries =
       op_data->key_cache_buffer->GetNumEntries(layer_index);
 
-  // Compute some constants for various pieces of the cache.
   RuntimeShape shape(GetTensorShape(key));
   const int64_t num_slots_needed = shape.Dims(1);
+  if (num_slots_needed <= 0 || num_slots_needed > max_num_entries) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "num_slots_needed (%lld) exceeds max_num_entries (%lld) or is "
+        "non-positive",
+        static_cast<long long>(num_slots_needed),
+        static_cast<long long>(max_num_entries));
+    return kTfLiteError;
+  }
+
   const int elements_in_one_entry = shape.Dims(2) * shape.Dims(3);
   const int elements_in_one_block =
       op_data->max_num_entries * elements_in_one_entry;
@@ -288,6 +297,20 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   const int slots_to_shift = std::min(
       std::max(static_cast<int64_t>(0), input_last_idx - cache_last_slot_idx),
       max_num_entries);
+
+  const int64_t future_first_slot_index =
+      op_data->first_slot_index + slots_to_shift;
+  const int64_t future_first_slot = input_first_idx - future_first_slot_index;
+  if (future_first_slot < 0 ||
+      future_first_slot + num_slots_needed > max_num_entries) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Cannot specify position %lld for cache with first slot %d "
+        "and size %lld",
+        static_cast<long long>(input_first_idx), op_data->first_slot_index,
+        static_cast<long long>(max_num_entries));
+    return kTfLiteError;
+  }
 
   // These values determine how we will write to the output tensor:
   // first_slot := the first cache entry that we will write to in the output
@@ -328,7 +351,18 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
 
   // Recompute the first slot in case any shifting occurred.
   first_slot = input_first_idx - op_data->first_slot_index;
+  if (first_slot < 0 ||
+      first_slot + num_slots_needed > max_num_entries) {
+    TF_LITE_KERNEL_LOG(context, "Invalid slot index post-shift.");
+    return kTfLiteError;
+  }
   const int64_t bytes_offset_for_cache = first_slot * num_bytes_per_tensor;
+  const int64_t max_bytes = max_num_entries * num_bytes_per_tensor;
+  if (bytes_offset_for_cache < 0 ||
+      bytes_offset_for_cache + key->bytes > max_bytes) {
+    TF_LITE_KERNEL_LOG(context, "Cache buffer offset out of bounds.");
+    return kTfLiteError;
+  }
 
   // 4. Put the key and value in their respective caches.
   memcpy(k_ptr + bytes_offset_for_cache, key->data.data, key->bytes);
