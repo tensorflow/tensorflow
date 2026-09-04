@@ -2868,43 +2868,6 @@ std::optional<int64_t> MsaAlgorithm::GetLatestSourceOperandScheduleTime(
   return latest_source_operand_time;
 }
 
-int64_t ViewExtendedTransitiveUseTime(
-    const HloInstruction* view, int64_t view_color,
-    const absl::flat_hash_map<const HloInstruction*, int64_t>&
-        instruction_schedule) {
-  CHECK(!view->shape().IsTuple() && view->shape().has_layout() &&
-        view->shape().layout().memory_space() == view_color)
-      << "not a view: " << view->ToString();
-  auto is_view_colored = [view_color](const HloInstruction* instruction) {
-    return instruction->shape().has_layout() &&
-           instruction->shape().layout().memory_space() == view_color;
-  };
-  int64_t use_time = -1;
-  absl::flat_hash_set<const HloInstruction*> visited = {view};
-  std::vector<const HloInstruction*> worklist = {view};
-  while (!worklist.empty()) {
-    const HloInstruction* current = worklist.back();
-    worklist.pop_back();
-    auto time_it = instruction_schedule.find(current);
-    if (time_it != instruction_schedule.end()) {
-      use_time = std::max(use_time, time_it->second);
-    }
-    for (const HloInstruction* user : current->users()) {
-      if (is_view_colored(user)) {
-        if (visited.insert(user).second) {
-          worklist.push_back(user);
-        }
-      } else {
-        auto user_time_it = instruction_schedule.find(user);
-        if (user_time_it != instruction_schedule.end()) {
-          use_time = std::max(use_time, user_time_it->second);
-        }
-      }
-    }
-  }
-  return use_time;
-}
-
 namespace {
 
 // Computes each value's [first_use_time, last_use_time] interval. When
