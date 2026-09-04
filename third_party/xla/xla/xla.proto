@@ -1837,7 +1837,11 @@ message DebugOptions {
   // kept inline. Default is MAX_INT (deduplication disabled).
   optional int64 xla_deduplicate_backend_configs_min_size = 542;
 
-  // Next id: 543
+  // Single serialized config to override config of all instructions, bypassing
+  // cache and autotuning. Accepts textproto of autotuner.Config.
+  optional string xla_force_config = 543;
+
+  // Next id: 544
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

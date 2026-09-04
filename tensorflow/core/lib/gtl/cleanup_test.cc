@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
 #include <functional>
+#include <string>
 #include <type_traits>
+#include <utility>
 
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"

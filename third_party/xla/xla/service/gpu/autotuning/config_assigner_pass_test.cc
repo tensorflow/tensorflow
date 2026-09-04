@@ -999,6 +999,22 @@ TEST_F(ConfigAssignerPassTest, CudnnFusionForbidsSpills) {
   EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
 }
 
+TEST_F(ConfigAssignerPassTest, ForceConfigPropagatesToConfigAssignerOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  const std::string forced_config =
+      "backend: TRITON\n"
+      "backend_config {\n"
+      "  triton {\n"
+      "    block_m: 64\n"
+      "    block_n: 64\n"
+      "  }\n"
+      "}";
+  debug_options.set_xla_force_config(forced_config);
+  auto options =
+      GetConfigAssignerOptions(debug_options, /*is_deviceless=*/false);
+  EXPECT_EQ(options.force_config, forced_config);
+}
+
 TEST_F(ConfigAssignerPassTest, CustomFusionForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
