@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device.h"
@@ -1263,6 +1264,16 @@ module {
   std::vector<int> data = {0, 1};
   DType dtype(DType::kS32);
   Shape shape({2, 1});
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts,
+      ifrt_ir_executable->GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), 1);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> expected_layout,
+                       client_->GetDefaultPjRtLayout(
+                           dtype, shape.dims(), device->devices().front(),
+                           /*memory_kind=*/MemoryKind()));
+  ASSERT_EQ(*output_layouts[0], *expected_layout);
+
   ASSERT_OK_AND_ASSIGN(ArrayRef input,
                        CreateArray({data.data()}, shape, /*shard_shape=*/shape,
                                    dtype, cpu_device));
