@@ -18,9 +18,20 @@
 set -euo pipefail
 lib="$1"
 
+# grep -c rather than grep -q, and the table read once rather than per symbol.
+# `grep -q` looks tidier and is wrong under `set -o pipefail`: it exits at the
+# first match, whatever is writing the other end of the pipe takes a SIGPIPE,
+# and the pipeline reports a failure that reads here as the symbol being
+# absent. It only shows up once the library is big enough that the writer is
+# still going when grep leaves, which the in-tree build produces at ten
+# megabytes and the out-of-tree one, at one, does not. grep -c reads its input
+# to the end.
+exported=$(nm -gU "$lib")
+
 missing=0
 for symbol in _SE_InitPlugin _TF_InitKernel; do
-  if ! nm -gU "$lib" | grep -q " T ${symbol}\$"; then
+  found=$(printf '%s\n' "$exported" | grep -c " T ${symbol}\$" || true)
+  if [ "$found" -eq 0 ]; then
     echo "not exported: ${symbol#_}"
     missing=1
   fi
