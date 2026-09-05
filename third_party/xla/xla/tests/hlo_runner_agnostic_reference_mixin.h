@@ -127,11 +127,10 @@ class HloRunnerAgnosticReferenceMixin : public T {
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr,
       const std::optional<int64_t> args_max_bits_of_precision = std::nullopt) {
+    FakeArgumentsOptions options;
+    options.max_bits_of_precision = args_max_bits_of_precision;
     const absl::StatusOr<std::vector<Literal>> fake_arguments =
-        MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                          /*use_large_range=*/false,
-                          /*treat_gte_as_data_formatting=*/false,
-                          args_max_bits_of_precision);
+        MakeFakeArguments(module.get(), options);
     if (!fake_arguments.ok()) {
       return ::testing::AssertionFailure() << fake_arguments.status().message();
     }
