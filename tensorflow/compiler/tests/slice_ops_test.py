@@ -50,6 +50,28 @@ class SliceTest(xla_test.XLATestCase):
 
         self.assertAllEqual([], result)
 
+  def testSliceOfDynamicDimension(self):
+    # Regression test for GitHub issue 110789. The input's leading dimension
+    # is dynamic because it comes from where, and a partial slice of such a
+    # dimension returned wrong output sizes, and corrupted the heap on some
+    # platforms, instead of taking the requested slice.
+    with self.session():
+      i = array_ops.placeholder(dtypes.int64, shape=[2, 2, 5])
+      with self.test_scope():
+        indices = array_ops.where(math_ops.not_equal(i, 0))
+        sliced = array_ops.slice(indices, [0, 0], [2, 1])
+        empty = array_ops.slice(indices, [0, 0], [0, 1])
+      params = {
+          i: [
+              [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]],
+              [[10, 11, 12, 13, 14], [15, 16, 17, 18, 19]],
+          ],
+      }
+      # The first two nonzero elements sit at indices (0, 0, 1) and
+      # (0, 0, 2), so the slice holds the first coordinate of each.
+      self.assertAllEqual([[0], [0]], sliced.eval(feed_dict=params))
+      self.assertAllEqual((0, 1), empty.eval(feed_dict=params).shape)
+
   def test3D(self):
     for dtype in self.numeric_types:
       with self.session():
