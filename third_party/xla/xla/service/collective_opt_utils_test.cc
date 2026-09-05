@@ -961,5 +961,85 @@ TEST_F(MatchDsPadAllGatherTest, MatchDsPadAllGatherNoAllGather) {
   EXPECT_FALSE(MatchDsPadAllGather(root, &pad_hlo, &ag_hlo));
 }
 
+using MatchWithDynamicSliceClampReshapeTest = HloHardwareIndependentTestBase;
+
+TEST_F(MatchWithDynamicSliceClampReshapeTest, ClampWithReshapedConstantBounds) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f32[16,10] parameter(0)
+      ag = f32[32,10] all-gather(param), dimensions={0},
+        replica_groups={{0,1}}
+      pid = u32[] replica-id()
+      const_16 = u32[] constant(16)
+      mul = u32[] multiply(pid, const_16)
+      lower_const = u32[1] constant({0})
+      lower_bound = u32[] reshape(lower_const)
+      upper_const = u32[1] constant({16})
+      upper_bound = u32[] reshape(upper_const)
+      clamped_offset = u32[] clamp(lower_bound, mul, upper_bound)
+      zero = s32[] constant(0)
+      ROOT ds = f32[16,10] dynamic-slice(ag, clamped_offset, zero),
+        dynamic_slice_sizes={16,10}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  const HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  const HloChannelInstruction* ag_instr = Cast<HloChannelInstruction>(ag);
+
+  std::optional<ReduceScatterSpec> spec = MatchWithDynamicSlice(
+      ag_instr, /*num_partitions=*/1, /*num_replicas=*/2,
+      /*allow_multiple_split_dims=*/false,
+      /*allow_intervening_reshape=*/false, /*min_rank=*/0,
+      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>,
+      /*is_constrain_layout=*/false, /*use_global_device_ids=*/false,
+      /*is_cross_module=*/false, /*allow_intervening_bitcast=*/false,
+      /*allow_multiple_users=*/false);
+
+  EXPECT_TRUE(spec.has_value());
+}
+
+TEST_F(MatchWithDynamicSliceClampReshapeTest, ClampWithNonConstantBounds) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f32[16,10] parameter(0)
+      lower_param = u32[] parameter(1)
+      upper_param = u32[] parameter(2)
+      ag = f32[32,10] all-gather(param), dimensions={0},
+        replica_groups={{0,1}}
+      pid = u32[] replica-id()
+      const_16 = u32[] constant(16)
+      mul = u32[] multiply(pid, const_16)
+      clamped_offset = u32[] clamp(lower_param, mul, upper_param)
+      zero = s32[] constant(0)
+      ROOT ds = f32[16,10] dynamic-slice(ag, clamped_offset, zero),
+        dynamic_slice_sizes={16,10}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  const HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  const HloChannelInstruction* ag_instr = Cast<HloChannelInstruction>(ag);
+
+  std::optional<ReduceScatterSpec> spec = MatchWithDynamicSlice(
+      ag_instr, /*num_partitions=*/1, /*num_replicas=*/2,
+      /*allow_multiple_split_dims=*/false,
+      /*allow_intervening_reshape=*/false, /*min_rank=*/0,
+      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>,
+      /*is_constrain_layout=*/false, /*use_global_device_ids=*/false,
+      /*is_cross_module=*/false, /*allow_intervening_bitcast=*/false,
+      /*allow_multiple_users=*/false);
+
+  EXPECT_FALSE(spec.has_value());
+}
+
 }  // namespace
 }  // namespace xla
