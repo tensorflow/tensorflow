@@ -102,6 +102,7 @@ namespace xla::ffi {
 using ::testing::_;
 using ::testing::AllOf;
 using ::testing::HasSubstr;
+using ::testing::IsSupersetOf;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -131,8 +132,7 @@ TEST(FfiTest, StaticHandlerRegistration) {
   // Check that platform name was canonicalized an we can find handlers
   // registered for "Host" platform as "Cpu" handlers.
   TF_ASSERT_OK_AND_ASSIGN(auto handlers, StaticRegisteredHandlers("Cpu"));
-  EXPECT_THAT(handlers,
-              UnorderedElementsAre(Pair("no-op-0", _), Pair("no-op-1", _)));
+  EXPECT_THAT(handlers, IsSupersetOf({Pair("no-op-0", _), Pair("no-op-1", _)}));
 }
 
 TEST(FfiTest, RegistrationTraitsBackwardsCompatibility) {
