@@ -258,11 +258,11 @@ ENTRY cluster_13361217111314620287__.11 {
 )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/true,
-                        /*treat_gte_as_data_formatting=*/true));
+  FakeArgumentsOptions options;
+  options.use_large_range = true;
+  options.treat_gte_as_data_formatting = true;
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 1);
 
   const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
@@ -474,16 +474,10 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s32[]) -> s8[131072,2048] {
     return std::nullopt;
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        index_known_zeroes_fn));
+  FakeArgumentsOptions options;
+  options.get_index_known_zeroes = index_known_zeroes_fn;
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 2);
 
   int32_t index = args[1].Get<int32_t>({});
@@ -515,16 +509,10 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[])
     return std::nullopt;
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        index_known_zeroes_fn));
+  FakeArgumentsOptions options;
+  options.get_index_known_zeroes = index_known_zeroes_fn;
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 3);
 
   int32_t index = args[2].Get<int32_t>({});
@@ -533,12 +521,7 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[])
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> args2,
-      MakeDataflowConstrainedArguments(module.get(),
-                                       /*engine=*/nullptr,
-                                       /*use_large_range=*/false,
-                                       /*max_bits_of_precision=*/std::nullopt,
-                                       /*generate_aligned_ds_indices=*/false,
-                                       index_known_zeroes_fn));
+      MakeDataflowConstrainedArguments(module.get(), options));
   ASSERT_EQ(args2.size(), 3);
   int32_t index2 = args2[2].Get<int32_t>({});
   EXPECT_EQ(index2 & index_known_bits_zero, 0);
@@ -559,11 +542,8 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeDataflowConstrainedArguments(module.get(),
-                                       /*engine=*/nullptr,
-                                       /*use_large_range=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeDataflowConstrainedArguments(module.get()));
   ASSERT_EQ(args.size(), 1);
   args[0].EachCell<float>([](absl::Span<int64_t const> indices, float value) {
     EXPECT_GT(value, 0.0f);
@@ -580,11 +560,8 @@ ENTRY main {
 }
 )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeDataflowConstrainedArguments(module.get(),
-                                       /*engine=*/nullptr,
-                                       /*use_large_range=*/false));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeDataflowConstrainedArguments(module.get()));
   ASSERT_EQ(args.size(), 1);
   args[0].EachCell<int32_t>([](absl::Span<int64_t const> indices,
                                int32_t value) { EXPECT_GE(value, 1); });
