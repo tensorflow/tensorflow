@@ -366,7 +366,8 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   }
 
   // Support partition at the last dimension only.
-  if (!hlo->has_sharding() ||
+  if (!hlo->has_sharding() || hlo->sharding().IsReplicated() ||
+      hlo->sharding().dimensions().empty() ||
       hlo->sharding().dimensions().back() != num_partitions_) {
     return DefaultAction(hlo);
   }
