@@ -20,9 +20,11 @@ limitations under the License.
 
 #include <math.h>  // NOLINT
 #include <algorithm>  // NOLINT
+#include <cstdint>  // NOLINT
 #include <numeric>  // NOLINT
 // clang-format on
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,8 +46,8 @@ typedef Eigen::GpuDevice GPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct CheckNumericsLaunch {
-  void Run(const GPUDevice& d, const T* data, int size,
-           int abnormal_detected[2]);
+  absl::Status Run(const GPUDevice& d, const T* data, int64_t size,
+                   int abnormal_detected[2]);
 };
 
 extern template struct CheckNumericsLaunch<Eigen::half>;
@@ -54,8 +56,8 @@ extern template struct CheckNumericsLaunch<double>;
 
 template <typename T>
 struct CheckNumericsLaunchV2 {
-  void Run(const GPUDevice& d, const T* data, int size,
-           int abnormal_detected[3]);
+  absl::Status Run(const GPUDevice& d, const T* data, int64_t size,
+                   int abnormal_detected[3]);
 };
 
 extern template struct CheckNumericsLaunchV2<Eigen::half>;
@@ -231,8 +233,10 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
 
     // Call the GPU kernels for the numerical checks
     const Device& d = context->eigen_device<Device>();
-    RunKernel(d, input.data(), input.size(),
-              abnormal_detected.flat<int>().data());
+    OP_REQUIRES_OK_ASYNC(context,
+                         RunKernel(d, input.data(), input.size(),
+                                   abnormal_detected.flat<int>().data()),
+                         done);
 
     // Copy the results from device to host
     AllocatorAttributes attr;
@@ -278,9 +282,9 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
  protected:
   virtual int getAnomalyIndicatorSize() { return 2; }
 
-  virtual void RunKernel(const GPUDevice& d, const T* data, int size,
-                         int* abnormal_detected) {
-    CheckNumericsLaunch<T>().Run(d, data, size, abnormal_detected);
+  virtual absl::Status RunKernel(const GPUDevice& d, const T* data,
+                                 int64_t size, int* abnormal_detected) {
+    return CheckNumericsLaunch<T>().Run(d, data, size, abnormal_detected);
   }
 
   virtual void checkForAnomalies(
@@ -319,9 +323,9 @@ class CheckNumericsV2Op<GPUDevice, T> : public CheckNumericsOp<GPUDevice, T> {
  protected:
   int getAnomalyIndicatorSize() override { return 3; }
 
-  void RunKernel(const GPUDevice& d, const T* data, int size,
-                 int* abnormal_detected) override {
-    CheckNumericsLaunchV2<T>().Run(d, data, size, abnormal_detected);
+  absl::Status RunKernel(const GPUDevice& d, const T* data, int64_t size,
+                         int* abnormal_detected) override {
+    return CheckNumericsLaunchV2<T>().Run(d, data, size, abnormal_detected);
   }
 
   void checkForAnomalies(
