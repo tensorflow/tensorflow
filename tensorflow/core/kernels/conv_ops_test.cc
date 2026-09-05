@@ -367,6 +367,28 @@ TEST_F(FusedResizePadConvOpTest, NoResizePadOnlySymmetricComparative) {
                                         "SAME", DT_FLOAT);
 }
 
+TEST_F(FusedResizePadConvOpTest, InvalidInputRank) {
+  TF_ASSERT_OK(NodeDefBuilder("fused_pad_conv_op", "FusedPadConv2D")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DT_FLOAT)
+                   .Attr("mode", "REFLECT")
+                   .Attr("strides", {1, 1, 1, 1})
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({3, 2}), {0, 0, 0, 0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({4, 2}),
+                             {0, 0, 1, 1, 1, 1, 0, 0});
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {0, 0, 0, 0});
+
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_NE(status.message().find("input must be 4-dimensional"),
+            std::string::npos);
+}
+
 class ConvOpTest : public OpsTestBase {
  protected:
   void HandwrittenConv() {
