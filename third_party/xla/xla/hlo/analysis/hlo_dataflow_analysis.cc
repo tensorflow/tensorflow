@@ -1832,9 +1832,10 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       hlo_query::IsChangeTilingCopyFusion(operand)) {
     return true;
   }
-  const bool shapes_equal = ShapeUtil::Equal(operand_subshape, user_subshape);
+  const bool shapes_compatible =
+      ShapeUtil::Compatible(operand_subshape, user_subshape);
   // Check that operand and user emit the same shape and layout.
-  if (shapes_equal) {
+  if (shapes_compatible) {
     // Must-alias relationship returns true for in-place operations (DUS and DUS
     // fusions), regardless of the backend.
     // Cache uses of value and alias_info->GetInPlaceInputOutputPairs to speed
@@ -1879,7 +1880,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     return *hint;
   }
 
-  if (!shapes_equal) {
+  if (!shapes_compatible) {
     return false;
   }
 
