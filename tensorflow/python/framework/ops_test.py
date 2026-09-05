@@ -914,6 +914,19 @@ class OperationTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       ops.convert_to_tensor(tensor, dtype=dtypes.int32)
 
+  def testConvertCapturedEagerTensorToInvalidDtype(self):
+    tensor = constant_op.constant(42, dtype=dtypes.int32)
+
+    @def_function.function
+    def convert():
+      return ops.convert_to_tensor(tensor, dtype=dtypes.int64)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "Tensor conversion requested dtype int64 for Tensor with dtype int32",
+    ):
+      convert()
+
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorProtocol(self):
     class TensorCompatible:
