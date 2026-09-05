@@ -120,6 +120,10 @@ def trace(service_addr,
   Open your browser and go to localhost:6006/#profile to view profiling results.
 
   """
+  if not isinstance(service_addr, str):
+    raise TypeError(
+        'service_addr must be a string, but got '
+        f'{type(service_addr).__name__}.')
   if duration_ms <= 0:
     raise errors.InvalidArgumentError(None, None,
                                       'duration_ms must be greater than zero.')
@@ -165,6 +169,10 @@ def monitor(service_addr, duration_ms, level=1):
   ```
 
   """
+  if not isinstance(service_addr, str):
+    raise TypeError(
+        'service_addr must be a string, but got '
+        f'{type(service_addr).__name__}.')
   return _pywrap_profiler_plugin.monitor(
       _strip_prefix(service_addr, _GRPC_PREFIX), duration_ms, level, True
   )
