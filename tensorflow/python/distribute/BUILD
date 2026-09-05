@@ -134,6 +134,7 @@ py_library(
     srcs = ["__init__.py"],
     strict_deps = True,
     deps = [
+        ":auto_strategy",
         ":cross_device_ops",
         ":distribute_lib",
         ":merge_call_interim",
@@ -2718,5 +2719,39 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+py_library(
+    name = "auto_strategy",
+    srcs = ["auto_strategy.py"],
+    strict_deps = True,
+    deps = [
+        ":distribute_lib",
+        ":mirrored_strategy",
+        ":one_device_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_strict_test(
+    name = "auto_strategy_test",
+    srcs = ["auto_strategy_test.py"],
+    deps = [
+        ":auto_strategy",
+        ":mirrored_strategy",
+        ":one_device_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
     ],
 )

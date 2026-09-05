@@ -18,6 +18,9 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 
 ### Major Features and Improvements
 
+* `tf.distribute`
+    * Introduces `tf.distribute.AutoStrategy`, a dynamic factory API that automatically detects available hardware (TPUs, multiple GPUs, or multi-worker clusters via `TF_CONFIG`) and resolves the optimal distribution strategy, safely falling back to single device execution.
+
 * `tf.lite`
     * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
     * Adds support for FP16 and BF16 in Unpack operator.
