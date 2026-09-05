@@ -61,15 +61,28 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
       return multi_worker_mirrored_strategy.MultiWorkerMirroredStrategy()
 
   # Check for TPUs
-  tpus = config.list_physical_devices("TPU")
-  if tpus:
-    resolver = tpu_cluster_resolver.TPUClusterResolver("")
+  try:
+    resolver = tpu_cluster_resolver.TPUClusterResolver()
     # pylint: disable=g-import-not-at-top
     from tensorflow.python.tpu import tpu_strategy_util
     # pylint: enable=g-import-not-at-top
+
+    # Must connect to the cluster before initializing the system
+    if hasattr(config, "experimental_connect_to_cluster"):
+      config.experimental_connect_to_cluster(resolver)
+    else:
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.python.eager import remote
+      # pylint: enable=g-import-not-at-top
+      remote.connect_to_cluster(resolver)
+
     if not tpu_strategy_util.get_initialized_tpu_systems():
-      tpu_strategy_util.initialize_tpu_system(resolver)
+      tpu_cluster_resolver.initialize_tpu_system(resolver)
     return tpu_strategy.TPUStrategy(resolver)
+  except ValueError:
+    # TPUClusterResolver raises ValueError if no TPU is found in the
+    # environment.
+    pass
 
   # Check for GPUs
   gpus = config.list_physical_devices("GPU")
