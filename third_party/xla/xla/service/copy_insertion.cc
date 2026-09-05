@@ -443,20 +443,258 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
 // If the loop state is a tuple then the above kCopy instructions are a deep
 // copy constructed of kCopy, kGetTupleElement, and kTuple instruction as
 // constructed by HloInstruction::DeepCopyInstruction.
+bool IsAsyncOperationStateDefinition(const HloInstruction* instruction) {
+  return HloDataflowAnalysis::IsAsynchronousOperationStart(
+             instruction->opcode()) ||
+         instruction->opcode() == HloOpcode::kAsyncUpdate;
+}
+
+bool IsAsyncPipelinedWhileTupleIndex(const HloInstruction* while_instr,
+                                     const ShapeIndex& index) {
+  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+    return false;
+  }
+  int64_t tuple_idx = index[0];
+
+  // 1. Check while init operand
+  const HloInstruction* while_init = while_instr->operand(0);
+  if (while_init->opcode() == HloOpcode::kTuple &&
+      tuple_idx < while_init->operand_count()) {
+    const HloInstruction* init_elem = while_init->operand(tuple_idx);
+    while (init_elem->opcode() == HloOpcode::kBitcast) {
+      init_elem = init_elem->operand(0);
+    }
+    if (IsAsyncOperationStateDefinition(init_elem)) {
+      return true;
+    }
+  }
+
+  // 2. Check while body
+  HloComputation* while_body = while_instr->while_body();
+  if (while_body != nullptr) {
+    // Check root instruction of while body
+    const HloInstruction* root = while_body->root_instruction();
+    if (root != nullptr && root->opcode() == HloOpcode::kTuple &&
+        tuple_idx < root->operand_count()) {
+      const HloInstruction* root_elem = root->operand(tuple_idx);
+      while (root_elem->opcode() == HloOpcode::kBitcast) {
+        root_elem = root_elem->operand(0);
+      }
+      if (IsAsyncOperationStateDefinition(root_elem)) {
+        return true;
+      }
+    }
+
+    // Check while body parameter users
+    if (while_body->num_parameters() > 0) {
+      const HloInstruction* while_param = while_body->parameter_instruction(0);
+      for (const HloInstruction* user : while_param->users()) {
+        if (user->opcode() == HloOpcode::kGetTupleElement &&
+            user->tuple_index() == tuple_idx) {
+          for (const HloInstruction* gte_user : user->users()) {
+            if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                    gte_user->opcode()) ||
+                gte_user->opcode() == HloOpcode::kAsyncUpdate) {
+              return true;
+            }
+            if (gte_user->opcode() == HloOpcode::kGetTupleElement) {
+              for (const HloInstruction* sub_user : gte_user->users()) {
+                if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                        sub_user->opcode()) ||
+                    sub_user->opcode() == HloOpcode::kAsyncUpdate) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Check while instruction users
+  for (const HloInstruction* user : while_instr->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == tuple_idx) {
+      for (const HloInstruction* gte_user : user->users()) {
+        if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                gte_user->opcode()) ||
+            gte_user->opcode() == HloOpcode::kAsyncUpdate) {
+          return true;
+        }
+        if (gte_user->opcode() == HloOpcode::kGetTupleElement) {
+          for (const HloInstruction* sub_user : gte_user->users()) {
+            if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                    sub_user->opcode()) ||
+                sub_user->opcode() == HloOpcode::kAsyncUpdate) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
+                                      const ShapeIndex& index) {
+  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+    return false;
+  }
+  int64_t tuple_idx = index[0];
+  const HloComputation* while_body = while_instr->while_body();
+  if (while_body == nullptr || while_body->num_parameters() == 0) {
+    return false;
+  }
+  const HloInstruction* while_param = while_body->parameter_instruction(0);
+
+  const HloInstruction* param_gte = nullptr;
+  for (const HloInstruction* user : while_param->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == tuple_idx) {
+      param_gte = user;
+      break;
+    }
+  }
+  if (param_gte == nullptr) {
+    return false;
+  }
+
+  auto is_transparent_wrapper = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kBitcast ||
+           instr->opcode() == HloOpcode::kBitcastConvert ||
+           instr->opcode() == HloOpcode::kReshape ||
+           instr->opcode() == HloOpcode::kCopy ||
+           (instr->opcode() == HloOpcode::kCustomCall &&
+            instr->operand_count() == 1);
+  };
+
+  // Ensure param_gte has no competing readers: only a single path of wrappers
+  // leading to the in-place update operation.
+  const HloInstruction* single_reader = param_gte;
+  while (single_reader->user_count() == 1 &&
+         is_transparent_wrapper(single_reader->users()[0])) {
+    single_reader = single_reader->users()[0];
+  }
+  if (single_reader->user_count() != 1) {
+    return false;
+  }
+
+  const HloInstruction* root = while_body->root_instruction();
+  if (root == nullptr || root->opcode() != HloOpcode::kTuple ||
+      tuple_idx >= root->operand_count()) {
+    return false;
+  }
+  const HloInstruction* root_elem = root->operand(tuple_idx);
+  while (is_transparent_wrapper(root_elem)) {
+    root_elem = root_elem->operand(0);
+  }
+
+  const HloInstruction* curr = root_elem;
+  while (curr != nullptr && curr != single_reader && curr != param_gte) {
+    const HloInstruction* next = nullptr;
+    if (curr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      if (!HasDisjointReadWriteRegionsAttr(curr) &&
+          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+        return false;
+      }
+      next = curr->operand(0);
+    } else if (curr->IsAsynchronous() &&
+               curr->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice) {
+      const HloInstruction* async_start = nullptr;
+      if (curr->opcode() == HloOpcode::kAsyncDone) {
+        async_start = curr->operand(0);
+      } else if (curr->opcode() == HloOpcode::kAsyncStart) {
+        async_start = curr;
+      }
+      if (async_start == nullptr || async_start->operand_count() == 0) {
+        return false;
+      }
+      if (!HasDisjointReadWriteRegionsAttr(curr) &&
+          !HasDisjointReadWriteRegionsAttr(async_start) &&
+          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+        return false;
+      }
+      next = async_start->operand(0);
+    } else if (is_transparent_wrapper(curr)) {
+      next = curr->operand(0);
+    } else {
+      return false;
+    }
+    while (next != nullptr && is_transparent_wrapper(next)) {
+      next = next->operand(0);
+    }
+    curr = next;
+  }
+  return curr == single_reader || curr == param_gte;
+}
+
 absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                                HloInstruction* xla_while) {
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
 
+  ShapeTree<bool> indices_to_copy(xla_while->shape());
+  IndicesToCopyForWhile(alias_analysis.dataflow_analysis(), xla_while,
+                        &indices_to_copy);
+
   if (HasDisableWhileLoopCopiesAttr(xla_while)) {
-    VLOG(2) << "While loop copy insertion disabled via frontend attribute for "
+    VLOG(2) << "While loop copy insertion partially disabled via frontend "
+               "attribute for "
             << xla_while->name();
-    return absl::OkStatus();
+    // Clear copy requirement for scalars, async pipelined, and disjoint
+    // in-place tuple indices.
+    for (auto& pair : indices_to_copy) {
+      const Shape& subshape =
+          ShapeUtil::GetSubshape(xla_while->shape(), pair.first);
+      if (ShapeUtil::IsScalar(subshape) ||
+          IsAsyncPipelinedWhileTupleIndex(xla_while, pair.first) ||
+          IsDisjointInPlaceWhileTupleIndex(xla_while, pair.first)) {
+        pair.second = false;
+      }
+    }
+    // Deep copy any duplicate buffers in while_init outside the loop.
+    HloInstruction* while_init = xla_while->mutable_operand(0);
+    if (while_init->shape().IsTuple()) {
+      ShapeTree<bool> init_indices_to_copy(while_init->shape(), false);
+      absl::flat_hash_set<const HloBuffer*> seen_buffers;
+      bool need_copy = false;
+      ShapeUtil::ForEachSubshape(
+          while_init->shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) {
+            if (!subshape.IsArray() || index.empty() ||
+                IsAsyncPipelinedWhileTupleIndex(xla_while, {index[0]})) {
+              return;
+            }
+            std::vector<const HloBuffer*> buffers =
+                alias_analysis.ComputeBuffersAt(while_init, index);
+            for (const HloBuffer* buffer : buffers) {
+              if (!seen_buffers.insert(buffer).second) {
+                *init_indices_to_copy.mutable_element(index) = true;
+                need_copy = true;
+                break;
+              }
+            }
+          });
+      if (need_copy) {
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * while_init_copy,
+                         xla_while->parent()->DeepCopyInstruction(
+                             while_init, &init_indices_to_copy));
+        ABSL_RETURN_IF_ERROR(while_init->ReplaceUseWith(xla_while, while_init_copy));
+      }
+    }
   }
 
-  ShapeTree<bool> indices_to_copy(xla_while->shape());
-  if (!IndicesToCopyForWhile(alias_analysis.dataflow_analysis(), xla_while,
-                             &indices_to_copy)) {
+  bool any_copies = false;
+  for (const auto& pair : indices_to_copy) {
+    if (pair.second) {
+      any_copies = true;
+      break;
+    }
+  }
+  if (!any_copies) {
     VLOG(2) << "No copies necessary for kWhile instruction "
             << xla_while->name();
     return absl::OkStatus();

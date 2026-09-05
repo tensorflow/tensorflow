@@ -661,91 +661,32 @@ xla_cc_test(
 
 cc_library(
     name = "riegeli_file_writer_factory",
+    srcs = ["riegeli_file_writer_factory.cc"],
     hdrs = ["riegeli_file_writer_factory.h"],
+    tags = if_google(["ignore_for_dep=third_party/riegeli/bytes/fd_writer.h"]),
     deps = [
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@riegeli//riegeli/bytes:writer",
+        "@tsl//tsl/platform",
     ] + if_google(
-        [":riegeli_file_writer_factory_google"],
-        [":riegeli_file_writer_factory_oss"],
+        ["@riegeli//riegeli/bytes:file_writer"],
+        ["@riegeli//riegeli/bytes:fd_writer"],
     ),
-)
-
-cc_library(
-    name = "riegeli_file_writer_factory_google",
-    srcs = [
-        "riegeli_file_writer_factory.h",
-        "riegeli_file_writer_factory_google.cc",
-    ],
-    tags = ["manual"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "@riegeli//riegeli/bytes:file_writer",
-        "@riegeli//riegeli/bytes:writer",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "riegeli_file_writer_factory_oss",
-    srcs = [
-        "riegeli_file_writer_factory.h",
-        "riegeli_file_writer_factory_oss.cc",
-    ],
-    tags = ["manual"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "@com_google_absl//absl/strings:string_view",
-        "@riegeli//riegeli/bytes:fd_writer",
-        "@riegeli//riegeli/bytes:writer",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
     name = "riegeli_file_reader_factory",
+    srcs = ["riegeli_file_reader_factory.cc"],
     hdrs = ["riegeli_file_reader_factory.h"],
+    tags = if_google(["ignore_for_dep=third_party/riegeli/bytes/fd_reader.h"]),
     deps = [
         "@com_google_absl//absl/strings:string_view",
         "@riegeli//riegeli/bytes:reader",
+        "@tsl//tsl/platform",
     ] + if_google(
-        [":riegeli_file_reader_factory_google"],
-        [":riegeli_file_reader_factory_oss"],
+        ["@riegeli//riegeli/bytes:file_reader"],
+        ["@riegeli//riegeli/bytes:fd_reader"],
     ),
-)
-
-cc_library(
-    name = "riegeli_file_reader_factory_google",
-    srcs = [
-        "riegeli_file_reader_factory.h",
-        "riegeli_file_reader_factory_google.cc",
-    ],
-    tags = ["manual"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "@riegeli//riegeli/bytes:file_reader",
-        "@riegeli//riegeli/bytes:reader",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "riegeli_file_reader_factory_oss",
-    srcs = [
-        "riegeli_file_reader_factory.h",
-        "riegeli_file_reader_factory_oss.cc",
-    ],
-    tags = ["manual"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "@com_google_absl//absl/strings:string_view",
-        "@riegeli//riegeli/bytes:fd_reader",
-        "@riegeli//riegeli/bytes:reader",
-    ],
-    alwayslink = 1,
 )
 
 xla_cc_test(
