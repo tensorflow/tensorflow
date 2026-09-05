@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/linalg/matrix_diag_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -123,7 +125,9 @@ __global__ void MatrixDiagPartKernel(
     if (0 <= y_index && y_index < num_rows && 0 <= x_index &&
         x_index < num_cols) {
       output_ptr[index] =
-          input_ptr[batch * num_rows * num_cols + y_index * num_cols + x_index];
+          input_ptr[(static_cast<int64_t>(batch) * num_rows + y_index) *
+                        num_cols +
+                    x_index];
     } else {
       output_ptr[index] = padding_value;
     }
