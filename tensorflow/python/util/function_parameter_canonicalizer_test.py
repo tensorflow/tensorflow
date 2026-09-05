@@ -15,6 +15,8 @@
 """Tests for `tensorflow::FunctionParameterCanonicalizer`."""
 
 from tensorflow.python.platform import test
+from tensorflow.python.eager import def_function
+from tensorflow.python.ops import array_ops
 from tensorflow.python.util import _function_parameter_canonicalizer_binding_for_test
 
 
@@ -87,6 +89,15 @@ class FunctionParameterCanonicalizerTest(test.TestCase):
         .FunctionParameterCanonicalizer(['long_parameter_name'], ()))
     kwargs = dict([('_'.join(['long', 'parameter', 'name']), 5)])
     func.canonicalize(**kwargs)
+
+  def testFunctionCacheNoRetraceLeak(self):
+    """Test function cache does not retrace or leak memory."""
+    @def_function.function
+    def simple_fn(x):
+      return x + 1.0
+
+    for _ in range(10):
+      simple_fn(array_ops.zeros((2, 2)))
 
 
 if __name__ == '__main__':
