@@ -109,10 +109,10 @@ absl::Status TapeOperation::SetAttrShape(const char* attr_name,
                                          const int64_t* dims,
                                          const int num_dims) {
   if (num_dims > TensorShape::MaxDimensions()) {
-    return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
-                                   num_dims,
-                                   " dimensions which is over the limit of ",
-                                   TensorShape::MaxDimensions(), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Value specified for `", attr_name, "` has ", num_dims,
+                     " dimensions which is over the limit of ",
+                     TensorShape::MaxDimensions(), "."));
   }
   TensorShapeProto proto;
   if (num_dims < 0) {
@@ -128,19 +128,19 @@ absl::Status TapeOperation::SetAttrShape(const char* attr_name,
 }
 absl::Status TapeOperation::SetAttrFunction(const char* attr_name,
                                             const AbstractOperation* value) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunction has not been implemented yet.");
 }
 absl::Status TapeOperation::SetAttrFunctionName(const char* attr_name,
                                                 const char* value,
                                                 size_t length) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunctionName has not been implemented "
       "yet.");
 }
 absl::Status TapeOperation::SetAttrTensor(const char* attr_name,
                                           AbstractTensorInterface* tensor) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrTensor has not been implemented yet.");
 }
 absl::Status TapeOperation::SetAttrStringList(const char* attr_name,
@@ -158,14 +158,14 @@ absl::Status TapeOperation::SetAttrFloatList(const char* attr_name,
                                              const float* values,
                                              int num_values) {
   forward_op_.attrs.Set(attr_name,
-                        gtl::ArraySlice<const float>(values, num_values));
+                        absl::Span<const const float>(values, num_values));
   return parent_op_->SetAttrFloatList(attr_name, values, num_values);
 }
 absl::Status TapeOperation::SetAttrIntList(const char* attr_name,
                                            const int64_t* values,
                                            int num_values) {
   forward_op_.attrs.Set(
-      attr_name, gtl::ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return parent_op_->SetAttrIntList(attr_name, values, num_values);
 }
@@ -173,7 +173,7 @@ absl::Status TapeOperation::SetAttrTypeList(const char* attr_name,
                                             const DataType* values,
                                             int num_values) {
   forward_op_.attrs.Set(attr_name,
-                        gtl::ArraySlice<const DataType>(values, num_values));
+                        absl::Span<const const DataType>(values, num_values));
   return parent_op_->SetAttrTypeList(attr_name, values, num_values);
 }
 absl::Status TapeOperation::SetAttrBoolList(const char* attr_name,
@@ -184,7 +184,7 @@ absl::Status TapeOperation::SetAttrBoolList(const char* attr_name,
     b[i] = values[i];
   }
   forward_op_.attrs.Set(attr_name,
-                        gtl::ArraySlice<const bool>(b.get(), num_values));
+                        absl::Span<const const bool>(b.get(), num_values));
   return parent_op_->SetAttrBoolList(attr_name, values, num_values);
 }
 absl::Status TapeOperation::SetAttrShapeList(const char* attr_name,
@@ -196,7 +196,7 @@ absl::Status TapeOperation::SetAttrShapeList(const char* attr_name,
     const auto num_dims_i = num_dims[i];
 
     if (num_dims_i > TensorShape::MaxDimensions()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           strings::StrCat("Value specified for `", attr_name, "` has ",
                           num_dims_i, " dimensions which is over the limit of ",
                           TensorShape::MaxDimensions(), "."));
@@ -217,7 +217,7 @@ absl::Status TapeOperation::SetAttrShapeList(const char* attr_name,
 }
 absl::Status TapeOperation::SetAttrFunctionList(
     const char* attr_name, absl::Span<const AbstractOperation*> values) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunctionList has not been "
       "implemented yet.");
 }
