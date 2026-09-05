@@ -622,23 +622,22 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
     ENTRY main {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
-      ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+      ROOT result = pred[] compare(p0, p1), direction=GT, order=TOTAL
     }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(
-      root->ToString(),
-      "%result = pred[] compare(%p0, %p1), direction=GT, type=TOTALORDER");
+  EXPECT_EQ(root->ToString(),
+            "%result = pred[] compare(%p0, %p1), direction=GT, order=TOTAL");
   module->entry_computation()->set_root_instruction(
       root->mutable_operand(0), /*accept_different_shape=*/true);
   root->DetachFromOperandsAndUsers();
   EXPECT_EQ(
       root->ToString(),
-      "%result = pred[] compare(null , null ), direction=GT, type=TOTALORDER");
+      "%result = pred[] compare(null , null ), direction=GT, order=TOTAL");
   TF_ASSERT_OK(module->entry_computation()->RemoveInstruction(root));
   EXPECT_EQ(root->ToString(),
-            "%result = pred[] compare(), direction=GT, type=TOTALORDER");
+            "%result = pred[] compare(), direction=GT, order=TOTAL");
   *module->mutable_entry_computation_layout() =
       module->compute_computation_layout();
 }
@@ -650,7 +649,7 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
     ENTRY main {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
-      ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+      ROOT result = pred[] compare(p0, p1), direction=GT, order=TOTAL
     }
   )"));
 
@@ -683,7 +682,7 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
   EXPECT_EQ(param2_to_string, "tmp_1 = f32[] parameter(1)");
   EXPECT_EQ(param3_to_string,
             "tmp_2 = pred[] compare(f32[] tmp_0, f32[] tmp_1), direction=GT, "
-            "type=TOTALORDER");
+            "order=TOTAL");
 }
 
 TEST_F(HloInstructionTest, CanonicalPrintingSupportsCustomCall) {

@@ -792,6 +792,55 @@ TEST_F(HloCseTest, Iota) {
   EXPECT_NE(root->operand(0), root->operand(3));
 }
 
+TEST_F(HloCseTest, IotaDifferentConsumers) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      p0 = s64[16,16] parameter(0)
+      i1 = s64[16,16] iota(), iota_dimension=0
+      i2 = s64[16,16] iota(), iota_dimension=0
+      add = s64[16,16] add(p0, i1)
+      sub = s64[16,16] subtract(p0, i2)
+      ROOT root = (s64[16,16], s64[16,16]) tuple(add, sub)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  const HloInstruction* add = root->operand(0);
+  const HloInstruction* sub = root->operand(1);
+  EXPECT_EQ(add->operand(1), sub->operand(1));
+}
+
+TEST_F(HloCseTest, IotaLayoutSensitive) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      p0 = s64[16,16]{1,0} parameter(0)
+      i1 = s64[16,16]{1,0} iota(), iota_dimension=0
+      i2 = s64[16,16]{1,0} iota(), iota_dimension=0
+      i3 = s64[16,16]{0,1} iota(), iota_dimension=0
+      add1 = s64[16,16]{1,0} add(p0, i1)
+      add2 = s64[16,16]{1,0} add(p0, i2)
+      ROOT root = (s64[16,16]{1,0}, s64[16,16]{1,0}, s64[16,16]{0,1}) tuple(add1, add2, i3)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  const HloInstruction* add1 = root->operand(0);
+  const HloInstruction* add2 = root->operand(1);
+  const HloInstruction* i3 = root->operand(2);
+  EXPECT_EQ(add1->operand(1), add2->operand(1));
+  EXPECT_NE(add1->operand(1), i3);
+}
+
 TEST_F(HloCseTest, OptimizationBarrier) {
   const char* const hlo_string = R"(
     HloModule m

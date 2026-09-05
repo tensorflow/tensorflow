@@ -216,6 +216,7 @@ struct CseKey {
       case HloOpcode::kBroadcast:
       case HloOpcode::kTranspose:
       case HloOpcode::kReduce:
+      case HloOpcode::kIota:
         return H::combine(std::move(h), instruction->dimensions());
       case HloOpcode::kGetTupleElement:
         return H::combine(std::move(h), instruction->tuple_index());
@@ -242,6 +243,7 @@ bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
   if (instruction->operand_count() == 0 &&
       instruction->opcode() != HloOpcode::kPartitionId &&
       instruction->opcode() != HloOpcode::kReplicaId &&
+      instruction->opcode() != HloOpcode::kIota &&
       (!frontend_attributes.IsInitialized() ||
        !frontend_attributes.map().contains(kXlaCseSafeZeroOperandAttr))) {
     return false;
