@@ -876,6 +876,57 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// Functor for tf.math.floor on float32 on CPU.
+//
+// std::floor (and Eigen's pfloor) returns -0.0f for small negative float32
+// subnormals, e.g. floor(-1e-45f) = -0.0f, but the correct result is -1.0f.
+//
+// Scalar path: x < 0.0f is insufficient when FTZ/DAZ (Flush-To-Zero /
+// Denormals-Are-Zero) is active, because negative subnormals are flushed to
+// -0.0f in FP registers and -0.0f < 0.0f is false under IEEE-754.  Instead we
+// read the raw bit pattern of x via bit_cast (a memcpy-based type pun that
+// never goes through an FP register) and test whether the sign bit is set and
+// the value is not negative zero (0x80000000).
+//
+// Packet path: SIMD vectorization is re-enabled.  For normal operands the
+// correction mirrors the scalar path.  Under FTZ/DAZ, negative subnormals are
+// already flushed to -0.0f in the SIMD register before packetOp sees them, so
+// pcmp_lt(-0.0f, 0.0f) is false and the packet path cannot fix them; the
+// scalar operator() still handles them correctly via bit_cast.
+struct scalar_cpu_floor_float_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
+    const float r = numext::floor(x);
+    // Read the raw bits of x without going through an FP register so that
+    // negative subnormals are not flushed to -0.0f under FTZ/DAZ.
+    const uint32_t bits = numext::bit_cast<uint32_t>(x);
+    // bits > 0x80000000u: sign bit set and not -0.0f (which is 0x80000000).
+    return (r == 0.0f && bits > 0x80000000u) ? -1.0f : r;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    const Packet r = pfloor(x);
+    // Correct lanes where a negative non-zero x rounded to -0.0f.
+    // pcmp_lt(x, pzero(x)) is false for -0.0f (IEEE 754: -0.0 == 0.0) so
+    // genuine -0.0f inputs are correctly left as -0.0f.
+    // Note: under FTZ/DAZ, negative float32 subnormals are flushed to -0.0f
+    // in the SIMD register before packetOp is called, so they cannot be
+    // recovered here — the scalar operator() handles them correctly via
+    // bit_cast, which reads memory without going through an FP register.
+    return pselect(pand(pcmp_eq(r, pzero(r)), pcmp_lt(x, pzero(x))),
+                   pset1<Packet>(-1.0f), r);
+  }
+};
+
+template <>
+struct functor_traits<scalar_cpu_floor_float_op> {
+  enum {
+    Cost = NumTraits<float>::MulCost,
+    // packetOp uses pfloor (requires HasRound) and pcmp_eq/pcmp_lt (HasCmp).
+    PacketAccess = packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -1076,6 +1127,10 @@ struct isfinite : base<T, Eigen::internal::scalar_isfinite_op<T>, bool> {};
 
 template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
+
+template <>
+struct floor<float>
+    : base<float, Eigen::internal::scalar_cpu_floor_float_op> {};
 
 template <typename T>
 struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
