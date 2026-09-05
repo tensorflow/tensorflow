@@ -189,6 +189,19 @@ class XentOpTestBase(test.TestCase):
     logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64)
     self._testXent2D(labels, logits)
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDoublePreservesSmallGradient(self):
+    tail_probability = 5.551115123125776e-17
+    _, gradient = self._opFwdBwd(
+        labels=np.array([[1.0, 0.0]], dtype=np.float64),
+        logits=np.array([[37.42994775023705, 0.0]], dtype=np.float64))
+    gradient = self.evaluate(gradient)
+
+    self.assertAllClose(
+        [[-tail_probability, tail_probability]], gradient, rtol=1e-14,
+        atol=0)
+    self.assertEqual(gradient[0, 0], -gradient[0, 1])
+
   @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session() as sess:
