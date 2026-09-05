@@ -306,8 +306,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def testCountNonzero(self):
     a = np_array_ops.array([[0, 1, 2], [3, 0, 0]])
-    self.match(np_math_ops.count_nonzero(a), np.count_nonzero(a))
-    self.match(
+    self.assertAllEqual(np_math_ops.count_nonzero(a), np.count_nonzero(a))
+    self.assertAllEqual(
         np_math_ops.count_nonzero(a, axis=0),
         np.count_nonzero(a, axis=0))
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
