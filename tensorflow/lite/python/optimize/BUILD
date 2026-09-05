@@ -34,7 +34,9 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:shared_library",
+        "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -45,10 +47,11 @@ cc_library(
         "//tensorflow/lite/tools/optimize:quantize_model",
         "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
         "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
+        "//third_party/py/numpy:headers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
+        "@flatbuffers//include/flatbuffers:flatbuffer_builder",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )

@@ -68,6 +68,7 @@ typedef enum {
   kTfLiteUInt4 = 21,
   kTfLiteFloat8E4M3FN = 22,
   kTfLiteFloat8E5M2 = 23,
+  kTfLiteFloat8E8M0FNU = 24,
 } TfLiteType;
 // LINT.ThenChange(//tensorflow/lite/profiling/proto/model_runtime_info.proto:EdgeDataType)
 

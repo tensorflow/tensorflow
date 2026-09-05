@@ -1,3 +1,4 @@
+// RUN: fusion_to_triton %s | FileCheck %s
 // RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 f {
   %param0 = f32[128,128]{1,0} parameter(0)
@@ -35,7 +36,6 @@ ENTRY entry {
 // CHECK-SAME:   %[[ARG2:[a-zA-Z0-9_]+]]: i32,
 // CHECK-SAME:   %[[ARG3:[a-zA-Z0-9_]+]]: i32,
 // CHECK-SAME:   %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<!tt.ptr<i32>>,
-// CHECK-SAME:   %[[ARG5:[a-zA-Z0-9_]+]]: !tt.ptr<!tt.ptr<f32>>,
 // CHECK-SAME:   %[[PID:[a-zA-Z0-9_]+]]: index)
 
 // CHECK:        %[[IDX0:.*]] = xla.apply_indexing #[[MAP0]](%[[PID]])

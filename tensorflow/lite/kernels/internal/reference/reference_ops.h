@@ -489,6 +489,20 @@ inline void Dequantize(const RuntimeShape& input_shape,
   }
 }
 
+inline void DequantizeE8M0(const RuntimeShape& input_shape,
+                           const uint8_t* input_data,
+                           const RuntimeShape& output_shape,
+                           float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    if (input_data[i] == 0xFF) {
+      output_data[i] = std::numeric_limits<float>::quiet_NaN();
+    } else {
+      output_data[i] = std::ldexp(1.0f, static_cast<int>(input_data[i]) - 127);
+    }
+  }
+}
+
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {

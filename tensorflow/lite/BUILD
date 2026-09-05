@@ -806,7 +806,6 @@ cc_library(
     ],
     deps = [
         ":kernel_api",
-        ":macros",
         "//tensorflow/lite/core:cc_api_experimental",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",

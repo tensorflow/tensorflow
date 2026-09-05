@@ -131,6 +131,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tsl/platform/tstring.h"
 
@@ -213,6 +214,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_FLOAT8_E4M3FN;
   } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
     return tflite::TensorType_FLOAT8_E5M2;
+  } else if (mlir::isa<mlir::Float8E8M0FNUType>(type)) {
+    return tflite::TensorType_FLOAT8_E8M0FNU;
   } else if (mlir::isa<mlir::TF::StringType>(type)) {
     return tflite::TensorType_STRING;
   } else if (mlir::isa<mlir::TF::Quint8Type>(type)) {

@@ -40,7 +40,8 @@ cc_library(
     hdrs = ["enum_mapping.h"],
     deps = [
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
-        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
     ],
 )
 

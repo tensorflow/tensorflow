@@ -122,6 +122,7 @@ message Edge {
     UINT4 = 21;
     FLOAT8_E4M3FN = 22;
     FLOAT8_E5M2 = 23;
+    FLOAT8_E8M0FNU = 24;
   }
   // LINT.ThenChange(//tensorflow/lite/profiling/model_runtime_info.cc:EdgeDataTypeTransform)
 

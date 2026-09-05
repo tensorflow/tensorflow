@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
@@ -29,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -224,6 +225,11 @@ TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
       break;
     case kTfLiteFloat8E5M2:
       DequantizeFloat8<float8_internal::Float8E5M2>(input, output);
+      break;
+    case kTfLiteFloat8E8M0FNU:
+      reference_ops::DequantizeE8M0(
+          GetTensorShape(input), GetTensorData<uint8_t>(input),
+          GetTensorShape(output), GetTensorData<float>(output));
       break;
 #endif
     default:

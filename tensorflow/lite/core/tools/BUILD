@@ -34,6 +34,7 @@ cc_library(
         "//tensorflow/lite:__subpackages__",
     ] + verifier_visibility_allowlist(),
     deps = [
+        ":verifier_internal",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -43,7 +44,6 @@ cc_library(
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/tools:verifier_internal",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",

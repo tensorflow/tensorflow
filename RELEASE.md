@@ -23,7 +23,7 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Adds support for FP16 and BF16 in Unpack operator.
     * Adds support for FP16 in Transpose and DynamicUpdateSlice operator.
     * Transpose now supports up to 8D tensors.
-    * Adds support for FLOAT8_E4M3FN and FLOAT8_E5M2 data types.
+    * Adds support for FLOAT8_E4M3FN, FLOAT8_E5M2, and FLOAT8_E8M0FNU data types.
 
 ### Bug Fixes and Other Changes
 
@@ -45,6 +45,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     *   Fixes second-order gradients of `tf.nn.softsign`. Differentiating twice
         previously failed with a lookup error because the `SoftsignGrad`
         backward op had no registered Python gradient.
+
+*   `tf.math.reciprocal`
+
+    *   Constrains the XLA registration of `Reciprocal` and `Inv` to the types
+        that have a device kernel, so `jit_compile=True` no longer silently
+        accepts the integer inputs that eager execution and autoclustering
+        reject. Fixes
+        [#126414](https://github.com/tensorflow/tensorflow/issues/126414).
 
 
 *   `tf.experimental.numpy`
