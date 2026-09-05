@@ -366,10 +366,10 @@ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
 
 bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
                                  const HloGraphNode& target) const {
-  return (from.GetInstr().opcode() == HloOpcode::kSend &&
-          target.GetInstr().opcode() == HloOpcode::kSendDone) ||
-         (from.GetInstr().opcode() == HloOpcode::kRecv &&
-          target.GetInstr().opcode() == HloOpcode::kRecvDone);
+  return (from.GetOpcode() == HloOpcode::kSend &&
+          target.GetOpcode() == HloOpcode::kSendDone) ||
+         (from.GetOpcode() == HloOpcode::kRecv &&
+          target.GetOpcode() == HloOpcode::kRecvDone);
 }
 
 std::optional<LatencyEstimator::TimeCost>
@@ -1736,7 +1736,7 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     }
   }
   if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone() &&
-      an->GetInstr().opcode() == bn->GetInstr().opcode()) {
+      an->GetOpcode() == bn->GetOpcode()) {
     const HloGraphNode& start_an =
         sched_state.sched_graph->GetNode(an->GetInstr().operand(0));
     const HloGraphNode& start_bn =
@@ -2977,6 +2977,11 @@ HloScheduleGraph::HloScheduleGraph(
     DCHECK_EQ(n, GetNodePtr(instr));
     n->instr_ = instr;
     n->opcode_ = instr->opcode();
+    n->is_host_transfer_ =
+        (n->opcode_ == HloOpcode::kSend || n->opcode_ == HloOpcode::kSendDone ||
+         n->opcode_ == HloOpcode::kRecv ||
+         n->opcode_ == HloOpcode::kRecvDone) &&
+        static_cast<const HloSendRecvInstruction*>(instr)->is_host_transfer();
     n->original_position_ = current_pos;
     current_pos++;
 
