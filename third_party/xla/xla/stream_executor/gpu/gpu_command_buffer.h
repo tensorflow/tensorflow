@@ -218,6 +218,10 @@ class GpuCommandBuffer : public CommandBuffer {
                            UpdateCommands update_cond,
                            UpdateCommands update_body) override;
 
+  absl::StatusOr<const Command*> CreateHost(
+      absl::AnyInvocable<void()> callback,
+      absl::Span<const Command* const> dependencies) override;
+
   absl::Status Finalize() override;
   absl::Status Update() override;
   absl::Status Submit(Stream* stream) override;
@@ -422,6 +426,10 @@ class GpuCommandBuffer : public CommandBuffer {
       GraphNodeHandle node_handle, const ThreadDim& threads,
       const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
       const Kernel& kernel, const KernelArgsPackedArrayBase& args) = 0;
+
+  virtual absl::StatusOr<GraphNodeHandle> CreateHostNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      absl::AnyInvocable<void()> callback) = 0;
 
   //===--------------------------------------------------------------------===//
 
