@@ -158,7 +158,8 @@ static absl::StatusOr<CUmemGenericAllocationHandle> CreatePhysicalAllocation(
     }
     if (result == CUDA_ERROR_NOT_PERMITTED ||
         result == CUDA_ERROR_NOT_SUPPORTED ||
-        result == CUDA_ERROR_INVALID_VALUE) {
+        result == CUDA_ERROR_INVALID_VALUE ||
+        result == CUDA_ERROR_ILLEGAL_STATE) {
       XLA_LOG_DEVICE(WARNING, properties.location.id)
           << "VMM cuMemCreate with " << description
           << " handle types failed: " << cuda::ToStatus(result)
