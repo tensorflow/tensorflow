@@ -80,31 +80,41 @@ class PackOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
 
-    // Special case: packing 0-D (scalar) inputs.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    // Special case: packing 0-D (scalar) inputs on GPU.
     //
     // The generic path below flattens each input to a {before_dim, after_dim}
     // matrix and then calls ConcatGPU / ConcatCPU. For scalar inputs
     // before_dim == after_dim == 1, so every matrix has shape {1, 1} and the
-    // output matrix has shape {1, num}.  While the arithmetic is correct, the
-    // GPU ConcatGPU helper validates that its inputs have at least one element
-    // per row (dimension(1) > 0 is always true here), but some GPU drivers
-    // reject the launch configuration produced for 1-element rows.  Avoid the
-    // issue entirely by treating the scalar case as a flat vector copy:
-    // each scalar contributes exactly one element at position i in the output.
-    if (first_input.dims() == 0) {
-      auto output_vec = output->flat<T>();
-      for (int i = 0; i < num; ++i) {
-        const Tensor& input = c->input(i);
-        OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "Shapes of all inputs must match: values[0].shape = ",
-                        first_input.shape().DebugString(), " != values[", i,
-                        "].shape = ", input.shape().DebugString())));
-        output_vec.template chip<0>(i).device(c->eigen_device<Device>()) =
-            input.scalar<T>();
+    // output matrix has shape {1, num}.  While the arithmetic is correct, some
+    // GPU drivers reject the launch configuration produced for 1-element rows
+    // inside ConcatGPU, causing an "Can't concatenate scalars" error at
+    // runtime.  Handle scalars on GPU by writing each scalar element directly
+    // into the output flat vector via an Eigen chip assignment.
+    //
+    // The if constexpr guard is required: the Eigen chip + scalar<T> expression
+    // only compiles for Eigen::GpuDevice. ThreadPoolDevice (the CPU device
+    // type used for types like Variant and QInt8) would trigger a static
+    // assertion in Eigen ("Default executor instantiated with non-default
+    // device"). The CPU ConcatCPU path already handles scalars correctly and
+    // is used unchanged for all non-GPU devices.
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
+      if (first_input.dims() == 0) {
+        auto output_vec = output->flat<T>();
+        for (int i = 0; i < num; ++i) {
+          const Tensor& input = c->input(i);
+          OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Shapes of all inputs must match: values[0].shape = ",
+                          first_input.shape().DebugString(), " != values[", i,
+                          "].shape = ", input.shape().DebugString())));
+          output_vec.template chip<0>(i).device(c->eigen_device<Device>()) =
+              input.scalar<T>();
+        }
+        return;
       }
-      return;
     }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
     int64_t before_dim = 1;
     for (int i = 0; i < axis; ++i) {
