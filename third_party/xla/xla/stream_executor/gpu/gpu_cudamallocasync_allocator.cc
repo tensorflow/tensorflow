@@ -44,8 +44,8 @@ namespace stream_executor {
 
 struct GpuCudaMallocAsyncAllocator::CudaState {
   // cudaMallocAsync is stream aware. But TF StreamExecutor use only 1
-  // compute stream and already synchronize with the h2d, d2h and d2d
-  // stream. So we do not need to ask cudaMallocAsync to add extra
+  // compute stream and already synchronize with the H2D, D2H and D2D
+  // stream. So, we do not need to ask cudaMallocAsync to add extra
   // synchronization.
   // Not owned.
   CUstream cuda_stream{};
@@ -136,14 +136,15 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         << " We detected a version compatible with: " << driverVersion;
   }
 
-  // WAR an CUDA 11.2 driver bug for multiple-GPU. It currently
+  // Work around a CUDA 11.2 driver bug for multiple-GPU. It currently
   // request that the context on GPU 0 is initialized. Which isn't the
   // case for TF+horovod.
   if (platform_device_id.value() > 0 && driverVersion < 11030) {
-    CUcontext pctx;  // We loose track of it. But this is fine.
-    if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0))
+    CUcontext pctx;  // We lose track of it, but this is fine.
+    if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0)) {
       LOG(FATAL)  // Crash OK.
           << "Failed to retain context: " << cuda::ToStatus(result);
+    }
   }
 
   std::unique_ptr<ActivateContext> scoped_activation = stream_exec_->Activate();
@@ -165,13 +166,14 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         << " Current driver: " << driverVersion
         << ". Failed to get device attribute : " << cuda::ToStatus(status);
   }
-  if (!cuda_malloc_async_supported)
+  if (!cuda_malloc_async_supported) {
     LOG(FATAL)  // Crash OK.
         << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported on "
         << "GPU id " << platform_device_id.value() << ":"
         << " Possible causes: device not supported (request SM60+), driver too "
            "old, "
         << " OS not supported, CUDA version too old(request CUDA11.2+).";
+  }
 
   size_t pool_size;
   if (create_new_pool_) {
@@ -185,15 +187,17 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 #if CUDA_VERSION >= 12030
     pool_props.maxSize = new_pool_size;
 #endif  // CUDA_VERSION >= 12030
-    if (auto status = cuMemPoolCreate(&cuda_state_->pool, &pool_props))
+    if (auto status = cuMemPoolCreate(&cuda_state_->pool, &pool_props)) {
       LOG(FATAL) <<  // Crash OK.
           "Failed to create CUDA pool: " << cuda::ToStatus(status);
+    }
   } else {
     pool_size = reserve_memory_size;
     if (auto status = cuDeviceGetDefaultMemPool(&cuda_state_->pool,
-                                                platform_device_id.value()))
+                                                platform_device_id.value())) {
       LOG(FATAL) <<  // Crash OK.
           "Failed to get default CUDA pool: " << cuda::ToStatus(status);
+    }
     VLOG(2) << "using default memory pool " << cuda_state_->pool;
   }
 
@@ -203,9 +207,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   uint64_t release_threshold_64 = reserve_memory_size;
   if (auto status = cuMemPoolSetAttribute(cuda_state_->pool,
                                           CU_MEMPOOL_ATTR_RELEASE_THRESHOLD,
-                                          &release_threshold_64))
+                                          &release_threshold_64)) {
     LOG(FATAL) <<  // Crash OK.
         "Failed to set CUDA pool attribute: " << cuda::ToStatus(status);
+  }
 
   if (compute_stats) {
     stats_ = std::make_unique<tsl::AllocatorStats>();
@@ -213,7 +218,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   }  // If not set, it means we do not compute stats.
 
   // If in TF_DETERMINISTIC_ALLOCATOR is set, then make the allocator behave
-  // determistically.
+  // deterministically.
   bool deterministic = false;
   CHECK_OK(tsl::ReadBoolFromEnvVar("TF_DETERMINISTIC_ALLOCATOR",
                                    /*default_val=*/false, &deterministic));
@@ -319,8 +324,9 @@ GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
   if (create_new_pool_) {
     VLOG(2) << "Delete memory pool "
             << reinterpret_cast<void*>(cuda_state_->pool);
-    if (auto status = cuMemPoolDestroy(cuda_state_->pool))
+    if (auto status = cuMemPoolDestroy(cuda_state_->pool)) {
       LOG(FATAL) << "Failed to destroy memory pool:" << cuda::ToStatus(status);
+    }
   }
 }
 
@@ -346,7 +352,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
       cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr), num_bytes,
                               cuda_state_->pool, cuda_state_->cuda_stream);
   if (result == CUDA_ERROR_OUT_OF_MEMORY) {
-    // Doing a stream synchronization give the driver more flexibility
+    // Doing a stream synchronization gives the driver more flexibility
     // for blocks coalescing and doing memory remapping. So it can
     // solve some OOM cases when memory is tight.
     cuStreamSynchronize(cuda_state_->cuda_stream);
@@ -396,7 +402,9 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
 }
 
 void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
-  if (ptr == nullptr) return;
+  if (ptr == nullptr) {
+    return;
+  }
   // The lock is only needed when stats are enabled, but it must be around
   // the cuMemFreeAsync call as well to ensure consistency of the stats update.
   std::optional<absl::MutexLock> lock;
@@ -406,7 +414,7 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
   if (auto result = cuMemFreeAsync(reinterpret_cast<const CUdeviceptr&>(ptr),
                                    cuda_state_->cuda_stream)) {
     if (result == CUDA_ERROR_DEINITIALIZED) {
-      // It happens with multi-GPU that TF free the GPU allocation after
+      // It happens with multi-GPU that TF frees the GPU allocations after
       // the driver is unloaded. It is safe to ignore this error here.
       // TODO: Find how to fix the shutdown steps in TF.
       VLOG(1) << "Ignoring CUDA error: " << cuda::ToStatus(result);
@@ -444,25 +452,33 @@ bool GpuCudaMallocAsyncAllocator::TracksAllocationSizes() const {
 }
 
 size_t GpuCudaMallocAsyncAllocator::RequestedSize(const void* ptr) const {
-  if (!stats_ || !ptr) return 0;
+  if (!stats_ || !ptr) {
+    return 0;
+  }
   absl::MutexLock l(mutex_);
   return size_map_.at(ptr);
 }
 
 size_t GpuCudaMallocAsyncAllocator::AllocatedSize(const void* ptr) const {
-  if (!stats_ || !ptr) return 0;
+  if (!stats_ || !ptr) {
+    return 0;
+  }
   absl::MutexLock l(mutex_);
   return size_map_.at(ptr);
 }
 
 std::optional<tsl::AllocatorStats> GpuCudaMallocAsyncAllocator::GetStats() {
-  if (!stats_) return std::nullopt;
+  if (!stats_) {
+    return std::nullopt;
+  }
   absl::MutexLock l(mutex_);
   return *stats_;
 }
 
 bool GpuCudaMallocAsyncAllocator::ClearStats() {
-  if (!stats_) return false;
+  if (!stats_) {
+    return false;
+  }
   absl::MutexLock l(mutex_);
   stats_->num_allocs = 0;
   stats_->peak_bytes_in_use = stats_->bytes_in_use;

@@ -76,8 +76,8 @@ namespace xla {
 
 class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
  public:
-  StreamExecutorGpuDevice(int id, LocalDeviceState* local_device_state,
-                          std::string device_kind, std::string device_vendor,
+  StreamExecutorGpuDevice(int id, bool is_addressable, std::string device_kind,
+                          std::string device_vendor,
                           std::string compute_capability, int core_count,
                           int64_t device_memory_bytes_limit,
                           int64_t shared_memory_per_block_optin,
