@@ -239,6 +239,12 @@ class LayoutUtil {
   // layout the minor most.
   static Layout MoveDimToMinor(const Layout& layout, int64_t dim);
 
+  // Returns the tiles of `shape`'s layout with every Tile::kCombineDimension
+  // dimension of the top level tile replaced by the extent it covers: the whole
+  // corresponding shape dimension, rounded up to a multiple of the matching
+  // dimension of the next tile level (if any).
+  static TileVector ResolvedTiles(const Shape& shape);
+
   // Returns the linearized index of the cell at the given indices. The unit
   // of the offset is in elements of the shape.
   //
