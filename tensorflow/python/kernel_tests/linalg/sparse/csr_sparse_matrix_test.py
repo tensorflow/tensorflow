@@ -96,6 +96,49 @@ class CSRSparseMatrixTest(test.TestCase):
     self.assertAllEqual(dense_shape, a_sm_st.dense_shape)
     self.assertAllClose([a_mats[tuple(x)] for x in indices], a_sm_st.values)
 
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromDenseTensorInvalidIndicesOnGpu(self):
+    cases = [
+        ([5, 11], [[-1, 0]]),
+        ([5, 11], [[5, 0]]),
+        ([5, 11], [[0, 11]]),
+        ([5, 11], [[2**32, 0]]),
+        ([5, 11], [[4, 10], [0, 0]]),
+        ([2, 5, 11], [[0, 5, 0], [1, 0, -1]]),
+    ]
+    for shape, indices in cases:
+      with self.subTest(shape=shape, indices=indices), test_util.use_gpu():
+        a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
+            np.ones(shape, dtype=np.float32),
+            indices=np.array(indices, dtype=np.int64))
+        self.assertAllEqual(shape, self.evaluate(a_sm.to_dense()).shape)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromDenseTensorInvalidIndicesOnCpu(self):
+    with test_util.device(use_gpu=False), self.assertRaisesOpError(
+        "does not index into param shape"):
+      a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
+          np.ones([5, 11], dtype=np.float32),
+          indices=np.array([[5, 0]], dtype=np.int64))
+      self.evaluate(a_sm.to_dense())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromEmptyDenseTensorWithIndices(self):
+    with test_util.use_gpu(), self.assertRaisesOpError("params is empty"):
+      a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
+          np.ones([0, 3], dtype=np.float32),
+          indices=np.array([[0, 0]], dtype=np.int64))
+      self.evaluate(a_sm.to_dense())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromDenseTensorEmptyIndices(self):
+    dense = np.zeros([2, 3], dtype=np.float32)
+    with test_util.use_gpu():
+      a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
+          dense, indices=np.zeros([0, 2], dtype=np.int64))
+      self.assertAllEqual(dense, self.evaluate(a_sm.to_dense()))
+
   @test_util.run_in_graph_and_eager_modes
   def testConj(self):
     if not self._gpu_available:
