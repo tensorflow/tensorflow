@@ -11,6 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -299,6 +300,26 @@ TEST_F(FixedLengthRecordDatasetOpTest, FileTooSmallForCompressedReader) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_TRUE(absl::StrContains(status.message(), "EOF reached"))
       << status.message();
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, BufferLargerThanFile) {
+  std::vector<tstring> filenames = {LocalTempFilename()};
+  std::vector<std::string> contents = {"12345678"};
+  TF_ASSERT_OK(
+      CreateTestFiles(filenames, contents, CompressionType::UNCOMPRESSED));
+
+  auto dataset_params = FixedLengthRecordDatasetParams(
+      filenames,
+      /*header_bytes=*/0,
+      /*record_bytes=*/8,
+      /*footer_bytes=*/0,
+      /*buffer_size=*/std::numeric_limits<int64_t>::max(),
+      /*compression_type=*/CompressionType::UNCOMPRESSED,
+      /*node_name=*/kNodeName);
+
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckIteratorGetNext(
+      {CreateTensor<tstring>(TensorShape({}), {"12345678"})}, true));
 }
 
 std::vector<IteratorSaveAndRestoreTestCase<FixedLengthRecordDatasetParams>>
