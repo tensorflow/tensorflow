@@ -24,36 +24,36 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-__global__ void UnaryClipCustomKernel(const int32_t size_in,
+__global__ void UnaryClipCustomKernel(const int64_t size_in,
                                       const T* __restrict__ in0,
                                       const T* __restrict__ in1,
                                       const T* __restrict__ in2,
                                       T* __restrict__ out) {
-  GPU_1D_KERNEL_LOOP(i, size_in) {
+  for (int64_t i : GpuGridRangeX<int64_t>(size_in)) {
     T value = in2[0] < in0[i] ? in2[0] : in0[i];
     out[i] = value < in1[0] ? in1[0] : value;
   }
 }
 
 template <typename T>
-__global__ void BinaryRightClipCustomKernel(const int32_t size_in,
+__global__ void BinaryRightClipCustomKernel(const int64_t size_in,
                                             const T* __restrict__ in0,
                                             const T* __restrict__ in1,
                                             const T* __restrict__ in2,
                                             T* __restrict__ out) {
-  GPU_1D_KERNEL_LOOP(i, size_in) {
+  for (int64_t i : GpuGridRangeX<int64_t>(size_in)) {
     T value = in2[i] < in0[i] ? in2[i] : in0[i];
     out[i] = value < in1[0] ? in1[0] : value;
   }
 }
 
 template <typename T>
-__global__ void BinaryLeftClipCustomKernel(const int32_t size_in,
+__global__ void BinaryLeftClipCustomKernel(const int64_t size_in,
                                            const T* __restrict__ in0,
                                            const T* __restrict__ in1,
                                            const T* __restrict__ in2,
                                            T* __restrict__ out) {
-  GPU_1D_KERNEL_LOOP(i, size_in) {
+  for (int64_t i : GpuGridRangeX<int64_t>(size_in)) {
     T value = in2[0] < in0[i] ? in2[0] : in0[i];
     out[i] = value < in1[i] ? in1[i] : value;
   }
@@ -68,12 +68,14 @@ struct UnaryClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
-    GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
+    auto config_or = GetGpuLaunchConfig64(in0_flat.size(), d);
+    TF_CHECK_OK(config_or.status());
+    const GpuLaunchConfig64& config = *config_or;
 
     TF_CHECK_OK(GpuLaunchKernel(
         UnaryClipCustomKernel<T>, config.block_count, config.thread_per_block,
-        0, d.stream(), in0_flat.size(), in0_flat.data(), in1_flat.data(),
-        in2_flat.data(), out_flat.data()));
+        0, d.stream(), config.virtual_thread_count, in0_flat.data(),
+        in1_flat.data(), in2_flat.data(), out_flat.data()));
   }
 };
 
@@ -84,11 +86,13 @@ struct BinaryRightClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
-    GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
+    auto config_or = GetGpuLaunchConfig64(in0_flat.size(), d);
+    TF_CHECK_OK(config_or.status());
+    const GpuLaunchConfig64& config = *config_or;
 
     TF_CHECK_OK(GpuLaunchKernel(
         BinaryRightClipCustomKernel<T>, config.block_count,
-        config.thread_per_block, 0, d.stream(), in0_flat.size(),
+        config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
         in0_flat.data(), in1_flat.data(), in2_flat.data(), out_flat.data()));
   }
 };
@@ -100,11 +104,13 @@ struct BinaryLeftClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
-    GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
+    auto config_or = GetGpuLaunchConfig64(in0_flat.size(), d);
+    TF_CHECK_OK(config_or.status());
+    const GpuLaunchConfig64& config = *config_or;
 
     TF_CHECK_OK(GpuLaunchKernel(
         BinaryLeftClipCustomKernel<T>, config.block_count,
-        config.thread_per_block, 0, d.stream(), in0_flat.size(),
+        config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
         in0_flat.data(), in1_flat.data(), in2_flat.data(), out_flat.data()));
   }
 };
