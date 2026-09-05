@@ -3478,7 +3478,7 @@ def meshgrid(*args, **kwargs):
     output = []
     for i, x in enumerate(args):
       output.append(
-          reshape(array_ops_stack.stack(x), (s0[:i] + (-1,) + s0[i + 1::])))
+          reshape(ops.convert_to_tensor(x), (s0[:i] + (-1,) + s0[i + 1::])))
     # Create parameters for broadcasting each tensor to the full size
     shapes = [size(x) for x in args]
 
