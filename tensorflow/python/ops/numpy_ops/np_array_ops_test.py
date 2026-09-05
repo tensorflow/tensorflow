@@ -530,6 +530,28 @@ class ArrayCreationTest(test.TestCase):
     # 3-d arrays
     run_test(np.arange(8).reshape((2, 2, 2)).tolist())
 
+  def testDiagInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diag(v, k=k)
+
+  def testDiagFlatInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diagflat(v, k=k)
+
   def match_shape(self, actual, expected, msg=None):
     if msg:
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
