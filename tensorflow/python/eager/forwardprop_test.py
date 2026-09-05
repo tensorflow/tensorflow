@@ -15,6 +15,7 @@
 
 import functools
 import gc
+import threading
 import weakref
 
 from absl.testing import parameterized
@@ -311,8 +312,8 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertIsNone(acc2.jvp(y))
 
   def testRunFunctionsEagerly(self):
+    original_setting = def_function.functions_run_eagerly()
     try:
-      original_setting = def_function.functions_run_eagerly()
       def_function.run_functions_eagerly(True)
       x = constant_op.constant(1.)
       with forwardprop.ForwardAccumulator(x, 2.) as acc:
@@ -332,6 +333,51 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         z = x + x
       self.assertAllClose(4., acc.jvp(y))
       self.assertAllClose(-15., acc.jvp(z))
+    finally:
+      pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
+
+  def testConcurrentJVPFunctionRegistration(self):
+    previous_fn = forwardprop._jvp_dispatch
+    stop = threading.Event()
+    errors = []
+
+    def replacement_jvp(*args, **kwargs):
+      return [constant_op.constant(4.)]
+
+    def register_loop():
+      try:
+        for _ in range(2000):
+          pywrap_tfe.TFE_Py_RegisterJVPFunction(replacement_jvp)
+          pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
+      except BaseException as e:  # pylint: disable=broad-except
+        errors.append(e)
+      finally:
+        stop.set()
+
+    def execute_loop():
+      try:
+        while not stop.is_set():
+          x = constant_op.constant(1.)
+          with forwardprop.ForwardAccumulator(x, 2.) as acc:
+            y = x + x
+          result = acc.jvp(y)
+          self.assertIsNotNone(result)
+      except BaseException as e:  # pylint: disable=broad-except
+        errors.append(e)
+        stop.set()
+
+    try:
+      registration_thread = threading.Thread(target=register_loop)
+      execution_thread = threading.Thread(target=execute_loop)
+
+      registration_thread.start()
+      execution_thread.start()
+
+      registration_thread.join()
+      execution_thread.join()
+
+      if errors:
+        raise errors[0]
     finally:
       pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
 

@@ -13,10 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Python.h"
+
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/platform/stacktrace_handler.h"
 
-PYBIND11_MODULE(_pywrap_stacktrace_handler, m) {
-  m.def("InstallStacktraceHandler",
-        &tensorflow::testing::InstallStacktraceHandler);
+
+#ifdef Py_GIL_DISABLED
+namespace {
+
+static PyMutex stacktrace_handler_mutex = {0};
+
+class ScopedPyMutexCriticalSection {
+ public:
+  explicit ScopedPyMutexCriticalSection(PyMutex* mutex) {
+    PyCriticalSection_BeginMutex(&critical_section_, mutex);
+  }
+
+  ~ScopedPyMutexCriticalSection() {
+    PyCriticalSection_End(&critical_section_);
+  }
+
+ private:
+  PyCriticalSection critical_section_;
+};
+
+}  // namespace
+#endif
+
+PYBIND11_MODULE(
+    _pywrap_stacktrace_handler, m, pybind11::mod_gil_not_used()) {
+  m.def("InstallStacktraceHandler", []() {
+#ifdef Py_GIL_DISABLED
+    ScopedPyMutexCriticalSection critical_section(&stacktrace_handler_mutex);
+#endif
+    tensorflow::testing::InstallStacktraceHandler();
+  });
 };

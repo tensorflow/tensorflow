@@ -664,7 +664,8 @@ class EagerContextThreadLocalDataWrapper {
 // This means that C++ maintains ownership of the object. We
 // are only assigning this to functions that return opaque types.
 
-PYBIND11_MODULE(_pywrap_tfe, m) {
+PYBIND11_MODULE(
+    _pywrap_tfe, m, pybind11::mod_gil_not_used()) {
   // Numpy initialization code for array functions.
   tsl::ImportNumpy();
 
