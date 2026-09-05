@@ -145,7 +145,7 @@ std::string getCompareComparator() {
   %Arg_1.101 = f32[] parameter(1)
   %Arg_2.102 = s32[] parameter(2)
   %Arg_3.103  = s32[] parameter(3)
-  ROOT %compare.56364 = pred[] compare(f32[] %Arg_0.100, f32[] %Arg_1.101), direction=GT, type=TOTALORDER
+  ROOT %compare.56364 = pred[] compare(f32[] %Arg_0.100, f32[] %Arg_1.101), direction=GT, order=TOTAL
 })";
 }
 
@@ -158,7 +158,7 @@ std::string getStableComparator() {
     %broadcast.40631 = pred[] broadcast(pred[] %constant.40630), dimensions={}
     %p.0.lhs.40626 = f32[] parameter(0)
     %p.0.rhs.40627 = f32[] parameter(1)
-    %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, type=TOTALORDER
+    %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, order=TOTAL
     ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
   })";
 }
@@ -766,7 +766,7 @@ HloModule topk
 c2 {
   p0 = f32[] parameter(0)
   p1 = f32[] parameter(1)
-  ROOT cmp = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, order=TOTAL
 }
 
 c4 {
@@ -774,7 +774,7 @@ c4 {
   p1 = f32[] parameter(1)
   p2 = s32[] parameter(2)
   p3 = s32[] parameter(3)
-  ROOT cmp = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, order=TOTAL
 }
 
 ENTRY TopK {
