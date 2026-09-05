@@ -338,36 +338,16 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
 }  // namespace
 
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
-    const HloModule* module, bool pseudo_random, bool use_large_range,
-    bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine,
-    bool generate_aligned_ds_indices,
-    GetIndexKnownZeroesFn get_index_known_zeroes) {
-  if (!pseudo_random) {
-    return MakeFakeArguments(module, nullptr, use_large_range,
-                             treat_gte_as_data_formatting,
-                             max_bits_of_precision, generate_aligned_ds_indices,
-                             get_index_known_zeroes);
+    const HloModule* module, const FakeArgumentsOptions& options) {
+  std::unique_ptr<std::minstd_rand0> default_engine;
+  std::minstd_rand0* engine = options.engine;
+  if (!options.pseudo_random) {
+    engine = nullptr;
+  } else if (engine == nullptr) {
+    default_engine = std::make_unique<std::minstd_rand0>();
+    engine = default_engine.get();
   }
-  if (engine == nullptr) {
-    auto new_engine =
-        pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-    return MakeFakeArguments(module, new_engine.get(), use_large_range,
-                             treat_gte_as_data_formatting,
-                             max_bits_of_precision, generate_aligned_ds_indices,
-                             get_index_known_zeroes);
-  }
-  return MakeFakeArguments(module, engine, use_large_range,
-                           treat_gte_as_data_formatting, max_bits_of_precision,
-                           generate_aligned_ds_indices, get_index_known_zeroes);
-}
 
-absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
-    const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
-    bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision,
-    bool generate_aligned_ds_indices,
-    GetIndexKnownZeroesFn get_index_known_zeroes) {
   ABSL_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -386,33 +366,35 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     ABSL_ASSIGN_OR_RETURN(
         arguments[i],
         MakeConstrainedArgument(
-            *dataflow, *params[i], param_shape, engine, use_large_range,
-            treat_gte_as_data_formatting, max_bits_of_precision,
-            generate_aligned_ds_indices, get_index_known_zeroes));
+            *dataflow, *params[i], param_shape, engine, options.use_large_range,
+            options.treat_gte_as_data_formatting, options.max_bits_of_precision,
+            options.generate_aligned_ds_indices,
+            options.get_index_known_zeroes));
   }
   return std::move(arguments);
 }
 
 absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
-    const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision,
-    bool generate_aligned_ds_indices,
-    GetIndexKnownZeroesFn get_index_known_zeroes) {
+    const HloModule* module, const FakeArgumentsOptions& options) {
   std::unique_ptr<std::minstd_rand0> default_engine;
-  if (engine == nullptr) {
+  std::minstd_rand0* engine = options.engine;
+  if (!options.pseudo_random) {
+    engine = nullptr;
+  } else if (engine == nullptr) {
     default_engine = std::make_unique<std::minstd_rand0>();
     engine = default_engine.get();
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto constraint_states,
-                   ConstraintPropagator::Run(*module, get_index_known_zeroes));
+  ABSL_ASSIGN_OR_RETURN(
+      auto constraint_states,
+      ConstraintPropagator::Run(*module, options.get_index_known_zeroes));
 
   auto make_literal_for_state =
       [&](const Shape& shape, const ConstraintState& state,
           absl::string_view target_name) -> absl::StatusOr<Literal> {
     ConstraintInterval interval = state.GetConstraintInterval();
     StructuralConstraints structure = state.GetStructuralConstraints();
-    if (!generate_aligned_ds_indices) {
+    if (!options.generate_aligned_ds_indices) {
       structure.alignment = std::nullopt;
     }
     std::optional<std::pair<int64_t, int64_t>> limit = std::nullopt;
@@ -454,8 +436,8 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
       limit = {min_val, max_val};
     }
     return MakeFakeLiteral(shape, engine, limit, structure.needs_sorted_indices,
-                           structure.no_duplicates, use_large_range,
-                           max_bits_of_precision, structure.alignment,
+                           structure.no_duplicates, options.use_large_range,
+                           options.max_bits_of_precision, structure.alignment,
                            structure.known_zeroes_mask,
                            /*float_generator=*/nullptr, interval);
   };
