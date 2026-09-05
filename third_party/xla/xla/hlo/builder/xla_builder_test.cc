@@ -2209,14 +2209,15 @@ TEST(XlaBuilderTest, SetAndGetSharding) {
             hlo_sharding_2);
 }
 
-TEST(XlaBuilderTest, ComparisonType) {
+TEST(XlaBuilderTest, ComparisonOrder) {
   XlaBuilder b(TestName());
   (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   const HloInstruction* root = GetRoot(*module);
   ASSERT_THAT(root, GmockMatch(m::Compare(m::Constant(), m::Constant())));
-  EXPECT_EQ(Comparison::Type::kSigned,
-            DynCast<HloCompareInstruction>(root)->type());
+  const auto* compare = DynCast<HloCompareInstruction>(root);
+  EXPECT_EQ(S32, compare->comparison().GetPrimitiveType());
+  EXPECT_EQ(ComparisonOrder::kTotal, compare->order());
 }
 
 TEST(XlaBuilderTest, StableLookUpInstructionByHandle) {
