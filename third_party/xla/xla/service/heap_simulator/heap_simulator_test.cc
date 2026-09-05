@@ -1121,6 +1121,45 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, Empty) {
   EXPECT_EQ(0, result.heap_results.at(0).chunk_map.size());
 }
 
+// Exposes buffer_intervals_ to allow us to populate BufferIntervals manually
+// without going through the standard Alloc/ShareWith API. This is used to
+// test GetSortedBufferIntervals when invoked independently.
+class ExposeSortedBufferIntervalsHeap
+    : public GlobalDecreasingSizeBestFitHeap<HloValue> {
+ public:
+  explicit ExposeSortedBufferIntervalsHeap(int64_t alignment)
+      : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment) {}
+
+  void AddBufferInterval(const HloValue* buffer, int64_t size, int64_t start,
+                         int64_t end,
+                         const std::vector<const HloValue*>& colocations) {
+    BufferInterval interval;
+    interval.buffer = buffer;
+    interval.size = size;
+    interval.start = start;
+    interval.end = end;
+    interval.colocations = {colocations.begin(), colocations.end()};
+    interval.need_allocation = true;
+    buffer_intervals_[buffer] = interval;
+  }
+
+  std::vector<BufferInterval> GetSortedBufferIntervalsWrapper() {
+    return GetSortedBufferIntervals();
+  }
+};
+
+TEST_F(GlobalDecreasingSizeBestFitHeapTest,
+       GetSortedBufferIntervals_WithoutAlloc) {
+  ExposeSortedBufferIntervalsHeap heap(/*alignment=*/1);
+  heap.AddBufferInterval(buffer_a_, 10, 1, 5, {buffer_b_});
+  heap.AddBufferInterval(buffer_b_, 10, 2, 6, {});
+
+  std::vector<GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval>
+      intervals = heap.GetSortedBufferIntervalsWrapper();
+
+  EXPECT_EQ(2, intervals.size());
+}
+
 TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
   // space
   //   ^
