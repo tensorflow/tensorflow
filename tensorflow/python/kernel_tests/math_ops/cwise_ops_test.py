@@ -1060,8 +1060,10 @@ class RoundingTest(test.TestCase):
         [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
 
     with test_util.force_cpu():
+      # Explicitly expected to be -1.0; avoid np.floor on Windows as it deviates.
+      expected = np.array([-1.0, -1.0, -1.0, -1.0], dtype=np.float32)
       self.assertAllEqual(
-          np.floor(values), self.evaluate(math_ops.floor(values)))
+          expected, self.evaluate(math_ops.floor(values)))
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64,

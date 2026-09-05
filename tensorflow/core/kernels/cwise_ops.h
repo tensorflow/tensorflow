@@ -891,7 +891,7 @@ struct functor_traits<scalar_cpu_floor_float_op> {
   enum {
     Cost = NumTraits<float>::MulCost,
     // packetOp uses pfloor (requires HasRound) and pcmp_eq/pcmp_lt (HasCmp).
-    PacketAccess = packet_traits<float>::HasRound && packet_traits<float>::HasCmp,
+    PacketAccess = packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
   };
 };
 
