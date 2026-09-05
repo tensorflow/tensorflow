@@ -128,7 +128,7 @@ void BuiltinOptionsToAttributes(
     // NOLINTNEXTLINE
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes);
 
-// While the last several tensors could be optional tensors for an tfl op, the
+// While the last several tensors could be optional tensors for a tfl op, the
 // number of input operands could vary. This function gets the min/max number of
 // operands from tflite op name.
 llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);

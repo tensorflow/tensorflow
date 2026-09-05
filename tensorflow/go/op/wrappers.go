@@ -22055,7 +22055,7 @@ func IteratorGetDevice(scope *Scope, resource tf.Output) (device tf.Output) {
 //
 // Arguments:
 //
-//	iterator: An resource from an dataset iterator.
+//	iterator: An resource from a dataset iterator.
 //
 // Returns A serialized model proto.
 func IteratorGetModelProto(scope *Scope, iterator tf.Output) (model_proto tf.Output) {

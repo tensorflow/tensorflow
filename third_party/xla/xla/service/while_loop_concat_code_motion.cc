@@ -396,7 +396,7 @@ void ModifyHloPropertiesForConcatShape(const ConcatGroup& group,
     int64_t operand_concat_dim = operand_dim->first;
     bool operand_inserted_concat_dim = operand_dim->second;
     if (operand_inserted_concat_dim) {
-      // We should have added an dimension on the operand.
+      // We should have added a dimension on the operand.
       CHECK_EQ(hlo->operand(0)->shape().dimensions().size(),
                hlo->dimensions().size() + 1)
           << hlo->ToString();

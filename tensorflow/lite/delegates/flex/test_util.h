@@ -33,7 +33,7 @@ enum TfOpType {
   kLoopCond,
   // Represents an op that does not exist in TensorFlow.
   kNonExistent,
-  // Represents an valid TensorFlow op where the NodeDef is incompatible.
+  // Represents a valid TensorFlow op where the NodeDef is incompatible.
   kIncompatibleNodeDef,
 };
 
