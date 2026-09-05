@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SPARSE_XENT_OP_H_
 // Functor definition for SparseXentOp, must be compilable by nvcc.
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -125,6 +127,44 @@ class SparseXentGradGenerator {
   const Index max_depth_;
 };
 
+// Masks or replaces the labeled component of an already-computed gradient.
+template <typename T, typename Index, bool kReplaceLabel>
+class SparseXentStableGradGenerator {
+ public:
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentStableGradGenerator(
+      typename TTypes<const T, 2>::Tensor32Bit gradients,
+      typename TTypes<const T, 1>::Tensor32Bit non_label_sums,
+      typename TTypes<const Index, 1>::Tensor32Bit labels,
+      const Index max_depth)
+      : gradients_(gradients),
+        non_label_sums_(non_label_sums),
+        labels_(labels),
+        max_depth_(max_depth) {}
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
+  operator()(const Eigen::array<int, 2>& coords) const {
+    const int batch = coords[0];
+    const int depth = coords[1];
+    const Index label = tensorflow::internal::SubtleMustCopy(labels_(batch));
+    if (!FastBoundsCheck(label, max_depth_)) {
+      return Eigen::NumTraits<T>::quiet_NaN();
+    }
+    if (TF_PREDICT_FALSE(depth == label)) {
+      if constexpr (kReplaceLabel) {
+        return -non_label_sums_(batch);
+      }
+      return T(0.0);
+    }
+    return gradients_(coords);
+  }
+
+ private:
+  typename TTypes<const T, 2>::Tensor32Bit gradients_;
+  typename TTypes<const T, 1>::Tensor32Bit non_label_sums_;
+  typename TTypes<const Index, 1>::Tensor32Bit labels_;
+  const Index max_depth_;
+};
+
 }  // namespace generator
 
 namespace functor {
@@ -222,6 +262,26 @@ struct SparseXentEigenImpl {
         backprop.dimension(1) /* max_depth */);
     To32Bit(backprop).device(d) =
         To32Bit(backprop).generate(sparse_xent_grad_gen);
+
+    // In float64, p(label) can round to 1 while other class probabilities are
+    // still finite. Compute the labeled component from those probabilities so
+    // the small gradient signal is retained.
+    if constexpr (std::is_same_v<T, double>) {
+      generator::SparseXentStableGradGenerator<T, Index, false>
+          non_label_grad_gen(
+              sparse_xent_helpers::To32BitConst<T>(backprop),
+              sparse_xent_helpers::To32BitConst<T>(scratch), To32Bit(labels),
+              backprop.dimension(1) /* max_depth */);
+      To32Bit(scratch).device(d) =
+          To32Bit(backprop).generate(non_label_grad_gen).sum(along_class);
+
+      generator::SparseXentStableGradGenerator<T, Index, true> stable_grad_gen(
+          sparse_xent_helpers::To32BitConst<T>(backprop),
+          sparse_xent_helpers::To32BitConst<T>(scratch), To32Bit(labels),
+          backprop.dimension(1) /* max_depth */);
+      To32Bit(backprop).device(d) =
+          To32Bit(backprop).generate(stable_grad_gen);
+    }
   }
 };
 
