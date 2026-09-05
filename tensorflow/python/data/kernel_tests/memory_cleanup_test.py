@@ -36,6 +36,11 @@ try:
 except ImportError:
   memory_profiler = None
 
+try:
+  import resource  # pylint:disable=g-import-not-at-top
+except ImportError:
+  resource = None
+
 
 class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -162,6 +167,39 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset_ops.Dataset.from_generator(fn, output_types=dtypes.float32)
 
     self.assertNoMemoryLeak(get_dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromGeneratorMemoryLeak(self):
+    if resource is None:
+      self.skipTest("resource module required to run this test (Unix only)")
+
+    def get_rss_mb():
+      return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+
+    def gen():
+      for i in range(1000):
+        yield i
+
+    def f():
+      dataset = dataset_ops.Dataset.from_generator(
+          gen, output_types=dtypes.int64
+      )
+      for _ in dataset:
+        pass
+
+    f()  # warmup
+
+    gc.collect()
+    start_rss = get_rss_mb()
+
+    for _ in range(150):
+      f()
+
+    gc.collect()
+    end_rss = get_rss_mb()
+    increase = end_rss - start_rss
+    logging.info("Memory increase observed: %f MB" % increase)
+    self.assertLess(increase, 100.0, "Increase is too high")
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
