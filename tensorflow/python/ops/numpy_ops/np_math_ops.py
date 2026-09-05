@@ -1448,6 +1448,15 @@ def concatenate(arys, axis=0):  # pylint: disable=missing-function-docstring
         for array in arys
     ]
     axis = 0
+  else:
+    maybe_rank = arys[0].shape.rank
+    if maybe_rank is not None:
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input {arys[0]} of rank {maybe_rank}.'
+        )
   return array_ops.concat(arys, axis)
 
 
@@ -1475,7 +1484,20 @@ def tile(a, reps):  # pylint: disable=missing-function-docstring
 @tf_export.tf_export('experimental.numpy.count_nonzero', v1=[])
 @np_utils.np_doc('count_nonzero')
 def count_nonzero(a, axis=None):
-  return math_ops.count_nonzero(np_array_ops.array(a), axis)
+  a = np_array_ops.array(a)
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    # NumPy accepts axis 0 (and -1) on 0-d inputs.
+    validation_rank = max(maybe_rank, 1)
+    axes = axis if isinstance(axis, (tuple, list)) else (axis,)
+    for ax in axes:
+      normalized = ax + validation_rank if ax < 0 else ax
+      if normalized < 0 or normalized >= validation_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={ax}) is out of bounds '
+            f'for input {a} of rank {maybe_rank}.'
+        )
+  return math_ops.count_nonzero(a, axis)
 
 
 @tf_export.tf_export('experimental.numpy.argsort', v1=[])
@@ -1499,6 +1521,18 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
         'argsort does not support complex64/complex128 dtypes. '
         f'Received dtype: {a.dtype}'
     )
+
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    # NumPy treats 0-d inputs as 1-D of size 1 for axis validation, so
+    # axes -1 and 0 are valid on scalars.
+    validation_rank = max(maybe_rank, 1)
+    normalized = axis + validation_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= validation_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input {a} of rank {maybe_rank}.'
+      )
 
   def _argsort(a, axis, stable):
     if axis is None:
@@ -1532,6 +1566,15 @@ def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-d
     raise ValueError('The `order` argument is not supported. Pass order=None')
 
   a = np_array_ops.array(a)
+
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    normalized = axis + maybe_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input {a} of rank {maybe_rank}.'
+      )
 
   if axis is None:
     return sort_ops.sort(array_ops.reshape(a, [-1]), 0)

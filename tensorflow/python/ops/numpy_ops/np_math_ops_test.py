@@ -252,6 +252,18 @@ class MathTest(test.TestCase, parameterized.TestCase):
     a = np.zeros(100)
     np.testing.assert_equal(np_math_ops.argsort(a, kind='stable'), r)
 
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argsort(np_array_ops.array([3, 1, 2]), axis=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argsort(np_array_ops.array([[3, 1], [6, 5]]), axis=-3)
+
+    # NumPy treats 0-d inputs as 1-D of size 1, so axes -1 and 0 are
+    # valid on scalars, while other axes are out of bounds.
+    self.assertAllEqual([0], np_math_ops.argsort(np_array_ops.array(5)))
+    self.assertAllEqual([0], np_math_ops.argsort(np_array_ops.array(5), axis=0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argsort(np_array_ops.array(5), axis=1)
+
     def testArgsortRaisesErrorForComplexDtypes(self):
       """Test that argsort raises TypeError for complex64 and complex128."""
       complex64_array = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex64)
@@ -265,6 +277,43 @@ class MathTest(test.TestCase, parameterized.TestCase):
           TypeError, 'argsort does not support complex64/complex128 dtypes'
       ):
         np_math_ops.argsort(complex128_array)
+
+  def testSort(self):
+    a = np_array_ops.array([[3, 1, 2], [6, 5, 4]])
+    self.match(np_math_ops.sort(a), np.sort(a))
+    self.match(np_math_ops.sort(a, axis=0), np.sort(a, axis=0))
+    self.match(np_math_ops.sort(a, axis=-1), np.sort(a, axis=-1))
+    # NumPy raises for 0-d inputs with a concrete axis (unlike argsort,
+    # which treats scalars as 1-D of size 1).
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.sort(np_array_ops.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.sort(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.sort(a, axis=-3)
+
+  def testConcatenate(self):
+    a = np_array_ops.array([[1, 2], [3, 4]])
+    b = np_array_ops.array([[5, 6], [7, 8]])
+    self.match(np_math_ops.concatenate([a, b]), np.concatenate([a, b]))
+    self.match(
+        np_math_ops.concatenate([a, b], axis=1),
+        np.concatenate([a, b], axis=1))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.concatenate([a, b], axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.concatenate([a, b], axis=-3)
+
+  def testCountNonzero(self):
+    a = np_array_ops.array([[0, 1, 2], [3, 0, 0]])
+    self.assertAllEqual(np_math_ops.count_nonzero(a), np.count_nonzero(a))
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(a, axis=0),
+        np.count_nonzero(a, axis=0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.count_nonzero(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.count_nonzero(a, axis=-3)
 
   def testArgMaxArgMin(self):
     data = [
