@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -60,6 +61,16 @@ constexpr char kCurrentFileIndex[] = "current_file_index";
 constexpr char kCurrentPos[] = "current_pos";
 constexpr char kZLIB[] = "ZLIB";
 constexpr char kGZIP[] = "GZIP";
+
+size_t EffectiveBufferSize(int64_t requested_buffer_size, uint64_t file_size) {
+  // A buffer larger than the file cannot improve throughput and may exhaust
+  // memory before the first record is read. Keep one byte for empty files so
+  // the input stream always has a usable buffer.
+  const uint64_t effective_size =
+      std::min<uint64_t>(static_cast<uint64_t>(requested_buffer_size),
+                         std::max<uint64_t>(file_size, 1));
+  return static_cast<size_t>(effective_size);
+}
 
 class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
  public:
@@ -219,7 +230,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(next_filename), &file_));
         input_buffer_ = std::make_unique<io::InputBuffer>(
-            file_.get(), dataset()->buffer_size_);
+            file_.get(),
+            EffectiveBufferSize(dataset()->buffer_size_, file_size));
         TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(dataset()->header_bytes_));
       } while (true);
     }
@@ -264,7 +276,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(current_filename), &file_));
         input_buffer_ = std::make_unique<io::InputBuffer>(
-            file_.get(), dataset()->buffer_size_);
+            file_.get(),
+            EffectiveBufferSize(dataset()->buffer_size_, file_size));
         TF_RETURN_IF_ERROR(input_buffer_->Seek(current_pos));
       }
 
@@ -399,6 +412,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(dataset()->filenames_[current_file_index_]),
             &file_));
+        const size_t buffer_size =
+            EffectiveBufferSize(dataset()->buffer_size_, file_size);
         if (!dataset()->compression_type_.empty()) {
           const io::ZlibCompressionOptions zlib_options =
               dataset()->compression_type_ == kZLIB
@@ -407,11 +422,10 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           file_stream_ =
               std::make_unique<io::RandomAccessInputStream>(file_.get());
           buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
-              file_stream_.get(), dataset()->buffer_size_,
-              dataset()->buffer_size_, zlib_options);
+              file_stream_.get(), buffer_size, buffer_size, zlib_options);
         } else {
           buffered_input_stream_ = std::make_unique<io::BufferedInputStream>(
-              file_.get(), dataset()->buffer_size_);
+              file_.get(), buffer_size);
         }
         TF_RETURN_IF_ERROR(
             buffered_input_stream_->SkipNBytes(dataset()->header_bytes_));
@@ -460,6 +474,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       buffered_input_stream_.reset();
       file_.reset();
       if (current_pos >= 0) {  // There was an active buffered_input_stream_.
+        uint64_t file_size;
+        TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
+            dataset()->filenames_[current_file_index_], &file_size));
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(dataset()->filenames_[current_file_index_]),
             &file_));
@@ -469,9 +486,10 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                 : io::ZlibCompressionOptions::GZIP();
         file_stream_ =
             std::make_unique<io::RandomAccessInputStream>(file_.get());
+        const size_t buffer_size =
+            EffectiveBufferSize(dataset()->buffer_size_, file_size);
         buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
-            file_stream_.get(), dataset()->buffer_size_,
-            dataset()->buffer_size_, zlib_options);
+            file_stream_.get(), buffer_size, buffer_size, zlib_options);
         lookahead_cache_.clear();
         TF_RETURN_IF_ERROR(buffered_input_stream_->SkipNBytes(
             current_pos - dataset()->footer_bytes_));

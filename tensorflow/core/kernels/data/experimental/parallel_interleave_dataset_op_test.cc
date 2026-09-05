@@ -299,6 +299,29 @@ ParallelInterleaveDatasetParams InvalidCycleLengthParams() {
       /*node_name=*/kNodeName);
 }
 
+ParallelInterleaveDatasetParams ExcessiveCycleLengthParams() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*node_name=*/"tensor_slice");
+  return ParallelInterleaveDatasetParams(
+      tensor_slice_dataset_params,
+      /*other_arguments=*/{},
+      /*cycle_length=*/ParallelInterleaveDatasetOp::kMaxCycleLength + 1,
+      /*block_length=*/1,
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*buffer_output_elements=*/1,
+      /*prefetch_input_elements=*/1,
+      /*func=*/MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
+}
+
 ParallelInterleaveDatasetParams InvalidBlockLengthParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
@@ -516,8 +539,8 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(ParallelInterleaveDatasetOpTest,
 
 TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
   std::vector<ParallelInterleaveDatasetParams> invalid_params = {
-      InvalidCycleLengthParams(), InvalidBlockLengthParams(),
-      InvalidBufferOutputElementsParams(),
+      InvalidCycleLengthParams(), ExcessiveCycleLengthParams(),
+      InvalidBlockLengthParams(), InvalidBufferOutputElementsParams(),
       InvalidPrefetchInputElementsParams()};
   for (auto& dataset_params : invalid_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
