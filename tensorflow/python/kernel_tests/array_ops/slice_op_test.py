@@ -211,6 +211,25 @@ class SliceTest(test.TestCase):
         TypeError, "must be integers or slices, not tuple"):
       self.evaluate(func(input_val))
 
+  def testOutOfBoundsSizeWithConstantInput(self):
+    # An out-of-bounds size is rejected by the Slice kernel in eager execution,
+    # and must be rejected the same way inside a tf.function. Grappler folded a
+    # Slice over a constant into a Const whose value was silently clamped to
+    # the available extent, so the traced version returned a truncated tensor
+    # instead of raising.
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"Expected size\[0\] in \[0, 3\]"):
+      self.evaluate(array_ops.slice(constant_op.constant([0, 1, 2, 3]),
+                                    [1], [4]))
+
+    @def_function.function
+    def func():
+      return array_ops.slice(constant_op.constant([0, 1, 2, 3]), [1], [4])
+
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"Expected size\[0\] in \[0, 3\]"):
+      self.evaluate(func())
+
   def _testSliceMatrixDim0(self, x, begin, size):
     tf_ans = self.evaluate(array_ops.slice(x, [begin, 0], [size, x.shape[1]]))
     np_ans = x[begin:begin + size, :]

@@ -1837,15 +1837,31 @@ class SymbolicShapeRefiner {
           int64_t size = (slice_size->dtype() == DT_INT32
                               ? slice_size->flat<int32_t>()(0)
                               : slice_size->flat<int64_t>()(0));
-          ShapeHandle result;
-          if (size == -1) {
-            TF_RETURN_IF_ERROR(ic->Subshape(input, start, &result));
-          } else {
-            int64_t end = start + size;
-            TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          // Bounds-check before propagating the value. Subshape() clamps an
+          // out-of-range endpoint down to the rank and reads a negative start
+          // as an offset from the end. Without this check an out-of-bounds
+          // Slice is folded into a constant whose value is silently truncated
+          // and whose shape contradicts the one Slice's own shape function
+          // inferred for it. Decline to propagate rather than returning an
+          // error: a failure here aborts InferStatically for the whole graph.
+          const int64_t rank = ic->Rank(input);
+          // Written as size <= rank - start rather than start + size <= rank:
+          // size may be int64, so start + size can overflow. The short-circuit
+          // guarantees 0 <= start <= rank, so rank - start cannot overflow.
+          const bool in_bounds =
+              start >= 0 && start <= rank &&
+              (size == -1 || (size >= 0 && size <= rank - start));
+          if (in_bounds) {
+            ShapeHandle result;
+            if (size == -1) {
+              TF_RETURN_IF_ERROR(ic->Subshape(input, start, &result));
+            } else {
+              int64_t end = start + size;
+              TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+            }
+            c->output_tensors_as_shapes.resize(1);
+            c->output_tensors_as_shapes[0] = result;
           }
-          c->output_tensors_as_shapes.resize(1);
-          c->output_tensors_as_shapes[0] = result;
         }
       } else if (IsStridedSlice(node)) {
         ShapeHandle input = c->input_tensors_as_shapes_to_propagate[0];
