@@ -4661,6 +4661,7 @@ cc_library(
         "//xla/core/host_offloading:host_offloading_executable_proto_cc",
         "//xla/core/host_offloading:host_offloading_nanort_executable",
         "//xla/hlo/ir:hlo",
+        "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service:shaped_slice",
         "//xla/service:shaped_slice_proto_cc",
