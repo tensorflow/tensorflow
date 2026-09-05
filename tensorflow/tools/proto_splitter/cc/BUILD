@@ -138,6 +138,7 @@ cc_library(
         "//tensorflow/tools/proto_splitter:__subpackages__",
     ],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:env",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
