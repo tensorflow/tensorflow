@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <list>
 #include <memory>
 #include <optional>
 #include <queue>

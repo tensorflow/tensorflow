@@ -598,6 +598,7 @@ class LayoutAssignment : public HloModulePass {
   ComputationLayout& saved_entry_computation_layout() {
     return saved_entry_computation_layout_;
   }
+
   virtual bool NegotiateLayout(const HloInstruction* instruction,
                                const Layout& new_layout,
                                const Layout& existing_layout,
@@ -803,6 +804,13 @@ class LayoutAssignment : public HloModulePass {
   absl::Status AddAsyncDoneConstraints(HloInstruction* instruction,
                                        LayoutConstraints* constraints);
 
+  // Propagates while loop parameter and result layouts to subcomputations (such
+  // as conditionals) within the while body or condition.
+  void PropagateWhileLoopLayoutToSubcomputations(HloComputation* computation,
+                                                 const Shape& param_shape,
+                                                 const Shape* result_shape,
+                                                 int64_t priority);
+
   // Propagates layout constraints from the caller instruction into the inner
   // async sub-computation.
   // This is the forward propagation step: it takes the layouts of the operands
@@ -952,6 +960,7 @@ class LayoutAssignment : public HloModulePass {
 
  protected:
   static constexpr int64_t kNumberOfPropagationRounds = 2;
+  static constexpr int64_t kMaxPropagationRounds = 6;
   // Sets up the copy instruction according to the characteristic (sharding,
   // metadata, ...) of the reference instruction. The index argument is used
   // when the instruction is a tuple, and in such case the index represents
@@ -1072,6 +1081,10 @@ class LayoutAssignment : public HloModulePass {
 
   // Stores the set of while computations that have copy disabled.
   absl::flat_hash_set<const HloComputation*> copy_disabled_while_computations_;
+
+  // Tracks whether while loop parameter/condition layouts changed in the
+  // current propagation round and require another round to converge.
+  bool while_layout_changed_ = false;
 };
 
 }  // namespace xla
