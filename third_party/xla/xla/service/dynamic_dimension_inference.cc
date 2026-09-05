@@ -491,6 +491,12 @@ absl::Status DynamicDimensionInferenceVisitor::HandleCustomCall(
     return absl::OkStatus();
   }
 
+  if (hlo->custom_call_target() == "PadRealToStatic") {
+    // PadRealToStatic consumes dynamic operands and produces a statically
+    // padded output.
+    return absl::OkStatus();
+  }
+
   if (!CanInfer(hlo)) {
     return absl::OkStatus();
   }
@@ -2503,8 +2509,8 @@ absl::StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
       return true;
     }
     if (use.instruction->opcode() != HloOpcode::kCustomCall ||
-        !use.instruction->IsCustomCall({"PadToStatic", "Sharding",
-                                        "SPMDShardToFullShape",
+        !use.instruction->IsCustomCall({"PadToStatic", "PadRealToStatic",
+                                        "Sharding", "SPMDShardToFullShape",
                                         "SPMDFullToShardShape"})) {
       if (parent_->op_supports_dynamism_handler_ == nullptr) {
         return true;

@@ -1538,7 +1538,10 @@ absl::Status CommonPjRtClient::PrepareArguments(
 
       auto strip_dynamic_shape_metadata = [&](PjRtRawBufferRef actual_buffer)
           -> absl::StatusOr<PjRtRawBufferRef> {
-        if (!on_device_shape.is_dynamic() || expected_shape.is_dynamic()) {
+        bool expected_has_prefix =
+            expected_shape.is_dynamic() && expected_shape.has_layout() &&
+            expected_shape.layout().dynamic_shape_metadata_prefix_bytes() > 0;
+        if (!on_device_shape.is_dynamic() || expected_has_prefix) {
           return actual_buffer;
         }
         ABSL_ASSIGN_OR_RETURN(auto handle_logical_device_shape,
