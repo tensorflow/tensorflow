@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -3119,6 +3119,231 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   expected_array.FillWithYX(
       Array2D<float>({{668, 664, 660, 656, 668, 680, 692, 704}}));
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_P(HloEvaluatorBf16Test, Conv2DMatrixMultiplyFastPath) {
+  HloComputation::Builder b(TestName());
+  // LHS: [2, 3]
+  Array2D<float> lhs_array({
+      {1.f, 2.f, 3.f},
+      {4.f, 5.f, 6.f},
+  });
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // RHS: [3, 2]
+  Array2D<float> rhs_array({
+      {7.f, 8.f},
+      {9.f, 10.f},
+      {11.f, 12.f},
+  });
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+
+  Window window;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array2D<float> expected_array({
+      {58.f, 64.f},
+      {139.f, 154.f},
+  });
+  auto expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Conv2DF8E4M3FNToBF16MatrixMultiplyFastPath) {
+  HloComputation::Builder b(TestName());
+  // LHS: [2, 3] in F8E4M3FN
+  Array2D<float8_e4m3fn> lhs_array({
+      {float8_e4m3fn(1.f), float8_e4m3fn(2.f), float8_e4m3fn(3.f)},
+      {float8_e4m3fn(4.f), float8_e4m3fn(5.f), float8_e4m3fn(6.f)},
+  });
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float8_e4m3fn>(lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // RHS: [3, 2] in F8E4M3FN
+  Array2D<float8_e4m3fn> rhs_array({
+      {float8_e4m3fn(7.f), float8_e4m3fn(8.f)},
+      {float8_e4m3fn(9.f), float8_e4m3fn(10.f)},
+      {float8_e4m3fn(11.f), float8_e4m3fn(12.f)},
+  });
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float8_e4m3fn>(rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+
+  Window window;
+
+  Shape shape = ShapeUtil::MakeShape(BF16, {2, 2});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array2D<bfloat16> expected_array({
+      {bfloat16(58.f), bfloat16(64.f)},
+      {bfloat16(139.f), bfloat16(154.f)},
+  });
+  auto expected = LiteralUtil::CreateR2FromArray2D<bfloat16>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_P(HloEvaluatorBf16Test, Conv2DMatrixMultiplyZeroContractingDim) {
+  HloComputation::Builder b(TestName());
+  // LHS: [2, 0]
+  Array2D<float> lhs_array(2, 0);
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // RHS: [0, 2]
+  Array2D<float> rhs_array(0, 2);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+
+  Window window;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array2D<float> expected_array({
+      {0.f, 0.f},
+      {0.f, 0.f},
+  });
+  auto expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_P(HloEvaluatorBf16Test, Conv2DMatrixMultiplyColumnMajorFallback) {
+  HloComputation::Builder b(TestName());
+  // LHS: [2, 3] with column-major layout {0, 1}
+  Array2D<float> lhs_array({
+      {1.f, 2.f, 3.f},
+      {4.f, 5.f, 6.f},
+  });
+  auto lhs_literal =
+      LiteralUtil::CreateR2FromArray2D<float>(lhs_array).Relayout(
+          LayoutUtil::MakeLayout({0, 1}));
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // RHS: [3, 2]
+  Array2D<float> rhs_array({
+      {7.f, 8.f},
+      {9.f, 10.f},
+      {11.f, 12.f},
+  });
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+
+  Window window;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array2D<float> expected_array({
+      {58.f, 64.f},
+      {139.f, 154.f},
+  });
+  auto expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_P(HloEvaluatorBf16Test, Conv2DMatrixMultiplyZeroBatchDim) {
+  HloComputation::Builder b(TestName());
+  // LHS: [0, 3]
+  Array2D<float> lhs_array(0, 3);
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // RHS: [3, 2]
+  Array2D<float> rhs_array(3, 2);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+
+  Window window;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {0, 2});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array2D<float> expected_array(0, 2);
+  auto expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
+
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
@@ -7166,12 +7391,11 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
   ASSERT_NE(parameter_instruction, nullptr);
 
   Literal expected = LiteralUtil::CreateR0<int32_t>(42);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
-      TuplePointsToAnalysis::Run(hlo_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                          HloDataflowAnalysis::Run(*hlo_module));
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
-      evaluator_.Evaluate(parameter_instruction, {tuple_points_to.get()},
+      evaluator_.Evaluate(parameter_instruction, {dataflow.get()},
                           /*recursively_evaluate_nonconstant_operands=*/true));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
@@ -7260,14 +7484,14 @@ TEST_F(PatternMatchParseWhileLoopTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
-      TuplePointsToAnalysis::Run(hlo_module.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                          HloDataflowAnalysis::Run(*hlo_module));
 
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   std::optional<ParsedWhileLoop> parsed_while_loop =
-      PatternMatchParseWhileLoop(while_op, {tuple_points_to.get()});
+      PatternMatchParseWhileLoop(while_op, {dataflow.get()});
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
   EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);

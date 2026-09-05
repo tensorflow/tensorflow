@@ -40,7 +40,6 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -59,6 +58,8 @@ limitations under the License.
 
 namespace xla {
 
+class HloDataflowAnalysis;
+
 // Responsible for evaluating HLO and obtaining the evaluation result.
 //
 // This class is not thread-safe.
@@ -68,7 +69,11 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Precomputed analyses that can be passed to Evaluate functions to avoid
   // recomputation during evaluation.
   struct PrecomputedAnalyses {
-    TuplePointsToAnalysis* tuple_points_to;
+    PrecomputedAnalyses() : dataflow_analysis(nullptr) {}
+    PrecomputedAnalyses(const HloDataflowAnalysis* df)  // NOLINT
+        : dataflow_analysis(df) {}
+
+    const HloDataflowAnalysis* dataflow_analysis;
   };
 
   // Only evaluate up to max_loop_iterations per while-loop execution if
@@ -637,8 +642,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Optional handler exercised when evaluating literals.
   EvalLiteralHandler eval_literal_handler_;
 
-  // TODO(ezhulenev): Move cache members to EvaluationState.
-  std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
 
   // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the
