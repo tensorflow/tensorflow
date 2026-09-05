@@ -440,7 +440,8 @@ void ConstraintPropagator::ComputeMaxAddReductionElementsPerExp(
       consumer_add_reduction_elements = it->second;
     }
 
-    if (instruction->opcode() == HloOpcode::kExp) {
+    if (instruction->opcode() == HloOpcode::kExp ||
+        instruction->opcode() == HloOpcode::kExpm1) {
       max_add_reduction_elements_per_exp_[instruction] =
           consumer_add_reduction_elements;
     }
@@ -524,7 +525,8 @@ absl::Status ConstraintPropagator::SeedConstraints(
         // Output is guaranteed to be non-negative.
         states_[inst].AddConstraint(ConstraintInterval::Positive());
         break;
-      case HloOpcode::kExp: {
+      case HloOpcode::kExp:
+      case HloOpcode::kExpm1: {
         // Safe domain [-max_log, max_log] prevents floating point overflow.
         int64_t reduction_elements = GetMaxAddReductionElementsForExp(inst);
         double max_log =
@@ -1599,6 +1601,33 @@ void ConstraintPropagator::PropagateExpApprox(
       ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
 }
 
+void ConstraintPropagator::PropagateExpm1Approx(
+    const HloInstruction* instruction,
+    const ConstraintInterval& output_interval) {
+  // For Y = expm1(X) = exp(X) - 1 with Y in [y_min, y_max]:
+  // Since expm1(X) is monotonically strictly increasing on real numbers:
+  //   y_min <= expm1(X) <= y_max <=> ln(y_min + 1) <= X <= ln(y_max + 1).
+  //
+  // Since expm1(X) > -1 for all real X:
+  // If y_max <= -1.0, expm1(X) <= y_max is impossible for real numbers.
+  if (output_interval.max <= -1.0) {
+    states_[instruction->operand(0)].AddConstraint(
+        ConstraintInterval{1.0, -1.0, /*exclude_zero=*/false});
+    return;
+  }
+
+  double x_min = output_interval.min > -1.0 ? std::log1p(output_interval.min)
+                                            : ConstraintInterval::kMin;
+  double x_max = output_interval.max < ConstraintInterval::kMax &&
+                         output_interval.max > -1.0
+                     ? std::log1p(output_interval.max)
+                     : ConstraintInterval::kMax;
+  bool exclude_zero = output_interval.exclude_zero &&
+                      output_interval.min <= 0.0 && output_interval.max >= 0.0;
+  states_[instruction->operand(0)].AddConstraint(
+      ConstraintInterval{x_min, x_max, exclude_zero});
+}
+
 void ConstraintPropagator::PropagatePowerApprox(
     const HloInstruction* instruction,
     const ConstraintInterval& output_interval) {
@@ -1678,6 +1707,9 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
       break;
     case HloOpcode::kExp:
       PropagateExpApprox(instruction, output_interval);
+      break;
+    case HloOpcode::kExpm1:
+      PropagateExpm1Approx(instruction, output_interval);
       break;
     case HloOpcode::kPower:
       PropagatePowerApprox(instruction, output_interval);
