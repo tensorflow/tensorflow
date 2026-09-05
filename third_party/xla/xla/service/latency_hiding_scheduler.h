@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -700,6 +701,10 @@ class HloGraphNode {
   explicit HloGraphNode(const HloInstruction* i, int64_t original_position)
       : instr_(i), opcode_(i->opcode()), original_position_(original_position) {
     InitBitFields();
+    is_host_transfer_ =
+        (opcode_ == HloOpcode::kSend || opcode_ == HloOpcode::kSendDone ||
+         opcode_ == HloOpcode::kRecv || opcode_ == HloOpcode::kRecvDone) &&
+        static_cast<const HloSendRecvInstruction*>(i)->is_host_transfer();
   }
 
   static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
@@ -773,6 +778,7 @@ class HloGraphNode {
   }
   const HloInstruction& GetInstr() const { return *instr_; }
   HloOpcode GetOpcode() const { return opcode_; }
+  bool IsHostTransfer() const { return is_host_transfer_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
   int32_t GetOutdegree() const { return outdegree_; }
@@ -1065,14 +1071,16 @@ class HloGraphNode {
   // Opcode of instr_, copied here for better cache behavior (so we can look at
   // the opcode without having to touch another cache line).
   HloOpcode opcode_;
+  // If multiple nodes are there with force_delay_ = true, the one with the
+  // lowest delay priority will be scheduled first.
+  int force_delay_priority_ = 0;
 
   // Some of the booleans are looked at very often, so we avoid making them
   // bitfields
   // Force the scheduling of the nodes with attribute set as late as possible.
   bool force_delay_ = false;
-  // If multiple nodes are there with force_delay_ = true, the one with the
-  // lowest delay priority will be scheduled first.
-  int force_delay_priority_ = 0;
+  // Whether the instruction is a host transfer (send/recv).
+  bool is_host_transfer_ = false;
   // Force the scheduling of the nodes with attribute set as early as possible.
   bool force_early_ = false;
   // If has_rare_ is false, then all the fields in rare can assumed to be
