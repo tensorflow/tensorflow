@@ -556,6 +556,40 @@ HloInstruction* GetWhileForBodyRoot(HloInstruction* body_root) {
   return nullptr;
 }
 
+// Returns the async pipelined while loop associated with 'instruction' (if
+// 'instruction' is the while loop itself, the body parameter, or the body root
+// tuple), or nullptr if there is none.
+const HloInstruction* GetAsyncPipelinedWhileLoop(
+    const HloInstruction* instruction) {
+  if (instruction == nullptr) {
+    return nullptr;
+  }
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    for (const HloInstruction* caller :
+         instruction->parent()->caller_instructions(HloOpcode::kWhile)) {
+      if (caller->while_body() == instruction->parent() &&
+          IsAsyncPipelinedWhileLoop(caller)) {
+        return caller;
+      }
+    }
+  } else if (instruction->opcode() == HloOpcode::kWhile) {
+    if (IsAsyncPipelinedWhileLoop(instruction)) {
+      return instruction;
+    }
+  } else {
+    const HloComputation* comp = instruction->parent();
+    if (comp != nullptr && instruction == comp->root_instruction() &&
+        instruction->opcode() == HloOpcode::kTuple) {
+      HloInstruction* while_caller =
+          GetWhileForBodyRoot(const_cast<HloInstruction*>(instruction));
+      if (while_caller != nullptr && IsAsyncPipelinedWhileLoop(while_caller)) {
+        return while_caller;
+      }
+    }
+  }
+  return nullptr;
+}
+
 // Returns true if the position corresponds to loop-carried state (parameter or
 // body root tuple) of an async pipelined while loop, or while/DUS/DS in an
 // async pipelined while loop.
@@ -612,6 +646,115 @@ int64_t GetShapeSizeBytes(const CostAnalysis* cost_analysis,
 }
 
 }  // namespace
+
+// Helper to inspect the async wrapped opcode of a pipelined while loop
+// position.
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, const HloPosition& pos,
+    const HloAliasAnalysis& alias_analysis) {
+  if (while_instr == nullptr || while_instr->opcode() != HloOpcode::kWhile ||
+      pos.index.empty()) {
+    return std::nullopt;
+  }
+
+  int64_t tuple_idx = pos.index[0];
+  ShapeIndex base_index = {tuple_idx, 0, 0};
+  if (!ShapeUtil::IndexIsValid(pos.instruction->shape(), base_index)) {
+    return std::nullopt;
+  }
+
+  std::vector<const HloBuffer*> buffers =
+      alias_analysis.ComputeBuffersAt(pos.instruction, base_index);
+  const HloInstruction* async_start = nullptr;
+  for (const HloBuffer* buffer : buffers) {
+    for (const HloPosition& p : buffer->ComputePositions()) {
+      if (p.instruction->opcode() == HloOpcode::kAsyncStart &&
+          p.instruction->parent() == while_instr->while_body()) {
+        async_start = p.instruction;
+      }
+    }
+  }
+
+  if (async_start == nullptr) {
+    return std::nullopt;
+  }
+  return async_start->async_wrapped_opcode();
+}
+
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, int64_t tuple_idx,
+    const HloAliasAnalysis& alias_analysis) {
+  if (while_instr == nullptr || while_instr->opcode() != HloOpcode::kWhile) {
+    return std::nullopt;
+  }
+  return GetAsyncPipelinedWhileWrappedOpcode(
+      while_instr,
+      HloPosition{const_cast<HloInstruction*>(while_instr), {tuple_idx}},
+      alias_analysis);
+}
+
+// Returns true if the position in an async pipelined while loop corresponds to
+// a buffer that is intended to reside in alternate memory (e.g., prefetched
+// dynamic-slice output, or dynamic-update-slice update slice). Base tensors of
+// dynamic-slice or dynamic-update-slice and dynamic-update-slice outputs
+// reside in default memory (HBM) on TPU and return false.
+bool IsAsyncPipelinedWhileAlternateMemoryPosition(
+    const HloPosition& pos, const HloAliasAnalysis& alias_analysis) {
+  if (pos.instruction->IsAsynchronous()) {
+    HloOpcode wrapped_opcode = pos.instruction->async_wrapped_opcode();
+    if (wrapped_opcode == HloOpcode::kDynamicSlice) {
+      if (pos.instruction->opcode() == HloOpcode::kAsyncDone) {
+        return pos.index.empty();
+      }
+      if (pos.instruction->opcode() == HloOpcode::kAsyncStart) {
+        return pos.index == ShapeIndex({1});
+      }
+    }
+    // DynamicUpdateSlice base tensor and output reside in default memory.
+    return false;
+  }
+
+  if (pos.index.empty()) {
+    return false;
+  }
+
+  const HloInstruction* while_instr =
+      GetAsyncPipelinedWhileLoop(pos.instruction);
+  if (while_instr == nullptr) {
+    return false;
+  }
+
+  int64_t tuple_idx = pos.index[0];
+  ShapeIndex base_index = {tuple_idx, 0, 0};
+  if (!ShapeUtil::IndexIsValid(pos.instruction->shape(), base_index)) {
+    return false;
+  }
+
+  std::optional<HloOpcode> wrapped_opcode =
+      GetAsyncPipelinedWhileWrappedOpcode(while_instr, pos, alias_analysis);
+  if (!wrapped_opcode.has_value()) {
+    return false;
+  }
+
+  if (*wrapped_opcode == HloOpcode::kDynamicUpdateSlice) {
+    // In an async dynamic-update-slice bundle:
+    // {tuple_idx, 0, 0} is the base tensor -> default memory
+    // {tuple_idx, 0, 1} is the update slice -> alternate memory
+    // {tuple_idx, 1} is the dynamic-update-slice output (aliased to base) ->
+    // default memory
+    return pos.index == ShapeIndex({tuple_idx, 0, 1});
+  }
+
+  if (*wrapped_opcode == HloOpcode::kDynamicSlice) {
+    // In an async dynamic-slice bundle:
+    // {tuple_idx, 0, 0} is the base tensor -> default memory
+    // {tuple_idx, 1} or {tuple_idx} is the slice output -> alternate memory
+    return pos.index == ShapeIndex({tuple_idx, 1}) ||
+           pos.index == ShapeIndex({tuple_idx});
+  }
+
+  return false;
+}
 
 bool TimeInterval::operator<(const TimeInterval& other) const {
   return std::forward_as_tuple(inclusive_start_time, inclusive_end_time) <
@@ -5577,12 +5720,10 @@ bool MsaAlgorithm::GetUpdatedRequireNoCopyAlternateMemForAsyncPipelinedWhile(
     return true;
   }
 
-  // Check 3: we're only looking to override async DUS and async dynamic slice.
+  // Check 3: we're only looking to override async dynamic-update-slice update
+  // slice and async dynamic-slice output.
   const HloPosition& def_pos = allocation_value_to_update.position();
-  const HloInstruction* def_instr = def_pos.instruction;
-  if (def_instr->IsAsynchronous() &&
-      def_instr->async_wrapped_opcode() != HloOpcode::kDynamicUpdateSlice &&
-      def_instr->async_wrapped_opcode() != HloOpcode::kDynamicSlice) {
+  if (!IsAsyncPipelinedWhileAlternateMemoryPosition(def_pos, alias_analysis_)) {
     return false;
   }
 
