@@ -2410,7 +2410,7 @@ func.func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) 
 }
 
 // CHECK:  %[[SELECT_COMPUTATION:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
-// CHECK:  ROOT %[[RESULT:.*]] = pred[] compare(%[[ARG0]], %[[ARG1]]), direction=GE, type=TOTALORDER
+// CHECK:  ROOT %[[RESULT:.*]] = pred[] compare(%[[ARG0]], %[[ARG1]]), direction=GE, order=TOTAL
 
 // CHECK:  %[[SCATTER_COMPUTATION:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> f32[] {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[] add(%[[ARG0]], %[[ARG1]])

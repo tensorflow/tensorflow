@@ -28,29 +28,25 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
-#include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/cpu/cpu_xfeed.h"
 
 namespace xla {
 
-PjRtCpuDevice::PjRtCpuDevice(int process_id, int local_device_id,
-                             int max_inflight_computations)
-    : description_(process_id, local_device_id),
-      max_inflight_computations_semaphore_(
-          /*capacity=*/max_inflight_computations),
-      async_execution_tracker_(std::make_unique<CpuAsyncExecutionTracker>()),
-      stream_event_map_(std::make_unique<ExecutionStreamEventMap>()) {}
+PjRtCpuDevice::PjRtCpuDevice(int process_id, int local_device_id)
+    : description_(process_id, local_device_id) {}
 
 absl::Status PjRtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
-  return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);
+  return absl::down_cast<CommonPjRtClient*>(client_)
+      ->raw_client()
+      ->TransferToInfeed(local_device_id(), literal);
 }
 
 absl::Status PjRtCpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
-  return TransferLiteralFromOutfeedOnCpu(local_hardware_id().value(), literal);
+  return absl::down_cast<CommonPjRtClient*>(client_)
+      ->raw_client()
+      ->TransferFromOutfeed(local_device_id(), literal);
 }
 
 void PjRtCpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space) {
@@ -102,7 +98,9 @@ absl::StatusOr<PjRtMemorySpace*> PjRtCpuDevice::memory_space_by_kind_id(
 
 absl::StatusOr<bool> PjRtCpuDevice::PoisonExecution(int32_t launch_id,
                                                     absl::Status error) {
-  return async_execution_tracker_->SetError(launch_id, std::move(error));
+  return absl::down_cast<CommonPjRtClient*>(client_)
+      ->raw_client()
+      ->PoisonExecution(local_device_id(), launch_id, std::move(error));
 }
 
 }  // namespace xla
