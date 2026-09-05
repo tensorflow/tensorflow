@@ -19,15 +19,21 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <optional>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/literal.h"
 #include "xla/shape.h"
 
 namespace xla {
+
+class HloEvaluator;
 
 // A pass which performs constant folding in order to avoid unnecessary
 // computation on constants.
@@ -79,6 +85,49 @@ class HloConstantFolding : public HloModulePass {
   explicit HloConstantFolding(const Options& options) : options_(options) {}
   absl::string_view name() const override { return "constant_folding"; }
 
+  struct SpecializationKey {
+    const HloComputation* original_computation = nullptr;
+    std::vector<std::optional<LiteralSlice>> arguments;
+
+    bool operator==(const SpecializationKey& other) const {
+      if (original_computation != other.original_computation ||
+          arguments.size() != other.arguments.size()) {
+        return false;
+      }
+      for (size_t i = 0; i < arguments.size(); ++i) {
+        if (arguments[i].has_value() != other.arguments[i].has_value()) {
+          return false;
+        }
+        if (arguments[i].has_value()) {
+          if (!arguments[i]->Equal(*other.arguments[i],
+                                   /*layout_sensitive=*/true)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const SpecializationKey& key) {
+      h = H::combine(std::move(h), key.original_computation,
+                     key.arguments.size());
+      for (const auto& arg : key.arguments) {
+        if (arg.has_value()) {
+          h = H::combine(std::move(h), true, Literal::AbslHashable<true>(*arg));
+        } else {
+          h = H::combine(std::move(h), false);
+        }
+      }
+      return h;
+    }
+  };
+
+  const absl::flat_hash_map<SpecializationKey, HloComputation*>&
+  specialization_cache() const {
+    return specialization_cache_;
+  }
+
  protected:
   // Run constant folding operations on the given module. Returns whether the
   // module was changed (constant expressions folded).
@@ -87,11 +136,16 @@ class HloConstantFolding : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  absl::StatusOr<bool> RunOnComputation(
+      HloComputation* computation, HloEvaluator* evaluator,
+      absl::flat_hash_map<HloComputation*, bool>& is_foldable_computation);
+
   // Number of slow constant-folds we've encountered.  Used for firing
   // SlowOperationAlarms.
   static std::atomic<int64_t> slow_op_counter_;
 
   Options options_;
+  absl::flat_hash_map<SpecializationKey, HloComputation*> specialization_cache_;
 };
 
 }  // namespace xla

@@ -13,12 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <chrono>  // NOLINT(build/c++11)
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
