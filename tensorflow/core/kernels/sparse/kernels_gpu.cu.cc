@@ -132,14 +132,24 @@ absl::Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
   return gpu_sparse.Csr2coo(csr_row_ptr.data(), nnz, m, coo_row_ind.data());
 }
 
+namespace {
+// Clamps an index into [0, limit). limit is always positive here, because
+// GatherNd in DenseToCSRSparseMatrix rejects indices into an empty input.
+__device__ inline int ClampIndex(int64_t index, int64_t limit) {
+  return static_cast<int>(index < 0 ? 0 : (index < limit ? index : limit - 1));
+}
+}  // namespace
+
 template <int stride>
 __global__ void SparseTensorToCOOMatrixKernel(const int64_t* indices,
                                               int* coo_rows_out,
-                                              int* coo_cols_out, int size) {
+                                              int* coo_cols_out, int size,
+                                              int64_t rows, int64_t cols) {
   const int offset = (stride == 3) ? 1 : 0;
   GPU_1D_KERNEL_LOOP(i, size) {
-    coo_rows_out[i] = static_cast<int>(ldg(indices + i * stride + offset));
-    coo_cols_out[i] = static_cast<int>(ldg(indices + i * stride + offset + 1));
+    const int64_t* index = indices + static_cast<int64_t>(i) * stride + offset;
+    coo_rows_out[i] = ClampIndex(ldg(index), rows);
+    coo_cols_out[i] = ClampIndex(ldg(index + 1), cols);
   }
 }
 
@@ -152,17 +162,19 @@ void SparseTensorToCOOSparseMatrix<GPUDevice>::operator()(
   DCHECK(stride == 2 || stride == 3);
   DCHECK_EQ(stride, indices.dimension(1));
   const int size = coo_row_ind.dimension(0);
+  const int64_t rows = host_dense_shape(stride - 2);
+  const int64_t cols = host_dense_shape(stride - 1);
   GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
   if (stride == 2) {
     TF_CHECK_OK(GpuLaunchKernel(SparseTensorToCOOMatrixKernel<2>,
                                 config.block_count, config.thread_per_block, 0,
                                 d.stream(), indices.data(), coo_row_ind.data(),
-                                coo_col_ind.data(), size));
+                                coo_col_ind.data(), size, rows, cols));
   } else {
     TF_CHECK_OK(GpuLaunchKernel(SparseTensorToCOOMatrixKernel<3>,
                                 config.block_count, config.thread_per_block, 0,
                                 d.stream(), indices.data(), coo_row_ind.data(),
-                                coo_col_ind.data(), size));
+                                coo_col_ind.data(), size, rows, cols));
   }
 }
 
