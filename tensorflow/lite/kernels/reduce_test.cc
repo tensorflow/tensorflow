@@ -51,6 +51,23 @@ using MeanOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_MEAN>;
 using SumOpConstModel = BaseConstOpModel<BuiltinOperator_SUM>;
 using SumOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_SUM>;
 
+class SumOpConstModelRef : public BaseOpModel {
+ public:
+  SumOpConstModelRef(TensorData input, TensorData output,
+                     std::initializer_list<int> axis_shape,
+                     std::initializer_list<int> axis, bool keep_dims,
+                     TfLiteRegistration* registration) {
+    input_ = AddInput(input);
+    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_SUM, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    resolver_ =
+        std::make_unique<SingleOpResolver>(BuiltinOperator_SUM, registration);
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
 template <typename T>
 using ProdOpFullyConstModel =
     BaseFullyConstOpModel<T, BuiltinOperator_REDUCE_PROD, true>;
@@ -1094,6 +1111,23 @@ TEST(ConstInt8SumOpTest, Rescale) {
                     {TensorType_INT8, {2}, -5.0, 5.0}, {1}, {1}, false);
   // Expect the sum to be 0.4 + 0.3 + 0.5 = 1.2 and 0.2 + 0.4 + 0.3 = 0.9.
   const std::vector<float> expected_sum = {1.2, 0.9};
+  const float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(expected_sum, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8SumOpTest, RescaleRef) {
+  const std::vector<float> data = {-0.4, -0.2, 0.3, 0.4, -0.5, -0.3};
+  SumOpConstModelRef m({TensorType_INT8, {1, 3, 2}, -1.0, 1.0},
+                       {TensorType_INT8, {2}, -5.0, 5.0}, {1}, {1}, false,
+                       ops::builtin::Register_SUM_REF());
+  // Expect the sum to be -0.4 + 0.3 + -0.5 = -0.6 and
+  // -0.2 + 0.4 + -0.3 = -0.1.
+  const std::vector<float> expected_sum = {-0.6, -0.1};
   const float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
   m.QuantizeAndPopulate<int8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
