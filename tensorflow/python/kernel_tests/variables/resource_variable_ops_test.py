@@ -1522,8 +1522,33 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # eager execution (where the error is realized during kernel execution),
     # and XLA auto-clustering execution (where the error is realized in the xla
     # op kernel) which is triggered when running in eager op as function mode.
-    with self.assertRaisesRegex(Exception, r"shape.*2.*3|RET_CHECK failure"):
+    with self.assertRaisesRegex(
+        Exception, r"Must have updates\.shape|shape.*2.*3|RET_CHECK failure"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterUpdateInvalidInnerShape(self):
+    v = resource_variable_ops.ResourceVariable(
+        array_ops.zeros([10, 0]), shape=tensor_shape.TensorShape(None))
+    self.evaluate(variables.global_variables_initializer())
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"Must have updates\.shape"):
+      self.evaluate(
+          resource_variable_ops.resource_scatter_update(
+              v.handle,
+              constant_op.constant(-1, dtype=dtypes.int64),
+              array_ops.zeros([5])))
+
+  @test_util.run_gpu_only
+  def testScatterUpdateDoesNotNarrowInt64Index(self):
+    with context.eager_mode(), ops.device("gpu:0"):
+      index = constant_op.constant(
+          [np.iinfo(np.int64).min], dtype=dtypes.int64)
+      for updates in (constant_op.constant(2.0),
+                      constant_op.constant([2.0])):
+        v = resource_variable_ops.ResourceVariable([1.0])
+        resource_variable_ops.resource_scatter_update(v.handle, index, updates)
+        self.assertAllEqual([1.0], v.numpy())
 
   @test_util.disable_xla("b/208334252")  # XLA doesn't have a deterministic impl
   def testScatterAddDeterministic(self):

@@ -92,12 +92,14 @@ __global__ void ScatterOpCustomKernel(T* __restrict__ params,
   GPU_1D_KERNEL_LOOP(i, updates_size) {
     int indices_i = i / update_block;
     int updates_i = i;
-    int param_first_index = indices[indices_i];
+    Index param_first_index = indices[indices_i];
     if (!(param_first_index >= 0 && param_first_index < first_dim_size)) {
       // Ignore indices that are out of range.
       continue;
     }
-    int64_t params_i = param_first_index * update_block + (i % update_block);
+    const int64_t params_i =
+        static_cast<int64_t>(param_first_index) * update_block +
+        (i % update_block);
     body(&params[params_i], ldg(updates + updates_i));
   }
 }
@@ -113,13 +115,15 @@ __global__ void ScatterScalarOpCustomKernel(T* __restrict__ params,
   ScatterOpKernelBody<T, op> body;
   GPU_1D_KERNEL_LOOP(i, synthesized_updates_size) {
     int indices_i = i / update_block;
-    int param_first_index = indices[indices_i];
+    Index param_first_index = indices[indices_i];
     const T update_val = *update;
     if (!(param_first_index >= 0 && param_first_index < first_dim_size)) {
       // Ignore indices that are out of range.
       continue;
     }
-    int params_i = param_first_index * update_block + (i % update_block);
+    const int64_t params_i =
+        static_cast<int64_t>(param_first_index) * update_block +
+        (i % update_block);
     body(&params[params_i], update_val);
   }
 }
