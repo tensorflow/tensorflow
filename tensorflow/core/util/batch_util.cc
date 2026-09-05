@@ -185,6 +185,7 @@ absl::Status CopyElementToSlice(const Tensor& element, Tensor* parent,
                                 int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(*parent, element, index));
   const int64_t num_values = element.NumElements();
+  if (num_values == 0) return absl::OkStatus();
 #define HANDLE_TYPE(T)                                              \
   case DataTypeToEnum<T>::value: {                                  \
     T* src = element.base<T>();                                     \
@@ -207,6 +208,7 @@ absl::Status CopySliceToElement(const Tensor& parent, Tensor* element,
                                 int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(parent, *element, index));
   const int64_t num_values = element->NumElements();
+  if (num_values == 0) return absl::OkStatus();
 
 #define HANDLE_TYPE(T)                                      \
   case DataTypeToEnum<T>::value: {                          \
@@ -382,6 +384,7 @@ absl::Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element,
                                      int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(*parent, *element, index));
   const int64_t num_values = element->NumElements();
+  if (num_values == 0) return absl::OkStatus();
 
 #define HANDLE_TYPE(T)                                      \
   case DataTypeToEnum<T>::value: {                          \
