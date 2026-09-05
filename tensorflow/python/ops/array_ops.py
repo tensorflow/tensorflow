@@ -2269,6 +2269,16 @@ def matrix_diag(diagonal,
   if hasattr(diagonal, "dtype") and diagonal.dtype == "bool":
     padding_value = bool(padding_value)
 
+  diagonal_tensor = ops.convert_to_tensor(diagonal, name="diagonal")
+  diag_shape = diagonal_tensor.get_shape()
+  if diag_shape.ndims is not None and diag_shape.ndims < 2:
+    k_val = tensor_util.constant_value(ops.convert_to_tensor(k))
+    if (k_val is not None and np.ndim(k_val) == 1 and len(k_val) == 2 and
+        k_val[0] != k_val[1]):
+      raise ValueError(
+          f"diagonal must have at least rank 2 when k specifies multiple "
+          f"diagonals, received diagonal with shape {diag_shape} and k = {k}")
+
   return gen_array_ops.matrix_diag_v3(
       diagonal=diagonal,
       k=k,
