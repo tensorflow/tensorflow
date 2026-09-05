@@ -1503,5 +1503,83 @@ ENTRY main {
                 *module->GetComputationWithName("min_computation")),
             IdentityElementType::kMaximum);
 }
+
+TEST_F(ConstraintPropagatorTest, Expm1SeedConstrainsSafeDomain) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  x = f32[8,128] parameter(0)
+  ROOT root = f32[8,128] exponential-minus-one(x)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto x_int = states[module->entry_computation()->parameter_instruction(0)]
+                   .GetConstraintInterval();
+  // Safe domain [-max_log, max_log] = [-4.0, 4.0] for F32 prevents overflow.
+  EXPECT_DOUBLE_EQ(x_int.min, -4.0);
+  EXPECT_DOUBLE_EQ(x_int.max, 4.0);
+  EXPECT_FALSE(x_int.exclude_zero);
+}
+
+TEST_F(ConstraintPropagatorTest, Expm1BackwardPropagationStrictPositive) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  x = f32[8,128] parameter(0)
+  expm1 = f32[8,128] exponential-minus-one(x)
+  ROOT log = f32[8,128] log(expm1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto x_int = states[module->entry_computation()->parameter_instruction(0)]
+                   .GetConstraintInterval();
+  // log(expm1(x)) requires expm1(x) > 0.
+  // Since expm1(x) > 0 <=> x > log1p(0) = 0, x must be strictly positive.
+  EXPECT_TRUE(x_int.IsPositiveStrict());
+  EXPECT_DOUBLE_EQ(x_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, NanToNumLogFusionConstraints) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule fusion.30343, is_scheduled=true
+
+%fused_computation (param_0: f32[2,6], param_1: f32[2,6]) -> f32[2,6] {
+  %param_0 = f32[2,6] parameter(0)
+  %param_1 = f32[2,6] parameter(1)
+  %expm1 = f32[2,6] exponential-minus-one(%param_0)
+  %neg = f32[2,6] negate(%expm1)
+  %add = f32[2,6] add(%param_1, %neg)
+  %div = f32[2,6] divide(%param_1, %add)
+  %ne = pred[2,6] compare(%div, %div), direction=NE
+  %zero = f32[] constant(0)
+  %broadcast_zero = f32[2,6] broadcast(%zero), dimensions={}
+  %select_nan = f32[2,6] select(%ne, %broadcast_zero, %div)
+  ROOT %log = f32[2,6] log(%select_nan)
+}
+
+ENTRY %fusion.30343 (parameter.0: f32[2,6], parameter.1: f32[2,6]) -> f32[2,6] {
+  %parameter.0 = f32[2,6] parameter(0)
+  %parameter.1 = f32[2,6] parameter(1)
+  ROOT %fusion.30343 = f32[2,6] fusion(
+      %parameter.0, %parameter.1), kind=kLoop, calls=%fused_computation
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+
+  EXPECT_TRUE(p0_int.IsNegativeStrict());
+  EXPECT_DOUBLE_EQ(p0_int.min, -4.0);
+  EXPECT_TRUE(p1_int.IsPositiveStrict());
+}
+
 }  // namespace
 }  // namespace xla
