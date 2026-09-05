@@ -714,11 +714,11 @@ absl::StatusOr<FabricInfo> GetDeviceFabricInfo(nvmlDevice_t device) {
   nvmlReturn_t result = nvmlDeviceGetGpuFabricInfoV(device, &fabricInfo);
   ABSL_RETURN_IF_ERROR(ToStatus(result));
 
-  if (fabricInfo.state == NVML_GPU_FABRIC_STATE_NOT_SUPPORTED) {
-    std::string error_message =
+  if (fabricInfo.state != NVML_GPU_FABRIC_STATE_COMPLETED) {
+    std::string error_message = absl::StrFormat(
         "[Ignore this message unless multi-node NVLink is used] "
-        "CUDA driver version is too low for extracting fabric info (550+ "
-        "required), or multi-node NVLink is not available.";
+        "GPU fabric state is not completed (%s).",
+        FabricInforStateToString(fabricInfo.state));
     VLOG(2) << error_message;
     return absl::InternalError(error_message);
   }
