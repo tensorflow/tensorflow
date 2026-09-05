@@ -301,7 +301,12 @@ def _SoftmaxGrad(op: ops.Operation, grad_softmax):
   """
   softmax = op.outputs[0]
   sum_channels = math_ops.reduce_sum(grad_softmax * softmax, -1, keepdims=True)
-  return (grad_softmax - sum_channels) * softmax
+  grad = (grad_softmax - sum_channels) * softmax
+  if grad.dtype == dtypes.float64:
+    # The exact gradient sums to zero. Remove the rounding residual so a small
+    # component is not lost when another softmax component rounds to one.
+    grad -= math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
+  return grad
 
 
 @ops.RegisterGradient("LogSoftmax")
