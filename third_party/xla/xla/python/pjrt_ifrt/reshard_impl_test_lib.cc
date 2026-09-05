@@ -17,7 +17,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
