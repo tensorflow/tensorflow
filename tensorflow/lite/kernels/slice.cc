@@ -59,16 +59,21 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
                                         const TfLiteTensor* size,
                                         std::vector<int>* output_shape_vector) {
   for (int idx = 0; idx < NumDimensions(input); ++idx) {
+    const T begin_value = GetTensorData<T>(begin)[idx];
+    const int dim_size = SizeOfDimension(input, idx);
+    if (begin_value < 0 || begin_value > dim_size) {
+      TF_LITE_KERNEL_LOG(context, "Invalid begin.");
+      return kTfLiteError;
+    }
     T size_value = GetTensorData<T>(size)[idx];
     if (size_value < 0) {
       if (size_value != -1) {
         TF_LITE_KERNEL_LOG(context, "Invalid size.");
         return kTfLiteError;
       }
-      size_value = SizeOfDimension(input, idx) - GetTensorData<T>(begin)[idx];
+      size_value = dim_size - begin_value;
     } else {
-      if (SizeOfDimension(input, idx) <
-          GetTensorData<T>(begin)[idx] + size_value) {
+      if (size_value > dim_size - begin_value) {
         TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
         return kTfLiteError;
       }
