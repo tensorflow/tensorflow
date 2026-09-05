@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/rocm.h"
 #endif
 
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -499,7 +500,8 @@ typedef Eigen::GpuDevice GPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename Tin, typename Tout>
 struct CurtHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[1]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[1]);
 };
 
 extern template struct CurtHealthLaunch<Eigen::half, float>;
@@ -511,7 +513,8 @@ extern template struct CurtHealthLaunch<double, double>;
 
 template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[3]);
 };
 
 extern template struct ConciseHealthLaunch<Eigen::half, float>;
@@ -523,7 +526,8 @@ extern template struct ConciseHealthLaunch<double, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[6]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[6]);
 };
 
 extern template struct FullHealthLaunch<Eigen::half, float>;
@@ -535,7 +539,8 @@ extern template struct FullHealthLaunch<double, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[3]);
 };
 
 extern template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
@@ -791,8 +796,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
       auto input = context->input(0).flat<Tin>();
-      CurtHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
-                                        output_tensor->flat<Tout>().data() + 1);
+      OP_REQUIRES_OK_ASYNC(context,
+                           (CurtHealthLaunch<Tin, Tout>().Run(
+                               d, input.data(), input.size(),
+                               output_tensor->flat<Tout>().data() + 1)),
+                           done);
 
       context->device()
           ->tensorflow_accelerator_device_info()
@@ -826,9 +834,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       }
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
-      ConciseHealthLaunch<Tin, Tout>().Run(
-          d, input.data(), input.size(),
-          output_tensor->flat<Tout>().data() + 2);
+      OP_REQUIRES_OK_ASYNC(context,
+                           (ConciseHealthLaunch<Tin, Tout>().Run(
+                               d, input.data(), input.size(),
+                               output_tensor->flat<Tout>().data() + 2)),
+                           done);
 
       context->device()
           ->tensorflow_accelerator_device_info()
@@ -868,8 +878,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       // Call the GPU kernels for the numerical (inf/nan) checks and
       // pos/neg/zero counts.
-      FullHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
-                                        output_tensor->flat<Tout>().data() + 5);
+      OP_REQUIRES_OK_ASYNC(context,
+                           (FullHealthLaunch<Tin, Tout>().Run(
+                               d, input.data(), input.size(),
+                               output_tensor->flat<Tout>().data() + 5)),
+                           done);
 
       context->device()
           ->tensorflow_accelerator_device_info()
@@ -932,8 +945,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
       auto input = context->input(0).flat<Tin>();
-      ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
-          d, input.data(), input.size(), output_tensor->flat<Tout>().data());
+      OP_REQUIRES_OK_ASYNC(context,
+                           (ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
+                               d, input.data(), input.size(),
+                               output_tensor->flat<Tout>().data())),
+                           done);
 
       context->device()
           ->tensorflow_accelerator_device_info()
