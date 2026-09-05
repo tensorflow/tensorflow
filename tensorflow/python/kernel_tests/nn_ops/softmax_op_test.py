@@ -19,9 +19,11 @@ import unittest
 import numpy as np
 
 
+from tensorflow.python.eager import backprop as backprop_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -162,6 +164,22 @@ class SoftmaxTest(test.TestCase):
     self._testSoftmax(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64))
     self._testOverflow()
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testLogSoftmaxDoubleGradientPreservesSmallGradient(self):
+    logits = constant_op.constant(
+        [37.42994775023705, 0.0], dtype=dtypes.float64)
+    cotangent = constant_op.constant([1.0, 0.0], dtype=dtypes.float64)
+    with backprop_lib.GradientTape() as tape:
+      tape.watch(logits)
+      output = nn_ops.log_softmax(logits)
+      objective = math_ops.reduce_sum(output * cotangent)
+    gradient = self.evaluate(tape.gradient(objective, logits))
+
+    tail_probability = 5.551115123125776e-17
+    self.assertAllClose(
+        [tail_probability, -tail_probability], gradient, rtol=1e-14, atol=0)
+    self.assertEqual(gradient[0], -gradient[1])
 
   @unittest.skipUnless(test.is_built_with_gpu_support(),
                        "Test only applicable when running on GPUs")
