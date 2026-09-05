@@ -2733,6 +2733,7 @@ py_library(
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/util:tf_export",
@@ -2744,9 +2745,13 @@ tf_py_strict_test(
     srcs = ["auto_strategy_test.py"],
     deps = [
         ":auto_strategy",
+        ":mirrored_strategy",
         ":one_device_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
     ],
 )
