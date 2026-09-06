@@ -742,6 +742,420 @@ TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
               op::Tuple(op::Copy(op::Constant()), op::Copy(op::Constant())));
 }
 
+TEST_F(WhileCopyInsertionTest, DisableWhileLoopCopiesReplicatedInitBuffers) {
+  const std::string& hlo_string = R"(
+HloModule ReplicatedInitBuffers
+
+%Body (loop_state: (s32[], f32[8], f32[8])) -> (s32[], f32[8], f32[8]) {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %v1 = f32[8] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %c_add = f32[8] broadcast(%f1)
+  %next_v1 = f32[8] add(%v1, %c_add)
+  %v2 = f32[8] get-tuple-element(%loop_state), index=2
+  %next_v2 = f32[8] add(%v2, %c_add)
+  ROOT %tuple = (s32[], f32[8], f32[8]) tuple(%next_indvar, %next_v1, %next_v2)
+}
+
+%Condition (loop_state: (s32[], f32[8], f32[8])) -> pred[] {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> f32[8] {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %shared_init = f32[8] broadcast(%zero)
+  %init_tuple = (s32[], f32[8], f32[8]) tuple(%indvar_init, %shared_init, %shared_init)
+  %while = (s32[], f32[8], f32[8]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT %out = f32[8] get-tuple-element(%while), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Loop body should have zero copies.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  EXPECT_EQ(CountControlEdges(*module), 0);
+
+  // In init tuple, index 1 and index 2 share the same broadcast buffer.
+  // The first occurrence of the buffer should not be copied, but the duplicate
+  // index must be copied to ensure distinct buffers.
+  auto while_hlo = module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Negate(), op::Broadcast(),
+                                               op::Copy(op::Broadcast())));
+  EXPECT_EQ(CountCopies(*module), 1);
+}
+
+TEST_F(WhileCopyInsertionTest, DisableWhileLoopCopiesDistinctInitBuffers) {
+  const std::string& hlo_string = R"(
+HloModule DistinctInitBuffers
+
+%Body (loop_state: (s32[], f32[8], f32[8])) -> (s32[], f32[8], f32[8]) {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %v1 = f32[8] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %c_add = f32[8] broadcast(%f1)
+  %next_v1 = f32[8] add(%v1, %c_add)
+  %v2 = f32[8] get-tuple-element(%loop_state), index=2
+  %next_v2 = f32[8] add(%v2, %c_add)
+  ROOT %tuple = (s32[], f32[8], f32[8]) tuple(%next_indvar, %next_v1, %next_v2)
+}
+
+%Condition (loop_state: (s32[], f32[8], f32[8])) -> pred[] {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> f32[8] {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %one = f32[] constant(1.0)
+  %init1 = f32[8] broadcast(%zero)
+  %init2 = f32[8] broadcast(%one)
+  %init_tuple = (s32[], f32[8], f32[8]) tuple(%indvar_init, %init1, %init2)
+  %while = (s32[], f32[8], f32[8]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT %out = f32[8] get-tuple-element(%while), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Loop body should have zero copies.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  EXPECT_EQ(CountControlEdges(*module), 0);
+
+  // All buffers are distinct; no copies should be added anywhere.
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesDisjointInPlaceTupleIndex) {
+  const std::string& hlo_string = R"(
+HloModule DisjointInPlaceTupleIndex
+
+%Body (loop_state: (s32[], f32[16])) -> (s32[], f32[16]) {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %acc = f32[16] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %update = f32[4] broadcast(%f1)
+  %c0 = s32[] constant(0)
+  %dus = f32[16] dynamic-update-slice(%acc, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT %tuple = (s32[], f32[16]) tuple(%next_indvar, %dus)
+}
+
+%Condition (loop_state: (s32[], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> f32[16] {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %init_acc = f32[16] broadcast(%zero)
+  %init_tuple = (s32[], f32[16]) tuple(%indvar_init, %init_acc)
+  %while = (s32[], f32[16]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT %out = f32[16] get-tuple-element(%while), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Loop body should have zero copies because the DUS has disjoint read/write
+  // regions.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  EXPECT_EQ(CountControlEdges(*module), 0);
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesNonDisjointInPlaceRetainsInitCopy) {
+  const std::string& hlo_string = R"(
+HloModule NonDisjointInPlaceRetainsInitCopy
+
+%Body (loop_state: (s32[], f32[16])) -> (s32[], f32[16]) {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %acc = f32[16] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %update = f32[4] broadcast(%f1)
+  %c0 = s32[] constant(0)
+  %dus = f32[16] dynamic-update-slice(%acc, %update, %c0)
+  ROOT %tuple = (s32[], f32[16]) tuple(%next_indvar, %dus)
+}
+
+%Condition (loop_state: (s32[], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> (f32[16], f32[16]) {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %init_acc = f32[16] broadcast(%zero)
+  %init_tuple = (s32[], f32[16]) tuple(%indvar_init, %init_acc)
+  %while = (s32[], f32[16]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  %out = f32[16] get-tuple-element(%while), index=1
+  ROOT %root = (f32[16], f32[16]) tuple(%out, %init_acc)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Because DUS lacks disjoint read/write regions,
+  // IsDisjointInPlaceWhileTupleIndex returns false. With %init_acc live across
+  // the loop, the init copy is retained.
+  auto while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Negate(), op::Copy(op::Broadcast())));
+  EXPECT_EQ(CountCopies(*module), 1);
+}
+
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesCompetingReadersRetainsInitCopy) {
+  const std::string& hlo_string = R"(
+HloModule CompetingReadersRetainsInitCopy
+
+%Body (loop_state: (s32[], f32[16])) -> (s32[], f32[16]) {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %acc = f32[16] get-tuple-element(%loop_state), index=1
+  %c0 = s32[] constant(0)
+  %slice = f32[4] dynamic-slice(%acc, %c0), dynamic_slice_sizes={4}
+  %update = f32[4] negate(%slice)
+  %dus = f32[16] dynamic-update-slice(%acc, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT %tuple = (s32[], f32[16]) tuple(%next_indvar, %dus)
+}
+
+%Condition (loop_state: (s32[], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> (f32[16], f32[16]) {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %init_acc = f32[16] broadcast(%zero)
+  %init_tuple = (s32[], f32[16]) tuple(%indvar_init, %init_acc)
+  %while = (s32[], f32[16]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  %out = f32[16] get-tuple-element(%while), index=1
+  ROOT %root = (f32[16], f32[16]) tuple(%out, %init_acc)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // %acc has multiple users (dynamic-slice and DUS), so
+  // IsDisjointInPlaceWhileTupleIndex returns false and init copy is retained
+  // because %init_acc is live across the loop.
+  auto while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Negate(), op::Copy(op::Broadcast())));
+  EXPECT_EQ(CountCopies(*module), 1);
+}
+
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesDependentArraysRetainBodyCopies) {
+  const std::string& hlo_string = R"(
+HloModule DependentArraysRetainBodyCopies
+
+%Body (loop_state: (s32[], f32[8], f32[8])) -> (s32[], f32[8], f32[8]) {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %v1 = f32[8] get-tuple-element(%loop_state), index=1
+  %v2 = f32[8] get-tuple-element(%loop_state), index=2
+  %f1 = f32[] constant(1.0)
+  %c_add = f32[8] broadcast(%f1)
+  %out1 = f32[8] add(%v1, %c_add)
+  %out2 = f32[8] add(%v1, %v2)
+  ROOT %tuple = (s32[], f32[8], f32[8]) tuple(%next_indvar, %out1, %out2)
+}
+
+%Condition (loop_state: (s32[], f32[8], f32[8])) -> pred[] {
+  %loop_state = (s32[], f32[8], f32[8]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> f32[8] {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %one = f32[] constant(1.0)
+  %init1 = f32[8] broadcast(%zero)
+  %init2 = f32[8] broadcast(%one)
+  %init_tuple = (s32[], f32[8], f32[8]) tuple(%indvar_init, %init1, %init2)
+  %while = (s32[], f32[8], f32[8]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT %out = f32[8] get-tuple-element(%while), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // In %Body, %v1 is read by both %out1 and %out2, creating a dependency
+  // hazard. Because index 1 is neither async nor disjoint in-place, copy
+  // insertion correctly retains copies inside the while loop body.
+  auto* body = module->GetComputationWithName("Body");
+  EXPECT_EQ(CountCopies(*body), 1);
+}
+
+TEST_F(WhileCopyInsertionTest, DisableWhileLoopCopiesAsyncPipelinedTupleIndex) {
+  const std::string& hlo_string = R"(
+HloModule AsyncPipelinedWhile
+
+%Body (loop_state: (s32[], (f32[8], f32[8]))) -> (s32[], (f32[8], f32[8])) {
+  %loop_state = (s32[], (f32[8], f32[8])) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %async_state = (f32[8], f32[8]) get-tuple-element(%loop_state), index=1
+  %done = f32[8] collective-permute-done(%async_state)
+  %next_async_start = (f32[8], f32[8]) collective-permute-start(%done),
+      source_target_pairs={{0,1}},
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT %tuple = (s32[], (f32[8], f32[8])) tuple(%next_indvar, %next_async_start)
+}
+
+%Condition (loop_state: (s32[], (f32[8], f32[8]))) -> pred[] {
+  %loop_state = (s32[], (f32[8], f32[8])) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry (init_data: f32[8]) -> f32[8] {
+  %init_data = f32[8] parameter(0)
+  %init_buf = f32[8] negate(%init_data)
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %async_start_init = (f32[8], f32[8]) collective-permute-start(%init_buf),
+      source_target_pairs={{0,1}},
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  %init_tuple = (s32[], (f32[8], f32[8])) tuple(%indvar_init, %async_start_init)
+  %while = (s32[], (f32[8], f32[8])) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  %final_async_state = (f32[8], f32[8]) get-tuple-element(%while), index=1
+  ROOT %final_done = f32[8] collective-permute-done(%final_async_state)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Loop body should have zero copies for the pipelined async state.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  EXPECT_EQ(CountControlEdges(*module), 0);
+  // While loop operand tuple has no copies inserted around the loop.
+  auto while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Negate(), op::CollectivePermuteStart(op::Copy())));
+  EXPECT_EQ(CountCopies(*module), 1);
+}
+
+TEST_F(WhileCopyInsertionTest, DisableWhileLoopCopiesDuplicateInitBuffers) {
+  const std::string& hlo_string = R"(
+HloModule DuplicateInitBuffers
+
+%Body (loop_state: (s32[], f32[16], f32[16])) -> (s32[], f32[16], f32[16]) {
+  %loop_state = (s32[], f32[16], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %acc1 = f32[16] get-tuple-element(%loop_state), index=1
+  %acc2 = f32[16] get-tuple-element(%loop_state), index=2
+  %f1 = f32[] constant(1.0)
+  %update = f32[4] broadcast(%f1)
+  %c0 = s32[] constant(0)
+  %dus1 = f32[16] dynamic-update-slice(%acc1, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  %dus2 = f32[16] dynamic-update-slice(%acc2, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT %tuple = (s32[], f32[16], f32[16]) tuple(%next_indvar, %dus1, %dus2)
+}
+
+%Condition (loop_state: (s32[], f32[16], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> (f32[16], f32[16]) {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %init_buf = f32[16] broadcast(%zero)
+  %init_tuple = (s32[], f32[16], f32[16]) tuple(%indvar_init, %init_buf, %init_buf)
+  %while = (s32[], f32[16], f32[16]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  %out1 = f32[16] get-tuple-element(%while), index=1
+  %out2 = f32[16] get-tuple-element(%while), index=2
+  ROOT %root = (f32[16], f32[16]) tuple(%out1, %out2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // Loop body should have zero copies.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  EXPECT_EQ(CountControlEdges(*module), 0);
+  // Exactly one copy outside the loop to separate duplicate init buffers.
+  auto while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Negate(), op::Broadcast(),
+                                               op::Copy(op::Broadcast())));
+  EXPECT_EQ(CountCopies(*module), 1);
+}
+
 // Tests Copy Insertion when a while feeds another while
 //                         PARAMETER
 //                        |        |
