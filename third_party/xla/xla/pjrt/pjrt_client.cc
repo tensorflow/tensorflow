@@ -119,6 +119,8 @@ PjRtMemorySpaceCApiDelegator::PjRtMemorySpaceCApiDelegator(
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
 
+bool PjRtClient::IsCApi() const { return false; }
+
 absl::StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(
     PjRtBuffer* buffer) {
   if (buffer->on_device_shape().IsTuple()) {

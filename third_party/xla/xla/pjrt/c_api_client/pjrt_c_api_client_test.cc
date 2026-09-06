@@ -1137,5 +1137,12 @@ TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
             specific_layout.minor_to_major());
 }
 
+TEST(PjRtCApiClientTest, IsCApi) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  EXPECT_TRUE(client->IsCApi());
+}
+
 }  // namespace
 }  // namespace xla

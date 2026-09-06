@@ -46,8 +46,10 @@ from tensorflow.lite.python.convert import convert_mlir_bytecode as _convert_mli
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import deduplicate_readonly_buffers as _deduplicate_readonly_buffers
+from tensorflow.lite.python.convert import flatbuffer_to_mlir as _flatbuffer_to_mlir
 from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
+from tensorflow.lite.python.convert import mlir_to_flatbuffer as _mlir_to_flatbuffer
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_phase import Component
@@ -3543,3 +3545,4 @@ class TocoConverter:
     return TFLiteConverter.from_keras_model_file(
         model_file, input_arrays, input_shapes, output_arrays
     )
+

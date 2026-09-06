@@ -65,6 +65,53 @@ class PseudorandomGenerator {
 using GetIndexKnownZeroesFn =
     std::function<std::optional<uint64_t>(const HloInstruction*, int64_t)>;
 
+// Options for generating fake arguments with MakeFakeArguments and
+// MakeDataflowConstrainedArguments.
+struct FakeArgumentsOptions {
+  // Optional random number generator. Passing a generator enables generation
+  // of different random values across sequential calls by reusing the same
+  // engine.
+  std::minstd_rand0* engine = nullptr;
+
+  // If pseudo_random is true, the generated numbers will be generated
+  // deterministically in a pseudo random way unless the values are constrained
+  // to be e.g. init values as above. If pseudo_random is false, the returned
+  // values will be generated in a faster way that yields less interesting data,
+  // e.g. the values may all be just the same value.
+  //
+  // TODO(b/79942829): Make interesting argument generation fast enough that
+  // using pseudo_random does not save any noticeable amount of time so that the
+  // parameter can be removed.
+  bool pseudo_random = true;
+
+  // If use_large_range is false, the generated floating point numbers will be
+  // sampled from a small range of possible values. If use_large_range is true,
+  // the generated floating point numbers will be sampled from a uniform-log
+  // distribution of most possible floats, with a small chance to instead be
+  // sampled from a list of special floating point values (such as 0, inf,
+  // etc.).
+  bool use_large_range = false;
+
+  // If treat_gte_as_data_formatting is true, GetTupleElement instructions are
+  // treated as data formatting operations when tracking parameter constraints,
+  // allowing constraints to propagate through tuple deconstruction.
+  bool treat_gte_as_data_formatting = false;
+
+  // If max_bits_of_precision is set to a number, then floating point & integer
+  // types will be constrained to be represented in that number of bits. Setting
+  // it to 5 for integers would mean it only creates integers between -32 and
+  // 32.
+  std::optional<int64_t> max_bits_of_precision = std::nullopt;
+
+  // If `generate_aligned_ds_indices` is true, the generated indices will be
+  // aligned to the given alignment.
+  bool generate_aligned_ds_indices = false;
+
+  // If `get_index_known_zeroes` is set, the generated indices will have the
+  // given number of zeroes in the given dimension.
+  GetIndexKnownZeroesFn get_index_known_zeroes = nullptr;
+};
+
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
 //
@@ -79,80 +126,20 @@ using GetIndexKnownZeroesFn =
 //  (3) Keys of key/value sorts should contain no duplicates.
 //
 // These constraints are best-effort only.
-//
-// If max_bits_of_precision is set to a number, then floating point & integer
-// types will be constrained to be represented in that number of bits. Setting
-// it to 5 for integers would mean it only creates integers between -32 and 32.
-//
-// If pseudo_random is true, the generated numbers will be generated
-// deterministically in a pseudo random way unless the values are constrated to
-// be e.g. init values as above. If pseudo_random is false, the returned values
-// will be generated in a faster way that yields less interesting data, e.g. the
-// values may all be just the same value.
-//
-// If use_large_range is false, the generated floating point numbers will be
-// sampled from a small range of possible values. If use_large_range is true,
-// the generated floating point numbers will be sampled from a uniform-log
-// distribution of most possible floats, with a small chance to instead be
-// sampled from a list of special floating point values (such as 0, inf, etc.).
-//
-// TODO(b/79942829): Make interesting argument generation fast enough that using
-// pseudo_random does not save any noticeable amount of time so that the
-// parameter can be removed.
-//
-// If `generate_aligned_ds_indices` is true, the generated indices will be
-// aligned to the given alignment. If `get_index_known_zeroes` is set, the
-// generated indices will have the given number of zeroes in the given
-// dimension.
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
-    const HloModule* module, bool pseudo_random = true,
-    bool use_large_range = false, bool treat_gte_as_data_formatting = false,
-    std::optional<int64_t> max_bits_of_precision = std::nullopt,
-    std::minstd_rand0* engine = nullptr,
-    bool generate_aligned_ds_indices = false,
-    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
-
-// Overload which accepts a random number generator. This enables generation of
-// different random values with sequential calls to MakeFakeArguments by reusing
-// the same generator.
-absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
-    const HloModule* module, std::minstd_rand0* engine,
-    bool use_large_range = false, bool treat_gte_as_data_formatting = false,
-    std::optional<int64_t> max_bits_of_precision = std::nullopt,
-    bool generate_aligned_ds_indices = false,
-    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
+    const HloModule* module, const FakeArgumentsOptions& options = {});
 
 // Generates a vector of arguments containing fake data using reverse constraint
 // propagation. The constraint propagator seeds initial constraints based on HLO
 // op semantics (e.g., `sqrt(x)` implies `x >= 0`) and then propagates these
 // constraints backward through the graph. This allows generating test inputs
 // that are more likely to be valid for the graph.
-//
-// If `use_large_range` is false, the generated floating point numbers will be
-// sampled from a small range of possible values. If `use_large_range` is true,
-// the generated floating point numbers will be sampled from a uniform-log
-// distribution of most possible floats, with a small chance to instead be
-// sampled from a list of special floating point values (such as 0, inf, etc.).
-//
-// If `max_bits_of_precision` is set to a number, then floating point & integer
-// types will be constrained to be represented in that number of bits. Setting
-// it to 5 for integers would mean it only creates integers between -32 and 32.
-//
-// If `generate_aligned_ds_indices` is true, the generated indices will be
-// aligned to the given alignment.
-//
-// If `get_index_known_zeroes` is set, the generated indices will have the given
-// number of zeroes in the given dimension.
 absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
-    const HloModule* module, std::minstd_rand0* engine = nullptr,
-    bool use_large_range = false,
-    std::optional<int64_t> max_bits_of_precision = std::nullopt,
-    bool generate_aligned_ds_indices = false,
-    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
+    const HloModule* module, const FakeArgumentsOptions& options = {});
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
-absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+absl::Status VerifyHloModule(HloModule* module, bool layout_sensitive,
                              bool allow_mixed_precision);
 
 // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1 of
