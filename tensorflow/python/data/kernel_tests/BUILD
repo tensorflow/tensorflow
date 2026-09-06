@@ -380,9 +380,12 @@ tf_py_strict_test(
         ":test_base",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
