@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
+#include "xla/backends/profiler/gpu/string_deduper.h"
 #include "xla/tsl/profiler/utils/buffer_pool.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "tsl/platform/thread_annotations.h"
@@ -261,25 +261,6 @@ struct CuptiTracerEvent {
   };
 };
 
-// As annotation and nvtx range strings are of large duplication, it is worth
-// to keep single copy of different strings to save memory footprint. This class
-// will construct a string when deduping unseen string_view input, and return
-// the string_view on the newly created string. If the input str is contains in
-// its internal data, it just return it's internal copy's string_view. All
-// returned string_view will keep valid as the object of this class is alive.
-class StringDeduper {
- public:
-  void Clear() { strings_.clear(); }
-
-  // max_unique_count is not put into data member to make it consistent with
-  // existing logic.
-  absl::string_view Dedup(absl::string_view str, size_t max_unique_count = 0);
-
-  size_t Size() const { return strings_.size(); }
-
- private:
-  absl::node_hash_set<std::string> strings_;
-};
 
 // AnnotationMap keep the map from a correlation id to its corresponding
 // annotation and nvtx_range. During Add(), unseen input string view will
