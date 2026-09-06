@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -527,7 +527,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
   absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override {
-    const LogicalBuffer& buffer = buffer_constraint.buffer();
+    const HloValue& buffer = buffer_constraint.buffer();
     const HloInstruction* instruction = buffer.instruction();
 
     // Force the operands' layout to the output layout.
