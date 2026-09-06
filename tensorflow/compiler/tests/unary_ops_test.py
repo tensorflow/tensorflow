@@ -214,6 +214,30 @@ class UnaryOpsTest(xla_test.XLATestCase):
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5
         )
 
+  def testBesselI0(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-5 if dtype == np.float32 else 1e-12
+      x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
+      expected = np.array(
+          [27.23987182, 1.26606588, 1.0, 1.26606588, 27.23987182],
+          dtype=dtype,
+      )
+      self._assertOpOutputMatchesExpected(
+          math_ops.bessel_i0, x, expected=expected, atol=tol, rtol=tol
+      )
+
+  def testBesselI1(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-5 if dtype == np.float32 else 1e-12
+      x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
+      expected = np.array(
+          [-24.33564214, -0.56515910, 0.0, 0.56515910, 24.33564214],
+          dtype=dtype,
+      )
+      self._assertOpOutputMatchesExpected(
+          math_ops.bessel_i1, x, expected=expected, atol=tol, rtol=tol
+      )
+
   def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
       if dtype != np.float16:
