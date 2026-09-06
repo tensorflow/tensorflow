@@ -1299,8 +1299,8 @@ void ConstraintPropagator::PropagateReduceApprox(
       }
     } else if (instruction->opcode() == HloOpcode::kReduceWindow) {
       const Window& window = instruction->window();
-      for (int64_t d = 0;
-           d < window.dimensions_size() && d < operand_shape.dimensions_size();
+      for (int64_t d = 0; d < window.dimensions_size() &&
+                          d < operand_shape.dimensions().size();
            ++d) {
         int64_t win_size = window.dimensions(d).size();
         int64_t op_dim = operand_shape.dimensions(d);
