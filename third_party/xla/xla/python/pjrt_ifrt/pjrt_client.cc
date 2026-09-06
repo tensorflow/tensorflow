@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
