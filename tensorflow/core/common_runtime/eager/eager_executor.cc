@@ -265,7 +265,7 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
       // Remove item if it exists in unfinished_nodes_.
       // With async execution, if two separate nodes failed and enter this
       // callback, then the second node might not find itself in
-      // unfinished_nodes_ in the following senario:
+      // unfinished_nodes_ in the following scenario:
       //   1) Callback of the first failed node clears unfinished_nodes_
       //   2) ClearError is called and executor status_ is set to OK
       //   3) Callback of the second failed node is triggered
