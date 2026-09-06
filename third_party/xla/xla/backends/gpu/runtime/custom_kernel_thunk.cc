@@ -80,9 +80,11 @@ absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
   if (!kernel_cache_.contains(params.executor)) {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                      params.executor->LoadKernel(custom_kernel_.kernel_spec()));
-    se::KernelMetadata m = kernel->metadata();
-    m.set_shared_memory_bytes(custom_kernel_.shared_memory_bytes());
-    kernel->set_metadata(m);
+    // Record the dynamic shared-memory requirement as a launch attribute; do
+    // not overwrite the static shared-memory / register metadata populated by
+    // LoadKernel.
+    kernel->set_dynamic_shared_memory_bytes(
+        custom_kernel_.shared_memory_bytes());
     kernel->set_use_pdl(use_pdl_);
     kernel_cache_.emplace(params.executor, std::move(kernel));
   }
