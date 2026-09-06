@@ -50,4 +50,7 @@ tf_proto_library(
     srcs = ["megascale_runtime_error_overlay.proto"],
     create_grpc_library = True,
     make_default_target_header_only = True,
+    protodeps = [
+        "//xla/tsl/protobuf:status_proto",
+    ],
 )
