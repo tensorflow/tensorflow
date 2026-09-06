@@ -20,6 +20,13 @@ load(":windows_cc_toolchain_config.bzl", "cc_toolchain_config")
 
 package(default_visibility = ["//visibility:public"])
 
+genrule(
+    name = "clang-cl-wrapper.bat",
+    srcs = ["clang-cl-wrapper.bat.tpl"],
+    outs = ["clang-cl-wrapper.bat"],
+    cmd = "cp \"$(location clang-cl-wrapper.bat.tpl)\" \"$@\"",
+)
+
 cc_library(
     name = "malloc",
 )
@@ -36,7 +43,10 @@ filegroup(
 
 filegroup(
     name = "clangcl_compiler_files",
-    srcs = [":builtin_include_directory_paths_clangcl"],
+    srcs = [
+        ":builtin_include_directory_paths_clangcl",
+        ":clang-cl-wrapper.bat",
+    ],
 )
 
 filegroup(
@@ -522,9 +532,9 @@ cc_toolchain_config(
     target_system_name = "local",
     tool_paths = {
         "ar": "C:/tools/LLVM/bin/llvm-lib.exe",
-        "ml": "C:/tools/LLVM/bin/clang-cl.exe",
-        "cpp": "C:/tools/LLVM/bin/clang-cl.exe",
-        "gcc": "C:/tools/LLVM/bin/clang-cl.exe",
+        "ml": "clang_cl_wrapper.bat",
+        "cpp": "clang_cl_wrapper.bat",
+        "gcc": "clang_cl_wrapper.bat",
         "gcov": "wrapper/bin/msvc_nop.bat",
         "ld": "C:/tools/LLVM/bin/lld-link.exe",
         "nm": "wrapper/bin/msvc_nop.bat",
