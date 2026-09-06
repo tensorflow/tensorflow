@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_symbol_repository.h"
 #include "xla/service/cpu/export_hlo.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
@@ -229,12 +230,18 @@ absl::StatusOr<std::string> CompileExecutable(
     int32_t num_partitions, int32_t num_replicas, CompilationResult& result,
     absl::string_view target_platform_version, bool use_attached_device) {
   if (backend == BackendType::kCpu) {
+    if (num_replicas > 1) {
+      hlo_module->mutable_config().set_replica_count(num_replicas);
+    }
+    if (num_partitions > 1) {
+      hlo_module->mutable_config().set_num_partitions(num_partitions);
+    }
     std::optional<cpu::TargetMachineOptions> target_options = std::nullopt;
     if (cpu_target_config.has_value()) {
       target_options = cpu_target_config->cpu_target_machine_options;
     }
     return AotCompileCpuExecutable(std::move(hlo_module),
-                                   std::move(target_options));
+                                   std::move(target_options), &result);
   }
   return CompileGpuExecutable(std::move(hlo_module),
                               std::move(gpu_target_config), result,
@@ -312,13 +319,27 @@ ReadModuleFromSymbolRepo(absl::string_view symbol_repo,
   return mod;
 }
 
-static std::unique_ptr<Compiler::GpuTargetConfig> ReadTargetConfigFromModule(
+static std::unique_ptr<Compiler::GpuTargetConfig> ReadGpuTargetConfigFromModule(
     HloModuleAndMetadata* mod, BackendType backend) {
   if (backend == BackendType::kGpu) {
     if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
             mod->backend_specific_data.get());
         data != nullptr) {
       return std::move(mod->target_config);
+    }
+  }
+
+  return nullptr;
+}
+
+static std::unique_ptr<Compiler::CpuTargetConfig> ReadCpuTargetConfigFromModule(
+    HloModuleAndMetadata* mod, BackendType backend) {
+  if (backend == BackendType::kCpu) {
+    if (auto* data = static_cast<cpu::CpuBackendSpecificData*>(
+            mod->backend_specific_data.get());
+        data != nullptr && data->target_machine_options.has_value()) {
+      return std::make_unique<Compiler::CpuTargetConfig>(
+          *data->target_machine_options);
     }
   }
 
@@ -427,6 +448,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
       (options.platform == "gpu" ? BackendType::kGpu : BackendType::kCpu);
 
   std::optional<Compiler::GpuTargetConfig> gpu_cfg = std::nullopt;
+  std::optional<Compiler::CpuTargetConfig> cpu_cfg = std::nullopt;
   absl::string_view symbol_repo = options.repo_options.symbol_repo;
   if (absl::string_view symbol_id = options.repo_options.symbol_id;
       !symbol_id.empty()) {
@@ -434,7 +456,14 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
                      ReadModuleFromSymbolRepo(symbol_repo, symbol_id, backend));
 
     hlo_module = std::move(mod->hlo_module);
-    gpu_cfg = std::move(*ReadTargetConfigFromModule(mod.get(), backend));
+    if (auto target_config = ReadGpuTargetConfigFromModule(mod.get(), backend);
+        target_config != nullptr) {
+      gpu_cfg = std::move(*target_config);
+    }
+    if (auto target_config = ReadCpuTargetConfigFromModule(mod.get(), backend);
+        target_config != nullptr) {
+      cpu_cfg = std::move(*target_config);
+    }
   } else {
     ABSL_ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
   }
@@ -471,6 +500,13 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
 
     ABSL_ASSIGN_OR_RETURN(found_autotune, internal::LoadAutotuneDataFromModule(
                                          optimized_mod.get(), backend));
+    if (!cpu_cfg.has_value()) {
+      if (auto target_config =
+              ReadCpuTargetConfigFromModule(optimized_mod.get(), backend);
+          target_config != nullptr) {
+        cpu_cfg = std::move(*target_config);
+      }
+    }
   }
 
   xla::TimerStats stats;
@@ -486,8 +522,6 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     }
   });
   // Run AOT compilation.
-  std::optional<Compiler::CpuTargetConfig> cpu_cfg = std::nullopt;
-
   if (backend == BackendType::kGpu) {
     if (absl::string_view gpu_target_config_path =
             options.gpu_options.gpu_target_config_path;
@@ -519,11 +553,31 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
       gpu_cfg = std::nullopt;
     }
   } else if (backend == BackendType::kCpu) {
-    cpu::TargetMachineOptions target_machine_options(
-        options.cpu_options.target_triple, options.cpu_options.target_cpu,
-        options.cpu_options.target_features);
-    cpu_cfg =
-        std::make_optional<Compiler::CpuTargetConfig>(target_machine_options);
+    if (absl::string_view cpu_target_config_path =
+            options.cpu_options.cpu_target_config_path;
+        !cpu_target_config_path.empty()) {
+      std::string cpu_target_config_string;
+      ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+                                            std::string(cpu_target_config_path),
+                                            &cpu_target_config_string));
+      xla::cpu::TargetMachineOptionsProto proto;
+      if (!tsl::protobuf::TextFormat::ParseFromString(cpu_target_config_string,
+                                                      &proto)) {
+        return FailedPrecondition("Failed to parse TargetMachineOptionsProto");
+      }
+      ABSL_ASSIGN_OR_RETURN(cpu::TargetMachineOptions target_machine_options,
+                       cpu::TargetMachineOptions::FromProto(proto));
+      cpu_cfg =
+          std::make_optional<Compiler::CpuTargetConfig>(target_machine_options);
+    } else if (!options.cpu_options.target_triple.empty() ||
+               !options.cpu_options.target_cpu.empty() ||
+               !options.cpu_options.target_features.empty()) {
+      cpu::TargetMachineOptions target_machine_options(
+          options.cpu_options.target_triple, options.cpu_options.target_cpu,
+          options.cpu_options.target_features);
+      cpu_cfg =
+          std::make_optional<Compiler::CpuTargetConfig>(target_machine_options);
+    }
   }
   if (use_shardy_partitioner) {
     hlo_module->mutable_config().set_use_shardy_partitioner(true);

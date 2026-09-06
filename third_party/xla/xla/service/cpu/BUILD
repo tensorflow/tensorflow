@@ -1663,6 +1663,7 @@ cc_library(
     hdrs = ["cpu_symbol_repository.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/service:symbol_repository",
     ],
 )
