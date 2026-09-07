@@ -257,13 +257,14 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
 };
 
 std::string MakeTitle(const HloModule& mod, absl::string_view longest_prefix) {
+  uint64_t program_id = mod.ToFingerprint(HloPrintOptions::Fingerprint());
   if (longest_prefix.empty()) {
     return absl::StrCat("XlaModule:#hlo_module=", mod.name(),
-                        ",program_id=", mod.unique_id(), "#");
+                        ",program_id=", program_id, "#");
   }
   return absl::StrCat("XlaModule:#prefix=", longest_prefix,
-                      ",hlo_module=", mod.name(),
-                      ",program_id=", mod.unique_id(), "#");
+                      ",hlo_module=", mod.name(), ",program_id=", program_id,
+                      "#");
 }
 
 std::string FormatSourceLocations(HloInstruction const& inst,

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/annotation.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
@@ -22,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 
 namespace xla::gpu {
@@ -162,6 +165,36 @@ TEST(AnnotationTest, AsyncCollectiveMetadata) {
   EXPECT_THAT(xprof_name, HasSubstr("replica_groups={{0;1};{2;3}}"));
   EXPECT_THAT(xprof_name, HasSubstr("is_pipelined=1"));
   EXPECT_THAT(xprof_name, HasSubstr("is_spmd_generated=1"));
+}
+
+TEST(AnnotationTest, ModuleAnnotationProgramIdIsCanonicalFingerprint) {
+  ASSERT_OK_AND_ASSIGN(auto module1, ParseAndReturnUnverifiedModule(R"(
+    HloModule test
+    ENTRY main {
+      dummy = f32[] constant(0)
+      ROOT constant = f32[] constant(1)
+    }
+  )"));
+  ASSERT_OK_AND_ASSIGN(auto module2, ParseAndReturnUnverifiedModule(R"(
+    HloModule test
+    ENTRY main {
+      foo = f32[] constant(0)
+      ROOT bar = f32[] constant(1)
+    }
+  )"));
+
+  ModuleAnnotation annotation1(*module1);
+  ModuleAnnotation annotation2(*module2);
+
+  uint64_t expected_fp = module1->ToFingerprint(HloPrintOptions::Fingerprint());
+  EXPECT_EQ(expected_fp,
+            module2->ToFingerprint(HloPrintOptions::Fingerprint()));
+
+  auto title1 = static_cast<absl::string_view>(annotation1);
+  auto title2 = static_cast<absl::string_view>(annotation2);
+
+  EXPECT_THAT(title1, HasSubstr(absl::StrCat("program_id=", expected_fp)));
+  EXPECT_EQ(title1, title2);
 }
 
 }  // namespace
