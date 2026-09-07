@@ -1194,6 +1194,9 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
     llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input) {
   SmallVector<int64_t> dim_positions =
       ge::PositionsOfNonTrivialDims(output_shape.dimensions());
+  if (dim_positions.size() == output_tile_sizes.size()) {
+    return EmitTiledReshape(b, output_tile_sizes, input);
+  }
   SmallVector<int64_t> reshape_tile_sizes;
   reshape_tile_sizes.reserve(dim_positions.size());
   for (int64_t dim : dim_positions) {
@@ -1201,6 +1204,9 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   }
   ABSL_ASSIGN_OR_RETURN(TensorValue re,
                    EmitTiledReshape(b, reshape_tile_sizes, input));
+  if (re.getType().getShape() == output_tile_sizes) {
+    return re;
+  }
   // Instead of expand we create broadcast as some tile sizes might be > 1.
   return xtile::BroadcastInDims(b, re, output_tile_sizes, dim_positions);
 }
@@ -1905,8 +1911,8 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
                        tiled_hlo.tile().GetStaticTileSizes());
       ABSL_ASSIGN_OR_RETURN(auto storage_tile_sizes,
                        GetStorageShape(logical_tile_sizes, hlo->shape()));
-      return EmitTiledReshape(
-          emitter_ctx.b(), storage_tile_sizes,
+      return EmitTiledBroadcastedReshape(
+          emitter_ctx.b(), hlo->shape(), storage_tile_sizes,
           emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0)));
     }
     case HloOpcode::kSlice: {
