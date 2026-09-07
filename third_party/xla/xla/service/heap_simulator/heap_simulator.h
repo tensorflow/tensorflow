@@ -358,6 +358,8 @@ struct BufferIntervalTreeNode {
   int64_t subtree_end;
   // Allocated chunk for the buffer.
   HeapSimulator::Chunk chunk;
+  // The buffer associated with this node.
+  const void* buffer;
   // Left child.
   BufferIntervalTreeNode* left;
   // Right child.
@@ -383,10 +385,12 @@ class BufferIntervalTree {
   using Chunk = HeapSimulator::Chunk;
   // Adds a buffer to the interval tree, with the time interval and allocated
   // chunk specified.
-  void Add(int64_t start, int64_t end, const Chunk& chunk);
+  void Add(int64_t start, int64_t end, const Chunk& chunk,
+           const void* buffer = nullptr);
 
   // Remove the interval from the tree. Returns true if the chunk is removed.
-  bool Remove(int64_t start, int64_t end, const Chunk& chunk);
+  bool Remove(int64_t start, int64_t end, const Chunk& chunk,
+              const void* buffer = nullptr);
 
   // Apply fn to the nodes that overlap with the given time interval. It is
   // guaranteed that fn is called for non-null nodes.
@@ -959,8 +963,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // - The chunks in the result will start on alignment_ boundaries.
   // - A free chunk will not be returned if it does not have enough space to fit
   //   max_colocation_size.
-  FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
-                            int64_t max_colocation_size) const;
+  virtual FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
+                                    int64_t max_colocation_size,
+                                    int64_t preferred_offset = -1) const;
 
   // Finds the latest value <= buffer_interval.end such that that no chunk
   // intersects [preferred_offset, preferred_offset + buffer_interval.size).
@@ -1054,7 +1059,8 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // FreeChunks map. Used by the unsliced fast path in FindChunkCandidates to
   // avoid per query container construction.
   const std::vector<std::pair<int64_t, int64_t>>& MakeFreeChunksList(
-      const BufferInterval& buffer_interval, int64_t max_colocation_size) const;
+      const BufferInterval& buffer_interval, int64_t max_colocation_size,
+      int64_t preferred_offset = -1) const;
 
   // Fast path of FindChunkCandidates for an unsliced (num_slices() == 1)
   // interval: computes the best fit chunk directly from the merged free chunk
