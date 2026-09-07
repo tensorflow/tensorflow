@@ -436,7 +436,7 @@ absl::Status XlaCallModuleLoader::LoadModule(
     // another XlaCallModuleOp.
     mlir::StatusScopedDiagnosticHandler diag_handler(context_);
     mlir::PassManager pm(module_->getContext());
-    pm.addPass(mlir::sdy::createInlineMeshesPass());
+    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
     if (failed(pm.run(*module_))) {
       return absl::InternalError(
           absl::StrCat("Shardy inline meshes pass failed: ",
