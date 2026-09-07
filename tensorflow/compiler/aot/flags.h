@@ -48,6 +48,8 @@ struct MainFlags {
   // Sanitizer pass options
   bool sanitize_dataflow = false;
   std::string sanitize_abilists_dataflow;
+  bool sanitize_memory = false;
+  int32_t sanitize_memory_track_origins = 0;
 
   // C++ codegen options
   bool gen_name_to_index = false;

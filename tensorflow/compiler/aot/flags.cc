@@ -86,6 +86,12 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "Enable DataFlow Sanitizer pass."},
       {"sanitize_abilists_dataflow", &flags->sanitize_abilists_dataflow,
        "Comma separated list of ABIList file paths."},
+      {"sanitize_memory", &flags->sanitize_memory,
+       "Enable Memory Sanitizer pass."},
+      {"sanitize_memory_track_origins", &flags->sanitize_memory_track_origins,
+       "Controls MSan track origins level (0=disabled, 1=without store "
+       "history, 2=with store history). Setting to >0 implies "
+       "--sanitize_memory."},
       {"gen_name_to_index", &flags->gen_name_to_index,
        "Generate name-to-index data for Lookup{Arg,Result}Index methods."},
       {"gen_program_shape", &flags->gen_program_shape,
