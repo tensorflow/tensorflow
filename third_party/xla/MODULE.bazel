@@ -163,6 +163,7 @@ single_version_override(
     patches = [
         "//third_party/py:rules_python_freethreaded.patch",
         "//third_party/py:rules_python_scope.patch",
+        "//third_party/py:rules_python_windows_unc.patch",
     ],
     version = "2.2.0",
 )

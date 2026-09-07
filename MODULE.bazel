@@ -22,6 +22,16 @@ single_version_override(
 bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1", repo_name = "nlohmann_json_lib")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "rules_python", version = "2.2.0")
+single_version_override(
+    module_name = "rules_python",
+    patch_strip = 1,
+    patches = [
+        "//third_party/py:rules_python_freethreaded.patch",
+        "//third_party/py:rules_python_scope.patch",
+        "//third_party/py:rules_python_windows_unc.patch",
+    ],
+    version = "2.2.0",
+)
 bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "platforms", version = "1.1.0")
