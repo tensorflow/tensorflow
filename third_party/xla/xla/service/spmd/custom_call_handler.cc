@@ -1268,6 +1268,9 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   }
   if (hlo->custom_call_target() == "SPMDFullToShardShape") {
     // This op switches from auto partitioning to manual partitioning.
+    // We emit a copy tagged with kSpmdBoundaryCopyAttr so that GSPMD can track
+    // the sharding boundary without mutating the input's sharding during
+    // partitioning; this copy will be removed at the end of the partitioner.
     auto input_partitioned = GetPartitionedHlo(hlo->operand(0));
     if (!EvenlyPartitions(hlo->shape(), input_partitioned.sharding())) {
       input_partitioned = input_partitioned.PadWithValue(
@@ -1280,18 +1283,23 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
         input->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
+    copy->add_frontend_attribute(kSpmdBoundaryCopyAttr, "true");
     SetPartitionedHlo(hlo, copy);
     return absl::OkStatus();
   }
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
     // This op switches from manual partitioning to auto partitioning.
+    // We emit a copy tagged with kSpmdBoundaryCopyAttr so that GSPMD can track
+    // the sharding boundary without mutating the input's sharding during
+    // partitioning; this copy will be removed at the end of the partitioner.
     auto input = GetPartitionedHlo(hlo->operand(0)).hlo();
     TF_RET_CHECK(input->sharding().IsManual() ||
                  input->sharding().IsManualSubgroup());
+    TF_RET_CHECK(ShapeUtil::Compatible(
+        input->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
-    TF_RET_CHECK(ShapeUtil::Compatible(
-        copy->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
+    copy->add_frontend_attribute(kSpmdBoundaryCopyAttr, "true");
     SetPartitionedHlo(hlo, copy);
     return absl::OkStatus();
   }
