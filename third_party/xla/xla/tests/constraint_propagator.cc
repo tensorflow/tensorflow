@@ -440,7 +440,8 @@ void ConstraintPropagator::ComputeMaxAddReductionElementsPerExp(
       consumer_add_reduction_elements = it->second;
     }
 
-    if (instruction->opcode() == HloOpcode::kExp) {
+    if (instruction->opcode() == HloOpcode::kExp ||
+        instruction->opcode() == HloOpcode::kExpm1) {
       max_add_reduction_elements_per_exp_[instruction] =
           consumer_add_reduction_elements;
     }
@@ -524,7 +525,8 @@ absl::Status ConstraintPropagator::SeedConstraints(
         // Output is guaranteed to be non-negative.
         states_[inst].AddConstraint(ConstraintInterval::Positive());
         break;
-      case HloOpcode::kExp: {
+      case HloOpcode::kExp:
+      case HloOpcode::kExpm1: {
         // Safe domain [-max_log, max_log] prevents floating point overflow.
         int64_t reduction_elements = GetMaxAddReductionElementsForExp(inst);
         double max_log =
@@ -1291,8 +1293,19 @@ void ConstraintPropagator::PropagateReduceApprox(
     int64_t num_inputs = instruction->operand_count() / 2;
     int64_t num_elements = 1;
     const Shape& operand_shape = instruction->operand(0)->shape();
-    for (int64_t dim : instruction->dimensions()) {
-      num_elements *= operand_shape.dimensions(dim);
+    if (instruction->opcode() == HloOpcode::kReduce) {
+      for (int64_t dim : instruction->dimensions()) {
+        num_elements *= operand_shape.dimensions(dim);
+      }
+    } else if (instruction->opcode() == HloOpcode::kReduceWindow) {
+      const Window& window = instruction->window();
+      for (int64_t d = 0;
+           d < window.dimensions_size() && d < operand_shape.dimensions_size();
+           ++d) {
+        int64_t win_size = window.dimensions(d).size();
+        int64_t op_dim = operand_shape.dimensions(d);
+        num_elements *= std::max<int64_t>(1, std::min(win_size, op_dim));
+      }
     }
     if (num_elements > 1) {
       std::optional<HloOpcode> root_op =
@@ -1588,6 +1601,33 @@ void ConstraintPropagator::PropagateExpApprox(
       ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
 }
 
+void ConstraintPropagator::PropagateExpm1Approx(
+    const HloInstruction* instruction,
+    const ConstraintInterval& output_interval) {
+  // For Y = expm1(X) = exp(X) - 1 with Y in [y_min, y_max]:
+  // Since expm1(X) is monotonically strictly increasing on real numbers:
+  //   y_min <= expm1(X) <= y_max <=> ln(y_min + 1) <= X <= ln(y_max + 1).
+  //
+  // Since expm1(X) > -1 for all real X:
+  // If y_max <= -1.0, expm1(X) <= y_max is impossible for real numbers.
+  if (output_interval.max <= -1.0) {
+    states_[instruction->operand(0)].AddConstraint(
+        ConstraintInterval{1.0, -1.0, /*exclude_zero=*/false});
+    return;
+  }
+
+  double x_min = output_interval.min > -1.0 ? std::log1p(output_interval.min)
+                                            : ConstraintInterval::kMin;
+  double x_max = output_interval.max < ConstraintInterval::kMax &&
+                         output_interval.max > -1.0
+                     ? std::log1p(output_interval.max)
+                     : ConstraintInterval::kMax;
+  bool exclude_zero = output_interval.exclude_zero &&
+                      output_interval.min <= 0.0 && output_interval.max >= 0.0;
+  states_[instruction->operand(0)].AddConstraint(
+      ConstraintInterval{x_min, x_max, exclude_zero});
+}
+
 void ConstraintPropagator::PropagatePowerApprox(
     const HloInstruction* instruction,
     const ConstraintInterval& output_interval) {
@@ -1633,8 +1673,11 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     const HloInstruction* instruction) {
   ConstraintInterval output_interval =
       states_[instruction].GetConstraintInterval();
+  // Exempt reductions: tuple-shaped outputs have no top-level interval and
+  // resolve bounds from downstream GTE users.
   if ((output_interval.IsEmpty() || output_interval.IsUnconstrained()) &&
-      instruction->opcode() != HloOpcode::kReduce) {
+      instruction->opcode() != HloOpcode::kReduce &&
+      instruction->opcode() != HloOpcode::kReduceWindow) {
     return absl::OkStatus();
   }
   switch (instruction->opcode()) {
@@ -1648,6 +1691,7 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
       PropagateMultiplyApprox(instruction, output_interval);
       break;
     case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
       PropagateReduceApprox(instruction, output_interval);
       break;
     case HloOpcode::kConvolution:
@@ -1663,6 +1707,9 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
       break;
     case HloOpcode::kExp:
       PropagateExpApprox(instruction, output_interval);
+      break;
+    case HloOpcode::kExpm1:
+      PropagateExpm1Approx(instruction, output_interval);
       break;
     case HloOpcode::kPower:
       PropagatePowerApprox(instruction, output_interval);

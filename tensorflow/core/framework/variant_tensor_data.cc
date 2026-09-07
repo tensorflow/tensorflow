@@ -39,13 +39,14 @@ Tensor* VariantTensorData::add_tensors() {
   return &(tensors_[tensors_.size() - 1]);
 }
 
-void VariantTensorData::ToProto(VariantTensorDataProto* proto) const {
+bool VariantTensorData::ToProto(VariantTensorDataProto* proto) const {
   proto->set_type_name(type_name());
   proto->set_metadata(metadata_);
   proto->clear_tensors();
   for (const auto& tensor : tensors_) {
-    tensor.AsProtoField(proto->mutable_tensors()->Add());
+    if (!tensor.AsProtoField(proto->mutable_tensors()->Add())) return false;
   }
+  return true;
 }
 
 bool VariantTensorData::FromProto(VariantTensorDataProto proto) {
@@ -73,13 +74,13 @@ bool VariantTensorData::FromConstProto(const VariantTensorDataProto& proto) {
 
 std::string VariantTensorData::SerializeAsString() const {
   VariantTensorDataProto proto;
-  ToProto(&proto);
+  if (!ToProto(&proto)) return "";
   return proto.SerializeAsString();
 }
 
 bool VariantTensorData::SerializeToString(std::string* buf) {
   VariantTensorDataProto proto;
-  ToProto(&proto);
+  if (!ToProto(&proto)) return false;
   return proto.SerializeToString(buf);
 }
 

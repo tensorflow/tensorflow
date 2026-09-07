@@ -27,19 +27,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
-#include "xla/pjrt/cpu/execution_stream_event_map.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
-#include "xla/pjrt/semaphore.h"
 
 namespace xla {
 
 class PjRtCpuDevice final : public PjRtDevice {
  public:
-  explicit PjRtCpuDevice(int process_id, int local_device_id,
-                         int max_inflight_computations = 32);
+  explicit PjRtCpuDevice(int process_id, int local_device_id);
 
   const CpuDeviceDescription& description() const override {
     return description_;
@@ -79,11 +76,6 @@ class PjRtCpuDevice final : public PjRtDevice {
 
   absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
 
-  // Returns a semaphore for admission control on inflight computations.
-  Semaphore& max_inflight_computations_semaphore() {
-    return max_inflight_computations_semaphore_;
-  }
-
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;
@@ -92,28 +84,11 @@ class PjRtCpuDevice final : public PjRtDevice {
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;
 
-  CpuAsyncExecutionTracker* async_execution_tracker() {
-    return async_execution_tracker_.get();
-  }
-
-  ExecutionStreamEventMap* stream_event_map() const {
-    return stream_event_map_.get();
-  }
-
  private:
   PjRtClient* client_ = nullptr;
   CpuDeviceDescription description_;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_id_;
-
-  // TODO(zhangqiaorjc): Optimize semaphore related overhead.
-  // Semaphore used to limit how many programs can be enqueued by the host
-  // ahead of the device.
-  Semaphore max_inflight_computations_semaphore_;
-
-  std::unique_ptr<CpuAsyncExecutionTracker> async_execution_tracker_;
-
-  std::unique_ptr<ExecutionStreamEventMap> stream_event_map_;
 };
 
 }  // namespace xla

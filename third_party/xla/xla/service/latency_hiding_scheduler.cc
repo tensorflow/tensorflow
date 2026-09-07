@@ -366,10 +366,10 @@ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
 
 bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
                                  const HloGraphNode& target) const {
-  return (from.GetInstr().opcode() == HloOpcode::kSend &&
-          target.GetInstr().opcode() == HloOpcode::kSendDone) ||
-         (from.GetInstr().opcode() == HloOpcode::kRecv &&
-          target.GetInstr().opcode() == HloOpcode::kRecvDone);
+  return (from.GetOpcode() == HloOpcode::kSend &&
+          target.GetOpcode() == HloOpcode::kSendDone) ||
+         (from.GetOpcode() == HloOpcode::kRecv &&
+          target.GetOpcode() == HloOpcode::kRecvDone);
 }
 
 std::optional<LatencyEstimator::TimeCost>
@@ -1736,7 +1736,7 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     }
   }
   if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone() &&
-      an->GetInstr().opcode() == bn->GetInstr().opcode()) {
+      an->GetOpcode() == bn->GetOpcode()) {
     const HloGraphNode& start_an =
         sched_state.sched_graph->GetNode(an->GetInstr().operand(0));
     const HloGraphNode& start_bn =
@@ -2977,6 +2977,11 @@ HloScheduleGraph::HloScheduleGraph(
     DCHECK_EQ(n, GetNodePtr(instr));
     n->instr_ = instr;
     n->opcode_ = instr->opcode();
+    n->is_host_transfer_ =
+        (n->opcode_ == HloOpcode::kSend || n->opcode_ == HloOpcode::kSendDone ||
+         n->opcode_ == HloOpcode::kRecv ||
+         n->opcode_ == HloOpcode::kRecvDone) &&
+        static_cast<const HloSendRecvInstruction*>(instr)->is_host_transfer();
     n->original_position_ = current_pos;
     current_pos++;
 
@@ -3476,6 +3481,44 @@ void HloScheduleGraph::AnnotateGraph(
   }
 }
 
+bool DefaultSchedulerCore::DefaultSchedulingInstructionCrossesOverlapLimit(
+    const SchedulingState& sched_state, const HloGraphNode* node) {
+  if (!node->HasRecursiveResources()) {
+    return false;
+  }
+  const HloInstruction& instr = node->GetInstr();
+  const bool is_nested_sync_comp = !instr.called_computations().empty() &&
+                                   instr.opcode() != HloOpcode::kAsyncStart &&
+                                   instr.opcode() != HloOpcode::kAsyncDone;
+
+  auto& num_resources_needed = node->GetRecursiveResources();
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [resource, count] : num_resources_needed) {
+    auto it = sched_state.max_concurrent_resource.find(resource);
+    if (it == sched_state.max_concurrent_resource.end()) {
+      continue;
+    }
+    if (is_nested_sync_comp &&
+        sched_state.async_tracker->IsInorderResource(resource)) {
+      int64_t total_capacity =
+          sched_state.async_tracker->GetNumAvailableResources(resource);
+      if (it->second < total_capacity) {
+        VLOG(5) << "In-order resource " << resource
+                << " currently has outer in-flight operations (available "
+                << it->second << " < total " << total_capacity
+                << "). Cannot schedule nested computation " << instr.name();
+        return true;
+      }
+    }
+    if (count > it->second) {
+      VLOG(5) << "Cross overlap limit for resource: " << resource
+              << " count: " << count << " limit: " << it->second;
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::Status DefaultSchedulerCore::InitializeScheduler(
     const HloModule* module) {
   module_ = module;
@@ -3545,24 +3588,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
 
   if (!scheduling_instruction_crosses_overlap_limit_) {
     scheduling_instruction_crosses_overlap_limit_ =
-        [](const SchedulingState& sched_state, const HloGraphNode* node) {
-          if (!node->HasRecursiveResources()) {
-            return false;
-          }
-          auto& num_resources_needed = node->GetRecursiveResources();
-          for (const auto& [resource, count] : num_resources_needed) {
-            auto it = sched_state.max_concurrent_resource.find(resource);
-            if (it == sched_state.max_concurrent_resource.end()) {
-              continue;
-            }
-            if (count > it->second) {
-              VLOG(5) << "Cross overlap limit for resource: " << resource
-                      << " count: " << count << " limit: " << it->second;
-              return true;
-            }
-          }
-          return false;
-        };
+        DefaultSchedulingInstructionCrossesOverlapLimit;
     is_default_scheduling_instruction_crosses_overlap_limit_ = true;
   }
   return absl::OkStatus();

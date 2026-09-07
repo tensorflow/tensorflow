@@ -85,6 +85,9 @@ static FailureOr<APFloat> convertFloatValue(
 }
 
 std::optional<CoreType> getRefCoreType(TypedValue<MemRefType> value) {
+  if (!value) {
+    return std::nullopt;
+  }
   auto space = dyn_cast_if_present<tpu::MemorySpaceAttr>(
       value.getType().getMemorySpace());
   if (!space) {
@@ -1649,6 +1652,19 @@ mlir::tpu::CoreType SemaphoreSignalOp::getTargetCoreType() {
   return getRefCoreType(getSemaphore()).value_or(GetCoreTypeOfParentOp(**this));
 }
 
+namespace {
+
+bool isRemote(Value device_id, Value core_id) {
+  return device_id != nullptr || core_id != nullptr;
+}
+
+template <typename OpTy>
+bool isRemote(OpTy op) {
+  return isRemote(op.getDeviceId(), op.getCoreId());
+}
+
+}  // namespace
+
 LogicalResult SemaphoreSignalOp::verify() {
   MemRefType sem_type = getSemaphore().getType();
   if (sem_type.getRank() != 0) {
@@ -1658,7 +1674,7 @@ LogicalResult SemaphoreSignalOp::verify() {
   CoreType issuing_core_type = GetCoreTypeOfParentOp(**this);
   CoreType target_core_type = getTargetCoreType();
 
-  if (getCoreId() == nullptr && getDeviceId() == nullptr) {
+  if (!isRemote(*this)) {
     if (target_core_type != issuing_core_type) {
       return emitOpError(
           absl::StrFormat("Target core type (%s) must match source core type "
@@ -1685,6 +1701,140 @@ LogicalResult SemaphoreWaitOp::verify() {
   return success();
 }
 
+namespace {
+
+bool isSparseCoreStreamLocalMemory(tpu::MemorySpaceAttr mem_space,
+                                   CoreType issuing_core) {
+  if (mem_space.getCoreType().value_or(issuing_core) != issuing_core) {
+    return false;
+  }
+  if (issuing_core == CoreType::kScVectorSubcore) {
+    return mem_space.getValue() == MemorySpace::kVmem;
+  }
+  if (issuing_core == CoreType::kScScalarSubcore) {
+    return mem_space.getValue() == MemorySpace::kSmem;
+  }
+  return false;
+}
+
+LogicalResult verifySparseCoreDmaSemaphores(
+    Operation* op, tpu::MemorySpaceAttr source_mem_space,
+    tpu::MemorySpaceAttr target_mem_space, Value source_semaphore,
+    Value target_semaphore, bool is_remote, CoreType issuing_core) {
+  if (is_remote) {
+    return success();
+  }
+  bool src_is_local =
+      isSparseCoreStreamLocalMemory(source_mem_space, issuing_core);
+  bool tgt_is_local =
+      isSparseCoreStreamLocalMemory(target_mem_space, issuing_core);
+  if (!src_is_local && tgt_is_local) {
+    if (source_semaphore != nullptr) {
+      return op->emitOpError(
+          "Source semaphores are unsupported for transfers from a "
+          "non-local memory to local memory on SparseCore");
+    }
+  }
+  return success();
+}
+
+LogicalResult verifyCommonDmaParams(
+    Operation* op, MemRefType source_ty, MemRefType target_ty,
+    TypedValue<MemRefType> source_sem, TypedValue<MemRefType> target_sem,
+    Value device_id, Value core_id, Value subcore_id, int priority,
+    bool strict_ordering, CoreType issuing_core) {
+  Type sem_elem_type = nullptr;
+
+  if (target_sem) {
+    MemRefType target_sem_type = getMemRefType(target_sem);
+    if (target_sem_type.getRank() != 0) {
+      return op->emitOpError("DMA target semaphore must be rank 0");
+    }
+    sem_elem_type = target_sem_type.getElementType();
+  }
+
+  if (source_sem) {
+    MemRefType source_sem_type = getMemRefType(source_sem);
+    if (source_sem_type.getRank() != 0) {
+      return op->emitOpError("DMA source semaphore reference must be rank 0");
+    }
+    if (sem_elem_type && source_sem_type.getElementType() != sem_elem_type) {
+      return op->emitOpError(
+          "DMA source and target semaphore must have the same type");
+    }
+    if (!sem_elem_type) {
+      sem_elem_type = source_sem_type.getElementType();
+    }
+  }
+
+  if (source_ty.getElementType() != target_ty.getElementType()) {
+    return op->emitOpError("DMA source and target element type mismatch");
+  }
+  if (source_ty.getShape() != target_ty.getShape()) {
+    return op->emitOpError("DMA source and target shape mismatch.");
+  }
+
+  bool is_remote = isRemote(device_id, core_id);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+  if (is_sc) {
+    if (source_ty.getMemorySpace() == nullptr) {
+      return op->emitOpError(
+          "Source memory space must be provided for SparseCore DMA");
+    }
+    if (target_ty.getMemorySpace() == nullptr) {
+      return op->emitOpError(
+          "Target memory space must be provided for SparseCore DMA");
+    }
+  }
+
+  if (priority < 0 || priority > 1) {
+    return op->emitOpError(
+               "Not implemented: only support priority 0 or 1, but got ")
+           << priority;
+  }
+  if (priority != 0 && is_remote) {
+    return op->emitOpError(
+        "Not implemented: non-zero priority is not supported for remote DMA");
+  }
+  if (source_sem &&
+      getRefCoreType(source_sem).value_or(issuing_core) != issuing_core) {
+    return op->emitOpError(
+        "Source semaphore and source ref core type mismatched");
+  }
+  // If the target core_type is different from the issuing core_type,
+  // the specific core_id must be provided. The device_id is irrelevant here.
+  CoreType target_core = getRefCoreType(target_sem).value_or(issuing_core);
+  if (target_core != issuing_core && core_id == nullptr) {
+    return op->emitOpError(
+        absl::StrFormat("Core id must be specified when target core type (%v) "
+                        "is different from source core type (%v)",
+                        target_core, issuing_core));
+  }
+  if (strict_ordering && issuing_core != CoreType::kScScalarSubcore &&
+      issuing_core != CoreType::kScVectorSubcore) {
+    return op->emitOpError(
+        "Strict ordering is only supported on the SC scalar and vector "
+        "subcores");
+  }
+  if (sem_elem_type && isa<SemaphoreType>(sem_elem_type)) {
+    if (HasMemorySpace(source_ty, MemorySpace::kSmem, CoreType::kTc) ||
+        HasMemorySpace(target_ty, MemorySpace::kSmem, CoreType::kTc)) {
+      return op->emitOpError(
+          "Non-DMA semaphores are not supported for DMAs involving SMEM");
+    }
+  }
+  // Subcore ID applies only to SC vector subcore DMAs.
+  if (target_core != CoreType::kScVectorSubcore && subcore_id != nullptr) {
+    return op->emitOpError(
+        "Subcore id should not be set unless target core type is SC vector "
+        "subcore");
+  }
+  return success();
+}
+
+}  // namespace
+
 void EnqueueDMAOp::build(OpBuilder& builder, OperationState& state,
                          Value source, Value source_semaphore, Value target,
                          Value target_semaphore, Value device_id, Value core_id,
@@ -1698,97 +1848,52 @@ mlir::tpu::CoreType EnqueueDMAOp::getTargetCoreType() {
 }
 
 LogicalResult EnqueueDMAOp::verify() {
-  Value target_sem = getTargetSemaphore();
-  if (!target_sem) {
-    // TODO: b/501204503 - Support optional source and destination semaphores.
-    return emitOpError("EnqueueDMA target semaphore must be provided.");
-  }
-  MemRefType target_sem_type = getMemRefType(target_sem);
-  if (target_sem_type.getRank() != 0) {
-    return emitOpError("DMA target semaphore must be rank 0");
-  }
-  Type target_sem_elem_type = target_sem_type.getElementType();
-
-  Value source_sem = getSourceSemaphore();
-  if (source_sem) {
-    MemRefType source_sem_type = getMemRefType(source_sem);
-    if (source_sem_type.getRank() != 0) {
-      return emitOpError("DMA source semaphore reference must be rank 0");
-    }
-    if (source_sem_type.getElementType() != target_sem_elem_type) {
-      return emitOpError(
-          "DMA source and target semaphore must have the same type");
-    }
-  }
   MemRefType source_ty = getMemRefType(getSource());
   MemRefType target_ty = getMemRefType(getTarget());
-  if (source_ty.getElementType() != target_ty.getElementType()) {
-    return emitOpError("DMA source and target element type mismatch");
-  }
-  if (source_ty.getShape() != target_ty.getShape()) {
-    return emitOpError("DMA source and target shape mismatch.");
+  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
+  bool is_remote = isRemote(*this);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+
+  if (failed(verifyCommonDmaParams(
+          getOperation(), source_ty, target_ty, getSourceSemaphore(),
+          getTargetSemaphore(), getDeviceId(), getCoreId(), getSubcoreId(),
+          getPriority(), getStrictOrdering(), issuing_core))) {
+    return failure();
   }
 
-  if (getDeviceId() || getCoreId()) {
+  if (is_remote) {
     if (!getSourceSemaphore()) {
       return emitOpError(
           "DMA source semaphore must be specified when device_id or core_id is "
           "specified");
     }
   }
-  bool is_remote = getDeviceId() || getCoreId();
-  if (getSourceSemaphore()) {
-    // TODO: b/501204503 - Support optional source and destination semaphores.
-    if (!is_remote) {
+
+  if (is_sc) {
+    auto source_mem_space =
+        dyn_cast_or_null<tpu::MemorySpaceAttr>(source_ty.getMemorySpace());
+    auto target_mem_space =
+        dyn_cast_or_null<tpu::MemorySpaceAttr>(target_ty.getMemorySpace());
+    if (source_mem_space != nullptr && target_mem_space != nullptr) {
+      if (failed(verifySparseCoreDmaSemaphores(
+              getOperation(), source_mem_space, target_mem_space,
+              getSourceSemaphore(), getTargetSemaphore(), is_remote,
+              issuing_core))) {
+        return failure();
+      }
+    }
+  } else {
+    if (getTargetSemaphore() == nullptr) {
+      return emitOpError("DMA target semaphore must be specified");
+    }
+    if (!is_remote && getSourceSemaphore() != nullptr) {
       return emitOpError(
           "DMA destination device_id or core_id must be specified when source "
           "semaphore is specified");
     }
   }
-  int priority = getPriority();
-  if (priority < 0 || priority > 1) {
-    return emitOpError(
-               "Not implemented: only support priority 0 or 1, but got ")
-           << priority;
-  }
-  if (priority != 0 && is_remote) {
-    return emitOpError(
-        "Not implemented: non-zero priority is not supported for remote DMA");
-  }
-  // If the target core_type is different from the issuing core_type,
-  // the specific core_id must be provided. The device_id is irrelevant here.
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  CoreType target_core = getTargetCoreType();
-  if (getSourceSemaphore() &&
-      getRefCoreType(getSourceSemaphore()).value_or(issuing_core) !=
-          issuing_core) {
-    return emitOpError("Source semaphore and source ref core type mismatched");
-  }
-  if (target_core != issuing_core && getCoreId() == nullptr) {
-    return emitOpError(
-        absl::StrFormat("Core id must be specified when target core type (%v) "
-                        "is different from source core type (%v)",
-                        target_core, issuing_core));
-  }
-  if (getStrictOrdering() && issuing_core != CoreType::kScScalarSubcore &&
-      issuing_core != CoreType::kScVectorSubcore) {
-    return emitOpError(
-        "Strict ordering is only supported on the SC scalar and vector "
-        "subcores");
-  }
-  if (isa<SemaphoreType>(target_sem_elem_type)) {
-    if (HasMemorySpace(source_ty, MemorySpace::kSmem, CoreType::kTc) ||
-        HasMemorySpace(target_ty, MemorySpace::kSmem, CoreType::kTc)) {
-      return emitOpError(
-          "Non-DMA semaphores are not supported for DMAs involving SMEM");
-    }
-  }
-  // Subcore ID applies only to SC vector subcore DMAs.
-  if (target_core != CoreType::kScVectorSubcore && getSubcoreId() != nullptr) {
-    return emitOpError(
-        "Subcore id should not be set unless target core type is SC vector "
-        "subcore");
-  }
+
   return success();
 }
 
@@ -1872,29 +1977,63 @@ LogicalResult WaitDMA2Op::verify() {
 }
 
 LogicalResult WaitDMAOp::verify() {
+  MemRefType source_ty = getMemRefType(getSource());
+  MemRefType target_ty = getMemRefType(getTarget());
+  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
+  bool is_remote = isRemote(*this);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+
+  if (failed(verifyCommonDmaParams(
+          getOperation(), source_ty, target_ty, getSourceSemaphore(),
+          getTargetSemaphore(), getDeviceId(), getCoreId(), getSubcoreId(),
+          getPriority(), getStrictOrdering(), issuing_core))) {
+    return failure();
+  }
+
   bool wait_destination = getWaitTarget();
   TypedValue<MemRefType> sem =
       wait_destination ? getTargetSemaphore() : getSourceSemaphore();
-  if (!sem) {
-    // TODO: b/501204503 - Support optional source and destination semaphores
-    // with global reserved semaphore allocation tracking.
-    return emitOpError("The awaited semaphore must be provided");
-  }
 
-  if (getMemRefType(sem).getRank() != 0) {
-    return emitOpError("DMA wait semaphore must be rank 0");
+  if (is_sc) {
+    if (!is_remote) {
+      auto source_mem_space =
+          dyn_cast_or_null<tpu::MemorySpaceAttr>(source_ty.getMemorySpace());
+      auto target_mem_space =
+          dyn_cast_or_null<tpu::MemorySpaceAttr>(target_ty.getMemorySpace());
+      if (source_mem_space != nullptr && target_mem_space != nullptr) {
+        bool src_is_local =
+            isSparseCoreStreamLocalMemory(source_mem_space, issuing_core);
+        bool tgt_is_local =
+            isSparseCoreStreamLocalMemory(target_mem_space, issuing_core);
+        if (!src_is_local && tgt_is_local && !wait_destination) {
+          return emitOpError(
+              "Awaiting source read completion is unsupported for transfers "
+              "from a non-local memory to local memory on SparseCore");
+        }
+      }
+    }
+  } else {
+    if (wait_destination) {
+      if (getTargetSemaphore() == nullptr) {
+        return emitOpError("DMA target semaphore must be specified");
+      }
+      if (!is_remote && getSourceSemaphore() != nullptr) {
+        return emitOpError(
+            "DMA destination device_id or core_id must be specified when "
+            "source semaphore is specified");
+      }
+    } else {
+      if (getSourceSemaphore() == nullptr) {
+        return emitOpError("The awaited semaphore must be provided");
+      }
+    }
   }
-
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  if (getRefCoreType(sem).value_or(issuing_core) != issuing_core) {
-    return emitOpError("Can only await semaphores attached to the local core");
-  }
-
-  // Subcore ID applies only to SC vector subcore.
-  if (issuing_core != CoreType::kScVectorSubcore && getSubcoreId() != nullptr) {
-    return emitOpError(
-        "Subcore id should not be set unless issuing core type is SC vector "
-        "subcore");
+  if (sem) {
+    if (getRefCoreType(sem).value_or(issuing_core) != issuing_core) {
+      return emitOpError(
+          "Can only await semaphores attached to the local core");
+    }
   }
 
   return success();

@@ -473,5 +473,57 @@ ENTRY entry {
                           triple, data_layout, mlir_context));
 }
 
+TEST_F(TritonEmitterDevicelessTest,
+       AllGatherFusionUsesTiledHloComputationWhenTilingPropagationDisabled) {
+  constexpr absl::string_view kHloText = R"(
+f {
+  param0 = f32[128,128]{1,0} parameter(0)
+  ROOT result = f32[256,128]{1,0} all-gather(param0),
+    replica_groups={{0,1}}, dimensions={0}
+}
+
+ENTRY entry {
+  p0 = f32[128,128]{1,0} parameter(0)
+  ROOT fusion = f32[256,128]{1,0} fusion(p0),
+    kind=kCustom, calls=f,
+    backend_config={
+      "fusion_backend_config": {
+        "kind": "__triton_collective",
+        "block_level_fusion_config": {
+          "num_warps": "4",
+          "output_tiles": [{sizes: [16,16]}],
+          "num_ctas": 1,
+          "num_stages": 1,
+          "is_tma_allowed": false,
+          "is_warp_specialization_allowed": false
+        }
+      }
+    }
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  // Explicitly ensure xla_gpu_experimental_enable_tiling_propagation is false.
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(false);
+
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  ASSERT_NE(fusion, nullptr);
+
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  ASSERT_OK_AND_ASSIGN(const auto gpu_backend_config,
+                       fusion->backend_config<GpuBackendConfig>());
+  EXPECT_OK(CreateTritonModule("test_fn", *fusion, dev_info,
+                               BlockLevelParameters::FromBlockLevelFusionConfig(
+                                   gpu_backend_config.fusion_backend_config()
+                                       .block_level_fusion_config()),
+                               mlir_context));
+}
+
 }  // namespace
 }  // namespace xla::gpu

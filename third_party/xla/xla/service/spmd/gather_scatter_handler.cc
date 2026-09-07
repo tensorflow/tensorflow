@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -655,6 +656,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     auto filtered = b->AddInstruction(HloInstruction::CreateTernary(
         pgather->shape(), HloOpcode::kSelect, broadcast_filter,
         CreateZero(pgather->shape(), b), pgather));
+    if (gather->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+      filtered->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+    }
     // All-reduce along trivially sliced dimensions.
     auto ar = operand.state().partitioner->AllReduceAlongShardingDims(
         b, filtered, original_operand_sharding, operand.state().next_channel_id,
@@ -1088,6 +1092,9 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
   HloInstruction* filtered = b->AddInstruction(HloInstruction::CreateTernary(
       pgather->shape(), HloOpcode::kSelect, broadcast_filter,
       CreateZero(pgather->shape(), b), pgather));
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    filtered->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   HloInstruction* ar = operand.state().partitioner->AllReduceAlongShardingDims(
       b, filtered, operand.sharding(), operand.state().next_channel_id,

@@ -185,10 +185,11 @@ struct Helper {
 
   // Encoder of simple type T to a string.  We do a copy.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
     port::AssignRefCounted(
         absl::string_view(in->base<const char>(), in->size()), in, out);
+    return true;
   }
 
   // Decoder of simple type T. Copy the bytes from "in" into the
@@ -241,8 +242,9 @@ struct Helper<tstring> {
   // Encodes "n" elements of type string stored in "in" into Cord
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
     port::EncodeStringList(in->base<const tstring>(), n, out);
+    return true;
   }
 
   // Decodes "n" elements of type string from "in" and constructs a
@@ -278,9 +280,10 @@ struct Helper<ResourceHandle> {
   // Encodes "n" elements of type ResourceHandle stored in "in" into destination
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
     EncodeResourceHandleList(in->base<const ResourceHandle>(), n,
                              port::NewStringListEncoder(out));
+    return true;
   }
 
   // Decodes "n" elements of type string from "in" and constructs a
@@ -310,9 +313,9 @@ struct Helper<Variant> {
   // Encodes "n" elements of type Variant stored in "in" into destination
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
-    EncodeVariantList(in->base<const Variant>(), n,
-                      port::NewStringListEncoder(out));
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
+    return EncodeVariantList(in->base<const Variant>(), n,
+                             port::NewStringListEncoder(out));
   }
 
   // Decodes "n" elements of type Variant from "in" and constructs a
@@ -462,14 +465,15 @@ struct ProtoHelper<Variant> {
   static size_t NumElements(const TensorProto& proto) {
     return proto.variant_val().size();
   }
-  static void Fill(const Variant* data, size_t n, TensorProto* proto) {
+  static bool Fill(const Variant* data, size_t n, TensorProto* proto) {
     auto* variant_values = proto->mutable_variant_val();
     variant_values->Clear();
     for (size_t i = 0; i < n; ++i) {
       VariantTensorData tmp;
-      data[i].Encode(&tmp);
-      tmp.ToProto(variant_values->Add());
+      if (!data[i].Encode(&tmp)) return false;
+      if (!tmp.ToProto(variant_values->Add())) return false;
     }
+    return true;
   }
 };
 
@@ -916,13 +920,18 @@ TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
 // Copies T[n] stored in the buffer "in" into the repeated field in
 // "out" corresponding to type T.
 template <typename T>
-void ToProtoField(const TensorBuffer& in, int64_t n, TensorProto* out) {
+bool ToProtoField(const TensorBuffer& in, int64_t n, TensorProto* out) {
   const T* data = in.base<const T>();
   // NOTE: T may not the same as
   // ProtoHelper<T>::FieldType::value_type.  E.g., T==int16,
   // ProtoHelper<T>::FieldType::value_type==int32.  If performance is
   // critical, we can specialize T=float and do memcpy directly.
-  ProtoHelper<T>::Fill(data, n, out);
+  if constexpr (std::is_same_v<T, Variant>) {
+    return ProtoHelper<T>::Fill(data, n, out);
+  } else {
+    ProtoHelper<T>::Fill(data, n, out);
+    return true;
+  }
 }
 
 void RefIfNonNull(core::RefCounted* buf) {
@@ -1281,23 +1290,25 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   return true;
 }
 
-void Tensor::AsProtoField(TensorProto* proto) const {
+bool Tensor::AsProtoField(TensorProto* proto) const {
   proto->Clear();
   shape_.AsProto(proto->mutable_tensor_shape());
   proto->set_dtype(dtype());
   if (buf_) {
-    CASES(dtype(), ToProtoField<T>(*buf_, shape_.num_elements(), proto));
+    CASES(dtype(), return ToProtoField<T>(*buf_, shape_.num_elements(), proto));
   }
+  return true;
 }
 
-void Tensor::AsProtoTensorContent(TensorProto* proto) const {
+bool Tensor::AsProtoTensorContent(TensorProto* proto) const {
   proto->Clear();
   proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
   if (buf_) {
-    CASES(dtype(), Helper<T>::Encode(buf_, shape_.num_elements(),
-                                     proto->mutable_tensor_content()));
+    CASES(dtype(), return Helper<T>::Encode(buf_, shape_.num_elements(),
+                                            proto->mutable_tensor_content()));
   }
+  return true;
 }
 
 size_t Tensor::TotalBytes() const {

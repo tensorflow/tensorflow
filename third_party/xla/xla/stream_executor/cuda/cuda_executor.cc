@@ -218,13 +218,13 @@ absl::StatusOr<CUmodule> LoadPtx(Context* context, const char* ptx_contents) {
 
         if (!status.ok()) {
           XLA_LOG_DEVICE(ERROR, context->device_ordinal())
-              << "failed to load PTX text as a module: " << status;
+              << "Failed to load PTX text as a module: " << status;
           // As a precaution for null termination of the API-provided value,
           // ensure that at least the last byte is null.
           error_log_buffer[error_log_buffer_bytes ? error_log_buffer_bytes - 1
                                                   : 0] = '\0';
           XLA_LOG_DEVICE(ERROR, context->device_ordinal())
-              << "error log buffer (" << error_log_buffer_bytes
+              << "Error log buffer (" << error_log_buffer_bytes
               << " bytes): " << error_log_buffer.data();
           if (absl::StrContains(error_log_buffer.data(),
                                 "Register allocation failed")) {
@@ -311,7 +311,7 @@ void UnloadCudaModule(Context* context, CUmodule module) {
   auto status = cuda::ToStatus(cuModuleUnload(module));
   if (!status.ok()) {
     XLA_LOG_DEVICE(ERROR, context->device_ordinal())
-        << "failed to unload module " << module << "; leaking: " << status;
+        << "Failed to unload module " << module << "; leaking: " << status;
   }
 }
 
@@ -487,7 +487,7 @@ bool GetDeviceTotalMemory(CUdevice device, uint64_t* result) {
   auto status = cuda::ToStatus(cuDeviceTotalMem(&value, device));
   if (!status.ok()) {
     XLA_LOG_DEVICE(ERROR, device)
-        << "failed to query total available memory: " << status;
+        << "Failed to query total available memory: " << status;
     return false;
   }
 
@@ -500,7 +500,7 @@ bool IsEccEnabled(CUdevice device, bool* result) {
   auto status = cuda::ToStatus(
       cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_ECC_ENABLED, device));
   if (!status.ok()) {
-    XLA_LOG_DEVICE(ERROR, device) << "failed to query ECC status: " << status;
+    XLA_LOG_DEVICE(ERROR, device) << "Failed to query ECC status: " << status;
     return false;
   }
 
@@ -517,7 +517,7 @@ std::string GetPCIBusID(CUdevice device) {
       cuDeviceGetPCIBusId(raw_pci_bus_id.data(), kBufferSize, device));
   if (!status.ok()) {
     XLA_LOG_DEVICE(ERROR, device)
-        << "failed to query PCI bus id for device: " << status;
+        << "Failed to query PCI bus id for device: " << status;
     return "";
   }
   if (!absl::c_linear_search(raw_pci_bus_id, '\0')) {
@@ -534,7 +534,7 @@ bool HostRegister(Context* context, void* location, uint64_t size) {
   auto status = cuda::ToStatus(
       cuMemHostRegister(location, size, CU_MEMHOSTREGISTER_PORTABLE));
   if (!status.ok()) {
-    LOG(ERROR) << "error registering host memory at " << location << ": "
+    LOG(ERROR) << "Error registering host memory at " << location << ": "
                << status;
     return false;
   }
@@ -1094,7 +1094,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
 
     CUmodule module = gpu_binary_to_module_.at(module_handle).module;
     XLA_VLOG_DEVICE(2, device_ordinal())
-        << "getting function " << kernel_name << " from module " << module;
+        << "Getting function " << kernel_name << " from module " << module;
     ABSL_ASSIGN_OR_RETURN(
         CUfunction function,
         GetModuleFunction(cuda_context_, module, kernel_name.c_str()));
@@ -1450,7 +1450,7 @@ absl::Status CudaExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                       xla::XlaFormatDevice(device_ordinal()),
                       AsCudaDevicePtr(gpu_dst), host_src, size, size)));
   XLA_VLOG_DEVICE(2, device_ordinal())
-      << "successfully enqueued sync memcpy h2d of " << size << " bytes";
+      << "Successfully enqueued sync memcpy H2D of " << size << " bytes";
   return absl::OkStatus();
 }
 
@@ -1464,7 +1464,7 @@ absl::Status CudaExecutor::SynchronousMemcpy(void* host_dst,
                       "host dst: %p; GPU src: %llx; size: %u=0x%x",
                       xla::XlaFormatDevice(device_ordinal()), host_dst,
                       AsCudaDevicePtr(gpu_src), size, size)));
-  XLA_VLOG_DEVICE(2, device_ordinal()) << "successfully sync memcpy'd d2h of "
+  XLA_VLOG_DEVICE(2, device_ordinal()) << "Successfully sync memcpy'd D2H of "
                                        << size << " bytes to " << host_dst;
   return absl::OkStatus();
 }

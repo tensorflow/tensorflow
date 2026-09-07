@@ -9213,7 +9213,7 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
     if (i < async_wrapped_computation->num_parameters()) {
       Shape* param_shape =
           async_wrapped_computation->parameter_instruction(i)->mutable_shape();
-      if (!ShapeUtil::Compatible(
+      if (!ShapeUtil::Equal(
               *param_shape,
               called_computation->parameter_instruction(i)->shape())) {
         *param_shape = called_computation->parameter_instruction(i)->shape();
@@ -9230,7 +9230,7 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
   Shape* root_shape =
       async_wrapped_computation->root_instruction()->mutable_shape();
   const Shape& result_shape = called_computation->root_instruction()->shape();
-  if (!ShapeUtil::Compatible(*root_shape, result_shape)) {
+  if (!ShapeUtil::Equal(*root_shape, result_shape)) {
     *root_shape = result_shape;
   }
 }

@@ -466,6 +466,18 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([5]))
 
+  def testAverageZeroWeights(self):
+    # NumPy raises ZeroDivisionError when weights sum to zero.
+    x = np_array_ops.array([1, 2, 3])
+    with self.assertRaises(errors.InvalidArgumentError):
+      np_math_ops.average(x, weights=np_array_ops.array([0, 0, 0]))
+
+    x2 = np_array_ops.ones([2, 2])
+    with self.assertRaises(errors.InvalidArgumentError):
+      np_math_ops.average(
+          x2, axis=0, weights=np_array_ops.array([[0, 1], [0, 1]])
+      )
+
   def testClip(self):
 
     def run_test(arr, *args, **kwargs):
@@ -668,6 +680,37 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(a1.flatten('C'), a2.flatten('K'))
     with self.assertRaises(ValueError):
       a2.flatten('invalid')
+
+  def testDiff(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 6, 8]])
+    self.match(np_math_ops.diff(a), np.diff(a))
+    self.match(np_math_ops.diff(a, axis=0), np.diff(a, axis=0))
+    self.match(np_math_ops.diff(a, axis=-1), np.diff(a, axis=-1))
+    self.match(np_math_ops.diff(a, n=2, axis=1), np.diff(a, n=2, axis=1))
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1, 3, 6], dtype=np.int32)),
+        np.diff(np.array([1, 3, 6], dtype=np.int32)),
+    )
+    self.match(
+        np_math_ops.diff(np_array_ops.array([True, False, True])),
+        np.diff(np.array([True, False, True])),
+    )
+    # Dtype and value parity for float inputs and n=0.
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1.5, 2.5, 4.0], np.float32)),
+        np.diff(np.array([1.5, 2.5, 4.0], dtype=np.float32)),
+    )
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1, 3, 6], dtype=np.int32), n=0),
+        np.diff(np.array([1, 3, 6], dtype=np.int32), n=0),
+    )
+    # NumPy raises ValueError for 0-d inputs too.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.diff(np_array_ops.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.diff(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.diff(a, axis=-3)
 
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)

@@ -435,10 +435,10 @@ ENTRY e {
   p1 = f32[32,7] parameter(1)
   d = f32[6,7] dot(p0, p1),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
-  p2 = s8[3,14] parameter(2)
-  c1 = f32[3,14] convert(p2)
-  b1 = f32[6,7] bitcast(c1)
-  ROOT a = f32[6,7] add(d, b1)
+  p2 = f32[2,3] parameter(2)
+  b1 = f32[6] bitcast(p2)
+  br = f32[6,7] broadcast(b1), dimensions={0}
+  ROOT a = f32[6,7] add(d, br)
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -456,14 +456,14 @@ ENTRY e {
   d = f32[6,7] dot(p0, p1),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
   b1 = f32[3,14] bitcast(d)
-  p2 = s8[3,14] parameter(2)
-  c1 = f32[3,14] convert(p2)
-  ROOT a = f32[3,14] add(b1, c1)
+  p2 = f32[3,14] parameter(2)
+  ROOT a = f32[3,14] add(b1, p2)
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Bitcast(m::Fusion(m::Parameter(), m::Parameter(),
-                                              m::Bitcast(m::Parameter())))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(m::Fusion(m::Bitcast(m::Parameter()),
+                                      m::Parameter(), m::Parameter()))));
 }
 
 TEST_P(GemmFusionTestV2, BitcastIsHoistedAboveConstants) {

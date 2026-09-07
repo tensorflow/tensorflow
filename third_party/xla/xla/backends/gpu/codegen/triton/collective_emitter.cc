@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -1052,8 +1053,22 @@ absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
   block_level_config.set_num_ctas(1);    // No block-level clustering.
   block_level_config.set_num_stages(1);  // No pipelining of loops.
   xtile::Tile* output_tile = block_level_config.add_output_tiles();
-  const llvm::SmallVector<int64_t> tile_sizes =
+  llvm::SmallVector<int64_t> tile_sizes =
       GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
+  // For AllGather, the tile on the gather dimension must not exceed the
+  // per-rank size. Otherwise a single tile would span multiple replicas,
+  // but the tiling framework assigns a single replica_id per tile.
+  if (instr->opcode() == HloOpcode::kAllGather) {
+    const auto* all_gather = Cast<HloAllGatherInstruction>(instr);
+    const int64_t gather_dim = all_gather->all_gather_dimension();
+    const int64_t num_devices =
+        std::get<AllGatherInfo>(collective_info).num_devices;
+    const int64_t per_rank_size =
+        output_shape.dimensions(gather_dim) / num_devices;
+    tile_sizes[gather_dim] = std::min(
+        tile_sizes[gather_dim], static_cast<int64_t>(llvm::bit_floor(
+                                    static_cast<uint64_t>(per_rank_size))));
+  }
   output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
   ABSL_RETURN_IF_ERROR(
       ValidateBlockLevelFusionConfig(block_level_config, collective_info));
@@ -1087,6 +1102,25 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
     case HloOpcode::kAllReduce:
       return GetAllReduceUnmanagedKernelArguments(
           computation, Cast<HloAllReduceInstruction>(root));
+    case HloOpcode::kAllGather: {
+      // AllGather only needs the 3 metadata args (rank, signal_value,
+      // signal_buffers). No per-parameter scratch buffer args because the
+      // input parameter already maps to the symmetric scratch buffer via
+      // the pointer table mechanism in RequiredReplicaIdBounds.
+      const int32_t num_devices = Cast<HloAllGatherInstruction>(root)
+                                      ->device_list()
+                                      ->num_devices_per_group();
+      std::vector<Shape> unmanaged_arguments;
+      unmanaged_arguments.reserve(kNumCollectiveMetadataArgs);
+      // rank and signal_value
+      unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+      unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+      // signal_buffers: pointer-to-pointer table
+      static constexpr int32_t kMaxBlocksPerGrid = 32;
+      unmanaged_arguments.push_back(
+          ShapeUtil::MakeShape(S32, {num_devices, kMaxBlocksPerGrid}));
+      return unmanaged_arguments;
+    }
     default:
       return std::vector<Shape>();
   }
@@ -1103,6 +1137,16 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
   fn_arg_types.push_back(ttir::PointerType::get(
       ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace),
       kGlobalAddressSpace));
+
+  // For AllGather, the input parameter already maps to the symmetric scratch
+  // buffer via RequiredReplicaIdBounds/SelectBufferOp, so we don't add
+  // per-parameter scratch buffer opaque args. Only AllReduce (and future ops
+  // that need explicit remote buffer pointers) add them.
+  const HloInstruction* root = hlo_computation->root_instruction();
+  if (root->opcode() == HloOpcode::kAllGather) {
+    return kNumCollectiveMetadataArgs;
+  }
+
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     PrimitiveType type = p->shape().element_type();
     mlir::Type ir_type;
@@ -1158,6 +1202,79 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
                           "opcode: %s",
                           HloOpcodeString(collective->opcode())));
   }
+}
+
+CollectiveCodegenConfig CreateCollectiveCodegenConfig(
+    const HloInstruction* instr) {
+  const HloInstruction* collective = instr;
+  if (instr->opcode() == HloOpcode::kFusion) {
+    collective = instr->fused_instructions_computation()->root_instruction();
+  }
+  CollectiveCodegenConfig config;
+  auto gpu_config = collective->backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return config;
+  }
+  const auto strategy =
+      gpu_config->collective_backend_config().kernel_strategy();
+  // One-shot AllGather: the runtime copies input to symmetric scratch and the
+  // kernel needs a barrier before reading peers' data.
+  if (collective->opcode() == HloOpcode::kAllGather &&
+      strategy == CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT) {
+    config.copy_input_to_scratch = true;
+    config.emit_entry_barrier = true;
+  }
+  return config;
+}
+
+absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
+                                        int32_t world_size) {
+  // Find the xtile::EntryFuncOp in the module.
+  xtile::EntryFuncOp entry_func = nullptr;
+  for (auto fn : module.getOps<xtile::EntryFuncOp>()) {
+    entry_func = fn;
+    break;
+  }
+  if (!entry_func) {
+    return absl::InternalError(
+        "No xtile::EntryFuncOp found in module for barrier insertion.");
+  }
+
+  // The opaque args are appended after the regular input/output args.
+  // Their count is stored in the "num_opaque_args" attribute.
+  auto num_opaque_attr =
+      entry_func->getAttrOfType<mlir::IntegerAttr>("num_opaque_args");
+  if (!num_opaque_attr ||
+      num_opaque_attr.getInt() < kNumCollectiveMetadataArgs) {
+    return absl::InternalError(
+        absl::StrCat("Expected at least ", kNumCollectiveMetadataArgs,
+                     " opaque args for collective entry barrier, got ",
+                     num_opaque_attr ? num_opaque_attr.getInt() : 0));
+  }
+
+  // The opaque args start at (total_args - num_opaque_args).
+  int32_t total_args = entry_func.getNumArguments();
+  int32_t opaque_start =
+      total_args - num_opaque_attr.getInt() - kNumTileIndexArgs;
+  // Layout: opaque[0]=rank, opaque[1]=signal_value, opaque[2]=signal_buffers
+  mlir::Value rank_arg = entry_func.getArgument(opaque_start);
+  mlir::Value signal_value_arg = entry_func.getArgument(opaque_start + 1);
+  mlir::Value signal_buffers_arg = entry_func.getArgument(opaque_start + 2);
+
+  // Insert at the beginning of the entry block, right after program_id
+  // extraction (which is the first op). We want the barrier before any
+  // scf.for tile loop.
+  mlir::Block& entry_block = entry_func.front();
+  auto loc = entry_func.getLoc();
+  mlir::ImplicitLocOpBuilder builder(loc, &entry_block, entry_block.begin());
+
+  // Inter-block barrier via signal flags. This blocks until all
+  // remote ranks have also signaled.
+  mtx::BlockBarrierOp::create(builder, signal_buffers_arg, rank_arg,
+                              signal_value_arg,
+                              builder.getI32IntegerAttr(world_size));
+
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

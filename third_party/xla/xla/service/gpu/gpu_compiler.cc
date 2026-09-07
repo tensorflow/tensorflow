@@ -708,7 +708,7 @@ absl::Status RunPreSPMDPartitionerPasses(
 
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
-  // The TopkDecomposer generates a compare op with type=TOTALORDER and must
+  // The TopkDecomposer generates a compare op with order=TOTAL and must
   // run before the ComparisonExpander which rewrites such comparisons.
   pre_spmd_pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
     return instr->opcode() == HloOpcode::kTopK;

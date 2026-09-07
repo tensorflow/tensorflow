@@ -406,7 +406,8 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
   const int64_t shared_memory_limit =
       device_info.shared_memory_per_block_optin();
   for (const TiledHloInstruction* inst : all_instructions) {
-    if (inst->hlo()->opcode() != HloOpcode::kTranspose) {
+    if (inst->hlo()->opcode() != HloOpcode::kTranspose ||
+        inst->operands().empty()) {
       continue;
     }
     // The transposed operand (operand 0) is the tile that is staged in shared

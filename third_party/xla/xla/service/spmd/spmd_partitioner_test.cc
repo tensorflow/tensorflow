@@ -9880,6 +9880,28 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, GatherPartitionedOnTrivialSliceDimsUnreduced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[2,3,9] gather(%input, %indices), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+    slice_sizes={1,9}, sharding={unreduced}
+})";
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
 TEST_P(SpmdPartitioningTest,
        GatherPartitionedOnTrivialSliceDims_PartialReplicate) {
   absl::string_view hlo_string = R"(
@@ -13055,6 +13077,30 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   // Partitioning must succeed (no CHECK failure) and preserve the FFT.
+  bool has_fft = false;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFft) has_fft = true;
+  }
+  EXPECT_TRUE(has_fft);
+}
+
+TEST_P(SpmdPartitioningTest, Fft3DReplicatedShardingDoesNotCrash) {
+  // For an FFT instruction with replicated sharding, gspmd should not attempt
+  // to index into the empty sharding.dimensions().
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = c64[1,1,8] constant({{{(0,0),(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7)}}}),
+    sharding={replicated}
+  ROOT fft = c64[1,1,8] fft(c64[1,1,8] constant), fft_type=FFT, fft_length={8},
+    sharding={replicated}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
   bool has_fft = false;
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -17350,7 +17396,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17381,7 +17427,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17415,7 +17461,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17447,7 +17493,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17478,7 +17524,7 @@ region {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {

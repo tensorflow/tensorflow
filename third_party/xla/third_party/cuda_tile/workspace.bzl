@@ -13,4 +13,5 @@ def repo():
         sha256 = CUDA_TILE_SHA256,
         strip_prefix = "cuda-tile-{}".format(CUDA_TILE_COMMIT),
         urls = tf_mirror_urls("https://github.com/NVIDIA/cuda-tile/archive/{}.tar.gz".format(CUDA_TILE_COMMIT)),
+        patch_file = ["//third_party/cuda_tile:patches/constructor.patch"],
     )

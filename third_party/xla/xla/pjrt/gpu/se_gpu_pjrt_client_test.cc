@@ -229,13 +229,13 @@ TEST(StreamExecutorGpuClientTest, AsyncResultDefinitionEventUsesAsyncStream) {
 
   ASSERT_OK_AND_ASSIGN(auto definition,
                        GetDefinitionStreamInfo(results[0][0].get()));
-  auto* se_device = absl::down_cast<PjRtStreamExecutorDevice*>(
-      client->addressable_devices().front());
-  intptr_t compute_stream =
-      reinterpret_cast<intptr_t>(se_device->local_device_state()
-                                     ->compute_stream()
-                                     ->platform_specific_handle()
-                                     .stream);
+  auto* se_client = absl::down_cast<PjRtStreamExecutorClient*>(client.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      se_client->raw_client()->GetLocalDeviceState(
+          client->addressable_devices().front()->local_device_id()));
+  intptr_t compute_stream = reinterpret_cast<intptr_t>(
+      local_device_state->compute_stream()->platform_specific_handle().stream);
   EXPECT_NE(definition.stream, compute_stream);
 
   ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
@@ -2568,12 +2568,11 @@ TEST(StreamExecutorGpuClientTest, EventCaching) {
       absl::down_cast<PjRtStreamExecutorClient*>(client.get())
           ->async_work_runner();
   const auto& device = client->addressable_devices()[0];
-  // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
-  [[deprecated(
-      "remove after absl upgrade")]] LocalDeviceState* local_device_state =
-      absl::down_cast<const PjRtStreamExecutorDevice*>(device)
-          ->local_device_state();
-  ASSERT_TRUE(local_device_state != nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      absl::down_cast<PjRtStreamExecutorClient*>(client.get())
+          ->raw_client()
+          ->GetLocalDeviceState(device->local_device_id()));
   size_t sync_point0 = local_device_state->GetNextComputeStreamSyncPoint();
   TF_ASSERT_OK_AND_ASSIGN(auto event0,
                           local_device_state->GetEventForComputeStreamSyncPoint(

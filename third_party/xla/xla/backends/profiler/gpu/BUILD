@@ -301,6 +301,7 @@ xla_test(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/profiler/lib:scoped_annotation",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 

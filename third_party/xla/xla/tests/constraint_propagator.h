@@ -146,6 +146,8 @@ class ConstraintPropagator {
                              const ConstraintInterval& output_interval);
   void PropagateExpApprox(const HloInstruction* instruction,
                           const ConstraintInterval& output_interval);
+  void PropagateExpm1Approx(const HloInstruction* instruction,
+                            const ConstraintInterval& output_interval);
   void PropagatePowerApprox(const HloInstruction* instruction,
                             const ConstraintInterval& output_interval);
 

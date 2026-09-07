@@ -127,18 +127,6 @@ struct AllocationSegmentContext {
   bool only_extend_existing_allocation;
 };
 
-// Returns the latest schedule time at which `view` (a value colored
-// `view_color`, see Options::dus_view_color) still has its underlying storage
-// read through it: the max schedule time over the transitive closure of the
-// view's readers, following users that are themselves view colored. Exposed
-// for testing.
-//
-// REQUIRES: view->shape().IsTuple() == false.
-int64_t ViewExtendedTransitiveUseTime(
-    const HloInstruction* view, int64_t view_color,
-    const absl::flat_hash_map<const HloInstruction*, int64_t>&
-        instruction_schedule);
-
 // Compare asynchronous copies such that an earlier start time has the same or
 // earlier end time and an earlier end time has the same or earlier start time.
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b);

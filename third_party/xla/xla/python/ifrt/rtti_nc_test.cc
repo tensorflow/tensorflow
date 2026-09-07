@@ -56,6 +56,21 @@ class Depth7 : public RTTIExtends<Depth7, Depth6> {
   static char ID;  // NOLINT
 };
 
+class BaseWithoutId : public RTTIExtends<BaseWithoutId, RTTIRoot> {};
+// expected-error@* {{ThisT must define its own ID}}
+[[maybe_unused]] BaseWithoutId base_without_id;
+
+class BaseWithId : public RTTIExtends<BaseWithId, RTTIRoot> {
+ public:
+  static char ID;  // NOLINT
+};
+
+[[maybe_unused]] char BaseWithId::ID = 0;
+
+class DerivedWithoutId : public RTTIExtends<DerivedWithoutId, BaseWithId> {};
+// expected-error@* {{ThisT must define its own ID}}
+[[maybe_unused]] DerivedWithoutId derived_without_id;
+
 }  // namespace
 
 namespace {
@@ -99,6 +114,14 @@ TEST(RttiNcTest, UnrelatedType) {
   dyn_cast<DerivedB>(&derived_a);
   // expected-error@* {{Casting between disjoint/unrelated types}}
   dyn_cast<DerivedA>(&derived_b);
+}
+
+class UninstantiatedWithoutId
+    : public RTTIExtends<UninstantiatedWithoutId, RTTIRoot> {};
+
+TEST(RttiNcTest, MissingId) {
+  // expected-error@* {{ThisT must define its own ID}}
+  UninstantiatedWithoutId::classID();
 }
 
 }  // namespace

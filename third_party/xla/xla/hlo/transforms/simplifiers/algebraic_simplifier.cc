@@ -5701,8 +5701,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleCompare(
   HloInstruction* rhs;
   CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
 
-  if (Cast<HloCompareInstruction>(compare)->type() ==
-      Comparison::Type::kUnsigned) {
+  if (primitive_util::IsUnsignedIntegralType(lhs->shape().element_type())) {
     // X u<  0 -> false
     if (compare->comparison_direction() == ComparisonDirection::kLt &&
         IsAll(rhs, 0)) {

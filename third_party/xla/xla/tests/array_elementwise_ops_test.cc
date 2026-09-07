@@ -112,9 +112,6 @@ class ArrayElementwiseOpTest : public ClientLibraryTestRunnerMixin<
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
   ErrorSpec error_spec_{60 * kEpsF32, 60 * kEpsF32};
   ErrorSpec strict_error_spec_{100 * kEpsF64, 100 * kEpsF64};
-
-  template <typename ComplexT>
-  void TestComplexTanhUlps(int64_t max_ulps = 2);
 };
 
 class ArrayElementwiseOpTestParamCount
@@ -2951,91 +2948,6 @@ TEST_F(ArrayElementwiseOpTest, TanhF64sVector) {
 
   Tanh(input_literal);
   ComputeAndCompare(&builder, {}, strict_error_spec_);
-}
-
-template <typename T>
-std::vector<std::complex<T>> GetComplexTanhTestInputs() {
-  return {
-      // Small inputs where (exp(a))^2 - (exp(-a))^2 suffered precision loss
-      // due to exp2 cancellation on older TPUs:
-      {T(0.0017180424), T(0.0017180424)},
-      {T(-0.0017180424), T(0.0017180424)},
-      {T(0.0017180424), T(-0.0017180424)},
-      {T(-0.0017180424), T(-0.0017180424)},
-
-      // Other small magnitudes:
-      {T(1e-5), T(1e-5)},
-      {T(-1e-5), T(1e-5)},
-      {T(1e-4), T(1e-4)},
-      {T(-1e-4), T(-1e-4)},
-      {T(1e-3), T(1e-3)},
-      {T(-1e-3), T(-1e-3)},
-      {T(1e-2), T(1e-2)},
-      {T(0.05), T(0.05)},
-
-      // Points near or on axes:
-      {T(0.0), T(0.0)},
-      {T(1e-3), T(0.0)},
-      {T(0.0), T(1e-3)},
-      {T(-1e-3), T(0.0)},
-      {T(0.0), T(-1e-3)},
-
-      // Moderate inputs:
-      {T(0.5), T(0.5)},
-      {T(-0.5), T(0.5)},
-      {T(1.0), T(1.0)},
-      {T(2.0), T(-1.5)},
-
-      // Large inputs (overflow handling, Re(z) > 15 region where tanh(z) -> +/-
-      // 1):
-      {T(15.0), T(0.5)},
-      {T(-15.0), T(0.5)},
-      {T(20.0), T(1.0)},
-      {T(-20.0), T(1.0)},
-  };
-}
-
-template <typename ComplexT>
-void ArrayElementwiseOpTest::TestComplexTanhUlps(int64_t max_ulps) {
-  using RealT = typename ComplexT::value_type;
-  std::vector<ComplexT> xs = GetComplexTanhTestInputs<RealT>();
-  XlaBuilder builder(TestName());
-  auto a = ConstantR1<ComplexT>(&builder, xs);
-  Tanh(a);
-  ASSERT_OK_AND_ASSIGN(Literal actual, this->ExecuteAndTransfer(&builder, {}));
-  for (int64_t i = 0; i < xs.size(); ++i) {
-    ComplexT act = actual.Get<ComplexT>({i});
-    std::complex<double> zd(static_cast<double>(xs[i].real()),
-                            static_cast<double>(xs[i].imag()));
-    std::complex<double> ref = std::tanh(zd);
-    ComplexT exp(static_cast<RealT>(ref.real()),
-                 static_cast<RealT>(ref.imag()));
-
-    auto real_ulps = UlpDistance(act.real(), exp.real());
-    auto imag_ulps = UlpDistance(act.imag(), exp.imag());
-    ASSERT_TRUE(real_ulps.has_value())
-        << "NaN/Inf mismatch on real part for input " << xs[i];
-    ASSERT_TRUE(imag_ulps.has_value())
-        << "NaN/Inf mismatch on imag part for input " << xs[i];
-    EXPECT_LE(*real_ulps, max_ulps)
-        << "Real part ULP error exceeded for input " << xs[i]
-        << ": actual=" << act.real() << ", expected=" << exp.real()
-        << ", ulp_distance=" << *real_ulps;
-    EXPECT_LE(*imag_ulps, max_ulps)
-        << "Imag part ULP error exceeded for input " << xs[i]
-        << ": actual=" << act.imag() << ", expected=" << exp.imag()
-        << ", ulp_distance=" << *imag_ulps;
-  }
-}
-
-TEST_F(ArrayElementwiseOpTest, TanhC64s) { TestComplexTanhUlps<complex64>(); }
-
-TEST_F(ArrayElementwiseOpTest, TanhC128s) {
-  // Float64 transcendentals on TPU use software emulation, which has an error
-  // bound of up to 100 ULPs (matching strict_error_spec_). On platforms with
-  // native float64 units (CPU, GPU), enforce <= 2 ULPs.
-  const int64_t max_ulps = test::DeviceTypeIs(test::kTpu) ? 100 : 2;
-  TestComplexTanhUlps<complex128>(max_ulps);
 }
 
 TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {

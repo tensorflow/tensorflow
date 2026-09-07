@@ -15,6 +15,7 @@ limitations under the License.
 
 // Native XLA implementations of simple unary Ops
 
+#include <array>
 #include <cmath>
 
 #include "absl/status/statusor.h"
@@ -27,9 +28,14 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
+
+constexpr std::array<DataType, 7> kReciprocalGpuTypes = {
+    {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16, DT_INT64, DT_COMPLEX64,
+     DT_COMPLEX128}};
 
 #define XLAJIT_MAKE_UNARY(NAME, COMPUTATION)                           \
   class NAME##Op : public XlaOpKernel {                                \
@@ -44,6 +50,15 @@ namespace {
     }                                                                  \
   };                                                                   \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op);
+
+// We don't have kernels for all integer types, so we limit the supported types.
+#define REGISTER_XLA_RECIPROCAL_OP(BUILDER, OP)                      \
+  REGISTER_XLA_OP(BUILDER.TypeConstraint("T", kFloatAndComplexTypes) \
+                      .Device(DEVICE_CPU_XLA_JIT),                   \
+                  OP);                                               \
+  REGISTER_XLA_OP(BUILDER.TypeConstraint("T", kReciprocalGpuTypes)   \
+                      .Device(DEVICE_GPU_XLA_JIT),                   \
+                  OP)
 
 XLAJIT_MAKE_UNARY(ComplexAbs, xla::Abs(x));
 
@@ -72,7 +87,9 @@ REGISTER_XLA_OP(Name("IsInf"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsNan"), MlirXlaOpKernel);
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, xla::ScalarLike(x, 1.0) / x);
+REGISTER_XLA_RECIPROCAL_OP(Name("Inv"), InvOp);
 REGISTER_XLA_OP(Name("Reciprocal"), MlirXlaOpKernel);
+REGISTER_XLA_RECIPROCAL_OP(Name("Reciprocal"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Log, xla::Log(x));
 REGISTER_XLA_OP(Name("Log1p"), MlirXlaOpKernel);
 

@@ -127,7 +127,7 @@ TEST_F(CpuCompilerTest, PermutationSortConvertedToScatter) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     compare2 {

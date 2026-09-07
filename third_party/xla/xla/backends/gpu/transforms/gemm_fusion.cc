@@ -1459,6 +1459,29 @@ FusionDecision ShouldFuseUser(const HloInstruction* user,
       break;
   }
 
+  int64_t src_operand_index = user->operand_index(fusion);
+  for (int i = 0; i < user->operand_count(); ++i) {
+    const HloInstruction* operand = user->operand(i);
+    // Skip source operand.
+    if (i == src_operand_index) {
+      continue;
+    }
+    // Currently only
+    //  - effective parameters
+    //  - broadcasts of effective parameters
+    //  - broadcasts of scalars
+    // are accepted as other inputs of non-unary operations in
+    // the output fusion.
+    if ((operand->opcode() == HloOpcode::kBroadcast &&
+         (ShapeUtil::IsScalar(operand->operand(0)->shape()) ||
+          hlo_query::IsEffectiveParameter(*operand->operand(0)))) ||
+        hlo_query::IsEffectiveParameter(*operand)) {
+      continue;
+    }
+    return FusionDecision::Forbid(
+        "Has multiple inputs - not properly analyzed yet.");
+  }
+
   if (!triton_fusion::IsOutputWorthFusing(original_user)) {
     return FusionDecision::Forbid(
         "Not obviously profitable to fuse as output.");

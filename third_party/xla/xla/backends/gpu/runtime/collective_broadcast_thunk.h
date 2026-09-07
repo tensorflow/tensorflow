@@ -1,6 +1,7 @@
 #include <memory>
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"

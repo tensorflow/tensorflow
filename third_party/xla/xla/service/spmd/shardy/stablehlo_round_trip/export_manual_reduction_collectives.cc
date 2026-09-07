@@ -264,6 +264,9 @@ getAxesCoordinateAndSize(OpBuilder& builder, mlir::Location loc,
 void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
                                mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
+  // We intentionally do not support non-sum reductions (e.g. `MAX`, `MIN`)
+  // because the operation semantics are specific to `SUM` and are not intended
+  // to be used with other reduction ops without an explicit use case.
   CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
   // If the mesh does not have iota device ids, we need an extra step to convert
@@ -340,6 +343,9 @@ void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
 void convertReplicatedToUnreduced(sdy::ReplicatedToUnreducedOp op,
                                   mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
+  // We intentionally do not support non-sum reductions (e.g. `MAX`, `MIN`)
+  // because the operation semantics are specific to `SUM` and are not intended
+  // to be used with other reduction ops without an explicit use case.
   CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
 

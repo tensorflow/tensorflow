@@ -169,7 +169,8 @@ TEST_P(HloShardingTest, GetShardShape) {
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Numbers of dimensions don't match. From "
-                            "Shape 3 vs from HloSharding 2")));
+                            "Shape [6,6,6] vs from HloSharding "
+                            "{devices=[2,3]<=[6]}")));
 }
 
 TEST_P(HloShardingTest, HasSamePartitioning) {

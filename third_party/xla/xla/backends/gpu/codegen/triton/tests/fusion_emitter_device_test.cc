@@ -2571,8 +2571,10 @@ class TritonScaledDotTestBase : public TritonEmitterTest {
   absl::StatusOr<std::vector<Literal>> MakeScaledDotArguments(
       const HloModule* module) {
     std::minstd_rand0 engine;
+    FakeArgumentsOptions options;
+    options.engine = &engine;
     ABSL_ASSIGN_OR_RETURN(std::vector<Literal> arguments,
-                     MakeFakeArguments(module, &engine));
+                     MakeFakeArguments(module, options));
     if (arguments.size() != 4) {
       return absl::InternalError(absl::StrCat(
           "Expected 4 scaled-dot arguments, got ", arguments.size()));
