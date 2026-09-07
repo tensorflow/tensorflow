@@ -87,6 +87,7 @@ single_version_override(
     patch_strip = 1,
     patches = [
         "//third_party/xla/third_party/pybind11_abseil:python_toolchain.patch",
+        "//third_party/xla/third_party/pybind11_abseil:windows_pyd.patch",
     ],
     version = "202402.0",
 )

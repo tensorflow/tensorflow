@@ -1,4 +1,5 @@
 exports_files([
     "remove_license.patch",
     "python_toolchain.patch",
+    "windows_pyd.patch",
 ])
