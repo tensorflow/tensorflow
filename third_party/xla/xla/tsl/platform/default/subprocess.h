@@ -94,7 +94,7 @@ class SubProcess {
   //    In the child process, chdir() to this directory before
   //    exec-ing.
   //    Returns false if this is not supported on the current platform.
-  ABSL_MUST_USE_RESULT virtual bool SetDirectory(const string& dir);
+  [[nodiscard]] virtual bool SetDirectory(const string& dir);
 
   // SetExitCallback()
   //    Set a callback to be run when the process exits.

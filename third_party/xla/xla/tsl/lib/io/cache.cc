@@ -426,10 +426,10 @@ class ShardedLRUCache : public Cache {
     switch (limit - data) {
       case 3:
         h += static_cast<uint8_t>(data[2]) << 16;
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 2:
         h += static_cast<uint8_t>(data[1]) << 8;
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 1:
         h += static_cast<uint8_t>(data[0]);
         h *= m;

@@ -214,9 +214,8 @@ inline absl::Status Cancelled(const absl::Status& arg) {
   return absl::CancelledError(arg.message());
 }
 template <typename Arg1>
-ABSL_REFACTOR_INLINE ABSL_DEPRECATED(
-    "Use absl::CancelledError(arg1) instead.") inline absl::Status
-    Cancelled(Arg1 arg1) {
+[[deprecated("Use absl::CancelledError(arg1) instead.")]]
+ABSL_REFACTOR_INLINE inline absl::Status Cancelled(Arg1 arg1) {
   return absl::CancelledError(arg1);
 }
 
