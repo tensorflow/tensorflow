@@ -72,6 +72,7 @@ cc_library(
         ":case_op",
         ":cast_op",
         ":categorical_op",
+        ":check_numerics_op",
         ":cholesky_op",
         ":clip_by_value_op",
         ":concat_op",
@@ -540,18 +541,39 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "check_numerics_op",
+    srcs = ["check_numerics_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:logging_ops_op_lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:str_format",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:math",
+    ],
+    alwayslink = 1,
+)
+
 # Kernels that have a dummy (no-op) implementation.
 tf_kernel_library(
     name = "xla_dummy_ops",
     srcs = [
         "assert_op.cc",
-        "check_numerics_op.cc",
     ],
     deps = [
-        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
+        ":check_numerics_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:logging_ops_op_lib",
         "@com_google_absl//absl/log",

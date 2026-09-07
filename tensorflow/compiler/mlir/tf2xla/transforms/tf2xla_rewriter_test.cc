@@ -129,15 +129,15 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  Status LegalizeSingleOp(Operation& op) {
+  Status LegalizeSingleOp(Operation& op,
+                          const std::string& device_type = "XLA_CPU_JIT") {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
     OpBuilder op_builder(&op);
     EmptyPatternRewriter pattern_rewriter(op_builder);
 
     LogicalResult result =
-        Tf2XlaRewriter::RewriteOp(&op, pattern_rewriter,
-                                  /*device_type=*/"XLA_CPU_JIT");
+        Tf2XlaRewriter::RewriteOp(&op, pattern_rewriter, device_type);
     if (!result.succeeded()) {
       return absl::InternalError("Failed to rewrite op");
     }
@@ -145,7 +145,8 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  Status LegalizeModule(std::string module_string = kMlirModuleStr) {
+  Status LegalizeModule(std::string module_string = kMlirModuleStr,
+                        const std::string& device_type = "XLA_CPU_JIT") {
     TF_EXPECT_OK(CreateMlirModule(module_string));
     FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
     if (!main) {
@@ -158,7 +159,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
         return WalkResult::advance();
       }
 
-      if (!LegalizeSingleOp(*op).ok()) {
+      if (!LegalizeSingleOp(*op, device_type).ok()) {
         return WalkResult::interrupt();
       }
 
@@ -360,6 +361,42 @@ TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   absl::StatusOr<stablehlo::TupleOp> status_or_tuple_op =
       ImportXlaComputationIntoModule(computation);
   EXPECT_FALSE(status_or_tuple_op.ok());
+}
+
+TEST_F(Tf2XlaRewriterTest, LegalizesCheckNumericsOnGpuAndCpu) {
+  static constexpr char kCheckNumericsModule[] = R"mlir(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1610 : i32}} {
+    func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+      %0 = "tf.CheckNumerics"(%arg0) {message = "check \"quote\" \\slash\\ \nnewline\0dreturn\ttab"} : (tensor<2xf32>) -> tensor<2xf32>
+      func.return %0 : tensor<2xf32>
+    }
+  })mlir";
+
+  TF_ASSERT_OK(LegalizeModule(kCheckNumericsModule, "XLA_GPU_JIT"));
+  int gpu_assert_calls = 0;
+  module_->walk([&](Operation* op) {
+    if (op->getName().getStringRef() == "mhlo.custom_call" ||
+        op->getName().getStringRef() == "stablehlo.custom_call") {
+      auto target = op->getAttrOfType<mlir::StringAttr>("call_target_name");
+      if (target && target.getValue() == "__xla_gpu_assert") {
+        gpu_assert_calls++;
+      }
+    }
+  });
+  EXPECT_EQ(gpu_assert_calls, 1);
+
+  TF_ASSERT_OK(LegalizeModule(kCheckNumericsModule, "XLA_CPU_JIT"));
+  int cpu_assert_calls = 0;
+  module_->walk([&](Operation* op) {
+    if (op->getName().getStringRef() == "mhlo.custom_call" ||
+        op->getName().getStringRef() == "stablehlo.custom_call") {
+      auto target = op->getAttrOfType<mlir::StringAttr>("call_target_name");
+      if (target && target.getValue() == "__xla_gpu_assert") {
+        cpu_assert_calls++;
+      }
+    }
+  });
+  EXPECT_EQ(cpu_assert_calls, 0);
 }
 
 }  // namespace hlo
