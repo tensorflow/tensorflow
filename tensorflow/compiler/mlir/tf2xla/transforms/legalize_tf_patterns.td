@@ -394,8 +394,7 @@ def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
 foreach src = [TF_IdentityOp, TF_StopGradientOp, TF__EagerConstOp] in
   def : Pat<(src $op), (replaceWithValue $op)>;
 
-// TODO(b/32223192): Support CheckNumerics in HLO.
-foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
+foreach src = [TF_PreventGradientOp] in
   def : Pat<(src $op, $msg), (replaceWithValue $op)>;
 
 //===----------------------------------------------------------------------===//
