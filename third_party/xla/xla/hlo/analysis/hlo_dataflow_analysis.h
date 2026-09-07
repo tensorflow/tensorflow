@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_phi_graph.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -52,6 +53,21 @@ namespace xla {
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
+  // A leaf element of a parameter instruction in a computation, identified by
+  // parameter number and shape index.
+  struct ParameterLeaf {
+    int64_t parameter_number;
+    ShapeIndex parameter_index;
+  };
+
+  // Summarizes how data flows from parameters and internal definitions of a
+  // computation to a particular index of its root instruction. Used when
+  // propagate_across_call_boundaries_ is false.
+  struct ComputationDataflow {
+    std::vector<ParameterLeaf> reaching_parameters;
+    bool has_internal_definition = false;
+  };
+
   // Runs dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
@@ -71,14 +87,15 @@ class HloDataflowAnalysis {
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
   //
-  //   propagate_through_calls : If false, kCall instructions are treated as
-  //     opaque instructions that define their own output values, and dataflow
-  //     across kCall boundaries is ignored.
+  //   propagate_across_call_boundaries : If false, callee computations are
+  //     summarized so that dataflow from call arguments to call results is
+  //     propagated, but callee-internal definitions do not cross call
+  //     boundaries (the kCall instruction defines new values for them).
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       absl::flat_hash_set<absl::string_view> execution_threads = {},
-      bool propagate_through_calls = true);
+      bool propagate_across_call_boundaries = true);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -209,7 +226,7 @@ class HloDataflowAnalysis {
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
                       absl::flat_hash_set<absl::string_view> execution_threads,
-                      bool propagate_through_calls = true);
+                      bool propagate_across_call_boundaries = true);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
   absl::Status RunImpl();
@@ -316,15 +333,18 @@ class HloDataflowAnalysis {
   // this is the first time positions are being computed. The previous state is
   // necessary to efficiently remove positions which have been eliminated due to
   // changes in the instructions' InstructionValueSet.
-  void UpdatePositionsOfValuesAt(
-      HloInstruction* instruction, const InstructionValueSet& new_value_set,
-      const InstructionValueSet* prev_value_set = nullptr);
+  const ShapeTree<ComputationDataflow>& GetOrCreateComputationDataflow(
+      const HloComputation* computation);
+
+  const HloValue* GetOrCreateCallValue(HloInstruction* call,
+                                       const ShapeIndex& index,
+                                       const HloValueSet& current_value_set);
 
   const HloModule& module_;
   const absl::flat_hash_set<absl::string_view> execution_threads_;
   const bool ssa_form_;
   const bool bitcast_defines_value_;
-  bool propagate_through_calls_ = true;
+  bool propagate_across_call_boundaries_ = true;
 
   std::unique_ptr<CallGraph> call_graph_;
 
@@ -337,6 +357,11 @@ class HloDataflowAnalysis {
   absl::flat_hash_map<const HloInstruction*,
                       std::unique_ptr<InstructionValueSet>>
       value_sets_;
+
+  // Memoized computation dataflows for propagate_across_call_boundaries_ =
+  // false.
+  absl::flat_hash_map<const HloComputation*, ShapeTree<ComputationDataflow>>
+      computation_dataflows_;
 
   // Values marked for deletion during construction. We don't delete them
   // immediately because references to them may remain in ValueSets temporarily
