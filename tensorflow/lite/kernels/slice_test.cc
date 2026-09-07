@@ -408,6 +408,36 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
 }
 
+TEST(SliceOpTest, NegativeBeginFailsConst) {
+  EXPECT_DEATH_IF_SUPPORTED(
+      (SliceOpModel<float, int32_t>({2, 2}, {2}, {-1, 0}, {2}, {1, 1},
+                                    TensorType_INT32, TensorType_FLOAT32,
+                                    TestType::kConst)),
+      "");
+}
+
+TEST(SliceOpTest, NegativeBeginFailsDynamic) {
+  SliceOpModel<float, int32_t> m({2, 2}, {2}, {-1, 0}, {2}, {1, 1},
+                                 TensorType_INT32, TensorType_FLOAT32,
+                                 TestType::kDynamic);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+TEST(SliceOpTest, BeginOutOfBoundsFailsConst) {
+  EXPECT_DEATH_IF_SUPPORTED(
+      (SliceOpModel<float, int32_t>({2, 2}, {2}, {3, 0}, {2}, {1, 1},
+                                    TensorType_INT32, TensorType_FLOAT32,
+                                    TestType::kConst)),
+      "");
+}
+
+TEST(SliceOpTest, BeginOutOfBoundsFailsDynamic) {
+  SliceOpModel<float, int32_t> m({2, 2}, {2}, {3, 0}, {2}, {1, 1},
+                                 TensorType_INT32, TensorType_FLOAT32,
+                                 TestType::kDynamic);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
