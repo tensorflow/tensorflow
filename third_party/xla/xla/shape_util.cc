@@ -2332,6 +2332,11 @@ ShapeUtil::ByteStrides(const Shape& shape) {
   }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
+  Tile resolved_tile;
+  if (absl::c_linear_search(tile_dimensions, Tile::kCombineDimension)) {
+    resolved_tile = LayoutUtil::ResolvedTiles(shape)[0];
+    tile_dimensions = resolved_tile.dimensions();
+  }
   auto minor_to_major = shape.layout().minor_to_major();
   int64_t shape_dim_size = shape.dimensions().size();
   int64_t tile_dim_size = tile_dimensions.size();
