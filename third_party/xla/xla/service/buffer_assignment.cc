@@ -524,6 +524,7 @@ absl::Status GatherComputationsByAllocationType(
           case HloOpcode::kCustomCall:
           case HloOpcode::kAllReduce:
           case HloOpcode::kReduceScatter:
+          case HloOpcode::kCollectiveReduce:
           case HloOpcode::kAllReduceStart:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:

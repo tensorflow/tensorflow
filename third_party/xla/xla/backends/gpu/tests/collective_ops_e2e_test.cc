@@ -546,6 +546,113 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcastDynamicRoot) {
   }
 }
 
+TEST_P(AsyncCollectiveOps, AsyncCollectiveReduce) {
+  // collective-reduce reduces across the replica group and writes the result
+  // only to the root rank (rank 0 of the group by default), unlike all-reduce.
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = u32[] parameter(0)
+    y = u32[] parameter(1)
+    ROOT apply_op = u32[] add(x, y)
+  }
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    one = u32[] constant(1)
+    val = u32[] add(id, one)
+    ROOT cr = u32[] collective-reduce(val), replica_groups={{0, 1}},
+        to_apply=apply_op
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
+  if (enable_async_) {
+    const HloInstruction* cr_start =
+        FindCollectiveStart(hlo_module, HloOpcode::kCollectiveReduce);
+    const HloInstruction* cr_done =
+        FindCollectiveDone(hlo_module, HloOpcode::kCollectiveReduce);
+    EXPECT_THAT(cr_start, NotNull());
+    EXPECT_THAT(cr_done, NotNull());
+  } else {
+    EXPECT_THAT(FindInstruction(hlo_module, HloOpcode::kCollectiveReduce),
+                NotNull());
+  }
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // Sum of (replica_id + 1) over replicas {0, 1} = 1 + 2 = 3, written to the
+  // root rank (replica 0). Non-root outputs are left undefined by the reduce.
+  LiteralTestUtil::ExpectR0Equal<uint32_t>(3, results[0]);
+}
+
+TEST_P(AsyncCollectiveOps, AsyncCollectiveReduceDynamicRoot) {
+  // The reduce root is supplied at run time by the trailing S32 operand. With
+  // `replica_groups={{0, 1}}` a static reduce would write to replica 0, so
+  // selecting root rank 1 at run time proves the root is chosen dynamically.
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = u32[] parameter(0)
+    y = u32[] parameter(1)
+    ROOT apply_op = u32[] add(x, y)
+  }
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    one = u32[] constant(1)
+    val = u32[] add(id, one)
+    p = u32[2] broadcast(val), dimensions={}
+    root = s32[1] constant({1})
+    ROOT cr = u32[2] collective-reduce(p, root), replica_groups={{0, 1}},
+        to_apply=apply_op, has_dynamic_root=true
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
+  if (enable_async_) {
+    const HloInstruction* cr_start =
+        FindCollectiveStart(hlo_module, HloOpcode::kCollectiveReduce);
+    EXPECT_THAT(cr_start, NotNull());
+    if (cr_start != nullptr) {
+      EXPECT_TRUE(Cast<HloCollectiveReduceInstruction>(
+                      cr_start->async_wrapped_instruction())
+                      ->has_dynamic_root());
+    }
+  } else {
+    const HloInstruction* cr_sync =
+        FindInstruction(hlo_module, HloOpcode::kCollectiveReduce);
+    EXPECT_THAT(cr_sync, NotNull());
+    if (cr_sync != nullptr) {
+      EXPECT_TRUE(
+          Cast<HloCollectiveReduceInstruction>(cr_sync)->has_dynamic_root());
+    }
+  }
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // Reduced sum (3) is written to the runtime-selected root rank (replica 1).
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({3, 3}, results[1]);
+}
+
 TEST_P(CollectivesModeOps, AllGather) {
   const absl::string_view kModuleStr = R"(
   HloModule test

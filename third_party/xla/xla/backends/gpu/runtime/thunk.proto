@@ -381,6 +381,15 @@ message ReduceScatterThunkProto {
   xla.ReductionKindProto reduction_kind = 4;
 }
 
+message CollectiveReduceThunkProto {
+  CollectiveConfigProto collective_config = 1;
+  repeated CollectiveBufferProto buffers = 2;
+  xla.ReductionKindProto reduction_kind = 3;
+  // When true, the last buffer holds the runtime-selected root rank per reduce
+  // and is not itself reduced.
+  bool has_dynamic_root = 4;
+}
+
 message AllToAllThunkProto {
   reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
@@ -514,6 +523,7 @@ message ThunkProto {
     CollectiveKernelThunkProto collective_kernel_thunk = 59;
     DynamicSliceFusionThunkProto dynamic_slice_fusion_thunk = 60;
     RngSeedThunkProto rng_seed_thunk = 61;
+    CollectiveReduceThunkProto collective_reduce_thunk = 62;
   }
 
   reserved 10, 18, 37, 48, 49, 50, 51, 52, 53, 54, 55, 56;
