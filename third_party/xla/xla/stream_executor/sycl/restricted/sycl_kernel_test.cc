@@ -15,12 +15,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -33,11 +36,11 @@ namespace {
 class SyclKernelTest : public xla::LlvmIrGenTestBase {};
 
 TEST_F(SyclKernelTest, CheckKernelLoading) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
 
   absl::string_view hlo_ir = R"(
     ENTRY e {
@@ -48,13 +51,12 @@ TEST_F(SyclKernelTest, CheckKernelLoading) {
 
   xla::HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
-                          xla::ParseAndReturnUnverifiedModule(hlo_ir, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       xla::ParseAndReturnUnverifiedModule(hlo_ir, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<xla::Executable> exec,
-      CompileToExecutable(std::move(hlo_module),
-                          /*run_optimization_passes=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::Executable> exec,
+                       CompileToExecutable(std::move(hlo_module),
+                                           /*run_optimization_passes=*/true));
 
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
@@ -75,8 +77,8 @@ TEST_F(SyclKernelTest, CheckKernelLoading) {
   const KernelLoaderSpec& kernel_spec =
       kernel_thunk->custom_kernel().kernel_spec();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> sycl_kernel,
-                          executor->LoadKernel(kernel_spec));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> sycl_kernel,
+                       executor->LoadKernel(kernel_spec));
 
   EXPECT_EQ(sycl_kernel->Arity(), 3);
   // TODO(intel-tf): Add check for GetMaxOccupiedBlocksPerCore
