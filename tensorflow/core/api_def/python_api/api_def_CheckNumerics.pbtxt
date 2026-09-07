@@ -9,4 +9,25 @@ op {
     name: "check_numerics"
     deprecation_version: 2
   }
+  description: <<END
+When run, reports an `InvalidArgument` error if `tensor` has any values
+that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+tensor.
+
+Note: Under XLA compilation (e.g. `tf.function(jit_compile=True)`), this op is
+a no-op and does not check for `NaN` or `Inf` values at runtime.
+
+Example usage:
+
+``` python
+a = tf.Variable(1.0)
+tf.debugging.check_numerics(a, message='')
+
+b = tf.Variable(np.nan)
+try:
+  tf.debugging.check_numerics(b, message='Checking b')
+except Exception as e:
+  assert "Checking b : Tensor had NaN values" in e.message
+```
+END
 }
