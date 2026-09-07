@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -497,5 +499,118 @@ TEST_F(TilingSpaceSimplifyExpressionTest, NestedModRemovedIfLessThanDivisor) {
       tiling_space_->SimplifyExpression(expr),
       ParseSymbolicExpr("d0 * 16 + d1 * 2", &mlir_context_, /*num_dims=*/2));
 }
+
+TEST_F(TilingSpaceTest, ClonePerformsDeepCopies) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      src = s32[2,2,258] parameter(0)
+      of1 = s32[] parameter(1)
+      of2 = s32[] parameter(2)
+      of3 = s32[] parameter(3)
+      ROOT ds = s32[1,2,32] dynamic-slice(s32[2,2,258] src,
+        s32[] of1, s32[] of2, s32[] of3),
+        dynamic_slice_sizes={1, 2, 32}
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  std::unique_ptr<TilingSpace> cloned_space = original_space->Clone();
+  ASSERT_NE(cloned_space, nullptr);
+
+  EXPECT_EQ(cloned_space->num_dimensions(), original_space->num_dimensions());
+  EXPECT_EQ(cloned_space->num_parallel_dimensions(),
+            original_space->num_parallel_dimensions());
+  EXPECT_EQ(cloned_space->num_rt_vars(), original_space->num_rt_vars());
+  EXPECT_EQ(cloned_space->mlir_context(), original_space->mlir_context());
+  EXPECT_EQ(cloned_space->IsSymbolic(), original_space->IsSymbolic());
+
+  // Dimensions deep copied.
+  auto orig_dims = original_space->dimensions();
+  auto cloned_dims = cloned_space->dimensions();
+  ASSERT_EQ(orig_dims.size(), cloned_dims.size());
+  for (size_t i = 0; i < orig_dims.size(); ++i) {
+    EXPECT_EQ(orig_dims[i].id, cloned_dims[i].id);
+    EXPECT_EQ(orig_dims[i].dimension_size, cloned_dims[i].dimension_size);
+    EXPECT_EQ(orig_dims[i].type, cloned_dims[i].type);
+    EXPECT_EQ(orig_dims[i].hlo, cloned_dims[i].hlo);
+    EXPECT_EQ(orig_dims[i].dim_position, cloned_dims[i].dim_position);
+
+    const auto& cloned_dim_ref = cloned_space->GetDimensionInfo(
+        *cloned_dims[i].hlo, cloned_dims[i].dim_position);
+    const auto& orig_dim_ref = original_space->GetDimensionInfo(
+        *orig_dims[i].hlo, orig_dims[i].dim_position);
+
+    EXPECT_NE(&cloned_dim_ref, &orig_dim_ref);
+  }
+
+  // RTVars deep copied.
+  ASSERT_EQ(cloned_space->num_rt_vars(), 3);
+  for (int64_t operand_id = 1; operand_id <= 3; ++operand_id) {
+    auto orig_rt = original_space->GetRTVarInfo(*root, operand_id);
+    auto cloned_rt = cloned_space->GetRTVarInfo(*root, operand_id);
+    ASSERT_TRUE(orig_rt.has_value());
+    ASSERT_TRUE(cloned_rt.has_value());
+    EXPECT_EQ((*orig_rt)->id, (*cloned_rt)->id);
+    EXPECT_EQ((*orig_rt)->bounds, (*cloned_rt)->bounds);
+    EXPECT_EQ((*orig_rt)->hlo, (*cloned_rt)->hlo);
+    EXPECT_NE(*orig_rt, *cloned_rt);
+  }
+
+  // Root tiles reference cloned space, not original space.
+  ASSERT_EQ(cloned_space->tiled_roots().size(),
+            original_space->tiled_roots().size());
+  for (size_t i = 0; i < cloned_space->tiled_roots().size(); ++i) {
+    EXPECT_EQ(&cloned_space->tiled_roots()[i].tiling_space(),
+              cloned_space.get());
+    EXPECT_NE(&cloned_space->tiled_roots()[i].tiling_space(),
+              original_space.get());
+  }
+}
+
+TEST_F(TilingSpaceTest, CloneAssignsIndependentTileSizes) {
+  auto root = ParseAndGetRoot(R"(
+      HloModule m
+      ENTRY e {
+        p0 = f32[1000, 10] parameter(0)
+        ROOT a0 = f32[1000, 10] exponential(p0)
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  std::unique_ptr<TilingSpace> cloned_space = original_space->Clone();
+  ASSERT_NE(cloned_space, nullptr);
+
+  EXPECT_TRUE(original_space->IsSymbolic());
+  EXPECT_TRUE(cloned_space->IsSymbolic());
+
+  // Assign tile sizes to cloned_space.
+  EXPECT_OK(cloned_space->AssignTileSizes({16, 2}));
+  EXPECT_FALSE(cloned_space->IsSymbolic());
+  EXPECT_TRUE(original_space->IsSymbolic());
+
+  auto cloned_dims = cloned_space->dimensions();
+  EXPECT_EQ(cloned_dims[0].tile_size, 16);
+  EXPECT_EQ(cloned_dims[1].tile_size, 2);
+
+  auto orig_dims = original_space->dimensions();
+  EXPECT_FALSE(orig_dims[0].tile_size.has_value());
+  EXPECT_FALSE(orig_dims[1].tile_size.has_value());
+
+  // Assign different tile sizes to original_space.
+  EXPECT_OK(original_space->AssignTileSizes({32, 4}));
+  EXPECT_FALSE(original_space->IsSymbolic());
+  EXPECT_EQ(original_space->dimensions()[0].tile_size, 32);
+  EXPECT_EQ(original_space->dimensions()[1].tile_size, 4);
+
+  // Cloned space remains unaffected.
+  EXPECT_EQ(cloned_space->dimensions()[0].tile_size, 16);
+  EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental
