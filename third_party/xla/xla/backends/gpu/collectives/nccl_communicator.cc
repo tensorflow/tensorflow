@@ -1120,6 +1120,57 @@ void NcclCommunicator::InitializeCrossDeviceBarrier(
       std::move(tied_symmetric_memory);
 }
 
+se::DeviceAddressBase NcclCommunicator::GetCliqueSemaphore(int device) const {
+  absl::MutexLock lock(semaphore_mu_);
+  if (device == stream_executor_->device_ordinal()) {
+    auto it = tied_clique_semaphores_.find(device);
+    if (it != tied_clique_semaphores_.end()) {
+      auto locked = it->second.Lock();
+      if (locked != nullptr) {
+        return locked->address();
+      }
+    }
+  }
+  auto sym_it =
+      tied_clique_symmetric_memories_.find(stream_executor_->device_ordinal());
+  if (sym_it != tied_clique_symmetric_memories_.end()) {
+    auto locked_sym = sym_it->second.Lock();
+    if (locked_sym != nullptr) {
+      RankId peer_rank(device);
+      auto r_it = device_to_rank_.find(device);
+      if (r_it != device_to_rank_.end()) {
+        peer_rank = r_it->second;
+      }
+      auto peer_addr_or = locked_sym->peer_addr(peer_rank);
+      if (peer_addr_or.ok()) {
+        return *peer_addr_or;
+      }
+    }
+  }
+  auto it = tied_clique_semaphores_.find(device);
+  if (it != tied_clique_semaphores_.end()) {
+    auto locked = it->second.Lock();
+    if (locked != nullptr) {
+      return locked->address();
+    }
+  }
+  return se::DeviceAddressBase{};
+}
+
+void NcclCommunicator::InitializeCliqueSemaphore(
+    int device, tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+    tsl::TiedRef<SymmetricMemory> tied_symmetric_memory, RankId rank) {
+  absl::MutexLock lock(semaphore_mu_);
+  tied_clique_semaphores_[device] = std::move(tied_semaphore);
+  tied_clique_symmetric_memories_[device] = std::move(tied_symmetric_memory);
+  device_to_rank_[device] = rank;
+}
+
+bool NcclCommunicator::IsCliqueSemaphoreInitialized(int device) const {
+  absl::MutexLock lock(semaphore_mu_);
+  return tied_clique_semaphores_.contains(device);
+}
+
 std::string NcclCommunicator::ToString() const {
   // comm_ should not be "touched" outside of executor_, but we are printing
   // the pointer itself and not touching the value, so this is safe.

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -75,6 +76,9 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     if (requirements.barrier_reqs.has_value()) {
       req.use_cross_device_barrier_requested |=
           requirements.barrier_reqs->use_cross_device_barrier;
+      req.clique_semaphores_count =
+          std::max(req.clique_semaphores_count,
+                   requirements.barrier_reqs->clique_semaphores_count);
     }
 
     return absl::OkStatus();
@@ -93,6 +97,9 @@ absl::Status CollectiveCliqueRequests::RequestClique(
   if (requirements.barrier_reqs.has_value()) {
     req.use_cross_device_barrier_requested |=
         requirements.barrier_reqs->use_cross_device_barrier;
+    req.clique_semaphores_count =
+        std::max(req.clique_semaphores_count,
+                 requirements.barrier_reqs->clique_semaphores_count);
   }
 
   cliques_.try_emplace(clique_key, std::move(req));
