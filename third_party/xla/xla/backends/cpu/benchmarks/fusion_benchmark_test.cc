@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"

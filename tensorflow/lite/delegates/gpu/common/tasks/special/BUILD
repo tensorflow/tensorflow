@@ -46,7 +46,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
     deps = [
