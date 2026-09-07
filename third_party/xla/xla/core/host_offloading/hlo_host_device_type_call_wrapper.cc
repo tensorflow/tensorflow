@@ -80,6 +80,9 @@ absl::StatusOr<bool> OffloadHostInstructions(
     const HloHostDeviceTypeCallWrapper::Options& options) {
   auto should_offload_to_host_compute =
       [&](const HloInstruction* instr) -> bool {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      return false;
+    }
     if (host_offload_utils::ComputeTypeIsHost(instr)) {
       return true;
     }
