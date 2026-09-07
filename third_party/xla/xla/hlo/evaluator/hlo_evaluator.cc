@@ -54,7 +54,7 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -72,7 +72,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -981,8 +981,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
   // Reset evaluation state with the argument literals.
   ScopedEvaluateState evaluate_state(&state_, args);
 
-  tuple_points_to_analysis_cache_.reset();
-
   // Re-seed RNG, either from the configuration's seed or a monotonic
   // per-evaluator seed (which prevents two evaluators from returning the same
   // random sequence).
@@ -1022,7 +1020,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     SetEvaluatedLiteralFor(substituted_instr, literal_value->Clone());
   }
 
-  tuple_points_to_analysis_cache_.reset();
   auto enable_partial_evaluation_cleanup =
       absl::MakeCleanup([this] { enable_partial_evaluation_ = false; });
   enable_partial_evaluation_ = recursively_evaluate_nonconstant_operands;
@@ -1159,6 +1156,87 @@ absl::StatusOr<Literal> HloEvaluator::EvaluateScaledDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+namespace {
+
+// Traces backward from while_body root at shape_index through forwarding
+// operations (tuple, get-tuple-element, bitcast, barrier, domain, dependency,
+// copy). Returns true if the buffer at (root, shape_index) is forwarded
+// directly and unmodified from (while_param, shape_index).
+bool IsBufferUnchangedInWhileBodySyntactic(const HloComputation* while_body,
+                                           const HloInstruction* while_param,
+                                           const ShapeIndex& shape_index) {
+  const HloInstruction* current = while_body->root_instruction();
+  ShapeIndex curr_index = shape_index;
+  int64_t depth = 0;
+  constexpr int64_t kMaxDepth = 1000;
+
+  while (current != nullptr && depth++ < kMaxDepth) {
+    if (current == while_param) {
+      return curr_index == shape_index;
+    }
+
+    if (current->opcode() == HloOpcode::kTuple) {
+      if (curr_index.empty()) {
+        return false;
+      }
+      int64_t tuple_index = curr_index.front();
+      curr_index.pop_front();
+      if (tuple_index < 0 || tuple_index >= current->operand_count()) {
+        return false;
+      }
+      current = current->operand(tuple_index);
+    } else if (current->opcode() == HloOpcode::kGetTupleElement) {
+      curr_index.push_front(current->tuple_index());
+      current = current->operand(0);
+    } else if (current->opcode() == HloOpcode::kBitcast ||
+               current->opcode() == HloOpcode::kOptimizationBarrier ||
+               current->opcode() == HloOpcode::kDomain ||
+               current->opcode() == HloOpcode::kAddDependency ||
+               current->opcode() == HloOpcode::kCopy) {
+      if (current->operand_count() == 0) {
+        return false;
+      }
+      current = current->operand(0);
+    } else if (current->opcode() == HloOpcode::kCopyDone &&
+               current->operand_count() > 0 &&
+               current->operand(0)->opcode() == HloOpcode::kCopyStart &&
+               current->operand(0)->operand_count() > 0) {
+      current = current->operand(0)->operand(0);
+    } else {
+      return false;
+    }
+  }
+  return false;
+}
+
+bool IsBufferUnchangedInWhileBody(
+    const HloComputation* while_body, const HloInstruction* while_param,
+    const ShapeIndex& shape_index,
+    const HloDataflowAnalysis* dataflow_analysis) {
+  if (IsBufferUnchangedInWhileBodySyntactic(while_body, while_param,
+                                            shape_index)) {
+    return true;
+  }
+  if (dataflow_analysis != nullptr) {
+    const HloInstruction* while_root = while_body->root_instruction();
+    const HloValueSet& root_value_set =
+        dataflow_analysis->GetValueSet(while_root, shape_index);
+    const HloValueSet& param_value_set =
+        dataflow_analysis->GetValueSet(while_param, shape_index);
+    if (!root_value_set.values().empty() && root_value_set == param_value_set) {
+      for (const HloValue* val : root_value_set.values()) {
+        if (val->is_phi()) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
     const HloInstruction* parameter, const ShapeIndex& shape_index,
     PrecomputedAnalyses analyses) {
@@ -1184,36 +1262,11 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
         ", which is not yet supported."));
   }
   if (computation_caller->opcode() == HloOpcode::kWhile) {
-    if (!analyses.tuple_points_to && !tuple_points_to_analysis_cache_) {
-      absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>> tuple_points_to =
-          TuplePointsToAnalysis::Run(parameter->GetModule());
-      if (!tuple_points_to.ok()) {
-        return absl::FailedPreconditionError(
-            "Failed to run TuplePointsToAnalysis.");
-      }
-      tuple_points_to_analysis_cache_ = *std::move(tuple_points_to);
-    }
-    TuplePointsToAnalysis* tuple_points_to_analysis =
-        analyses.tuple_points_to != nullptr
-            ? analyses.tuple_points_to
-            : tuple_points_to_analysis_cache_.get();
-
     HloComputation* while_body = computation_caller->while_body();
-    ABSL_ASSIGN_OR_RETURN(
-        const LogicalBuffer* logical_buffer,
-        tuple_points_to_analysis->GetBufferDefinedAt(
-            while_body->parameter_instruction(parameter->parameter_number()),
-            shape_index));
-    const TuplePointsToAnalysis::BufferAliasVector& buffer_aliases =
-        tuple_points_to_analysis->GetBufferAliases(*logical_buffer);
-    bool unchanged_in_return = false;
-    for (const BufferAlias& buffer_alias : buffer_aliases) {
-      if (buffer_alias.instruction() == while_body->root_instruction() &&
-          buffer_alias.index() == shape_index) {
-        unchanged_in_return = true;
-      }
-    }
-    if (!unchanged_in_return) {
+    const HloInstruction* while_param =
+        while_body->parameter_instruction(parameter->parameter_number());
+    if (!IsBufferUnchangedInWhileBody(while_body, while_param, shape_index,
+                                      analyses.dataflow_analysis)) {
       return MakeEvalErrorDueToParamOrInfeed(*parameter);
     }
   }
