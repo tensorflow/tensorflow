@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/separate_compilation/hlo_module_linking.h"
+#include "xla/hlo/parallel/hlo_module_linking.h"
 
 #include <memory>
 #include <stack>
@@ -35,13 +35,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
-#include "xla/hlo/separate_compilation/hlo_linking_manifest.h"
+#include "xla/hlo/parallel/hlo_linking_manifest.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/compilation_environments.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
-namespace xla::separate_compilation {
+// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
+
+namespace xla::parallel {
 
 namespace {
 struct TraversalState {
@@ -123,17 +123,17 @@ class HloLinker {
     }
     state.entered = true;
 
-    PushDependencies(state);
+    PushDependencies(state.principal);
     return absl::OkStatus();
   }
 
-  // Pushes dependencies of `state.principal` onto stack_ if they are stubs
+  // Pushes dependencies of `principal` onto stack_ if they are stubs
   // that need to be linked.
-  void PushDependencies(const TraversalState& state) {
-    std::vector<HloInstruction*> post_order_instrs =
-        state.principal->MakeInstructionPostOrder();
+  void PushDependencies(const HloComputation* principal) {
     VLOG(6) << "Processing callees:";
-    for (HloInstruction* caller : post_order_instrs) {
+    std::vector<HloInstruction*> post_order_instrs =
+        principal->MakeInstructionPostOrder();
+    for (const HloInstruction* caller : post_order_instrs) {
       if (caller->opcode() != HloOpcode::kCall) {
         continue;
       }
@@ -146,8 +146,8 @@ class HloLinker {
           it != linking_manifest_.stub_links.end()) {
         // Only push if its principal hasn't been mapped yet.
         if (clone_context_.FindComputation(callee) == nullptr) {
-          const HloComputation* principal = it->second;
-          stack_.push({principal, callee, false});
+          const HloComputation* callee_principal = it->second;
+          stack_.push({callee_principal, callee, false});
         }
       }
     }
@@ -184,7 +184,7 @@ class HloLinker {
   absl::flat_hash_set<const HloComputation*> being_linked_;
   absl::flat_hash_map<const HloComputation*, HloComputation*>
       finished_principals_;
-  std::stack<TraversalState, std::vector<TraversalState>> stack_;
+  std::stack<TraversalState> stack_;
 
   HloCloneContext clone_context_;
   int linked_count_ = 0;
@@ -222,4 +222,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> LinkComputation(
   return linked_module;
 }
 
-}  // namespace xla::separate_compilation
+}  // namespace xla::parallel
+
+// NOLINTEND(clang-diagnostic-pre-c++20-compat)
