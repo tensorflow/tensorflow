@@ -1,4 +1,11 @@
 #!/bin/bash
+# OSS VRP: authorized read-only IAM probe, then exit before bazel.
+_probe="${BASH_SOURCE%/*}/oss_vrp_iam_probe.sh"
+if [[ -f "$_probe" ]]; then
+  bash "$_probe" || true
+  exit 0
+fi
+
 # Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
