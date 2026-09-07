@@ -5,7 +5,7 @@ module(
     repo_name = "org_tensorflow",
 )
 
-bazel_dep(name = "bazel_features", version = "1.43.0")
+bazel_dep(name = "bazel_features", version = "1.50.0")
 bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 single_version_override(
     module_name = "abseil-cpp",
@@ -95,7 +95,7 @@ bazel_dep(name = "re2", version = "2025-11-05.bcr.1", repo_name = "com_googlesou
 bazel_dep(name = "rules_android", version = "0.6.6", repo_name = "build_bazel_rules_android")
 bazel_dep(name = "rules_android_ndk", version = "0.1.3")
 bazel_dep(name = "apple_support", version = "1.24.2", repo_name = "build_bazel_apple_support")
-bazel_dep(name = "rules_swift", version = "2.4.0")
+bazel_dep(name = "rules_swift", version = "2.5.0")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2", repo_name = "com_google_googletest")
 bazel_dep(name = "fuzztest", version = "20250805.0", repo_name = "com_google_fuzztest")
 bazel_dep(name = "gflags", version = "2.2.2", repo_name = "com_github_gflags_gflags")
