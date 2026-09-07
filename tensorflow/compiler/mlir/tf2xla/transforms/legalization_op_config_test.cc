@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
@@ -135,7 +136,7 @@ TEST(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
     }
   }
 
-  EXPECT_EQ(mlir_only_patterns, 63);
+  EXPECT_EQ(mlir_only_patterns, 62);
 }
 
 // Counts which ops have lowerings without XlaOpKernels. This isn't a
