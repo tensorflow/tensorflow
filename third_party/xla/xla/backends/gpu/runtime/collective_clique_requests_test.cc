@@ -147,5 +147,62 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsLexicographicSort) {
   EXPECT_EQ(groups[2], (std::vector{d4, d5}));
 }
 
+TEST(CollectiveCliqueRequestsTest, RequestCliqueSemaphore) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+
+  GpuCliqueKey k0({d0, d1}, 2);
+  std::vector<std::vector<GlobalDeviceId>> rg0 = {{d0, d1}};
+
+  CollectiveCliqueRequests::BarrierRequirements barrier_reqs;
+  barrier_reqs.clique_semaphores_count = 1;
+
+  CollectiveCliqueRequests requests;
+  ASSERT_OK(
+      requests.RequestClique(k0, rg0,
+                             CollectiveCliqueRequests::CliqueRequirements{
+                                 /*dev_comm=*/std::nullopt, barrier_reqs}));
+
+  auto ordered_requests = requests.OrderedRequestedCliques();
+  ASSERT_EQ(ordered_requests.size(), 1);
+  EXPECT_EQ(ordered_requests[0].clique_semaphores_count, 1);
+  EXPECT_FALSE(ordered_requests[0].use_cross_device_barrier_requested);
+}
+
+TEST(CollectiveCliqueRequestsTest, RequestCliqueSemaphorePicksMax) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+
+  GpuCliqueKey k0({d0, d1}, 2);
+  std::vector<std::vector<GlobalDeviceId>> rg0 = {{d0, d1}};
+
+  CollectiveCliqueRequests::BarrierRequirements barrier_reqs1;
+  barrier_reqs1.clique_semaphores_count = 1;
+
+  CollectiveCliqueRequests::BarrierRequirements barrier_reqs4;
+  barrier_reqs4.clique_semaphores_count = 4;
+
+  CollectiveCliqueRequests::BarrierRequirements barrier_reqs2;
+  barrier_reqs2.clique_semaphores_count = 2;
+
+  CollectiveCliqueRequests requests;
+  ASSERT_OK(
+      requests.RequestClique(k0, rg0,
+                             CollectiveCliqueRequests::CliqueRequirements{
+                                 /*dev_comm=*/std::nullopt, barrier_reqs1}));
+  ASSERT_OK(
+      requests.RequestClique(k0, rg0,
+                             CollectiveCliqueRequests::CliqueRequirements{
+                                 /*dev_comm=*/std::nullopt, barrier_reqs4}));
+  ASSERT_OK(
+      requests.RequestClique(k0, rg0,
+                             CollectiveCliqueRequests::CliqueRequirements{
+                                 /*dev_comm=*/std::nullopt, barrier_reqs2}));
+
+  auto ordered_requests = requests.OrderedRequestedCliques();
+  ASSERT_EQ(ordered_requests.size(), 1);
+  EXPECT_EQ(ordered_requests[0].clique_semaphores_count, 4);
+}
+
 }  // namespace
 }  // namespace xla::gpu
