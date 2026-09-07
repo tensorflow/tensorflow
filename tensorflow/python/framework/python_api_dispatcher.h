@@ -215,7 +215,7 @@ class PyInstanceChecker : public PyTypeChecker {
 
   // Size of the cache (for regression testing).
   size_t cache_size() const {
-    absl::MutexLock lock(py_class_cache_mu_.get());
+    absl::MutexLock lock(*py_class_cache_mu_.get());
     return py_class_cache_.size();
   }
 
