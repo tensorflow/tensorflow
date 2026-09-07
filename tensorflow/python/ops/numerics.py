@@ -62,6 +62,9 @@ def verify_tensor_all_finite_v2(x, message, name=None):
      ...
   InvalidArgumentError: ...
 
+  Note: Under XLA compilation (e.g. `tf.function(jit_compile=True)`), this
+  check is a no-op and does not check for `NaN` or `Inf` values at runtime.
+
   Args:
     x: Tensor to check.
     message: Message to log on failure.

@@ -2469,5 +2469,27 @@ TEST_F(XlaCompilerTest, DeadNodePruning) {
                                         name_attr, args, &result));
 }
 
+TEST_F(XlaCompilerTest, CheckNumerics) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_FLOAT, 0);
+  auto check = ops::CheckNumerics(scope.WithOpName("Check"), a, "check");
+  auto ret = ops::_Retval(scope.WithOpName("Ret"), check, 0);
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({2});
+
+  XlaCompiler compiler(DefaultOptions());
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                     std::move(graph), args, &result));
+  ASSERT_EQ(result.outputs.size(), 1);
+  EXPECT_EQ(result.outputs[0].type, DT_FLOAT);
+  EXPECT_EQ(result.outputs[0].shape, TensorShape({2}));
+}
+
 }  // namespace
 }  // namespace tensorflow
