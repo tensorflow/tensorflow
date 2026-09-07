@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 
@@ -140,16 +141,18 @@ bool IsCollectiveMemoryInstruction(const HloInstruction* inst) {
 }
 
 bool IsNcclSymmetricOrUserBuffersEnabledForInstruction(
-    const HloInstruction* inst, const DebugOptions& option) {
+    const HloInstruction* inst, const DebugOptions& option,
+    const stream_executor::GpuComputeCapability* gpu_version = nullptr) {
   if (!IsCollectiveMemoryInstruction(inst)) {
     return false;
   }
   return option.xla_gpu_enable_nccl_user_buffers() ||
-         IsNcclSymmetricBuffersEnabledForCollective(inst, option);
+         IsNcclSymmetricBuffersEnabledForCollective(inst, option, gpu_version);
 }
 
-bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
-                                    const DebugOptions& option) {
+bool HasCollectiveMemoryInstruction(
+    const HloValue& input_alias, const DebugOptions& option,
+    const stream_executor::GpuComputeCapability* gpu_version = nullptr) {
   // Tuple-shaped values are pointer containers and never hold data that needs
   // to live in collective memory. Only array sub-elements do.
   if (input_alias.shape().IsTuple()) {
@@ -158,13 +161,13 @@ bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
   // If any use is a collective instruction, we must color the value to use
   // collective memory space.
   for (const HloUse& use : input_alias.GetUses()) {
-    if (IsNcclSymmetricOrUserBuffersEnabledForInstruction(use.instruction,
-                                                          option)) {
+    if (IsNcclSymmetricOrUserBuffersEnabledForInstruction(
+            use.instruction, option, gpu_version)) {
       return true;
     }
   }
   return IsNcclSymmetricOrUserBuffersEnabledForInstruction(
-      input_alias.instruction(), option);
+      input_alias.instruction(), option, gpu_version);
 }
 
 bool HasSymmetricMemoryInstruction(const HloValue& input_alias) {
@@ -278,7 +281,8 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallResultMemorySpace(
 namespace {
 // Determines the memory space color for the given HLO buffer
 absl::StatusOr<BufferValue::Color> DetermineBufferColor(
-    const HloBuffer& buffer, const DebugOptions& option) {
+    const HloBuffer& buffer, const DebugOptions& option,
+    const stream_executor::GpuComputeCapability* gpu_version = nullptr) {
   // Is one-shot RaggedAllToAll with NCCL feature is enabled.
   const bool is_one_shot_ra2a_with_nccl =
       IsOneShotRaggedAllToAllWithNcclEnabled(option);
@@ -340,7 +344,7 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
       // Device-initiated and one-sided collectives require symmetric memory.
       candidates.push_back(
           static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
-    } else if (HasCollectiveMemoryInstruction(*value, option)) {
+    } else if (HasCollectiveMemoryInstruction(*value, option, gpu_version)) {
       candidates.push_back(
           static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
     }
@@ -367,12 +371,13 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
 // Relies on DetermineBufferColor to aggregate memory space constraints from
 // the HloValues in the buffer. If a valid, conflict-free color is found, it
 // is uniformly applied to all HloValues within the buffer.
-absl::Status AssignColors(const DebugOptions& option,
-                          HloAliasAnalysis* alias_analysis) {
+absl::Status AssignColors(
+    const DebugOptions& option, HloAliasAnalysis* alias_analysis,
+    const stream_executor::GpuComputeCapability* gpu_version) {
   HloDataflowAnalysis& dataflow_analysis = alias_analysis->dataflow_analysis();
   for (const HloBuffer& buffer : alias_analysis->buffers()) {
     ABSL_ASSIGN_OR_RETURN(BufferValue::Color color,
-                     DetermineBufferColor(buffer, option));
+                     DetermineBufferColor(buffer, option, gpu_version));
     // Apply buffer color to all values in the buffer.
     for (const HloValue* const_value : buffer.values()) {
       HloValue& mutable_value = dataflow_analysis.GetValue(const_value->id());
@@ -383,9 +388,12 @@ absl::Status AssignColors(const DebugOptions& option,
   return absl::OkStatus();
 }
 
-BufferAssigner::Colorer CreateColorer(const DebugOptions& option) {
-  return [&](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    return AssignColors(option, alias_analysis);
+BufferAssigner::Colorer CreateColorer(
+    const DebugOptions& option,
+    const stream_executor::GpuComputeCapability* gpu_version) {
+  return [&option, gpu_version](HloAliasAnalysis* alias_analysis,
+                                const HloOrdering&) {
+    return AssignColors(option, alias_analysis, gpu_version);
   };
 }
 }  // namespace xla::gpu
