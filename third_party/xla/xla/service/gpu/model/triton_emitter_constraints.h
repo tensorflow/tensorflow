@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
@@ -138,6 +139,14 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
 };
 
 namespace experimental {
+
+// Evaluates a subset of Triton hardware and emitter constraints on candidate
+// tile sizes without requiring construction of concrete tiled HLO instructions.
+// This allows us to prune invalid tiling candidates early, but doesn't replace
+// the full verification in `VerifyTritonConstraints`.
+Decision VerifySubsetOfTritonConstraints(
+    absl::Span<const int64_t> padded_tile_sizes,
+    const TilingSpace& tiling_space, const se::DeviceDescription& device_info);
 
 Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
                                  const se::DeviceDescription& device_info);

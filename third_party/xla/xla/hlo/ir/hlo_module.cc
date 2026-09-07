@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/stack_frames.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/env.h"
@@ -399,6 +401,22 @@ void HloModule::Print(
   if (!frontend_attributes_.map().empty()) {
     AppendCat(printer, ", frontend_attributes=",
               FrontendAttributesToString(frontend_attributes_));
+  }
+  if (options.print_backend_config() && has_backend_config()) {
+    absl::string_view config = raw_backend_config_string();
+    std::string sorted_config;
+    if (options.sort_backend_config()) {
+      sorted_config = SortJson(config).value_or(std::string(config));
+      config = sorted_config;
+    }
+    printer->Append(", backend_config=");
+    if (printer->is_hasher() || LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(absl::CEscape(config));
+      printer->Append("\"");
+    }
   }
   if (!original_value_recovery_table_.empty()) {
     HloPrintOptions new_options = options;
@@ -742,6 +760,10 @@ void HloModule::ToProto(HloModuleProto* proto, HloProtoOptions options) const {
 
   if (!config().device_type().empty()) {
     proto->set_device_type(config().device_type());
+  }
+
+  if (has_backend_config()) {
+    proto->set_backend_config(raw_backend_config_string());
   }
 }
 
@@ -1173,6 +1195,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   ABSL_RETURN_IF_ERROR(
       InlineMetadataPayloadsFromProtoPayloadTable(module.get(), proto));
+
+  if (!proto.backend_config().empty()) {
+    module->set_raw_backend_config_string(proto.backend_config());
+  }
 
   return module;
 }
@@ -1738,6 +1764,8 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   module->set_is_dynamic(is_dynamic());
   module->set_hlo_passes_started(hlo_passes_started());
   module->set_frontend_attributes(frontend_attributes());
+  module->backend_config_ = backend_config_;
+  module->internal_storage_ = internal_storage_;
   *module->metadata() = metadata();
   // The canonical module id should be the same as the unique id from the
   // module. We don't want to copy the id from the other metadata.

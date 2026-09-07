@@ -436,5 +436,62 @@ ENTRY entry {
       printed, "ROOT %gte0 = f32[10]{0} get-tuple-element(%p0), index=0"));
 }
 
+TEST_F(HLOComputationTest, BackendConfigAndInternalStorage) {
+  auto builder = HloComputation::Builder("test_comp");
+  builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  std::unique_ptr<HloComputation> computation = builder.Build();
+
+  EXPECT_FALSE(computation->has_backend_config());
+  computation->set_raw_backend_config_string("custom_config");
+  EXPECT_TRUE(computation->has_backend_config());
+  EXPECT_EQ(computation->raw_backend_config_string(), "custom_config");
+  computation->clear_backend_config();
+  EXPECT_FALSE(computation->has_backend_config());
+
+  EXPECT_FALSE(computation->has_internal_storage());
+  EXPECT_FALSE(computation->has_internal_storage<int>());
+  computation->set_internal_storage<int>(123);
+  EXPECT_TRUE(computation->has_internal_storage());
+  EXPECT_TRUE(computation->has_internal_storage<int>());
+  ASSERT_NE(computation->internal_storage<int>(), nullptr);
+  EXPECT_EQ(*computation->internal_storage<int>(), 123);
+
+  std::unique_ptr<HloComputation> cloned = computation->Clone();
+  EXPECT_TRUE(cloned->has_internal_storage<int>());
+  ASSERT_NE(cloned->internal_storage<int>(), nullptr);
+  EXPECT_EQ(*cloned->internal_storage<int>(), 123);
+
+  computation->clear_internal_storage<int>();
+  EXPECT_FALSE(computation->has_internal_storage<int>());
+}
+
+TEST_F(HLOComputationTest, BackendConfigProtoRoundTrip) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder("test_comp");
+  builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  computation->set_raw_backend_config_string(
+      R"({"custom_key":"custom_value"})");
+  EXPECT_TRUE(computation->has_backend_config());
+
+  HloComputationProto proto;
+  computation->ToProto(&proto);
+  EXPECT_EQ(proto.backend_config(), R"({"custom_key":"custom_value"})");
+
+  absl::flat_hash_map<int64_t, HloComputation*> computation_map;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloComputation> deserialized,
+                       HloComputation::CreateFromProto(proto, computation_map));
+  EXPECT_TRUE(deserialized->has_backend_config());
+  EXPECT_EQ(deserialized->raw_backend_config_string(),
+            R"({"custom_key":"custom_value"})");
+
+  HloComputationProto roundtrip_proto;
+  deserialized->ToProto(&roundtrip_proto);
+  EXPECT_EQ(roundtrip_proto.backend_config(), proto.backend_config());
+}
+
 }  // namespace
 }  // namespace xla

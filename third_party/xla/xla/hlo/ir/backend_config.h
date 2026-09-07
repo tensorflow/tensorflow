@@ -21,10 +21,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <typeindex>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -172,6 +175,134 @@ class BackendConfigWrapper {
   mutable std::unique_ptr<tsl::protobuf::Message> proto_
       ABSL_GUARDED_BY(mutex_);
   mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
+};
+
+// A thread-safe, type-safe in-memory container for backend-specific data.
+// Can be used to store arbitrary types (e.g. pointers, protos, structs) on HLO
+// objects without serializing them to protos or polluting the HLO module.
+class InternalStorage {
+ public:
+  InternalStorage() = default;
+  ~InternalStorage() = default;
+
+  InternalStorage(const InternalStorage& other) {
+    absl::MutexLock other_lock(&other.mutex_);
+    for (const auto& [type_idx, holder] : other.entries_) {
+      if (holder != nullptr) {
+        auto cloned = holder->Clone();
+        if (cloned != nullptr) {
+          entries_[type_idx] = std::move(cloned);
+        }
+      }
+    }
+  }
+
+  InternalStorage& operator=(const InternalStorage& other) {
+    if (this == &other) {
+      return *this;
+    }
+    absl::MutexLock lock(&mutex_);
+    absl::MutexLock other_lock(&other.mutex_);
+    entries_.clear();
+    for (const auto& [type_idx, holder] : other.entries_) {
+      if (holder != nullptr) {
+        auto cloned = holder->Clone();
+        if (cloned != nullptr) {
+          entries_[type_idx] = std::move(cloned);
+        }
+      }
+    }
+    return *this;
+  }
+
+  InternalStorage(InternalStorage&& other) noexcept {
+    absl::MutexLock other_lock(&other.mutex_);
+    entries_ = std::move(other.entries_);
+  }
+
+  InternalStorage& operator=(InternalStorage&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    absl::MutexLock lock(&mutex_);
+    absl::MutexLock other_lock(&other.mutex_);
+    entries_ = std::move(other.entries_);
+    return *this;
+  }
+
+  template <typename T>
+  void Set(T value) {
+    absl::MutexLock lock(&mutex_);
+    entries_[std::type_index(typeid(T))] =
+        std::make_shared<Holder<T>>(std::move(value));
+  }
+
+  template <typename T>
+  const T* Get() const {
+    absl::MutexLock lock(&mutex_);
+    auto it = entries_.find(std::type_index(typeid(T)));
+    if (it == entries_.end() || it->second == nullptr) {
+      return nullptr;
+    }
+    return &(static_cast<Holder<T>*>(it->second.get())->value);
+  }
+
+  template <typename T>
+  T* GetMutable() {
+    absl::MutexLock lock(&mutex_);
+    auto it = entries_.find(std::type_index(typeid(T)));
+    if (it == entries_.end() || it->second == nullptr) {
+      return nullptr;
+    }
+    return &(static_cast<Holder<T>*>(it->second.get())->value);
+  }
+
+  template <typename T>
+  bool Has() const {
+    absl::MutexLock lock(&mutex_);
+    return entries_.contains(std::type_index(typeid(T)));
+  }
+
+  bool Empty() const {
+    absl::MutexLock lock(&mutex_);
+    return entries_.empty();
+  }
+
+  template <typename T>
+  void Clear() {
+    absl::MutexLock lock(&mutex_);
+    entries_.erase(std::type_index(typeid(T)));
+  }
+
+  void ClearAll() {
+    absl::MutexLock lock(&mutex_);
+    entries_.clear();
+  }
+
+ private:
+  struct BaseHolder {
+    virtual ~BaseHolder() = default;
+    virtual std::unique_ptr<BaseHolder> Clone() const = 0;
+  };
+
+  template <typename T>
+  struct Holder : BaseHolder {
+    T value;
+
+    explicit Holder(T val) : value(std::move(val)) {}
+
+    std::unique_ptr<BaseHolder> Clone() const override {
+      if constexpr (std::is_copy_constructible_v<T>) {
+        return std::make_unique<Holder<T>>(value);
+      } else {
+        return nullptr;
+      }
+    }
+  };
+
+  mutable absl::Mutex mutex_;
+  absl::flat_hash_map<std::type_index, std::shared_ptr<BaseHolder>> entries_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 class HloInstruction;
