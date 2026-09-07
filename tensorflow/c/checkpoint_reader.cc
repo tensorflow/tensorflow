@@ -66,7 +66,7 @@ CheckpointReader::CheckpointReader(const std::string& filename,
 }
 
 bool CheckpointReader::HasTensor(const std::string& name) const {
-  absl::MutexLock lock(&reader_mu_);
+  absl::MutexLock lock(reader_mu_);
   if (reader_ != nullptr) {
     return reader_->HasTensor(name, nullptr, nullptr);
   }
@@ -86,7 +86,7 @@ CheckpointReader::GetVariableToDataTypeMap() const {
 }
 
 const std::string CheckpointReader::DebugString() const {
-  absl::MutexLock lock(&reader_mu_);
+  absl::MutexLock lock(reader_mu_);
   if (reader_ != nullptr) return reader_->DebugString();
   return v2_reader_->DebugString();
 }
@@ -94,7 +94,7 @@ const std::string CheckpointReader::DebugString() const {
 void CheckpointReader::GetTensor(
     const std::string& name, std::unique_ptr<tensorflow::Tensor>* out_tensor,
     TF_Status* out_status) const {
-  absl::MutexLock lock(&reader_mu_);
+  absl::MutexLock lock(reader_mu_);
   absl::Status status;
   if (reader_ != nullptr) {
     status = reader_->GetTensor(name, out_tensor);
