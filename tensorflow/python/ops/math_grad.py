@@ -1258,6 +1258,10 @@ def _SigmoidGrad(op: ops.Operation, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad]):
+    if y.dtype.is_floating:
+      # For large positive x, y rounds to 1 even when the derivative is
+      # representable. Use sigmoid(-x) instead of the cancellation-prone 1 - y.
+      return grad * (y * math_ops.sigmoid(-op.inputs[0]))
     y = math_ops.conj(y)
     return gen_math_ops.sigmoid_grad(y, grad)
 

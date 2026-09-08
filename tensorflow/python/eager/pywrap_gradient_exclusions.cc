@@ -295,7 +295,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"SerializeTensor"},
       {"SetSize"},
       {"Shape"},
-      {"Sigmoid"},
       {"Size"},
       {"Slice", 1, {2}},
       {"Softmax"},
