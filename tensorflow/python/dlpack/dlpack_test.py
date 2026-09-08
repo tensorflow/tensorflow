@@ -77,11 +77,7 @@ def GetNamedTestParameters() -> List[Dict[str, Any]]:
 
 def _make_test_tensor(shape: Sequence[int], dtype: Any) -> "ops.Tensor":
   """Creates a small deterministic tensor of the given shape/dtype.
-
-  Values are drawn as plain Python ints from `np.random.randint` and then
-  cast to `dtype` by `constant_op.constant`, so this works uniformly for
-  int/float/complex/bfloat16 dtypes. Bool tensors need a 0/1 range instead
-  of the 0-9 range used for everything else.
+  ...
   """
   # Normalize via dtypes.as_dtype before comparing so this correctly
   # detects "boolean-ness" regardless of whether `dtype` arrives as the raw
