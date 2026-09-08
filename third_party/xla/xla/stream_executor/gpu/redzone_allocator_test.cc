@@ -18,7 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -62,13 +63,13 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   StreamExecutorAddressAllocator se_allocator(platform, {stream_exec});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/kRedzoneSize,
                              /*redzone_pattern=*/kRedzonePattern);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAddress<uint8_t> buf,
-                          allocator.AllocateBytes(/*byte_size=*/kAllocSize));
+  ASSERT_OK_AND_ASSIGN(DeviceAddress<uint8_t> buf,
+                       allocator.AllocateBytes(/*byte_size=*/kAllocSize));
   EXPECT_REDZONE_OK(allocator.CheckRedzones());
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
@@ -78,8 +79,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   // Check that the redzones are in fact filled with kRedzonePattern.
   auto check_redzone = [&](DeviceAddressBase redzone, absl::string_view name) {
     std::vector<uint8_t> host_buf(kRedzoneSize);
-    TF_ASSERT_OK(stream->Memcpy(host_buf.data(), redzone, kRedzoneSize));
-    TF_ASSERT_OK(stream->BlockHostUntilDone());
+    ASSERT_OK(stream->Memcpy(host_buf.data(), redzone, kRedzoneSize));
+    ASSERT_OK(stream->BlockHostUntilDone());
     const int64_t kMaxMismatches = 16;
     int64_t mismatches = 0;
     for (int64_t i = 0; i < host_buf.size(); ++i) {
@@ -109,8 +110,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     {
       EXPECT_REDZONE_OK(allocator.CheckRedzones());
     }
-    TF_ASSERT_OK(stream->Memcpy(&old_redzone_value, redzone_at_offset, 1));
-    TF_ASSERT_OK(stream->MemZero(&redzone_at_offset, 1));
+    ASSERT_OK(stream->Memcpy(&old_redzone_value, redzone_at_offset, 1));
+    ASSERT_OK(stream->MemZero(&redzone_at_offset, 1));
     EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones());
 
     // Checking reinitializes the redzone.
@@ -135,7 +136,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
       PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   StreamExecutorAddressAllocator se_allocator(platform, {stream_exec});
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/kRedzoneSize,
@@ -152,7 +153,7 @@ TEST(RedzoneAllocatorTest, CheckRedzonesWithoutAllocationsIsOk) {
       PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   StreamExecutorAddressAllocator se_allocator(platform, {stream_exec});
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/1 << 23,
