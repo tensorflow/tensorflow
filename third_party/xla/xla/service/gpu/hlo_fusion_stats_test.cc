@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -86,8 +87,7 @@ TEST_F(HloFusionStatsTest, LoopFusionAndReduceFusion) {
     })")
                     .value();
   HloFusionStatsVisitor fusion_stats_visitor;
-  TF_ASSERT_OK(
-      module.get()->entry_computation()->Accept(&fusion_stats_visitor));
+  ASSERT_OK(module.get()->entry_computation()->Accept(&fusion_stats_visitor));
   SCOPED_TRACE(module->ToString());
 
   std::string stats = fusion_stats_visitor.ToString();
@@ -115,8 +115,7 @@ TEST_F(HloFusionStatsTest, AggregateCwiseOps) {
     })")
                     .value();
   HloFusionStatsVisitor fusion_stats_visitor;
-  TF_ASSERT_OK(
-      module.get()->entry_computation()->Accept(&fusion_stats_visitor));
+  ASSERT_OK(module.get()->entry_computation()->Accept(&fusion_stats_visitor));
   SCOPED_TRACE(module->ToString());
 
   std::string stats = fusion_stats_visitor.ToString();
