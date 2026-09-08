@@ -54,8 +54,8 @@ class RepeatBufferKernelTest : public testing::Test {
 };
 
 TEST_F(RepeatBufferKernelTest, CreateRepeatedBufferAndTestResult) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor_->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor_->CreateStream());
 
   constexpr int kNumberOfRepeatedElements = 4;
   constexpr std::array<float, kNumberOfRepeatedElements> kInitialBuf = {42, 24,
@@ -69,7 +69,7 @@ TEST_F(RepeatBufferKernelTest, CreateRepeatedBufferAndTestResult) {
 
   CHECK_OK(stream->MemcpyH2D(absl::MakeConstSpan(kInitialBuf), &buffer));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RepeatBufferKernel::KernelType kernel,
       GpuKernelRegistry::GetGlobalRegistry().LoadKernel<RepeatBufferKernel>(
           executor_));
