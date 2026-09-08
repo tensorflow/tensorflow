@@ -844,6 +844,7 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["softplus_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
