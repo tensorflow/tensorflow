@@ -196,8 +196,10 @@ struct Dilation<GPUDevice, T> {
     const int64_t output_cols = output.dimension(2);
 
     const int64_t total_count = batch * output_rows * output_cols * depth;
+    // Occupancy-aware config: heuristic 1024-thread blocks exceed registers
+    // on cuda13 for these kernels (too many resources requested for launch).
     absl::StatusOr<GpuLaunchConfig64> config =
-        GetGpuLaunchConfig64(total_count, d);
+        GetGpuLaunchConfig64(total_count, d, DilationKernel<T>, 0, 0);
     CHECK_OK(config.status());  // Crash OK
     TF_CHECK_OK(GpuLaunchKernel(
         DilationKernel<T>, config->block_count, config->thread_per_block, 0,
@@ -241,7 +243,8 @@ struct DilationBackpropInput<GPUDevice, T> {
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
-    config = GetGpuLaunchConfig64(total_count, d);
+    config = GetGpuLaunchConfig64(total_count, d, DilationBackpropInputKernel<T>,
+                                  0, 0);
     CHECK_OK(config.status());  // Crash OK
     TF_CHECK_OK(GpuLaunchKernel(
         DilationBackpropInputKernel<T>, config->block_count,
@@ -286,7 +289,9 @@ struct DilationBackpropFilter<GPUDevice, T> {
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
-    config = GetGpuLaunchConfig64(total_count, d);
+    config =
+        GetGpuLaunchConfig64(total_count, d, DilationBackpropFilterKernel<T>, 0,
+                             0);
     CHECK_OK(config.status());  // Crash OK
     TF_CHECK_OK(GpuLaunchKernel(
         DilationBackpropFilterKernel<T>, config->block_count,
