@@ -165,7 +165,7 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
   }();
 
   auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-      highest_supported_cuda_version);
+      highest_supported_cuda_version, compute_capability.major);
   int highest_supported_ptx_version =
       ptx_version.major_version() * 10 + ptx_version.minor_version();
 

@@ -54,10 +54,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "xla/hlo/translate/hlo_to_mhlo/translate.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/stablehlo.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/protobuf.h"
 
 using llvm::cl::opt;
 using mlir::MLIRContext;
@@ -105,9 +107,9 @@ int main(int argc, char **argv) {
     // back to do it properly in the future
     mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
-    registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
-                    mlir::TFL::TensorFlowLiteDialect, mlir::mhlo::MhloDialect,
-                    mlir::chlo::ChloDialect>();
+    registry
+        .insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                mlir::TFL::TensorFlowLiteDialect, mlir::chlo::ChloDialect>();
     context->appendDialectRegistry(registry);
   }
 
@@ -168,11 +170,40 @@ int main(int argc, char **argv) {
 
     auto content = buffer->getBuffer();
     if (hlo_import_type == HloImportType::hlotxt) {
-      module =
-          xla::HloTextToMlirHloTranslateFunction(content, context.get(), false);
+      auto hlo_module = xla::ParseAndReturnUnverifiedModule(content.str());
+      if (!hlo_module.ok()) {
+        llvm::errs() << "Failed to parse HLO text: "
+                     << hlo_module.status().message();
+        return kTrFailure;
+      }
+      auto statusor_module =
+          xla::ConvertHloToStablehlo(*context, hlo_module.value().get());
+      if (!statusor_module.ok()) {
+        llvm::errs() << "Failed to convert HLO to StableHLO: "
+                     << statusor_module.status().message();
+        return kTrFailure;
+      }
+      module = std::move(statusor_module.value());
     } else if (hlo_import_type == HloImportType::proto) {
-      module =
-          xla::HloToMlirHloTranslateFunction(content, context.get(), false);
+      xla::HloProto hlo_proto;
+      tsl::protobuf::TextFormat::Parser parser;
+      bool status =
+          hlo_proto.ParseFromString(content.str()) ||
+          parser.ParseFromString(content.str(), &hlo_proto) ||
+          hlo_proto.mutable_hlo_module()->ParseFromString(content.str()) ||
+          parser.ParseFromString(content.str(), hlo_proto.mutable_hlo_module());
+      if (!status) {
+        llvm::errs() << "Failed to parse HloProto";
+        return kTrFailure;
+      }
+      auto statusor_module =
+          xla::ConvertHloToStablehlo(*context, hlo_proto.mutable_hlo_module());
+      if (!statusor_module.ok()) {
+        llvm::errs() << "Failed to convert HLO proto to StableHLO: "
+                     << statusor_module.status().message();
+        return kTrFailure;
+      }
+      module = std::move(statusor_module.value());
     } else {
       module = mlir::OwningOpRef<mlir::ModuleOp>(
           mlir::parseSourceString<mlir::ModuleOp>(content, context.get()));
