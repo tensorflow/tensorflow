@@ -541,6 +541,7 @@ EXPORTS
  ?MeshDimNames@Mesh@dtensor@tensorflow@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
  ?MlirQuantizeModel@tflite@@YAPEAU_object@@PEAU2@_N1HHH1100110@Z
  ?MlirSparsifyModel@tflite@@YAPEAU_object@@PEAU2@@Z
+ ?MlirToFlatBufferFile@tflite@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@_N1111@Z
  ?Mul@ops@tensorflow@@YA?AVStatus@lts_20260526@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
  ?MulRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
  ?Multiply@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z
