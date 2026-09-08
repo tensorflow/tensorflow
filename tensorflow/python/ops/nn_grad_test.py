@@ -336,6 +336,26 @@ class SwishGradOpTest(test.TestCase):
       error = gradient_checker_v2.max_error(theoretical, numerical)
       self.assertLess(error, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishDoubleGradientPreservesSmallComponent(self):
+    features = constant_op.constant(40.410841513445845, dtypes.float64)
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+
+    self.assertAllClose(
+        -1.0820525268131133e-16,
+        second_derivative,
+        rtol=1e-6,
+        atol=0.0,
+    )
+
 
 if __name__ == "__main__":
   test.main()
