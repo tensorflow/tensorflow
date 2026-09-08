@@ -123,6 +123,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
         all_gather_thunk {
           collective_config {}
           collectives_mode: COLLECTIVES_SYMMETRIC_MEMORY
+          enable_gxl: true
         }
       )pb");
 
