@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import googletest
 
 
@@ -213,6 +214,31 @@ class UnaryOpsTest(xla_test.XLATestCase):
         self._assertOpOutputMatchesExpected(
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5
         )
+
+  def testBesselI0(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      # float64 XLA bessel vs truncated fixtures differs by ~1e-9; use 1e-7 per review.
+      tol = 1e-5 if dtype == np.float32 else 1e-7
+      x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
+      expected = np.array(
+          [27.23987182, 1.26606588, 1.0, 1.26606588, 27.23987182],
+          dtype=dtype,
+      )
+      self._assertOpOutputMatchesExpected(
+          special_math_ops.bessel_i0, x, expected=expected, atol=tol, rtol=tol
+      )
+
+  def testBesselI1(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-5 if dtype == np.float32 else 1e-7
+      x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
+      expected = np.array(
+          [-24.33564214, -0.56515910, 0.0, 0.56515910, 24.33564214],
+          dtype=dtype,
+      )
+      self._assertOpOutputMatchesExpected(
+          special_math_ops.bessel_i1, x, expected=expected, atol=tol, rtol=tol
+      )
 
   def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
