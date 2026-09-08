@@ -25,14 +25,17 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -1733,6 +1736,102 @@ CHECK: ENTRY
 CHECK: %[[SCAN_FUSION:.*]] = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom
 CHECK: ROOT %[[EPILOGUE_FUSION:.*]] = f32[100]{0} fusion(%[[SCAN_FUSION]]), kind=kCustom
       )");
+}
+
+TEST_P(PriorityFusionTest,
+       StructurallyIdenticalModulesDifferInProgramIdAndOpNames) {
+  const absl::string_view hlo_a = R"(
+HloModule module_a
+
+ENTRY main_a {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  fusion = f32[10,10] parameter(2)
+  add1 = f32[10,10] add(p0, p1)
+  ROOT mul1 = f32[10,10] multiply(add1, fusion)
+}
+)";
+
+  const absl::string_view hlo_b = R"(
+HloModule module_b
+
+ENTRY main_b {
+  arg0 = f32[10,10] parameter(0)
+  arg1 = f32[10,10] parameter(1)
+  arg2 = f32[10,10] parameter(2)
+  sum2 = f32[10,10] add(arg0, arg1)
+  ROOT prod2 = f32[10,10] multiply(sum2, arg2)
+}
+)";
+
+  auto module_a = ParseAndReturnVerifiedModule(hlo_a).value();
+  auto module_b = ParseAndReturnVerifiedModule(hlo_b).value();
+
+  // 1. Program ID status quo:
+  // Each module receives a globally sequential unique_id, so structurally
+  // identical modules do NOT share the same module unique_id (program_id).
+  EXPECT_NE(module_a->unique_id(), module_b->unique_id());
+
+  ModuleAnnotation annot_a(*module_a);
+  ModuleAnnotation annot_b(*module_b);
+  auto title_a = absl::string_view(annot_a);
+  auto title_b = absl::string_view(annot_b);
+  EXPECT_THAT(title_a, testing::HasSubstr(
+                           absl::StrCat("program_id=", module_a->unique_id())));
+  EXPECT_THAT(title_b, testing::HasSubstr(
+                           absl::StrCat("program_id=", module_b->unique_id())));
+  EXPECT_NE(title_a, title_b);
+
+  // Run PriorityFusion on both modules.
+  EXPECT_THAT(priority_fusion_.Run(module_a.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module_b.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* root_a =
+      module_a->entry_computation()->root_instruction();
+  const HloInstruction* root_b =
+      module_b->entry_computation()->root_instruction();
+  ASSERT_EQ(root_a->opcode(), HloOpcode::kFusion);
+  ASSERT_EQ(root_b->opcode(), HloOpcode::kFusion);
+
+  const HloComputation* fused_comp_a = root_a->fused_instructions_computation();
+  const HloComputation* fused_comp_b = root_b->fused_instructions_computation();
+  ASSERT_NE(fused_comp_a, nullptr);
+  ASSERT_NE(fused_comp_b, nullptr);
+
+  // 2. Fusion computations structural equivalence:
+  // The fused computations are structurally equivalent (identical opcodes,
+  // shapes, and graph topology).
+  EXPECT_TRUE(
+      fused_comp_a->Equal(*fused_comp_b, /*is_layout_sensitive=*/false));
+
+  // 3. Fusion computation unique IDs:
+  // Both fusion computations receive the same computation unique_id within
+  // their respective modules because the per-module computation counter starts
+  // at 0 (0 for entry computation, 1 for the first added fusion computation).
+  EXPECT_EQ(fused_comp_a->unique_id(), 1);
+  EXPECT_EQ(fused_comp_b->unique_id(), 1);
+  EXPECT_EQ(fused_comp_a->unique_id(), fused_comp_b->unique_id());
+
+  // 4. Fusion instruction names and internal instruction names differ:
+  EXPECT_EQ(root_a->name(), "fusion.1");
+  EXPECT_EQ(root_b->name(), "fusion");
+  EXPECT_NE(root_a->name(), root_b->name());
+
+  EXPECT_EQ(fused_comp_a->root_instruction()->name(), "mul1.1");
+  EXPECT_EQ(fused_comp_b->root_instruction()->name(), "prod2.1");
+  EXPECT_NE(fused_comp_a->root_instruction()->name(),
+            fused_comp_b->root_instruction()->name());
+
+  EXPECT_NE(fused_comp_a->ToString(), fused_comp_b->ToString());
+
+  // 5. Instruction annotations reflect different op names:
+  InstructionAnnotation inst_annot_a(annot_a, *root_a);
+  InstructionAnnotation inst_annot_b(annot_b, *root_b);
+  EXPECT_NE(inst_annot_a.nvtx_name(), inst_annot_b.nvtx_name());
+  EXPECT_THAT(inst_annot_a.nvtx_name(), testing::HasSubstr("hlo_op=fusion.1"));
+  EXPECT_THAT(inst_annot_b.nvtx_name(), testing::HasSubstr("hlo_op=fusion"));
 }
 
 }  // namespace gpu

@@ -2603,6 +2603,7 @@ xla_cc_test(
     deps = [
         ":priority_fusion",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:annotation",
         "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:symbolic_map",
@@ -2621,6 +2622,7 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
