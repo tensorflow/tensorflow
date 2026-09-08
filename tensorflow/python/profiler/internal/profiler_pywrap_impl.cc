@@ -40,6 +40,9 @@ absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& options) {
+  if (logdir == nullptr) {
+    return absl::InvalidArgumentError("logdir must be a string, not None");
+  }
   std::lock_guard<std::mutex> lock(mu_);
   auto opts = GetRemoteSessionManagerOptionsLocked(logdir, options);
   session_ = tsl::ProfilerSession::Create(opts.profiler_options());
