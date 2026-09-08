@@ -315,10 +315,13 @@ Attribute TiledLayoutAttr::parse(AsmParser& parser, Type type) {
         }
       }
       first = false;
-      if (failed(parser.parseInteger(size))) {
+      if (succeeded(parser.parseOptionalStar())) {
+        tile.add_dimensions(xla::Tile::kCombineDimension);
+      } else if (failed(parser.parseInteger(size))) {
         return {};
+      } else {
+        tile.add_dimensions(size);
       }
-      tile.add_dimensions(size);
     }
   }
   SmallVector<int64_t, 2> tile_strides;
@@ -365,10 +368,18 @@ AffineMap TiledLayoutAttr::getAffineMap() const {
       new_exprs.push_back(exprs[i]);
     }
     for (int64_t i = 0; i < dimensions.size(); ++i) {
-      new_exprs.push_back(exprs[untiled_rank + i].floorDiv(dimensions[i]));
+      if (dimensions[i] == xla::Tile::kCombineDimension) {
+        new_exprs.push_back(getAffineConstantExpr(0, getContext()));
+      } else {
+        new_exprs.push_back(exprs[untiled_rank + i].floorDiv(dimensions[i]));
+      }
     }
     for (int64_t i = 0; i < dimensions.size(); ++i) {
-      new_exprs.push_back(exprs[untiled_rank + i] % dimensions[i]);
+      if (dimensions[i] == xla::Tile::kCombineDimension) {
+        new_exprs.push_back(exprs[untiled_rank + i]);
+      } else {
+        new_exprs.push_back(exprs[untiled_rank + i] % dimensions[i]);
+      }
     }
     exprs = std::move(new_exprs);
   }
@@ -377,6 +388,9 @@ AffineMap TiledLayoutAttr::getAffineMap() const {
   SmallVector<int64_t> strides = getExpandedStrides();
   CHECK_EQ(strides.size(), exprs.size());
   for (int64_t i = 0; i < exprs.size(); ++i) {
+    if (exprs[i] == getAffineConstantExpr(0, getContext())) {
+      continue;
+    }
     AffineExpr stride_expr =
         ShapedType::isDynamic(strides[i])
             ? getAffineSymbolExpr(num_symbols++, getContext())
@@ -415,6 +429,11 @@ FailureOr<SmallVector<int64_t>> getExpandedShape(
         llvm::ArrayRef(shape).take_back(tile_ndims);
     llvm::SmallVector<int64_t> new_tiled_shape(2 * tile_ndims);
     for (int64_t i = 0; i < tile_ndims; ++i) {
+      if (tile.dimension(i) == xla::Tile::kCombineDimension) {
+        new_tiled_shape[i] = 1;
+        new_tiled_shape[tile_ndims + i] = tiled_shape[i];
+        continue;
+      }
       if (require_alignment && (ShapedType::isDynamic(tiled_shape[i]) ||
                                 tiled_shape[i] % tile.dimension(i) != 0)) {
         return failure();
@@ -449,7 +468,11 @@ SmallVector<int64_t> TiledLayoutAttr::getContiguousTileStrides(
     if (d >= shape.size() - first_tile_rank) {
       assert(first_tile != nullptr);
       const int64_t tile_d = d - (shape.size() - first_tile_rank);
-      stride *= llvm::divideCeil(shape[d], first_tile->dimension(tile_d));
+      if (first_tile->dimension(tile_d) == xla::Tile::kCombineDimension) {
+        stride *= shape[d] == 0 ? 0 : 1;
+      } else {
+        stride *= llvm::divideCeil(shape[d], first_tile->dimension(tile_d));
+      }
     } else {
       stride *= shape[d];
     }
@@ -479,7 +502,11 @@ int64_t TiledLayoutAttr::getNumTrailingDimsWithContiguousTiles(
         shape[d] != ShapedType::kDynamic) {
       assert(first_tile != nullptr);
       const int64_t tile_d = d - (shape.size() - first_tile_rank);
-      size_tiles = llvm::divideCeil(shape[d], first_tile->dimension(tile_d));
+      if (first_tile->dimension(tile_d) == xla::Tile::kCombineDimension) {
+        size_tiles = shape[d] == 0 ? 0 : 1;
+      } else {
+        size_tiles = llvm::divideCeil(shape[d], first_tile->dimension(tile_d));
+      }
     } else {
       size_tiles = shape[d];
     }
@@ -509,37 +536,81 @@ SmallVector<int64_t> TiledLayoutAttr::getExpandedShape(
 }
 
 FailureOr<SmallVector<int64_t>> getExpandedStrides(
-    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides) {
+    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides,
+    ArrayRef<int64_t> shape) {
   if (tiles.empty()) {
     return SmallVector<int64_t>(tile_strides);
   }
   SmallVector<int64_t> strides(tile_strides);
   // Expand front tile
   const xla::Tile& first_tile = tiles.front();
+  const SmallVector<int64_t> subtile_unit =
+      TiledLayoutAttr::getSubtileUnit(tiles);
+  SmallVector<int64_t> first_tile_dims(first_tile.dimensions().begin(),
+                                       first_tile.dimensions().end());
+  if (!shape.empty() && shape.size() >= first_tile_dims.size()) {
+    const int64_t offset = shape.size() - first_tile_dims.size();
+    for (size_t i = 0; i < first_tile_dims.size(); ++i) {
+      if (first_tile_dims[i] == xla::Tile::kCombineDimension) {
+        if (ShapedType::isDynamic(shape[offset + i])) {
+          first_tile_dims[i] = ShapedType::kDynamic;
+        } else {
+          first_tile_dims[i] =
+              llvm::alignTo(shape[offset + i], subtile_unit[i]);
+        }
+      }
+    }
+  }
   FAILUREOR_ASSIGN_OR_RETURN(
       SmallVector<int64_t> expanded_tile,
-      mlir::tpu::getExpandedShape(first_tile.dimensions(), tiles.drop_front(),
-                                  /*require_alignment=*/true));
+      mlir::tpu::getExpandedShape(first_tile_dims, tiles.drop_front(),
+                                  /*require_alignment=*/false));
   const int64_t rank = tile_strides.size();
   strides.resize_for_overwrite(rank + expanded_tile.size());
-  int64_t first_tile_size = llvm::product_of(first_tile.dimensions());
+  int64_t first_tile_size = 1;
+  for (size_t i = 0; i < first_tile_dims.size(); ++i) {
+    int64_t dim = first_tile_dims[i];
+    if (dim == xla::Tile::kCombineDimension) {
+      dim = subtile_unit[i];
+    }
+    if (first_tile_size == ShapedType::kDynamic ||
+        dim == ShapedType::kDynamic) {
+      first_tile_size = ShapedType::kDynamic;
+    } else {
+      first_tile_size *= dim;
+    }
+  }
   int64_t tile_size = 1;
   for (int64_t d = strides.size() - 1; d >= 0; --d) {
     if (d >= rank) {
       const int64_t new_stride = tile_size;
-      tile_size *= expanded_tile[d - rank];
+      int64_t dim = expanded_tile[d - rank];
+      if (dim == xla::Tile::kCombineDimension) {
+        dim = 1;
+      }
+      if (tile_size == ShapedType::kDynamic || dim == ShapedType::kDynamic) {
+        tile_size = ShapedType::kDynamic;
+      } else {
+        tile_size *= dim;
+      }
       strides[d] = new_stride;
     } else {
       if (ShapedType::isStatic(strides[d])) {
-        strides[d] *= first_tile_size;
+        if (first_tile_size == ShapedType::kDynamic) {
+          strides[d] = ShapedType::kDynamic;
+        } else {
+          strides[d] *= first_tile_size;
+        }
       }
     }
   }
   return strides;
 }
 
-SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
-  auto strides = mlir::tpu::getExpandedStrides(getTiles(), getTileStrides());
+SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides(
+    ArrayRef<int64_t> shape) const {
+  auto strides =
+      mlir::tpu::getExpandedStrides(getTiles(), getTileStrides(), shape);
   CHECK(succeeded(strides));
   return *strides;
 }
@@ -557,7 +628,8 @@ SmallVector<int64_t> TiledLayoutAttr::getSubtileUnit(
     CHECK_LE(tile_rank, current_tiled_rank);
     for (int64_t i = 0; i < tile_rank; ++i) {
       const int64_t tiled_dim = current_tiled_rank - tile_rank + i;
-      if (tiled_dim < first_tile_rank) {
+      if (tiled_dim < first_tile_rank &&
+          tile.dimension(i) != xla::Tile::kCombineDimension) {
         subtile_unit[tiled_dim] *= tile.dimension(i);
       }
     }
@@ -681,7 +753,7 @@ std::optional<bool> areAnyDivisible(Value lhs, Value rhs, int64_t divisor,
 // Returns the remainder of the value divided by the divisor, if known.
 std::optional<int64_t> getExplicitRemainder(Value value, int64_t divisor,
                                             int64_t fuel) {
-  if (fuel <= 0) {
+  if (fuel <= 0 || divisor <= 0) {
     return std::nullopt;
   }
   if (divisor == 1) {
@@ -707,7 +779,7 @@ std::optional<int64_t> getExplicitRemainder(Value value, int64_t divisor,
 // structural rules.
 std::optional<bool> isStructurallyDivisible(Value value, int64_t divisor,
                                             int64_t fuel) {
-  if (fuel <= 0) {
+  if (fuel <= 0 || divisor <= 0) {
     return std::nullopt;
   }
   if (divisor == 1) {
@@ -731,15 +803,19 @@ std::optional<bool> isStructurallyDivisible(Value value, int64_t divisor,
   if (auto mul_op = value.getDefiningOp<arith::MulIOp>()) {
     // We check RHS first, because MLIR canonicalizes constants to the right.
     if (auto rhs_cst = mlir::getConstantIntValue(mul_op.getRhs())) {
-      int64_t gcd = std::gcd(*rhs_cst, divisor);
-      if (gcd > 1) {
-        return isDivisible(mul_op.getLhs(), divisor / gcd, fuel - 1);
+      if (*rhs_cst != std::numeric_limits<int64_t>::min()) {
+        int64_t gcd = std::gcd(*rhs_cst, divisor);
+        if (gcd > 1) {
+          return isDivisible(mul_op.getLhs(), divisor / gcd, fuel - 1);
+        }
       }
     }
     if (auto lhs_cst = mlir::getConstantIntValue(mul_op.getLhs())) {
-      int64_t gcd = std::gcd(*lhs_cst, divisor);
-      if (gcd > 1) {
-        return isDivisible(mul_op.getRhs(), divisor / gcd, fuel - 1);
+      if (*lhs_cst != std::numeric_limits<int64_t>::min()) {
+        int64_t gcd = std::gcd(*lhs_cst, divisor);
+        if (gcd > 1) {
+          return isDivisible(mul_op.getRhs(), divisor / gcd, fuel - 1);
+        }
       }
     }
     return areAnyDivisible(mul_op.getRhs(), mul_op.getLhs(), divisor, fuel);
@@ -749,12 +825,18 @@ std::optional<bool> isStructurallyDivisible(Value value, int64_t divisor,
   }
   if (auto div_op = value.getDefiningOp<arith::DivUIOp>()) {
     if (auto rhs_cst = mlir::getConstantIntValue(div_op.getRhs())) {
-      return isDivisible(div_op.getLhs(), divisor * *rhs_cst, fuel - 1);
+      if (*rhs_cst > 0 &&
+          divisor <= std::numeric_limits<int64_t>::max() / *rhs_cst) {
+        return isDivisible(div_op.getLhs(), divisor * *rhs_cst, fuel - 1);
+      }
     }
   }
   if (auto div_op = value.getDefiningOp<arith::DivSIOp>()) {
     if (auto rhs_cst = mlir::getConstantIntValue(div_op.getRhs())) {
-      return isDivisible(div_op.getLhs(), divisor * *rhs_cst, fuel - 1);
+      if (*rhs_cst > 0 &&
+          divisor <= std::numeric_limits<int64_t>::max() / *rhs_cst) {
+        return isDivisible(div_op.getLhs(), divisor * *rhs_cst, fuel - 1);
+      }
     }
   }
   if (auto sub_op = value.getDefiningOp<arith::SubIOp>()) {

@@ -355,6 +355,24 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
             "bf16[8,2,3,1004]{3,2,1,0:T(2,*,*,128)}");
 }
 
+TEST_F(LayoutUtilTest, LinearIndexWithCombineDimension) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 256}, {1, 0});
+  Tile* tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(Tile::kCombineDimension);
+  tile->add_dimensions(128);
+
+  // Tile (*, 128) on [16, 256] means each tile has size (16, 128).
+  // (0, 0) -> 0
+  EXPECT_EQ(LayoutUtil::LinearIndex(shape, {0, 0}), 0);
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {0, 0}), 0);
+  // (1, 0) -> row 1 of tile 0 -> 128
+  EXPECT_EQ(LayoutUtil::LinearIndex(shape, {1, 0}), 128);
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {1, 0}), 128);
+  // (0, 128) -> row 0 of tile 1 -> 16 * 128 = 2048
+  EXPECT_EQ(LayoutUtil::LinearIndex(shape, {0, 128}), 2048);
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {0, 128}), 2048);
+}
+
 TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {0, 1});
   auto status =

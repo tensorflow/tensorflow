@@ -370,8 +370,12 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
       result_type.getShape().take_front(untiled_dims), ShapedType::kDynamic);
   const int64_t sublane_count = tc_target_shape[0];
   const int64_t lane_count = tc_target_shape[1];
+  const SmallVector<int64_t> subtile_unit = tiled_layout.getSubtileUnit();
   for (int64_t i = 0; i < tile_rank; ++i) {
     int64_t tile_dim = first_tile.dimension(i);
+    if (tile_dim == xla::Tile::kCombineDimension) {
+      tile_dim = subtile_unit[i];
+    }
     const int64_t dim = untiled_dims + i;
     if (!isGuaranteedDivisible(getBaseIdx()[dim], tile_dim)) {
       return absl::StrCat(
@@ -381,7 +385,7 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
           ". If it is, use tpu.assume_multiple to suppress this error.");
     }
     // We only require alignment to compact 2nd minor for large 2nd minor.
-    if (tile_rank == 2 && i == 0) {
+    if (tile_rank == 2 && i == 0 && sublane_count > 0) {
       int64_t packing = tile_dim / sublane_count;
       if (tile_dim == sublane_count * packing &&
           first_tile.dimension(1) == lane_count && packing > 1 &&
@@ -544,7 +548,9 @@ mlir::InFlightDiagnostic MemRefSqueezeOp::verifyTiling() {
           if (tile_idx < 0 || tile_idx >= static_cast<int>(tile_dims.size())) {
             return emitOpError() << "Internal error: tile index out of bounds.";
           }
-          if (tile_dims[tile_idx] != 1) {
+          if (tile_dims[tile_idx] != 1 &&
+              !(tile_dims[tile_idx] == xla::Tile::kCombineDimension &&
+                source_shape[dim] == 1)) {
             return emitOpError()
                    << "All tiled squeezed dimensions must be of size 1.";
           }
@@ -557,6 +563,14 @@ mlir::InFlightDiagnostic MemRefSqueezeOp::verifyTiling() {
       for (int dim : squeezed) {
         int first_tiled = source_shape.size() - first_tile.dimensions().size();
         if (dim >= first_tiled) {
+          int tile_idx = dim - first_tiled;
+          if (tile_idx >= 0 &&
+              tile_idx < static_cast<int>(first_tile.dimensions().size()) &&
+              first_tile.dimensions()[tile_idx] ==
+                  xla::Tile::kCombineDimension &&
+              source_shape[dim] == 1) {
+            continue;
+          }
           return emitOpError() << "When multiple tiles are present, no tiled "
                                   "dimensions can be squeezed.";
         }
