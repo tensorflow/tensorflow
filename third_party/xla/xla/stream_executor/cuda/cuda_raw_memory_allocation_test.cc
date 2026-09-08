@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
+#include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform.h"
@@ -32,7 +32,6 @@ limitations under the License.
 namespace stream_executor::gpu {
 namespace {
 
-using absl_testing::IsOk;
 
 // 1 MB — will be rounded up to the VMM granularity (typically 2 MB).
 static constexpr uint64_t kTestSize = 1024 * 1024;
@@ -40,10 +39,9 @@ static constexpr uint64_t kTestSize = 1024 * 1024;
 class CudaRawMemoryAllocationTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
-        Platform * platform,
-        PlatformManager::PlatformWithId(cuda::kCudaPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(Platform * platform, PlatformManager::PlatformWithId(
+                                                  cuda::kCudaPlatformId));
+    ASSERT_OK_AND_ASSIGN(executor_, platform->ExecutorForDevice(0));
   }
 
   StreamExecutor* executor_ = nullptr;
@@ -52,8 +50,8 @@ class CudaRawMemoryAllocationTest : public ::testing::Test {
 // Verifies that Create returns a valid handle and that the allocation is at
 // least as large as requested.
 TEST_F(CudaRawMemoryAllocationTest, CreateAllocation) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc, CudaRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       CudaRawMemoryAllocation::Create(executor_, kTestSize));
 
   EXPECT_NE(alloc->GetHandle(), 0u);
   EXPECT_GE(alloc->address().size(), kTestSize);
@@ -62,8 +60,8 @@ TEST_F(CudaRawMemoryAllocationTest, CreateAllocation) {
 // Verifies that address().opaque() is the handle cast to void* and that
 // address().size() matches the padded allocation size.
 TEST_F(CudaRawMemoryAllocationTest, AddressReflectsHandle) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc, CudaRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       CudaRawMemoryAllocation::Create(executor_, kTestSize));
 
   EXPECT_EQ(
       alloc->address().opaque(),
@@ -74,8 +72,8 @@ TEST_F(CudaRawMemoryAllocationTest, AddressReflectsHandle) {
 // Verifies that a very small request is still satisfied (padded to
 // granularity).
 TEST_F(CudaRawMemoryAllocationTest, SizeIsAtLeastRequested) {
-  TF_ASSERT_OK_AND_ASSIGN(auto alloc,
-                          CudaRawMemoryAllocation::Create(executor_, 1));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       CudaRawMemoryAllocation::Create(executor_, 1));
 
   EXPECT_NE(alloc->GetHandle(), 0u);
   EXPECT_GE(alloc->address().size(), 1u);

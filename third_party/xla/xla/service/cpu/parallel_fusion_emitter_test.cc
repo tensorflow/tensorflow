@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/platform/threadpool_interface.h"
 
@@ -86,8 +85,8 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
       ROOT root_fusion = f32[] fusion(p), kind=kLoop, calls=add1
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(trivial_fusion));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(trivial_fusion));
   HloComputation* computation = hlo_module->entry_computation();
   HloFusionInstruction* fusion =
       Cast<HloFusionInstruction>(computation->root_instruction());
@@ -98,10 +97,10 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
       thread_pool, CreateDefaultOptions(), /*hlo_module=*/nullptr, nullptr,
       false, false);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec, fussion_emitter.AddFusion(fusion));
+  ASSERT_OK_AND_ASSIGN(auto kernel_spec, fussion_emitter.AddFusion(fusion));
   EXPECT_EQ(kernel_spec.name(), expected_name);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
+  ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
   ASSERT_EQ(kernels.size(), 1);
   KernelDefinition<LlvmKernelSource>& lowered_kernel = kernels[0];
   EXPECT_EQ(lowered_kernel.spec().name(), expected_name);
@@ -111,7 +110,7 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
       std::move(source).thread_safe_module();
   llvm::Module* llvm_module = thread_safe_llvm_module.getModuleUnlocked();
   EXPECT_NE(llvm_module->getFunction(expected_name), nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool passed,
       RunFileCheck(llvm_ir::DumpToString(*llvm_module), "CHECK: fadd fast"));
   EXPECT_TRUE(passed);
@@ -138,8 +137,8 @@ TEST_F(ParallelFusionEmitterTest, FusionsAreSorted) {
       ROOT result_tuple = (s32[], s32[]) tuple(fusion_0, fusion_1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(trivial_fusion));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(trivial_fusion));
   HloComputation* computation = hlo_module->entry_computation();
   HloInstruction* root_tuple = computation->root_instruction();
   const auto* fusion_0 = Cast<HloFusionInstruction>(root_tuple->operand(0));
@@ -154,15 +153,13 @@ TEST_F(ParallelFusionEmitterTest, FusionsAreSorted) {
       /*enable_tiled_emitter=*/false);
 
   // Add the fusions in reverse order.
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec_1,
-                          fussion_emitter.AddFusion(fusion_1));
+  ASSERT_OK_AND_ASSIGN(auto kernel_spec_1, fussion_emitter.AddFusion(fusion_1));
   EXPECT_EQ(kernel_spec_1.name(), "fusion_1");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec_0,
-                          fussion_emitter.AddFusion(fusion_0));
+  ASSERT_OK_AND_ASSIGN(auto kernel_spec_0, fussion_emitter.AddFusion(fusion_0));
   EXPECT_EQ(kernel_spec_0.name(), "fusion_0");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
+  ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
   ASSERT_EQ(kernels.size(), 2);
   EXPECT_EQ(kernels[0].spec().name(), "fusion_0");
   EXPECT_EQ(kernels[1].spec().name(), "fusion_1");
@@ -187,8 +184,8 @@ TEST_F(ParallelFusionEmitterTest, Error) {
       ROOT result = bf16[] fusion(lhs, rhs), kind=kLoop, calls=dot_fusion
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(trivial_fusion));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(trivial_fusion));
   HloComputation* computation = hlo_module->entry_computation();
   HloFusionInstruction* fusion =
       Cast<HloFusionInstruction>(computation->root_instruction());

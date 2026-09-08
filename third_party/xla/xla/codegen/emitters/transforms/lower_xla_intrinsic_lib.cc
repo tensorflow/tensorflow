@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/tanh.h"
 #include "xla/codegen/intrinsic/type.h"
 #include "xla/mlir/utils/type_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace emitters {
