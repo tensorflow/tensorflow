@@ -453,7 +453,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
   // cannot be interleaved by free-threaded Python callers.
   static absl::Mutex* const registration_mu = new absl::Mutex();
 
-  absl::MutexLock registration_lock(registration_mu);
+  absl::MutexLock registration_lock(*registration_mu);
 
   for (int i = 0; i < static_cast<int>(opdefs.size()); ++i) {
     const tensorflow::OpDef& opdef = opdefs[i];
