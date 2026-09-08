@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -75,6 +76,9 @@ class FissionBackend : public GpuCodegenBackend {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
 
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
+      const HloInstruction& instr) override;
+
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
@@ -89,13 +93,29 @@ class FissionBackend : public GpuCodegenBackend {
   std::string version() const override { return codegen_backend_->version(); }
 
  private:
+  // Estimates the combined runtime of prologue and epilogue fusion kernels.
+  // Returns zero runtime if there are no prologue or epilogue fusions (e.g. for
+  // pure dot fusions).
+  absl::StatusOr<absl::Duration> EstimateFissionPrologueEpilogue(
+      std::unique_ptr<HloModule> fissioned_and_rewritten_module) const;
+
+  struct FissionedModuleWithInstrs {
+    std::unique_ptr<HloModule> module;
+    std::vector<HloInstruction*> instructions;
+  };
+
+  absl::StatusOr<FissionedModuleWithInstrs>
+  GetFissionedModuleWithSupportedInstrs(const HloInstruction& instr);
+
   absl::StatusOr<std::unique_ptr<HloModule>> GetFissionedAndRewrittenModule(
-      const HloInstruction& fusion_instr);
+      const HloInstruction& fusion_instr) const;
+
   absl::StatusOr<std::vector<HloInstruction*>> FindSupportedInstructions(
-      const HloModule* module);
+      const HloModule* module) const;
+
   // Runs priority fusion to fuse prologues and epilogue after the fissioned
   // module has been generated.
-  absl::Status RunPriorityFusion(HloModule* module);
+  absl::Status RunPriorityFusion(HloModule* module) const;
 
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> codegen_backend_;
