@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -164,8 +165,7 @@ TEST_F(ConditionalToSelectTest,
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(ConditionalToSelect().Run(module.get()).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kMap);

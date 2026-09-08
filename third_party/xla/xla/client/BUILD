@@ -104,6 +104,7 @@ xla_cc_test(
         ":executable_build_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:compilation_environments",
         "//xla/service:device_assignment",
