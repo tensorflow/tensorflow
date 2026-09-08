@@ -982,6 +982,8 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
     functor::SetZeroFunctor<Device, T> fill;
     fill(c->eigen_device<Device>(), out->flat<T>());
   }
+  if (num_updates == 0) return absl::OkStatus();
+
   auto output_matrix =
       out->shaped<T, 2>({shape.num_elements() / slice_size, slice_size});
 

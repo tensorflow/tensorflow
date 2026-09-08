@@ -93,8 +93,8 @@ ENTRY main {
   ROOT t = (f32[4], f32[4]) tuple(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_EQ(ReduceScatterCount(module.get()), 1);
 }
 
@@ -123,8 +123,8 @@ ENTRY main {
       tuple(rs0, rs1, rs2, rs3)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_EQ(ReduceScatterCount(module.get()), 2);
 }
 
@@ -153,7 +153,7 @@ ENTRY main {
       tuple(rs0, rs1, rs2, rs3)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, RunPass(hlo_string, /*expect_change=*/true, kMaxByteCount,
                            kMaxCombineCount, /*combine_by_dim=*/false));
   EXPECT_EQ(ReduceScatterCount(module.get()), 1);
@@ -182,7 +182,7 @@ ENTRY main {
       tuple(rs0, rs1, rs2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, RunPass(hlo_string, /*expect_change=*/true, kMaxByteCount,
                            kMaxCombineCount, /*combine_by_dim=*/false));
   EXPECT_EQ(ReduceScatterCount(module.get()), 1);
@@ -208,8 +208,8 @@ ENTRY main {
   ROOT t = (f32[4, 8], f32[2, 8]) tuple(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterCombinerTest, DoNotCombineMismatched) {
@@ -232,8 +232,8 @@ ENTRY main {
   ROOT t = (f32[4], f32[4]) tuple(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterCombinerTest, DoNotCombineWithoutReductionKind) {
@@ -268,8 +268,8 @@ ENTRY entry{
   ROOT add.0 = tuple(reduce-scatter.0, reduce-scatter.1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterCombinerTest, HighThreshold) {
@@ -300,7 +300,7 @@ ENTRY main {
 })";
 
   int64_t combined_bytes = 67108864 + 67108864 + 50331648 + 16777216;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       RunPass(hlo_string, /*expect_change=*/true,
               /*byte_threshold=*/combined_bytes,
@@ -344,13 +344,13 @@ ENTRY main {
   ROOT tuple = tuple(gte.0, gte.1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   ReduceScatterCombiner combine(1024 * 1024, kMaxCombineCount,
                                 /*combine_by_dim=*/false,
                                 /*combine_while_loops=*/false);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -372,8 +372,8 @@ TEST_F(ReduceScatterCombinerTest, PreservesMetadata) {
       ROOT tuple = (f32[16], f32[16]) tuple(%rs.0, %rs.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   OpMetadata metadata;
   metadata.set_op_type("test_type0");
   metadata.set_op_name("(test_name0:test_name1)");
