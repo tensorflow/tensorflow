@@ -2054,6 +2054,23 @@ func.func @InvalidL2NormalizePattern3(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: @InvalidL2NormalizePatternMultiAxis
+// Reducing all dimensions is not equivalent to TFL L2 normalization, which
+// only reduces the trailing dimension.
+func.func @InvalidL2NormalizePatternMultiAxis(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<[0, 1]> : tensor<2xi32>
+  %0 = "tfl.square"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<f32>
+  %2 = "tfl.rsqrt"(%1) : (tensor<f32>) -> tensor<f32>
+  %3 = "tfl.mul"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %3: tensor<2x3xf32>
+  // CHECK: %[[SQUARE:.*]] = "tfl.square"(%arg0)
+  // CHECK: %[[SUM:.*]] = "tfl.sum"(%[[SQUARE]],
+  // CHECK: %[[RSQRT:.*]] = "tfl.rsqrt"(%[[SUM]])
+  // CHECK: %[[MUL:.*]] = tfl.mul(%arg0, %[[RSQRT]])
+  // CHECK: return %[[MUL]]
+}
+
 // CHECK-LABEL: @fuseDivIntoConv2d
 func.func @fuseDivIntoConv2d(%arg0: tensor<1x112x112x2xf32>) -> tensor<1x28x23x2xf32> {
   %cst0 = arith.constant dense<[[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], [[[9.0, 10.0], [11.0, 12.0]], [[13.0, 14.0], [15.0, 16.0]]]]> : tensor<2x2x2x2xf32>
