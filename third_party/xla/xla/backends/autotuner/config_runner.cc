@@ -155,29 +155,34 @@ ConfigRunner::ConfigProfile ConfigRunner::ProfileCandidate(
   }
 
   CHECK(profile_result->output_buffer.has_value());
-  int assigned_cluster =
-      AssignToOutputCluster(clusters, profile_result->output_buffer.value(),
-                            is_trusted_config, allow_new_cluster);
+  std::string diff_report_with_first_cluster;
+  int assigned_cluster = AssignToOutputCluster(
+      clusters, profile_result->output_buffer.value(), is_trusted_config,
+      allow_new_cluster, &diff_report_with_first_cluster);
 
   return ConfigProfile{/*config=*/std::move(candidate.config),
                        /*failure=*/std::nullopt,
                        /*duration=*/profile_result->duration,
                        /*scratch_bytes=*/profile_result->scratch_bytes,
-                       /*cluster_index=*/assigned_cluster};
+                       /*cluster_index=*/assigned_cluster,
+                       /*diff_report_with_first_cluster=*/
+                       std::move(diff_report_with_first_cluster)};
 }
 
-int ConfigRunner::AssignToOutputCluster(std::vector<OutputCluster>& clusters,
-                                        ScopedShapedBuffer& output,
-                                        bool is_trusted_config,
-                                        bool allow_new_cluster) {
+int ConfigRunner::AssignToOutputCluster(
+    std::vector<OutputCluster>& clusters, ScopedShapedBuffer& output,
+    bool is_trusted_config, bool allow_new_cluster,
+    std::string* diff_report_with_first_cluster) {
   for (int c = 0; c < clusters.size(); ++c) {
-    if (profiler_
-            ->CheckOutputBuffer(output, clusters[c].representative,
-                                options_.relative_tolerance)
-            .ok()) {
+    absl::Status status = profiler_->CheckOutputBuffer(
+        output, clusters[c].representative, options_.relative_tolerance);
+    if (status.ok()) {
       clusters[c].count++;
       clusters[c].has_trusted_member |= is_trusted_config;
       return c;
+    }
+    if (c == 0 && diff_report_with_first_cluster != nullptr) {
+      *diff_report_with_first_cluster = std::string(status.message());
     }
   }
   if (!allow_new_cluster) {
@@ -205,20 +210,27 @@ void ConfigRunner::DemoteNonWinningClusterConfigs(
       winner = c;
     }
   }
+  if (winner < 0) {
+    return;
+  }
   VLOG(2) << "Output clustering formed " << clusters.size()
           << " cluster(s); selected cluster " << winner << " with "
           << clusters[winner].count
           << " member(s), trusted=" << clusters[winner].has_trusted_member;
   for (ConfigProfile& result : results) {
     if (!result.failure.has_value() && result.cluster_index != winner) {
-      result.failure = Failure{
-          FailureKind::kWrongResults,
-          absl::StrCat("Output disagrees with winning cluster (member of "
-                       "cluster ",
-                       result.cluster_index, " of ", clusters.size(),
-                       "; winning cluster has ", clusters[winner].count,
-                       " member(s), trusted=",
-                       clusters[winner].has_trusted_member, ").")};
+      std::string message = absl::StrCat(
+          "Output disagrees with winning cluster (member of "
+          "cluster ",
+          result.cluster_index, " of ", clusters.size(),
+          "; winning cluster has ", clusters[winner].count,
+          " member(s), trusted=", clusters[winner].has_trusted_member, ").");
+      // Only append the diff report if cluster 0 (the reference cluster) won,
+      // to avoid attaching a diff report against a non-winning cluster.
+      if (winner == 0 && !result.diff_report_with_first_cluster.empty()) {
+        absl::StrAppend(&message, "\n", result.diff_report_with_first_cluster);
+      }
+      result.failure = Failure{FailureKind::kWrongResults, std::move(message)};
       VLOG(3) << "Demoted config " << result.config.ToString() << " (cluster "
               << result.cluster_index << ").";
     }

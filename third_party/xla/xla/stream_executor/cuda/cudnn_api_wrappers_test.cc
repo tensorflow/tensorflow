@@ -18,7 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "third_party/gpus/cudnn/cudnn_graph.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -42,8 +42,8 @@ TEST(CudnnApiWrappersTest, GetCudnnProperty) {
 TEST(CudnnApiWrappersTest, GetLoadedCudnnVersion) {
   // This test makes sure we can determine the version of cuDNN without an
   // accelerator present and without initializing cuDNN.
-  TF_ASSERT_OK_AND_ASSIGN(SemanticVersion version,
-                          stream_executor::cuda::GetLoadedCudnnVersion());
+  ASSERT_OK_AND_ASSIGN(SemanticVersion version,
+                       stream_executor::cuda::GetLoadedCudnnVersion());
 
   // As the time of writing this test, the oldest supported version of cuDNN
   // is 8.9.4. So we expect the version to be at least this.
