@@ -116,17 +116,16 @@ TEST_F(TiledHloInstructionTest,
       /*parameter_number=*/0, ShapeUtil::MakeShape(PrimitiveType::F32, {32}),
       "p0");
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TiledHloInstruction> rt0,
-      TiledHloInstruction::Create(
-          p0.get(), /*operands=*/{},
-          /*runtime_variables=*/{},
-          /*tile_sizes=*/{16},
-          /*tile_strides=*/{1},
-          IndexingMap::FromTensorSizes(
-              ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
-              /*dim_upper_bounds=*/{4},
-              /*symbol_upper_bounds=*/{})));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TiledHloInstruction> rt0,
+                       TiledHloInstruction::Create(
+                           p0.get(), /*operands=*/{},
+                           /*runtime_variables=*/{},
+                           /*tile_sizes=*/{16},
+                           /*tile_strides=*/{1},
+                           IndexingMap::FromTensorSizes(
+                               ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
+                               /*dim_upper_bounds=*/{4},
+                               /*symbol_upper_bounds=*/{})));
 
   IndexingMap indexing_map(
       ParseSymbolicMap("(d0)[rt0] -> (d0 + rt0)", &mlir_context_),
@@ -180,11 +179,11 @@ TEST_F(TiledHloInstructionTest, ToString) {
                              /*symbol_upper_bounds=*/{})));
     return std::make_pair(std::move(hlo), std::move(tiled_hlo));
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto p0, create_simple_tiled_hlo(0));
+  ASSERT_OK_AND_ASSIGN(auto p0, create_simple_tiled_hlo(0));
   auto [p0_hlo, tiled_p0] = std::move(p0);
-  TF_ASSERT_OK_AND_ASSIGN(auto p1, create_simple_tiled_hlo(1));
+  ASSERT_OK_AND_ASSIGN(auto p1, create_simple_tiled_hlo(1));
   auto [p1_hlo, tiled_p1] = std::move(p1);
-  TF_ASSERT_OK_AND_ASSIGN(auto p2, create_simple_tiled_hlo(2));
+  ASSERT_OK_AND_ASSIGN(auto p2, create_simple_tiled_hlo(2));
   auto [p2_hlo, tiled_p2] = std::move(p2);
 
   IndexingMap indexing_map(
@@ -202,7 +201,7 @@ TEST_F(TiledHloInstructionTest, ToString) {
   std::unique_ptr<HloInstruction> p3_hlo = HloInstruction::CreateParameter(
       /*parameter_number=*/3, ShapeUtil::MakeShape(PrimitiveType::F32, {32}),
       "p3");
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TiledHloInstruction> tiled_p3,
       TiledHloInstruction::Create(p3_hlo.get(), /*operands=*/{tiled_p0.get()},
                                   /*runtime_variables=*/{tiled_p1.get()},
