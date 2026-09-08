@@ -185,6 +185,7 @@ cc_library(
     deps = [
         ":hlo_input_output_format",
         ":profiler_interface",
+        "//third_party/protobuf/io",
         "//xla:debug_options_flags",
         "//xla:future",
         "//xla:literal",
