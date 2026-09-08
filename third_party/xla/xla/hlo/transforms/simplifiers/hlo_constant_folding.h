@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -28,6 +29,8 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla {
+
+class HloEvaluator;
 
 // A pass which performs constant folding in order to avoid unnecessary
 // computation on constants.
@@ -87,6 +90,10 @@ class HloConstantFolding : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  absl::StatusOr<bool> RunOnComputation(
+      HloComputation* computation, HloEvaluator* evaluator,
+      absl::flat_hash_map<HloComputation*, bool>& is_foldable_computation);
+
   // Number of slow constant-folds we've encountered.  Used for firing
   // SlowOperationAlarms.
   static std::atomic<int64_t> slow_op_counter_;
