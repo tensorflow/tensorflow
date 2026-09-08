@@ -1005,6 +1005,74 @@ class HloComputation {
   // provided permutation.
   absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
 
+  // Backend config accessors for HloComputation.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::StatusOr<ConfigProto> backend_config() const {
+    ConfigProto proto;
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    return proto;
+  }
+
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
+  }
+
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
+    return absl::OkStatus();
+  }
+
+  const std::string& raw_backend_config_string() const {
+    return backend_config_->GetRawString();
+  }
+
+  void set_raw_backend_config_string(std::string config_str) {
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
+  }
+
+  bool has_backend_config() const { return !backend_config_->empty(); }
+
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
+
+  // Generic in-memory internal storage for backend-specific data.
+  template <typename T>
+  void set_internal_storage(T data) {
+    internal_storage_.Set<T>(std::move(data));
+  }
+
+  template <typename T>
+  const T* internal_storage() const {
+    return internal_storage_.Get<T>();
+  }
+
+  template <typename T>
+  T* mutable_internal_storage() {
+    return internal_storage_.GetMutable<T>();
+  }
+
+  template <typename T>
+  bool has_internal_storage() const {
+    return internal_storage_.Has<T>();
+  }
+
+  bool has_internal_storage() const { return !internal_storage_.Empty(); }
+
+  template <typename T>
+  void clear_internal_storage() {
+    internal_storage_.Clear<T>();
+  }
+
+  void clear_all_internal_storage() { internal_storage_.ClearAll(); }
+
  private:
   friend class HloModule;
 
@@ -1125,6 +1193,10 @@ class HloComputation {
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;
 
   std::string name_;
+
+  std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
+  InternalStorage internal_storage_;
 
   // Callers and callees of this computation.
   // * These include all computations that have a caller/callee relationship

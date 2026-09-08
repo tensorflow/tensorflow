@@ -583,5 +583,46 @@ ENTRY main {
   *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {16});
 }
 
+TEST_F(HloExtractorTest, ExtractAsyncChain) {
+  constexpr absl::string_view hlo = R"(
+HloModule async_chain_module
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT res = f32[10] negate(p0)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  add0 = f32[10] add(p0, p1)
+  start = ((f32[10]), f32[10]) async-start(add0), calls=async_computation
+  update = ((f32[10]), f32[10]) async-update(start)
+  done = f32[10] async-done(update)
+  ROOT out = f32[10] add(done, p1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* start_inst =
+      FindInstruction(module.get(), HloOpcode::kAsyncStart);
+  HloInstruction* update_inst =
+      FindInstruction(module.get(), HloOpcode::kAsyncUpdate);
+  HloInstruction* done_inst =
+      FindInstruction(module.get(), HloOpcode::kAsyncDone);
+  ASSERT_NE(start_inst, nullptr);
+  ASSERT_NE(update_inst, nullptr);
+  ASSERT_NE(done_inst, nullptr);
+
+  for (HloInstruction* inst : {start_inst, update_inst, done_inst}) {
+    auto extracted = ExtractModule(inst, /*height=*/0);
+    ASSERT_NE(extracted, nullptr);
+    HloComputation* entry = extracted->entry_computation();
+    EXPECT_EQ(entry->root_instruction()->opcode(), HloOpcode::kAsyncDone);
+    EXPECT_THAT(
+        entry->root_instruction(),
+        op::AsyncDone(op::AsyncUpdate(op::AsyncStart(op::Parameter()))));
+  }
+}
+
 }  // namespace
 }  // namespace xla
