@@ -2385,6 +2385,119 @@ ENTRY main {
                  {0, 1});
 }
 
+// Verifies that in a while loop with xla_disable_while_loop_copies="true",
+// layout constraints propagate through elementwise operations into and out of
+// conditional subcomputations without inserting copies anywhere in the loop.
+TEST_F(LayoutAssignmentTest,
+       RespectsDisableWhileLoopCopiesWithConditionalElementwiseSubcomputation) {
+  // The while loop body contains elementwise ops feeding a conditional, whose
+  // branch_true contains elementwise ops feeding a {0, 1} constrained custom
+  // call, while branch_false contains elementwise subtraction. The conditional
+  // output is further consumed by elementwise addition before the loop root.
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (s32[2,8]{1,0}, u32[], pred[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+branch_true {
+  arg = (s32[2,8]{1,0}, s32[2,8]{1,0}) parameter(0)
+  a = s32[2,8]{1,0} get-tuple-element(arg), index=0
+  b = s32[2,8]{1,0} get-tuple-element(arg), index=1
+  c = s32[2,8] add(a, b)
+  d = s32[2,8] multiply(c, b)
+  ROOT custom = s32[2,8]{0,1} custom-call(d), custom_call_target="baz",
+    operand_layout_constraints={s32[2,8]{0,1}}
+}
+
+branch_false {
+  arg = (s32[2,8]{1,0}, s32[2,8]{1,0}) parameter(0)
+  a = s32[2,8]{1,0} get-tuple-element(arg), index=0
+  b = s32[2,8]{1,0} get-tuple-element(arg), index=1
+  ROOT sub = s32[2,8] subtract(a, b)
+}
+
+while_body {
+  tuple = (s32[2,8]{1,0}, u32[], pred[]) parameter(0)
+  input = s32[2,8]{1,0} get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  p = pred[] get-tuple-element(tuple), index=2
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  c2 = s32[] constant(2)
+  bcast = s32[2,8] broadcast(c2), dimensions={}
+  input_mul = s32[2,8] multiply(input, bcast)
+  branch_arg = (s32[2,8], s32[2,8]) tuple(input, input_mul)
+  cond = s32[2,8]{0,1} conditional(p, branch_arg, branch_arg), true_computation=branch_true, false_computation=branch_false
+  cond_add = s32[2,8] add(cond, bcast)
+  ROOT tuple1 = (s32[2,8]{0,1}, u32[], pred[]) tuple(cond_add, i_, p)
+}
+
+ENTRY main {
+  input = s32[2,8]{1,0} parameter(0)
+  c0 = u32[] constant(0)
+  p0 = pred[] constant(true)
+  tuple = (s32[2,8]{1,0}, u32[], pred[]) tuple(input, c0, p0)
+  tuple_ = (s32[2,8]{1,0}, u32[], pred[]) while(tuple), condition=while_condition, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT output_ = s32[2,8]{1,0} get-tuple-element(tuple_), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+
+  // Verify no copies were inserted in the while loop body around the
+  // conditional.
+  HloComputation* body = m->GetComputationWithName("while_body");
+  ASSERT_NE(body, nullptr);
+  for (HloInstruction* inst : body->instructions()) {
+    EXPECT_NE(inst->opcode(), HloOpcode::kCopy);
+  }
+
+  // Verify branch_true adopted {0, 1} throughout with no parameter copies.
+  HloComputation* branch_true = m->GetComputationWithName("branch_true");
+  ASSERT_NE(branch_true, nullptr);
+  for (HloInstruction* inst : branch_true->instructions()) {
+    EXPECT_NE(inst->opcode(), HloOpcode::kCopy);
+  }
+  ExpectLayoutIs(ShapeUtil::GetSubshape(
+                     branch_true->parameter_instruction(0)->shape(), {0}),
+                 {0, 1});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(
+                     branch_true->parameter_instruction(0)->shape(), {1}),
+                 {0, 1});
+  ExpectLayoutIs(branch_true->root_instruction()->shape(), {0, 1});
+
+  // Verify branch_false adopted {0, 1} matching branch_true without copies.
+  HloComputation* branch_false = m->GetComputationWithName("branch_false");
+  ASSERT_NE(branch_false, nullptr);
+  for (HloInstruction* inst : branch_false->instructions()) {
+    EXPECT_NE(inst->opcode(), HloOpcode::kCopy);
+  }
+  ExpectLayoutIs(ShapeUtil::GetSubshape(
+                     branch_false->parameter_instruction(0)->shape(), {0}),
+                 {0, 1});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(
+                     branch_false->parameter_instruction(0)->shape(), {1}),
+                 {0, 1});
+  ExpectLayoutIs(branch_false->root_instruction()->shape(), {0, 1});
+
+  // Verify the conditional instruction and while loop state share layout {0,
+  // 1}.
+  HloInstruction* cond = FindInstruction(m.get(), "cond");
+  ASSERT_NE(cond, nullptr);
+  ExpectLayoutIs(cond->shape(), {0, 1});
+
+  const Shape& body_param_shape = body->parameter_instruction(0)->shape();
+  ExpectLayoutIs(ShapeUtil::GetSubshape(body_param_shape, {0}), {0, 1});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(body->root_instruction()->shape(), {0}),
+                 {0, 1});
+}
+
 TEST_F(LayoutAssignmentTest, HloBufferLayoutUnconstrained) {
   const char* module_str = R"(
   HloModule test
