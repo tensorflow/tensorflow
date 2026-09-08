@@ -28,6 +28,20 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declaration of the GPU scalar-pack helper defined in
+// pack_op_gpu.cu.cc (compiled with EIGEN_USE_GPU by NVCC/hipcc).
+// Calling into that translation unit avoids instantiating Eigen
+// GPU-device expressions inside a regular .cc file where
+// EIGEN_USE_GPU is not defined, which would trigger Eigen's
+// static assertion:
+//   "Default executor instantiated with non-default device."
+namespace tensorflow {
+template <typename T>
+void PackScalarsOnGPU(OpKernelContext* c, int num, Tensor* output);
+}  // namespace tensorflow
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -83,36 +97,20 @@ class PackOp : public OpKernel {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     // Special case: packing 0-D (scalar) inputs on GPU.
     //
-    // The generic path below flattens each input to a {before_dim, after_dim}
-    // matrix and then calls ConcatGPU / ConcatCPU. For scalar inputs
-    // before_dim == after_dim == 1, so every matrix has shape {1, 1} and the
-    // output matrix has shape {1, num}.  While the arithmetic is correct, some
-    // GPU drivers reject the launch configuration produced for 1-element rows
-    // inside ConcatGPU, causing an "Can't concatenate scalars" error at
-    // runtime.  Handle scalars on GPU by writing each scalar element directly
-    // into the output flat vector via an Eigen chip assignment.
-    //
-    // The if constexpr guard is required: the Eigen chip + scalar<T> expression
-    // only compiles for Eigen::GpuDevice. ThreadPoolDevice (the CPU device
-    // type used for types like Variant and QInt8) would trigger a static
-    // assertion in Eigen ("Default executor instantiated with non-default
-    // device"). The CPU ConcatCPU path already handles scalars correctly and
-    // is used unchanged for all non-GPU devices.
-    if constexpr (std::is_same_v<Device, GPUDevice>) {
-      if (first_input.dims() == 0) {
-        auto output_vec = output->flat<T>();
-        for (int i = 0; i < num; ++i) {
-          const Tensor& input = c->input(i);
-          OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
-                      absl::InvalidArgumentError(absl::StrCat(
-                          "Shapes of all inputs must match: values[0].shape = ",
-                          first_input.shape().DebugString(), " != values[", i,
-                          "].shape = ", input.shape().DebugString())));
-          output_vec.template chip<0>(i).device(c->eigen_device<Device>()) =
-              input.scalar<T>();
-        }
-        return;
-      }
+    // The generic path below flattens inputs to {before_dim, after_dim}
+    // matrices and calls ConcatGPU. For scalars before_dim == after_dim == 1,
+    // giving {1,1} input matrices and a {1,num} output matrix. Some GPU
+    // drivers reject the resulting launch configuration, causing a
+    // "Can't concatenate scalars" error at runtime. Dispatch to
+    // PackScalarsOnGPU (defined in pack_op_gpu.cu.cc, compiled with
+    // EIGEN_USE_GPU) which writes each scalar element directly into the
+    // output flat vector. The indirection through a separate .cu.cc TU is
+    // required: Eigen device() assignments must be compiled with
+    // EIGEN_USE_GPU defined (i.e. by NVCC/hipcc), otherwise Eigen fires a
+    // static assertion even inside discarded if-constexpr branches.
+    if (std::is_same<Device, GPUDevice>::value && first_input.dims() == 0) {
+      PackScalarsOnGPU<T>(c, num, output);
+      return;
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
