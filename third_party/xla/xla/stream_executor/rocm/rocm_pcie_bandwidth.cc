@@ -34,14 +34,20 @@ constexpr uint32_t kPcieGen2MaxSpeedMTps = 5000;
 constexpr uint32_t kPcieGen5MaxSpeedMTps = 32000;
 
 constexpr double PcieEncodingEfficiency(uint32_t speed_mt_per_sec) {
-  if (speed_mt_per_sec <= kPcieGen2MaxSpeedMTps) return kPcieGen1Gen2Efficiency;
-  if (speed_mt_per_sec <= kPcieGen5MaxSpeedMTps) return kPcieGen3To5Efficiency;
+  if (speed_mt_per_sec <= kPcieGen2MaxSpeedMTps) {
+    return kPcieGen1Gen2Efficiency;
+  }
+  if (speed_mt_per_sec <= kPcieGen5MaxSpeedMTps) {
+    return kPcieGen3To5Efficiency;
+  }
   return kPcieGen6Efficiency;
 }
 
 constexpr int64_t ComputePcieBandwidthFromSpeedAndWidth(
     uint32_t speed_mt_per_sec, uint16_t width) {
-  if (width == 0 || speed_mt_per_sec == 0) return 0;
+  if (width == 0 || speed_mt_per_sec == 0) {
+    return 0;
+  }
   double efficiency = PcieEncodingEfficiency(speed_mt_per_sec);
   return static_cast<int64_t>(static_cast<double>(speed_mt_per_sec) * 1e6 *
                               width / 8.0 * efficiency);
@@ -52,7 +58,9 @@ constexpr int64_t ComputePcieBandwidthFromSpeedAndWidth(
 std::optional<int64_t> GetRocmPcieBandwidth(absl::string_view pci_bus_id) {
   absl::MutexLock lock(rocm_smi_mutex);
 
-  if (!InitRocmSmi()) return std::nullopt;
+  if (!InitRocmSmi()) {
+    return std::nullopt;
+  }
 
   std::optional<BdfComponents> bdf = ParseBdf(pci_bus_id);
   if (!bdf.has_value()) {

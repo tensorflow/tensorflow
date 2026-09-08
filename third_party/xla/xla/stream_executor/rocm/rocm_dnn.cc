@@ -268,10 +268,12 @@ uint64_t GetHashValue(miopenTensorDescriptor_t tensor_desc) {
   miopenGetTensorDescriptor(tensor_desc, &datatype, dims, strides);
 
   uint64_t hash_value = tsl::hash<int>()(datatype);
-  for (int dim : dims)
+  for (int dim : dims) {
     hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(dim));
-  for (int stride : strides)
+  }
+  for (int stride : strides) {
     hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(stride));
+  }
 
   return hash_value;
 }
@@ -509,7 +511,9 @@ struct ScopedDescriptor {
   }
 
   ~ScopedDescriptor() {
-    if (handle_ == nullptr) return;
+    if (handle_ == nullptr) {
+      return;
+    }
 
     auto status =
         miDestroyObject(handle_);  // miopenDestroyTensorDescriptor(handle_);
@@ -809,7 +813,7 @@ struct ScopedActivationDescriptor
       return absl::InternalError(
           "call to miopenCreateActivationDescriptor failed: " +
           ToString(status));
-    } else {
+    }
       switch (activation_mode) {
         case dnn::ActivationMode::kNone:
           obj.miopen_activation_mode_ = miopenActivationPASTHRU;
@@ -857,7 +861,7 @@ struct ScopedActivationDescriptor
             "call to miopenSetActivationDescriptor failed: " +
             ToString(status));
       }
-    }
+
     return obj;
   }
   ScopedActivationDescriptor(ScopedActivationDescriptor&& other)
@@ -912,7 +916,9 @@ class ScopedFusionPlanBase {
   }
 
   virtual ~ScopedFusionPlanBase() {
-    if (fusion_args_ == nullptr) return;
+    if (fusion_args_ == nullptr) {
+      return;
+    }
     auto status = miopenDestroyOperatorArgs(fusion_args_);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenDestroyoperatorArgs failed: "
@@ -1119,27 +1125,32 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
 
     bool is_compiled = CachedFusionPlans::FindOrCreate(
         hash, &obj.fusion_plan_, miopenVerticalFusion, input_descriptor);
-    if (is_compiled) VLOG(2) << "Cache hit";
+    if (is_compiled) {
+      VLOG(2) << "Cache hit";
+    }
     if (!is_compiled) {
       auto status = miopenCreateOpConvForward(
           obj.fusion_plan_, &obj.conv_op, conv_descriptor, filter_descriptor);
-      if (status != miopenStatusSuccess)
+      if (status != miopenStatusSuccess) {
         return absl::InternalError("miopenCreateOpConvForward failed: " +
                                    ToString(status));
+      }
 
       status = miopenCreateOpBiasForward(obj.fusion_plan_, &obj.bias_op,
                                          bias_descriptor);
-      if (status != miopenStatusSuccess)
+      if (status != miopenStatusSuccess) {
         return absl::InternalError("miopenCreateOpBiasForward failed: " +
                                    ToString(status));
+      }
 
       if (act_descriptor.miopen_activation_mode_ != miopenActivationPASTHRU) {
         status = miopenCreateOpActivationForward(
             obj.fusion_plan_, &obj.actv_op,
             act_descriptor.miopen_activation_mode_);
-        if (status != miopenStatusSuccess)
+        if (status != miopenStatusSuccess) {
           return absl::InternalError(
               "miopenCreateOpActivationForward failed: " + ToString(status));
+        }
       }
 
       status = miopenCompileFusionPlan(miopen_handle, obj.fusion_plan_);
@@ -1556,7 +1567,9 @@ miopenDataType_t ToMIOpenDataType(
     case dnn::DataType::kHalf:
       return miopenHalf;
     case dnn::DataType::kInt8:
-      if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
+      if (data_layout == dnn::DataLayout::kBatchDepthYX) {
+        return miopenInt8;
+      }
       LOG(FATAL)
           << "The kInt8 data type only supports the kBatchDepthYX data layout!";
       break;
@@ -1645,16 +1658,22 @@ class MIOpenRnnParamsDescriptor : public MIOpenDescriptorCommon<void> {
     RETURN_IF_MIOPEN_ERROR(status, "Failed to destroy RNN tensor descriptor");
   }
   miopenTensorDescriptor_t handle() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     return handle_;
   }
   int64_t params_size_in_bytes() const { return params_size_in_bytes_; }
   ParamsRegions params_weights() const {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return weights_;
   }
   ParamsRegions params_biases() const {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return biases_;
   }
 
@@ -1780,7 +1799,9 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
     }
   }
   miopenRNNDescriptor_t handle() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     return rnn_desc_;
   }
   int num_layers() const { return num_layers_; }
@@ -1797,15 +1818,21 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
     return miopen_params_desc_->params_size_in_bytes();
   }
   miopenTensorDescriptor_t params_handle() const {
-    if (!miopen_params_desc_) return nullptr;
+    if (!miopen_params_desc_) {
+      return nullptr;
+    }
     return miopen_params_desc_->handle();
   }
   ParamsRegions ParamsWeightRegions() const override {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return miopen_params_desc_->params_weights();
   }
   ParamsRegions ParamsBiasRegions() const override {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return miopen_params_desc_->params_biases();
   }
 
@@ -1879,7 +1906,9 @@ class MIOpenRnnSequenceTensorDescriptor
   }
 
   const miopenTensorDescriptor_t* handles() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     CHECK(!handles_.empty()) << "handles cannot be empty";
     return handles_.data();
   }
@@ -1927,7 +1956,9 @@ class MIOpenRnnStateTensorDescriptor
   }
 
   miopenTensorDescriptor_t handle() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     return handle_;
   }
   int num_layers() const { return num_layers_; }
@@ -2258,21 +2289,24 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   auto type_size = std::is_same<T, Eigen::half>::value ? 2 : sizeof(T);
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
-  if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
+  if ((size_data > 0) && (input_backprop_data->opaque() != nullptr)) {
     ABSL_RETURN_IF_ERROR(
         stream->MemZero(input_backprop_data, size_data * type_size));
+  }
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
-  if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
+  if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr)) {
     ABSL_RETURN_IF_ERROR(
         stream->MemZero(input_h_backprop_data, size_data * type_size));
+  }
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
-  if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
+  if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr)) {
     ABSL_RETURN_IF_ERROR(
         stream->MemZero(input_c_backprop_data, size_data * type_size));
+  }
 
   const bool is_profiling = output_profile_result != nullptr;
   std::unique_ptr<EventBasedTimer> timer;
@@ -2969,8 +3003,9 @@ absl::Status MIOpenSupport::GetConvolveRunners(
   if (!GetMIOpenConvolveAlgorithms(
           kind, input_type, output_type, stream, input_descriptor, input_data,
           filter_descriptor, filter_data, output_descriptor, output_data,
-          convolution_descriptor, scratch_allocator, &profile_results))
+          convolution_descriptor, scratch_allocator, &profile_results)) {
     return absl::InternalError("GetMIOpenConvolveAlgorithms failure");
+  }
 
   for (const auto& profile_result : profile_results) {
     ABSL_ASSIGN_OR_RETURN(auto runner,
@@ -3763,38 +3798,43 @@ absl::Status ROCmFusedMatmulRunner::operator()(
     DeviceAddressBase a_data, DeviceAddressBase b_data,
     DeviceAddressBase bias_data, DeviceAddressBase c_data) const {
   absl::Status status;
-  if (_input_type == dnn::DataType::kFloat)
+  if (_input_type == dnn::DataType::kFloat) {
     status = gemm<float>(stream, a_data, b_data, c_data);
-  else if (_input_type == dnn::DataType::kHalf)
+  } else if (_input_type == dnn::DataType::kHalf) {
     status = gemm<Eigen::half>(stream, a_data, b_data, c_data);
-  else if (_input_type == dnn::DataType::kBF16)
+  } else if (_input_type == dnn::DataType::kBF16) {
     status = gemm<Eigen::bfloat16>(stream, a_data, b_data, c_data);
-  else if (_input_type == dnn::DataType::kDouble)
+  } else if (_input_type == dnn::DataType::kDouble) {
     status = gemm<double>(stream, a_data, b_data, c_data);
-  else
+  } else {
     return absl::InvalidArgumentError("Unsupported input type");
+  }
 
-  if (!status.ok()) return status;
+  if (!status.ok()) {
+    return status;
+  }
 
   DeviceAddress<uint8_t> side_input;
-  if (_input_type == dnn::DataType::kFloat)
+  if (_input_type == dnn::DataType::kFloat) {
     return InplaceBiasActivation<float>(stream, c_data, bias_data, side_input,
                                         0.0f, _activation_mode, 1, _m, _n, _ldc,
                                         0.0f);
-  else if (_input_type == dnn::DataType::kHalf)
+  }
+  if (_input_type == dnn::DataType::kHalf) {
     return InplaceBiasActivation<Eigen::half>(
         stream, c_data, bias_data, side_input, 0.0f, _activation_mode, 1, _m,
         _n, _ldc, 0.0f);
-  else if (_input_type == dnn::DataType::kBF16)
+  } else if (_input_type == dnn::DataType::kBF16) {
     return InplaceBiasActivation<Eigen::bfloat16>(
         stream, c_data, bias_data, side_input, 0.0f, _activation_mode, 1, _m,
         _n, _ldc, 0.0f);
-  else if (_input_type == dnn::DataType::kDouble)
+  } else if (_input_type == dnn::DataType::kDouble) {
     return InplaceBiasActivation<double>(stream, c_data, bias_data, side_input,
                                          0.0f, _activation_mode, 1, _m, _n,
                                          _ldc, 0.0f);
-  else
+  } else {
     return absl::InvalidArgumentError("Unsupported input type");
+  }
 }
 
 absl::Status MIOpenSupport::GetFusedMatmulRunners(
@@ -3947,7 +3987,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
 
     dest2_size = (element_type == dnn::DataType::kFloat) ? sizeof(float)
                                                          : sizeof(Eigen::half);
-    for (auto& x : dims64) dest2_size *= x;
+    for (auto& x : dims64) {
+      dest2_size *= x;
+    }
 
     if (dest2_size > 0) {
       assert(workspace_allocator);
@@ -4189,8 +4231,9 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
     auto miopen = miopen_->GetHandle(parent_, stream);
     fusion_plan_.SetConvolutionArgs(filter_data.opaque());
     fusion_plan_.SetBiasArgs(bias_data.opaque());
-    if (activation_desc_.miopen_activation_mode_ != miopenActivationPASTHRU)
+    if (activation_desc_.miopen_activation_mode_ != miopenActivationPASTHRU) {
       fusion_plan_.SetActivationForwardArgs(activation_desc_);
+    }
 
     CHECK(output_profile_result == nullptr);
 
