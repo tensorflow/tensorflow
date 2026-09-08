@@ -363,6 +363,7 @@ message AllGatherThunkProto {
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
   xla.DebugOptions.CollectivesMode collectives_mode = 4;
+  bool enable_gxl = 5;
 }
 
 message AllReduceThunkProto {
@@ -406,6 +407,7 @@ message RaggedAllToAllThunkProto {
   xla.DebugOptions.CollectivesMode collectives_mode = 12;
   bool use_device_kernel = 13;
   bool allow_fallback_to_nccl = 14;
+  bool enable_gxl = 15;
 }
 
 message CollectivePermuteThunkProto {

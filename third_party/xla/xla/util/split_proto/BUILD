@@ -56,7 +56,6 @@ cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
-        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -65,6 +64,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+        "@riegeli//riegeli/base:any",
         "@riegeli//riegeli/bytes:reader",
         "@riegeli//riegeli/records:record_position",
         "@riegeli//riegeli/records:record_reader",

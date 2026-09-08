@@ -803,7 +803,7 @@ DeviceAddressBase RocmExecutor::Allocate(uint64_t size, int64_t mem_space_id) {
   // Do not track allocations in device memory since they are the default case.
   if (*result != nullptr && (memory_space == MemorySpace::kCollective ||
                              memory_space == MemorySpace::kHost)) {
-    absl::MutexLock lock{&mu_};
+    absl::MutexLock lock{mu_};
     tracked_allocations_[*result] = memory_space;
   }
   return DeviceAddressBase(*result, size);
@@ -815,7 +815,7 @@ void RocmExecutor::Deallocate(DeviceAddressBase* mem) {
   }
   MemorySpace space = MemorySpace::kDevice;
   {
-    absl::MutexLock lock{&mu_};
+    absl::MutexLock lock{mu_};
     auto it = tracked_allocations_.find(mem->opaque());
     if (it != tracked_allocations_.end()) {
       space = it->second;
