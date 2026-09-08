@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// PjRtExecutableAbiVersionFromProto is now defined weakly in
-// tpu_xla_executable_abi_version_serdes.cc. This file is kept for backwards
-// compatibility with existing build rules.
+#include "xla/python/pjrt_ifrt/tpu_xla_executable_abi_version.h"
+
+namespace xla {
+
+[[maybe_unused]] char TpuXlaExecutableAbiVersion::ID = 0;
+
+}  // namespace xla

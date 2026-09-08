@@ -13,6 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// PjRtExecutableAbiVersionFromProto is now defined weakly in
-// tpu_xla_executable_abi_version_serdes.cc. This file is kept for backwards
-// compatibility with existing build rules.
+#include <memory>
+
+#include "absl/status/statusor.h"
+#include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
+#include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
+
+namespace xla {
+namespace gpu_xla_executable_abi_version_serdes {
+
+absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
+PjRtExecutableAbiVersionFromProto(
+    const xla::PjRtExecutableAbiVersionProto& proto) {
+  return StreamExecutorPjRtExecutableAbiVersion::FromProto(proto);
+}
+
+}  // namespace gpu_xla_executable_abi_version_serdes
+}  // namespace xla
