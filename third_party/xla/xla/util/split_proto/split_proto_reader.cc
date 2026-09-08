@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/util/split_proto/split_proto_reader.h"
 
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -27,6 +26,7 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/reflection.h"
+#include "riegeli/base/any.h"
 #include "riegeli/bytes/reader.h"
 #include "riegeli/records/record_position.h"
 #include "riegeli/records/record_reader.h"
@@ -122,7 +122,7 @@ absl::Status HandleFieldOverrideRecord(
 
 }  // namespace
 
-absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
+absl::Status ReadSplitProto(riegeli::Any<riegeli::Reader*> reader,
                             google::protobuf::Message& proto) {
   riegeli::RecordReader record_reader(std::move(reader));
 

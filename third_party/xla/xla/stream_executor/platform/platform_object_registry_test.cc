@@ -155,7 +155,7 @@ TEST(PlatformObjectRegistryTest, FindObjectReturnsConstNonDanglingReference) {
                   stream_executor::cuda::kCudaPlatformId, 33),
               absl_testing::IsOk());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const int& value,
       registry.FindObject<TestTrait>(stream_executor::cuda::kCudaPlatformId));
   EXPECT_THAT(value, 33);
