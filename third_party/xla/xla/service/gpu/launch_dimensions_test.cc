@@ -80,8 +80,8 @@ TEST(LaunchDimensionsTest, FromAndToProto) {
       )pb",
       &proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(LaunchDimensions launch_dimensions,
-                          LaunchDimensions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(LaunchDimensions launch_dimensions,
+                       LaunchDimensions::FromProto(proto));
   EXPECT_THAT(launch_dimensions.ToProto(), EqualsProto(proto));
 }
 
