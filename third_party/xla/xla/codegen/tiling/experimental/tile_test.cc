@@ -89,5 +89,25 @@ TEST_F(TileTest, DimTileToString) {
             "offset [0], size [4], stride [1], upper bound [12]");
 }
 
+TEST_F(TileTest, CloneWithNewTilingSpaceWorksCorrectly) {
+  std::unique_ptr<TilingSpace> space1 =
+      GetFakeTilingSpace(/*num_dims=*/1, /*num_rt_vars=*/0);
+  std::unique_ptr<TilingSpace> space2 =
+      GetFakeTilingSpace(/*num_dims=*/1, /*num_rt_vars=*/0);
+
+  auto c0 = CreateSymbolicConstant(0, &mlir_context_);
+  auto c8 = CreateSymbolicConstant(8, &mlir_context_);
+  auto c1 = CreateSymbolicConstant(1, &mlir_context_);
+  auto c16 = CreateSymbolicConstant(16, &mlir_context_);
+
+  Tile tile{*space1, {DimTile{c0, c8, c1, c16}}};
+  EXPECT_EQ(&tile.tiling_space(), space1.get());
+
+  Tile cloned_tile = tile.CloneWithNewTilingSpace(*space2);
+  EXPECT_EQ(&cloned_tile.tiling_space(), space2.get());
+  EXPECT_EQ(cloned_tile.dim_tiles(), tile.dim_tiles());
+  EXPECT_EQ(cloned_tile.replica_ids(), tile.replica_ids());
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental

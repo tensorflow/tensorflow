@@ -604,6 +604,7 @@ tf_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla:autotuning_proto",
+        "//xla/backends/cpu:ynn_fusion_options_proto",
         "//xla/codegen/xtile:xtile_config_proto",
         "//xla/service/cpu:backend_config_proto",
         "//xla/service/gpu:backend_configs",
