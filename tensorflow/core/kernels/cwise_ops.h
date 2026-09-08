@@ -856,11 +856,15 @@ struct functor_traits<scalar_erfinv_op<float>> {
 // never goes through an FP register) and test whether the sign bit is set and
 // the value is not negative zero (0x80000000).
 //
-// Packet path: SIMD vectorization is re-enabled.  For normal operands the
-// correction mirrors the scalar path.  Under FTZ/DAZ, negative subnormals are
-// already flushed to -0.0f in the SIMD register before packetOp sees them, so
-// pcmp_lt(-0.0f, 0.0f) is false and the packet path cannot fix them; the
-// scalar operator() still handles them correctly via bit_cast.
+// Packet path: SIMD vectorization is re-enabled.  The correction is applied
+// in the integer SIMD domain so it is immune to FTZ/DAZ: after computing
+// r = pfloor(x), we reinterpret r's bits as a signed-integer packet and
+// compare them with 0x80000000 (the bit pattern of -0.0f).  Under FTZ/DAZ a
+// negative float32 subnormal is flushed to -0.0f in the XMM register before
+// pfloor sees it, so pfloor also produces -0.0f — and the integer comparison
+// catches it correctly.  preinterpret<IPacket>(r) uses _mm_castps_si128 (or
+// equivalent) which is a zero-cost bit-reinterpretation; it never passes the
+// value through the FP pipeline again.
 struct scalar_cpu_floor_float_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
     const float r = numext::floor(x);
@@ -874,15 +878,21 @@ struct scalar_cpu_floor_float_op {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     const Packet r = pfloor(x);
-    // Correct lanes where a negative non-zero x rounded to -0.0f.
-    // pcmp_lt(x, pzero(x)) is false for -0.0f (IEEE 754: -0.0 == 0.0) so
-    // genuine -0.0f inputs are correctly left as -0.0f.
-    // Note: under FTZ/DAZ, negative float32 subnormals are flushed to -0.0f
-    // in the SIMD register before packetOp is called, so they cannot be
-    // recovered here — the scalar operator() handles them correctly via
-    // bit_cast, which reads memory without going through an FP register.
-    return pselect(pand(pcmp_eq(r, pzero(r)), pcmp_lt(x, pzero(x))),
-                   pset1<Packet>(-1.0f), r);
+    // Detect r == -0.0f using a bitwise integer comparison that is safe under
+    // FTZ/DAZ.  preinterpret reinterprets the float bits as a same-width
+    // signed integer packet without any value conversion (e.g. on SSE this is
+    // a single _mm_castps_si128 instruction).
+    using IPacket = typename unpacket_traits<Packet>::integer_packet;
+    const IPacket r_bits = preinterpret<IPacket>(r);
+    // 0x80000000 is the bit pattern of -0.0f; use static_cast<int32_t> so the
+    // constant has the same signed type as IPacket's element type.
+    const IPacket neg_zero_bits =
+        pset1<IPacket>(static_cast<int32_t>(0x80000000u));
+    // Integer pcmp_eq produces an all-ones mask for matching lanes, which we
+    // reinterpret back as a float mask for pselect.
+    const Packet is_neg_zero =
+        preinterpret<Packet>(pcmp_eq(r_bits, neg_zero_bits));
+    return pselect(is_neg_zero, pset1<Packet>(-1.0f), r);
   }
 };
 
