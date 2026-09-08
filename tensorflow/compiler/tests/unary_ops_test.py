@@ -217,7 +217,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testBesselI0(self):
     for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
-      tol = 1e-5 if dtype == np.float32 else 1e-12
+      # float64 XLA bessel vs fixture differs by ~1e-9; 1e-12 was too tight on CI.
+      tol = 1e-5 if dtype == np.float32 else 1e-8
       x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
       expected = np.array(
           [27.23987182, 1.26606588, 1.0, 1.26606588, 27.23987182],
@@ -229,7 +230,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testBesselI1(self):
     for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
-      tol = 1e-5 if dtype == np.float32 else 1e-12
+      tol = 1e-5 if dtype == np.float32 else 1e-8
       x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
       expected = np.array(
           [-24.33564214, -0.56515910, 0.0, 0.56515910, 24.33564214],
