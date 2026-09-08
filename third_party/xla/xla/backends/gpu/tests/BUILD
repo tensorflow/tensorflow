@@ -296,7 +296,6 @@ xla_test(
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:error_spec",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/stream_executor:device_description",
@@ -1829,8 +1828,8 @@ xla_cc_test(
     name = "host_cross_compilation_test",
     srcs = ["host_cross_compilation_test.cc"],
     tags = [
-        "cuda-only",
         "gpu",
+        "no-oneapi",
     ],
     deps = [
         "//xla:xla_data_proto_cc",
