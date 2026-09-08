@@ -15,7 +15,6 @@
 """Tests for DLPack functions.
 
 Coverage in this file is split into two groups:
-
   * ``testRoundTrip`` is parameterized over every dtype/shape combination in
     ``dlpack_dtypes`` x ``testcase_shapes`` and checks that a tensor survives
     an export-then-import round trip unchanged, on whichever device it
@@ -27,7 +26,6 @@ Coverage in this file is split into two groups:
     etc.) rather than dtype/shape coverage; add a new method here for a new
     *behavior*, not a new *type*.
 """
-
 from typing import Any, Dict, List, Sequence, Tuple
 
 from absl.testing import parameterized
@@ -85,7 +83,12 @@ def _make_test_tensor(shape: Sequence[int], dtype: Any) -> "ops.Tensor":
   int/float/complex/bfloat16 dtypes. Bool tensors need a 0/1 range instead
   of the 0-9 range used for everything else.
   """
-  high = 2 if dtype == np.bool_ else 10
+  # Normalize via dtypes.as_dtype before comparing so this correctly
+  # detects "boolean-ness" regardless of whether `dtype` arrives as the raw
+  # numpy scalar type (np.bool_), a TensorFlow DType (dtypes.bool), or any
+  # other as_dtype-compatible representation.
+  normalized_dtype = dtypes.as_dtype(dtype)
+  high = 2 if normalized_dtype == dtypes.bool else 10
   np_array = np.random.randint(0, high, shape)
   return constant_op.constant(np_array, dtype=dtype)
 
@@ -105,11 +108,9 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
     tf_tensor = array_ops.identity(source_tensor)
     tf_tensor_device = tf_tensor.device
     tf_tensor_dtype = tf_tensor.dtype
-
     dlcapsule = dlpack.to_dlpack(tf_tensor)
     del tf_tensor  # The capsule should keep the underlying buffer alive.
     tf_tensor2 = dlpack.from_dlpack(dlcapsule)
-
     self.assertAllClose(np_array, tf_tensor2)
     if tf_tensor_dtype == dtypes.int32:
       # int32 tensors are always placed on CPU today (see int32 host-memory
