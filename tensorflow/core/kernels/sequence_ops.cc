@@ -206,9 +206,11 @@ class LinSpaceOp : public OpKernel {
     auto flat = out->flat<T>();
     flat(0) = start;
     if (num > 1) {
-      const T step = (stop - start) / static_cast<T>(num - 1);
+      // Route int->half/bfloat16 casts through double for MSVC.
+      const T step =
+          (stop - start) / static_cast<T>(static_cast<double>(num - 1));
       for (Tnum i = 1; i < num - 1; ++i) {
-        flat(i) = start + step * static_cast<T>(i);
+        flat(i) = start + step * static_cast<T>(static_cast<double>(i));
       }
       // Ensure final value == stop; float arithmetic won't guarantee this.
       flat(num - 1) = stop;
