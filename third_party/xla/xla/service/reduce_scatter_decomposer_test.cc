@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -52,10 +52,10 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
       std::optional<std::pair<std::string, std::string>> attribute =
           std::nullopt) {
     const int64_t partition_count = 2;
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto module, ParseAndReturnVerifiedModule(hlo_module, replica_count,
-                                                  partition_count));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_module, replica_count,
+                                                      partition_count));
+    ASSERT_OK_AND_ASSIGN(
         bool changed,
         ReduceScatterDecomposer(/*update_layout=*/nullptr,
                                 /*should_decompose=*/should_decompose)

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace aot_compatibility_experimental {
@@ -65,6 +66,8 @@ GetAotTestParamsForGoldenFileVerification(
 class AotCompatibilityTest : public HloTestBase {
  public:
   explicit AotCompatibilityTest(AotTestParam param);
+
+  DebugOptions GetDebugOptionsForTest() const override;
 };
 
 }  // namespace aot_compatibility_experimental

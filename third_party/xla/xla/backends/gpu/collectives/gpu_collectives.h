@@ -133,6 +133,9 @@ class GpuCollectives : public Collectives {
     // utilization (i.e SM) during runtime. This is mainly used for overlapping
     // with compute to avoid taking up compute resources.
     bool use_minimal_resource = false;
+
+    // Whether GXL communicators should be attached to this clique.
+    bool use_gxl = false;
   };
 
   // A cancelable version of Collectives::CreateCommunicators.
