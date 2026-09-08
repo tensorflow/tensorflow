@@ -1164,6 +1164,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<
       absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>>
       debug_attributes;
+  std::optional<std::string> backend_config;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["replica_count"] = {/*required=*/false, AttrTy::kInt64, &replica_count};
@@ -1191,6 +1192,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
                                     &original_value_recovery_table};
   attrs["debug_attributes"] = {
       /*required=*/false, AttrTy::kDebugAttributesTable, &debug_attributes};
+  attrs["backend_config"] = {/*required=*/false, AttrTy::kStringOrJsonDict,
+                             &backend_config};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -1258,6 +1261,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
   if (frontend_attributes) {
     module->set_frontend_attributes(frontend_attributes.value());
+  }
+  if (backend_config) {
+    module->set_raw_backend_config_string(*backend_config);
   }
   if (!allow_spmd_sharding_propagation_to_parameters.empty()) {
     config.set_allow_spmd_sharding_propagation_to_parameters(
@@ -1455,12 +1461,18 @@ bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
   }
   absl::btree_map<std::string, AttrConfig> attrs;
   optional<std::string> execution_thread = HloInstruction::kMainExecutionThread;
+  optional<std::string> backend_config;
   attrs["execution_thread"] = {/*required=*/false, AttrTy::kString,
                                &execution_thread};
+  attrs["backend_config"] = {/*required=*/false, AttrTy::kStringOrJsonDict,
+                             &backend_config};
   if (!ParseAttributes(attrs)) {
     return false;
   }
   computation->SetExecutionThread(*execution_thread);
+  if (backend_config) {
+    computation->set_raw_backend_config_string(*backend_config);
+  }
   if (is_entry_computation) {
     if (*entry_computation != nullptr) {
       return Error(maybe_entry_loc, "expects only one ENTRY");

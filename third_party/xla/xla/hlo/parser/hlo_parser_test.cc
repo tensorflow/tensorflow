@@ -8624,5 +8624,61 @@ TEST_F(HloParserTest, AsyncDoneWithFrontendAttributes) {
   EXPECT_EQ(root->frontend_attributes().map_size(), 1);
   EXPECT_EQ(root->frontend_attributes().map().at("is_spmd_generated"), "true");
 }
+
+TEST_F(HloParserTest, ModuleAndComputationBackendConfigTextRoundTrip) {
+  const std::string hlo_string =
+      R"(HloModule test_module, entry_computation_layout={(f32[])->f32[]}, backend_config={"module_option":"enabled"}
+
+ENTRY %main (p0: f32[]) -> f32[] {
+  ROOT %p0 = f32[] parameter(0)
+}, backend_config={"computation_option":"active"}
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(module->has_backend_config());
+  EXPECT_EQ(module->raw_backend_config_string(),
+            R"({"module_option":"enabled"})");
+  EXPECT_TRUE(module->entry_computation()->has_backend_config());
+  EXPECT_EQ(module->entry_computation()->raw_backend_config_string(),
+            R"({"computation_option":"active"})");
+
+  std::string printed = module->ToString();
+  EXPECT_EQ(printed, hlo_string);
+
+  ASSERT_OK_AND_ASSIGN(auto roundtrip_module,
+                       ParseAndReturnVerifiedModule(printed));
+  EXPECT_EQ(roundtrip_module->raw_backend_config_string(),
+            module->raw_backend_config_string());
+  EXPECT_EQ(roundtrip_module->entry_computation()->raw_backend_config_string(),
+            module->entry_computation()->raw_backend_config_string());
+  EXPECT_EQ(roundtrip_module->ToString(), printed);
+}
+
+TEST_F(HloParserTest, ModuleAndComputationStringBackendConfigTextRoundTrip) {
+  const std::string hlo_string =
+      R"(HloModule test_module, entry_computation_layout={(f32[])->f32[]}, backend_config="raw_module_config"
+
+ENTRY %main (p0: f32[]) -> f32[] {
+  ROOT %p0 = f32[] parameter(0)
+}, backend_config="raw_computation_config"
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(module->has_backend_config());
+  EXPECT_EQ(module->raw_backend_config_string(), "raw_module_config");
+  EXPECT_TRUE(module->entry_computation()->has_backend_config());
+  EXPECT_EQ(module->entry_computation()->raw_backend_config_string(),
+            "raw_computation_config");
+
+  std::string printed = module->ToString();
+  EXPECT_EQ(printed, hlo_string);
+
+  ASSERT_OK_AND_ASSIGN(auto roundtrip_module,
+                       ParseAndReturnVerifiedModule(printed));
+  EXPECT_EQ(roundtrip_module->raw_backend_config_string(), "raw_module_config");
+  EXPECT_EQ(roundtrip_module->entry_computation()->raw_backend_config_string(),
+            "raw_computation_config");
+  EXPECT_EQ(roundtrip_module->ToString(), printed);
+}
 }  // namespace
 }  // namespace xla
