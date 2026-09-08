@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
@@ -47,17 +48,17 @@ TEST(ExecutorCacheTest, GetReturnsExpectedExecutor) {
     }
     return executor;
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(0, factory));
+  ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(0, factory));
   EXPECT_EQ(found, executor0);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
   EXPECT_EQ(found, executor1);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(0, factory));
+  ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(0, factory));
   EXPECT_EQ(found, executor0);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
   EXPECT_EQ(found, executor1);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(0));
+  ASSERT_OK_AND_ASSIGN(found, cache.Get(0));
   EXPECT_EQ(found, executor0);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(1));
+  ASSERT_OK_AND_ASSIGN(found, cache.Get(1));
   EXPECT_EQ(found, executor1);
 }
 
