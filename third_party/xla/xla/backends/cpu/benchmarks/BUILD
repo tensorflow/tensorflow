@@ -316,6 +316,7 @@ filegroup(
         "//xla/backends/cpu/benchmarks/hlo:memory_intensive_hlo_files",
         "//xla/backends/cpu/benchmarks/hlo:regular_hlo_files",
         "//xla/backends/cpu/benchmarks/hlo:slow_hlo_files",
+        "//xla/backends/cpu/benchmarks/huge_hlo:hlo_files",
     ],
 )
 

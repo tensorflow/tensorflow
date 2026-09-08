@@ -597,11 +597,14 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
           << "Mismatch in offset for positions that map to the same value: "
           << buffer.ToString() << ", pos: " << defining_position.ToString();
     } else {
-      VLOG(3) << " [" << chunk.offset << ", " << chunk.size
-              << "] : " << defining_position.ToString() << " ("
-              << buffer.ToString() << ")";
-      preset_assignments_->add_chunk(defining_position, chunk);
-      seen_buffer_offsets[buffer.id()] = chunk.offset;
+      if (ShapeUtil::ByteSizeOf(defining_position.shape()) <=
+          options_.max_size_in_bytes) {
+        VLOG(3) << " [" << chunk.offset << ", " << chunk.size
+                << "] : " << defining_position.ToString() << " ("
+                << buffer.ToString() << ")";
+        preset_assignments_->add_chunk(defining_position, chunk);
+        seen_buffer_offsets[buffer.id()] = chunk.offset;
+      }
     }
   }
 
@@ -1194,9 +1197,10 @@ absl::Status MemorySpaceAssignment::SetSchedule() {
     // modified.
     if (!computations_in_schedule_.contains(computation)) {
       if (computation->IsAsyncComputation()) {
-        VLOG(4) << "Created a dummy schedule for async computation "
+        VLOG(4) << "Created a schedule for async computation "
                 << computation->name();
-        schedule.GetOrCreateSequence(computation);
+        schedule.set_sequence(computation,
+                              computation->MakeInstructionPostOrder());
         continue;
       }
       VLOG(4) << "Not scheduling " << computation->name()

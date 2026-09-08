@@ -14,6 +14,7 @@ cc_library(
     srcs = ["test_lib.cc"],
     hdrs = ["test_lib.h"],
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/tests:aot_interception_pjrt_client",
         "//xla/tests:hlo_test_base",

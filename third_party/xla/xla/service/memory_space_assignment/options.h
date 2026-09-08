@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/prefetch_interval_picker.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -496,6 +497,10 @@ struct Options {
   std::function<std::optional<int64_t>(const HloInstruction*)>
       custom_fusion_block_prefetch_operand_index_fn =
           [](const HloInstruction*) { return std::nullopt; };
+
+  // Callback to compute custom fusion chunk sizing (e.g. for cross-buffer slice
+  // fusions). If set and returns a value, overrides generic fallback sizing.
+  CustomFusionChunkSizingFn custom_fusion_chunk_sizing_fn = nullptr;
 };
 
 }  // namespace memory_space_assignment

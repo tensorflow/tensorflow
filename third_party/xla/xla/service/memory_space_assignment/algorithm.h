@@ -951,10 +951,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // for the found loops.
   void IdentifyAndOptimizeMemoryBoundLoops();
 
-  // Returns true if the instruction meets the preconditions of a replaceable
+  // Returns true if the instruction is an async conversion candidate for a
   // synchronous copy or slice instruction. This only checks for necessary
   // conditions, and doesn't guarantee a successful replacement.
   bool IsAsyncConversionCandidate(const HloInstruction* instruction) const;
+
+  // Returns true if the instruction is a custom fusion candidate for block
+  // prefetching.
+  bool IsBlockPrefetchCandidate(const HloInstruction* instruction) const;
+
   // Not supported instructions for sync copy replacement:
   // 1. Layout-changing copies
   // 2. Instruction operand or output has a pre-specified memory space
@@ -971,9 +976,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     kAsyncConversionNotAllowedForColoredBuffer = 64,
     kSourceBufferInAlternateMemory = 128,
   };
-
-  AsyncConversionResult IsAsyncCustomFusionConversionCandidate(
-      const HloInstruction* instruction) const;
 
   AsyncConversionResult IsAsyncConversionSliceCandidate(
       const HloInstruction* instruction) const;
@@ -1150,6 +1152,19 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       absl::Span<AllocationValue> processed_allocation_values,
       absl::Span<AllocationValue> all_allocation_values,
       std::optional<Shape> shape_override);
+
+  // Calculates the effective alternate memory allocation size for
+  // block-prefetched custom fusions (such as cross-buffer slice fusions). If
+  // the allocation is consumed by a custom fusion configured for block
+  // prefetching, caps the requested VMEM reservation to the double-buffered
+  // staging budget rather than reserving the entire tensor size. This prevents
+  // alternate memory exhaustion (VMEM OOMs) when staging large source tensors
+  // that are processed in smaller sliced blocks. If not a block-prefetched
+  // custom fusion, returns original_size.
+  int64_t CalculateBlockPrefetchStagingSize(
+      int64_t original_size, const HloInstruction* custom_fusion_user) const;
+  HloInstruction* GetBlockPrefetchedCustomFusionUser(
+      const HloValue* value) const;
 
   // Returns true, if the allocation value requires a pinned allocation in the
   // alternate memory space.
@@ -1901,6 +1916,23 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // kFailRequiresUncommit, we need to re-reserve those chunks.
   std::vector<ReservedAllocation*> pending_deallocated_reserved_allocations_;
 };
+
+// Helper to inspect the async wrapped opcode of a pipelined while loop position
+// or tuple index.
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, const HloPosition& pos,
+    const HloAliasAnalysis& alias_analysis);
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, int64_t tuple_idx,
+    const HloAliasAnalysis& alias_analysis);
+
+// Returns true if the position in an async pipelined while loop corresponds to
+// a buffer that is intended to reside in alternate memory (e.g., prefetched
+// dynamic-slice output, or dynamic-update-slice update slice). Base tensors of
+// dynamic-slice or dynamic-update-slice and dynamic-update-slice outputs
+// reside in default memory (HBM) on TPU and return false.
+bool IsAsyncPipelinedWhileAlternateMemoryPosition(
+    const HloPosition& pos, const HloAliasAnalysis& alias_analysis);
 
 }  // namespace memory_space_assignment
 }  // namespace xla
