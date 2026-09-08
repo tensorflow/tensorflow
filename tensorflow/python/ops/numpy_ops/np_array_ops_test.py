@@ -1375,8 +1375,10 @@ class ArrayMethodsTest(test.TestCase):
     # A single axis, including negative values.
     _test(a, 1, axis=0)
     _test(a, 2, axis=-1)
-    # A tuple of axes.
+    # A tuple of axes, with a scalar shift broadcast to each axis.
     _test(a, 1, axis=(0, 2))
+    # Other iterables of axes (e.g. range) work too.
+    _test(a, 1, axis=range(3))
     # Out-of-bounds axes raise like NumPy.
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.roll(a, 1, axis=3)

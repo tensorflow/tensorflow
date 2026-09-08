@@ -16,6 +16,7 @@
 # pylint: disable=g-direct-tensorflow-import
 
 import builtins
+import collections
 import enum
 import functools
 import math
@@ -1552,9 +1553,9 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
 
   if axis is not None:
+    axes = axis if isinstance(axis, collections.abc.Iterable) else (axis,)
     maybe_rank = a.shape.rank
     if maybe_rank is not None:
-      axes = axis if isinstance(axis, (tuple, list, np.ndarray)) else (axis,)
       for ax in axes:
         if isinstance(ax, (int, np.integer)):
           normalized = ax + maybe_rank if ax < 0 else ax
@@ -1563,6 +1564,9 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
                 f'Argument `axis` (received axis={ax}) is out of bounds '
                 f'for input {a} of rank {maybe_rank}.'
             )
+    # NumPy broadcasts a scalar shift across multiple axes.
+    if np_utils.isscalar(shift) and len(axes) > 1:
+      shift = [shift] * len(axes)
     return manip_ops.roll(a, shift, axis)
 
   # If axis is None, the roll happens as a 1-d tensor.
