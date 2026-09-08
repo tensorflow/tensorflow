@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import googletest
 
 
@@ -223,7 +224,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           dtype=dtype,
       )
       self._assertOpOutputMatchesExpected(
-          math_ops.bessel_i0, x, expected=expected, atol=tol, rtol=tol
+          special_math_ops.bessel_i0, x, expected=expected, atol=tol, rtol=tol
       )
 
   def testBesselI1(self):
@@ -235,7 +236,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           dtype=dtype,
       )
       self._assertOpOutputMatchesExpected(
-          math_ops.bessel_i1, x, expected=expected, atol=tol, rtol=tol
+          special_math_ops.bessel_i1, x, expected=expected, atol=tol, rtol=tol
       )
 
   def testSigmoidNumericalStability(self):
