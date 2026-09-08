@@ -539,7 +539,8 @@ mlir::StringAttr FindOrInsertSdyMesh(const Mesh& mesh,
   builder->setInsertionPointToStart(module_op.getBody());
   auto mesh_op = builder->create<mlir::sdy::MeshOp>(
       builder->getUnknownLoc(), mesh_name_attr,
-      mlir::sdy::MeshAttr::get(builder->getContext(), mesh_axes));
+      mlir::sdy::MeshAttr::get(builder->getContext(), mesh_axes),
+      /*sym_visibility=*/nullptr);
   symbol_table->insert(mesh_op);
 
   return mesh_name_attr;

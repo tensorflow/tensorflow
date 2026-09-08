@@ -1,0 +1,39 @@
+--- a/include/triton/Dialect/Triton/IR/TritonOps.td
++++ b/include/triton/Dialect/Triton/IR/TritonOps.td
+@@ -1144,8 +1144,8 @@
+ }
+ 
+ def FuncOp : TT_Op<"func", [
+-    AffineScope, AutomaticAllocationScope, CallableOpInterface,
+-    FunctionOpInterface, IsolatedFromAbove, OpAsmOpInterface,
++    AffineScope, AutomaticAllocationScope, CallableOpInterface, SymbolName,
++    SymbolVisibility, FunctionOpInterface, IsolatedFromAbove, OpAsmOpInterface,
+     HasParent<"ModuleOp">
+ ]> {
+   let summary = "An operation with a name containing a single `SSACFG` region";
+
+--- a/lib/Conversion/TritonGPUToLLVM/Utility.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
+@@ -2186,7 +2186,7 @@
+                           SmallVectorImpl<NamedAttribute> &result) {
+ 
+   for (const auto &attr : op->getAttrs()) {
+-    if (attr.getName() == SymbolTable::getSymbolAttrName() ||
++    if (attr.getName() == op.getSymNameAttrName() ||
+         attr.getName() == op.getFunctionTypeAttrName() ||
+         attr.getName() == "std.varargs" ||
+         attr.getName() == triton::gpu::AttrNumWarpsName ||
+
+--- a/lib/Dialect/Triton/IR/Ops.cpp
++++ b/lib/Dialect/Triton/IR/Ops.cpp
+@@ -1300,8 +1300,7 @@
+ void FuncOp::build(OpBuilder &builder, OperationState &state, StringRef name,
+                    FunctionType type, ArrayRef<NamedAttribute> attrs,
+                    ArrayRef<DictionaryAttr> argAttrs) {
+-  state.addAttribute(SymbolTable::getSymbolAttrName(),
+-                     builder.getStringAttr(name));
++  state.getOrAddProperties<Properties>().sym_name = builder.getStringAttr(name);
+   state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(type));
+   state.attributes.append(attrs.begin(), attrs.end());
+   state.addRegion();
+

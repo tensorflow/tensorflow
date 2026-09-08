@@ -474,9 +474,10 @@ IfrtCompileAtomProgramPass::GenerateLoadedExecutableOp(
     output_types.push_back(output.getType());
   }
   builder.setInsertionPointAfter(module_op);
-  LoadedExecutableOp::create(builder, module_op.getLoc(), symbol_name,
-                             builder.getFunctionType(input_types, output_types),
-                             call_op.getDevicesAttr());
+  LoadedExecutableOp::create(
+      builder, module_op.getLoc(), builder.getStringAttr(symbol_name),
+      mlir::TypeAttr::get(builder.getFunctionType(input_types, output_types)),
+      call_op.getDevicesAttr(), /*sym_visibility=*/mlir::StringAttr());
   return mlir::SymbolRefAttr::get(&getContext(), symbol_name);
 }
 

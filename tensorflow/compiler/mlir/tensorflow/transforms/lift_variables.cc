@@ -141,7 +141,8 @@ LogicalResult LiftVariablesFromSession(
     tf_saved_model::GlobalTensorOp::create(
         builder, NameLoc::get(builder.getStringAttr(name.str())),
         builder.getStringAttr(name), tensor_attr,
-        TypeAttr::get(tensor_attr.getType()), builder.getUnitAttr());
+        TypeAttr::get(tensor_attr.getType()), builder.getUnitAttr(),
+        /*sym_visibility=*/nullptr);
   }
 
   return success();
