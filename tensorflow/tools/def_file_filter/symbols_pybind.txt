@@ -265,7 +265,7 @@ tflite::RegisterCustomOpdefs
 tflite::RetrieveCollectedErrors
 tflite::FlatBufferFileToMlir
 tflite::ConvertMlirBytecode
-
+tflite::MlirToFlatBufferFile
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
