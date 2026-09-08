@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_platform.h"
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
@@ -28,27 +28,27 @@ namespace stream_executor::gpu {
 namespace {
 
 TEST(CudaPlatformTest, FindExistingWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
   CHECK_GT(platform->VisibleDeviceCount(), 0);
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
     EXPECT_FALSE(platform->FindExisting(i).ok());
   }
   absl::flat_hash_map<int, StreamExecutor*> executors;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->ExecutorForDevice(i));
+    ASSERT_OK_AND_ASSIGN(auto executor, platform->ExecutorForDevice(i));
     executors[i] = executor;
   }
   EXPECT_EQ(executors.size(), platform->VisibleDeviceCount());
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->FindExisting(i));
+    ASSERT_OK_AND_ASSIGN(auto executor, platform->FindExisting(i));
     EXPECT_EQ(executor, executors[i]);
   }
 }
 
 TEST(CudaPlatformTest, NVML) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
   CHECK_GT(platform->VisibleDeviceCount(), 0);
 
   // After successful init, we try to use one of the

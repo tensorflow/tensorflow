@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <utility>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
@@ -30,13 +30,13 @@ namespace stream_executor::gpu {
 namespace {
 
 TEST(RocmEventTest, CreateEvent) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::rocm::kROCmPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithId(
+                           stream_executor::rocm::kROCmPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(RocmEvent event, RocmEvent::Create(executor, false));
+  ASSERT_OK_AND_ASSIGN(RocmEvent event, RocmEvent::Create(executor, false));
 
   EXPECT_NE(event.GetHandle(), nullptr);
   EXPECT_EQ(event.PollForStatus(), Event::Status::kComplete);
