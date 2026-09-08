@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -1095,7 +1094,7 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
     // `PjRtClient::BufferFromHostBuffer` that accepts `PjRtMemorySpace`.
     // Otherwise, use a non-`PjRtMemorySpace` version that is compatible with
     // PjRt implementations without memories support.
-    if (sharding->memory_kind().memory_kind().has_value()) {
+    if (!sharding->memory_kind().is_default()) {
       // Find `PjRtMemorySpace` that is associated with the sharding's device
       // and matches the sharding's memory_kind.
       Memory* memory = nullptr;
@@ -1108,10 +1107,10 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
       if (memory == nullptr) {
         return InvalidArgument(
             "Invalid memory kind: %s; available memory kinds: %s",
-            *sharding->memory_kind().memory_kind(),
+            sharding->memory_kind().value(),
             absl::StrJoin(ifrt_addressable_devices.front()->Memories(), ", ",
                           [](std::string* out, Memory* ms) {
-                            absl::StrAppend(out, *ms->Kind().memory_kind());
+                            absl::StrAppend(out, ms->Kind().value());
                           }));
       }
       ABSL_ASSIGN_OR_RETURN(
@@ -1190,10 +1189,10 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
       if (memory == nullptr) {
         return absl::InvalidArgumentError(absl::StrFormat(
             "Invalid memory kind: %s; available memory kinds: %s",
-            *array_spec.sharding->memory_kind().memory_kind(),
+            array_spec.sharding->memory_kind().value(),
             absl::StrJoin(ifrt_addressable_devices.front()->Memories(), ", ",
                           [](std::string* out, Memory* ms) {
-                            absl::StrAppend(out, *ms->Kind().memory_kind());
+                            absl::StrAppend(out, ms->Kind().value());
                           })));
       }
       ABSL_ASSIGN_OR_RETURN(
@@ -1209,6 +1208,13 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
                           array_spec.layout));
   }
   return arrays;
+}
+
+absl::StatusOr<std::vector<tsl::Future<>>>
+PjRtClient::CopyArraysToHostBufferShards(
+    absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+    ArrayCopySemantics semantics) {
+  return ClientCopyArraysToHostBufferShards(this, specs, semantics);
 }
 
 absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(

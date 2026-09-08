@@ -184,6 +184,31 @@ def _Assert3DImage(image):
       _Check3DImage(image, require_static=False), image)
 
 
+def _AssertAtLeast1DImage(image):
+  """Assert that `image` has a channel dimension.
+
+  The RGB/YIQ/YUV conversions contract the last dimension of `image` against a
+  3-element kernel. A scalar has no such dimension, and without this check the
+  failure surfaces as an `IndexError` from inside `tensordot`.
+
+  Args:
+    image: >= 1-D Tensor of size [*, 3]
+
+  Raises:
+    ValueError: if the rank of `image` is known and is less than one.
+
+  Returns:
+    `image`, unchanged.
+  """
+  try:
+    image.get_shape().with_rank_at_least(1)
+  except ValueError:
+    raise ValueError(
+        "'images' (shape %s) must be at least one-dimensional." % image.shape
+    )
+  return image
+
+
 def _AssertAtLeast3DImage(image):
   """Assert that we are working with a properly shaped image.
 
@@ -2591,6 +2616,7 @@ def rgb_to_grayscale(images, name=None):
   """
   with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
+    images = _AssertAtLeast1DImage(images)
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
     flt_image = convert_image_dtype(images, dtypes.float32)
@@ -4029,6 +4055,7 @@ def rgb_to_yiq(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
+  images = _AssertAtLeast1DImage(images)
   kernel = ops.convert_to_tensor(
       _rgb_to_yiq_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
@@ -4057,6 +4084,7 @@ def yiq_to_rgb(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
+  images = _AssertAtLeast1DImage(images)
   kernel = ops.convert_to_tensor(
       _yiq_to_rgb_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
@@ -4088,6 +4116,7 @@ def rgb_to_yuv(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
+  images = _AssertAtLeast1DImage(images)
   kernel = ops.convert_to_tensor(
       _rgb_to_yuv_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
@@ -4141,6 +4170,7 @@ def yuv_to_rgb(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
+  images = _AssertAtLeast1DImage(images)
   kernel = ops.convert_to_tensor(
       _yuv_to_rgb_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims

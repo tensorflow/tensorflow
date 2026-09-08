@@ -40,10 +40,7 @@ namespace xla {
 
 void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
-  EventState state;
-  state.event = std::move(event);
-  state.definition_stream = stream;
-  event_.emplace(std::move(state));
+  event_.emplace(EventState{std::move(event), stream});
 }
 
 void BufferSequencingEvent::SetDefinedStatus(absl::Status status) {

@@ -29,13 +29,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -256,11 +258,11 @@ ENTRY cluster_13361217111314620287__.11 {
 )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/true,
-                        /*treat_gte_as_data_formatting=*/true));
+  FakeArgumentsOptions options;
+  options.use_large_range = true;
+  options.treat_gte_as_data_formatting = true;
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 1);
 
   const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
@@ -271,6 +273,39 @@ ENTRY cluster_13361217111314620287__.11 {
   for (const auto index : indices) {
     EXPECT_GE(index, -1);
     EXPECT_LE(index, 100);
+  }
+}
+
+TEST_F(TestUtilsTest, MakeDataflowConstrainedArgumentsForTupleParam) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule cluster_tuple_gather, entry_computation_layout={((s32[10], bf16[100,256]))->(bf16[10,256])}
+
+ENTRY cluster {
+  arg_tuple.1 = (s32[10], bf16[100,256]) parameter(0)
+  get-tuple-element.0 = s32[10] get-tuple-element(arg_tuple.1), index=0
+  get-tuple-element.1 = bf16[100,256] get-tuple-element(arg_tuple.1), index=1
+  gather.2 = bf16[10,256] gather(get-tuple-element.1, get-tuple-element.0),
+    offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={1,256}
+  ROOT tuple.3 = (bf16[10,256]) tuple(gather.2)
+}
+)")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeDataflowConstrainedArguments(module.get()));
+  ASSERT_EQ(args.size(), 1);
+  ASSERT_TRUE(args[0].shape().IsTuple());
+  ASSERT_EQ(args[0].shape().tuple_shapes().size(), 2);
+
+  const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
+  EXPECT_TRUE(ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10})))
+      << ShapeUtil::HumanString(indices_shape);
+  const std::vector<Literal> results = args[0].DecomposeTuple();
+  auto indices = results[0].data<int32_t>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, 0);
+    EXPECT_LE(index, 99);
   }
 }
 
@@ -439,16 +474,10 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s32[]) -> s8[131072,2048] {
     return std::nullopt;
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        index_known_zeroes_fn));
+  FakeArgumentsOptions options;
+  options.get_index_known_zeroes = index_known_zeroes_fn;
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 2);
 
   int32_t index = args[1].Get<int32_t>({});
@@ -480,16 +509,10 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[])
     return std::nullopt;
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        index_known_zeroes_fn));
+  FakeArgumentsOptions options;
+  options.get_index_known_zeroes = index_known_zeroes_fn;
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 3);
 
   int32_t index = args[2].Get<int32_t>({});
@@ -498,12 +521,7 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[])
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> args2,
-      MakeDataflowConstrainedArguments(module.get(),
-                                       /*engine=*/nullptr,
-                                       /*use_large_range=*/false,
-                                       /*max_bits_of_precision=*/std::nullopt,
-                                       /*generate_aligned_ds_indices=*/false,
-                                       index_known_zeroes_fn));
+      MakeDataflowConstrainedArguments(module.get(), options));
   ASSERT_EQ(args2.size(), 3);
   int32_t index2 = args2[2].Get<int32_t>({});
   EXPECT_EQ(index2 & index_known_bits_zero, 0);
@@ -524,11 +542,8 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeDataflowConstrainedArguments(module.get(),
-                                       /*engine=*/nullptr,
-                                       /*use_large_range=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeDataflowConstrainedArguments(module.get()));
   ASSERT_EQ(args.size(), 1);
   args[0].EachCell<float>([](absl::Span<int64_t const> indices, float value) {
     EXPECT_GT(value, 0.0f);
@@ -545,11 +560,8 @@ ENTRY main {
 }
 )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeDataflowConstrainedArguments(module.get(),
-                                       /*engine=*/nullptr,
-                                       /*use_large_range=*/false));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeDataflowConstrainedArguments(module.get()));
   ASSERT_EQ(args.size(), 1);
   args[0].EachCell<int32_t>([](absl::Span<int64_t const> indices,
                                int32_t value) { EXPECT_GE(value, 1); });
@@ -585,6 +597,91 @@ ENTRY %module (param: f4e2m1fn[1024]) -> f4e2m1fn[1024] {
 
   const int64_t num_possible_values = 16;
   EXPECT_EQ(values.size(), num_possible_values);
+}
+
+// Tests that max reduction uses MinValue as the identity element through copy
+// pass-through.
+TEST_F(TestUtilsTest, ReduceMaxIdentityElement) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule ReduceMaxIdentityModule
+
+max_BF16 (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT maximum = bf16[] maximum(lhs, rhs)
+}
+
+ENTRY entry {
+  param_0 = bf16[4,5,128,256] parameter(0)
+  param_1 = bf16[] parameter(1)
+  copy = bf16[] copy(param_1)
+  ROOT reduce-window = bf16[3,4,128,256] reduce-window(param_0, copy),
+    window={size=2x2x1x1 pad=0_0x0_0x0_0x0_0}, to_apply=max_BF16
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_EQ(args[1].Get<bfloat16>({}),
+            LiteralUtil::MinValue(BF16).Get<bfloat16>({}));
+}
+
+// Tests that min reduction uses MaxValue as the identity element through copy
+// pass-through and fusion.
+TEST_F(TestUtilsTest, ReduceMinIdentityElement) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule ReduceMinIdentityModule
+
+min_F32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT minimum = f32[] minimum(lhs, rhs)
+}
+
+fused_computation (param_0: f32[4,5,128,256], param_1: f32[]) -> f32[3,4,128,256] {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT reduce-window = f32[3,4,128,256] reduce-window(param_0, param_1),
+    window={size=2x2x1x1 pad=0_0x0_0x0_0x0_0}, to_apply=min_F32
+}
+
+ENTRY entry {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  copy = f32[] copy(param_1)
+  ROOT fusion = f32[3,4,128,256] fusion(param_0, copy), kind=kOutput, calls=fused_computation
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_EQ(args[1].Get<float>({}), LiteralUtil::MaxValue(F32).Get<float>({}));
+}
+
+// Tests that MakeFakeArguments succeeds when a fusion instruction has unused
+// operands (operands beyond the number of parameters in the fused computation).
+TEST_F(TestUtilsTest, FusionWithUnusedOperand) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule FusionWithUnusedOperandModule
+
+fused_computation (param_0: f32[4,5,128,256]) -> f32[4,5,128,256] {
+  param_0 = f32[4,5,128,256] parameter(0)
+  ROOT copy = f32[4,5,128,256] copy(param_0)
+}
+
+ENTRY entry {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  copy = f32[] copy(param_1)
+  ROOT fusion = f32[4,5,128,256] fusion(param_0, copy), kind=kOutput, calls=fused_computation
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  EXPECT_EQ(args.size(), 2);
 }
 
 }  // namespace

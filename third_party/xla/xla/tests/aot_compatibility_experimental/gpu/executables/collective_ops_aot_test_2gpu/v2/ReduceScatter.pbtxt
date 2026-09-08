@@ -1,0 +1,1729 @@
+# proto-file: third_party/tensorflow/compiler/xla/tools/split_proto/split_proto_cli.proto
+# proto-message: xla.split_proto_cli.DeserializedSplitExecutableAndOptions
+
+executable_and_options {
+  compile_options {
+    executable_build_options {
+      result_layout {
+        element_type: U32
+        dimensions: 4
+        layout {
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+      }
+      debug_options {
+        xla_disable_hlo_passes: "constant_folding"
+        xla_backend_optimization_level: 3
+        xla_eliminate_hlo_implicit_broadcast: true
+        xla_cpu_multi_thread_eigen: true
+        xla_gpu_cuda_data_dir: "./cuda_sdk_lib"
+        xla_llvm_enable_alias_scope_metadata: true
+        xla_llvm_enable_noalias_metadata: true
+        xla_llvm_enable_invariant_load_metadata: true
+        xla_llvm_disable_expensive_passes: false
+        xla_cpu_use_onednn: false
+        xla_cpu_enable_fast_math: false
+        xla_gpu_enable_fast_min_max: false
+        xla_force_host_platform_device_count: 1
+        xla_gpu_enable_dynamic_slice_fusion: false
+        xla_hlo_evaluator_use_fast_path: true
+        xla_dump_hlo_as_html: false
+        xla_cpu_fast_math_honor_nans: true
+        xla_cpu_fast_math_honor_infs: true
+        xla_allow_excess_precision: true
+        xla_gpu_autotune_level: 4
+        xla_cpu_fast_math_honor_division: true
+        xla_cpu_fast_math_honor_functions: true
+        xla_dump_include_timestamp: false
+        xla_dump_max_hlo_modules: -1
+        xla_cpu_enable_xprof_traceme: false
+        xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found: false
+        xla_cpu_enable_fast_min_max: true
+        xla_multiheap_size_constraint_per_heap: -1
+        xla_dump_module_metadata: false
+        xla_gpu_force_compilation_parallelism: 1
+        xla_dump_fusion_visualization: false
+        xla_gpu_all_reduce_combine_threshold_bytes: 31457287
+        xla_gpu_nccl_termination_timeout_seconds: -1
+        xla_dump_hlo_as_long_text: true
+        xla_gpu_enable_cublaslt: true
+        xla_gpu_shape_checks: RUNTIME
+        xla_gpu_use_runtime_fusion: false
+        xla_dump_latency_hiding_schedule: false
+        xla_dump_enable_mlir_pretty_form: true
+        xla_gpu_enable_latency_hiding_scheduler: false
+        xla_partitioning_algorithm: PARTITIONING_ALGORITHM_NOOP
+        xla_gpu_enable_triton_gemm: true
+        xla_gpu_enable_cudnn_int8x32_convolution_reordering: true
+        xla_gpu_triton_gemm_any: true
+        xla_gpu_enable_while_loop_reduce_scatter_code_motion: false
+        xla_gpu_collective_inflation_factor: 1
+        xla_gpu_graph_min_graph_size: 5
+        xla_gpu_enable_reassociation_for_converted_ar: true
+        xla_gpu_pgle_profile_file_or_directory_path: ""
+        xla_gpu_all_gather_combine_threshold_bytes: 31457287
+        xla_gpu_reduce_scatter_combine_threshold_bytes: 31457287
+        xla_gpu_enable_highest_priority_async_stream: true
+        xla_gpu_enable_pipelined_all_reduce: false
+        xla_gpu_exhaustive_tiling_search: false
+        xla_gpu_auto_spmd_partitioning_memory_budget_gb: 0
+        xla_gpu_auto_spmd_partitioning_memory_budget_ratio: 1.1
+        xla_gpu_enable_pipelined_all_gather: false
+        xla_gpu_redzone_padding_bytes: 8388608
+        xla_gpu_enable_pipelined_reduce_scatter: true
+        xla_gpu_fused_attention_use_cudnn_rng: false
+        xla_gpu_copy_insertion_use_region_analysis: false
+        xla_gpu_collective_permute_decomposer_threshold: 9223372036854775807
+        xla_gpu_collect_cost_model_stats: false
+        xla_gpu_enable_pipelined_p2p: false
+        xla_gpu_cublas_fallback: true
+        xla_gpu_enable_while_loop_double_buffering: false
+        xla_gpu_filter_kernels_spilling_registers_on_autotuning: true
+        xla_debug_buffer_assignment_show_max: 15
+        xla_detailed_logging: true
+        xla_enable_dumping: true
+        xla_gpu_enable_all_gather_combine_by_dim: false
+        xla_gpu_enable_analytical_latency_estimator: false
+        xla_gpu_llvm_verification_level: 0
+        xla_gpu_enable_reduce_scatter_combine_by_dim: false
+        xla_gpu_enable_command_buffer: CONDITIONAL
+        xla_gpu_enable_command_buffer: CUBLAS
+        xla_gpu_enable_command_buffer: CUBLASLT
+        xla_gpu_enable_command_buffer: CUDNN
+        xla_gpu_enable_command_buffer: CUSTOM_CALL
+        xla_gpu_enable_command_buffer: DYNAMIC_SLICE_FUSION
+        xla_gpu_enable_command_buffer: FUSION
+        xla_gpu_enable_cub_radix_sort: true
+        xla_gpu_memory_limit_slop_factor: 95
+        xla_gpu_target_config_filename: ""
+        xla_gpu_enable_cudnn_layer_norm: false
+        xla_gpu_threshold_for_windowed_einsum_mib: 100000
+        xla_gpu_enable_nccl_user_buffers: false
+        xla_gpu_enable_libnvptxcompiler: true
+        xla_gpu_enable_nccl_comm_splitting: true
+        xla_gpu_nccl_collective_max_nchannels: 0
+        xla_gpu_nccl_p2p_max_nchannels: 0
+        xla_gpu_nccl_init_max_rank_per_root_ratio: 0
+        xla_gpu_multi_streamed_windowed_einsum: true
+        xla_gpu_gemm_rewrite_size_threshold: 100
+        xla_gpu_require_complete_aot_autotune_results: false
+        xla_gpu_cudnn_gemm_fusion_level: 0
+        xla_gpu_use_memcpy_local_p2p: false
+        xla_gpu_autotune_max_solutions: 0
+        xla_dump_large_constants: false
+        xla_gpu_verify_triton_fusion_numerics: false
+        xla_reduce_window_rewrite_base_length: 16
+        xla_gpu_enable_while_loop_unrolling: WHILE_LOOP_UNROLLING_AUTO_UNROLL
+        xla_gpu_enable_host_memory_offloading: false
+        xla_gpu_nccl_terminate_on_error: false
+        xla_gpu_shard_autotuning: true
+        xla_gpu_enable_approx_costly_collectives: false
+        xla_cpu_prefer_vector_width: 256
+        xla_gpu_per_fusion_autotune_cache_dir: ""
+        xla_cmd_buffer_trace_cache_size: 16
+        xla_gpu_temp_buffer_use_separate_color: false
+        xla_syntax_sugar_async_ops: false
+        xla_gpu_autotune_gemm_rtol: 0.1
+        xla_enable_command_buffers_during_profiling: false
+        xla_gpu_cudnn_gemm_max_plans: 5
+        xla_cpu_parallel_codegen_split_count: 32
+        xla_gpu_experimental_autotune_cache_mode: AUTOTUNE_CACHE_MODE_UPDATE
+        xla_gpu_executable_warn_stuck_timeout_seconds: 10
+        xla_gpu_executable_terminate_timeout_seconds: 30
+        xla_gpu_experimental_disable_binary_libraries: false
+        xla_gpu_dot_merger_threshold_mb: 64
+        xla_cpu_max_isa: ""
+        xla_gpu_experimental_enable_fusion_block_level_rewriter: false
+        xla_enable_fast_math: false
+        xla_gpu_experimental_parallel_collective_overlap_limit: 1
+        xla_cpu_copy_insertion_use_region_analysis: false
+        xla_gpu_operand_bytes_threshold_for_windowed_einsum: -1
+        xla_gpu_experimental_enable_triton_heroless_priority_fusion: false
+        xla_gpu_pgle_accuracy_checker: PGLE_STRICTNESS_LEVEL_WARN
+        xla_gpu_experimental_stream_annotation: true
+        xla_gpu_libnvjitlink_mode: LIB_NV_JIT_LINK_MODE_AUTO
+        xla_pjrt_allow_auto_layout_in_hlo: false
+        xla_gpu_enable_scatter_determinism_expander: false
+        xla_gpu_require_exclusive_lock: false
+        xla_gpu_generate_debug_info: false
+        xla_gpu_generate_line_info: false
+        xla_gpu_unsupported_enable_ragged_all_to_all_decomposer: false
+        xla_gpu_experimental_pipeline_parallelism_opt_level: PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE
+        xla_gpu_fail_ptx_compilation_on_register_spilling: false
+        xla_gpu_enable_analytical_sol_latency_estimator: true
+        xla_gpu_analytical_latency_estimator_options {
+          key: "chunk_prep_us"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "chunk_size_bytes"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "gpus_per_node"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "nccl_op_launch_us"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "nic_speed_gbps"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "rtt_us"
+          value: "-1"
+        }
+        xla_cpu_use_xnnpack: true
+        xla_gpu_experimental_pack_dot_operands_along_k_dimension: true
+        xla_unsupported_crash_on_hlo_pass_fix_max_iterations: false
+        xla_cpu_experimental_xnn_graph_fusion_mode: XNN_GRAPH_FUSION_MODE_DISABLED
+        xla_gpu_experimental_enable_heuristic_collective_combining: false
+        xla_gpu_experimental_enable_subchannel_dequantisation_fusion: false
+        xla_hlo_pass_fix_detect_cycles: false
+        xla_cpu_generate_unique_c_style_kernel_entry_points: false
+        xla_gpu_experimental_collective_cse_distance_threshold: 0
+        xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel: true
+        xla_cpu_use_fusion_emitters: true
+        xla_gpu_experimental_collective_perf_table_path: ""
+        xla_gpu_collective_permute_combine_threshold_bytes: 31457287
+        xla_unsupported_crash_on_hlo_pass_noop_change: false
+        xla_unsupported_crash_on_hlo_pass_silent_hlo_change: false
+        xla_dump_full_hlo_config: true
+        xla_gpu_unsupported_enable_triton_multi_output_fusion: false
+        xla_gpu_experimental_matmul_perf_table_path: ""
+        xla_gpu_unsupported_enable_all_reduce_decomposer: false
+        xla_gpu_unsupported_use_all_reduce_one_shot_kernel: true
+        xla_gpu_nccl_blocking_communicators: true
+        xla_gpu_first_collective_call_warn_stuck_timeout_seconds: 20
+        xla_gpu_first_collective_call_terminate_timeout_seconds: 40
+        xla_gpu_nccl_async_execution: false
+        xla_cpu_emitter_verification_level: 1
+        xla_early_exit_with_layouts: false
+        xla_gpu_experimental_use_ragged_dot_fusion: false
+        xla_detect_unstable_reductions: DETECTION_MODE_NONE
+        xla_gpu_command_buffer_scheduling_mode: LHS
+        xla_gpu_experimental_enable_nccl_symmetric_buffers: false
+        xla_gpu_experimental_autotuner_cache_dir: ""
+        xla_disable_automatic_host_compute_offload: false
+        xla_gpu_experimental_enable_fusion_autotuner: true
+        xla_gpu_experimental_scaled_dot_with_triton: true
+        xla_gpu_command_buffer_unroll_loops: false
+        xla_cpu_experimental_onednn_custom_call: false
+        xla_gpu_experimental_use_raft_select_k: false
+        xla_gpu_experimental_enable_checksum_tracing_on_thunks: false
+        xla_cpu_collective_call_terminate_timeout_seconds: 40
+        xla_cpu_collective_call_warn_stuck_seconds: 20
+        xla_keep_shardings_after_spmd: false
+        xla_gpu_experimental_enable_triton_warp_specialization: false
+        xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT
+        xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION
+        xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_REDUCE
+        xla_cpu_enable_platform_dependent_math: true
+        xla_gpu_detect_nan: DETECTION_MODE_NONE
+        xla_gpu_experimental_dump_gpu_executable: true
+        xla_gpu_detect_inf: DETECTION_MODE_NONE
+        xla_enable_enzyme_comms_opt: false
+        xla_gpu_experimental_enable_buffer_saver_on_thunks: false
+        xla_detect_unstable_reductions_post_optimizations: DETECTION_MODE_NONE
+        xla_gpu_experimental_aot_compiled_thunks: true
+        xla_enable_scoped_logging_timers: true
+        xla_gpu_executable_embed_debug_info: true
+        xla_cpu_collective_timeout_seconds: 1800
+        xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled: false
+        xla_gpu_enable_pipelined_host_offloading: false
+        xla_gpu_experimental_all_fusions_with_triton: false
+        xla_cpu_scheduler_type: CPU_SCHEDULER_TYPE_DEFAULT
+        xla_gpu_rocm_max_trace_events: 4194304
+        xla_gpu_experimental_ragged_all_to_all_use_barrier: true
+        xla_gpu_execution_terminate_timeout: "inf"
+        xla_enable_hlo_sharding_v3: false
+        xla_gpu_log_minmax: false
+        xla_gpu_print_compilation_stats: false
+        xla_gpu_experimental_enable_conv_fusion: false
+        xla_gpu_experimental_enable_tiling_propagation: false
+        xla_gpu_execution_progress_tracking: 0
+        xla_gpu_experimental_max_unroll_factor: 32
+        xla_gpu_enable_pdl: true
+        xla_gpu_collective_combine_threshold_count: 2048
+        xla_recognize_reduction_optimization_level: 0
+        xla_gpu_experimental_parallel_async_compute_limit: 2
+        xla_dump_buffer_assignment_analysis: true
+        xla_gpu_command_buffer_update_mode: ALWAYS_UPDATE
+        xla_gpu_experimental_enable_collective_multi_streaming: false
+        xla_gpu_collective_permute_connected_components: false
+        xla_gpu_experimental_force_split_k: 0
+        xla_gpu_collective_permute_mode: COLLECTIVES_PRIVATE_MEMORY
+        xla_gpu_experimental_gemm_fusion_v2: false
+        xla_gpu_fusion_autotune_top_k_configs: 1
+        xla_gpu_native_emitter_tune_unroll_factor_for_loops: false
+        xla_enable_rgv3_materialization: true
+        xla_gpu_ragged_all_to_all_mode: COLLECTIVES_PRIVATE_MEMORY
+        xla_gpu_deviceless_cub_mode: DEVICELESS_CUB_WITH_FALLBACK
+        xla_gpu_experimental_dynamic_slice_fusion_verify_offsets: false
+        xla_gpu_all_gather_mode: COLLECTIVES_PRIVATE_MEMORY
+        xla_gpu_executable_num_compute_streams: 0
+        xla_gpu_executable_num_communication_streams: 0
+        xla_gpu_experimental_collective_start_as_early_as_possible: false
+        xla_cpu_experimental_enable_tiling_propagation: false
+        xla_gpu_enable_dus_accumulator_zero_init_elimination: false
+        xla_gpu_experimental_thunk_buffer_debug_module_outputs: false
+        xla_cpu_ftz: true
+        xla_gpu_enable_allocator_spatial_partitioning: true
+        xla_dump_compact_gte: false
+        xla_gpu_enable_collectives_command_buffer_filter: ALLCOLLECTIVES
+        xla_dump_hlo_as_riegeli: false
+        xla_gpu_experimental_use_ragged_dot_grouped_gemm: true
+        xla_dump_hlo_to_subfolder: false
+        xla_gpu_enable_pdl_launch: true
+        xla_gpu_cudnn_deviceless_compilation_mode: CUDNN_DEVICELESS_COMPILATION_DISABLED
+        xla_gpu_enable_nccl_user_buffers_in_default_space: false
+        xla_sdy_export_all_reduce_scatter: false
+      }
+      num_replicas: 2
+      num_partitions: 1
+      device_assignment {
+        replica_count: 2
+        computation_count: 1
+        computation_devices {
+          replica_device_ids: 0
+          replica_device_ids: 1
+        }
+      }
+      allow_spmd_sharding_propagation_to_output: false
+      comp_envs {
+      }
+      allow_spmd_sharding_propagation_to_parameters: false
+      process_count: 1
+      memory_fitting_level: EFFORT_O2
+      slice_size: 2
+    }
+  }
+}
+gpu_executable {
+  hlo_module_with_config {
+    hlo_module {
+      name: "test"
+      entry_computation_name: "main"
+      computations {
+        name: "add"
+        instructions {
+          name: "lhs"
+          opcode: "parameter"
+          shape {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          metadata {
+          }
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "rhs"
+          opcode: "parameter"
+          shape {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          metadata {
+          }
+          parameter_number: 1
+          id: 1
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "add.1"
+          opcode: "add"
+          shape {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          metadata {
+          }
+          id: 2
+          operand_ids: 0
+          operand_ids: 1
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        program_shape {
+          parameters {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          parameters {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          result {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          parameter_names: "lhs"
+          parameter_names: "rhs"
+        }
+        root_id: 2
+      }
+      computations {
+        name: "fused_select"
+        instructions {
+          name: "param_2.2"
+          opcode: "parameter"
+          shape {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          metadata {
+          }
+          parameter_number: 2
+          id: 12884901893
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "zero_2"
+          opcode: "constant"
+          shape {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          metadata {
+          }
+          literal {
+            shape {
+              element_type: U32
+              layout {
+                tail_padding_alignment_in_elements: 1
+              }
+            }
+            u32s: 0
+          }
+          id: 12884901894
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "p.4"
+          opcode: "compare"
+          shape {
+            element_type: PRED
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          metadata {
+          }
+          id: 12884901892
+          operand_ids: 12884901893
+          operand_ids: 12884901894
+          comparison_direction: "EQ"
+          frontend_attributes {
+          }
+          comparison_type: "UNSIGNED"
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "pb.4"
+          opcode: "broadcast"
+          shape {
+            element_type: PRED
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          id: 12884901889
+          operand_ids: 12884901892
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "param_0.4"
+          opcode: "parameter"
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          id: 12884901890
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "param_1.3"
+          opcode: "parameter"
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          parameter_number: 1
+          id: 12884901891
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "data.2"
+          opcode: "select"
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          id: 12884901888
+          operand_ids: 12884901889
+          operand_ids: 12884901890
+          operand_ids: 12884901891
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        program_shape {
+          parameters {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          parameters {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          parameters {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          result {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          parameter_names: "param_0.4"
+          parameter_names: "param_1.3"
+          parameter_names: "param_2.2"
+        }
+        id: 3
+        root_id: 12884901888
+        is_fusion_computation: true
+      }
+      computations {
+        name: "async_computation"
+        instructions {
+          name: "param_0.5"
+          opcode: "parameter"
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          id: 21474836480
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "ars.2"
+          opcode: "reduce-scatter"
+          shape {
+            element_type: U32
+            dimensions: 4
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          dimensions: 0
+          id: 21474836481
+          operand_ids: 21474836480
+          called_computation_ids: 0
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+          collective_device_list {
+          }
+        }
+        program_shape {
+          parameters {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          result {
+            element_type: U32
+            dimensions: 4
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          parameter_names: "param_0.5"
+        }
+        id: 5
+        root_id: 21474836481
+      }
+      computations {
+        name: "main"
+        instructions {
+          name: "c0_1"
+          opcode: "constant"
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          literal {
+            shape {
+              element_type: U32
+              dimensions: 8
+              layout {
+                minor_to_major: 0
+                tail_padding_alignment_in_elements: 1
+              }
+              is_dynamic_dimension: false
+            }
+            u32s: 1
+            u32s: 2
+            u32s: 3
+            u32s: 4
+            u32s: 5
+            u32s: 6
+            u32s: 7
+            u32s: 8
+          }
+          id: 4294967297
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "c1_1"
+          opcode: "constant"
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          literal {
+            shape {
+              element_type: U32
+              dimensions: 8
+              layout {
+                minor_to_major: 0
+                tail_padding_alignment_in_elements: 1
+              }
+              is_dynamic_dimension: false
+            }
+            u32s: 10
+            u32s: 11
+            u32s: 12
+            u32s: 13
+            u32s: 14
+            u32s: 15
+            u32s: 16
+            u32s: 17
+          }
+          id: 4294967298
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "id.1"
+          opcode: "replica-id"
+          shape {
+            element_type: U32
+            layout {
+              tail_padding_alignment_in_elements: 1
+            }
+          }
+          metadata {
+          }
+          id: 4294967296
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        instructions {
+          name: "loop_select_fusion"
+          opcode: "fusion"
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          fusion_kind: "kLoop"
+          id: 4294967299
+          operand_ids: 4294967297
+          operand_ids: 4294967298
+          operand_ids: 4294967296
+          called_computation_ids: 3
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+          backend_config_payload {
+            id: 0
+          }
+        }
+        instructions {
+          name: "reduce-scatter-start"
+          opcode: "async-start"
+          shape {
+            element_type: TUPLE
+            tuple_shapes {
+              element_type: TUPLE
+              tuple_shapes {
+                element_type: U32
+                dimensions: 8
+                layout {
+                  minor_to_major: 0
+                  tail_padding_alignment_in_elements: 1
+                }
+                is_dynamic_dimension: false
+              }
+            }
+            tuple_shapes {
+              element_type: U32
+              dimensions: 4
+              layout {
+                minor_to_major: 0
+                tail_padding_alignment_in_elements: 1
+              }
+              is_dynamic_dimension: false
+            }
+          }
+          metadata {
+          }
+          id: 4294967300
+          operand_ids: 4294967299
+          called_computation_ids: 5
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+          backend_config_payload {
+            id: 1
+          }
+        }
+        instructions {
+          name: "reduce-scatter-done"
+          opcode: "async-done"
+          shape {
+            element_type: U32
+            dimensions: 4
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+          metadata {
+          }
+          id: 4294967301
+          operand_ids: 4294967300
+          frontend_attributes {
+          }
+          statistics_viz {
+          }
+        }
+        program_shape {
+          result {
+            element_type: U32
+            dimensions: 4
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+        }
+        id: 1
+        root_id: 4294967301
+      }
+      host_program_shape {
+        result {
+          element_type: U32
+          dimensions: 4
+          layout {
+            minor_to_major: 0
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: false
+        }
+      }
+      entry_computation_id: 1
+      schedule {
+        sequences {
+          key: 0
+          value {
+            instruction_ids: 1
+            instruction_ids: 0
+            instruction_ids: 2
+          }
+        }
+        sequences {
+          key: 1
+          value {
+            instruction_ids: 4294967296
+            instruction_ids: 4294967298
+            instruction_ids: 4294967297
+            instruction_ids: 4294967299
+            instruction_ids: 4294967300
+            instruction_ids: 4294967301
+          }
+        }
+        sequences {
+          key: 5
+          value {
+            instruction_ids: 21474836480
+            instruction_ids: 21474836481
+          }
+        }
+      }
+      input_output_alias {
+      }
+      device_assignment {
+        replica_count: 2
+        computation_count: 1
+        computation_devices {
+          replica_device_ids: 0
+          replica_device_ids: 1
+        }
+      }
+      buffer_donor {
+      }
+      frontend_attributes {
+        map {
+          key: "fingerprint_before_lhs"
+          value: "f1e11fca63da83b4e8c82bd1944aded5"
+        }
+      }
+      payloads: "{\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"native_emitter_backend_config\":{\"type\":\"NATIVE_EMITTER_TYPE_INVALID\",\"unroll_factor\":0},\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
+      payloads: "{\"collective_backend_config\":{\"backend\":\"DEFAULT\",\"collectives_mode\":\"COLLECTIVES_MODE_INVALID\",\"communication_domain\":\"COLLECTIVE_COMMUNICATION_DOMAIN_UNSPECIFIED\",\"is_pipelined\":false,\"is_spmd_generated\":false,\"is_sync\":true,\"kernel_strategy\":\"KERNEL_STRATEGY_DEFAULT\"},\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
+    }
+    config {
+      entry_computation_layout {
+        result {
+          element_type: U32
+          dimensions: 4
+          layout {
+            minor_to_major: 0
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: false
+        }
+      }
+      replica_count: 2
+      num_partitions: 1
+      intra_op_parallelism_threads: -1
+      debug_options {
+        xla_disable_hlo_passes: "constant_folding"
+        xla_backend_optimization_level: 3
+        xla_eliminate_hlo_implicit_broadcast: true
+        xla_cpu_multi_thread_eigen: true
+        xla_gpu_cuda_data_dir: "./cuda_sdk_lib"
+        xla_llvm_enable_alias_scope_metadata: true
+        xla_llvm_enable_noalias_metadata: true
+        xla_llvm_enable_invariant_load_metadata: true
+        xla_llvm_disable_expensive_passes: false
+        xla_cpu_use_onednn: false
+        xla_cpu_enable_fast_math: false
+        xla_gpu_enable_fast_min_max: false
+        xla_force_host_platform_device_count: 1
+        xla_gpu_enable_dynamic_slice_fusion: false
+        xla_hlo_evaluator_use_fast_path: true
+        xla_dump_hlo_as_html: false
+        xla_cpu_fast_math_honor_nans: true
+        xla_cpu_fast_math_honor_infs: true
+        xla_allow_excess_precision: true
+        xla_gpu_autotune_level: 4
+        xla_cpu_fast_math_honor_division: true
+        xla_cpu_fast_math_honor_functions: true
+        xla_dump_include_timestamp: false
+        xla_dump_max_hlo_modules: -1
+        xla_cpu_enable_xprof_traceme: false
+        xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found: false
+        xla_cpu_enable_fast_min_max: true
+        xla_multiheap_size_constraint_per_heap: -1
+        xla_dump_module_metadata: false
+        xla_gpu_force_compilation_parallelism: 1
+        xla_dump_fusion_visualization: false
+        xla_gpu_all_reduce_combine_threshold_bytes: 31457287
+        xla_gpu_nccl_termination_timeout_seconds: -1
+        xla_dump_hlo_as_long_text: true
+        xla_gpu_enable_cublaslt: true
+        xla_gpu_shape_checks: RUNTIME
+        xla_gpu_use_runtime_fusion: false
+        xla_dump_latency_hiding_schedule: false
+        xla_dump_enable_mlir_pretty_form: true
+        xla_gpu_enable_latency_hiding_scheduler: false
+        xla_partitioning_algorithm: PARTITIONING_ALGORITHM_NOOP
+        xla_gpu_enable_triton_gemm: true
+        xla_gpu_enable_cudnn_int8x32_convolution_reordering: true
+        xla_gpu_triton_gemm_any: true
+        xla_gpu_enable_while_loop_reduce_scatter_code_motion: false
+        xla_gpu_collective_inflation_factor: 1
+        xla_gpu_graph_min_graph_size: 5
+        xla_gpu_enable_reassociation_for_converted_ar: true
+        xla_gpu_pgle_profile_file_or_directory_path: ""
+        xla_gpu_all_gather_combine_threshold_bytes: 31457287
+        xla_gpu_reduce_scatter_combine_threshold_bytes: 31457287
+        xla_gpu_enable_highest_priority_async_stream: true
+        xla_gpu_enable_pipelined_all_reduce: false
+        xla_gpu_exhaustive_tiling_search: false
+        xla_gpu_auto_spmd_partitioning_memory_budget_gb: 0
+        xla_gpu_auto_spmd_partitioning_memory_budget_ratio: 1.1
+        xla_gpu_enable_pipelined_all_gather: false
+        xla_gpu_redzone_padding_bytes: 8388608
+        xla_gpu_enable_pipelined_reduce_scatter: true
+        xla_gpu_fused_attention_use_cudnn_rng: false
+        xla_gpu_copy_insertion_use_region_analysis: false
+        xla_gpu_collective_permute_decomposer_threshold: 9223372036854775807
+        xla_gpu_collect_cost_model_stats: false
+        xla_gpu_enable_pipelined_p2p: false
+        xla_gpu_cublas_fallback: true
+        xla_gpu_enable_while_loop_double_buffering: false
+        xla_gpu_filter_kernels_spilling_registers_on_autotuning: true
+        xla_debug_buffer_assignment_show_max: 15
+        xla_detailed_logging: true
+        xla_enable_dumping: true
+        xla_gpu_enable_all_gather_combine_by_dim: false
+        xla_gpu_enable_analytical_latency_estimator: false
+        xla_gpu_llvm_verification_level: 0
+        xla_gpu_enable_reduce_scatter_combine_by_dim: false
+        xla_gpu_enable_command_buffer: CONDITIONAL
+        xla_gpu_enable_command_buffer: CUBLAS
+        xla_gpu_enable_command_buffer: CUBLASLT
+        xla_gpu_enable_command_buffer: CUDNN
+        xla_gpu_enable_command_buffer: CUSTOM_CALL
+        xla_gpu_enable_command_buffer: DYNAMIC_SLICE_FUSION
+        xla_gpu_enable_command_buffer: FUSION
+        xla_gpu_enable_cub_radix_sort: true
+        xla_gpu_memory_limit_slop_factor: 95
+        xla_gpu_target_config_filename: ""
+        xla_gpu_enable_cudnn_layer_norm: false
+        xla_gpu_threshold_for_windowed_einsum_mib: 100000
+        xla_gpu_enable_nccl_user_buffers: false
+        xla_gpu_enable_libnvptxcompiler: true
+        xla_gpu_enable_nccl_comm_splitting: true
+        xla_gpu_nccl_collective_max_nchannels: 0
+        xla_gpu_nccl_p2p_max_nchannels: 0
+        xla_gpu_nccl_init_max_rank_per_root_ratio: 0
+        xla_gpu_multi_streamed_windowed_einsum: true
+        xla_gpu_gemm_rewrite_size_threshold: 100
+        xla_gpu_require_complete_aot_autotune_results: false
+        xla_gpu_cudnn_gemm_fusion_level: 0
+        xla_gpu_use_memcpy_local_p2p: false
+        xla_gpu_autotune_max_solutions: 0
+        xla_dump_large_constants: false
+        xla_gpu_verify_triton_fusion_numerics: false
+        xla_reduce_window_rewrite_base_length: 16
+        xla_gpu_enable_while_loop_unrolling: WHILE_LOOP_UNROLLING_AUTO_UNROLL
+        xla_gpu_enable_host_memory_offloading: false
+        xla_gpu_nccl_terminate_on_error: false
+        xla_gpu_shard_autotuning: true
+        xla_gpu_enable_approx_costly_collectives: false
+        xla_cpu_prefer_vector_width: 256
+        xla_gpu_per_fusion_autotune_cache_dir: ""
+        xla_cmd_buffer_trace_cache_size: 16
+        xla_gpu_temp_buffer_use_separate_color: false
+        xla_syntax_sugar_async_ops: false
+        xla_gpu_autotune_gemm_rtol: 0.1
+        xla_enable_command_buffers_during_profiling: false
+        xla_gpu_cudnn_gemm_max_plans: 5
+        xla_cpu_parallel_codegen_split_count: 32
+        xla_gpu_experimental_autotune_cache_mode: AUTOTUNE_CACHE_MODE_UPDATE
+        xla_gpu_executable_warn_stuck_timeout_seconds: 10
+        xla_gpu_executable_terminate_timeout_seconds: 30
+        xla_gpu_experimental_disable_binary_libraries: false
+        xla_gpu_dot_merger_threshold_mb: 64
+        xla_cpu_max_isa: ""
+        xla_gpu_experimental_enable_fusion_block_level_rewriter: false
+        xla_enable_fast_math: false
+        xla_gpu_experimental_parallel_collective_overlap_limit: 1
+        xla_cpu_copy_insertion_use_region_analysis: false
+        xla_gpu_operand_bytes_threshold_for_windowed_einsum: -1
+        xla_gpu_experimental_enable_triton_heroless_priority_fusion: false
+        xla_gpu_pgle_accuracy_checker: PGLE_STRICTNESS_LEVEL_WARN
+        xla_gpu_experimental_stream_annotation: true
+        xla_gpu_libnvjitlink_mode: LIB_NV_JIT_LINK_MODE_AUTO
+        xla_pjrt_allow_auto_layout_in_hlo: false
+        xla_gpu_enable_scatter_determinism_expander: false
+        xla_gpu_require_exclusive_lock: false
+        xla_gpu_generate_debug_info: false
+        xla_gpu_generate_line_info: false
+        xla_gpu_unsupported_enable_ragged_all_to_all_decomposer: false
+        xla_gpu_experimental_pipeline_parallelism_opt_level: PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE
+        xla_gpu_fail_ptx_compilation_on_register_spilling: false
+        xla_gpu_enable_analytical_sol_latency_estimator: true
+        xla_gpu_analytical_latency_estimator_options {
+          key: "chunk_prep_us"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "chunk_size_bytes"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "gpus_per_node"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "nccl_op_launch_us"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "nic_speed_gbps"
+          value: "-1"
+        }
+        xla_gpu_analytical_latency_estimator_options {
+          key: "rtt_us"
+          value: "-1"
+        }
+        xla_cpu_use_xnnpack: true
+        xla_gpu_experimental_pack_dot_operands_along_k_dimension: true
+        xla_unsupported_crash_on_hlo_pass_fix_max_iterations: false
+        xla_cpu_experimental_xnn_graph_fusion_mode: XNN_GRAPH_FUSION_MODE_DISABLED
+        xla_gpu_experimental_enable_heuristic_collective_combining: false
+        xla_gpu_experimental_enable_subchannel_dequantisation_fusion: false
+        xla_hlo_pass_fix_detect_cycles: false
+        xla_cpu_generate_unique_c_style_kernel_entry_points: false
+        xla_gpu_experimental_collective_cse_distance_threshold: 0
+        xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel: true
+        xla_cpu_use_fusion_emitters: true
+        xla_gpu_experimental_collective_perf_table_path: ""
+        xla_gpu_collective_permute_combine_threshold_bytes: 31457287
+        xla_unsupported_crash_on_hlo_pass_noop_change: false
+        xla_unsupported_crash_on_hlo_pass_silent_hlo_change: false
+        xla_dump_full_hlo_config: true
+        xla_gpu_unsupported_enable_triton_multi_output_fusion: false
+        xla_gpu_experimental_matmul_perf_table_path: ""
+        xla_gpu_unsupported_enable_all_reduce_decomposer: false
+        xla_gpu_unsupported_use_all_reduce_one_shot_kernel: true
+        xla_gpu_nccl_blocking_communicators: true
+        xla_gpu_first_collective_call_warn_stuck_timeout_seconds: 20
+        xla_gpu_first_collective_call_terminate_timeout_seconds: 40
+        xla_gpu_nccl_async_execution: false
+        xla_cpu_emitter_verification_level: 1
+        xla_early_exit_with_layouts: false
+        xla_gpu_experimental_use_ragged_dot_fusion: false
+        xla_detect_unstable_reductions: DETECTION_MODE_NONE
+        xla_gpu_command_buffer_scheduling_mode: LHS
+        xla_gpu_experimental_enable_nccl_symmetric_buffers: false
+        xla_gpu_experimental_autotuner_cache_dir: ""
+        xla_disable_automatic_host_compute_offload: false
+        xla_gpu_experimental_enable_fusion_autotuner: true
+        xla_gpu_experimental_scaled_dot_with_triton: true
+        xla_gpu_command_buffer_unroll_loops: false
+        xla_cpu_experimental_onednn_custom_call: false
+        xla_gpu_experimental_use_raft_select_k: false
+        xla_gpu_experimental_enable_checksum_tracing_on_thunks: false
+        xla_cpu_collective_call_terminate_timeout_seconds: 40
+        xla_cpu_collective_call_warn_stuck_seconds: 20
+        xla_keep_shardings_after_spmd: false
+        xla_gpu_experimental_enable_triton_warp_specialization: false
+        xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT
+        xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION
+        xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_REDUCE
+        xla_cpu_enable_platform_dependent_math: true
+        xla_gpu_detect_nan: DETECTION_MODE_NONE
+        xla_gpu_experimental_dump_gpu_executable: true
+        xla_gpu_detect_inf: DETECTION_MODE_NONE
+        xla_enable_enzyme_comms_opt: false
+        xla_gpu_experimental_enable_buffer_saver_on_thunks: false
+        xla_detect_unstable_reductions_post_optimizations: DETECTION_MODE_NONE
+        xla_gpu_experimental_aot_compiled_thunks: true
+        xla_enable_scoped_logging_timers: true
+        xla_gpu_executable_embed_debug_info: true
+        xla_cpu_collective_timeout_seconds: 1800
+        xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled: false
+        xla_gpu_enable_pipelined_host_offloading: false
+        xla_gpu_experimental_all_fusions_with_triton: false
+        xla_cpu_scheduler_type: CPU_SCHEDULER_TYPE_DEFAULT
+        xla_gpu_rocm_max_trace_events: 4194304
+        xla_gpu_experimental_ragged_all_to_all_use_barrier: true
+        xla_gpu_execution_terminate_timeout: "inf"
+        xla_enable_hlo_sharding_v3: false
+        xla_gpu_log_minmax: false
+        xla_gpu_print_compilation_stats: false
+        xla_gpu_experimental_enable_conv_fusion: false
+        xla_gpu_experimental_enable_tiling_propagation: false
+        xla_gpu_execution_progress_tracking: 0
+        xla_gpu_experimental_max_unroll_factor: 32
+        xla_gpu_enable_pdl: true
+        xla_gpu_collective_combine_threshold_count: 2048
+        xla_recognize_reduction_optimization_level: 0
+        xla_gpu_experimental_parallel_async_compute_limit: 2
+        xla_dump_buffer_assignment_analysis: true
+        xla_gpu_command_buffer_update_mode: ALWAYS_UPDATE
+        xla_gpu_experimental_enable_collective_multi_streaming: false
+        xla_gpu_collective_permute_connected_components: false
+        xla_gpu_experimental_force_split_k: 0
+        xla_gpu_collective_permute_mode: COLLECTIVES_PRIVATE_MEMORY
+        xla_gpu_experimental_gemm_fusion_v2: false
+        xla_gpu_fusion_autotune_top_k_configs: 1
+        xla_gpu_native_emitter_tune_unroll_factor_for_loops: false
+        xla_enable_rgv3_materialization: true
+        xla_gpu_ragged_all_to_all_mode: COLLECTIVES_PRIVATE_MEMORY
+        xla_gpu_deviceless_cub_mode: DEVICELESS_CUB_WITH_FALLBACK
+        xla_gpu_experimental_dynamic_slice_fusion_verify_offsets: false
+        xla_gpu_all_gather_mode: COLLECTIVES_PRIVATE_MEMORY
+        xla_gpu_executable_num_compute_streams: 0
+        xla_gpu_executable_num_communication_streams: 0
+        xla_gpu_experimental_collective_start_as_early_as_possible: false
+        xla_cpu_experimental_enable_tiling_propagation: false
+        xla_gpu_enable_dus_accumulator_zero_init_elimination: false
+        xla_gpu_experimental_thunk_buffer_debug_module_outputs: false
+        xla_cpu_ftz: true
+        xla_gpu_enable_allocator_spatial_partitioning: true
+        xla_dump_compact_gte: false
+        xla_gpu_enable_collectives_command_buffer_filter: ALLCOLLECTIVES
+        xla_dump_hlo_as_riegeli: false
+        xla_gpu_experimental_use_ragged_dot_grouped_gemm: true
+        xla_dump_hlo_to_subfolder: false
+        xla_gpu_enable_pdl_launch: true
+        xla_gpu_cudnn_deviceless_compilation_mode: CUDNN_DEVICELESS_COMPILATION_DISABLED
+        xla_gpu_enable_nccl_user_buffers_in_default_space: false
+        xla_sdy_export_all_reduce_scatter: false
+      }
+      static_device_assignment {
+        replica_count: 2
+        computation_count: 1
+        computation_devices {
+          replica_device_ids: 0
+          replica_device_ids: 1
+        }
+      }
+      allow_spmd_sharding_propagation_to_output: false
+      allow_spmd_sharding_propagation_to_parameters: false
+      sharding_config {
+      }
+      memory_fitting_level: EFFORT_O2
+      schedule_config {
+      }
+      partition_size: 2
+    }
+  }
+  buffer_assignment {
+    logical_buffers {
+      size: 4
+      defined_at {
+      }
+    }
+    logical_buffers {
+      id: 1
+      size: 4
+      defined_at {
+        instruction_id: 1
+      }
+    }
+    logical_buffers {
+      id: 2
+      size: 4
+      defined_at {
+        instruction_id: 2
+      }
+    }
+    logical_buffers {
+      id: 10
+      size: 16
+      defined_at {
+        instruction_id: 21474836481
+      }
+    }
+    logical_buffers {
+      id: 11
+      size: 32
+      defined_at {
+        instruction_id: 4294967297
+      }
+    }
+    logical_buffers {
+      id: 12
+      size: 32
+      defined_at {
+        instruction_id: 4294967298
+      }
+    }
+    logical_buffers {
+      id: 13
+      size: 4
+      defined_at {
+        instruction_id: 4294967296
+      }
+    }
+    logical_buffers {
+      id: 14
+      size: 32
+      defined_at {
+        instruction_id: 4294967299
+      }
+    }
+    logical_buffers {
+      id: 15
+      size: 16
+      defined_at {
+        instruction_id: 4294967300
+      }
+    }
+    logical_buffers {
+      id: 16
+      size: 8
+      defined_at {
+        shape_index: 0
+        instruction_id: 4294967300
+      }
+    }
+    buffer_allocations {
+      size: 32
+      assigned {
+        logical_buffer_id: 11
+        size: 32
+        element_type: U32
+      }
+      is_constant: true
+    }
+    buffer_allocations {
+      index: 1
+      size: 32
+      assigned {
+        logical_buffer_id: 12
+        size: 32
+        element_type: U32
+      }
+      is_constant: true
+    }
+    buffer_allocations {
+      index: 2
+      size: 16
+      maybe_live_out: true
+      assigned {
+        logical_buffer_id: 10
+        size: 16
+        element_type: U32
+      }
+      assigned {
+        logical_buffer_id: 13
+        size: 4
+        element_type: U32
+      }
+    }
+    buffer_allocations {
+      index: 3
+      size: 4
+      is_thread_local: true
+      assigned {
+        logical_buffer_id: 2
+        size: 4
+        element_type: U32
+      }
+    }
+    buffer_allocations {
+      index: 4
+      size: 4
+      is_thread_local: true
+      assigned {
+        logical_buffer_id: 1
+        size: 4
+        element_type: U32
+      }
+    }
+    buffer_allocations {
+      index: 5
+      size: 4
+      is_thread_local: true
+      assigned {
+        size: 4
+        element_type: U32
+      }
+    }
+    buffer_allocations {
+      index: 6
+      size: 528
+      assigned {
+        logical_buffer_id: 14
+        size: 32
+        element_type: U32
+      }
+      assigned {
+        logical_buffer_id: 15
+        offset: 512
+        size: 16
+        element_type: TUPLE
+      }
+      assigned {
+        logical_buffer_id: 16
+        offset: 256
+        size: 8
+        element_type: TUPLE
+      }
+    }
+    heap_simulator_traces {
+      events {
+        buffer_id: 14
+        computation_name: "main"
+        instruction_name: "loop_select_fusion"
+      }
+      events {
+        kind: FREE
+        buffer_id: 14
+        computation_name: "main"
+        instruction_name: "loop_select_fusion"
+      }
+      whole_module_simulation: true
+      buffer_allocation_index: 5
+    }
+    peak_buffers {
+      logical_buffer_ids: 11
+    }
+    peak_buffers {
+      index: 1
+      logical_buffer_ids: 12
+    }
+    peak_buffers {
+      index: 2
+      logical_buffer_ids: 10
+    }
+    peak_buffers {
+      index: 3
+      logical_buffer_ids: 2
+    }
+    peak_buffers {
+      index: 4
+      logical_buffer_ids: 1
+    }
+    peak_buffers {
+      index: 5
+      logical_buffer_ids: 0
+    }
+    peak_buffers {
+      index: 6
+      logical_buffer_ids: 14
+      logical_buffer_ids: 16
+      logical_buffer_ids: 15
+    }
+  }
+  binary: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000@\005\000\000\000\000\000\000\000\003\000\000\000\000\000\000<\005<\000@\0008\000\004\000@\000\t\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.nv.global\000.nv.constant4\000.rel.nv.constant4\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.nv.global\000.nv.constant4\000.rel.nv.constant4\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000buffer_for_c1_1\000buffer_for_c0_1\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000=\000\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000]\000\000\000\003\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000y\000\000\000\003\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\210\000\000\000\021\000\010\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\230\000\000\000\021\000\010\000\000\001\000\000\000\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\010\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\210\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\310\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000p\001\000\000\000\000\000\000\250\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000]\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\002\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000y\000\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0008\002\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000K\000\000\000\t\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000H\002\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\007\000\000\000\010\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000=\000\000\000\001\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000h\002\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\003\000\000\000\000\000\000@\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000@\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000h\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000@\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+  gpu_compute_capability {
+    cuda_compute_capability {
+      major: 6
+      feature_extension: NONE
+    }
+  }
+  module_name: "test"
+  program_shape {
+    result {
+      element_type: U32
+      dimensions: 4
+      layout {
+        minor_to_major: 0
+        tail_padding_alignment_in_elements: 1
+      }
+      is_dynamic_dimension: false
+    }
+  }
+  buffer_allocations {
+    values {
+      size: 32
+      assigned {
+        logical_buffer_id: 11
+        size: 32
+        element_type: U32
+      }
+      is_constant: true
+    }
+    values {
+      index: 1
+      size: 32
+      assigned {
+        logical_buffer_id: 12
+        size: 32
+        element_type: U32
+      }
+      is_constant: true
+    }
+    values {
+      index: 2
+      size: 16
+      maybe_live_out: true
+      assigned {
+        logical_buffer_id: 10
+        size: 16
+        element_type: U32
+      }
+      assigned {
+        logical_buffer_id: 13
+        size: 4
+        element_type: U32
+      }
+    }
+    values {
+      index: 3
+      size: 4
+      is_thread_local: true
+      assigned {
+        logical_buffer_id: 2
+        size: 4
+        element_type: U32
+      }
+    }
+    values {
+      index: 4
+      size: 4
+      is_thread_local: true
+      assigned {
+        logical_buffer_id: 1
+        size: 4
+        element_type: U32
+      }
+    }
+    values {
+      index: 5
+      size: 4
+      is_thread_local: true
+      assigned {
+        size: 4
+        element_type: U32
+      }
+    }
+    values {
+      index: 6
+      size: 528
+      assigned {
+        logical_buffer_id: 14
+        size: 32
+        element_type: U32
+      }
+      assigned {
+        logical_buffer_id: 15
+        offset: 512
+        size: 16
+        element_type: TUPLE
+      }
+      assigned {
+        logical_buffer_id: 16
+        offset: 256
+        size: 8
+        element_type: TUPLE
+      }
+    }
+  }
+  output_info_map {
+    shape_index {
+    }
+    output_info {
+      allocation_index: 2
+    }
+  }
+  constants {
+    symbol_name: "buffer_for_c1_1"
+    allocation_index: 1
+  }
+  constants {
+    symbol_name: "buffer_for_c0_1"
+  }
+  thunks {
+    thunk_info {
+      profile_annotation: "id.1"
+      thunk_id: 1
+    }
+    replica_id_thunk {
+      dest_buffer {
+        size: 4
+        buffer_allocation_index: 2
+        element_type: U32
+      }
+    }
+  }
+  thunks {
+    thunk_info {
+      profile_annotation: "loop_select_fusion"
+      thunk_id: 2
+    }
+    custom_kernel_thunk {
+      args {
+        slice {
+          size: 32
+          element_type: U32
+        }
+        shape {
+          element_type: U32
+          dimensions: 8
+          layout {
+            minor_to_major: 0
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: false
+        }
+      }
+      args {
+        slice {
+          size: 32
+          buffer_allocation_index: 1
+          element_type: U32
+        }
+        shape {
+          element_type: U32
+          dimensions: 8
+          layout {
+            minor_to_major: 0
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: false
+        }
+      }
+      args {
+        slice {
+          size: 4
+          buffer_allocation_index: 2
+          element_type: U32
+        }
+        shape {
+          element_type: U32
+          layout {
+            tail_padding_alignment_in_elements: 1
+          }
+        }
+      }
+      args {
+        slice {
+          size: 32
+          buffer_allocation_index: 6
+          element_type: U32
+        }
+        shape {
+          element_type: U32
+          dimensions: 8
+          layout {
+            minor_to_major: 0
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: false
+        }
+      }
+      written: false
+      written: false
+      written: false
+      written: true
+      custom_kernel {
+        name: "loop_select_fusion"
+        kernel_spec {
+          cubin {
+            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000\200\010\000\000\000\000\000\000\000\006\000\000\000\000\000\000<\005<\000@\0008\000\003\000@\000\n\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_select_fusion\000.nv.info.loop_select_fusion\000.nv.shared.loop_select_fusion\000.nv.constant0.loop_select_fusion\000.rel.nv.constant0.loop_select_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_select_fusion\000.nv.info.loop_select_fusion\000.nv.shared.loop_select_fusion\000.rel.nv.constant0.loop_select_fusion\000.nv.constant0.loop_select_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000loop_select_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\252\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\313\000\000\000\003\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\347\000\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\000\000\000\022\020\t\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\004/\010\000\005\000\000\000\007\000\000\000\004\021\010\000\005\000\000\000\000\000\000\000\004\022\010\000\005\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\0010\000\000\001*\000\000\004\n\010\000\002\000\000\000@\001 \000\003\031 \000\004\027\014\000\000\000\000\000\003\000\030\000\010\365!\000\004\027\014\000\000\000\000\000\002\000\020\000\010\365!\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003\033\377\000\004\034\004\000\270\000\000\000\004\020\014\000\010\000\000\000\001\000\000\000\001\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\007\000\376\000D\034\000\001\000\207\000\200\007\230L\002\000G\005\200\007\230L\000\000\027\002\000\000\310\360\342\007 \366\000\204\037\000\003\000W\005\200\007\230L\002\002\007\000\000\240\324\356\004\000\007\005\200\007\230L\377\007 \376A\304\037\000\005\000\027\005\200\007\230L\006\000\'\000\000\000H8\000\000\347\001\000\000(8\361\007\251\374\000\230\037\000\004\004\'\005\000\001DK\005\0057\005\000\001DK\004\004g\000\000\200\020\\\342\007 \366\000\230\037\000\005\005\007\000\000\010\020\\\004\004\007\000\000\240\324\356\002\006g\005\000\200\020L\347\007 \376 \374\037\000\003\000w\005\000\010\020L\004\002\007\000\000 \334\356\017\000\007\000\000\000\000\343\377\007\000\374\000\200\037\000\017\000\007\377\377\017@\342\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\340\007\000\374\000\200\037\000\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\366\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0006\001\000\000\000\000\000\000\t\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\002\000\000\000\000\000\000\220\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\002\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000K\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\364\002\000\000\000\000\000\000|\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\313\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000p\003\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\347\000\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\220\003\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\205\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\240\003\000\000\000\000\000\000`\001\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\001\000\000\000\000\000\000\003\000\000\000\005\000\000\007 \000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000\200\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\240\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000`\002\000\000\000\000\000\000`\002\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\200\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+          }
+          arity: 4
+          kernel_name: "loop_select_fusion"
+          kernel_args_packing_spec {
+            kernel_arguments {
+              relocations {
+                kind: KIND_BITS64_ABSOLUTE
+              }
+            }
+            kernel_arguments {
+              relocations {
+                kind: KIND_BITS64_ABSOLUTE
+                argument_index: 1
+              }
+            }
+            kernel_arguments {
+              relocations {
+                kind: KIND_BITS64_ABSOLUTE
+                argument_index: 2
+              }
+            }
+            kernel_arguments {
+              relocations {
+                kind: KIND_BITS64_ABSOLUTE
+                argument_index: 3
+              }
+            }
+          }
+        }
+        block_dims {
+          coordinates {
+            x: 1
+            y: 1
+            z: 1
+          }
+        }
+        thread_dims {
+          coordinates {
+            x: 8
+            y: 1
+            z: 1
+          }
+        }
+      }
+      tma_metadata {
+      }
+    }
+  }
+  thunks {
+    thunk_info {
+      profile_annotation: "ars.2"
+      thunk_id: 3
+    }
+    reduce_scatter_thunk {
+      collective_config {
+        operand_element_type: U32
+      }
+      buffers {
+        element_count: 8
+        source_buffer {
+          slice {
+            size: 32
+            buffer_allocation_index: 6
+            element_type: U32
+          }
+          shape {
+            element_type: U32
+            dimensions: 8
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+        }
+        destination_buffer {
+          slice {
+            size: 16
+            buffer_allocation_index: 2
+            element_type: U32
+          }
+          shape {
+            element_type: U32
+            dimensions: 4
+            layout {
+              minor_to_major: 0
+              tail_padding_alignment_in_elements: 1
+            }
+            is_dynamic_dimension: false
+          }
+        }
+      }
+      reduction_kind: REDUCTION_KIND_SUM
+    }
+  }
+  executable_abi_version {
+    platform_name: "CUDA"
+    cuda_platform_version {
+      cuda_toolkit_version: "12.8.0"
+      cudnn_version: "9.10.0"
+      cub_version: "3.1.2"
+    }
+  }
+  buffer_allocations_debug_summary: "BufferAssignment OOM Debugging.\nBufferAssignment stats:\n             parameter allocation:         0B\n              constant allocation:        64B\n        maybe_live_out allocation:        16B\n     preallocated temp allocation:       528B\n  preallocated temp fragmentation:         0B (0.00%)\n                 total allocation:       620B\n              total fragmentation:       548B (88.39%)\nPeak buffers:\n\tBuffer 1:\n\t\tSize: 32B\n\t\tXLA Label: fusion\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 2:\n\t\tSize: 32B\n\t\tXLA Label: constant\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 3:\n\t\tSize: 32B\n\t\tXLA Label: constant\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 4:\n\t\tSize: 16B\n\t\tXLA Label: async-start\n\t\tShape: ((u32[8]), u32[4])\n\t\t==========================\n\n\tBuffer 5:\n\t\tSize: 16B\n\t\tXLA Label: reduce-scatter\n\t\tShape: u32[4]\n\t\t==========================\n\n\tBuffer 6:\n\t\tSize: 8B\n\t\tXLA Label: async-start\n\t\tShape: (u32[8])\n\t\t==========================\n\n\tBuffer 7:\n\t\tSize: 4B\n\t\tXLA Label: parameter\n\t\tShape: u32[]\n\t\t==========================\n\n\tBuffer 8:\n\t\tSize: 4B\n\t\tXLA Label: parameter\n\t\tShape: u32[]\n\t\t==========================\n\n\tBuffer 9:\n\t\tSize: 4B\n\t\tXLA Label: add\n\t\tShape: u32[]\n\t\t==========================\n"
+}

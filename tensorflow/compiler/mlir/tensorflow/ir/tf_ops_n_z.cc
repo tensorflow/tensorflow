@@ -601,11 +601,11 @@ static void SetPartitionCalleeFromCallable(CallOpClass op,
                                            mlir::CallInterfaceCallable callee) {
   // Direct call.
   if (SymbolRefAttr fAttr = op.getFAttr()) {
-    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    SymbolRefAttr calleeAttr = cast<SymbolRefAttr>(callee);
     return op.setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
   }
   // Indirect call, callee Value is the first operand.
-  return op.setOperand(0, callee.get<Value>());
+  return op.setOperand(0, cast<Value>(callee));
 }
 
 void PartitionedCallOp::setCalleeFromCallable(

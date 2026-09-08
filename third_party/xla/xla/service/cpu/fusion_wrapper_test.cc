@@ -201,6 +201,90 @@ TEST_F(FusionWrapperTest,
   }
 }
 
+TEST_F(FusionWrapperTest,
+       CopyWithMismatchedLayoutsWrappedWithNewFusionEmitters) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32]{0,1} parameter(0)
+      ROOT copy = f32[64,32]{1,0} copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(/*using_new_fusion_emitter=*/true,
+                        /*use_tiled_emitter=*/true, &target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, CopyWithMatchingLayoutsNotWrapped) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32]{0,1} parameter(0)
+      ROOT copy = f32[64,32]{0,1} copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(/*using_new_fusion_emitter=*/true,
+                        /*use_tiled_emitter=*/true, &target_machine_features_);
+  EXPECT_FALSE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest,
+       LayoutChangingSubByteCopyWrappedWithNewFusionEmitters) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = u2[20,20]{1,0:E(2)} parameter(0)
+      ROOT copy = u2[20,20]{0,1:E(2)} copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(/*using_new_fusion_emitter=*/true,
+                        /*use_tiled_emitter=*/true, &target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, ConcatenateWithMismatchedLayoutsWrapped) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32]{0,1} parameter(0)
+      p1 = f32[64,32]{0,1} parameter(1)
+      ROOT c = f32[128,32]{1,0} concatenate(p0, p1), dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(/*using_new_fusion_emitter=*/false,
+                        /*use_tiled_emitter=*/false, &target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, ConcatenateWithMatchingLayoutsNotWrapped) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32]{0,1} parameter(0)
+      p1 = f32[64,32]{0,1} parameter(1)
+      ROOT c = f32[128,32]{0,1} concatenate(p0, p1), dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(/*using_new_fusion_emitter=*/false,
+                        /*use_tiled_emitter=*/false, &target_machine_features_);
+  EXPECT_FALSE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
 TEST_F(FusionWrapperTest, NonEigenConvolutionWrappedWithNewFusionEmitters) {
   static constexpr absl::string_view hlo_string = R"(
   HloModule m

@@ -215,7 +215,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",

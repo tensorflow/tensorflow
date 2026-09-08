@@ -57,9 +57,9 @@ def _make_device_specs(
     if isinstance(devices[0], str):
       devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
     if device_type is None:
-      device_type = devices[0].device_type
+      device_type = devices[0].device_type  # pyrefly: ignore[missing-attribute]
 
-    if device_type.upper() != devices[0].device_type.upper():
+    if device_type.upper() != devices[0].device_type.upper():  # pyrefly: ignore[missing-attribute]
       raise ValueError(
           f'Conflicting devices {str(devices)} and device_type {device_type}'
       )

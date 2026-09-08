@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape.h"
@@ -40,9 +41,14 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
+#include "tensorflow/core/tfrt/common/global_state.h"
+#include "tensorflow/core/tfrt/common/pjrt_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tsl/platform/casts.h"
 
@@ -200,6 +206,46 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientSuccess) {
       GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)));
 
   EXPECT_THAT(pjrt_client_get, NotNull());
+}
+
+TEST(TensorPjRtBufferUtilTest, ResetPjRtClientSuccess) {
+  auto status = pjrt::PjrtApi(DEVICE_CPU);
+  if (!status.ok()) {
+    TF_ASSERT_OK(pjrt::SetPjrtApi(DEVICE_CPU, GetPjrtApi()));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetCApiClient(DEVICE_CPU));
+  xla::PjRtClient* pjrt_client_ptr = pjrt_client.get();
+  TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU,
+                                                      std::move(pjrt_client)));
+
+  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
+  PjRtState* pjrt_state = nullptr;
+  TF_ASSERT_OK(rmgr->Lookup(rmgr->default_container(), kPjRtStateResourceName,
+                            &pjrt_state));
+  core::ScopedUnref pjrt_state_ref(pjrt_state);
+  int initial_ref_count = pjrt_state->RefCount();
+
+  TF_ASSERT_OK(ResetPjRtClient(tensorflow::DeviceType(DEVICE_CPU)));
+
+  EXPECT_THAT(GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)),
+              absl_testing::StatusIs(
+                  error::NOT_FOUND,
+                  HasSubstr(absl::StrCat(
+                      "PjRt client not found for device type ", DEVICE_CPU))));
+  // Verifies that the PJRT client is moved to unused and is still alive.
+  EXPECT_EQ(pjrt_client_ptr->platform_name(), "cpu");
+  // Verifies that ResetPjRtClient does not leak PjRtState reference count.
+  EXPECT_EQ(pjrt_state->RefCount(), initial_ref_count);
+
+  // Calling ResetPjRtClient again returns NOT_FOUND and does not leak ref
+  // count.
+  EXPECT_THAT(ResetPjRtClient(tensorflow::DeviceType(DEVICE_CPU)),
+              absl_testing::StatusIs(
+                  error::NOT_FOUND,
+                  HasSubstr(absl::StrCat(
+                      "PjRt client not found for device type ", DEVICE_CPU))));
+  EXPECT_EQ(pjrt_state->RefCount(), initial_ref_count);
 }
 
 }  // namespace

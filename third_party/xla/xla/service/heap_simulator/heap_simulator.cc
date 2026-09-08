@@ -342,12 +342,23 @@ absl::Status HeapSimulator::RunComputation(
 
   auto& buffer_live_ranges = hlo_live_range->buffer_live_ranges();
 
+  // A value used as the base of a "view" (a value colored options_.view_color,
+  // an address into the base's buffer with no storage of its own) is read
+  // through the view by the view's consumers at later schedule times. Extend
+  // the base's live range to the view's last transitive reader before the
+  // define/free events are laid out, so the buffer cannot be recycled while a
+  // reader still loads from it.
+  if (options_.view_color.has_value()) {
+    ExtendViewBaseLiveRanges(hlo_live_range, dataflow_analysis,
+                             *options_.view_color);
+  }
+
   for (const HloValue* value : dataflow_analysis.values()) {
     // Ignore buffers that are not tracked.
     if (!buffer_live_ranges.contains(value)) {
       continue;
     }
-    if (IgnoreBuffer(value)) {
+    if (!IsHeapPressureImpacting(value)) {
       continue;
     }
 
@@ -380,10 +391,7 @@ absl::Status HeapSimulator::RunComputation(
 
   // Populate buffer sizes with the maximum size of the constituent HloValues.
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
-    int64_t size = 0;
-    for (const HloValue* value : buffer.values()) {
-      size = std::max(size, (*size_fn_)(*value));
-    }
+    int64_t size = buffer.ComputeSize(*size_fn_);
     const HloValue* first_value = nullptr;
     for (const HloValue* value : buffer.values()) {
       buffer_groups_.emplace(value, size);
@@ -443,7 +451,7 @@ absl::Status HeapSimulator::RunComputation(
               continue;
             }
 
-            if (IgnoreBuffer(operand_value)) {
+            if (!IsHeapPressureImpacting(operand_value)) {
               continue;
             }
 
@@ -519,17 +527,9 @@ HeapSimulator::HeapSimulator(
 
 HeapSimulator::~HeapSimulator() {}
 
-bool HeapSimulator::IgnoreBuffer(const HloValue* buffer) const {
-  // Buffers for constants are ignored unless the alloc_constants option is
-  // set. Also ignore buffers that we're not meant to assign.
-  //
-  // TODO(b/32248867): For consistency, constants should get allocations.
-  if (!options_.alloc_constants &&
-      buffer->instruction()->opcode() == HloOpcode::kConstant) {
-    return true;
-  }
-  return options_.buffers_to_assign != nullptr &&
-         !options_.buffers_to_assign->contains(buffer);
+bool HeapSimulator::IsHeapPressureImpacting(const HloValue* buffer) const {
+  return HloBuffer::IsHeapPressureImpacting(*buffer, options_.alloc_constants,
+                                            options_.buffers_to_assign);
 }
 
 // Alloc always calls the underlying heap algorithm.
@@ -696,6 +696,12 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
   } else if (packing_strategy == kFastSplit) {
     buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
     CHECK(buffer_interval_compare == nullptr);
+  } else if (packing_strategy == kPhaseWindow) {
+    buffer_interval_compare_ = GetColocationStartTimeBufferIntervalCompare();
+    CHECK(buffer_interval_compare == nullptr);
+  } else if (packing_strategy == kPhaseWindowEnd) {
+    buffer_interval_compare_ = GetColocationEndTimeBufferIntervalCompare();
+    CHECK(buffer_interval_compare == nullptr);
   } else {
     CHECK(packing_strategy == kCustom);
     CHECK(buffer_interval_compare != nullptr);
@@ -723,6 +729,18 @@ GlobalDecreasingSizeBestFitHeap<
   return LessThanByKey([](const BufferInterval& x) {
     // Sort by start time (ascending), size (descending), buffer (ascending).
     return std::make_tuple(x.min_colocation_start_time, -x.size,
+                           std::cref(*x.buffer));
+  });
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap<
+    BufferType>::GetColocationEndTimeBufferIntervalCompare() const {
+  return LessThanByKey([](const BufferInterval& x) {
+    // Sort by end time (ascending), size (descending), buffer (ascending) so
+    // buffers that expire together are packed onto the same page.
+    return std::make_tuple(x.max_colocation_end_time, -x.size,
                            std::cref(*x.buffer));
   });
 }
@@ -2876,6 +2894,8 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
     case kSpatial:
     case kTemporal:
     case kCustom:
+    case kPhaseWindow:
+    case kPhaseWindowEnd:
       return FinishBestOfSpatialTemporal();
     case kFastMerge:
       return FinishFastMerge();

@@ -353,6 +353,12 @@ const StatTypeMap& GetStatTypeMap() {
         kDevCapPeakSramRdBwGigabytesPerSecond},
        {"peak_sram_wr_bw_gigabytes_per_second",
         kDevCapPeakSramWrBwGigabytesPerSecond},
+       {"peak_spmem_rd_bw_gigabytes_per_second",
+        kDevCapPeakSpmemRdBwGigabytesPerSecond},
+       {"peak_spmem_wr_bw_gigabytes_per_second",
+        kDevCapPeakSpmemWrBwGigabytesPerSecond},
+       {"peak_sc_teraflops_per_second", kDevCapPeakScTeraflopsPerSecond},
+       {"num_sparse_core_tiles", kDevCapNumSparseCoreTiles},
        {"device_vendor", kDevVendor},
        {"has_megacore", kDevHasMegacore},
        {"has_merged_vmem", kDevHasMergedVmem},
@@ -426,7 +432,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"hbm_power_events", kHbmPowerEvents},
        {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
        {"program_counter", kProgramCounter},
-       {"uses_ici", kUsesIci}});
+       {"uses_ici", kUsesIci},
+       {"dims", kDimensions},
+       {"type", kType}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

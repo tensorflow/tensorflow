@@ -59,7 +59,7 @@ inline bool DataTypeIsNumPyCompatible(DataType dt) {
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_dtypes, m) {
+PYBIND11_MODULE(_dtypes, m, pybind11::mod_gil_not_used()) {
   py::class_<tensorflow::DataType>(m, "DType")
       .def(py::init([](py::object obj) {
         auto id = static_cast<int>(py::int_(obj));

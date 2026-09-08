@@ -53,8 +53,7 @@ cc_library(
 cc_library(
     name = "python_tracer",
     srcs = ["python_tracer_factory.cc"],
-    copts = tf_profiler_copts() + ["-fexceptions"],
-    features = ["-use_header_modules"],
+    copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "//xla/python:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
@@ -74,8 +73,7 @@ cc_library(
     name = "python_tracer_impl",
     srcs = ["python_tracer.cc"],
     hdrs = ["python_tracer.h"],
-    copts = tf_profiler_copts() + ["-fexceptions"],
-    features = ["-use_header_modules"],
+    copts = tf_profiler_copts(),
     visibility = internal_visibility([
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),

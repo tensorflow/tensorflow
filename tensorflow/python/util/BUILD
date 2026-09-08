@@ -289,6 +289,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/py/numpy:headers",
+        "@com_google_absl//absl/synchronization",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
     ] + if_pywrap(["@com_google_absl//absl/strings"]),

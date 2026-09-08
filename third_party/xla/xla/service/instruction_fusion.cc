@@ -189,6 +189,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:

@@ -77,7 +77,9 @@ TEST_P(XlaAotCompileTest, LoadGpuExecutable) {
 INSTANTIATE_TEST_SUITE_P(
     TestingAotFormats, XlaAotCompileTest,
     ::testing::Values("xla_aot_compile_test_gpu_executable",
-                      "xla_aot_compile_test_gpu_executable_hlo"));
+                      "xla_aot_compile_test_gpu_executable_hlo",
+                      "xla_aot_compile_test_gpu_executable_legacy_cache",
+                      "xla_aot_compile_test_gpu_executable_hlo_legacy_cache"));
 
 TEST_F(XlaCompileTest, LoadGpuExecutableWithConstant) {
   Literal input = LiteralUtil::CreateR1<double>({3.0f, 3.0f, 3.0f});
@@ -103,6 +105,25 @@ TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolution) {
   }});
   LoadAndRunExecutable("xla_aot_compile_test_gpu_executable_convolution",
                        {&input1, &input2}, expected);
+}
+
+TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolutionLegacyCache) {
+  Literal input1 = LiteralUtil::CreateR4<float>(
+      {{{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}, {7.0, 8.0}},
+        {{11.0, 12.0}, {13.0, 14.0}, {15.0, 16.0}, {17.0, 18.0}},
+        {{21.0, 22.0}, {23.0, 24.0}, {25.0, 26.0}, {27.0, 28.0}},
+        {{31.0, 32.0}, {33.0, 34.0}, {35.0, 36.0}, {37.0, 38.0}}}});
+  Literal input2 =
+      LiteralUtil::CreateR4<float>({{{{1.0}, {2.0}}, {{3.0}, {4.0}}},
+                                    {{{5.0}, {6.0}}, {{7.0}, {8.0}}},
+                                    {{{9.0}, {10.0}}, {{11.0}, {12.0}}}});
+  Literal expected = LiteralUtil::CreateR4<float>({{
+      {{1310.0}, {1466.0}, {1622.0}},
+      {{2090.0}, {2246.0}, {2402.0}},
+  }});
+  LoadAndRunExecutable(
+      "xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
+      {&input1, &input2}, expected);
 }
 
 }  // namespace

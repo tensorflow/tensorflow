@@ -103,7 +103,12 @@ void GrpcDataServerBase::Stop() {
   stopped_ = true;
 }
 
-void GrpcDataServerBase::Join() { server_->Wait(); }
+void GrpcDataServerBase::Join() {
+  if (!server_) {
+    return;
+  }
+  server_->Wait();
+}
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
 

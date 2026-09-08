@@ -85,6 +85,11 @@ class CoordinationServiceAgent {
     // worker can disconnect individually.
     absl::Duration shutdown_barrier_timeout = absl::Seconds(10);
 
+    // Extra time added to `cluster_register_timeout` and
+    // `shutdown_barrier_timeout` so that errors reported by the service can
+    // arrive before the agent's own deadline.
+    absl::Duration extra_error_propagation_time = absl::Seconds(5);
+
     // If set, agents do not make an explicit Shutdown() call. Service will only
     // find out about the disconnected agent via stale heartbeats. Used for
     // testing.

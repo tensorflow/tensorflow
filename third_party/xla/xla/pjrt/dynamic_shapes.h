@@ -32,10 +32,27 @@ enum class PjRtDynamicShapeKind {
   kSuffix,  // Appended after the payload.
 };
 
+// Infer PjRtDynamicShapeKind from the shape.
+PjRtDynamicShapeKind GetPjRtDynamicShapeKind(const xla::Shape& shape);
+
+// Compute on-device size for a fully-specified shape.
+absl::StatusOr<int64_t> PjRtGetOnDeviceBytesCount(const xla::Shape& shape,
+                                                  PjRtDynamicShapeKind kind);
+
+inline absl::StatusOr<int64_t> PjRtGetOnDeviceBytesCount(
+    const xla::Shape& shape) {
+  return PjRtGetOnDeviceBytesCount(shape, GetPjRtDynamicShapeKind(shape));
+}
+
 // Offsets and bounds for extracting dynamic shape metadata.
 struct PjRtShapeAndMetadataTransferRequirements {
   static PjRtShapeAndMetadataTransferRequirements Get(
       const xla::Shape& shape, PjRtDynamicShapeKind kind);
+
+  static inline PjRtShapeAndMetadataTransferRequirements Get(
+      const xla::Shape& shape) {
+    return Get(shape, GetPjRtDynamicShapeKind(shape));
+  }
 
   size_t size = 0;
   size_t metadata_alignment = 0;
@@ -58,7 +75,8 @@ absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
 // Reads dynamic shape metadata into an output AsyncValueRef.
 void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
                       tsl::AsyncValueRef<xla::Shape> output_shape,
-                      xla::Shape shape, PjRtDynamicShapeKind kind);
+                      xla::Shape shape, PjRtDynamicShapeKind kind,
+                      size_t host_alignment_bytes = 1);
 
 // Strips any metadata to give a logical shape.
 void StripMetadataForLogicalShape(xla::Shape& shape);

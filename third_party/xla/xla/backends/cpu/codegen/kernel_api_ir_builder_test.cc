@@ -151,7 +151,7 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
   // clang-format off
   ASSERT_TRUE(*RunFileCheck(DumpToString(),
                             absl::StrCat(R"(
-    CHECK: define ptr @test(ptr %0) #0 {
+    CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
     CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 0
@@ -362,7 +362,7 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
   // clang-format off
   ASSERT_TRUE(*RunFileCheck(DumpToString(),
                             absl::StrCat(R"(
-    CHECK: define ptr @test(ptr %0) #0 {
+    CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
     CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 0

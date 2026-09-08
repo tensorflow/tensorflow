@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -259,6 +260,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::MakeErrorArrays(
   return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs);
 }
 
+absl::StatusOr<std::vector<tsl::Future<>>> Client::CopyArraysToHostBufferShards(
+    absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+    ArrayCopySemantics semantics) {
+  return xla::ifrt::ClientCopyArraysToHostBufferShards(this, specs, semantics);
+}
+
 absl::StatusOr<xla::ifrt::ArrayRef> Client::AssembleArrayFromSingleDeviceArrays(
     DType dtype, Shape shape, ShardingRef sharding,
     absl::Span<xla::ifrt::ArrayRef> arrays,
@@ -318,8 +325,10 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   if (memory_kind.has_value()) {
     // Use an empty string to indicate the default memory kind.
     // OSS requires explicit string conversion
-    // NOLINTNEXTLINE(*-redundant-string-conversions)
-    req->set_memory_kind(std::string(memory_kind->memory_kind().value_or("")));
+    if (!memory_kind->is_default()) {
+      // NOLINTNEXTLINE(*-redundant-string-conversions)
+      req->set_memory_kind(std::string(memory_kind->value()));
+    }
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
@@ -332,18 +341,23 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     auto* proxy_array = cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
     std::shared_ptr<const xla::PjRtLayout> layout;
-    bool force_default_layout = false;
+    bool propagate_layout = true;
     if (memory_kind.has_value() &&
-        memory_kind->memory_kind() == xla::UnpinnedHostMemorySpace::kKind) {
+        memory_kind->value() == xla::UnpinnedHostMemorySpace::kKind) {
       // "unpinned_host" memory only supports the default layout.
-      force_default_layout = true;
-    } else if (devices.has_value() &&
-               (*devices)->devices().front()->PlatformName() ==
-                   xla::CpuPlatformName()) {
-      // "cpu" device only supports the default layout.
-      force_default_layout = true;
+      propagate_layout = false;
+    } else if (devices.has_value()) {
+      absl::string_view src_platform =
+          arrays[i]->sharding().devices()->devices().front()->PlatformName();
+      absl::string_view dst_platform =
+          (*devices)->devices().front()->PlatformName();
+      if (src_platform != dst_platform) {
+        // Do not propagate the source layout if the device platforms differ
+        // (e.g. CPU -> TPU or TPU -> CPU).
+        propagate_layout = false;
+      }
     }
-    if (!force_default_layout) {
+    if (propagate_layout) {
       ABSL_ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
     }
     uint64_t result_handle = rpc_helper_->NextHandle();
@@ -509,8 +523,10 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
   }
   req->set_device_id(device->Id().value());
   // OSS requires explicit string conversion
-  // NOLINTNEXTLINE(*-redundant-string-conversions)
-  req->set_memory_kind(std::string(memory_kind.memory_kind().value_or("")));
+  if (!memory_kind.is_default()) {
+    // NOLINTNEXTLINE(*-redundant-string-conversions)
+    req->set_memory_kind(std::string(memory_kind.value()));
+  }
 
   auto future = rpc_helper_->GetDefaultLayout(std::move(req));
   ABSL_ASSIGN_OR_RETURN(auto response, future.Await());

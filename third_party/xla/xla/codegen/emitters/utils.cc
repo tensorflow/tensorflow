@@ -23,12 +23,14 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -40,7 +42,24 @@ limitations under the License.
 namespace xla::emitters {
 
 using mlir::DenseElementsAttr;
+using mlir::ImplicitLocOpBuilder;
 using mlir::ShapedType;
+using mlir::Value;
+
+Value EmitFloatCast(Value value, mlir::Type target_type,
+                    ImplicitLocOpBuilder& b) {
+  mlir::Type source_elem_type = mlir::getElementTypeOrSelf(value.getType());
+  mlir::Type target_elem_type = mlir::getElementTypeOrSelf(target_type);
+  if (source_elem_type.getIntOrFloatBitWidth() <
+      target_elem_type.getIntOrFloatBitWidth()) {
+    return mlir::arith::ExtFOp::create(b, target_type, value);
+  }
+  if (source_elem_type.getIntOrFloatBitWidth() >
+      target_elem_type.getIntOrFloatBitWidth()) {
+    return mlir::arith::TruncFOp::create(b, target_type, value);
+  }
+  return value;
+}
 
 DenseElementsAttr GetZeroDenseElementsAttr(ShapedType shaped_type) {
   auto elem_type = shaped_type.getElementType();

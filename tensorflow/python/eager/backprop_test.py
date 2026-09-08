@@ -42,6 +42,8 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linear_operator_identity
+from tensorflow.python.ops.linalg import linear_operator_low_rank_update
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
@@ -253,6 +255,44 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       loss = x * y
     dx, = t.gradient([loss, x], [x], output_gradients=[1.0, 2.0])
     self.assertAllEqual(dx, 4.0)
+
+  def _low_rank_update_target(self, u):
+    base = linear_operator_identity.LinearOperatorIdentity(num_rows=3)
+    return linear_operator_low_rank_update.LinearOperatorLowRankUpdate(
+        base, u, u
+    ).matmul(base)
+
+  def testOutputGradientsCountMismatchRaises(self):
+    # Regression test for GitHub issue 125502. A composite target expands to
+    # one target per component tensor, so a single output gradient left the
+    # tape indexing past the end of the gradient list, which crashed the
+    # process instead of reporting the mismatch.
+    u = array_ops.ones([3, 3])
+    with backprop.GradientTape() as t:
+      t.watch(u)
+      target = self._low_rank_update_target(u)
+    with self.assertRaisesRegex(ValueError, 'one gradient per target'):
+      t.gradient(target, [u], output_gradients=[array_ops.ones([3, 3])])
+
+  def testOutputGradientsCountMatchesComposite(self):
+    # One gradient per expanded component keeps working.
+    u = array_ops.ones([3, 3])
+    with backprop.GradientTape() as t:
+      t.watch(u)
+      target = self._low_rank_update_target(u)
+    (grad,) = t.gradient(
+        target, [u], output_gradients=[array_ops.ones([3, 3])] * 3
+    )
+    self.assertAllEqual([3, 3], grad.shape)
+
+  def testCompositeTargetWithoutOutputGradients(self):
+    # Omitting output_gradients is unaffected by the count check.
+    u = array_ops.ones([3, 3])
+    with backprop.GradientTape() as t:
+      t.watch(u)
+      target = self._low_rank_update_target(u)
+    (grad,) = t.gradient(target, [u])
+    self.assertAllEqual([3, 3], grad.shape)
 
   def testDy(self):
 

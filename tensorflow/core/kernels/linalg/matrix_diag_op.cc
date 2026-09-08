@@ -14,17 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/array_ops.cc.
+#include <string>
+#include <tuple>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/kernels/linalg/matrix_diag_op.h"
-
 #include <algorithm>
-#include <memory>
-#include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/linalg/matrix_diag_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
@@ -272,11 +275,14 @@ class MatrixDiagOp : public OpKernel {
 
     TensorShape output_shape = diagonal_shape;
     if (num_diags == 1) {  // Output has rank `rank+1`.
-      output_shape.set_dim(diag_rank - 1, num_rows);
+      OP_REQUIRES_OK(context,
+                     output_shape.SetDimWithStatus(diag_rank - 1, num_rows));
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(num_cols));
     } else {  // Output has rank `rank`.
-      output_shape.set_dim(diag_rank - 2, num_rows);
-      output_shape.set_dim(diag_rank - 1, num_cols);
+      OP_REQUIRES_OK(context,
+                     output_shape.SetDimWithStatus(diag_rank - 2, num_rows));
+      OP_REQUIRES_OK(context,
+                     output_shape.SetDimWithStatus(diag_rank - 1, num_cols));
     }
 
     Tensor* output = nullptr;

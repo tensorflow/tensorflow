@@ -2756,8 +2756,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       });
       VLOG(1) << "Executing multi page buffer assignment";
       return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-          page_size, alignment,
-          GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial);
+          page_size, alignment, opts_.multi_page_strategy);
     }
 
     if (heap_buffer_interval_compare) {
@@ -2863,6 +2862,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
       options.alloc_constants = opts_.allocate_buffers_for_constants;
+      options.view_color = opts_.dus_view_color;
       auto private_stacks_it = private_stacks.find(color);
       if (private_stacks_it != private_stacks.end()) {
         // For private stack colors, we collect all of the buffers that are
@@ -2926,6 +2926,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         int64_t alignment = assignment->color_alignment_(color);
         HeapSimulator::Options options;
         options.buffers_to_assign = &color_map[color];
+        options.view_color = opts_.dus_view_color;
         HeapSimulator::Result<HloValue> result;
         ABSL_ASSIGN_OR_RETURN(
             result, HeapSimulator::Run(
@@ -3191,6 +3192,15 @@ BufferAssigner::CreateAssignment(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                    HloLiveRange::Run(schedule, *alias_analysis,
                                      module->entry_computation(), true));
+
+  // A view base's storage is read through the view by the view's consumers,
+  // so its live range must reach the last transitive reader; allocation reuse
+  // decisions below consult these live ranges.
+  if (opts_.dus_view_color.has_value()) {
+    ExtendViewBaseLiveRanges(hlo_live_range.get(),
+                             alias_analysis->dataflow_analysis(),
+                             *opts_.dus_view_color);
+  }
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(3, module->ToString());

@@ -105,16 +105,14 @@ std::vector<int64_t> FindDonatableInputs(
 // work by the time when the execution is considered complete).
 absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
                             const MemoryKind& memory_kind) {
-  if (memory_kind.memory_kind().has_value()) {
-    if (*memory_kind.memory_kind() == "device") {
-      // No need to set the attribute.
-    } else if (*memory_kind.memory_kind() == "pinned_host") {
-      ABSL_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
-          op, "_xla_compute_type", "host"));
-    } else {
-      return absl::UnimplementedError(
-          absl::StrCat("Unsupported memory kind: ", memory_kind));
-    }
+  if (memory_kind.is_default()) {
+    // No need to set the attribute.
+  } else if (memory_kind.value() == "pinned_host") {
+    ABSL_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
+        op, "_xla_compute_type", "host"));
+  } else {
+    return absl::UnimplementedError(
+        absl::StrCat("Unsupported memory kind: ", memory_kind));
   }
   return absl::OkStatus();
 }
@@ -124,7 +122,7 @@ absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
 std::string MemoryKindsToString(absl::Span<const MemoryKind> memory_kinds) {
   std::string s;
   for (const MemoryKind& memory_kind : memory_kinds) {
-    absl::StrAppend(&s, memory_kind.memory_kind().value_or(""), ";");
+    absl::StrAppend(&s, memory_kind.value(), ";");
   }
   return s;
 }
@@ -175,14 +173,14 @@ XlaComputationBuilder::BuildXlaReshardComputation(
     // TODO(b/391701945): Remove this custom call. In principle, we should not
     // need this extra annotation because we already set `mhlo.memory_kind`
     // attribute for the output in `ConvertToHloProgram()`.
-    if (memory_kinds[idx].memory_kind().has_value() && device_kind_ != "cpu") {
+    if (!memory_kinds[idx].is_default() && device_kind_ != "cpu") {
       param = xla::CustomCall(&builder, "annotate_device_placement", {param},
                               xla_shape.tuple_shapes(idx),
                               /*opaque=*/"",
                               /*has_side_effect=*/true);
       ABSL_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
           param, "_xla_buffer_placement",
-          std::string(*memory_kinds[idx].memory_kind())));
+          std::string(memory_kinds[idx].value())));
     }
     params.push_back(param);
   }
@@ -244,14 +242,14 @@ XlaComputationBuilder::BuildXlaZerosComputation(
       // TODO(b/391701945): Remove this custom call. In principle, we should not
       // need this extra annotation because we already set `mhlo.memory_kind`
       // attribute for the output in `ConvertToHloProgram()`.
-      if (memory_kinds[idx].memory_kind().has_value()) {
+      if (!memory_kinds[idx].is_default()) {
         zeros = xla::CustomCall(&builder, "annotate_device_placement", {zeros},
                                 new_buffer_shapes[idx],
                                 /*opaque=*/"",
                                 /*has_side_effect=*/true);
         ABSL_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
             zeros, "_xla_buffer_placement",
-            std::string(*memory_kinds[idx].memory_kind())));
+            std::string(memory_kinds[idx].value())));
       }
     }
     elems.push_back(zeros);
@@ -359,14 +357,14 @@ XlaComputationBuilder::BuildXlaReduceComputation(
       // TODO(b/391701945): Remove this custom call. In principle, we should not
       // need this extra annotation because we already set `mhlo.memory_kind`
       // attribute for the output in `ConvertToHloProgram()`.
-      if (memory_kinds[idx].memory_kind().has_value()) {
+      if (!memory_kinds[idx].is_default()) {
         reduced = xla::CustomCall(&builder, "annotate_device_placement",
                                   {reduced}, new_xla_shape.tuple_shapes(idx),
                                   /*opaque=*/"",
                                   /*has_side_effect=*/true);
         ABSL_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
             reduced, "_xla_buffer_placement",
-            std::string(*memory_kinds[idx].memory_kind())));
+            std::string(memory_kinds[idx].value())));
       }
     }
     elems.push_back(reduced);

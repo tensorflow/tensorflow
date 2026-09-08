@@ -1912,6 +1912,69 @@ ENTRY main {
   EXPECT_EQ(config, 8);
 }
 
+TEST_F(GpuFusibleTest, ContainsScan) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT t = (f32[], f32[]) tuple(add, add)
+}
+
+scan_computation.1 {
+  p0.1 = f32[10] parameter(0)
+  c0.1 = f32[] constant(0)
+  scan.1 = (f32[10], f32[]) scan(p0.1, c0.1), dimensions={0}, num_carries=1, to_apply=add
+  ROOT gte.1 = f32[10] get-tuple-element(scan.1), index=0
+}
+
+scan_computation.2 {
+  p0.2 = f32[10] parameter(0)
+  c0.2 = f32[] constant(0)
+  scan.2 = (f32[10], f32[]) scan(p0.2, c0.2), dimensions={0}, num_carries=1, to_apply=add
+  ROOT gte.2 = f32[10] get-tuple-element(scan.2), index=0
+}
+
+nested_scan_computation {
+  p0.3 = f32[10] parameter(0)
+  ROOT nested_scan = f32[10] fusion(p0.3), kind=kLoop, calls=scan_computation.2
+}
+
+loop_computation {
+  p0.4 = f32[10] parameter(0)
+  ROOT mul = f32[10] multiply(p0.4, p0.4)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  c = f32[] constant(0)
+  scan_direct = (f32[10], f32[]) scan(p0, c), dimensions={0}, num_carries=1, to_apply=add
+  scan_fusion = f32[10] fusion(p0), kind=kLoop, calls=scan_computation.1
+  nested_scan_fusion = f32[10] fusion(p0), kind=kLoop, calls=nested_scan_computation
+  loop_fusion = f32[10] fusion(p0), kind=kLoop, calls=loop_computation
+  ROOT tuple = tuple(scan_direct, scan_fusion, nested_scan_fusion, loop_fusion)
+}
+)"));
+  const HloComputation* entry = module->entry_computation();
+  const HloInstruction* root = entry->root_instruction();
+  EXPECT_TRUE(ContainsScan(*root->operand(0)));
+  EXPECT_TRUE(ContainsScan(*root->operand(1)));
+  EXPECT_TRUE(ContainsScan(*root->operand(2)));
+  EXPECT_FALSE(ContainsScan(*root->operand(3)));
+  EXPECT_FALSE(ContainsScan(*root));
+
+  FusionInfoCache cache(device_description());
+  EXPECT_TRUE(ContainsScan(*root->operand(0), &cache));
+  EXPECT_TRUE(ContainsScan(*root->operand(1), &cache));
+  EXPECT_TRUE(ContainsScan(*root->operand(2), &cache));
+  EXPECT_FALSE(ContainsScan(*root->operand(3), &cache));
+  EXPECT_FALSE(ContainsScan(*root, &cache));
+  cache.Invalidate(root->operand(1));
+  EXPECT_TRUE(ContainsScan(*root->operand(1), &cache));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

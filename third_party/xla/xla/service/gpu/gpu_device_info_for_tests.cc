@@ -166,12 +166,40 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_core_count(104);
   b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
-  b.set_block_dim_limit_y(2'147'483'647);
-  b.set_block_dim_limit_z(2'147'483'647);
+  b.set_block_dim_limit_y(65536);
+  b.set_block_dim_limit_z(65536);
   b.set_memory_bandwidth(1'638'400'000'000);
   b.set_l2_cache_size(8 * 1024 * 1024);
   b.set_clock_rate_ghz(1.7);
   b.set_device_memory_size(67'628'957'696);
+  b.set_registers_per_core_limit(131072);
+  b.set_registers_per_block_limit(131072);
+  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  return b;
+}
+
+stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI300DeviceInfo() {
+  stream_executor::DeviceDescription b;
+  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
+      stream_executor::RocmComputeCapability("gfx942")));
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(64);
+  b.set_shared_memory_per_block(64 * 1024);
+  b.set_shared_memory_per_block_optin(64 * 1024);
+  b.set_shared_memory_per_core(64 * 1024);
+  b.set_threads_per_core_limit(2048);
+  b.set_core_count(304);
+  b.set_fpus_per_core(128);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(65536);
+  b.set_block_dim_limit_z(65536);
+  b.set_memory_bandwidth(5'300'000'000'000);
+  b.set_l2_cache_size(4 * 1024 * 1024);
+  b.set_clock_rate_ghz(2.1);
+  b.set_device_memory_size(int64_t{192} * 1024 * 1024 * 1024);
+  b.set_registers_per_core_limit(131072);
+  b.set_registers_per_block_limit(131072);
   b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
   b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
   return b;

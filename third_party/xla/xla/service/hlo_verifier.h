@@ -191,6 +191,9 @@ struct HloVerifierOpts {
 
   // Returns a target-specific shape size.
   ShapeSizeFn shape_size = [](const Shape& shape) {
+    if (shape.is_unbounded_dynamic()) {
+      return Shape::kUnboundedSize;
+    }
     return ShapeUtil::ByteSizeOf(shape);
   };
 };
@@ -234,6 +237,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleAllToAll(HloInstruction* hlo) override;
   absl::Status HandleRaggedAllToAll(HloInstruction* hlo) override;
   absl::Status HandleCollectiveBroadcast(HloInstruction* hlo) override;
+  absl::Status HandleCollectiveReduce(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermute(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteStart(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
@@ -320,6 +324,7 @@ class ShapeVerifier : public DfsHloVisitor {
   static absl::Status CheckParameterCount(
       const HloInstruction* calling_instruction,
       const HloComputation* computation, int expected);
+  static absl::Status CheckCompositeCall(const HloInstruction* call);
 
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   absl::Status CheckUnaryShape(const HloInstruction* instruction);

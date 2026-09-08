@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/tsl/concurrency/future.h"
 
 typedef struct PJRT_Collectives_Communicator {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <utility>
@@ -157,13 +158,19 @@ bool CanUseTma(Operation* op, bool allow_tma, int num_stages,
   if (!func_op) {
     return false;
   }
+  const int64_t element_byte_size =
+      pointer.getType().getPointeeType().getIntOrFloatBitWidth() / 8;
+  const int64_t tile_byte_size = absl::c_accumulate(
+      tile_shape, element_byte_size, std::multiplies<int64_t>());
 
-  // TODO(b/421858850): CUDA_ERROR_MISALIGNED_ADDRESS errors are
-  // happening for some cases when pipelining stages are > 2. The pattern
-  // observed is that these happen in the presence of a broadcast.
-  // This is a temporary solution. We should remove this once we have a fix for
-  // the error.
-  if (num_stages > 2 && HasBroadcastConsumer(op)) {
+  // TODO(b/421858850, b/545031850): CUDA_ERROR_MISALIGNED_ADDRESS errors and
+  // pipeliner compiler crashes happen when pipelining stages are > 1 in the
+  // presence of a broadcast consumer with unaligned per-stage tile sizes.
+  // This is a temporary solution
+  // (https://github.com/triton-lang/triton/issues/7386). We should remove this
+  // once we have a fix for the error.
+  if (num_stages > 1 && HasBroadcastConsumer(op) &&
+      (tile_byte_size % 128 != 0)) {
     return false;
   }
 
@@ -180,9 +187,6 @@ bool CanUseTma(Operation* op, bool allow_tma, int num_stages,
   auto canonicalize_status = CanonicalizeTileStrides(canonical_tile_strides,
                                                      tile_shape, original_shape,
                                                      /*validate=*/false);
-
-  uint64_t element_byte_size =
-      pointer.getType().getPointeeType().getIntOrFloatBitWidth() / 8;
 
   auto tma_compatibilty_status = stream_executor::gpu::IsTmaCompatible(
       absl::MakeSpan(original_shape.data(), original_shape.size()),

@@ -328,6 +328,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -376,14 +377,39 @@ onednn_cc_test(
     ],
 )
 
+onednn_cc_test(
+    name = "onednn_verbose_test",
+    srcs = ["onednn_verbose_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:array2d",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/backends/cpu/runtime:buffer_allocations",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/backends/cpu/runtime:thunk_testlib",
+        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
 xla_test(
     name = "cpu_copy_test",
     srcs = ["cpu_copy_test.cc"],
     backends = ["cpu"],
     deps = [
         "//xla:literal",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/service/cpu:fusion_wrapper",
+        "//xla/service/cpu:target_machine_features_stub",
+        "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -427,12 +453,30 @@ xla_test(
 )
 
 xla_test(
+    name = "corpus_compile_test",
+    srcs = ["corpus_compile_test.cc"],
+    backends = ["cpu"],
+    data = ["//xla/backends/cpu/benchmarks/hlo:hlo_files"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tools:hlo_module_loader",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
     name = "cpu_edge_cases_test",
     srcs = ["cpu_edge_cases_test.cc"],
     backends = ["cpu"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",

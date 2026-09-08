@@ -331,16 +331,17 @@ TEST_P(YnnFusionTest, DotWithConstant) {
     HloModule dot_with_constant
 
     ynn_fusion {
-      %lhs = f32[10, 10] parameter(0)
-      %rhs = f32[10, 10] parameter(1), frontend_attributes={is_constant="true"}
-      ROOT %dot = f32[10, 10] dot(%lhs, %rhs), lhs_contracting_dims={1},
+      %lhs = $dtype[10, 10] parameter(0)
+      %rhs = $dtype[10, 10] parameter(1),
+             frontend_attributes={is_constant="true"}
+      ROOT %dot = $dtype[10, 10] dot(%lhs, %rhs), lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
 
     ENTRY entry {
-      %p0 = f32[10, 10] parameter(0)
-      %p1 = f32[10, 10] parameter(1)
-      ROOT %fusion = f32[10, 10] fusion(%p0, %p1), kind=kCustom,
+      %p0 = $dtype[10, 10] parameter(0)
+      %p1 = $dtype[10, 10] parameter(1)
+      ROOT %fusion = $dtype[10, 10] fusion(%p0, %p1), kind=kCustom,
         calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";

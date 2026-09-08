@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
@@ -42,38 +43,80 @@ namespace sdy {
 
 namespace {
 
-using ShardyXLATest = HloHardwareIndependentTestBase;
-
-void runShardy(VerifiedHloModule* module, bool stablehloImport,
-               bool runSdyShardingPropagation = true,
-               bool expectChanged = true) {
-  // TODO (b/512424980): Parameterize ShardyXLA tests with HloShardingV3
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_enable_hlo_sharding_v3(false);
-  if (stablehloImport) {
-    module->add_frontend_attribute(std::string(xla::sdy::kImportMhloShardings),
-                                   "t");
+class ShardyXLATestBase : public HloHardwareIndependentTestBase {
+ protected:
+  void runShardyBase(
+      VerifiedHloModule* module, bool stablehloImport, bool enableV3,
+      xla::test_only::ShardingFormatPicker::ShardingType formatType,
+      bool runSdyShardingPropagation = true, bool expectChanged = true) {
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_enable_hlo_sharding_v3(enableV3);
+    if (stablehloImport) {
+      module->add_frontend_attribute(
+          std::string(xla::sdy::kImportMhloShardings), "t");
+    }
+    xla::test_only::ShardingFormatPicker formatPicker(formatType);
+    TF_ASSERT_OK_AND_ASSIGN(bool formatChanged, formatPicker.Run(module));
+    (void)formatChanged;
+    TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                            ShardyXLA(runSdyShardingPropagation).Run(module));
+    EXPECT_EQ(changed, expectChanged);
   }
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          ShardyXLA(runSdyShardingPropagation).Run(module));
-  EXPECT_EQ(changed, expectChanged);
-}
+};
 
-void runShardyWithStablehloImport(VerifiedHloModule* module,
-                                  bool runSdyShardingPropagation = true,
-                                  bool expectChanged = true) {
-  runShardy(module, /*stablehloImport=*/true, runSdyShardingPropagation,
-            expectChanged);
-}
+class ShardyXLATestV2Only : public ShardyXLATestBase {
+ protected:
+  void runShardy(VerifiedHloModule* module, bool stablehloImport,
+                 bool runSdyShardingPropagation = true,
+                 bool expectChanged = true) {
+    runShardyBase(
+        module, stablehloImport, /*enableV3=*/false,
+        xla::test_only::ShardingFormatPicker::ShardingType::kBestEffortV2,
+        runSdyShardingPropagation, expectChanged);
+  }
 
-void runShardyWithSdyImport(VerifiedHloModule* module) {
-  runShardy(module, /*stablehloImport=*/false);
-}
+  void runShardyWithStablehloImport(VerifiedHloModule* module,
+                                    bool runSdyShardingPropagation = true,
+                                    bool expectChanged = true) {
+    runShardy(module, /*stablehloImport=*/true, runSdyShardingPropagation,
+              expectChanged);
+  }
 
-}  // namespace
+  void runShardyWithSdyImport(VerifiedHloModule* module) {
+    runShardy(module, /*stablehloImport=*/false);
+  }
+};
 
-TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
+class ShardyXLATest : public ShardyXLATestBase,
+                      public ::testing::WithParamInterface<
+                          xla::test_only::ShardingFormatPicker::ShardingType> {
+ protected:
+  void runShardy(VerifiedHloModule* module, bool stablehloImport,
+                 bool runSdyShardingPropagation = true,
+                 bool expectChanged = true) {
+    bool enableV3 = GetParam() ==
+                    xla::test_only::ShardingFormatPicker::ShardingType::kNamed;
+    runShardyBase(module, stablehloImport, enableV3, GetParam(),
+                  runSdyShardingPropagation, expectChanged);
+  }
+
+  void runShardyWithStablehloImport(VerifiedHloModule* module,
+                                    bool runSdyShardingPropagation = true,
+                                    bool expectChanged = true) {
+    runShardy(module, /*stablehloImport=*/true, runSdyShardingPropagation,
+              expectChanged);
+  }
+
+  void runShardyWithSdyImport(VerifiedHloModule* module) {
+    runShardy(module, /*stablehloImport=*/false);
+  }
+};
+
+// NOLINTBEGIN(misc-override-with-different-visibility)
+
+TEST_F(ShardyXLATestV2Only,
+       AllowSpmdShardingPropagationParametersOutputRespected) {
   const char* const hloString = R"(
     HloModule module, allow_spmd_sharding_propagation_to_parameters={false,true}, allow_spmd_sharding_propagation_to_output={true}
     ENTRY %conv {
@@ -94,14 +137,13 @@ TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
       module->entry_computation()->parameter_instruction(1),
       op::Sharding(
           "{devices=[2,2,1,2]<=[2,2,2]T(0,2,1) last_tile_dim_replicate}"));
-
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 }
 
 namespace {
 
-TEST_F(ShardyXLATest, SdyReduceScatterManualComputationExport) {
+TEST_P(ShardyXLATest, SdyReduceScatterManualComputationExport) {
   const char* const hloString = R"(
     HloModule sdy_rs_export
 
@@ -165,7 +207,7 @@ TEST_F(ShardyXLATest, SdyReduceScatterManualComputationExport) {
 
 }  // namespace
 
-TEST_F(ShardyXLATest, ElementWise) {
+TEST_P(ShardyXLATest, ElementWise) {
   const char* const hloString = R"(
     HloModule module
 
@@ -197,7 +239,7 @@ TEST_F(ShardyXLATest, ElementWise) {
               op::Sharding("{devices=[2,1]<=[2]}"));
 }
 
-TEST_F(ShardyXLATest, NonFlatGraph) {
+TEST_P(ShardyXLATest, NonFlatGraph) {
   const char* const hloString = R"(
     HloModule module
 
@@ -227,7 +269,7 @@ TEST_F(ShardyXLATest, NonFlatGraph) {
   EXPECT_EQ(module->computation_count(), 3);
 }
 
-TEST_F(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
+TEST_P(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
   const char* const hloString = R"(
     HloModule module
 
@@ -259,7 +301,7 @@ TEST_F(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
   EXPECT_EQ(module->computation_count(), 4);
 }
 
-TEST_F(ShardyXLATest, NonFlatWhileComputation) {
+TEST_P(ShardyXLATest, NonFlatWhileComputation) {
   const char* const hloString = R"(
     HloModule module
 
@@ -310,7 +352,7 @@ TEST_F(ShardyXLATest, NonFlatWhileComputation) {
   EXPECT_EQ(module->computation_count(), 6);
 }
 
-TEST_F(ShardyXLATest, SharedWhileComputation) {
+TEST_P(ShardyXLATest, SharedWhileComputation) {
   const char* const hloString = R"(
     HloModule module
 
@@ -346,7 +388,7 @@ TEST_F(ShardyXLATest, SharedWhileComputation) {
   EXPECT_EQ(module->computation_count(), 6);
 }
 
-TEST_F(ShardyXLATest, CostantSplitter) {
+TEST_P(ShardyXLATest, CostantSplitter) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %constant_splitter {
@@ -383,7 +425,7 @@ TEST_F(ShardyXLATest, CostantSplitter) {
   // EXPECT_EQ(dot->operand(0)->operand(0), dot->operand(1)->operand(0));
 }
 
-TEST_F(ShardyXLATest, Dot) {
+TEST_P(ShardyXLATest, Dot) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -428,7 +470,7 @@ TEST_F(ShardyXLATest, Dot) {
                    "last_tile_dim_replicate}, {devices=[2,2,2]<=[8]}}"));
 }
 
-TEST_F(ShardyXLATest, DotTiledBatchDim) {
+TEST_P(ShardyXLATest, DotTiledBatchDim) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -456,7 +498,7 @@ TEST_F(ShardyXLATest, DotTiledBatchDim) {
               op::Sharding("{devices=[2,2]<=[4]}"));
 }
 
-TEST_F(ShardyXLATest, DotMergeOperands1) {
+TEST_P(ShardyXLATest, DotMergeOperands1) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -484,7 +526,7 @@ TEST_F(ShardyXLATest, DotMergeOperands1) {
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 }
 
-TEST_F(ShardyXLATest, DotMergeOperands2) {
+TEST_P(ShardyXLATest, DotMergeOperands2) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -508,7 +550,7 @@ TEST_F(ShardyXLATest, DotMergeOperands2) {
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
 
-TEST_F(ShardyXLATest, DotMergeOperands3) {
+TEST_F(ShardyXLATestV2Only, DotMergeOperands3) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -526,12 +568,11 @@ TEST_F(ShardyXLATest, DotMergeOperands3) {
               op::Sharding("{devices=[2,4]<=[8]}"));
   EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
               op::Sharding("{devices=[4,2]<=[2,2,2]T(2,1,0)}"));
-
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{devices=[2,4]<=[2,2,2]T(0,2,1)}"));
 }
 
-TEST_F(ShardyXLATest, BackwardDotFromContracting) {
+TEST_P(ShardyXLATest, BackwardDotFromContracting) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -557,7 +598,7 @@ TEST_F(ShardyXLATest, BackwardDotFromContracting) {
               op::Sharding("{devices=[2,1,2,2]<=[8] last_tile_dim_replicate}"));
 }
 
-TEST_F(ShardyXLATest, EntryComputationLayoutSingleResult) {
+TEST_P(ShardyXLATest, EntryComputationLayoutSingleResult) {
   const char* const hloString = R"(
     HloModule module, entry_computation_layout={(f32[3,8,32,4]{2,1,3,0:T(8,128)},f32[3,8,32,4]{2,1,3,0:T(8,128)})->f32[3,8,32,4]{2,1,3,0:T(8,128)}}
 
@@ -579,7 +620,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutSingleResult) {
       "f32[3,8,32,4]{2,1,3,0:T(8,128)})->f32[3,8,32,4]{2,1,3,0:T(8,128)}");
 }
 
-TEST_F(ShardyXLATest, EntryComputationLayoutNestedTuple) {
+TEST_P(ShardyXLATest, EntryComputationLayoutNestedTuple) {
   const char* const hloString = R"(
     HloModule module, entry_computation_layout={((f32[4,2]{0,1:T(2,128)},(f32[4,2]{0,1:T(2,128)},f32[4,2]{0,1:T(2,128)})),f32[4,2]{0,1:T(2,128)})->((f32[4,2]{0,1:T(2,128)},(f32[4,2]{0,1:T(2,128)},f32[4,2]{0,1:T(2,128)})),f32[4,2]{0,1:T(2,128)})}
 
@@ -600,7 +641,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutNestedTuple) {
             "f32[4,2]{0,1:T(2,128)})");
 }
 
-TEST_F(ShardyXLATest, EntryComputationLayoutMissingLayout) {
+TEST_P(ShardyXLATest, EntryComputationLayoutMissingLayout) {
   const char* const hloString = R"(
     HloModule module, entry_computation_layout={(f32[3,8,32,4]{2,1,3,0:T(8,128)},f32[3,8,32,4])->f32[3,8,32,4]}
 
@@ -621,7 +662,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutMissingLayout) {
             "f32[3,8,32,4]{3,2,1,0})->f32[3,8,32,4]{3,2,1,0}");
 }
 
-TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResult) {
+TEST_P(ShardyXLATest, InputOutputAliasConfigSingleResult) {
   const char* const hloString = R"(
     HloModule module, input_output_alias={ {}: (1, {}, may-alias) }
 
@@ -639,7 +680,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResult) {
             "{}: (1, {}, may-alias)");
 }
 
-TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResultNestedParams) {
+TEST_P(ShardyXLATest, InputOutputAliasConfigSingleResultNestedParams) {
   const char* const hloString = R"(
     HloModule module, input_output_alias={ {}: (0, {1}, may-alias) }
 
@@ -658,7 +699,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResultNestedParams) {
             "{}: (1, {}, may-alias)");
 }
 
-TEST_F(ShardyXLATest, InputOutputAliasConfigNestedResultAndParams) {
+TEST_P(ShardyXLATest, InputOutputAliasConfigNestedResultAndParams) {
   const char* const hloString = R"(
     HloModule module, input_output_alias={ {0, 1, 0}: (0, {1, 0}, may-alias), {1}: (1, {}, may-alias) }
 
@@ -675,7 +716,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigNestedResultAndParams) {
             "{1}: (1, {}, may-alias), {3}: (3, {}, may-alias)");
 }
 
-TEST_F(ShardyXLATest, BufferDonorConfigSingleResult) {
+TEST_P(ShardyXLATest, BufferDonorConfigSingleResult) {
   const char* const hloString = R"(
     HloModule module, buffer_donor={ (1, {}) }
 
@@ -692,7 +733,7 @@ TEST_F(ShardyXLATest, BufferDonorConfigSingleResult) {
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(1, {})");
 }
 
-TEST_F(ShardyXLATest, BufferDonorConfigNestedTuple) {
+TEST_P(ShardyXLATest, BufferDonorConfigNestedTuple) {
   const char* const hloString = R"(
     HloModule module, buffer_donor={ (0, {0}), (0, {1, 1}) }
 
@@ -708,7 +749,7 @@ TEST_F(ShardyXLATest, BufferDonorConfigNestedTuple) {
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(0, {}), (2, {})");
 }
 
-TEST_F(ShardyXLATest, ShardingCustomCall) {
+TEST_P(ShardyXLATest, ShardingCustomCall) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %main {
@@ -728,7 +769,7 @@ TEST_F(ShardyXLATest, ShardingCustomCall) {
               op::Copy());
 }
 
-TEST_F(ShardyXLATest, RngBitGenerator) {
+TEST_F(ShardyXLATestV2Only, RngBitGenerator) {
   const char* const hloString = R"(
     HloModule module
 
@@ -748,7 +789,7 @@ TEST_F(ShardyXLATest, RngBitGenerator) {
               op::Sharding("{{devices=[16,2]<=[32]}, {devices=[8,4]<=[32]}}"));
 }
 
-TEST_F(ShardyXLATest, WhileWithFreeVariables) {
+TEST_P(ShardyXLATest, WhileWithFreeVariables) {
   const char* const hloString = R"(
     HloModule main, entry_computation_layout={(f32[32,96]{1,0}, f32[32,96]{1,0})->f32[32,96]{1,0}}
 
@@ -803,7 +844,7 @@ TEST_F(ShardyXLATest, WhileWithFreeVariables) {
                                       "{devices=[2,2]<=[4]}}"));
 }
 
-TEST_F(ShardyXLATest, ShardMap) {
+TEST_P(ShardyXLATest, ShardMap) {
   const char* const hloString = R"(
     HloModule shard_map
 
@@ -851,7 +892,7 @@ TEST_F(ShardyXLATest, ShardMap) {
 }
 
 // Be able to handle an empty computation layout and input_output_alias_config.
-TEST_F(ShardyXLATest, EmptyModule) {
+TEST_P(ShardyXLATest, EmptyModule) {
   const char* const hloString = R"(
     HloModule pjit_f, entry_computation_layout={()->()}, num_partitions=2
 
@@ -872,7 +913,7 @@ TEST_F(ShardyXLATest, EmptyModule) {
 // - input_output_alias
 // - entry_computation_layout
 // - buffer_donor
-TEST_F(ShardyXLATest, TestUseTuplesTrue) {
+TEST_P(ShardyXLATest, TestUseTuplesTrue) {
   const char* const hloString = R"(
     HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (2, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
 
@@ -898,7 +939,7 @@ TEST_F(ShardyXLATest, TestUseTuplesTrue) {
 
 // Even with no layout set (just the shapes specified with no layout), we should
 // still wrap the entry computation layout into a tuple.
-TEST_F(ShardyXLATest, TestUseTuplesTrueNoSetLayout) {
+TEST_P(ShardyXLATest, TestUseTuplesTrueNoSetLayout) {
   const char* const hloString = R"(
     HloModule pjit_f, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
 
@@ -930,7 +971,7 @@ TEST_F(ShardyXLATest, TestUseTuplesTrueNoSetLayout) {
             "((f32[8,16], f32[16,32], f32[8,32]))->f32[8,32]");
 }
 
-TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesFalse) {
+TEST_P(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesFalse) {
   const char* const hloString = R"(
     HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (2, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8
 
@@ -957,7 +998,7 @@ TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesFalse) {
             "f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}");
 }
 
-TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
+TEST_P(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
   const char* const hloString = R"(
     HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (2, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
 
@@ -993,7 +1034,7 @@ TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
       expected));
 }
 
-TEST_F(ShardyXLATest, TestMaximalShardingNoResults) {
+TEST_P(ShardyXLATest, TestMaximalShardingNoResults) {
   const char* const hloString = R"(
 HloModule maximal_sharding_module, entry_computation_layout={(s64[2]{0})->s64[2]{0}},
     frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>}}
@@ -1022,7 +1063,7 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
       expected));
 }
 
-TEST_F(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
+TEST_P(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
   const char* const hloString = R"(
     HloModule main, entry_computation_layout={(f32[32,96]{1,0}, f32[32,96]{1,0})->f32[32,96]{1,0}}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=4]>}}
 
@@ -1072,7 +1113,7 @@ TEST_F(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
                                       "{devices=[4,1]<=[4]}}"));
 }
 
-TEST_F(ShardyXLATest, EmptyResultLayout) {
+TEST_P(ShardyXLATest, EmptyResultLayout) {
   const char* const hloString = R"(
     HloModule pjit_f_, entry_computation_layout={(s64[2,2,2]{2,1,0})->()}, num_partitions=2, frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
 
@@ -1088,7 +1129,7 @@ TEST_F(ShardyXLATest, EmptyResultLayout) {
             "(s64[2,2,2]{2,1,0})->()");
 }
 
-TEST_F(ShardyXLATest, EmptyOperandLayout) {
+TEST_P(ShardyXLATest, EmptyOperandLayout) {
   const char* const hloString = R"(
     HloModule pjit_f_, entry_computation_layout={()->s64[2,2]{1,0}}, num_partitions=2, frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
 
@@ -1103,7 +1144,7 @@ TEST_F(ShardyXLATest, EmptyOperandLayout) {
             "()->s64[2,2]{1,0}");
 }
 
-TEST_F(ShardyXLATest, RaggedDotMode1) {
+TEST_P(ShardyXLATest, RaggedDotMode1) {
   const char* const hloString = R"(
   HloModule ragged_dot, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2, "c"=2]>}}
     ENTRY entry {
@@ -1140,7 +1181,7 @@ namespace {
 // The scan body sees per-iteration slices: input is `f32[16,32]` with scan
 // dim 0, so the body input parameter is `f32[32]` and the carry init is
 // `f32[32]`.
-TEST_F(ShardyXLATest, ScanAssociative) {
+TEST_P(ShardyXLATest, ScanAssociative) {
   const char* const hloString = R"(
   HloModule scan_associative, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2]>}}
     %scan_combiner {
@@ -1172,7 +1213,7 @@ TEST_F(ShardyXLATest, ScanAssociative) {
 // introduce a sharding axis on the scan dim — the partitioner can't shard a
 // non-associative scan dim. The non-scan dim's `b` axis still flows from
 // input to output through the rule's pass-through factor.
-TEST_F(ShardyXLATest, ScanNonAssociative) {
+TEST_P(ShardyXLATest, ScanNonAssociative) {
   const char* const hloString = R"(
   HloModule scan_non_associative, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2]>}}
     %scan_combiner {
@@ -1203,7 +1244,7 @@ TEST_F(ShardyXLATest, ScanNonAssociative) {
 
 }  // namespace
 
-TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
+TEST_P(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
   const char* const hloString = R"(
   HloModule test, entry_computation_layout={(f32[6,3], f32[6,3])->f32[6,3]}, origin_recovery_table={
     {"reshape.2341"} : {"placeholder_reshape.201"},
@@ -1242,7 +1283,7 @@ TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
                             expected));
 }
 
-TEST_F(ShardyXLATest, ManualComputationInlineableFalseErasedAndRenamed) {
+TEST_P(ShardyXLATest, ManualComputationInlineableFalseErasedAndRenamed) {
   const char* const hloString = R"(
     HloModule module
 
@@ -1265,7 +1306,7 @@ TEST_F(ShardyXLATest, ManualComputationInlineableFalseErasedAndRenamed) {
   EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
 }
 
-TEST_F(ShardyXLATest, ManualComputationInlineableXlaLateErasedAndRenamed) {
+TEST_P(ShardyXLATest, ManualComputationInlineableXlaLateErasedAndRenamed) {
   const char* const hloString = R"(
     HloModule module
 
@@ -1288,7 +1329,7 @@ TEST_F(ShardyXLATest, ManualComputationInlineableXlaLateErasedAndRenamed) {
   EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
 }
 
-TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
+TEST_P(ShardyXLATest, ManualComputationCallOpWithToken) {
   const char* const hloString = R"(
     HloModule main, entry_computation_layout={(token[])->token[]}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=2]>}}
 
@@ -1315,7 +1356,7 @@ TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
 }
 
 // This test is to ensure that the stack frame index is fully copied.
-TEST_F(ShardyXLATest, StackFrameMetadataFullyCopiedTest) {
+TEST_P(ShardyXLATest, StackFrameMetadataFullyCopiedTest) {
   const char* const hloString = R"(
   HloModule main
 
@@ -1364,7 +1405,7 @@ TEST_F(ShardyXLATest, StackFrameMetadataFullyCopiedTest) {
 
 // This test is to ensure that the stack frame index is replaced with a single
 // frame, instead of being fully copied.
-TEST_F(ShardyXLATest, StackFrameMetadataReplacedTest) {
+TEST_P(ShardyXLATest, StackFrameMetadataReplacedTest) {
   const char* const hloString = R"(
   HloModule main
 
@@ -1411,6 +1452,16 @@ TEST_F(ShardyXLATest, StackFrameMetadataReplacedTest) {
   EXPECT_EQ(copy->metadata().op_name(), "copy");
   EXPECT_EQ(copy->metadata().stack_frame_id(), 1);
 }
+
+// NOLINTEND(misc-override-with-different-visibility)
+
+INSTANTIATE_TEST_SUITE_P(
+    ShardyXLATestInstantiation, ShardyXLATest,
+    ::testing::Values(
+        xla::test_only::ShardingFormatPicker::ShardingType::kBestEffortV2,
+        xla::test_only::ShardingFormatPicker::ShardingType::kNamed));
+
+}  // namespace
 
 }  // namespace sdy
 }  // namespace xla

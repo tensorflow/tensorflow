@@ -102,6 +102,25 @@ class ConstantFoldingTest(test.TestCase):
     self.assertEqual(assign_count, 1)
     self.assertLen(graphs[0].node, 11)
 
+  # See GitHub issue #102771.
+  def testDivisionOfOnesNotRewrittenToReciprocal(self):
+    # 1 / x must stay a true division in the optimized graph. The CPU
+    # Reciprocal kernel uses Eigen's fast-math reciprocal for float, which
+    # is not exactly IEEE division, so rewriting 1 / x to Reciprocal(x)
+    # changed results between eager and graph execution on x86.
+
+    @def_function.function
+    def div_by_ones(x):
+      return 1.0 / x
+
+    with context.eager_mode():
+      ones = array_ops.ones([64], dtype=dtypes.float32)
+      with context.collect_graphs(optimized=True) as graphs:
+        result = div_by_ones(ones).numpy()
+    self.assertLen(graphs, 1)
+    self.assertNotIn('Reciprocal', [node.op for node in graphs[0].node])
+    self.assertAllEqual(result, np.ones([64], dtype=np.float32))
+
 
 if __name__ == '__main__':
   test.main()

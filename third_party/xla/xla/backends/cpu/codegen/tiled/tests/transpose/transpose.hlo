@@ -1,5 +1,8 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
 // RUN: test_correctness %s
 
 fusion {
@@ -42,3 +45,6 @@ ENTRY main {
 // CHECK:          xtile.insert %[[TRANS]] into %[[ARG1]][%[[IDX2]], %[[IDX0]], %[[IDX1]], %[[C0]]] [16, 1, 1, 16] [1, 1, 1, 1]
 // CHECK:        }
 // CHECK:        xtile.return
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc

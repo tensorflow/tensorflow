@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 This adds support for accessing peer memory from Trition.
 TODO: b/347711619 - Upstream after we've upstreamed the rest of the launcher.
 
@@ -33,7 +47,7 @@ new file mode 100644
 
 --- a/third_party/nvidia/backend/driver.c
 +++ b/third_party/nvidia/backend/driver.c
-@@ -965,6 +965,37 @@ cleanup:
+@@ -979,6 +979,37 @@ cleanup:
    return NULL;
  }
  
@@ -71,7 +85,7 @@ new file mode 100644
  static void _launch(int gridX, int gridY, int gridZ, int num_warps,
                      int num_ctas, int launch_cooperative_grid, int launch_pdl,
                      int shared_memory, CUstream stream, CUfunction function,
-@@ -1076,6 +1107,9 @@ bool extractPointer(void *ptr, PyObject *obj) {
+@@ -1090,6 +1121,9 @@ bool extractPointer(void *ptr, PyObject *obj) {
    if (*dev_ptr == 0) {
      return true; // valid nullptr
    }

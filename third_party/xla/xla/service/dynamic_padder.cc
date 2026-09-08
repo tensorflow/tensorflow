@@ -1044,7 +1044,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionInputGrad(
   }
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), grad, kernel,
+          custom_call_conv->shape(), {grad, kernel},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -1103,7 +1103,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionForward(
 
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), input, kernel,
+          custom_call_conv->shape(), {input, kernel},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -1187,7 +1187,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
 
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), activations, gradients,
+          custom_call_conv->shape(), {activations, gradients},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),

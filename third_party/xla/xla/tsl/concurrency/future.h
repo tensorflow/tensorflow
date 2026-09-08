@@ -1820,7 +1820,7 @@ class JoinStatic
 
   template <std::size_t... Is, typename... Futures>
   static void OnReady(std::shared_ptr<JoinStatic> self,
-                      std::index_sequence<Is...>, Futures... futures) {
+                      std::index_sequence<Is...>, Futures&&... futures) {
     (std::forward<Futures>(futures).OnReady([self](auto value) {
       self->OnReady(std::integral_constant<size_t, Is>{}, std::move(value));
     }),

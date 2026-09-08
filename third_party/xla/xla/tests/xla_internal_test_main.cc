@@ -13,19 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstring>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
+#include "absl/log/globals.h"
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/util/command_line_flags.h"
 
+// Special test main used to pre-parse XLA flags (such as `--xla_*` debug
+// options) before passing remaining arguments to GoogleTest.
+//
+// Background:
+// When defining test rules (e.g., `xla_test`), XLA debug flags can be specified
+// in the `args` attribute. However, standard `gunit_main` delegates flag
+// parsing to Abseil Flags (`absl::ParseCommandLine`), which does not recognize
+// internal XLA debug flags and results in an "Unknown command line flag" error.
+// This test main uses `tsl::Flags::Parse` to extract and consume XLA debug
+// options from `argv` before initializing GoogleTest.
+//
+// Note: XLA debug options can also be passed using the `XLA_FLAGS` environment
+// variable (e.g., via the `env` attribute), but historically the team
+// used `args`. Prefer using standard `gunit_main` (with
+// flags passed via `env`) over this file whenever possible.
 GTEST_API_ int main(int argc, char** argv) {
+  absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
+
   std::vector<tsl::Flag> flag_list;
   xla::AppendDebugOptionsFlags(&flag_list);
   auto usage = tsl::Flags::Usage(argv[0], flag_list);
@@ -40,20 +57,16 @@ GTEST_API_ int main(int argc, char** argv) {
     absl::string_view arg(argv[i]);
     if (arg == "--benchmark_filter" ||
         absl::StartsWith(arg, "--benchmark_filter=")) {
-      const char* pattern = nullptr;
-      if (absl::StartsWith(arg, "--benchmark_filter=")) {
-        pattern = argv[i] + strlen("--benchmark_filter=");
-      } else {
+      if (arg == "--benchmark_filter") {
         // Handle flag of the form '--benchmark_filter foo' (no '=').
         if (i + 1 >= argc || absl::StartsWith(argv[i + 1], "--")) {
           LOG(ERROR) << "--benchmark_filter flag requires an argument.";
           return 2;
         }
-        pattern = argv[i + 1];
       }
-      ::benchmark::Initialize(&argc, argv);
+      tsl::testing::InitializeBenchmarks(&argc, argv);
       testing::InitGoogleTest(&argc, argv);
-      benchmark::RunSpecifiedBenchmarks();
+      tsl::testing::RunBenchmarks();
       return 0;
     }
   }

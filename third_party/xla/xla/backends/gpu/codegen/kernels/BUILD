@@ -46,7 +46,10 @@ cc_library(
     name = "custom_kernel",
     srcs = ["custom_kernel.cc"],
     hdrs = ["custom_kernel.h"],
-    visibility = [":friends"],
+    visibility = [
+        ":friends",
+        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+    ],
     deps = [
         ":custom_kernel_proto_cc",
         "//xla/stream_executor:kernel_spec",

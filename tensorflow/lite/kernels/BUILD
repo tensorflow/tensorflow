@@ -885,9 +885,12 @@ cc_test(
         ":test_main",
         ":variable_op_kernels",  # buildcleaner: keep
         "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/core:cc_api_experimental",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/experimental/resource:mock_resource",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1714,9 +1717,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2306,6 +2309,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2475,6 +2479,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2488,6 +2493,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2768,6 +2774,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
@@ -3173,12 +3180,13 @@ cc_test(
         "hashtable_ops_test.cc",
     ],
     deps = [
+        ":test_main",
+        ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/resource",
-        "//tensorflow/lite/kernels:test_main",
-        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/experimental/resource:mock_resource",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
@@ -3345,7 +3353,7 @@ cc_test(
     ],
 )
 
-# TODO(b/249321616) pull unsorted_segment_test* into seperate `cc_library`.
+# TODO(b/249321616) pull unsorted_segment_test* into separate `cc_library`.
 cc_test(
     name = "unsorted_segment_prod_test",
     size = "small",

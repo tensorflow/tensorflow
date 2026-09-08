@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/ragged_all_to_all_multi_host_decomposer.h"
 
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <vector>

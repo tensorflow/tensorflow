@@ -68,7 +68,7 @@ def main(_):
     raise ValueError(f"Expected 4 dims, got {len(_DIM.value)}")
 
   b_val, m_val, k_val, n_val = map(int, _DIM.value)
-  matmul_lib.run_matmul_jax(
+  cfg = matmul_lib.JaxMatmulConfig(
       b=b_val,
       m=m_val,
       k=k_val,
@@ -76,6 +76,9 @@ def main(_):
       lhs_dtype=lhs_dtype,
       rhs_dtype=rhs_dtype,
       out_dtype=out_dtype,
+  )
+  bm = cfg.get_benchmark()
+  bm.run(
       repeat=_REPEAT.value,
       runs=_RUNS.value,
       use_random_data=_USE_RANDOM_DATA.value,

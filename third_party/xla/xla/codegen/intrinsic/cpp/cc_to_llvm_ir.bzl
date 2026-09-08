@@ -128,6 +128,8 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-fno-profile-instr-generate",
         "-fno-coverage-mapping",
         "-fno-profile-generate",
+        "-fno-profile-arcs",
+        "-fno-test-coverage",
     ] + copts
 
     # Disabled features to avoid instrumentations in the IR. ALL sanitizers must be disabled.

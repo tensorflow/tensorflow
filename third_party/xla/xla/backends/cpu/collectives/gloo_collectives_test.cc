@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"

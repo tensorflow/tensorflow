@@ -104,10 +104,10 @@ void Destroy(XLA_HloModuleConfig* c_config);
 // Helper for managing stack based C -> C++ conversions.
 template <class CType>
 struct StackHelper {
-  explicit StackHelper() {}
+  explicit StackHelper() : value() {}
 
   template <class CppType>
-  explicit StackHelper(const CppType& t) {
+  explicit StackHelper(const CppType& t) : value() {
     ::ApiConverter::ToC(t, &value);
   }
   ~StackHelper() { ::ApiConverter::Destroy(&value); }
@@ -117,7 +117,7 @@ struct StackHelper {
     return ::ApiConverter::FromC(&value);
   }
 
-  mutable CType value;
+  mutable CType value{};
 };
 
 }  // namespace ApiConverter

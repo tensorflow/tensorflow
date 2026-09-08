@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/dynamic_shapes.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <new>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -30,6 +33,32 @@ limitations under the License.
 #include "tsl/platform/mem.h"
 
 namespace xla {
+
+PjRtDynamicShapeKind GetPjRtDynamicShapeKind(const xla::Shape& shape) {
+  if (shape.is_static()) {
+    return PjRtDynamicShapeKind::kNotSupported;
+  }
+  if (shape.has_layout() &&
+      shape.layout().dynamic_shape_metadata_prefix_bytes() > 0) {
+    return PjRtDynamicShapeKind::kPrefix;
+  }
+  return PjRtDynamicShapeKind::kSuffix;
+}
+
+// Compute on-device size for a fully-specified shape.
+absl::StatusOr<int64_t> PjRtGetOnDeviceBytesCount(const xla::Shape& shape,
+                                                  PjRtDynamicShapeKind kind) {
+  // PjRtShapeAndMetadataTransferRequirements::Get->ShapeUtil::ArraySize
+  // requires a layout.
+  if (!shape.IsToken() && !shape.has_layout()) {
+    return absl::FailedPreconditionError(
+        "Buffer's on-device shape has no layout. Cannot determine on-device "
+        "bytes count.");
+  }
+  auto requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
+  return static_cast<int64_t>(requirements.size);
+}
 
 PjRtShapeAndMetadataTransferRequirements
 PjRtShapeAndMetadataTransferRequirements::Get(const xla::Shape& shape,
@@ -129,7 +158,8 @@ absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
 
 void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
                       tsl::AsyncValueRef<xla::Shape> output_shape,
-                      xla::Shape shape, PjRtDynamicShapeKind kind) {
+                      xla::Shape shape, PjRtDynamicShapeKind kind,
+                      size_t host_alignment_bytes) {
   auto requirements =
       PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
   if (requirements.metadata_size == 0) {
@@ -154,7 +184,8 @@ void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
 
   void* scratch = tsl::port::AlignedMalloc(
       requirements.metadata_size,
-      static_cast<std::align_val_t>(requirements.metadata_alignment));
+      static_cast<std::align_val_t>(
+          std::max(requirements.metadata_alignment, host_alignment_bytes)));
   if (scratch == nullptr) {
     output_shape.SetError(absl::ResourceExhaustedError("AlignedMalloc failed"));
     return;

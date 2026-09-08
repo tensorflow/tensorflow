@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -80,7 +81,7 @@ static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
   }
   PJRT_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> programs_out,
                         args->phase_compiler->compiler->RunPhases(
-                            options, programs_in_protos,
+                            options, std::move(programs_in_protos),
                             *args->topology->topology, phases_to_run));
 
   PJRT_ASSIGN_OR_RETURN(args->output_programs,

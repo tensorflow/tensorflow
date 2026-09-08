@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -45,14 +46,15 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     const se::DeviceDescription& device_description,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context);
 
-// Sorts a given set of configs using the GPU cost model based on estimated
-// runtime (fastest to slowest). Configurations that cannot be estimated by
-// the model are preserved at the end of the returned list in their original
-// order.
-absl::StatusOr<std::vector<TritonGemmConfig>> SortConfigsWithCostModel(
-    const HloDotInstruction* dot, absl::Span<const TritonGemmConfig> configs,
-    const se::DeviceDescription& device_description,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context);
+// Computes cost model estimated runtime for the given configs. Returns a
+// map for TritonGemmConfig to its estimated absl::Duration. Configs that could
+// not be estimated are not present.
+absl::StatusOr<absl::flat_hash_map<TritonGemmConfig, absl::Duration>>
+EstimateConfigsWithCostModel(const HloDotInstruction* dot,
+                             absl::Span<const TritonGemmConfig> configs,
+                             const se::DeviceDescription& device_description,
+                             const DebugOptions& debug_options,
+                             mlir::MLIRContext* mlir_context);
 
 namespace cost_model_config_optimization_detail {
 

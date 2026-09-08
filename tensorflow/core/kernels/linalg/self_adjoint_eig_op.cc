@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "Eigen/Eigenvalues"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"

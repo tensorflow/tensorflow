@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_executable.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -93,6 +94,14 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
                    executable_build_options.ToProto());
   output.set_compile_portable_executable(compile_portable_executable);
   output.set_profile_version(profile_version);
+  std::vector<int> sorted_individually_defined_output_indices(
+      individually_defined_output_indices.begin(),
+      individually_defined_output_indices.end());
+  std::sort(sorted_individually_defined_output_indices.begin(),
+            sorted_individually_defined_output_indices.end());
+  output.mutable_individually_defined_output_indices()->Add(
+      sorted_individually_defined_output_indices.begin(),
+      sorted_individually_defined_output_indices.end());
   if (!serialized_multi_slice_config.empty()) {
     output.set_serialized_multi_slice_config(serialized_multi_slice_config);
   } else if (multi_slice_config != nullptr) {
@@ -139,6 +148,9 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
   output.executable_build_options = executable_build_options;
   output.compile_portable_executable = proto.compile_portable_executable();
   output.profile_version = proto.profile_version();
+  output.individually_defined_output_indices.insert(
+      proto.individually_defined_output_indices().begin(),
+      proto.individually_defined_output_indices().end());
   ABSL_ASSIGN_OR_RETURN(output.env_option_overrides,
                    LoadEnvOptionOverrides(proto.env_option_overrides()));
 
@@ -301,6 +313,12 @@ void GetOpSharding(std::vector<OpSharding>& out, const OpSharding& sharding) {
   } else {
     out.push_back(sharding);
   }
+}
+
+absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
+PjRtExecutable::GetHloModules() const {
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module, GetHloModule());
+  return std::vector<std::shared_ptr<HloModule>>{std::move(hlo_module)};
 }
 
 std::optional<std::vector<OpSharding>> PjRtExecutable::GetOutputShardings()

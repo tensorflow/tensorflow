@@ -60,8 +60,11 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":gpu_host_offloading_allocator",
+        "//xla/core/host_offloading:host_offloading_allocator",
         "//xla/service:platform_util",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -35,6 +34,13 @@ namespace memory_space_assignment {
 
 using MsaBufferInterval =
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval;
+
+// Info resolved from prefetch overrides.
+struct PrefetchOverrideInfo {
+  std::optional<int64_t> prefetch_time;
+  bool strict_timing = false;
+  bool fail_on_unsatisfied_override = false;
+};
 
 // Encapsulates common utility methods for memory space assignment.
 class MemorySpaceAssignmentUtils {
@@ -55,8 +61,9 @@ class MemorySpaceAssignmentUtils {
       const HloInstruction& instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
-  static bool DoesUseMatchFilter(const HloOperandFilter& filter,
-                                 const HloUse& hlo_use, int64_t operand_size);
+  static bool DoesUseMatchOperandFilter(const HloOperandFilter& filter,
+                                        const HloUse& hlo_use,
+                                        int64_t operand_size);
 
   static bool DoesInstructionMatchFilter(const HloPositionMatcher& filter,
                                          const HloInstruction& instruction);
@@ -66,6 +73,14 @@ class MemorySpaceAssignmentUtils {
 
   static bool DoesPositionMatchFilter(const HloPositionMatcher& filter,
                                       const MsaBufferInterval& buffer_interval);
+
+  static bool DoesPositionMatchPositionFilter(const HloPositionMatcher& filter,
+                                              const HloPosition& position,
+                                              int64_t size);
+
+  static bool DoesPositionMatchOperandFilter(const HloOperandFilter& filter,
+                                             const HloPosition& position,
+                                             int64_t size);
 
   static absl::StatusOr<xla::HloLiveRange::LogicalTime>
   GetScheduleTimeFromInstructionMatcher(
@@ -103,6 +118,29 @@ class MemorySpaceAssignmentUtils {
                                 HloLiveRange::LogicalTime>&
           instruction_schedule,
       int64_t earliest_prefetch_time, int64_t latest_prefetch_time);
+
+  static absl::StatusOr<std::optional<PrefetchOverrideInfo>>
+  GetPrefetchOverrideInfo(
+      const MsaTensorOverrides& msa_tensor_overrides,
+      const PreferredPrefetchOverrides& preferred_prefetch_overrides,
+      int64_t operand_size, const HloUse& hlo_use,
+      const absl::flat_hash_map<const HloInstruction*,
+                                HloLiveRange::LogicalTime>&
+          instruction_schedule,
+      int64_t earliest_prefetch_time, int64_t latest_prefetch_time,
+      const std::optional<HloPosition>& position = std::nullopt);
+
+  static bool ShouldPinInAlternateMemory(
+      const MsaTensorOverrides& msa_tensor_overrides,
+      const HloPosition& position, int64_t size);
+
+  static bool ShouldKeepInDefaultMemory(
+      const MsaTensorOverrides& msa_tensor_overrides,
+      const HloPosition& position, int64_t size);
+
+  static bool ShouldKeepInDefaultMemory(
+      const MsaTensorOverrides& msa_tensor_overrides, const HloUse& hlo_use,
+      int64_t operand_size);
 
   static bool DoesCrossProgramPrefetchBufferMatchAnyFilter(
       const MsaSortOrderOverrides& sort_order_overrides,

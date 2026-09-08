@@ -234,7 +234,7 @@ class WhileIncrementListOpsTest : public InterpreterTest {
     arr->Resize(num_elements);
   }
 
-  // Retreives a pointer to the `TensorArray` sitting behind the
+  // Retrieves a pointer to the `TensorArray` sitting behind the
   //  `kTfLiteVariant` tensor at given index.
   const TensorArray* GetOutputTensorArray(int tensor_id) {
     TfLiteTensor* tensor = interpreter_->tensor(tensor_id);

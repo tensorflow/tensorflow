@@ -157,12 +157,6 @@ struct Options {
   // values. std::nullopt disables views.
   std::optional<int64_t> dus_view_color;
 
-  // When true, a view's source buffer is kept in default memory instead of
-  // being considered for alternate memory. Set this to avoid the superlinear
-  // compile time growth that can occur when views extend the live ranges of
-  // while loop carried buffers. Only meaningful when dus_view_color is set.
-  bool view_source_default_memory_only = false;
-
   // Maximum size of the alternate memory space.
   int64_t max_size_in_bytes = 0;
 
@@ -412,6 +406,10 @@ struct Options {
   // Config to filter prefetches and update preferred prefetch times for the
   // filtered prefetches.
   PreferredPrefetchOverrides preferred_prefetch_overrides;
+
+  // Unified overrides for tensor placement, pinning, retention, and prefetch
+  // timing.
+  MsaTensorOverrides msa_tensor_overrides;
 
   // Options for slicing prefetches into smaller asynchronously copied pieces.
   SlicedPrefetchOptions sliced_prefetch_options;

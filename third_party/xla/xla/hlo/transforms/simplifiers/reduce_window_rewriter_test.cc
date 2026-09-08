@@ -582,5 +582,118 @@ ENTRY entry (arg: f32[128]) -> f32[128] {
   )");
 }
 
+TEST_F(ReduceWindowRewriterTest, BaseLengthOneDoesNotRewrite) {
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry (arg: f32[128]) -> f32[128] {
+  arg = f32[128]{0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce-window = f32[128]{0} reduce-window(f32[128]{0} %arg, f32[] %constant), window={size=128 pad=127_0}, to_apply=%add_float
+})";
+
+  RunAndFilecheckHloRewrite(hlo, ReduceWindowRewriter{1}, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, AssociativeScanBaseLengthOneDoesNotRewrite) {
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[128]) -> f32[128] {
+  arg = f32[128]{0} parameter(0)
+  constant = f32[] constant(0)
+  scan = (f32[128]{0}, f32[]) scan(f32[128]{0} %arg, f32[] %constant), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
+  ROOT result = f32[128]{0} get-tuple-element(scan), index=0
+})";
+
+  RunAndFilecheckHloRewrite(hlo, AssociativeScanRewriter{1}, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, NoOptimizeScanOnDynamicDimension) {
+  // Regression test for https://github.com/openxla/xla/issues/44944: scans
+  // over a dynamic dimension must not be tiled.
+  const char* hlo = R"(
+HloModule reduce-window
+
+mul_s64 {
+  lhs = s64[] parameter(0)
+  rhs = s64[] parameter(1)
+  ROOT mul = s64[] multiply(lhs, rhs)
+}
+
+ENTRY entry (arg: s64[3,<=256]) -> s64[3,<=256] {
+  arg = s64[3,<=256]{1,0} parameter(0)
+  constant = s64[] constant(1)
+  ROOT reduce-window = s64[3,<=256]{1,0} reduce-window(s64[3,<=256]{1,0} %arg, s64[] %constant), window={size=1x256 pad=0_0x255_0}, to_apply=%mul_s64
+})";
+
+  CheckReduceWindowRewrite(hlo, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, DynamicAssociativeScanUsesSingleReduceWindow) {
+  // A scan instruction over a dynamic dimension must use the single
+  // reduce-window lowering, never the tree rewrite.
+  const char* hlo = R"(
+HloModule scan
+
+add_s32 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  add = s32[] add(lhs, rhs)
+  ROOT tuple = (s32[], s32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: s32[<=256]) -> s32[<=256] {
+  arg = s32[<=256]{0} parameter(0)
+  constant = s32[] constant(0)
+  scan = (s32[<=256]{0}, s32[]) scan(s32[<=256]{0} %arg, s32[] %constant), dimensions={0}, num_carries=1, to_apply=%add_s32, is_associative=true
+  ROOT result = s32[<=256]{0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, R"(
+// CHECK-NOT: map(
+// CHECK: reduce-window({{.*}}), window={size=256 pad=255_0}
+// CHECK-NOT: map(
+)");
+}
+
+TEST_F(ReduceWindowRewriterTest, DynamicScanR1NotTiled) {
+  // R1 scans on a dynamic dimension may get the unit-dimension wrap but must
+  // not be tiled.
+  const char* hlo = R"(
+HloModule reduce-window
+
+mul_s64 {
+  lhs = s64[] parameter(0)
+  rhs = s64[] parameter(1)
+  ROOT mul = s64[] multiply(lhs, rhs)
+}
+
+ENTRY entry (arg: s64[<=256]) -> s64[<=256] {
+  arg = s64[<=256]{0} parameter(0)
+  constant = s64[] constant(1)
+  ROOT reduce-window = s64[<=256]{0} reduce-window(s64[<=256]{0} %arg, s64[] %constant), window={size=256 pad=255_0}, to_apply=%mul_s64
+})";
+
+  CheckReduceWindowRewrite(hlo, R"(
+// CHECK-NOT: map(
+// CHECK: reduce-window({{.*}}), window={size=256x1 pad=255_0x0_0}
+// CHECK-NOT: map(
+)");
+}
+
 }  // namespace
 }  // namespace xla

@@ -44,9 +44,35 @@ copy_file(
     is_executable = True,
 )
 
+#Need no gpu to run
+_FILECHECK_ONLY_TESTS = [
+    #TODO(rocm) Most of thease test cuda lowering only
+    "loop/acos_f32.hlo",
+    "loop/acos_f64.hlo",
+    "loop/acosh_f32.hlo",
+    "loop/acosh_f64.hlo",
+    "loop/asin_f32.hlo",
+    "loop/asin_f64.hlo",
+    "loop/asinh_f32.hlo",
+    "loop/asinh_f64.hlo",
+    "loop/atanh_f32.hlo",
+    "loop/atanh_f64.hlo",
+    "loop/broadcast_constant_block_dim_limit.hlo",
+    "loop/cosh_f32.hlo",
+    "loop/cosh_f64.hlo",
+    "loop/dot_fp8.hlo",
+    "loop/large_loop_slow_compile_time.hlo",
+    "loop/sinh_f32.hlo",
+    "loop/sinh_f64.hlo",
+    "concatenate/test_small_dim.hlo",
+]
+
 lit_test_suite(
     name = "tests",
-    srcs = glob(["**/*.hlo"]),
+    srcs = glob(
+        ["**/*.hlo"],
+        exclude = _FILECHECK_ONLY_TESTS,
+    ),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
@@ -55,6 +81,19 @@ lit_test_suite(
         ":gpu_fusion_to_mlir_copy",
         "//xla/backends/cpu/codegen/tools:cpu_test_correctness",
         "//xla/backends/gpu/codegen/tools:gpu_test_correctness",
+        "//xla/codegen/tools:emitters_opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+lit_test_suite(
+    name = "filecheck_only_tests",
+    srcs = _FILECHECK_ONLY_TESTS,
+    cfg = "//xla:lit.cfg.py",
+    default_tags = ["gpu"],
+    tools = [
+        ":cpu_fusion_to_mlir_copy",
+        ":gpu_fusion_to_mlir_copy",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],

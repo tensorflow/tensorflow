@@ -368,7 +368,7 @@ cc_library(
         ":platform",
         ":stream",
         ":stream_executor_h",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -481,6 +481,10 @@ cc_library(
     name = "launch_dim",
     srcs = ["launch_dim.cc"],
     hdrs = ["launch_dim.h"],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+    ]),
     deps = [
         ":launch_dim_proto_cc",
         "//xla/tsl/platform:statusor",
@@ -866,6 +870,10 @@ cc_library(
     name = "kernel_spec",
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+    ]),
     deps = [
         ":kernel",
         ":kernel_args",

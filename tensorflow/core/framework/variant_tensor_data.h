@@ -82,7 +82,7 @@ class VariantTensorData {
   Tensor* add_tensor(TensorConstructorArgs&&... args);
 
   // Conversion to and from VariantTensorDataProto
-  void ToProto(VariantTensorDataProto* proto) const;
+  bool ToProto(VariantTensorDataProto* proto) const;
   // This allows optimizations via std::move.
   bool FromProto(VariantTensorDataProto proto);
   bool FromConstProto(const VariantTensorDataProto& proto);

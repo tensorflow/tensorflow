@@ -159,10 +159,10 @@ class _Optimizer(_WithSlotVariables):
           f"Received value {clipvalue} for argument `clipvalue`."
       )
     if clipvalue is None:
-      clipvalue = (None, None)
+      clipvalue = (None, None)  # pyrefly: ignore[bad-assignment]
     elif not isinstance(clipvalue, tuple):
       clipvalue = (-1.0 * clipvalue, clipvalue)
-    self.clip_gradient_min, self.clip_gradient_max = clipvalue
+    self.clip_gradient_min, self.clip_gradient_max = clipvalue  # pyrefly: ignore[not-iterable]
 
     self.weight_decay_factor = weight_decay_factor
     self.multiply_weight_decay_factor_by_learning_rate = (
@@ -202,7 +202,7 @@ class _Optimizer(_WithSlotVariables):
         parameters.multiply_weight_decay_factor_by_learning_rate = True
 
     parameters.low_dimensional_packing_status = (
-        self.low_dimensional_packing_status
+        self.low_dimensional_packing_status  # pyrefly: ignore[bad-assignment]
     )
 
   @abc.abstractmethod
@@ -329,7 +329,7 @@ class CustomOptimizer(_Optimizer):
         clip_weight_min=None,
         clip_weight_max=None,
         weight_decay_factor=None,
-        multiply_weight_decay_factor_by_learning_rate=None,
+        multiply_weight_decay_factor_by_learning_rate=None,  # pyrefly: ignore[bad-argument-type]
         clipvalue=None,
         slot_variable_creation_fn=None,
         low_dimensional_packing_status=False,
@@ -490,7 +490,7 @@ class SGD(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         None,
         low_dimensional_packing_status,
@@ -610,7 +610,7 @@ class Adagrad(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -748,7 +748,7 @@ class AdagradMomentum(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -917,7 +917,7 @@ class FTRL(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -1081,7 +1081,7 @@ class Adam(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -1251,6 +1251,71 @@ class CustomCombiner(_WithSlotVariables):
     return self.combiner
 
 
+@tf_export("tpu.experimental.embedding.PositionalWeightedCombiner")
+class PositionalWeightedCombiner(_WithSlotVariables):
+  """Positional weighted combiner for TPU embeddings on SparseCore.
+
+  This class specifies a positional weighted sum combiner over the TPU embedding
+  lookup results. It also supports a custom optimizer computation to be
+  performed on the positional weights.
+  """
+
+  def __init__(
+      self,
+      max_valency: int,
+      initializer: init_ops_v2.Initializer,
+      custom_optimizer: CustomOptimizer,
+  ) -> Any:
+    """Initializes the positional weighted combiner.
+
+    Args:
+      max_valency: The valency cap of the corresponding feature. This value is
+        also used as the number of positional weights.
+      initializer: The initializer for the positional weights.
+      custom_optimizer: CustomOptimizer encapsulating the custom optimizer
+        computation, learning rate, slot names, slot initializers, and
+        hyperparameters.
+    """
+    super().__init__()
+    self.combiner = "positional_weighted"
+    self.max_valency = max_valency
+    self.initializer = initializer
+    self.custom_optimizer = custom_optimizer
+
+    if max_valency <= 0:
+      raise ValueError(f"Expect max_valency > 0, but got {max_valency}.")
+    if initializer is None:
+      raise ValueError("Expect initializer to be not None.")
+    if custom_optimizer is None or not isinstance(
+        custom_optimizer, CustomOptimizer
+    ):
+      raise ValueError(
+          "Expect custom_optimizer to be an instance of CustomOptimizer, but"
+          f" got {type(custom_optimizer)}."
+      )
+
+    self.combiner_weights_learning_rate = custom_optimizer.learning_rate
+    self.custom_optimizer_function = custom_optimizer.custom_computation
+    self.custom_computation = custom_optimizer.custom_computation
+
+    self._slot_names_attr = tuple(custom_optimizer._slot_names())
+    self._slot_initializers_attr = tuple(custom_optimizer._slot_initializers())
+    self._hyperparameters_attr = tuple(custom_optimizer.hyperparameters or ())
+
+  def _slot_names(self) -> List[Text]:
+    return list(self._slot_names_attr)
+
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
+    return list(self._slot_initializers_attr)
+
+  @property
+  def hyperparameters(self) -> List[Union[float, Callable[[], float]]]:
+    return list(self._hyperparameters_attr)
+
+  def __str__(self) -> str:
+    return self.combiner
+
+
 @tf_export("tpu.experimental.embedding.QuantizationConfig")
 class QuantizationConfig:
   """Settings for simulated quantization of the tpu embedding table.
@@ -1360,7 +1425,7 @@ class TableConfig:
       optimizer: Optional[_Optimizer] = None,
       combiner: Union[Text, CustomCombiner] = "mean",
       name: Optional[Text] = None,
-      quantization_config: QuantizationConfig = None,
+      quantization_config: QuantizationConfig = None,  # pyrefly: ignore[bad-function-definition]
       # TODO(b/295372790): Change the type to SparseCoreTableLayout after it is
       # open sourced.
       layout: Optional[Any] = None,
@@ -1432,10 +1497,13 @@ class TableConfig:
             f"String argument `combiner` must be in {accepted_str_combiners}. "
             f"Received: {combiner}")
 
-    elif not isinstance(combiner, CustomCombiner):
+    elif not isinstance(
+        combiner, (CustomCombiner, PositionalWeightedCombiner)
+    ):
       raise ValueError(
-          f"Argument `combiner` should either be a str or a CustomCombiner. "
-          f"Received: {type(combiner)}"
+          "Argument `combiner` should either be a str, CustomCombiner, or"
+          " PositionalWeightedCombiner."
+          f" Received: {type(combiner)}"
       )
 
     if name is None:
@@ -1490,7 +1558,7 @@ class TableConfig:
       num_hosts: int,
       learning_rate_index: Dict[Callable[[], Any], int]):
     """Set the table descriptor from the table data."""
-    table_descriptor.name = self.name
+    table_descriptor.name = self.name  # pyrefly: ignore[bad-assignment]
 
     # For small tables, we pad to the number of hosts so that at least one
     # id will be assigned to each host.

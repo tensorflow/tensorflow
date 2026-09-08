@@ -1,0 +1,28 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_select
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xi1>, %[[ARG1:.*]]: tensor<8x16xf32>, %[[ARG2:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = binary_select %[[ARG0]], %[[ARG1]], %[[ARG2]]
+// CHECK: results %[[OUT]]
+
+test_select {
+  %p0 = pred[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %p2 = f32[8,16] parameter(2)
+  %out = f32[8,16] select(%p0, %p1, %p2)
+}
+
+// -----
+
+// CHECK-LABEL: @test_clamp
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>, %[[ARG2:.*]]: tensor<8x16xf32>
+// CHECK: %[[MAX:.*]] = max %[[ARG1]], %[[ARG0]]
+// CHECK: %[[OUT:.*]] = min %[[ARG2]], %[[MAX]]
+// CHECK: results %[[OUT]]
+
+test_clamp {
+  %p0 = f32[8,16] parameter(0)
+  %min = f32[8,16] parameter(1)
+  %max = f32[8,16] parameter(2)
+  %out = f32[8,16] clamp(%min, %p0, %max)
+}

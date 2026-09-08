@@ -222,6 +222,23 @@ module @maximal_sharding_module {
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>
   }
+
+  // CHECK-LABEL: @maximal_tuple_sharding_empty_tuple
+  func.func @maximal_tuple_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+    // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+    // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+    // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME: } : (tensor<2xi64>) -> ()
+    // CHECK-NEXT: return %arg0 : tensor<2xi64>
+    %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+      api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+      has_side_effect = true,
+      mhlo.sharding = "{{maximal_mesh[device_id=0]}}",
+      operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
+    } : (tensor<2xi64>) -> tuple<>
+    return %arg0 : tensor<2xi64>
+  }
 }
 
 // -----

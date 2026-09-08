@@ -20,9 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
@@ -98,10 +100,9 @@ class Intrinsic {
   // How many arguments this function takes.
   static constexpr int8_t kNumArgs = 1;
 
-  template <typename... Types>
-  static std::string Name(Types... args) {
+  static std::string Name(llvm::ArrayRef<Type> types) {
     return ::xla::codegen::intrinsic::GetTypedName(
-        Derived::kLastArgIsReturnType, {args...}, Derived::kName);
+        Derived::kLastArgIsReturnType, types, Derived::kName);
   }
 
   template <typename... Args>
@@ -113,26 +114,26 @@ class Intrinsic {
     return Derived::CreateDefinition(module, types...);
   }
 
-  template <typename... Args>
   static mlir::func::FuncOp GetOrInsertDeclaration(mlir::OpBuilder& b,
                                                    mlir::ModuleOp& module,
-                                                   Args... args) {
-    static_assert(sizeof...(Args) > 0, "At least one argument is required.");
-    static_assert((std::is_convertible_v<Args, Type> && ...),
-                  "All arguments must be intrinsic::Type.");
+                                                   llvm::ArrayRef<Type> types) {
+    CHECK(!types.empty()) << "At least one argument is required.";
 
-    std::vector<mlir::Type> types{
-        Type::TypeToIrType(args, *module.getContext())...};
-    mlir::Type return_type = types.front();
+    std::vector<mlir::Type> ir_types;
+    ir_types.reserve(types.size());
+    for (const auto& type : types) {
+      ir_types.push_back(Type::TypeToIrType(type, *module.getContext()));
+    }
+    mlir::Type return_type = ir_types.front();
     if (Derived::kLastArgIsReturnType) {
-      return_type = types.back();
-      types.pop_back();
+      return_type = ir_types.back();
+      ir_types.pop_back();
     }
     mlir::FunctionType type =
-        mlir::FunctionType::get(module.getContext(), types, {return_type});
+        mlir::FunctionType::get(module.getContext(), ir_types, {return_type});
 
     // Check if the function already exists, and has the correct type.
-    std::string name = Name(args...);
+    std::string name = Name(types);
     if (auto func = module.lookupSymbol<mlir::func::FuncOp>(name);
         func && func.getFunctionType() == type) {
       return func;
@@ -147,36 +148,28 @@ class Intrinsic {
     return decl;
   }
 
-  template <typename... Args>
   static llvm::Function* GetOrInsertDeclaration(llvm::Module* module,
-                                                Args... args) {
-    static_assert(sizeof...(Args) > 0, "At least one argument is required.");
-    static_assert((std::is_convertible_v<Args, Type> && ...),
-                  "All arguments must be intrinsic::Type.");
-    std::vector<llvm::Type*> types{
-        Type::TypeToIrType(args, module->getContext())...};
-    llvm::Type* return_type = types.front();
-    if (Derived::kLastArgIsReturnType) {
-      return_type = types.back();
-      types.pop_back();
+                                                llvm::ArrayRef<Type> types) {
+    CHECK(!types.empty()) << "At least one argument is required.";
+    std::vector<llvm::Type*> ir_types;
+    ir_types.reserve(types.size());
+    for (const auto& type : types) {
+      ir_types.push_back(Type::TypeToIrType(type, module->getContext()));
     }
-    auto* function_type = llvm::FunctionType::get(return_type, types, false);
+    llvm::Type* return_type = ir_types.front();
+    if (Derived::kLastArgIsReturnType) {
+      return_type = ir_types.back();
+      ir_types.pop_back();
+    }
+    auto* function_type = llvm::FunctionType::get(return_type, ir_types, false);
     return llvm::cast<llvm::Function>(
-        module->getOrInsertFunction(Name(args...), function_type).getCallee());
+        module->getOrInsertFunction(Name(types), function_type).getCallee());
   }
 
-  static bool IsSupported(absl::string_view features, Type type) {
-    std::vector<std::vector<Type>> supported_types;
-    if constexpr (std::is_invocable_v<decltype(Derived::SupportedVectorTypes),
-                                      absl::string_view>) {
-      supported_types = Derived::SupportedVectorTypes(features);
-    } else {
-      supported_types = Derived::SupportedVectorTypes();
-    }
-    for (const auto& supported_args : supported_types) {
-      const Type& first_arg = supported_args.front();
-      if (first_arg.element_type() == type.element_type() &&
-          first_arg.vector_width() == type.vector_width()) {
+  static bool IsSupported(absl::string_view features,
+                          llvm::ArrayRef<Type> types) {
+    for (const auto& supported_args : Derived::SupportedVectorTypes(features)) {
+      if (llvm::ArrayRef<Type>(supported_args) == types) {
         return true;
       }
     }

@@ -234,6 +234,36 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(cycle_length=[0, -2, 1048577, 2**63 - 1]),
+      )
+  )
+  def testInvalidCycleLength(self, cycle_length: int) -> None:
+    """Verifies that out-of-bounds or non-positive cycle_length raises an error."""
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(10).interleave(
+          dataset_ops.Dataset.from_tensors,
+          cycle_length=cycle_length,
+      )
+      self.getDatasetOutput(dataset)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(block_length=[0, -1, 1048577, 2**63 - 1]),
+      )
+  )
+  def testInvalidBlockLength(self, block_length: int) -> None:
+    """Verifies that out-of-bounds or non-positive block_length raises an error."""
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(10).interleave(
+          dataset_ops.Dataset.from_tensors,
+          block_length=block_length,
+      )
+      self.getDatasetOutput(dataset)
+
   @combinations.generate(test_base.default_test_combinations())
   def testInterleaveSparse(self):
 

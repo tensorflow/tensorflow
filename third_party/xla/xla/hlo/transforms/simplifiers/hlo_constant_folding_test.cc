@@ -21,12 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
@@ -46,6 +48,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 namespace op = xla::testing::opcode_matchers;
 namespace m = xla::match;
 using HloConstantFoldingTest = HloHardwareIndependentTestBase;
@@ -1398,6 +1401,34 @@ TEST_F(HloConstantFoldingTest, LateOptionsDontFoldGteWithControlDependency) {
   ASSERT_OK_AND_ASSIGN(bool result,
                        RunHloPass(&constant_folding, module.get()));
   EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest, SkipComputationsWithFoldedCallers) {
+  absl::string_view hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %foo
+    // CHECK: %p0 = s32[] parameter(0)
+    // CHECK: %c0 = s32[] constant(10)
+    // CHECK: %c1 = s32[] constant(20)
+    // CHECK: ROOT %add = s32[] add(%c0, %c1)
+    foo {
+      p0 = s32[] parameter(0)
+      c0 = s32[] constant(10)
+      c1 = s32[] constant(20)
+      ROOT add = s32[] add(c0, c1)
+    }
+
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK: ROOT %constant{{.*}} = s32[] constant(30)
+    ENTRY entry {
+      c = s32[] constant(5)
+      ROOT call = s32[] call(c), to_apply=foo
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloConstantFolding constant_folding;
+  EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace

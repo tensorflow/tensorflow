@@ -1567,6 +1567,7 @@ cc_library(
     deps = [
         ":optimization_registry",
         "//tensorflow/core:graph",
+        "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/container:inlined_vector",
@@ -3022,6 +3023,7 @@ tf_cc_test(
     srcs = ["process_util_test.cc"],
     deps = [
         ":process_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

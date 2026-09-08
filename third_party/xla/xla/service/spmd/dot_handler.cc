@@ -1314,7 +1314,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       }
 
       dot = body_b.AddInstruction(HloInstruction::CreateConvolve(
-          new_dot_shape, dot_lhs, dot_rhs, original_dot->feature_group_count(),
+          new_dot_shape, {dot_lhs, dot_rhs},
+          original_dot->feature_group_count(),
           original_dot->batch_group_count(),
           GenNewWindow(original_dot, dot_lhs, dot_rhs, lhs_concat_dim,
                        rhs_concat_dim, windowed_at_contracting_dims,

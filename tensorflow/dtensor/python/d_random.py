@@ -120,7 +120,7 @@ def _old_tf_random_stateless_uniform(
       if not dtype.is_integer and maxval is None:
         maxval = 1
       val_range = ops.convert_to_tensor(
-          maxval - minval, dtype=dtype, name="range"
+          maxval - minval, dtype=dtype, name="range"  # pyrefly: ignore[unsupported-operation]
       )
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       if dtype.is_integer:

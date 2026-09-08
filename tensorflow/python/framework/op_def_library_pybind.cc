@@ -87,7 +87,7 @@ inline std::string PyRepr(const py::handle& value) {
 }
 
 py::object DataTypeToPybindObject(const DataType& data_type) {
-  return py::reinterpret_borrow<py::object>(
+  return py::reinterpret_steal<py::object>(
       DataTypeToPyObject(data_type).release());
 }
 
@@ -99,7 +99,7 @@ py::object ToAttributeType(const py::handle& value, const AttributeType type) {
   if (result == nullptr) {
     throw std::runtime_error("Failed to perform conversion.");
   }
-  return py::reinterpret_borrow<py::object>(result.release());
+  return py::reinterpret_steal<py::object>(result.release());
 }
 
 inline bool MakeBool(const py::handle& value, const std::string& arg_name) {
@@ -611,7 +611,7 @@ void CheckAllInputsUsed(const std::string& op_type_name,
 
 // This module provides a subset of the functionality from op_def_library.py
 // and relies on op_def_library_test.py for test coverage.
-PYBIND11_MODULE(_op_def_library_pybind, m) {
+PYBIND11_MODULE(_op_def_library_pybind, m, pybind11::mod_gil_not_used()) {
   // Method assumes all inputs in `keywords` are of type tf.Tensor.
   m.def("process_inputs", [](std::string& op_type_name, int producer_version,
                              py::dict& keywords) {

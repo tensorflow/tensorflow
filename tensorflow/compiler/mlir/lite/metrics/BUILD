@@ -38,6 +38,7 @@ cc_library(
         ":converter_error_data_proto_cc",
         ":types_util",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

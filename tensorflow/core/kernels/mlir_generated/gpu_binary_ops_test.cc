@@ -1218,6 +1218,10 @@ double baseline_polygamma(double n, double x) {
   if (x <= 0 && x == std::floor(x)) {
     if (static_cast<int>(n) % 2 == 1) {
       return std::numeric_limits<double>::infinity();
+    } else if (static_cast<int>(n) == 0 && x == 0) {
+      // polygamma(0, x) == digamma(x); digamma has a pole at x == 0 that
+      // evaluates to -inf (negative-integer poles remain NaN).
+      return -std::numeric_limits<double>::infinity();
     } else {
       return std::numeric_limits<double>::quiet_NaN();
     }

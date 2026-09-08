@@ -27,9 +27,6 @@ message StreamExecutorGpuCrossHostRecvDescriptor {
   // Offset of the buffer within the allocation.
   int64 buffer_offset = 3;
 
-  // Serialized fabric handle for the allocation that contains the flag.
-  bytes flag_handle = 4;
-
-  // Offset of the flag within the allocation.
-  int64 flag_offset = 5;
+  // Key in key-value store used by the sender to signal completion.
+  string rendezvous_key = 4;
 }

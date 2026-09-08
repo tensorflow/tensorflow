@@ -70,7 +70,7 @@ class ParallelConcatUpdate : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto value = ctx->input(0);
+    const Tensor& value = ctx->input(0);
     // Value should be at least rank 1. Also the 0th dimension should be
     // at least loc_.
     OP_REQUIRES(ctx, value.dims() >= 1,
@@ -80,7 +80,7 @@ class ParallelConcatUpdate : public OpKernel {
         errors::InvalidArgument("0th dimension of value = ", value.dim_size(0),
                                 " must be greater than loc_ = ", loc_));
 
-    auto update = ctx->input(1);
+    const Tensor& update = ctx->input(1);
 
     OP_REQUIRES(
         ctx, value.dims() == update.dims(),
@@ -98,11 +98,25 @@ class ParallelConcatUpdate : public OpKernel {
                 errors::InvalidArgument("update shape doesn't match: ",
                                         update.shape().DebugString()));
 
-    Tensor output = value;  // This creates an alias intentionally.
     const auto& d = ctx->eigen_device<Device>();
-    OP_REQUIRES_OK(
-        ctx, ::tensorflow::functor::DoParallelConcat(d, update, loc_, &output));
-    ctx->set_output(0, output);
+    if (value.dtype() == DT_STRING) {
+      int forwarded_input = -1;
+      Tensor* output_ptr = nullptr;
+      OP_REQUIRES_OK(ctx,
+                     ctx->forward_input_or_allocate_output(
+                         {0}, 0, value.shape(), &output_ptr, &forwarded_input));
+      if (forwarded_input == -1) {
+        OP_REQUIRES_OK(ctx,
+                       ::tensorflow::functor::DoCopy(d, value, output_ptr));
+      }
+      OP_REQUIRES_OK(ctx, ::tensorflow::functor::DoParallelConcat(
+                              d, update, loc_, output_ptr));
+    } else {
+      Tensor output = value;  // This creates an alias intentionally.
+      OP_REQUIRES_OK(ctx, ::tensorflow::functor::DoParallelConcat(
+                              d, update, loc_, &output));
+      ctx->set_output(0, output);
+    }
   }
 
  private:
@@ -208,9 +222,9 @@ class InplaceOpBase : public OpKernel {
   explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    auto x = ctx->input(0);
-    auto i = ctx->input(1);
-    auto v = ctx->input(2);
+    const Tensor& x = ctx->input(0);
+    const Tensor& i = ctx->input(1);
+    const Tensor& v = ctx->input(2);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(i.shape()),
                 errors::InvalidArgument("i must be a vector. ",
@@ -231,17 +245,32 @@ class InplaceOpBase : public OpKernel {
                     "i and x shape doesn't match at index 0: ",
                     i.shape().DebugString(), " vs. ", v.shape().DebugString()));
 
-    Tensor y = x;  // This creates an alias intentionally.
+    Tensor* y_ptr = nullptr;
+    Tensor aliased_y;
+    if (x.dtype() == DT_STRING) {
+      int forwarded_input = -1;
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {0}, 0, x.shape(), &y_ptr, &forwarded_input));
+      if (forwarded_input == -1) {
+        OP_REQUIRES_OK(ctx, DoCopy(ctx, x, y_ptr));
+      }
+    } else {
+      aliased_y = x;  // This creates an alias intentionally.
+      ctx->set_output(0, aliased_y);
+      y_ptr = &aliased_y;
+    }
+
     // Skip processing if tensors are empty.
     if (x.NumElements() > 0 && v.NumElements() > 0) {
-      OP_REQUIRES_OK(ctx, DoCompute(ctx, i, v, &y));
+      OP_REQUIRES_OK(ctx, DoCompute(ctx, i, v, y_ptr));
     }
-    ctx->set_output(0, y);
   }
 
  protected:
   virtual absl::Status DoCompute(OpKernelContext* ctx, const Tensor& i,
                                  const Tensor& v, Tensor* y) = 0;
+  virtual absl::Status DoCopy(OpKernelContext* ctx, const Tensor& x,
+                              Tensor* y) = 0;
 };
 
 }  // end namespace
@@ -325,6 +354,11 @@ class InplaceOp : public InplaceOpBase {
     const auto& d = ctx->eigen_device<Device>();
     return ::tensorflow::functor::DoInplace(d, op, i, v, y);
   }
+  absl::Status DoCopy(OpKernelContext* ctx, const Tensor& x,
+                      Tensor* y) override {
+    const auto& d = ctx->eigen_device<Device>();
+    return ::tensorflow::functor::DoCopy(d, x, y);
+  }
 };
 
 class CopyOpBase : public OpKernel {
@@ -332,7 +366,7 @@ class CopyOpBase : public OpKernel {
   explicit CopyOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    auto x = ctx->input(0);
+    const Tensor& x = ctx->input(0);
     Tensor* y;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, x.shape(), &y));
     OP_REQUIRES_OK(ctx, DoCompute(ctx, x, y));

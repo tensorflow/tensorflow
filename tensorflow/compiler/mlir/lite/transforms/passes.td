@@ -354,13 +354,13 @@ def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::Modul
   ];
 }
 
-def PropagateQsvPass : Pass<"tfl-propagate-qsv", "mlir::ModuleOp"> {
-  let summary = "Propagates Quantization Scale/Value (QSV) information through the graph.";
+def PropagateQParamsPass : Pass<"tfl-propagate-qparams", "mlir::ModuleOp"> {
+  let summary = "Propagates Quantization Parameters (scale and zero point) information through the graph.";
   let description = [{
-      This transformation pass propagates the QSV data across operations in the
-      TensorFlow Lite dialect.
+      This transformation pass propagates the quantization parameters across
+      operations in the TensorFlow Lite dialect.
   }];
-  let constructor = "CreatePropagateQsvPass()";
+  let constructor = "CreatePropagateQParamsPass()";
   let dependentDialects = [
     "TFL::TensorFlowLiteDialect",
     "mlir::quant::QuantDialect"

@@ -348,7 +348,20 @@ Value EmitClampedRTVar(mlir::ImplicitLocOpBuilder& b,
                        const Interval& bounds) {
   mlir::OpBuilder::InsertionGuard guard(b);
   b.setInsertionPointAfterValue(tensor_value);
-  Value scalar_value = mlir::tensor::ExtractOp::create(b, tensor_value);
+  Value scalar_value;
+  auto ranked_type = tensor_value.getType();
+  if (ranked_type.getRank() == 0) {
+    // Rank-0 tensor (scalar): extract with no indices (existing behaviour).
+    scalar_value = mlir::tensor::ExtractOp::create(b, tensor_value);
+  } else {
+    // Rank-N tensor (N >= 1): the tile has been narrowed to exactly one
+    // element per dimension (e.g. group_sizes[g] with tile_G=1, or
+    // group_sizes[b, g] with tile_B=1 and tile_G=1).
+    // Extract element [0, 0, ..., 0].
+    Value zero = CreateConst(b, b.getIndexType(), 0);
+    llvm::SmallVector<mlir::Value> indices(ranked_type.getRank(), zero);
+    scalar_value = mlir::tensor::ExtractOp::create(b, tensor_value, indices);
+  }
   Value clamped_index =
       EmitClampedIndex(b, scalar_value, bounds.lower, bounds.upper);
   return Cast(b, clamped_index, b.getIndexType());

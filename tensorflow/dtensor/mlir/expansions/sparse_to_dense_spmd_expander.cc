@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project

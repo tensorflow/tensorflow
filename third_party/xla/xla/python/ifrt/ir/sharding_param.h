@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -117,7 +117,7 @@ class ShardingParam {
     }
 
     // Produces a flat list of device ids according to the permutation.
-    void ToDeviceList(llvm::SmallVectorImpl<int>& out_devices) const;
+    void ToDeviceList(absl::InlinedVector<int, 4>& out_devices) const;
   };
 
   ShardingParam(std::vector<int64_t> dim_shards, MinorToMajor minor_to_major,

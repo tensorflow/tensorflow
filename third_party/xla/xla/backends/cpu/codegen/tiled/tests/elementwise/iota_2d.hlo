@@ -9,6 +9,9 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
 // RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
 // RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
 // RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
 
 fusion {
@@ -51,3 +54,6 @@ ENTRY main {
 // NEW-VECTOR:         %[[SITOFP:.*]] = arith.sitofp %{{.*}} : vector<4xi32> to vector<4xf32>
 // NEW-VECTOR:         %[[BCAST:.*]] = vector.broadcast %[[SITOFP]] : vector<4xf32> to vector<8x4xf32>
 // NEW-VECTOR:         vector.transfer_write %[[BCAST]], %{{.*}} : vector<8x4xf32>, memref<128x256xf32>
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc

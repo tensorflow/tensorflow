@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for variable store."""
 
+import functools
 import gc
 import threading
 
@@ -73,6 +74,42 @@ class VariableScopeTest(test.TestCase):
     # This will only contain uncollectable garbage, i.e. reference cycles
     # involving objects with __del__ defined.
     self.assertEqual(0, len(gc.garbage))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNeedsNoArguments(self):
+    def f_no_args():
+      pass
+
+    def f_defaults(a=1, b=2):
+      pass
+
+    def f_req_arg(a):
+      pass
+
+    def f_kwonly_req(*, key):
+      pass
+
+    def f_kwonly_def(*, key=1):
+      pass
+
+    def f_varargs(*args, **kwargs):
+      pass
+
+    class CallableObj:
+
+      def __call__(self, x=1):
+        pass
+
+    self.assertTrue(variable_scope._needs_no_arguments(f_no_args))
+    self.assertTrue(variable_scope._needs_no_arguments(f_defaults))
+    self.assertFalse(variable_scope._needs_no_arguments(f_req_arg))
+    self.assertFalse(variable_scope._needs_no_arguments(f_kwonly_req))
+    self.assertTrue(variable_scope._needs_no_arguments(f_kwonly_def))
+    self.assertTrue(variable_scope._needs_no_arguments(f_varargs))
+    self.assertTrue(variable_scope._needs_no_arguments(CallableObj()))
+    self.assertTrue(
+        variable_scope._needs_no_arguments(functools.partial(f_req_arg, 10))
+    )
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode

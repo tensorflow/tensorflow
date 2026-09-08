@@ -170,6 +170,15 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   TfLiteStatus RunImpl() override;
   static BenchmarkParams DefaultParams();
 
+  bool IsFullyAccelerated() const { return is_fully_delegated_; }
+  int TotalNodeCount() const { return total_node_count_; }
+  int NpuDelegatedNodeCount() const { return npu_delegated_node_count_; }
+  int NpuPartitionCount() const { return npu_partition_count_; }
+  int GpuDelegatedNodeCount() const { return gpu_delegated_node_count_; }
+  int GpuPartitionCount() const { return gpu_partition_count_; }
+  int CpuDelegatedNodeCount() const { return cpu_delegated_node_count_; }
+  int CpuPartitionCount() const { return cpu_partition_count_; }
+
  protected:
   TfLiteStatus PrepareInputData() override;
   TfLiteStatus ResetInputsAndOutputs() override;
@@ -216,6 +225,15 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   // Always TFLITE_LOG the benchmark result.
   BenchmarkLoggingListener log_output_;
   std::unique_ptr<tools::ModelLoader> model_loader_;
+
+  int total_node_count_ = 0;
+  int npu_delegated_node_count_ = 0;
+  int npu_partition_count_ = 0;
+  int gpu_delegated_node_count_ = 0;
+  int gpu_partition_count_ = 0;
+  int cpu_delegated_node_count_ = 0;
+  int cpu_partition_count_ = 0;
+  bool is_fully_delegated_ = false;
 };
 
 }  // namespace benchmark

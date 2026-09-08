@@ -84,6 +84,9 @@ class EmitterContext {
   mlir::Value tid() const { return tid_; }
   const HloFusionInstruction& fusion() const { return *fusion_; }
   xtile::EntryFuncOp entry_func() const { return entry_func_; }
+  const gpu::experimental::TiledHloComputation& tiled_computation() const {
+    return tiled_computation_;
+  }
 
   TensorValue TiledHloToTensorValue(
       const gpu::experimental::TiledHloInstruction& tiled_hlo) const {

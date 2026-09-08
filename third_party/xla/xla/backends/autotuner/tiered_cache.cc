@@ -30,11 +30,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotune_fingerprint.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
@@ -44,11 +43,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-
-std::string ToString(tsl::Fprint128 fingerprint) {
-  return absl::StrCat(absl::Hex(fingerprint.high64, absl::kZeroPad16),
-                      absl::Hex(fingerprint.low64, absl::kZeroPad16));
-}
 
 // TODO(b/444398084): Use codegen options fingerprint when strict matching
 // is enabled. Ignoring it for now since the always changing debug options
@@ -96,7 +90,8 @@ autotuner::AutotuneTargetKey TieredCache::BuildTargetKey(
   autotuner::AutotuneTargetKey target_key;
   target_key.set_device(context_.device());
   target_key.set_explicit_version(context_.explicit_version());
-  target_key.set_hlo_fingerprint(ToString(GetHloFingerprint(instr)));
+  target_key.set_hlo_fingerprint(
+      xla::AutotuneFingerprintToString(GetHloFingerprint(instr)));
   return target_key;
 }
 

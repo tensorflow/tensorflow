@@ -25,12 +25,14 @@ def TPU_Dialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
   let extraClassDeclaration = [{
-    static StringRef GetCoreTypeKey() { return "tpu.core_type"; }
+    static constexpr StringRef GetMainKey() { return "tpu.main"; }
+    static constexpr StringRef GetCoreTypeKey() { return "tpu.core_type"; }
 
     static std::optional<CoreType> GetCoreTypeAttr(Operation *op);
   }];
   let hasConstantMaterializer = 1;
   let hasCanonicalizer = 1;
+  let hasOperationAttrVerify = 1;
 }
 
 class TPU_Attr<string name, string mnemonic_, list<Trait> traits = []>

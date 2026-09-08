@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -91,13 +92,13 @@ absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
     ABSL_ASSIGN_OR_RETURN(KernelBinary binary, GetKernelSpec());
     ABSL_RETURN_IF_ERROR(
         record_ctx
-            .CreateLaunch(
-                "AddI32", binary.data(), binary.size(), binary.format,
-                /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}}, /*shared_mem_bytes=*/0,
-                std::vector<ffi::KernelArg>{ffi::DevicePointer{scratch},
-                                            ffi::DevicePointer{in1},
-                                            ffi::DevicePointer{res}},
-                /*dependencies=*/{memcpy_d2d})
+            .CreateLaunch("AddI32", binary.data(), binary.size(), binary.format,
+                          /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}},
+                          /*shared_mem_bytes=*/0, /*uses_pdl=*/false,
+                          std::vector<ffi::KernelArg>{
+                              ffi::DevicePointer{scratch},
+                              ffi::DevicePointer{in1}, ffi::DevicePointer{res}},
+                          /*dependencies=*/{memcpy_d2d})
             .status());
   } else if (action == ffi::RecordAction::kUpdate) {
     auto cmds = record_ctx.commands();

@@ -325,6 +325,43 @@ ENTRY entry {
   EXPECT_TRUE(RunFileCheck(module->ToString(), hlo_string).value());
 }
 
+TEST_F(CollectiveOpsCseTest, MultipleCollectivesWithDistantPredecessor) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = s32[1,8]{1,0} parameter(0)
+  ag0 = s32[2,8]{1,0} all-gather(param0), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+  chain0 = s32[2,8]{1,0} negate(ag0)
+  chain1 = s32[2,8]{1,0} negate(chain0)
+  chain2 = s32[2,8]{1,0} negate(chain1)
+  chain3 = s32[2,8]{1,0} negate(chain2)
+  chain4 = s32[2,8]{1,0} negate(chain3)
+  chain5 = s32[2,8]{1,0} negate(chain4)
+  ag1 = s32[2,8]{1,0} all-gather(param0), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+  ag2 = s32[2,8]{1,0} all-gather(param0), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+  add1 = s32[2,8]{1,0} add(chain5, ag1)
+  add2 = s32[2,8]{1,0} add(chain5, ag2)
+  ROOT tuple = (s32[2,8]{1,0}, s32[2,8]{1,0}) tuple(add1, add2)
+})";
+  // Run with distance_threshold = 3
+  auto module_status = RunPass(hlo_string, /*distance_threshold=*/3);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = std::move(module_status).value();
+  HloInstruction* tuple = module->entry_computation()->root_instruction();
+  EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
+  HloInstruction* add1 = tuple->mutable_operand(0);
+  HloInstruction* add2 = tuple->mutable_operand(1);
+  EXPECT_EQ(add1->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(add2->opcode(), HloOpcode::kAdd);
+  // ag1 and ag2 are close to each other, so ag2 should have been replaced with
+  // ag1!
+  EXPECT_EQ(add1->operand(1), add2->operand(1));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

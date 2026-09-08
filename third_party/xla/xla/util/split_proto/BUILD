@@ -44,6 +44,7 @@ tf_proto_library(
     srcs = ["human_readable_aot_executable.proto"],
     deps = [
         "//xla/pjrt/proto:compile_options_proto",
+        "//xla/service/cpu:executable_proto",
         "//xla/service/gpu:gpu_executable_proto",
     ],
 )

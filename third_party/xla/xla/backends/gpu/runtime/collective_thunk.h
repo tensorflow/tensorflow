@@ -121,7 +121,7 @@ class CollectiveThunk : public Command {
   static std::string GetDeviceString(const CollectiveParams& params);
 
   virtual CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
-      const GpuCliqueKey& clique_key) {
+      const GpuCliqueKey& clique_key, const PrepareParams& params) {
     return {};
   }
 

@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -557,6 +557,9 @@ class PjRtClient {
             std::move(host_memory_for_device_manager)) {}
 
   virtual ~PjRtClient() = default;
+
+  // Whether this client uses the C API.
+  virtual bool IsCApi() const;
 
   // Return the process index of this client. Always 0 in single-process
   // settings.

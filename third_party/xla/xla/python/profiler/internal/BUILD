@@ -29,8 +29,7 @@ cc_library(
     srcs = ["python_hooks.cc"],
     hdrs = ["python_hooks.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tf_profiler_copts() + ["-fexceptions"],
-    features = ["-use_header_modules"],  # Incompatible with -fexceptions.
+    copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "//xla/backends/profiler:__subpackages__",
         "//tensorflow/python/profiler/internal:__subpackages__",
@@ -49,7 +48,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@pybind11",
+        "@rules_python//python/cc:current_py_cc_headers",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],

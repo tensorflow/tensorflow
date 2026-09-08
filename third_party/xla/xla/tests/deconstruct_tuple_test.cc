@@ -32,7 +32,7 @@ namespace xla {
 namespace {
 
 using DeconstructTupleTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(DeconstructTupleTest, DeconstructTuple) {
   XlaBuilder builder(TestName());

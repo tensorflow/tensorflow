@@ -43,9 +43,11 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
+#include "xla/python/ifrt/mlir/fingerprint_utils.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/human_readable_json.h"
 
 namespace xla {
@@ -55,6 +57,17 @@ char IfrtIRProgram::ID = 0;
 char SerializeIfrtIRProgramOptions::ID = 0;
 char DeserializeIfrtIRProgramOptions::ID = 0;
 char IfrtIRCompileOptions::ID = 0;
+
+absl::StatusOr<uint64_t> IfrtIRProgram::Fingerprint() const {
+  absl::StatusOr<uint64_t> fingerprint = FingerprintModuleOp(mlir_module);
+  if (!fingerprint.ok()) {
+    absl::Status status = fingerprint.status();
+    tsl::errors::AppendToMessage(
+        &status, "Failed while calculating IfrtIRProgram fingerprint");
+    return status;
+  }
+  return *fingerprint;
+}
 
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options) {

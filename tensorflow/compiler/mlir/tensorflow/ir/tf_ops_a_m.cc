@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -3392,11 +3391,11 @@ LogicalResult LegacyCallOp::verifySymbolUses(
 void LegacyCallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
   // Direct call.
   if (SymbolRefAttr fAttr = getFAttr()) {
-    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    SymbolRefAttr calleeAttr = cast<SymbolRefAttr>(callee);
     return setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
   }
   // Indirect call, callee Value is the first operand.
-  return setOperand(0, callee.get<Value>());
+  return setOperand(0, cast<Value>(callee));
 }
 
 //===----------------------------------------------------------------------===//

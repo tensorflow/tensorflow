@@ -304,6 +304,12 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (options_override) {
       options = *std::move(options_override);
     }
+    for (const auto& override : options.msa_tensor_overrides.overrides()) {
+      if (override.has_pin_in_alternate_memory()) {
+        check_parameters_in_default_memory = false;
+        break;
+      }
+    }
     std::unique_ptr<TestBufferIntervalComparator> test_comparator;
     if (buffer_interval_compare.has_value()) {
       test_comparator = std::make_unique<TestBufferIntervalComparator>(

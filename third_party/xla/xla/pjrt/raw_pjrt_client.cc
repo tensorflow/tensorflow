@@ -15,4 +15,19 @@ limitations under the License.
 
 #include "xla/pjrt/raw_pjrt_client.h"
 
-namespace xla {}  // namespace xla
+namespace xla {
+
+void PjRtRawClient::ScheduleRemoteSend(
+    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
+    PjRtDeviceEventRefVector definition_events,
+    PjRtDeviceEventPromiseRef usage_event_promise,
+    Future<std::string> serialized_descriptor,
+    PjRtBuffer::RemoteSendCallback on_done) {
+  auto error = absl::UnimplementedError(
+      absl::StrCat("ScheduleRemoteSend is not implemented for %s",
+                   memory_space->DebugString()));
+  on_done(error, /*sends_were_enqueued=*/false);
+  usage_event_promise.SetError(error);
+}
+
+}  // namespace xla

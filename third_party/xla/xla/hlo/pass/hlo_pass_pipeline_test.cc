@@ -70,6 +70,33 @@ class FooToBarModulePass : public HloModulePass {
   }
 };
 
+// A module pass with a configurable name that appends a unique tag to a shared
+// log every time it runs. Used to verify the richer xla_disable_hlo_passes /
+// xla_enable_hlo_passes_only entry syntax (occurrence, pipeline scope, and
+// pass_id).
+class RecordingPass : public HloModulePass {
+ public:
+  RecordingPass(absl::string_view name, absl::string_view tag,
+                std::vector<std::string>* run_log)
+      : name_(name), tag_(tag), run_log_(run_log) {}
+
+  absl::string_view name() const override { return name_; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* /*module*/,
+      const absl::flat_hash_set<absl::string_view>& /*execution_threads*/)
+      override {
+    run_log_->push_back(tag_);
+    return false;
+  }
+
+ private:
+  std::string name_;
+  std::string tag_;
+  std::vector<std::string>* run_log_;
+};
+
 // A module pass which renames root instructions names in reverse string order,
 // e.g. "xyz" becomes "zyx".
 class ReverseStringModulePass : public HloModulePass {
@@ -145,14 +172,14 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<FooToBarModulePass>();
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "foo");
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(root->name(), "bar");
 }
@@ -168,12 +195,12 @@ ENTRY main {
   ROOT blahblah = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<FooToBarModulePass>();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -195,8 +222,8 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
   ROOT %baz = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<ReverseStringModulePass>();
 
@@ -205,8 +232,8 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
       main_root->async_wrapped_computation()->root_instruction();
   EXPECT_EQ(main_root->name(), "baz");
   EXPECT_EQ(parallel_thread_root->name(), "foo");
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pipeline.Run(module.get(), {"parallel_thread"}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pipeline.Run(module.get(), {"parallel_thread"}));
   EXPECT_TRUE(changed);
   EXPECT_EQ(main_root->name(), "baz");
   EXPECT_EQ(parallel_thread_root->name(), "oof");
@@ -231,8 +258,8 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
   ROOT %baz = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<ReverseStringModulePass>();
 
@@ -241,7 +268,7 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
       main_root->async_wrapped_computation()->root_instruction();
   EXPECT_EQ(main_root->name(), "baz");
   EXPECT_EQ(parallel_thread_root->name(), "foo");
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(main_root->name(), "zab");
   EXPECT_EQ(parallel_thread_root->name(), "oof");
@@ -257,8 +284,8 @@ ENTRY main {
   ROOT baz = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_0_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_0_str));
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModulePass>();
@@ -267,7 +294,7 @@ ENTRY main {
   HloInstruction* root0 = module->entry_computation()->root_instruction();
   EXPECT_EQ(root0->name(), "baz");
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(root0->name(), "qux");
@@ -283,15 +310,15 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   {
     // Run a pipeline with just the invariant checker. It should not fail
     // because there is no 'bar' instruction in the module.
     HloPassPipeline pipeline(TestName());
     pipeline.AddInvariantChecker<BarBlowerUpper>();
 
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
     EXPECT_FALSE(changed);
   }
 
@@ -373,8 +400,8 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(true);
@@ -517,6 +544,256 @@ ENTRY main {
     EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
               "foo_A2_B_C_D");
   }
+}
+
+// Tests for the richer xla_disable_hlo_passes / xla_enable_hlo_passes_only
+// entry syntax. RecordingPass instances share the same pass name but log a
+// distinct tag, so we can tell exactly which invocation ran.
+constexpr absl::string_view kSimpleModule = R"(
+HloModule test_module
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT foo = f32[] multiply(p0, p1)
+}
+)";
+
+// Backward compatibility: a plain name disables every invocation of that pass.
+TEST_F(HloPassPipelineTest, DisablePlainNameSkipsAllInvocations) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "algsimp");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "a0", &run_log);
+  pipeline.AddPass<RecordingPass>("dce", "d0", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "a1", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  EXPECT_THAT(run_log, ElementsAre("d0"));
+}
+
+// Disabling a pipeline's own name skips all its passes (backward compatibility
+// with directly-Run()'d pipelines like the GPU "fusion" pipeline).
+TEST_F(HloPassPipelineTest, DisablePipelineOwnNameSkipsAllPasses) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "my-pipeline");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline("my-pipeline");
+  pipeline.AddPass<RecordingPass>("algsimp", "a0", &run_log);
+  pipeline.AddPass<RecordingPass>("dce", "d0", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  EXPECT_THAT(run_log, ::testing::IsEmpty());
+}
+
+// "algsimp:1" disables the global (per-module) 0-based invocation index 1.
+TEST_F(HloPassPipelineTest, DisableGlobalOccurrence) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "algsimp:1");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "a0", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "a1", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "a2", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  EXPECT_THAT(run_log, ElementsAre("a0", "a2"));
+}
+
+// "simplification/algsimp" disables algsimp only under its immediate parent
+// pipeline named "simplification".
+TEST_F(HloPassPipelineTest, DisablePipelineScope) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "simplification/algsimp");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "top", &run_log);
+  auto& sub = pipeline.AddPass<HloPassPipeline>("simplification");
+  sub.AddPass<RecordingPass>("algsimp", "in_sub", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  // The top-level algsimp runs (its parent is not "simplification"); the one
+  // inside the "simplification" pipeline is skipped.
+  EXPECT_THAT(run_log, ElementsAre("top"));
+}
+
+// "simplification/algsimp:1" disables the invocation at index 1 counted WITHIN
+// the "simplification" pipeline instance (not the global index).
+TEST_F(HloPassPipelineTest, DisableScopedOccurrence) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "simplification/algsimp:1");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "t0", &run_log);
+  auto& sub = pipeline.AddPass<HloPassPipeline>("simplification");
+  sub.AddPass<RecordingPass>("algsimp", "s0", &run_log);
+  sub.AddPass<RecordingPass>("algsimp", "s1", &run_log);
+  sub.AddPass<RecordingPass>("algsimp", "s2", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "t1", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  // Within "simplification": s0=0, s1=1, s2=2; only s1 is skipped. The global
+  // occurrence index of s1 is 2, which is intentionally NOT used here.
+  EXPECT_THAT(run_log, ElementsAre("t0", "s0", "s2", "t1"));
+}
+
+// "@N" disables the pass with the exact raw pass_id N. In a flat pipeline the
+// pipeline-start pseudo-pass takes id 1, so the first real pass is id 2.
+TEST_F(HloPassPipelineTest, DisableByPassId) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "@3");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("pa", "a", &run_log);  // pass_id 2
+  pipeline.AddPass<RecordingPass>("pb", "b", &run_log);  // pass_id 3
+  pipeline.AddPass<RecordingPass>("pc", "c", &run_log);  // pass_id 4
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  EXPECT_THAT(run_log, ElementsAre("a", "c"));
+}
+
+// Backward compatibility: a plain enable-only list keeps the exact legacy
+// behavior (only the named passes run).
+TEST_F(HloPassPipelineTest, EnableOnlyPlainName) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  // The test base disables "constant_folding" by default; clear it so the
+  // enable-only list is not rejected by the disable/enable exclusivity check.
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_disable_hlo_passes();
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_enable_hlo_passes_only("dce");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "a0", &run_log);
+  pipeline.AddPass<RecordingPass>("dce", "d0", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  EXPECT_THAT(run_log, ElementsAre("d0"));
+}
+
+// Enable-only with the richer occurrence syntax: only the matching invocation
+// runs.
+TEST_F(HloPassPipelineTest, EnableOnlyOccurrence) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_disable_hlo_passes();
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_enable_hlo_passes_only("algsimp:1");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "a0", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "a1", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "a2", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  EXPECT_THAT(run_log, ElementsAre("a1"));
+}
+
+// Enable-only with rich syntax descends into nested pipelines so a scoped entry
+// can match a pass nested inside a sub-pipeline.
+TEST_F(HloPassPipelineTest, EnableOnlyScopedDescendsIntoNestedPipeline) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_disable_hlo_passes();
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_enable_hlo_passes_only("simplification/algsimp");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "top", &run_log);
+  auto& sub = pipeline.AddPass<HloPassPipeline>("simplification");
+  sub.AddPass<RecordingPass>("algsimp", "in_sub", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  // Only the algsimp scoped to "simplification" runs; the top-level algsimp is
+  // gated out even though the sub-pipeline is still entered.
+  EXPECT_THAT(run_log, ElementsAre("in_sub"));
+}
+
+// Enable-only with a mix of a plain entry and a rich entry in the same list:
+// the union of both matchers runs (every dce invocation plus algsimp #1).
+TEST_F(HloPassPipelineTest, EnableOnlyMixedPlainAndRich) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_disable_hlo_passes();
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_enable_hlo_passes_only("dce");
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_enable_hlo_passes_only("algsimp:1");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("algsimp", "a0", &run_log);
+  pipeline.AddPass<RecordingPass>("dce", "d0", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "a1", &run_log);
+  pipeline.AddPass<RecordingPass>("dce", "d1", &run_log);
+  pipeline.AddPass<RecordingPass>("algsimp", "a2", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  // All dce invocations run (plain "dce"); among algsimp only global index 1
+  // (a1) runs.
+  EXPECT_THAT(run_log, ElementsAre("d0", "a1", "d1"));
+}
+
+// "@N" matches the raw pass_id even across nested sub-pipelines. Ids are
+// assigned in start order including the pipeline-start pseudo-passes:
+//   1 top pipeline-start
+//   2 pa (top leaf)
+//   3 sub (sub-pipeline pass itself)
+//   4 sub pipeline-start
+//   5 sb (sub leaf)   <-- target
+//   6 sc (sub leaf)
+//   7 pd (top leaf)
+TEST_F(HloPassPipelineTest, DisableByPassIdNested) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleModule));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "@5");
+
+  std::vector<std::string> run_log;
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<RecordingPass>("pa", "pa", &run_log);
+  auto& sub = pipeline.AddPass<HloPassPipeline>("sub");
+  sub.AddPass<RecordingPass>("sb", "sb", &run_log);
+  sub.AddPass<RecordingPass>("sc", "sc", &run_log);
+  pipeline.AddPass<RecordingPass>("pd", "pd", &run_log);
+
+  ASSERT_OK(pipeline.Run(module.get()).status());
+  EXPECT_THAT(run_log, ElementsAre("pa", "sc", "pd"));
 }
 
 }  // namespace

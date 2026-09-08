@@ -234,9 +234,10 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 class L2LossTest(test_lib.TestCase):
 
   def testL2Loss(self):
-    for dtype in [dtypes.float32, dtypes.float64] + \
-                 [dtypes.bfloat16] if test_util.is_gpu_available(
-                                          cuda_only=True) else []:
+    dtype_list = [dtypes.float32, dtypes.float64]
+    if test_util.is_gpu_available(cuda_only=True):
+      dtype_list.append(dtypes.bfloat16)
+    for dtype in dtype_list:
       x = constant_op.constant([1.0, 0.0, 3.0, 2.0],
                                shape=[2, 2],
                                name="x",
@@ -535,6 +536,7 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
   def setUp(self):
+    super().setUp()
     self._eps = 1e-3
 
   def _GenerateTestData(self, num_classes, dim, batch_size, num_true, labels,
@@ -617,7 +619,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           "b",
           partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
           initializer=constant_op.constant(biases))
-      with self.session(graph=g) as sess:
+      with self.session(graph=g):
         self.evaluate(variables.global_variables_initializer())
         return self.evaluate([list(sharded_weights), list(sharded_biases)])
 
@@ -1055,7 +1057,7 @@ class GeluTest(test_lib.TestCase):
 
   def test(self):
 
-    def gelu(x, approximate=False):
+    def _Gelu(x, approximate=False):
       if approximate:
         return 0.5 * x * (1.0 + np.tanh(
             np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3))))
@@ -1066,12 +1068,14 @@ class GeluTest(test_lib.TestCase):
     # Make sure we test for negative arguments where GeLU is difficult to
     # evaluate accurately.
     x = np.linspace(-12, 5, 1000).astype(np.float32)
-    y = gelu(x)
+    y = _Gelu(x)
+
     z = self.evaluate(nn_ops.gelu(x))
     self.assertAllClose(y, z, atol=0, rtol=2e-5)
 
-    y = gelu(x, True)
+    y = _Gelu(x, True)
     z = self.evaluate(nn_ops.gelu(x, True))
+
     self.assertAllClose(y, z)
 
 
@@ -1149,9 +1153,10 @@ class MomentsTest(test_lib.TestCase):
           expected_var = np.var(
               input_values, axis=moments_axes, keepdims=keep_dims)
           with ops.Graph().as_default() as g:
-            with self.session(graph=g) as sess:
+            with self.session(graph=g):
               inputs = constant_op.constant(
                   input_values, shape=input_shape, dtype=dtypes.float32)
+
               mean, variance = nn_impl.moments_v2(
                   inputs, moments_axes, keepdims=keep_dims)
 
@@ -1200,6 +1205,58 @@ class MomentsTest(test_lib.TestCase):
 
   def testOutput4DInput123(self):
     self.doOutputTest((10, 10, 10, 30), (1, 2, 3))
+
+  def testIdenticalLargeValues(self):
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ]:
+      for sign in [1.0, -1.0]:
+        val = sign * (
+            100.0 if dtype in (dtypes.float16, dtypes.bfloat16) else 7.5e10
+        )
+        for keepdims in [False, True]:
+          with context.eager_mode():
+            t = constant_op.constant([[val, val, val]], dtype=dtype)
+            _, var_eager = nn_impl.moments(t, axes=[1], keepdims=keepdims)
+            expected = [[0.0]] if keepdims else [0.0]
+            self.assertAllClose(var_eager, expected, atol=1e-5)
+            try:
+              _, var_jit = def_function.function(
+                  lambda x, kd=keepdims: nn_impl.moments(
+                      x, axes=[1], keepdims=kd
+                  ),
+                  jit_compile=True,
+              )(t)
+              self.assertAllClose(var_jit, expected, atol=1e-5)
+            except (errors.UnimplementedError, errors.InvalidArgumentError):
+              pass
+
+  def testMomentsGradient(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x_val = np.random.randn(4, 5).astype(
+          np.float32 if dtype == dtypes.float32 else np.float64
+      )
+      with context.eager_mode():
+        x = constant_op.constant(x_val, dtype=dtype)
+
+        def _MeanFunc(val):
+          return nn_impl.moments(val, axes=[1])[0]
+
+        def _VarFunc(val):
+          return nn_impl.moments(val, axes=[1])[1]
+
+        err_mean = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(_MeanFunc, [x])
+        )
+        err_var = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(_VarFunc, [x])
+        )
+
+        self.assertLess(err_mean, 1e-3)
+        self.assertLess(err_var, 1e-3)
 
 
 class DataFormatDimMapTest(test_lib.TestCase):

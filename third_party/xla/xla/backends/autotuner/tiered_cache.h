@@ -26,10 +26,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {

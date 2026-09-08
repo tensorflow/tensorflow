@@ -101,6 +101,7 @@ bool AreGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
       << output_shape.ToString();
 
   switch (output_shape.element_type()) {
+    case BF16:
     case F16:
     case F32:
     case F64:

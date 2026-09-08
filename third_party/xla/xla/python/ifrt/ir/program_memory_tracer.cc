@@ -16,27 +16,23 @@ limitations under the License.
 #include "xla/python/ifrt/ir/program_memory_tracer.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/Analysis/Liveness.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Value.h"
-#include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<std::unique_ptr<ProgramMemoryTracer>>
-ProgramMemoryTracer::Create(std::shared_ptr<CompiledIfrtIrProgram> program,
-                            Client* client, DeviceListRef devices) {
-  return absl::UnimplementedError("Create is not implemented.");
+mlir::Liveness& ProgramMemoryTracer::GetLiveness() {
+  LOG(FATAL) << "GetLiveness is not implemented.";
 }
 
 absl::StatusOr<int64_t> ProgramMemoryTracer::PerDeviceByteSize(

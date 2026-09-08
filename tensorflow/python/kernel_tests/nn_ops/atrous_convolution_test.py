@@ -272,6 +272,12 @@ class AtrousConvolutionTest(test.TestCase):
                 dilation_rate=[rate_height, rate_width],
                 padding=padding)
 
+  def testInvalidInputRank(self):
+    value = array_ops.zeros([10], dtype=dtypes.float32)
+    filters = array_ops.zeros([5, 5, 1, 8], dtype=dtypes.float32)
+    with self.assertRaisesRegex(ValueError, "rank at least 3"):
+      nn_ops.convolution(value, filters, padding="VALID")
+
 
 if __name__ == "__main__":
   test.main()

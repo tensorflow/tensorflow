@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_PROFILER_INTERNAL_PROFILER_PYWRAP_IMPL_H_
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <variant>
 
@@ -39,6 +40,10 @@ class ProfilerSessionWrapper {
   absl::Status ExportToTensorBoard();
 
  private:
+  // Serializes concurrent operations on a single Python ProfilerSession.
+  // Python bindings release the GIL around Start/Stop/ExportToTensorBoard,
+  // so the GIL cannot be used to protect this mutable state.
+  std::mutex mu_;
   std::unique_ptr<tsl::ProfilerSession> session_;
   std::string logdir_;
 };

@@ -194,7 +194,7 @@ Original Tensor by Optimized Tensor Key:
     ASSERT_THAT(calculator->ProcessShardSummary(
                     opt_key, {static_cast<int64_t>(i),
                               CreateSummary(values, shard_split_spec)}),
-                IsOk());
+                absl_testing::IsOk());
   }
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.tensor_key.instruction_name,
@@ -354,7 +354,7 @@ Original Tensor by Optimized Tensor Key:
   std::vector<DimSplitSpec> shard_split_spec = {};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.scope_instructions,
               Eq(std::vector<ScopeInstruction>{
@@ -581,7 +581,7 @@ Original Tensor by Optimized Tensor Key:
   std::vector<DimSplitSpec> shard_split_spec = {};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.scope_instructions,
               Eq(std::vector<ScopeInstruction>{
@@ -648,7 +648,7 @@ Original Tensor by Optimized Tensor Key:
   std::vector<DimSplitSpec> shard_split_spec = {};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(
       results_[0].original_tensor_key.scope_instructions,
@@ -705,7 +705,7 @@ Original Tensor by Optimized Tensor Key:
   std::vector<DimSplitSpec> shard_split_spec = {};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig"));
@@ -764,7 +764,7 @@ Original Tensor by Optimized Tensor Key:
   std::vector<DimSplitSpec> shard_split_spec = {};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig"));
@@ -857,10 +857,10 @@ Original Tensor by Optimized Tensor Key:
       {/*dim_index=*/0, /*block_count=*/2}};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f, 2.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {1, CreateSummary({3.0f, 4.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
 
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.tensor_key.instruction_name,
@@ -953,16 +953,16 @@ Original Tensor by Optimized Tensor Key:
   // These are devices 0, 2, 4, 6.
   ASSERT_THAT(
       calculator->ProcessShardSummary(opt_key, {0, CreateSummary({1.0f}, {})}),
-      IsOk());
+      absl_testing::IsOk());
   ASSERT_THAT(
       calculator->ProcessShardSummary(opt_key, {2, CreateSummary({2.0f}, {})}),
-      IsOk());
+      absl_testing::IsOk());
   ASSERT_THAT(
       calculator->ProcessShardSummary(opt_key, {4, CreateSummary({3.0f}, {})}),
-      IsOk());
+      absl_testing::IsOk());
   ASSERT_THAT(
       calculator->ProcessShardSummary(opt_key, {6, CreateSummary({4.0f}, {})}),
-      IsOk());
+      absl_testing::IsOk());
 
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.tensor_key.instruction_name,
@@ -1060,10 +1060,10 @@ Original Tensor by Optimized Tensor Key:
   std::vector<DimSplitSpec> shard_split_spec = {};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {1, CreateSummary({2.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
 
   ASSERT_THAT(results_, SizeIs(1));
   EXPECT_THAT(results_[0].original_tensor_key.tensor_key.instruction_name,
@@ -1306,10 +1306,10 @@ Original Tensor by Optimized Tensor Key:
   std::vector<DimSplitSpec> shard_split_spec = {};
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
   ASSERT_THAT(calculator->ProcessShardSummary(
                   opt_key, {1, CreateSummary({2.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
 
   ASSERT_THAT(results_, SizeIs(2));
   std::sort(results_.begin(), results_.end(), [](const auto& a, const auto& b) {
@@ -1381,7 +1381,8 @@ TEST(OriginalTensorSummaryCalculatorTest, NoTransformation) {
   FloatSummary shard_summary = CreateSummary({1.0f, 2.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig"));
@@ -1445,7 +1446,8 @@ TEST(OriginalTensorSummaryCalculatorTest, UnshardReplicated) {
   FloatSummary shard_summary = CreateSummary({2.0f, 3.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig"));
@@ -1515,7 +1517,8 @@ TEST(OriginalTensorSummaryCalculatorTest, UnshardTiled) {
   ShardTensorSummary shard1 = {1,
                                CreateSummary({2.0f, 2.1f}, shard_split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard0), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard0),
+              absl_testing::IsOk());
   EXPECT_THAT(results, IsEmpty());  // Waiting for shard 1
   auto processing_metrics0 = calculator.GetProcessingMetrics();
   EXPECT_EQ(processing_metrics0.received_optimized_tensor_shard_count, 1);
@@ -1525,7 +1528,8 @@ TEST(OriginalTensorSummaryCalculatorTest, UnshardTiled) {
   EXPECT_EQ(processing_metrics0.incomplete_optimized_tensor_count, 1);
   EXPECT_EQ(processing_metrics0.incomplete_original_tensor_count, 1);
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard1), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard1),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig"));
@@ -1592,7 +1596,8 @@ TEST(OriginalTensorSummaryCalculatorTest, ReshapeOnly) {
   std::vector<DimSplitSpec> split_spec = {{/*dim_index=*/0, /*block_count=*/2}};
   ShardTensorSummary shard = {0, CreateSummary({3.0f, 3.1f}, split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig"));
@@ -1653,7 +1658,8 @@ TEST(OriginalTensorSummaryCalculatorTest, UnshardThenReshape) {
   std::vector<DimSplitSpec> split_spec = {{/*dim_index=*/0, /*block_count=*/2}};
   ShardTensorSummary shard = {0, CreateSummary({4.0f, 4.1f}, split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].original_tensor_summary.dimensions,
               Eq(std::vector<int64_t>{4}));
@@ -1712,7 +1718,8 @@ TEST(OriginalTensorSummaryCalculatorTest, ReshapeThenUnshard) {
   std::vector<DimSplitSpec> split_spec = {{/*dim_index=*/0, /*block_count=*/2}};
   ShardTensorSummary shard = {0, CreateSummary({4.0f, 4.1f}, split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   // Reshape is before unshard, so it's applied. Unshard is applied too.
   // The continuation of unshard is null, so pending is null.
@@ -1785,7 +1792,7 @@ TEST(OriginalTensorSummaryCalculatorTest, ReshapeThenTiledUnshard) {
   // Process shard 0.
   ASSERT_THAT(calculator.ProcessShardSummary(
                   opt_key, {0, CreateSummary({1.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
 
   // Should NOT be emitted yet because we are waiting for shard 1 (hidden
   // Unshard).
@@ -1794,7 +1801,7 @@ TEST(OriginalTensorSummaryCalculatorTest, ReshapeThenTiledUnshard) {
   // Process shard 1.
   ASSERT_THAT(calculator.ProcessShardSummary(
                   opt_key, {1, CreateSummary({2.0f}, shard_split_spec)}),
-              IsOk());
+              absl_testing::IsOk());
 
   ASSERT_THAT(results, SizeIs(1));
   const auto& summary = results[0].original_tensor_summary.summaries[0];
@@ -1848,7 +1855,8 @@ TEST(OriginalTensorSummaryCalculatorTest, ReshapeThenUnshardMergeAllSplits) {
   ShardTensorSummary shard = {
       0, CreateSummary({1.0f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f}, split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].pending_transformation, Eq(nullptr));
   EXPECT_THAT(results[0].original_tensor_summary.dimensions,
@@ -1913,7 +1921,8 @@ TEST(OriginalTensorSummaryCalculatorTest,
       0, CreateSummary({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f},
                        split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].pending_transformation, Eq(nullptr));
   EXPECT_THAT(results[0].original_tensor_summary.dimensions,
@@ -1997,7 +2006,8 @@ TEST(OriginalTensorSummaryCalculatorTest, ReshapeThenUnshardPreserveAllSplits) {
   ShardTensorSummary shard = {
       0, CreateSummary({1.0f, 1.1f, 1.2f, 2.0f, 2.1f, 2.2f}, split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].pending_transformation, Eq(nullptr));
   EXPECT_THAT(results[0].original_tensor_summary.dimensions,
@@ -2079,7 +2089,8 @@ TEST(OriginalTensorSummaryCalculatorTest, UnshardWithReplicatedDimSplit) {
   ShardTensorSummary shard1 = {
       1, CreateSummary({2.0f, 2.1f, 2.2f, 2.3f}, shard_split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard0), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard0),
+              absl_testing::IsOk());
   EXPECT_THAT(results, IsEmpty());  // Waiting for shard 1
   auto processing_metrics0 = calculator.GetProcessingMetrics();
   EXPECT_EQ(processing_metrics0.received_optimized_tensor_shard_count, 1);
@@ -2089,7 +2100,8 @@ TEST(OriginalTensorSummaryCalculatorTest, UnshardWithReplicatedDimSplit) {
   EXPECT_EQ(processing_metrics0.incomplete_optimized_tensor_count, 1);
   EXPECT_EQ(processing_metrics0.incomplete_original_tensor_count, 1);
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard1), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard1),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].original_tensor_summary.dimensions,
               Eq(std::vector<int64_t>{2, 2, 10}));
@@ -2211,7 +2223,8 @@ TEST(OriginalTensorSummaryCalculatorTest, MultipleOriginalTensors) {
   std::vector<DimSplitSpec> split_spec = {{/*dim_index=*/0, /*block_count=*/1}};
   ShardTensorSummary shard = {0, CreateSummary({5.0f}, split_spec)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(2));
   EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig1"));
@@ -2278,7 +2291,8 @@ TEST(OriginalTensorSummaryCalculatorTest,
   std::vector<DimSplitSpec> split_spec1 = {};
   ShardTensorSummary shard1 = {0, CreateSummary({1.0f}, split_spec1)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key1, shard1), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key1, shard1),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
   EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
               Eq("orig"));
@@ -2290,7 +2304,8 @@ TEST(OriginalTensorSummaryCalculatorTest,
   std::vector<DimSplitSpec> split_spec2 = {};
   ShardTensorSummary shard2 = {0, CreateSummary({2.0f}, split_spec2)};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key2, shard2), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key2, shard2),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));  // result size should still be 1.
 
   auto processing_metrics = calculator.GetProcessingMetrics();
@@ -2347,7 +2362,8 @@ TEST(OriginalTensorSummaryCalculatorTest, ConstructsOriginalKeyWithCallMap) {
   FloatSummary shard_summary = CreateSummary({1.0f, 2.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
 
   // The resulting original tensor key should have scope [call1, call2]
@@ -2419,7 +2435,8 @@ TEST(OriginalTensorSummaryCalculatorTest,
   FloatSummary shard_summary = CreateSummary({1.0f, 2.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
 
   // The resulting original tensor key should have scope [call1, call2,
@@ -2493,7 +2510,8 @@ TEST(OriginalTensorSummaryCalculatorTest,
   FloatSummary shard_summary = CreateSummary({1.0f, 2.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
 
   // The resulting original tensor key should have scope [call1, call2]
@@ -2561,7 +2579,8 @@ TEST(OriginalTensorSummaryCalculatorTest,
   FloatSummary shard_summary = CreateSummary({1.0f, 2.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
 
   // The resulting original tensor key should have scope [call1, {while_loop,
@@ -2643,7 +2662,7 @@ TEST(OriginalTensorSummaryCalculatorTest, ComplexTiledUnshard) {
     ASSERT_THAT(calculator.ProcessShardSummary(
                     opt_key, {static_cast<int64_t>(i),
                               CreateSummary(values, shard_split_spec)}),
-                IsOk());
+                absl_testing::IsOk());
     if (i < 3) {
       EXPECT_THAT(results, IsEmpty());
       auto processing_metrics = calculator.GetProcessingMetrics();
@@ -2739,7 +2758,8 @@ TEST(OriginalTensorSummaryCalculatorTest, PropagateIterationIndexToVariable) {
   FloatSummary shard_summary = CreateSummary({1.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
 
   // The resulting original tensor key should have scope [while_orig] with
@@ -2796,7 +2816,8 @@ TEST(OriginalTensorSummaryCalculatorTest, PropagateIterationIndexToWhileLoop) {
   FloatSummary shard_summary = CreateSummary({1.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
 
   // The resulting original tensor key should have scope [scope1, while.orig]
@@ -2854,7 +2875,8 @@ TEST(OriginalTensorSummaryCalculatorTest, PropagateIterationIndexToLastScope) {
   FloatSummary shard_summary = CreateSummary({1.0f}, split_spec);
   ShardTensorSummary shard = {0, shard_summary};
 
-  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard), IsOk());
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
   ASSERT_THAT(results, SizeIs(1));
 
   // The resulting original tensor key should have scope [scope1, scope2] with

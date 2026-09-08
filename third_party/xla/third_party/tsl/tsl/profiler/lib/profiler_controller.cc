@@ -88,7 +88,7 @@ absl::Status ProfilerController::CollectData(
 }
 
 absl::StatusOr<ConsumeResult> ProfilerController::Consume() {
-  if (state_ != ProfilerState::kStart && state_ != ProfilerState::kStop) {
+  if (state_ == ProfilerState::kInit) {
     return absl::AbortedError("Consume called in the wrong order.");
   }
   if (!status_.ok()) {

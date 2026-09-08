@@ -104,7 +104,7 @@ class FunctionType(inspect.Signature, metaclass=abc.ABCMeta):
 
   # The signature of this method changes in Py3.10 so we override to enforce it.
   @classmethod
-  def from_callable(cls, obj, *, follow_wrapped=True):
+  def from_callable(cls, obj, *, follow_wrapped=True):  # pyrefly: ignore[bad-override]
     return super().from_callable(obj, follow_wrapped=follow_wrapped)
 
 

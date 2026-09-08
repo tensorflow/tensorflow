@@ -48,12 +48,14 @@ struct RegionEdge {
   }
 
   ValueRange getSuccessorValues() const {
-    if (successorOpOrRegion.is<Operation*>()) {
-      return successorOpOrRegion.get<Operation*>()->getResults().drop_front(
-          successorValueIndex);
+    if (llvm::isa<Operation*>(successorOpOrRegion)) {
+      return llvm::cast<Operation*>(successorOpOrRegion)
+          ->getResults()
+          .drop_front(successorValueIndex);
     }
-    return successorOpOrRegion.get<Region*>()->getArguments().drop_front(
-        successorValueIndex);
+    return llvm::cast<Region*>(successorOpOrRegion)
+        ->getArguments()
+        .drop_front(successorValueIndex);
   }
 
   Value getSuccessorValue(unsigned predecessorIndex) const {

@@ -88,6 +88,8 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
   bool RequiresSymmetricMemory() const {
     return IsSymmetricNcclPath() ||
            impl_type_ == RaggedAllToAllImplType::kDeviceKernel ||
+           impl_type_ ==
+               RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl ||
            collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
   }
 

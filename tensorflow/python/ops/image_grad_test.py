@@ -23,6 +23,7 @@ ResizeBicubicOpTest = test_base.ResizeBicubicOpTestBase
 ScaleAndTranslateOpTest = test_base.ScaleAndTranslateOpTestBase
 CropAndResizeOpTest = test_base.CropAndResizeOpTestBase
 RGBToHSVOpTest = test_base.RGBToHSVOpTestBase
+AdjustContrastOpTest = test_base.AdjustContrastOpTestBase
 
 if __name__ == "__main__":
   test.main()

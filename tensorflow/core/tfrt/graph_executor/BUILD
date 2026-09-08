@@ -14,7 +14,6 @@
 # ==============================================================================
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_object", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
@@ -231,14 +230,6 @@ tf_proto_library(
     srcs = ["config.proto"],
     visibility = ["//visibility:public"],
 )
-
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "config_proto_py_pb2",
-#     visibility = ["//visibility:public"],
-#     deps = [":config_proto"],
-# )
-# copybara:uncomment_end
 
 tf_proto_library(
     name = "test_config_proto",

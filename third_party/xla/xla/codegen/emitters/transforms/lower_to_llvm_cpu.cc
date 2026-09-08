@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/emitters/transforms/lower_to_llvm_cpu.h"
 
-#include <memory>
-
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep, needed by lower_to_llvm_cpu.h.inc.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"

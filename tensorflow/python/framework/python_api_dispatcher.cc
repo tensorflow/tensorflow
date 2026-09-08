@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -44,29 +45,78 @@ PyObject* ImportTypeFromModule(const char* module_name, const char* type_name) {
   return given_type;
 }
 
-std::vector<Safe_PyObjectPtr>& GetRegisteredDispatchableTypes() {
-  static std::vector<Safe_PyObjectPtr>* registered_dispatchable_types =
-      new std::vector<Safe_PyObjectPtr>();
-  if (registered_dispatchable_types->empty()) {
-    static PyObject* composite_tensor = ImportTypeFromModule(
-        "tensorflow.python.framework.composite_tensor",
-        "CompositeTensor");
-    Py_INCREF(composite_tensor);
-    registered_dispatchable_types->push_back(
-        Safe_PyObjectPtr(composite_tensor));
+struct RegisteredDispatchableTypes {
+  absl::Mutex mu;
+  std::vector<Safe_PyObjectPtr> types;
+  uint64_t version = 0;
+};
+
+RegisteredDispatchableTypes& GetRegisteredDispatchableTypes() {
+  static auto* registered_dispatchable_types =
+      new RegisteredDispatchableTypes();
+
+  // Keep Python import and reference-count operations outside registry.mu.
+  static PyObject* composite_tensor = ImportTypeFromModule(
+      "tensorflow.python.framework.composite_tensor",
+      "CompositeTensor");
+
+  {
+    absl::MutexLock lock(&registered_dispatchable_types->mu);
+    if (registered_dispatchable_types->types.empty()) {
+      if (composite_tensor != nullptr) {
+        Py_INCREF(composite_tensor);
+        registered_dispatchable_types->types.push_back(
+            Safe_PyObjectPtr(composite_tensor));
+        ++registered_dispatchable_types->version;
+      }
+    }
   }
+
   return *registered_dispatchable_types;
 }
 
+struct RegisteredDispatchableTypesSnapshot {
+  std::vector<Safe_PyObjectPtr> types;
+  uint64_t version;
+};
+
+RegisteredDispatchableTypesSnapshot GetRegisteredDispatchableTypesSnapshot() {
+  auto& registry = GetRegisteredDispatchableTypes();
+
+  RegisteredDispatchableTypesSnapshot snapshot;
+  {
+    absl::MutexLock lock(&registry.mu);
+    snapshot.version = registry.version;
+    snapshot.types.reserve(registry.types.size());
+
+    for (const auto& registered_type : registry.types) {
+      PyObject* obj = registered_type.get();
+      Py_INCREF(obj);
+      snapshot.types.emplace_back(obj);
+    }
+  }
+
+  return snapshot;
+}
+
 // Returns true if `py_class` is a registered dispatchable type.
-bool IsRegisteredDispatchableType(PyObject* py_class) {
+bool IsRegisteredDispatchableType(
+    PyObject* py_class, const std::vector<Safe_PyObjectPtr>& registered_types) {
   DCheckPyGilState();
-  for (const auto& registered_type : GetRegisteredDispatchableTypes()) {
+
+  for (const auto& registered_type : registered_types) {
     int result = PyObject_IsSubclass(py_class, registered_type.get());
     if (result > 0) return true;
     if (result < 0) PyErr_Clear();
   }
+
   return false;
+}
+
+// Returns true if `py_class` is a registered dispatchable type.
+bool IsRegisteredDispatchableType(PyObject* py_class) {
+  auto snapshot = GetRegisteredDispatchableTypesSnapshot();
+  return IsRegisteredDispatchableType(py_class, snapshot.types);
 }
 
 // Raises an exception indicating that multiple dispatch targets matched.
@@ -97,31 +147,57 @@ bool RegisterDispatchableType(PyObject* py_class) {
             .c_str());
     return false;
   }
-  if (IsRegisteredDispatchableType(py_class)) {
-    Safe_PyObjectPtr s(PyObject_Str(py_class));
-    PyErr_SetString(PyExc_ValueError,
-                    absl::StrCat("Type ", s ? PyUnicode_AsUTF8(s.get()) : "?",
-                                 " (or one of its bases classes) has "
-                                 "already been registered")
-                        .c_str());
-    return false;
+
+  auto& registry = GetRegisteredDispatchableTypes();
+
+  while (true) {
+    auto snapshot = GetRegisteredDispatchableTypesSnapshot();
+
+    if (IsRegisteredDispatchableType(py_class, snapshot.types)) {
+      Safe_PyObjectPtr s(PyObject_Str(py_class));
+      PyErr_SetString(PyExc_ValueError,
+                      absl::StrCat("Type ", s ? PyUnicode_AsUTF8(s.get()) : "?",
+                                   " (or one of its bases classes) has "
+                                   "already been registered")
+                          .c_str());
+      return false;
+    }
+
+    // Own the new reference before entering the critical section.
+    Py_INCREF(py_class);
+    Safe_PyObjectPtr owned_py_class(py_class);
+
+    {
+      absl::MutexLock lock(&registry.mu);
+
+      // A concurrent registration happened after our snapshot. Retry against
+      // the new registry state rather than committing a stale decision.
+      if (registry.version != snapshot.version) {
+        continue;
+      }
+
+      registry.types.push_back(std::move(owned_py_class));
+      ++registry.version;
+      return true;
+    }
   }
-  Py_INCREF(py_class);
-  GetRegisteredDispatchableTypes().push_back(Safe_PyObjectPtr(py_class));
-  return true;
 }
 
 PythonAPIDispatcher::PythonAPIDispatcher(const std::string& api_name,
                                          absl::Span<const char*> arg_names,
                                          absl::Span<PyObject*> defaults)
-    : api_name_(api_name), canonicalizer_(arg_names, defaults) {}
+    : api_name_(api_name),
+      targets_mu_(std::make_unique<absl::Mutex>()),
+      canonicalizer_(arg_names, defaults) {}
 
 void PythonAPIDispatcher::Register(PySignatureChecker signature_checker,
                                    PyObject* dispatch_target) {
   DCheckPyGilState();
   Py_INCREF(dispatch_target);
-  targets_.emplace_back(std::move(signature_checker),
-                        Safe_PyObjectPtr(dispatch_target));
+  Safe_PyObjectPtr owned_target(dispatch_target);
+
+  absl::MutexLock lock(targets_mu_.get());
+  targets_.emplace_back(std::move(signature_checker), std::move(owned_target));
 }
 
 Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
@@ -130,24 +206,51 @@ Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
   if (kwargs == Py_None) {
     kwargs = nullptr;
   }
-  // Canonicalize args (so we don't need to deal with kwargs).
-  std::vector<PyObject*> canonicalized_args_storage(
-      canonicalizer_.GetArgSize());
-  absl::Span<PyObject*> canonicalized_args_span(
-      canonicalized_args_storage.data(), canonicalized_args_storage.size());
 
-  if (!canonicalizer_.Canonicalize(args, kwargs, canonicalized_args_span)) {
+#ifdef Py_GIL_DISABLED
+  // Keep one stable kwargs snapshot for both signature matching and
+  // dispatch target execution.
+  Safe_PyObjectPtr kwargs_snapshot;
+  if (kwargs != nullptr) {
+    kwargs_snapshot = make_safe(PyDict_Copy(kwargs));
+    if (!kwargs_snapshot) {
+      return nullptr;
+    }
+    kwargs = kwargs_snapshot.get();
+  }
+#endif  // Py_GIL_DISABLED
+
+  // Canonicalize args (so we don't need to deal with kwargs). Keep strong
+  // references alive for the entire dispatch operation.
+  absl::InlinedVector<Safe_PyObjectPtr, 8> canonicalized_args_storage(
+      canonicalizer_.GetArgSize());
+
+  if (!canonicalizer_.Canonicalize(
+          args, kwargs, absl::MakeSpan(canonicalized_args_storage))) {
     return nullptr;
   }
 
+  absl::InlinedVector<PyObject*, 8> canonicalized_args_raw;
+  canonicalized_args_raw.reserve(canonicalized_args_storage.size());
+  for (const auto& arg : canonicalized_args_storage) {
+    canonicalized_args_raw.push_back(arg.get());
+  }
+
+  absl::Span<PyObject*> canonicalized_args_span(canonicalized_args_raw.data(),
+                                                canonicalized_args_raw.size());
+
   // Make a copy of targets to avoid iterator invalidation if
-  // Register/Unregister are called re-entrantly during CheckCanonicalizedArgs.
+  // Register/Unregister are called concurrently or re-entrantly during
+  // CheckCanonicalizedArgs. Do not hold targets_mu_ while calling Python.
   std::vector<std::pair<PySignatureChecker, Safe_PyObjectPtr>> targets_snapshot;
-  targets_snapshot.reserve(targets_.size());
-  for (const auto& target : targets_) {
-    PyObject* obj = target.second.get();
-    Py_INCREF(obj);
-    targets_snapshot.emplace_back(target.first, make_safe(obj));
+  {
+    absl::MutexLock lock(targets_mu_.get());
+    targets_snapshot.reserve(targets_.size());
+    for (const auto& target : targets_) {
+      PyObject* obj = target.second.get();
+      Py_INCREF(obj);
+      targets_snapshot.emplace_back(target.first, make_safe(obj));
+    }
   }
 
   PyObject* selected = nullptr;
@@ -172,40 +275,70 @@ Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
 void PythonAPIDispatcher::Unregister(PyObject* func) {
   DCheckPyGilState();
   using DispatchTargetPair = std::pair<PySignatureChecker, Safe_PyObjectPtr>;
-  targets_.erase(std::remove_if(targets_.begin(), targets_.end(),
-                                [func](const DispatchTargetPair& t) {
-                                  return t.second.get() == func;
-                                }),
-                 targets_.end());
+
+  // Keep removed references alive until after targets_mu_ is released, since
+  // DECREF may run arbitrary Python finalization code.
+  std::vector<DispatchTargetPair> removed;
+  {
+    absl::MutexLock lock(targets_mu_.get());
+
+    std::vector<DispatchTargetPair> kept;
+    kept.reserve(targets_.size());
+    removed.reserve(targets_.size());
+
+    for (auto& target : targets_) {
+      if (target.second.get() == func) {
+        removed.emplace_back(std::move(target));
+      } else {
+        kept.emplace_back(std::move(target));
+      }
+    }
+
+    targets_ = std::move(kept);
+  }
 }
 
 std::string PythonAPIDispatcher::DebugString() const {
   DCheckPyGilState();
   std::string out = absl::StrCat("<Dispatch(", api_name_, "): ");
 
+  std::vector<std::pair<PySignatureChecker, Safe_PyObjectPtr>> targets_snapshot;
+  {
+    absl::MutexLock lock(targets_mu_.get());
+    targets_snapshot.reserve(targets_.size());
+    for (const auto& target : targets_) {
+      PyObject* obj = target.second.get();
+      Py_INCREF(obj);
+      targets_snapshot.emplace_back(target.first, make_safe(obj));
+    }
+  }
+
   const char* sep = "";
-  for (const auto& target : targets_) {
+  for (const auto& target : targets_snapshot) {
     Safe_PyObjectPtr target_str(PyObject_Str(target.second.get()));
     absl::StrAppend(&out, sep, target.first.DebugString(), " -> ",
                     target_str ? PyUnicode_AsUTF8(target_str.get()) : "?");
     sep = ", ";
   }
+  absl::StrAppend(&out, ">");
   return out;
 }
 
 PySignatureChecker::PySignatureChecker(
     std::vector<ParamChecker> parameter_checkers)
     : positional_parameter_checkers_(std::move(parameter_checkers)) {
-  // Check less expensive parameters first.
-  std::sort(positional_parameter_checkers_.begin(),
-            positional_parameter_checkers_.end(),
-            [](ParamChecker a, ParamChecker b) {
-              return a.second->cost() < b.second->cost();
-            });
+  // Check less expensive parameters first, preserving argument order for equal
+  // costs.
+  std::stable_sort(positional_parameter_checkers_.begin(),
+                   positional_parameter_checkers_.end(),
+                   [](const ParamChecker& a, const ParamChecker& b) {
+                     return a.second->cost() < b.second->cost();
+                   });
 }
 
 bool PySignatureChecker::CheckCanonicalizedArgs(
     absl::Span<PyObject*> canon_args) const {
+  DCheckPyGilState();
   bool matched_dispatchable_type = false;
   for (auto& c : positional_parameter_checkers_) {
     int index = c.first;
@@ -213,7 +346,11 @@ bool PySignatureChecker::CheckCanonicalizedArgs(
     if (index >= canon_args.size()) {
       return false;
     }
-    switch (param_checker->Check(canon_args[index])) {
+    PyObject* arg = canon_args[index];
+    if (arg == nullptr) {
+      return false;
+    }
+    switch (param_checker->Check(arg)) {
       case PyTypeChecker::MatchType::NO_MATCH:
         return false;
       case PyTypeChecker::MatchType::MATCH_DISPATCHABLE:
@@ -234,7 +371,8 @@ std::string PySignatureChecker::DebugString() const {
                        });
 }
 
-PyInstanceChecker::PyInstanceChecker(const std::vector<PyObject*>& py_classes) {
+PyInstanceChecker::PyInstanceChecker(const std::vector<PyObject*>& py_classes)
+    : py_class_cache_mu_(std::make_unique<absl::Mutex>()) {
   DCheckPyGilState();
   py_classes_.reserve(py_classes.size());
   for (PyObject* py_class : py_classes) {
@@ -245,17 +383,32 @@ PyInstanceChecker::PyInstanceChecker(const std::vector<PyObject*>& py_classes) {
 
 PyInstanceChecker::~PyInstanceChecker() {
   DCheckPyGilState();
-  for (const auto& pair : py_class_cache_) {
-    Py_DECREF(pair.first);
+
+  std::vector<PyTypeObject*> cached_types;
+  {
+    absl::MutexLock lock(py_class_cache_mu_.get());
+    cached_types.reserve(py_class_cache_.size());
+    for (const auto& pair : py_class_cache_) {
+      cached_types.push_back(pair.first);
+    }
+    py_class_cache_.clear();
+  }
+
+  for (PyTypeObject* type : cached_types) {
+    Py_DECREF(type);
   }
 }
 
 PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   DCheckPyGilState();
   auto* type = Py_TYPE(value);
-  auto it = py_class_cache_.find(type);
-  if (it != py_class_cache_.end()) {
-    return it->second;
+
+  {
+    absl::MutexLock lock(py_class_cache_mu_.get());
+    auto it = py_class_cache_.find(type);
+    if (it != py_class_cache_.end()) {
+      return it->second;
+    }
   }
 
   MatchType result = MatchType::NO_MATCH;
@@ -274,13 +427,20 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
     }
   }
 
-  if (py_class_cache_.size() < kMaxItemsInCache) {
-    Py_INCREF(type);
-    auto insert_result = py_class_cache_.insert({type, result});
-    if (!insert_result.second) {
-      Py_DECREF(type);  // Result was added by a different thread.
+  {
+    absl::MutexLock lock(py_class_cache_mu_.get());
+
+    auto existing = py_class_cache_.find(type);
+    if (existing != py_class_cache_.end()) {
+      return existing->second;
+    }
+
+    if (py_class_cache_.size() < kMaxItemsInCache) {
+      Py_INCREF(type);
+      py_class_cache_.insert({type, result});
     }
   }
+
   return result;
 }
 
@@ -309,8 +469,53 @@ PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
   Safe_PyObjectPtr seq(PySequence_Fast(value, ""));
   if (!seq) {
     PyErr_Clear();
-    return MatchType::NO_MATCH;  // value is not a sequence.
+    return MatchType::NO_MATCH;
   }
+
+#ifdef Py_GIL_DISABLED
+  // Snapshot mutable list elements under the container lock, keeping strong
+  // references alive after the critical section is released.
+  std::vector<Safe_PyObjectPtr> elements;
+
+  if (PyList_Check(seq.get())) {
+    const Py_ssize_t size = PyList_GET_SIZE(seq.get());
+    elements.reserve(size);
+
+    Py_BEGIN_CRITICAL_SECTION(seq.get());
+
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject* item = PyList_GET_ITEM(seq.get(), i);
+      Py_INCREF(item);
+      elements.emplace_back(item);
+    }
+
+    Py_END_CRITICAL_SECTION();
+  } else {
+    const Py_ssize_t size = PyTuple_GET_SIZE(seq.get());
+    elements.reserve(size);
+
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject* item = PyTuple_GET_ITEM(seq.get(), i);
+      Py_INCREF(item);
+      elements.emplace_back(item);
+    }
+  }
+
+  MatchType result = MatchType::MATCH;
+  for (const auto& item : elements) {
+    switch (element_type_->Check(item.get())) {
+      case MatchType::NO_MATCH:
+        return MatchType::NO_MATCH;
+      case MatchType::MATCH_DISPATCHABLE:
+        result = MatchType::MATCH_DISPATCHABLE;
+        break;
+      case MatchType::MATCH:
+        break;
+    }
+  }
+  return result;
+
+#else
 
   MatchType result = MatchType::MATCH;
   for (int i = 0; i < PySequence_Fast_GET_SIZE(seq.get()); ++i) {
@@ -325,6 +530,7 @@ PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
     }
   }
   return result;
+#endif  // Py_GIL_DISABLED
 }
 
 int PyListChecker::cost() const { return 10 * element_type_->cost(); }
@@ -334,6 +540,7 @@ std::string PyListChecker::DebugString() const {
 }
 
 PyTypeChecker::MatchType PyUnionChecker::Check(PyObject* value) {
+  DCheckPyGilState();
   MatchType result = MatchType::NO_MATCH;
   for (auto& type_option : options_) {
     switch (type_option->Check(value)) {

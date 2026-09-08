@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
+#include <string>
+
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
+
+using ::testing::UnorderedElementsAre;
 
 // This test is to verify the correctness of XLA op registration with specific
 // backend overrides.
@@ -136,6 +144,42 @@ TEST(XlaOpRegistryTest, OpWithInfeasibleTypeConstraintIsNotRegistered) {
   for (const auto& kernels : registered_kernels) {
     // The operator should not be registered.
     EXPECT_NE(kernels.op(), "DummyInfeasibleTypeConstraintOp");
+  }
+}
+
+// Test that Inv and Reciprocal drop the types that have no CPU device kernel.
+TEST(XlaOpRegistryTest, ReciprocalIsNotRegisteredForUnsupportedTypesOnCpu) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  int found = 0;
+  for (const KernelDef* kernel :
+       XlaOpRegistry::DeviceKernels(DEVICE_CPU_XLA_JIT, true)) {
+    if (kernel->op() != "Inv" && kernel->op() != "Reciprocal") continue;
+    ++found;
+    EXPECT_EQ(kernel->constraint_size(), 1);
+    EXPECT_EQ(kernel->constraint(0).name(), "T");
+    EXPECT_THAT(kernel->constraint(0).allowed_values().list().type(),
+                UnorderedElementsAre(DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16,
+                                     DT_COMPLEX64, DT_COMPLEX128));
+  }
+  EXPECT_EQ(found, 2);
+}
+
+// Test that Inv and Reciprocal have a CPU kernel for DT_FLOAT but not DT_INT32.
+TEST(XlaOpRegistryTest, ReciprocalOnIntegerHasNoCpuCompilationKernel) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  for (const std::string& op : {"Inv", "Reciprocal"}) {
+    NodeDef node_def;
+    node_def.set_name(op);
+    node_def.set_op(op);
+    AddNodeAttr("T", DT_INT32, &node_def);
+    EXPECT_FALSE(FindKernelDef(DeviceType(DEVICE_CPU_XLA_JIT), node_def,
+                               nullptr, nullptr)
+                     .ok());
+    node_def.clear_attr();
+    AddNodeAttr("T", DT_FLOAT, &node_def);
+    EXPECT_TRUE(FindKernelDef(DeviceType(DEVICE_CPU_XLA_JIT), node_def, nullptr,
+                              nullptr)
+                    .ok());
   }
 }
 

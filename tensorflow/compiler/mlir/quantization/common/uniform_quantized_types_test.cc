@@ -575,7 +575,7 @@ TEST_F(IsSupportedByTfliteQuantizeOrDequantizeOpsTest, StorageTypeI8Succeeds) {
 
 TEST_F(IsSupportedByTfliteQuantizeOrDequantizeOpsTest, StorageTypeI16Succeeds) {
   auto qi16_type = quant::UniformQuantizedType::get(
-      /*flags=*/QuantizationFlags::Signed, builder_.getI8Type(),
+      /*flags=*/QuantizationFlags::Signed, builder_.getI16Type(),
       builder_.getF32Type(),
       /*scale=*/1.0,
       /*zeroPoint=*/0, /*storageTypeMin=*/-128, /*storageTypeMax=*/127);

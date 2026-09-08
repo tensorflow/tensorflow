@@ -415,7 +415,7 @@ class HloModuleConfig {
   void SetAnalysisAllowance(absl::string_view pass_name, int64_t allowance) {
     analysis_allowance_map_[pass_name] = allowance;
   }
-  void clear_analysis_allowance_map() { analysis_allowance_map_.clear(); }
+  void clear_analysis_allowance_map() { analysis_allowance_map_ = {}; }
 
   PrecisionConfig::Precision matrix_unit_operand_precision() const {
     return matrix_unit_operand_precision_;
@@ -429,6 +429,7 @@ class HloModuleConfig {
   void set_fdo_profile(absl::string_view fdo_profile) {
     fdo_profile_ = fdo_profile;
   }
+  void clear_fdo_profile() { fdo_profile_ = std::string(); }
 
   int64_t device_memory_size() const { return device_memory_size_; }
   void set_device_memory_size(int64_t device_memory_size) {

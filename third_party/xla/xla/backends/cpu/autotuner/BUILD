@@ -42,6 +42,7 @@ cc_library(
         "//xla/stream_executor/host:host_platform_id",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -141,9 +142,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "llvm_kernel_autotuner",
-    srcs = ["llvm_kernel_autotuner.cc"],
-    hdrs = ["llvm_kernel_autotuner.h"],
+    name = "cpu_autotuner",
+    srcs = ["cpu_autotuner.cc"],
+    hdrs = ["cpu_autotuner.h"],
     deps = [
         ":cpu_codegen_backend",
         ":cpu_profiler",
@@ -170,10 +171,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "llvm_kernel_autotuner_test",
-    srcs = ["llvm_kernel_autotuner_test.cc"],
+    name = "cpu_autotuner_test",
+    srcs = ["cpu_autotuner_test.cc"],
     deps = [
-        ":llvm_kernel_autotuner",
+        ":cpu_autotuner",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/cpu:cpu_compiler",

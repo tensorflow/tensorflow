@@ -701,11 +701,7 @@ class BufferAssignment {
   int64_t HloBufferSize(const HloBuffer& buffer) {
     auto [it, inserted] = cached_buffer_sizes_.try_emplace(buffer.id());
     if (inserted) {
-      int64_t result = 0;
-      for (const HloValue* value : buffer.values()) {
-        result = std::max(result, buffer_size_(*value));
-      }
-      it->second = result;
+      it->second = buffer.ComputeSize(buffer_size_);
     }
     return it->second;
   }
@@ -909,6 +905,11 @@ class BufferAssigner {
     const PrivateStacks* private_stacks = nullptr;
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare;
+    // The packing strategy to use for multi-page (page_size > 0) heap
+    // allocation.
+    GlobalDecreasingSizeBestFitHeap<HloValue>::PackingStrategy
+        multi_page_strategy =
+            GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial;
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
 

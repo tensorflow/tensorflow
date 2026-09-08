@@ -150,6 +150,11 @@ class XlaKeyValueStore : public xla::KeyValueStoreInterface {
         absl::StrCat(key_prefix_, key), value);
   };
 
+  absl::Status Delete(absl::string_view key) override {
+    return coordination_service_agent_->DeleteKeyValue(
+        absl::StrCat(key_prefix_, key));
+  }
+
  private:
   tsl::CoordinationServiceAgent* coordination_service_agent_;
   std::string key_prefix_;

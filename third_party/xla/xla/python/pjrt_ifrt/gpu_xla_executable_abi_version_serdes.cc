@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version_serdes.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/status/status.h"

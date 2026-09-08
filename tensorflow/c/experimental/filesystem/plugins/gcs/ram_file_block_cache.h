@@ -180,8 +180,10 @@ class RamFileBlockCache {
   /// Thread safety:
   /// The iterator and timestamp fields should only be accessed while holding
   /// the block-cache-wide mu_ instance variable. The state variable should only
-  /// be accessed while holding the Block's mu lock. The data vector should only
-  /// be accessed after state == FINISHED, and it should never be modified.
+  /// be accessed while holding the Block's mu lock.  Once state==FINISHED,
+  /// the data vector may be read and may not be written; before
+  /// state==FINISHED, the data vector may be accessed only by the thread that
+  /// set state==FETCHING.
   ///
   /// In order to prevent deadlocks, never grab the block-cache-wide mu_ lock
   /// AFTER grabbing any block's mu lock. It is safe to grab mu without locking
@@ -212,13 +214,13 @@ class RamFileBlockCache {
   void Prune() ABSL_LOCKS_EXCLUDED(mu_);
 
   bool BlockNotStale(const std::shared_ptr<Block>& block)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) ABSL_LOCKS_EXCLUDED(block->mu);
 
   /// Look up a Key in the block cache.
   std::shared_ptr<Block> Lookup(const Key& key) ABSL_LOCKS_EXCLUDED(mu_);
 
   void MaybeFetch(const Key& key, const std::shared_ptr<Block>& block,
-                  TF_Status* status) ABSL_LOCKS_EXCLUDED(mu_);
+                  TF_Status* status) ABSL_LOCKS_EXCLUDED(mu_, block->mu);
 
   /// Trim the block cache to make room for another entry.
   void Trim() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);

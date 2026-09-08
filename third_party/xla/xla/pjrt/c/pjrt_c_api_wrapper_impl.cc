@@ -27,6 +27,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -74,7 +75,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -512,6 +513,11 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
       return PjrtErrorToStatus(error);
     }
     return absl::OkStatus();
+  }
+
+  absl::Status Delete(absl::string_view key) override {
+    return absl::UnimplementedError(
+        "Delete is not supported in CApiKeyValueStore.");
   }
 
  private:
@@ -2574,6 +2580,17 @@ PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
   return nullptr;
 }
 
+ABSL_ATTRIBUTE_NOINLINE
+absl::StatusOr<std::unique_ptr<std::optional<xla::CompileOptions>>>
+ParseOptionalCompileOptions(absl::string_view options_str) {
+  if (options_str.empty() || !options_str.data()) {
+    return std::make_unique<std::optional<xla::CompileOptions>>(std::nullopt);
+  }
+  ABSL_ASSIGN_OR_RETURN(auto options, ParseCompileOptions(options_str));
+  return std::make_unique<std::optional<xla::CompileOptions>>(
+      std::move(options));
+}
+
 PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     PJRT_Executable_DeserializeAndLoad_Args* args) {
   // TODO: b/516902012 - Make this check stricter after 12week compatibility
@@ -2586,16 +2603,11 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
   absl::string_view serialized(args->serialized_executable,
                                args->serialized_executable_size);
 
-  std::optional<xla::CompileOptions> overridden_options;
-
-  if (args->overridden_serialized_compile_options &&
-      args->overridden_serialized_compile_options_size > 0) {
-    PJRT_ASSIGN_OR_RETURN(
-        overridden_options,
-        ParseCompileOptions(absl::string_view(
-            args->overridden_serialized_compile_options,
-            args->overridden_serialized_compile_options_size)));
-  }
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<std::optional<xla::CompileOptions>> overridden_options,
+      ParseOptionalCompileOptions(
+          absl::string_view(args->overridden_serialized_compile_options,
+                            args->overridden_serialized_compile_options_size)));
 
   xla::LoadOptions load_options;
   if (args->struct_size >=
@@ -2618,9 +2630,10 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     }
   }
 
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                        args->client->client->LoadSerializedExecutable(
-                            serialized, overridden_options, load_options));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      args->client->client->LoadSerializedExecutable(
+          serialized, std::move(*overridden_options), load_options));
 
   args->loaded_executable =
       new PJRT_LoadedExecutable(std::move(executable), args->client);

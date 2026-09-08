@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
@@ -23,8 +25,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -702,6 +706,147 @@ TEST(IsSpmdGeneratedTest, ReturnsTrueWhenBackendConfigSet) {
   ASSERT_THAT(ar->set_backend_config(config), IsOk());
 
   EXPECT_TRUE(IsSpmdGenerated(*ar));
+}
+
+TEST(IsAllReplicasLocalTest, SingleHostSingleProcess) {
+  GpuTopology topology(
+      /*platform_version=*/"",
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/1,
+      /*num_devices_per_host=*/8,
+      /*gpu_target_config=*/std::nullopt,
+      /*host_target_machine_options=*/std::nullopt,
+      /*num_devices_per_process=*/8);
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  EXPECT_TRUE(IsAllReplicasLocal(
+      topology, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA));
+}
+
+TEST(IsAllReplicasLocalTest,
+     SingleGBClusterHostMultiProcess_DefaultDisabled_ReturnsFalse) {
+  // A single GB cluster host with 2 processes (each having 1 device).
+  // num_hosts_per_partition = 2, num_devices_per_host = 1, slice_size = 2.
+  GpuTopology topology(
+      /*platform_version=*/"",
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*gpu_target_config=*/std::nullopt,
+      /*host_target_machine_options=*/std::nullopt,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  // Without the flag enabled, multi-process within a GB cluster host is NOT
+  // local.
+  DebugOptions debug_options;
+  EXPECT_FALSE(IsAllReplicasLocal(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+}
+
+TEST(IsAllReplicasLocalTest,
+     SingleGBClusterHostMultiProcess_FlagEnabled_ReturnsTrue) {
+  GpuTopology topology(
+      /*platform_version=*/"",
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*gpu_target_config=*/std::nullopt,
+      /*host_target_machine_options=*/std::nullopt,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  // With ALLREDUCE enabled in
+  // xla_gpu_unsupported_use_cross_host_one_shot_kernel:
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLREDUCE);
+  EXPECT_TRUE(IsAllReplicasLocal(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+
+  // With ALLCOLLECTIVES enabled:
+  DebugOptions all_collectives_opts;
+  all_collectives_opts.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_TRUE(IsAllReplicasLocal(
+      topology, all_collectives_opts, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+}
+
+TEST(IsAllReplicasLocalTest,
+     SingleGBClusterHostMultiProcess_FlagEnabledForDifferentCollective) {
+  GpuTopology topology(
+      /*platform_version=*/"",
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*gpu_target_config=*/std::nullopt,
+      /*host_target_machine_options=*/std::nullopt,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  // With only ALLGATHER enabled in the flag, ALLREDUCE should return false:
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLGATHER);
+  EXPECT_FALSE(IsAllReplicasLocal(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
+}
+
+TEST(IsAllReplicasLocalTest, CrossGBClusterPartitionReturnsFalse) {
+  // 2 GB cluster partitions with 2 devices each (slice_size = 2).
+  GpuTopology topology(
+      /*platform_version=*/"",
+      /*num_partitions=*/2,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*gpu_target_config=*/std::nullopt,
+      /*host_target_machine_options=*/std::nullopt,
+      /*num_devices_per_process=*/1);
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 2;  // Device 2 is in partition 1
+
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLREDUCE);
+
+  EXPECT_FALSE(IsAllReplicasLocal(
+      topology, debug_options, DebugOptions::ALLREDUCE, {group},
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
 }
 
 }  // namespace xla::gpu

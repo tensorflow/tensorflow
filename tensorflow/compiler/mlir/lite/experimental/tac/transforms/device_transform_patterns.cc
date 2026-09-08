@@ -667,8 +667,8 @@ LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
 
 // Insert a "requant" op after the mean op if the mean has different scales for
 // input & output.
-// Please note: THIS IS NOT a mathmetically-equivalent transformation and it may
-// loose accuracy, so we need to use this very very carefully.
+// Please note: THIS IS NOT a mathematically-equivalent transformation and it
+// may loose accuracy, so we need to use this very very carefully.
 LogicalResult InsertRequantForReduceMean::matchAndRewrite(
     TFL::MeanOp mean_op, PatternRewriter& rewriter) const {
   auto input = mean_op.getInput();

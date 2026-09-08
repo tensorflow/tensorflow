@@ -1,0 +1,207 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_abs
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = abs %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_abs {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] abs(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_ceil
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = ceil %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_ceil {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] ceil(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_convert
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = convert %[[ARG0]] : tensor<8x16xf32> -> tensor<8x16xbf16>
+// CHECK: results %[[OUT]]
+
+test_convert {
+  %p0 = f32[8,16] parameter(0)
+  %out = bf16[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_cos
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = cos %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_cos {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] cosine(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_erf
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = erf %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_erf {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] erf(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_exp
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = exp %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_exp {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] exponential(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_expm1
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK-DAG: %[[ONE:.*]] = constant dense<1.000000e+00>
+// CHECK-DAG: %[[EXP:.*]] = exp %[[ARG0]]
+// CHECK: %[[OUT:.*]] = sub %[[EXP]], %[[ONE]]
+// CHECK: results %[[OUT]]
+
+test_expm1 {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] exponential-minus-one(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_floor
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = floor %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_floor {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] floor(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_log
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = log %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_log {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] log(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_log1p
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK-DAG: %[[ONE:.*]] = constant dense<1.000000e+00>
+// CHECK-DAG: %[[ADD:.*]] = add %[[ARG0]], %[[ONE]]
+// CHECK: %[[OUT:.*]] = log %[[ADD]]
+// CHECK: results %[[OUT]]
+
+test_log1p {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] log-plus-one(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_not
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xi1>
+// CHECK: %[[OUT:.*]] = not %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_not {
+  %p0 = pred[8,16] parameter(0)
+  %out = pred[8,16] not(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_neg
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = neg %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_neg {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] negate(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_rsqrt
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = rsqrt %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_rsqrt {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] rsqrt(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_sin
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = sin %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_sin {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] sine(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_sqrt
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = sqrt %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_sqrt {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] sqrt(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_tan
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = tan %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_tan {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] tan(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_tanh
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = tanh_fwd %[[ARG0]]
+// CHECK: results %[[OUT]]
+
+test_tanh {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,16] tanh(%p0)
+}

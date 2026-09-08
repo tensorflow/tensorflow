@@ -143,6 +143,8 @@ RemoteLoadedHostCallback::~RemoteLoadedHostCallback() {
   }
 }
 
+char RemoteLoadedHostCallback::ID = 0;
+
 absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
                                                void** operand_ptrs) {
   if (queue_ == nullptr) {

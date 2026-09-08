@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/extensions/abi_version/gpu_abi_version_extension.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
-#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
@@ -239,8 +239,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     }
     options.max_inflight_computations = static_cast<int>(v);
   }
+  if (options.use_tfrt_gpu_client) {
+    options.use_async_dispatch = true;
+  }
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetXlaPjrtGpuClient(options));
+                        xla::GetStreamExecutorGpuClient(options));
   args->client = pjrt::CreateWrapperClient(GetGpuPjrtApi(), std::move(client));
   return nullptr;
 }

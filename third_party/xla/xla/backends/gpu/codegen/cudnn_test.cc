@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -43,18 +44,15 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -104,6 +102,10 @@ class CuDnnFusionTest
            version.major_version() > major_version;
   }
   bool IsAtLeastCuDnn91() { return IsAtLeastCuDnnVersion(9, 1); }
+  bool IsGB200() {
+    return get_cuda_cc().IsBlackwell() &&
+           absl::StrContains(device_description().name(), "GB200");
+  }
 
  protected:
   void SetUp() override {
@@ -207,23 +209,22 @@ CHECK:    },
 CHECK:    "tag": "MATMUL"
 CHECK:   }
 CHECK:  ],
-CHECK:  "tensors": {
+CHECK:  "tensors": [
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "p0",
 CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:   "uid": 1,
+CHECK:   "uid": 1
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "p1",
 CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:   "uid": 2,
+CHECK:   "uid": 2
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "d",
 CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:   "uid": 3,
-CHECK:   "uid_assigned": true
+CHECK:   "uid": 3
 )"));
 }
 
@@ -1403,13 +1404,20 @@ TEST_F(CuDnnFusionRewriteTest,
   // With other backends disabled, compilation must fail.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
-e {
+triton_gemm_dot {
   p0 = f64[20,40,64] parameter(0)
   p0n = f64[20,40,64] negate(p0)
   p1 = f64[20,80,64] parameter(1)
-  r = f64[20,40,80] dot(p0n, p1),
+  ROOT r = f64[20,40,80] dot(p0n, p1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
+}
+
+e {
+  p0 = f64[20,40,64] parameter(0)
+  p1 = f64[20,80,64] parameter(1)
+  ROOT fusion = f64[20,40,80] fusion(p0, p1), kind=kCustom, calls=triton_gemm_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
 })"));
   auto status =
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true).status();
@@ -1464,21 +1472,34 @@ CHECK: "nodes"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
 CHECK: "compute_data_type": "FLOAT"
+CHECK: "inputs": {
 CHECK: "X": 1
 CHECK: "scale": 3
-CHECK: "Y": "result_lhs_dq"
+CHECK: }
+CHECK: "outputs": {
+CHECK: "Y": 6
+CHECK: }
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
 CHECK: "compute_data_type": "FLOAT"
+CHECK: "inputs": {
 CHECK: "X": 2
 CHECK: "scale": 4
-CHECK: "Y": "result_rhs_dq"
+CHECK: }
+CHECK: "outputs": {
+CHECK: "Y": 7
+CHECK: }
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
-CHECK: "A": "result_lhs_dq"
-CHECK: "B": "result_rhs_dq"
+CHECK: "compute_data_type": "FLOAT"
+CHECK: "inputs": {
+CHECK: "A": 6
+CHECK: "B": 7
+CHECK: }
+CHECK: "outputs": {
 CHECK: "C": 5
+CHECK: }
 CHECK: "tag": "MATMUL"
 CHECK: "tensors"
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*128[[:space:]]*}}]
@@ -1500,12 +1521,20 @@ CHECK: "name": "result"
 CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
 CHECK: "is_virtual": true
 CHECK: "name": "result_lhs_dq"
+CHECK: "uid": 6
 CHECK: "is_virtual": true
 CHECK: "name": "result_rhs_dq"
+CHECK: "uid": 7
 )"));
 }
 
 TEST_F(CuDnnFusionFileCheckTest, ConvFpropGraphConvertedCorrectly) {
+  // Crashes on CUDA 12 + cuDNN 9.10. Works on CUDA 13 + cuDNN 9.23. It's
+  // unclear at which point between it got fixed. Conservatively skip on
+  // versions older than the oldest one confirmed to work.
+  if (IsGB200() && !IsAtLeastCuDnnVersion(9, 23)) {
+    GTEST_SKIP() << "Requires recent enough cuDNN to not crash on GB200 GPUs.";
+  }
   const std::string kHloText = R"(
 fusion {
   input = f32[2,9,9,17] parameter(0)
@@ -1540,7 +1569,7 @@ CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "tag": "CONV_FPROP"
 CHECK:  }
 CHECK: ],
-CHECK:"tensors": {
+CHECK: "tensors": [
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*17,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
 CHECK:   "name": "input",

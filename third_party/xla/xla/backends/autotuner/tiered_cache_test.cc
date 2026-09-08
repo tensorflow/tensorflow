@@ -25,9 +25,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/directory_store.h"

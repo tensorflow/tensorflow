@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 
 namespace xla {
 

@@ -19,12 +19,15 @@
 // CHECK-NEXT:  %[[compare_56:[^ ]+]] = pred[] compare(%[[arg0_1]], %[[constant_337]]), direction=EQ
 // CHECK-NEXT:  %[[arg1_1:[^ ]+]] = f32[] parameter(1)
 // CHECK-NEXT:  %[[constant_338:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[compare_58:[^ ]+]] = pred[] compare(%[[arg1_1]], %[[constant_338]]), direction=LE
+// CHECK-NEXT:  %[[compare_58:[^ ]+]] = pred[] compare(%[[arg1_1]], %[[constant_338]]), direction=LT
 // CHECK-NEXT:  %[[floor_20:[^ ]+]] = f32[] floor(%[[arg1_1]])
 // CHECK-NEXT:  %[[compare_59:[^ ]+]] = pred[] compare(%[[arg1_1]], %[[floor_20]]), direction=EQ
 // CHECK-NEXT:  %[[and_16:[^ ]+]] = pred[] and(%[[compare_58]], %[[compare_59]])
 // CHECK-NEXT:  %[[constant_363:[^ ]+]] = f32[] constant(nan)
 // CHECK-NEXT:  %[[broadcast_4:[^ ]+]] = f32[] broadcast(%[[constant_363]]), dimensions={}
+// CHECK-NEXT:  %[[compare_74:[^ ]+]] = pred[] compare(%[[arg1_1]], %[[constant_338]]), direction=EQ
+// CHECK-NEXT:  %[[constant_456:[^ ]+]] = f32[] constant(-inf)
+// CHECK-NEXT:  %[[broadcast_6:[^ ]+]] = f32[] broadcast(%[[constant_456]]), dimensions={}
 // CHECK-NEXT:  %[[constant_339:[^ ]+]] = f32[] constant(0.5)
 // CHECK-NEXT:  %[[compare_57:[^ ]+]] = pred[] compare(%[[arg1_1]], %[[constant_339]]), direction=LT
 // CHECK-NEXT:  %[[constant_344:[^ ]+]] = f32[] constant(2.01490307)
@@ -161,7 +164,8 @@
 // CHECK-NEXT:  %[[divide_86:[^ ]+]] = f32[] divide(%[[multiply_182]], %[[sine_6]])
 // CHECK-NEXT:  %[[subtract_48:[^ ]+]] = f32[] subtract(%[[subtract_47]], %[[divide_86]])
 // CHECK-NEXT:  %[[select_46:[^ ]+]] = f32[] select(%[[compare_57]], %[[subtract_48]], %[[subtract_47]])
-// CHECK-NEXT:  %[[select_47:[^ ]+]] = f32[] select(%[[and_16]], %[[broadcast_4]], %[[select_46]])
+// CHECK-NEXT:  %[[select_62:[^ ]+]] = f32[] select(%[[compare_74]], %[[broadcast_6]], %[[select_46]])
+// CHECK-NEXT:  %[[select_47:[^ ]+]] = f32[] select(%[[and_16]], %[[broadcast_4]], %[[select_62]])
 // CHECK-NEXT:  %[[constant_334:[^ ]+]] = f32[] constant(0)
 // CHECK-NEXT:  %[[compare_52:[^ ]+]] = pred[] compare(%[[arg1_1]], %[[constant_334]]), direction=LT
 // CHECK-NEXT:  %[[floor_18:[^ ]+]] = f32[] floor(%[[arg1_1]])

@@ -1,0 +1,48 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
+// RUN:   | FileCheck %s
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: test_correctness %s
+
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+fusion {
+  p0 = c64[128,256] parameter(0)
+  ROOT imag = f32[128,256] imag(p0)
+}
+
+// CHECK-LABEL: xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[IN:[^:]+]]: memref<128x256xcomplex<f32>>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xf32>,
+// CHECK-SAME:     %[[PID:[^:]+]]: index)
+
+// CHECK:       %[[T_0:.*]] = xtile.extract %[[IN]]
+// CHECK-SAME:    : memref<128x256xcomplex<f32>> -> tensor<1x4xcomplex<f32>>
+// CHECK:       stablehlo.imag %[[T_0]]
+
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// CHECK-VECTOR:   complex.im
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// NEW-VECTOR-SAME:    %[[IN:[^:]+]]: memref<128x256x2xf32>,
+// NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256xf32>,
+// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+
+// NEW-VECTOR:       vector.transfer_read %[[IN]]
+// NEW-VECTOR:       vector.extract_strided_slice
+
+ENTRY main {
+  p0 = c64[128,256] parameter(0)
+  ROOT fusion = f32[128,256] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "4"]}],
+          "num_ctas":"4"
+        }
+      }
+    }
+}

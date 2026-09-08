@@ -181,6 +181,25 @@ class DepthwiseConv2dTest(test.TestCase):
 
 class EluGradOpTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEluGradPreservesSmallNegativeValues(self):
+    test_cases = (
+        (dtypes.float32, -20.0, 1e-6),
+        (dtypes.float64, -40.0, 1e-14),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        inputs = constant_op.constant(value, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          elu = gen_nn_ops.elu(inputs)
+
+        elu_grad = tape.gradient(elu, inputs)
+        expected = np.exp(dtype.as_numpy_dtype(value))
+        self.assertAllClose(
+            expected, self.evaluate(elu_grad), rtol=rtol, atol=0
+        )
+
   @test_util.run_deprecated_v1
   def testEluGradGradWRTgrad_ys(self):
     inputs = constant_op.constant(
@@ -217,6 +236,57 @@ class EluGradOpTest(test.TestCase):
 
 
 class SeluGradOpTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSeluGradPreservesSmallNegativeGradients(self):
+    scale_alpha = 1.7580993408473768599402175208123
+    test_cases = (
+        (dtypes.float32, -20.0, 1e-6),
+        (dtypes.float64, -700.0, 1e-14),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        inputs = constant_op.constant(value, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          selu = gen_nn_ops.selu(inputs)
+
+        selu_grad = tape.gradient(selu, inputs)
+        np_dtype = dtype.as_numpy_dtype
+        expected = np_dtype(scale_alpha) * np.exp(np_dtype(value))
+        self.assertAllClose(
+            expected, self.evaluate(selu_grad), rtol=rtol, atol=0
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSeluGradEdgeCases(self):
+    scale = 1.0507009873554804934193349852946
+    scale_alpha = 1.7580993408473768599402175208123
+    for dtype in (dtypes.float32, dtypes.float64):
+      with self.subTest(dtype=dtype.name):
+        np_dtype = dtype.as_numpy_dtype
+        values = np.array(
+            [-np.inf, -2.0, -0.0, 0.0, 2.0, np.inf, np.nan], dtype=np_dtype
+        )
+        inputs = constant_op.constant(values, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          selu = gen_nn_ops.selu(inputs)
+
+        selu_grad = self.evaluate(tape.gradient(selu, inputs))
+        expected = np.array(
+            [
+                0.0,
+                np_dtype(scale_alpha) * np.exp(np_dtype(-2.0)),
+                scale,
+                scale,
+                scale,
+                scale,
+                np.nan,
+            ],
+            dtype=np_dtype,
+        )
+        self.assertAllClose(expected, selu_grad)
 
   @test_util.run_deprecated_v1
   def testSeluGradGradWRTgrad_ys(self):
@@ -265,39 +335,6 @@ class SwishGradOpTest(test.TestCase):
           nn_impl.swish, [features, beta])
       error = gradient_checker_v2.max_error(theoretical, numerical)
       self.assertLess(error, 1e-4)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testSwishPreservesSmallValuesAndGradients(self):
-    test_cases = (
-        (dtypes.float32, -90.0, 1e-5),
-        (dtypes.float64, -709.0, 1e-12),
-    )
-    for dtype, value, rtol in test_cases:
-      with self.subTest(dtype=dtype.name):
-        features = constant_op.constant(value, dtype=dtype)
-        beta = constant_op.constant(1.0, dtype=dtype)
-        with backprop.GradientTape() as tape:
-          tape.watch([features, beta])
-          swish = nn_impl.swish(features, beta)
-
-        features_grad, beta_grad = tape.gradient(swish, [features, beta])
-        q = np.exp(np.float64(value))
-        sigmoid = q / (1.0 + q)
-        expected_value = value * sigmoid
-        expected_features_grad = sigmoid * (1.0 + value * (1.0 - sigmoid))
-        expected_beta_grad = value**2 * sigmoid * (1.0 - sigmoid)
-        self.assertAllClose(
-            expected_value, self.evaluate(swish), rtol=rtol, atol=0
-        )
-        self.assertAllClose(
-            expected_features_grad,
-            self.evaluate(features_grad),
-            rtol=rtol,
-            atol=0,
-        )
-        self.assertAllClose(
-            expected_beta_grad, self.evaluate(beta_grad), rtol=rtol, atol=0
-        )
 
 
 if __name__ == "__main__":

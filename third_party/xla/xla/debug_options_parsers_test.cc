@@ -210,6 +210,39 @@ TEST(ParsingDebugOptionsTest, ParsingRepeatedFields) {
             DebugOptions::ALLTOALL);
 }
 
+TEST(ParsingDebugOptionsTest, ParsingCrossHostOneShotKernel) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_TRUE(debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel()
+                  .empty());
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLGATHER);
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::REDUCESCATTER);
+
+  ResetFlagValues();
+  std::string contents;
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(
+      WriteDebugOptionsToTempFile(debug_options, &contents)));
+  DebugOptions parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_TRUE(absl::StrContains(
+      contents,
+      "xla_gpu_unsupported_use_cross_host_one_shot_kernel: ALLGATHER"));
+  EXPECT_TRUE(absl::StrContains(
+      contents,
+      "xla_gpu_unsupported_use_cross_host_one_shot_kernel: REDUCESCATTER"));
+  EXPECT_EQ(parsed_debug_options
+                .xla_gpu_unsupported_use_cross_host_one_shot_kernel_size(),
+            2);
+  EXPECT_EQ(
+      parsed_debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          0),
+      DebugOptions::ALLGATHER);
+  EXPECT_EQ(
+      parsed_debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          1),
+      DebugOptions::REDUCESCATTER);
+}
+
 TEST(ParsingDebugOptionsTest, ParseFromDebugOptionsFile) {
   // Sanity checks: The test needs to use two flags that have false and true
   // default values.

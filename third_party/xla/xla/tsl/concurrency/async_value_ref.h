@@ -218,7 +218,7 @@ class AsyncValueRef {
     //
     //   struct A {};
     //   struct B : public A {};
-    //   struct C : public C {}
+    //   struct C : public B {}
     //
     //   AsyncValueRef<A> ref = MakeUnconstructedAsyncValueRef<C>();
     //
@@ -234,21 +234,40 @@ class AsyncValueRef {
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
-  AsyncValueRef<Derived> Cast() const {
+  AsyncValueRef<Derived> Cast() const& {
     DCHECK(DynCast<Derived>()) << "Illegal async value cast";
     return AsyncValueRef<Derived>(value_);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
-  AsyncValueRef<Derived> DynCast() const {
+  AsyncValueRef<Derived> Cast() && {
+    DCHECK(Isa<Derived>()) << "Illegal async value cast";
+    return AsyncValueRef<Derived>(std::move(value_));
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCast() const& {
     DCHECK(value_) << "Async value must be not null";
     return Isa<Derived>() ? AsyncValueRef<Derived>(value_)
                           : AsyncValueRef<Derived>(nullptr);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
-  AsyncValueRef<Derived> DynCastOrNull() const {
-    return value_ ? DynCast<Derived>(value_) : AsyncValueRef<Derived>(nullptr);
+  AsyncValueRef<Derived> DynCast() && {
+    DCHECK(value_) << "Async value must be not null";
+    return Isa<Derived>() ? AsyncValueRef<Derived>(std::move(value_))
+                          : AsyncValueRef<Derived>(nullptr);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCastOrNull() const& {
+    return value_ ? DynCast<Derived>() : AsyncValueRef<Derived>(nullptr);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCastOrNull() && {
+    return value_ ? std::move(*this).template DynCast<Derived>()
+                  : AsyncValueRef<Derived>(nullptr);
   }
 
   T* operator->() const { return &get(); }
@@ -1001,8 +1020,8 @@ bool Isa(const AsyncValueRef<T>& ref) {
 
 template <typename Derived, typename T,
           internal::DerivedFrom<Derived, T>* = nullptr>
-AsyncValueRef<Derived> Cast(const AsyncValueRef<T>& ref) {
-  return ref.template Cast<Derived>();
+AsyncValueRef<Derived> Cast(AsyncValueRef<T> ref) {
+  return std::move(ref).template Cast<Derived>();
 }
 
 template <typename Derived, typename T,
@@ -1013,8 +1032,20 @@ AsyncValueRef<Derived> DynCast(const AsyncValueRef<T>& ref) {
 
 template <typename Derived, typename T,
           internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCast(AsyncValueRef<T>&& ref) {
+  return std::move(ref).template DynCast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
 AsyncValueRef<Derived> DynCastOrNull(const AsyncValueRef<T>& ref) {
   return ref.template DynCastOrNull<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCastOrNull(AsyncValueRef<T>&& ref) {
+  return std::move(ref).template DynCastOrNull<Derived>();
 }
 
 template <typename Derived, typename T,

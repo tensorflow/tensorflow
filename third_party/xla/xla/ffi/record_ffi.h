@@ -37,6 +37,12 @@ struct RecordContext
 
 struct RecordExtension : public internal::RecordExtensionBase<RecordContext> {};
 
+template <typename Sink>
+void AbslStringify(Sink& sink, const RecordAction action) {
+  absl::Format(&sink, "action=%s",
+               action == RecordAction::kCreate ? "Create" : "Update");
+}
+
 }  // namespace xla::ffi
 
 #endif  // XLA_FFI_RECORD_FFI_H_

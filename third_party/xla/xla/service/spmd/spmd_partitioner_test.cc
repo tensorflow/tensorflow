@@ -9880,6 +9880,28 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, GatherPartitionedOnTrivialSliceDimsUnreduced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[2,3,9] gather(%input, %indices), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+    slice_sizes={1,9}, sharding={unreduced}
+})";
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
 TEST_P(SpmdPartitioningTest,
        GatherPartitionedOnTrivialSliceDims_PartialReplicate) {
   absl::string_view hlo_string = R"(
@@ -10623,6 +10645,132 @@ ENTRY entry {
                 AllOf(op::Scatter(op::Parameter(0), op::Parameter(1), indices,
                                   op::Parameter(3), op::Parameter(4)),
                       op::Shape("(f32[9,9], f32[9,9])")));
+  }
+}
+
+// `_xla_compute_type` selects SparseCore offload and is read long after SPMD,
+// so a partitioned gather/scatter must carry it across.
+// `need_resolve_conflicts` picks between two entirely separate implementations,
+// and each builds its own replacement instruction, so both are exercised.
+namespace {
+
+void ExpectComputeTypeAttr(const HloInstruction* instr) {
+  ASSERT_NE(instr, nullptr);
+  std::optional<std::string> attr =
+      instr->get_frontend_attribute("_xla_compute_type");
+  ASSERT_TRUE(attr.has_value());
+  EXPECT_EQ(*attr, "sparseoffload");
+}
+
+}  // namespace
+
+TEST_P(SpmdPartitioningTest, PassthroughGatherPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0), sharding={devices=[1,2]<=[2]}
+  %indices = s32[3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,9}, sharding={devices=[1,2]<=[2]},
+    frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kGather));
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       GatherPartitionedOnTrivialSliceDimsPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[2,3,9] gather(%input, %indices), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+    slice_sizes={1,9}, sharding={replicated},
+    frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kGather));
+  }
+}
+
+TEST_P(SpmdPartitioningTest, PassthroughScatterPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0), sharding={devices=[1,2]<=[2]}
+  %indices = s32[3] parameter(1), sharding={replicated}
+  %updates = f32[3,9] parameter(2), sharding={devices=[1,2]<=[2]}
+  ROOT %scatter = f32[2,9] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, sharding={devices=[1,2]<=[2]},
+      frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kScatter));
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       ScatterPartitionedOnTrivialSliceDimsPreservesFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  %updates = f32[2,3,9] parameter(2), sharding={replicated}
+  ROOT %scatter = f32[17,9] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2, sharding={devices=[2,1]<=[2]},
+      frontend_attributes={_xla_compute_type="sparseoffload"}
+})";
+  for (bool need_resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    ExpectComputeTypeAttr(FindInstruction(module.get(), HloOpcode::kScatter));
   }
 }
 
@@ -12929,6 +13077,30 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   // Partitioning must succeed (no CHECK failure) and preserve the FFT.
+  bool has_fft = false;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFft) has_fft = true;
+  }
+  EXPECT_TRUE(has_fft);
+}
+
+TEST_P(SpmdPartitioningTest, Fft3DReplicatedShardingDoesNotCrash) {
+  // For an FFT instruction with replicated sharding, gspmd should not attempt
+  // to index into the empty sharding.dimensions().
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = c64[1,1,8] constant({{{(0,0),(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7)}}}),
+    sharding={replicated}
+  ROOT fft = c64[1,1,8] fft(c64[1,1,8] constant), fft_type=FFT, fft_length={8},
+    sharding={replicated}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
   bool has_fft = false;
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -17224,7 +17396,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17255,7 +17427,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17289,7 +17461,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17321,7 +17493,7 @@ region_695.22546 {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -17352,7 +17524,7 @@ region {
   Arg_3.22550 = s32[] parameter(3)
   Arg_0.22547 = bf16[] parameter(0)
   Arg_1.22548 = bf16[] parameter(1)
-  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
 }
 
 ENTRY %entry {
@@ -18370,11 +18542,12 @@ ENTRY entry {
   EXPECT_NE(all_gather, nullptr);
 
   CollectiveDeviceListVersion expected_version;
-  if (sharding_type == ShardingFormatPicker::ShardingType::kV1) {
+  if (enable_rgv3) {
+    expected_version = CollectiveDeviceListVersion::kMeshAxes;
+  } else if (sharding_type == ShardingFormatPicker::ShardingType::kV1) {
     expected_version = CollectiveDeviceListVersion::kListOfLists;
   } else {
-    expected_version = enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
-                                   : CollectiveDeviceListVersion::kIota;
+    expected_version = CollectiveDeviceListVersion::kIota;
   }
 
   EXPECT_EQ(all_gather->device_list()->version(), expected_version);

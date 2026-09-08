@@ -29,6 +29,21 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Returns true iff sp is a safe identifier: starts with a letter or
+// underscore, and contains only letters, digits, and underscores. Used to
+// validate any name (OpDef attr/arg names, or ApiDef rename_to values)
+// that downstream code generators (cc_op_gen.cc, python_op_gen.cc) splice
+// into generated C++/Python source, either as identifiers or into string
+// literals. Not a runtime validity check on OpDef registration -- see the
+// definition in op_def_util.cc for why.
+bool IsValidAttrOrArgName(absl::string_view sp);
+
+// Converts `sp` into a safe identifier (see IsValidAttrOrArgName) by
+// replacing unsafe characters with underscores. A code generator that
+// needs a raw identifier from a name that fails IsValidAttrOrArgName
+// should use this rather than the name itself.
+std::string SanitizeToIdentifier(absl::string_view sp);
+
 // Performs a consistency check across the fields of the op_def.
 absl::Status ValidateOpDef(const OpDef& op_def);
 

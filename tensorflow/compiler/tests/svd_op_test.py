@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
@@ -85,6 +86,18 @@ class SvdOpTest(xla_test.XLATestCase, parameterized.TestCase):
       self._testSvdCorrectness(dtype, batch_dims + (n, n))
       self._testSvdCorrectness(dtype, batch_dims + (2 * n, n))
       self._testSvdCorrectness(dtype, batch_dims + (n, 2 * n))
+
+  def testVectorInputRaisesError(self):
+    # Like GitHub issue 110798 for QR: the graph-level shape check only runs
+    # for inputs of known rank, so a rank-1 input reaching the compiler
+    # through an unknown-rank placeholder must be rejected at compile time
+    # instead of reading a negative trailing dimension.
+    with self.session() as sess:
+      x_tf = array_ops.placeholder(np.float32)
+      with self.test_scope():
+        s, u, v = linalg_ops.svd(x_tf, full_matrices=True)
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "rank >= 2"):
+        sess.run([s, u, v], feed_dict={x_tf: np.zeros([8], np.float32)})
 
 
 if __name__ == "__main__":

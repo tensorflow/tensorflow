@@ -16,7 +16,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/platform/cpu_feature_guard.h"
 
-PYBIND11_MODULE(_pywrap_cpu_feature_guard, m) {
+PYBIND11_MODULE(_pywrap_cpu_feature_guard, m, pybind11::mod_gil_not_used()) {
   m.def("InfoAboutUnusedCPUFeatures",
         &tensorflow::port::InfoAboutUnusedCPUFeatures);
 };

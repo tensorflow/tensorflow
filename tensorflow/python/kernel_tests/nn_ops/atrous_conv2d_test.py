@@ -169,6 +169,24 @@ class AtrousConv2DTest(test.TestCase):
             padding="SAME")
         self.evaluate(op)
 
+  def testAtrousConv2DInvalidInputRank(self):
+    with self.assertRaisesRegex(ValueError, "rank 4"):
+      nn_ops.atrous_conv2d(
+          value=np.ones([10]),
+          filters=np.ones([1, 1, 1, 1]),
+          rate=1,
+          padding="SAME",
+      )
+
+  def testAtrousConv2DInvalidFilterRank(self):
+    with self.assertRaisesRegex(ValueError, "rank 4"):
+      nn_ops.atrous_conv2d(
+          value=np.ones([1, 1, 1, 1]),
+          filters=np.ones([10]),
+          rate=1,
+          padding="SAME",
+      )
+
 
 class AtrousConv2DTransposeTest(test.TestCase):
 
@@ -246,6 +264,12 @@ class AtrousDepthwiseConv2DTest(test.TestCase):
                     x, f, strides, padding, rate=[rate, rate])
                 y2 = nn_impl.depthwise_conv2d(x, f_up, strides, padding)
                 self.assertAllClose(y1, y2, rtol=1e-3, atol=1e-3)
+
+  def testInvalidInputRank(self):
+    value = array_ops.zeros([10], dtype=dtypes.float32)
+    filters = array_ops.zeros([5, 5, 1, 8], dtype=dtypes.float32)
+    with self.assertRaisesRegex(ValueError, "rank 4"):
+      nn_ops.atrous_conv2d(value, filters, rate=1, padding="VALID")
 
 
 if __name__ == "__main__":

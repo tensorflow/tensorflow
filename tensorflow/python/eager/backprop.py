@@ -1062,6 +1062,17 @@ class GradientTape:
               output_gradients))
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
                           for x in output_gradients]
+      if len(output_gradients) != len(flat_targets):
+        # A composite target expands to one gradient per component tensor, so
+        # the counts can differ even when the caller passed one gradient per
+        # target. Without this check the mismatch reaches the tape, which
+        # indexes output_gradients per target and reads out of bounds.
+        raise ValueError(
+            "Expected one gradient per target, got "
+            f"{len(output_gradients)} gradients for {len(flat_targets)} "
+            "targets. Note that a composite target such as a LinearOperator "
+            "contributes one target per component tensor."
+        )
 
     flat_grad = imperative_grad.imperative_grad(
         self._tape,

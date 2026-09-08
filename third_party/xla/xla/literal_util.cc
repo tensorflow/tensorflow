@@ -349,8 +349,12 @@ template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointData(
     Literal* literal, std::minstd_rand0* engine,
     std::optional<ConstraintInterval> interval) {
-  GeneratorT min = static_cast<GeneratorT>(-0.1);
-  GeneratorT max = static_cast<GeneratorT>(0.2);
+  GeneratorT min = std::max<GeneratorT>(
+      static_cast<GeneratorT>(-0.1),
+      static_cast<GeneratorT>(std::numeric_limits<FloatT>::lowest()));
+  GeneratorT max = std::min<GeneratorT>(
+      static_cast<GeneratorT>(0.2),
+      static_cast<GeneratorT>(std::numeric_limits<FloatT>::max()));
   if (interval.has_value() && !interval->IsUnconstrained()) {
     min = interval->min == ConstraintInterval::kMin
               ? min
@@ -537,6 +541,87 @@ using RngT = std::conditional_t<
     sizeof(IntT) < sizeof(uint16_t),
     std::conditional_t<std::numeric_limits<IntT>::is_signed, int16_t, uint16_t>,
     IntT>;
+
+// Computes safe [min, max] bounds for integral literal generation.
+// - If no limit is specified, returns the full type range [lowest, max].
+// - If use_large_range is true or bit_width <= 4, clamps the limit directly.
+// - Otherwise, bounds values to B/2 bits to prevent hardware ALU overflow
+//   (multiplication, squaring, etc.) and float conversion explosions.
+// - Expands to full range if no_duplicates requires more unique elements than
+//   B/2 capacity.
+template <typename IntT>
+std::pair<IntT, IntT> GetIntegralBounds(
+    const Shape& shape, bool use_large_range, bool no_duplicates,
+    std::optional<std::pair<int64_t, int64_t>> limit) {
+  if (!limit.has_value()) {
+    return {std::numeric_limits<IntT>::lowest(),
+            std::numeric_limits<IntT>::max()};
+  }
+
+  constexpr int64_t bit_width = sizeof(IntT) * 8;
+
+  // Sub-byte integers (<= 4 bits) already have tiny domains (<= 16 values).
+  if (use_large_range || bit_width <= 4) {
+    return {SafeClampInt64<IntT>(limit->first),
+            SafeClampInt64<IntT>(limit->second)};
+  }
+
+  // Calculate default B/2 bitwidth bounds and default_range_size (2^H - 1),
+  // which is the width of the domain [default_min, default_max].
+  int64_t h = bit_width / 2;
+  int64_t default_min;
+  int64_t default_max;
+  int64_t default_range_size;
+  if constexpr (std::numeric_limits<IntT>::is_signed) {
+    default_min = -(int64_t{1} << (h - 1));
+    default_max = (int64_t{1} << (h - 1)) - 1;
+    default_range_size = (int64_t{1} << h) - 1;
+  } else {
+    default_min = 0;
+    default_max = (int64_t{1} << h) - 1;
+    default_range_size = default_max;
+  }
+
+  // If no_duplicates is requested, ensure capacity >= element count.
+  int64_t num_elements = ShapeUtil::ElementsIn(shape);
+  if (no_duplicates && num_elements > default_range_size) {
+    if (limit.has_value()) {
+      return {SafeClampInt64<IntT>(limit->first),
+              SafeClampInt64<IntT>(limit->second)};
+    }
+    return {std::numeric_limits<IntT>::lowest(),
+            std::numeric_limits<IntT>::max()};
+  }
+
+  int64_t min_64 = default_min;
+  int64_t max_64 = default_max;
+
+  if (limit.has_value()) {
+    bool lower_unconstrained =
+        (limit->first == std::numeric_limits<int64_t>::min());
+    bool upper_unconstrained =
+        (limit->second == std::numeric_limits<int64_t>::max());
+
+    if (lower_unconstrained && upper_unconstrained) {
+      min_64 = default_min;
+      max_64 = default_max;
+    } else if (lower_unconstrained) {
+      max_64 = limit->second;
+      min_64 =
+          (max_64 < default_min) ? max_64 - default_range_size : default_min;
+    } else if (upper_unconstrained) {
+      min_64 = limit->first;
+      max_64 =
+          (min_64 > default_max) ? min_64 + default_range_size : default_max;
+    } else {
+      min_64 = limit->first;
+      max_64 = limit->second;
+    }
+  }
+
+  return {SafeClampInt64<IntT>(min_64), SafeClampInt64<IntT>(max_64)};
+}
+
 template <typename IntT>
 void PopulateWithRandomIntegralDataWithBounds(
     Literal* literal, std::minstd_rand0* engine, bool no_duplicates, IntT min,
@@ -939,12 +1024,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           }
           if constexpr (primitive_util::IsIntegralType(
                             primitive_type_constant)) {
-            NativeT max = std::numeric_limits<NativeT>::max();
-            NativeT min = std::numeric_limits<NativeT>::lowest();
-            if (limit.has_value()) {
-              min = SafeClampInt64<NativeT>(limit->first);
-              max = SafeClampInt64<NativeT>(limit->second);
-            }
+            auto [min, max] = GetIntegralBounds<NativeT>(
+                new_shape, use_large_range, no_duplicates, limit);
             if (max_bits_of_precision.has_value()) {
               max = std::min(max,
                              static_cast<NativeT>(1 << *max_bits_of_precision));

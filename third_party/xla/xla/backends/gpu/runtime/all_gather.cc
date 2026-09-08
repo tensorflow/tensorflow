@@ -30,10 +30,11 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
@@ -57,6 +58,13 @@ absl::Status IsAllGatherKernelSupported(int64_t num_elements,
         "Supported types are signed integers and standard floating-point "
         "types; use NCCL/RCCL for other types.",
         primitive_util::LowercasePrimitiveTypeName(element_type)));
+  }
+
+  const int64_t byte_size =
+      num_elements * primitive_util::ByteWidth(element_type);
+  if (byte_size > kMaxAllGatherSizeBytes) {
+    return absl::UnimplementedError(
+        "Custom all-gather strategy is only supported for small inputs.");
   }
 
   // The total transfer size in bits must be aligned to
@@ -142,11 +150,9 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
         "Collective kernels are only supported on devices with NVLink/UALink "
         "support.");
   }
-  ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
-                   GetCollectiveOpGroupMode(all_gather));
-  const bool is_local = IsAllReplicasLocal(
-      gpu_topology.num_devices_per_process(), all_gather->replica_groups(),
-      group_mode, device_assignment);
+  ABSL_ASSIGN_OR_RETURN(
+      const bool is_local,
+      IsAllReplicasLocal(gpu_topology, *all_gather, device_assignment));
   ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
       is_collective_kernel_enabled, device_info, num_operands, num_devices,
       num_elements, element_type, is_local, all_gather->replica_groups()));
@@ -164,12 +170,17 @@ namespace {
 static constexpr uint64_t kMaxThreadsPerBlock = 512;
 }  // namespace
 
-LaunchDimensions AllGatherLaunchDimensions(int64_t elements,
-                                           int64_t warp_size) {
+LaunchDimensions AllGatherLaunchDimensions(
+    int64_t elements, int64_t num_ranks,
+    const se::DeviceDescription& device_info) {
   // Maximum number of threads such that each thread has elements to process.
   // Round up to a multiple of warp_size so every warp is fully occupied.
-  const int64_t total_threads = RoundUpTo(
-      CeilOfRatio(elements, se::gpu::kNumElementsPerThread), warp_size);
+  const int64_t output_elements = elements * num_ranks;
+  // Assuming each thread writes se::gpu::kNumElementsPerThread output elements
+  // we need total threads corresponding to the output elements.
+  const int64_t total_threads =
+      RoundUpTo(CeilOfRatio(output_elements, se::gpu::kNumElementsPerThread),
+                device_info.threads_per_warp());
   // Triton expects power of 2 for threads_per_block / threads_per_warp.
   const int64_t threads_per_block =
       std::min(kMaxThreadsPerBlock,
@@ -182,22 +193,16 @@ LaunchDimensions AllGatherLaunchDimensions(int64_t elements,
 
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
-  // instr may be the raw kAllGather instruction or a fusion wrapping it.
-  const HloInstruction* all_gather = instr;
-  if (instr->opcode() == HloOpcode::kFusion) {
-    all_gather = instr->fused_instructions_computation()->root_instruction();
-  }
-
   int64_t group_size = instr->GetModule()->config().replica_count();
-  if (!all_gather->replica_groups().empty() &&
-      all_gather->replica_groups()[0].replica_ids_size() > 0) {
-    group_size = all_gather->replica_groups()[0].replica_ids_size();
+  if (!instr->replica_groups().empty() &&
+      instr->replica_groups()[0].replica_ids_size() > 0) {
+    group_size = instr->replica_groups()[0].replica_ids_size();
   }
 
   // The symmetric scratch buffer holds one rank's slice (= input size).
   // Double-buffering is handled by the should_double_buffer flag.
   const int64_t input_size_bytes =
-      ShapeUtil::ByteSizeOf(all_gather->operand(0)->shape());
+      ShapeUtil::ByteSizeOf(instr->operand(0)->shape());
   const int64_t num_signal_flags = group_size * launch_dimensions.num_blocks();
   const int64_t signal_size = xla::RoundUpTo<uint64_t>(
       num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
@@ -206,28 +211,37 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
   const int64_t remote_size =
       xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
 
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+  const SymmetricMemoryType sym_mem_type =
+      IsCrossHostOneShotKernelEnabled(debug_options, DebugOptions::ALLGATHER)
+          ? SymmetricMemoryType::kLoadStoreAccessible
+          : SymmetricMemoryType::kXlaRendezvous;
+
   CollectiveKernelSpec kernel_spec = {
-      /* .input_buffer_specs= */ {
-          {/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-      /* .output_buffer_specs= */
-      {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /* .codegen_config= */ {
+          /* .copy_input_to_scratch= */ true,
+          /* .emit_entry_barrier= */ true,
+          /* .input_buffer_specs= */
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /* .output_buffer_specs= */
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /* .argument_descriptors= */
+          {{KernelArgType::kScratchBuffer,
+            /*index=*/1},  // scratch buffer as input
+           {KernelArgType::kOutputBuffer, /*index=*/0},
+           {KernelArgType::kRuntimeRank},
+           {KernelArgType::kInvocationCount},
+           {KernelArgType::kScratchBuffer,
+            /*index=*/0}},  // signal buffers only
+          /* .sync_count_increment= */ 1u},
       /* .scratch_buffers= */
-      {{signal_size, /*requires_multimem=*/false,  // Signal flags
-        SymmetricMemoryType::kXlaRendezvous,
+      {{signal_size, /*requires_multimem=*/false, sym_mem_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
-       {remote_size, /*requires_multimem=*/false,  // Symmetric remote buffer
-        SymmetricMemoryType::kXlaRendezvous,
+       {remote_size, /*requires_multimem=*/false, sym_mem_type,
         /*should_memzero=*/false,
-        /*should_double_buffer=*/true}},
-      /* .argument_descriptors= */
-      {{KernelArgType::kInputBuffer, /*index=*/0},   // buffers[0].source_buffer
-       {KernelArgType::kOutputBuffer, /*index=*/0},  // buffers[0].dst_buffer
-       {KernelArgType::kRuntimeRank},
-       {KernelArgType::kInvocationCount},
-       {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
-       {KernelArgType::kScratchBuffer, /*index=*/1}},  // remote buffers
-      /* .sync_count_increment= */ 1u};  // AllGather is always one-shot
+        /*should_double_buffer=*/true}}};
   return kernel_spec;
 }
 

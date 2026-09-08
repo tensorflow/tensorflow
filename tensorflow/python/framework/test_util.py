@@ -551,7 +551,7 @@ def skip_if(condition: Union[Callable[[], bool], bool]) -> Callable[[_F], _F]:
       if not skip:
         return fn(*args, **kwargs)
 
-    return wrapper
+    return wrapper  # pyrefly: ignore[bad-return]
 
   return real_skip_if
 
@@ -626,7 +626,7 @@ def enable_control_flow_v2(fn: _F) -> _F:
     finally:
       control_flow_util.ENABLE_CONTROL_FLOW_V2 = enable_control_flow_v2_old
 
-  return wrapper
+  return wrapper  # pyrefly: ignore[bad-return]
 
 
 def with_control_flow_v2(cls: _TC) -> _TC:
@@ -697,7 +697,7 @@ def disable_control_flow_v2(unused_msg: str) -> Callable[[_F], _F]:
   """
 
   def wrapper(func: _F) -> _F:
-    func._disable_control_flow_v2 = True
+    func._disable_control_flow_v2 = True  # pyrefly: ignore[missing-attribute]
     return func
 
   return wrapper
@@ -723,7 +723,7 @@ def enable_output_all_intermediates(fn: _F) -> _F:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
 
-  return wrapper
+  return wrapper  # pyrefly: ignore[bad-return]
 
 
 def assert_no_new_pyobjects_executing_eagerly(
@@ -803,7 +803,7 @@ def assert_no_new_pyobjects_executing_eagerly(
         if ops.has_default_graph():
           for collection_key in ops.get_default_graph().collections:
             collection = ops.get_collection(collection_key)
-            size_before = collection_sizes_before.get(collection_key, 0)
+            size_before = collection_sizes_before.get(collection_key, 0)  # pyrefly: ignore[unbound-name]
             if len(collection) > size_before:
               raise AssertionError(
                   ("Collection %s increased in size from "
@@ -1097,7 +1097,7 @@ def assert_no_garbage_created(f: _F) -> _F:
     gc.enable()
     return result
 
-  return decorator
+  return decorator  # pyrefly: ignore[bad-return]
 
 
 def _combine_named_parameters(**kwargs) -> list[OrderedDict[str, Any]]:
@@ -1191,7 +1191,7 @@ def run_class_in_v1_v2(cls: _TC) -> _TC:
     if not callable(attr):
       continue
 
-    setattr(cls, name, base_decorator(attr))
+    setattr(cls, name, base_decorator(attr))  # pyrefly: ignore[bad-argument-type]
   return cls
 
 
@@ -1229,7 +1229,7 @@ def enable_nested_function_shape_inference(fn: _F) -> _F:
     finally:
       flags.config().enable_nested_function_shape_inference.reset(False)
 
-  return wrapper
+  return wrapper  # pyrefly: ignore[bad-return]
 
 
 def enable_quantized_dtypes_training(fn: _F) -> _F:
@@ -1266,7 +1266,7 @@ def enable_quantized_dtypes_training(fn: _F) -> _F:
     finally:
       flags.config().enable_quantized_dtypes_training.reset(False)
 
-  return wrapper
+  return wrapper  # pyrefly: ignore[bad-return]
 
 
 def enable_eager_op_as_function(fn: _F) -> _F:
@@ -1282,7 +1282,7 @@ def enable_eager_op_as_function(fn: _F) -> _F:
   def wrapper(*args, **kwargs):
     return fn(*args, **kwargs)
 
-  return wrapper
+  return wrapper  # pyrefly: ignore[bad-return]
 
 
 @overload
@@ -1358,7 +1358,7 @@ def enable_graph_building_optimization(fn: _F) -> _F:
     finally:
       flags.config().graph_building_optimization.reset(False)
 
-  return wrapper
+  return wrapper  # pyrefly: ignore[bad-return]
 
 
 def add_graph_building_optimization_tests(cls: _TC) -> _TC:
@@ -1457,7 +1457,7 @@ def set_xla_env_flag(flag: str = "") -> Callable[[_F], _F]:
         else:
           os.environ["XLA_FLAGS"] = original_xla_flags
 
-    return decorated
+    return decorated  # pyrefly: ignore[bad-return]
 
   return decorator
 
@@ -1636,7 +1636,7 @@ def run_in_graph_and_eager_modes(
           else:
             session_func = self.test_session
             session_kwargs = dict(use_gpu=use_gpu, config=config)
-          with session_func(**session_kwargs):
+          with session_func(**session_kwargs):  # pyrefly: ignore[bad-argument-type]
             f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
@@ -1973,7 +1973,7 @@ def run_gpu_only(func: _F) -> _F:
 
     return func(self, *args, **kwargs)
 
-  return decorated
+  return decorated  # pyrefly: ignore[bad-return]
 
 
 def run_cuda_only(func: _F) -> _F:
@@ -1998,7 +1998,7 @@ def run_cuda_only(func: _F) -> _F:
 
     return func(self, *args, **kwargs)
 
-  return decorated
+  return decorated  # pyrefly: ignore[bad-return]
 
 
 def run_gpu_or_tpu(func: _F) -> _F:
@@ -2029,7 +2029,7 @@ def run_gpu_or_tpu(func: _F) -> _F:
 
     self.skipTest("Test requires GPU or TPU")
 
-  return decorated
+  return decorated  # pyrefly: ignore[bad-return]
 
 
 def with_forward_compatibility_horizons(
@@ -2765,7 +2765,7 @@ class TensorFlowTestCase(googletest.TestCase):
       )
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(validate_message)()
-      text_format.Merge(
+      text_format.Merge(  # pyrefly: ignore[bad-specialization]
           expected_message_maybe_ascii,
           expected_message,
           descriptor_pool=descriptor_pool.Default())
@@ -3276,7 +3276,7 @@ class TensorFlowTestCase(googletest.TestCase):
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.
       np.testing.assert_allclose(
-          a, b, rtol=rtol, atol=atol, err_msg="\n".join(msgs), equal_nan=True)
+          a, b, rtol=rtol, atol=atol, err_msg="\n".join(msgs), equal_nan=True)  # pyrefly: ignore[no-matching-overload]
 
   def _assertAllCloseRecursive(self,
                                a,
@@ -3712,7 +3712,7 @@ class TensorFlowTestCase(googletest.TestCase):
     target = self._GetNdArray(target)
     if not isinstance(target, list):
       arrays = [target]
-    for arr in arrays:
+    for arr in arrays:  # pyrefly: ignore[unbound-name]
       self.assertEqual(arr.dtype, expected_dtype)
 
   # pylint: disable=g-doc-return-or-yield
@@ -3955,7 +3955,7 @@ class TensorFlowTestCase(googletest.TestCase):
         config.allow_soft_placement = False
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
-      config.graph_options.optimizer_options.opt_level = -1
+      config.graph_options.optimizer_options.opt_level = -1  # pyrefly: ignore[bad-assignment]
       # Disable Grappler constant folding since some tests & benchmarks
       # use constant input and become meaningless after constant folding.
       # DO NOT DISABLE GRAPPLER OPTIMIZERS WITHOUT CONSULTING WITH THE

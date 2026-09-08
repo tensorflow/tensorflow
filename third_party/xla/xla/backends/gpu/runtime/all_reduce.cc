@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -349,11 +349,9 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
       num_elements * primitive_util::ByteWidth(element_type);
   const AllReduceStrategy strategy =
       GetAllReduceStrategy(byte_size, is_multimem_enabled);
-  ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
-                   GetCollectiveOpGroupMode(all_reduce));
-  const bool is_local = IsAllReplicasLocal(
-      gpu_topology.num_devices_per_process(), all_reduce->replica_groups(),
-      group_mode, device_assignment);
+  ABSL_ASSIGN_OR_RETURN(
+      const bool is_local,
+      IsAllReplicasLocal(gpu_topology, *all_reduce, device_assignment));
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink/UALink "
@@ -449,28 +447,40 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
   const int64_t remote_size =
       xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
 
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+  const SymmetricMemoryType sym_mem_type =
+      IsCrossHostOneShotKernelEnabled(debug_options, DebugOptions::ALLREDUCE)
+          ? SymmetricMemoryType::kLoadStoreAccessible
+          : SymmetricMemoryType::kXlaRendezvous;
+
   CollectiveKernelSpec kernel_spec = {
-      /* .input_buffer_specs= */ {
-          {/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-      /* .output_buffer_specs= */
-      {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /* .codegen_config= */ {
+          /* .copy_input_to_scratch= */ false,
+          /* .emit_entry_barrier= */ false,
+          /* .input_buffer_specs= */
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /* .output_buffer_specs= */
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /* .argument_descriptors= */
+          {{KernelArgType::kInputBuffer,
+            /*index=*/0},  // buffers[0].source_buffer
+           {KernelArgType::kOutputBuffer,
+            /*index=*/0},  // buffers[0].dst_buffer
+           {KernelArgType::kRuntimeRank},
+           {KernelArgType::kInvocationCount},
+           {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
+           {KernelArgType::kScratchBuffer, /*index=*/1}},  // scratch buffers
+          /* .sync_count_increment = */ 1 + static_cast<uint32_t>(strategy)},
       /* .scratch_buffers= */
       {{signal_size, /*requires_multimem=*/false,  // Signal buffers
-        SymmetricMemoryType::kXlaRendezvous,
+        sym_mem_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
        {remote_size, /*requires_multimem=*/false,  // Remote buffers
-        SymmetricMemoryType::kXlaRendezvous,
+        sym_mem_type,
         /*should_memzero=*/false,
-        /*should_double_buffer=*/true}},
-      /* .argument_descriptors= */
-      {{KernelArgType::kInputBuffer, /*index=*/0},   // buffers[0].source_buffer
-       {KernelArgType::kOutputBuffer, /*index=*/0},  // buffers[0].dst_buffer
-       {KernelArgType::kRuntimeRank},
-       {KernelArgType::kInvocationCount},
-       {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
-       {KernelArgType::kScratchBuffer, /*index=*/1}},  // scratch buffers
-      /* .sync_count_increment = */ 1 + static_cast<uint32_t>(strategy)};
+        /*should_double_buffer=*/true}}};
   return kernel_spec;
 }
 

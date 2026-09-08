@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/comparison/comparison_result.pb.h"
 #include "xla/hlo/tools/comparison/original_tensor_summary_utils.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 
 namespace xla::numerics::comparison {

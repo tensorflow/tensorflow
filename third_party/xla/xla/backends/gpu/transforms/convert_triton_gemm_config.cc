@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -71,6 +71,7 @@ namespace xla::gpu {
 namespace {
 
 using ::mlir::MLIRContext;
+using ::xla::xtile::BlockLevelParameters;
 
 // Extracts the TritonGemmConfig from the given fusion's backend config.
 absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(

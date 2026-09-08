@@ -28,7 +28,7 @@ namespace xla {
 namespace {
 
 class LogTest : public ClientLibraryTestRunnerMixin<
-                    HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
+                    HloInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(LogTest, LogZeroValues) {
   XlaBuilder builder(TestName());

@@ -135,7 +135,7 @@ llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);
 
 // Populates the `custom_code` and `custom_options` to attributes.
 // `custom_code` is used to identify CustomOp.
-// `custom_options` are opaque attribute used to store infomations for this
+// `custom_options` are opaque attribute used to store information for this
 // custom op.
 absl::Status CustomOptionsToAttributes(
     const std::string& custom_code, llvm::ArrayRef<uint8_t> custom_options,

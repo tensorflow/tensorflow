@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -49,6 +50,10 @@ class TritonBackend : public GpuCodegenBackend {
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
+
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
+      const HloInstruction& instr) override;
+
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
@@ -61,12 +66,17 @@ class TritonBackend : public GpuCodegenBackend {
  private:
   bool IsSupported(const HloInstruction& instr) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigsForDot(const HloInstruction* instr);
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigsForScaledDot(const HloInstruction* instr);
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetOverriddenConfigs(const HloInstruction* instr);
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedGemmConfigs(
+      const HloInstruction& instr);
+
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedConfigsForDot(
+      const HloInstruction* instr);
+
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedConfigsForScaledDot(
+      const HloInstruction* instr);
+
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetOverriddenConfigs(
+      const HloInstruction* instr);
 
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -36,7 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.pb.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/util.h"
 
 namespace xla {

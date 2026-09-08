@@ -1864,5 +1864,40 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         )
         self.evaluate(result)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherDtypeMismatch(self) -> None:
+    var = resource_variable_ops.ResourceVariable(
+        [1.0, 2.0], dtype=dtypes.float32, name="var_float"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"(Trying to read variable with wrong dtype|dtype mismatch)",
+      ):
+        result = resource_variable_ops.resource_gather(
+            var.handle,
+            indices=[0],
+            dtype=dtypes.float16,
+        )
+        self.evaluate(result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherNdDtypeMismatch(self) -> None:
+    var = resource_variable_ops.ResourceVariable(
+        [1.0, 2.0], dtype=dtypes.float32, name="var_float_nd"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"(Trying to read variable with wrong dtype|dtype mismatch)",
+      ):
+        result = resource_variable_ops.resource_gather_nd(
+            var.handle,
+            indices=[[0]],
+            dtype=dtypes.float16,
+        )
+        self.evaluate(result)
+
+
 if __name__ == "__main__":
   test.main()

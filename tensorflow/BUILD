@@ -1044,6 +1044,7 @@ package_group(
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/odml/model_explorer/...",
         "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
@@ -1588,6 +1589,7 @@ exports_files(
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
         "tf_private_symbols.lds",
+        "tf_framework_version_script.lds",
     ],
 )
 

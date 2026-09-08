@@ -226,7 +226,7 @@ EXPORTS
  ?BatchShardedOnMesh@Layout@dtensor@tensorflow@@SA?AV123@AEBVMesh@23@HAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z
  ?BoundPort@GrpcDataServerBase@data@tensorflow@@QEAAHXZ
  ?Build@KernelDefBuilder@tensorflow@@QEAAPEBVKernelDef@2@XZ
- ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@PEAU_object@@@lts_20260526@absl@@@Z
+ ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@V?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@@lts_20260526@absl@@@Z
  ?Capture@StackTrace@tensorflow@@SA?AV?$shared_ptr@VStackTrace@tensorflow@@@std@@H@Z
  ?CatPieces@strings_internal@lts_20260526@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
  ?Check@PyListChecker@py_dispatch@tensorflow@@UEAA?AW4MatchType@PyTypeChecker@23@PEAU_object@@@Z
@@ -256,6 +256,7 @@ EXPORTS
  ?ComputeGradient@Tape@gradients@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@PEAVAbstractContext@3@V?$Span@QEAVAbstractTensorHandle@tensorflow@@@56@11V?$Span@PEAVAbstractTensorHandle@tensorflow@@@56@@Z
  ?Convert@PythonTensorConverter@tensorflow@@QEBA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@AEAW4DataType@2@PEA_N@Z
  ?Convert@tflite@@YAPEAU_object@@PEAU2@00_N0PEBVPyFunctionLibrary@quantization@tensorflow@@@Z
+ ?ConvertMlirBytecode@tflite@@YAPEAU_object@@PEAU2@00@Z
  ?ConvertPyObjectToAttributeType@tensorflow@@YA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@W4AttributeType@1@@Z
  ?ConvertPythonAPIParameters@tensorflow@@YA_NAEBVPythonAPIInfo@1@AEBVPythonTensorConverter@1@V?$Span@PEAU_object@@@lts_20260526@absl@@PEAUInferredAttributes@21@@Z
  ?ConvertToEagerTensor@tensorflow@@YAPEAUTFE_TensorHandle@@PEAUTFE_Context@@PEAU_object@@W4DataType@1@PEBD@Z

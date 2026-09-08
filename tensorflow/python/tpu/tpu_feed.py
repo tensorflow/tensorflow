@@ -210,7 +210,7 @@ class InfeedQueue(object):
       ValueError: if the shapes and sharding policies don't match.
     """
     if self.tuple_shapes is not None:
-      for (policy, shape) in zip(self._sharding_policies, self._tuple_shapes):
+      for (policy, shape) in zip(self._sharding_policies, self._tuple_shapes):  # pyrefly: ignore[bad-argument-type]
         # Raise an error if the policy is incompatible with the shape.
         _ = policy.get_sharded_shape(shape)
 
@@ -246,7 +246,7 @@ class InfeedQueue(object):
           f"length {self.number_of_tuple_elements}"
       )
     if self._frozen:
-      for (frozen, updated) in zip(self._tuple_types, tuple_types):
+      for (frozen, updated) in zip(self._tuple_types, tuple_types):  # pyrefly: ignore[bad-argument-type]
         if frozen != updated:
           raise ValueError(
               "Trying to update InfeedQueue with frozen configuration with an "
@@ -294,7 +294,7 @@ class InfeedQueue(object):
           "elements each convertible to TensorShape: got error "
           f"{str(e)}") from e
     if self._frozen:
-      for (frozen, updated) in zip(self._tuple_shapes, tuple_shapes):
+      for (frozen, updated) in zip(self._tuple_shapes, tuple_shapes):  # pyrefly: ignore[bad-argument-type]
         if frozen != updated:
           raise ValueError(
               "Trying to update InfeedQueue with frozen configuration with an "
@@ -499,7 +499,7 @@ class InfeedQueue(object):
     full_name = "%s/dequeue" % self._name
     sharded_shapes = [
         policy.get_unpartitioned_shape(policy.get_sharded_shape(shape))
-        for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
+        for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)  # pyrefly: ignore[bad-argument-type]
     ]
     if tpu_device is not None:
       with ops.device(tpu_name_util.core(tpu_device)):
@@ -512,7 +512,7 @@ class InfeedQueue(object):
       return dequeue_op
     partitions = [
         policy.get_unpartitioned_shape([1] * shape.ndims).as_list()
-        for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
+        for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)  # pyrefly: ignore[bad-argument-type]
     ]
     return tag_sharding_attribute_for_dequeued_tensors(dequeue_op, partitions)
 
@@ -807,7 +807,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
     full_name = "%s/dequeue" % self._name
     sharded_shapes = [
         policy.get_sharded_shape(shape)
-        for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
+        for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)  # pyrefly: ignore[bad-argument-type]
     ]
     with ops.device(tpu_name_util.core(tpu_device)):
       values = tpu_ops.infeed_dequeue_tuple(
@@ -856,7 +856,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
     number_of_replicas = len(sharded_inputs)
     number_of_tuple_elements = len(sharded_inputs[0])
 
-    assert len(self._input_partition_dims) == number_of_tuple_elements
+    assert len(self._input_partition_dims) == number_of_tuple_elements  # pyrefly: ignore[bad-argument-type]
     enqueue_ops = []
 
     for replica_index in range(number_of_replicas):

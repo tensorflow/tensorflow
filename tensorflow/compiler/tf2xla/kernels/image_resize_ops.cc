@@ -500,24 +500,27 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners,
                   "input must be 4-dimensional", input_shape.DebugString())));
   // First dimension always assumed to be batch
   const int64_t batch = input_shape.dim_size(0);
-  std::vector<int64_t> in_size = {input_shape.dim_size(1),
-                                  input_shape.dim_size(2)};
+  const int64_t in_height = input_shape.dim_size(1);
+  const int64_t in_width = input_shape.dim_size(2);
   // Last/4th dimension always assumed to be num channels
   const int64_t channels = input_shape.dim_size(3);
-  OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
+  OP_REQUIRES(ctx, in_height > 0 && in_width > 0,
               absl::InvalidArgumentError(
-                  absl::StrCat("input size must be positive, got [", in_size[0],
-                               ",", in_size[1], "]")));
+                  absl::StrCat("input size must be positive, got [", in_height,
+                               ",", in_width, "]")));
+  std::vector<int64_t> in_size = {in_height, in_width};
 
   std::vector<int64_t> out_size;
   OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &out_size));
   OP_REQUIRES(ctx, out_size.size() == 2,
               absl::InvalidArgumentError(absl::StrCat(
                   "output size must be length 2, got ", out_size.size())));
-  OP_REQUIRES(ctx, out_size[0] > 0 && out_size[1] > 0,
+  const int64_t out_height = out_size[0];
+  const int64_t out_width = out_size[1];
+  OP_REQUIRES(ctx, out_height > 0 && out_width > 0,
               absl::InvalidArgumentError(
                   absl::StrCat("output size must be positive, got [",
-                               out_size[0], ",", out_size[1], "]")));
+                               out_height, ",", out_width, "]")));
 
   xla::XlaOp input = ctx->Input(0);
   xla::PrimitiveType input_type = ctx->input_xla_type(0);
@@ -526,7 +529,114 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners,
     input = xla::ConvertElementType(input, xla::F32);
     input_type = xla::F32;
   }
-  DataType output_dtype = EncodePrimitiveTypeAsDataType(input_type).value();
+
+  if (is_kernel_bilinear) {
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp scalar_zero =
+        xla::ConvertElementType(xla::ConstantR0(b, 0), input_type);
+    xla::XlaOp scalar_half =
+        xla::ConvertElementType(xla::ConstantR0(b, 0.5), input_type);
+
+    float h_scale = (align_corners && out_height > 1)
+                        ? (in_height - 1) / static_cast<float>(out_height - 1)
+                        : in_height / static_cast<float>(out_height);
+    float w_scale = (align_corners && out_width > 1)
+                        ? (in_width - 1) / static_cast<float>(out_width - 1)
+                        : in_width / static_cast<float>(out_width);
+
+    xla::XlaOp h_scale_op =
+        xla::ConvertElementType(xla::ConstantR0(b, h_scale), input_type);
+    xla::XlaOp w_scale_op =
+        xla::ConvertElementType(xla::ConstantR0(b, w_scale), input_type);
+
+    xla::XlaOp y =
+        xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {out_height}), 0);
+    xla::XlaOp in_y;
+    if (half_pixel_centers) {
+      in_y =
+          xla::Sub(xla::Mul(xla::Add(y, scalar_half), h_scale_op), scalar_half);
+    } else {
+      in_y = xla::Mul(y, h_scale_op);
+    }
+    xla::XlaOp in_y_f = xla::Floor(in_y);
+    xla::XlaOp h_max =
+        xla::ConvertElementType(xla::ConstantR0(b, in_height - 1), input_type);
+    xla::XlaOp y_top = xla::Clamp(scalar_zero, in_y_f, h_max);
+    xla::XlaOp y_bottom = xla::Clamp(scalar_zero, xla::Ceil(in_y), h_max);
+    xla::XlaOp y_lerp = xla::Sub(in_y, in_y_f);
+
+    xla::XlaOp x =
+        xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {out_width}), 0);
+    xla::XlaOp in_x;
+    if (half_pixel_centers) {
+      in_x =
+          xla::Sub(xla::Mul(xla::Add(x, scalar_half), w_scale_op), scalar_half);
+    } else {
+      in_x = xla::Mul(x, w_scale_op);
+    }
+    xla::XlaOp in_x_f = xla::Floor(in_x);
+    xla::XlaOp w_max =
+        xla::ConvertElementType(xla::ConstantR0(b, in_width - 1), input_type);
+    xla::XlaOp x_left = xla::Clamp(scalar_zero, in_x_f, w_max);
+    xla::XlaOp x_right = xla::Clamp(scalar_zero, xla::Ceil(in_x), w_max);
+    xla::XlaOp x_lerp = xla::Sub(in_x, in_x_f);
+
+    y_top = xla::ConvertElementType(y_top, xla::S32);
+    y_bottom = xla::ConvertElementType(y_bottom, xla::S32);
+    x_left = xla::ConvertElementType(x_left, xla::S32);
+    x_right = xla::ConvertElementType(x_right, xla::S32);
+
+    xla::XlaOp y_top_bcast =
+        xla::BroadcastInDim(y_top, {out_height, out_width, 1}, {0});
+    xla::XlaOp y_bottom_bcast =
+        xla::BroadcastInDim(y_bottom, {out_height, out_width, 1}, {0});
+    xla::XlaOp x_left_bcast =
+        xla::BroadcastInDim(x_left, {out_height, out_width, 1}, {1});
+    xla::XlaOp x_right_bcast =
+        xla::BroadcastInDim(x_right, {out_height, out_width, 1}, {1});
+
+    xla::XlaOp tl_indices = xla::ConcatInDim(b, {y_top_bcast, x_left_bcast}, 2);
+    xla::XlaOp tr_indices =
+        xla::ConcatInDim(b, {y_top_bcast, x_right_bcast}, 2);
+    xla::XlaOp bl_indices =
+        xla::ConcatInDim(b, {y_bottom_bcast, x_left_bcast}, 2);
+    xla::XlaOp br_indices =
+        xla::ConcatInDim(b, {y_bottom_bcast, x_right_bcast}, 2);
+
+    xla::GatherDimensionNumbers dimension_numbers;
+    dimension_numbers.add_offset_dims(0);
+    dimension_numbers.add_offset_dims(3);
+    dimension_numbers.add_collapsed_slice_dims(1);
+    dimension_numbers.add_collapsed_slice_dims(2);
+    dimension_numbers.add_start_index_map(1);
+    dimension_numbers.add_start_index_map(2);
+    dimension_numbers.set_index_vector_dim(2);
+    absl::InlinedVector<int64_t, 4> slice_sizes = {batch, 1, 1, channels};
+
+    xla::XlaOp top_left =
+        xla::Gather(input, tl_indices, dimension_numbers, slice_sizes, false);
+    xla::XlaOp top_right =
+        xla::Gather(input, tr_indices, dimension_numbers, slice_sizes, false);
+    xla::XlaOp bottom_left =
+        xla::Gather(input, bl_indices, dimension_numbers, slice_sizes, false);
+    xla::XlaOp bottom_right =
+        xla::Gather(input, br_indices, dimension_numbers, slice_sizes, false);
+
+    xla::XlaOp top =
+        xla::Add(top_left, xla::Mul(xla::Sub(top_right, top_left), x_lerp,
+                                    /*broadcast_dimensions=*/{2}));
+    xla::XlaOp bottom = xla::Add(
+        bottom_left, xla::Mul(xla::Sub(bottom_right, bottom_left), x_lerp,
+                              /*broadcast_dimensions=*/{2}));
+    xla::XlaOp output = xla::Add(top, xla::Mul(xla::Sub(bottom, top), y_lerp,
+                                               /*broadcast_dimensions=*/{1}));
+
+    ctx->SetOutput(0, output);
+    return;
+  }
+
+  OP_REQUIRES_VALUE(DataType output_dtype, ctx,
+                    EncodePrimitiveTypeAsDataType(input_type));
 
   int64_t h_span_size, w_span_size;
   xla::XlaOp concatted;
@@ -584,7 +694,8 @@ void GeneralCompileGrad(XlaOpKernelContext* ctx, bool align_corners,
     grad = xla::ConvertElementType(grad, xla::F32);
     grad_type = xla::F32;
   }
-  DataType output_dtype = EncodePrimitiveTypeAsDataType(grad_type).value();
+  OP_REQUIRES_VALUE(DataType output_dtype, ctx,
+                    EncodePrimitiveTypeAsDataType(grad_type));
 
   int64_t h_span_size, w_span_size;
   xla::XlaOp concatted;
@@ -763,35 +874,37 @@ void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
               absl::InvalidArgumentError(absl::StrCat(
                   "input must be 4-dimensional", input_shape.DebugString())));
   const int64_t batch = input_shape.dim_size(0);
-  std::vector<int64_t> in_size = {input_shape.dim_size(1),
-                                  input_shape.dim_size(2)};
+  const int64_t in_height = input_shape.dim_size(1);
+  const int64_t in_width = input_shape.dim_size(2);
   const int64_t channels = input_shape.dim_size(3);
-  OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
+  OP_REQUIRES(ctx, in_height > 0 && in_width > 0,
               absl::InvalidArgumentError(
-                  absl::StrCat("input size must be positive, got [", in_size[0],
-                               ",", in_size[1], "]")));
+                  absl::StrCat("input size must be positive, got [", in_height,
+                               ",", in_width, "]")));
+  std::vector<int64_t> in_size = {in_height, in_width};
 
   TensorShape grad_shape = ctx->InputShape(0);
   OP_REQUIRES(ctx, grad_shape.dims() == 4,
               absl::InvalidArgumentError(absl::StrCat(
                   "gradient must be 4-dimensional", grad_shape.DebugString())));
   const int64_t grad_batch = grad_shape.dim_size(0);
-  const std::vector<int64_t> grad_size = {grad_shape.dim_size(1),
-                                          grad_shape.dim_size(2)};
+  const int64_t grad_height = grad_shape.dim_size(1);
+  const int64_t grad_width = grad_shape.dim_size(2);
   const int64_t grad_channels = grad_shape.dim_size(3);
   OP_REQUIRES(ctx, batch == grad_batch,
               absl::InvalidArgumentError(absl::StrCat(
                   "activations and gradients must have the same batch size (",
                   batch, " vs. ", grad_batch, ")")));
-  OP_REQUIRES(ctx, grad_size[0] > 0 && grad_size[1] > 0,
+  OP_REQUIRES(ctx, grad_height > 0 && grad_width > 0,
               absl::InvalidArgumentError(
                   absl::StrCat("gradient size must be positive, got [",
-                               grad_size[0], ",", grad_size[1], "]")));
+                               grad_height, ",", grad_width, "]")));
   OP_REQUIRES(
       ctx, channels == grad_channels,
       absl::InvalidArgumentError(absl::StrCat(
           "activations and gradients must have the same number of channels (",
           channels, " vs. ", grad_channels, ")")));
+  const std::vector<int64_t> grad_size = {grad_height, grad_width};
 
   if (half_pixel_centers_ || !align_corners_) {
     // TODO(b/288101036): This case also works for half_pixel_centers_=false so

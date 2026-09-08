@@ -43,8 +43,8 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotune_results.pb.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/ffi.h"
@@ -71,7 +71,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -224,47 +224,10 @@ ENTRY test_computation {
 )";
   AssertionResult run_result =
       Run(std::move(ValueOrDie(ParseAndReturnVerifiedModule(kHloText))),
-          /*run_hlo_passes=*/true);
+          /*run_hlo_passes=*/false);
   EXPECT_THAT(run_result.failure_message(),
               HasSubstr("Expected send and recv instructions to have "
                         "non-cyclical source-target pairs"));
-}
-
-TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
-  if (tsl::kIsOpenSource) {
-    GTEST_SKIP() << "Streamz is not supported in OSS.";
-  }
-
-  const char* hlo_text = R"(
-HloModule test
-
-ENTRY main {
-  p = f32[10]{0} parameter(0)
-  ROOT neg = f32[10]{0} negate(p)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_text));
-
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<OpaqueExecutable> executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
-
-  const std::string kGpuCompilerStacktraceMetricName =
-      "/xla/service/gpu/compiler_stacktrace_count";
-  tsl::monitoring::CollectionRegistry::CollectMetricsOptions options;
-  std::unique_ptr<tsl::monitoring::CollectedMetrics> metrics =
-      tsl::monitoring::CollectionRegistry::Default()->CollectMetrics(options);
-
-  EXPECT_TRUE(metrics->point_set_map.find(kGpuCompilerStacktraceMetricName) !=
-              metrics->point_set_map.end());
-
-  // Since Streamz is recorded every call, we expect at least one point.
-  // All other callers may increment the counter as well.
-  EXPECT_GT(
-      metrics->point_set_map[kGpuCompilerStacktraceMetricName]->points.size(),
-      0);
 }
 
 TEST_F(GpuCompilerTest, GenerateDebugInfoForNonAutotuningCompilations) {
@@ -380,6 +343,8 @@ class PersistedAutotuningTest : public HloTestBase,
     InMemoryStore::Clear();
   }
 
+  bool use_new_format() const { return GetParam(); }
+
   static constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -405,7 +370,7 @@ ENTRY e {
         xla_gpu_dump_autotune_results_to_);
     options.set_xla_gpu_load_autotune_results_from(
         xla_gpu_load_autotune_results_from_);
-    options.set_xla_gpu_use_new_autotune_cache_format(GetParam());
+    options.set_xla_gpu_use_new_autotune_cache_format(use_new_format());
     return options;
   }
 
@@ -437,7 +402,7 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-    ExpectValidAutotuneResults(autotune_results_str, GetParam());
+    ExpectValidAutotuneResults(autotune_results_str, use_new_format());
   }
 
   // Overwrite results with an invalid textproto.
@@ -450,22 +415,59 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-    ExpectValidAutotuneResults(autotune_results_str, GetParam());
+    ExpectValidAutotuneResults(autotune_results_str, use_new_format());
   }
 }
 
 TEST_P(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
-  TF_EXPECT_OK(GetOptimizedModuleForExecutable(R"(
+  EXPECT_OK(GetOptimizedModuleForExecutable(R"(
 e {
   a = f32[64,128] parameter(0)
   t = f32[128,64] transpose(a), dimensions={1,0}
 })",
-                                               GetModuleConfigForTest())
-                   .status());
+                                            GetModuleConfigForTest())
+                .status());
 
   ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-  ExpectValidAutotuneResults(autotune_results_str, GetParam());
+  ExpectValidAutotuneResults(autotune_results_str, use_new_format());
+}
+
+TEST_P(PersistedAutotuningTest, LoadMismatchedFormatResultsFallback) {
+  tsl::Env* env = tsl::Env::Default();
+  std::string autotune_file = GetUniqueTempFilePath(".txt");
+
+  if (use_new_format()) {
+    AutotuneResults legacy_results;
+    legacy_results.set_version(3);
+    auto* entry = legacy_results.add_results();
+    entry->set_device("test_device");
+    entry->set_hlo("test_hlo");
+    entry->set_version(3);
+    entry->mutable_result()->mutable_gemm()->set_algorithm(1);
+
+    std::string serialized;
+    ASSERT_TRUE(
+        tsl::protobuf::TextFormat::PrintToString(legacy_results, &serialized));
+    ASSERT_OK(tsl::WriteStringToFile(env, autotune_file, serialized));
+  } else {
+    autotuner::AutotuneCache new_cache;
+    auto* entry = new_cache.add_entries();
+    entry->mutable_key()->mutable_target()->set_device("test_device");
+    entry->mutable_key()->mutable_target()->set_hlo_fingerprint("test_hlo");
+    entry->mutable_value()->mutable_optimal_config()->set_backend(
+        autotuner::CUBLASLT_FISSION);
+
+    std::string serialized;
+    ASSERT_TRUE(
+        tsl::protobuf::TextFormat::PrintToString(new_cache, &serialized));
+    ASSERT_OK(tsl::WriteStringToFile(env, autotune_file, serialized));
+  }
+
+  xla_gpu_load_autotune_results_from_ = autotune_file;
+
+  EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, GetModuleConfigForTest())
+                .status());
 }
 
 INSTANTIATE_TEST_SUITE_P(PersistedAutotuningTestInstantiation,
@@ -1432,15 +1434,16 @@ TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterGemmFusion) {
                                   "hoist-fused-bitcasts");
 }
 
-TEST_F(PassOrderTest, AutotunerRunsAfterHoistFusedBitcasts) {
+TEST_F(PassOrderTest, ConfigAssignerRunsAfterHoistFusedBitcasts) {
   if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
   }
-  VerifyPassRunsAtLeastOnceBefore("hoist-fused-bitcasts", "autotuner");
+  VerifyPassRunsAtLeastOnceBefore("hoist-fused-bitcasts", "config-assigner");
 }
 
-TEST_F(PassOrderTest, ConvertTritonGemmConfigRunsAfterAutotuner) {
-  VerifyPassRunsAtLeastOnceBefore("autotuner", "convert_triton_gemm_config");
+TEST_F(PassOrderTest, ConvertTritonGemmConfigRunsAfterConfigAssigner) {
+  VerifyPassRunsAtLeastOnceBefore("config-assigner",
+                                  "convert_triton_gemm_config");
 }
 
 TEST_F(PassOrderTest,
@@ -1742,25 +1745,30 @@ m {
 
 // Define a test-specific enum for expected TopK implementations.
 enum class TopKImpl {
-  kCustomKernel,  // Custom GPU kernel
-  kSelectK,       // raft::select_k
-  kSort           // Fallback Sort+Slice
+  kCustomKernel,           // Custom GPU kernel
+  kSelectK,                // raft::select_k
+  kSort,                   // Fallback Sort+Slice
+  kSelectKWithU64Adapter,  // pack_to_u64 + raft::select_k(u64) +
+                           // unpack_from_u64
+  kSortWithS32Adapter      // pack_to_s32 + Sort(s32)+Slice + unpack_from_s32
 };
 
 // Test fixture for verifying GPU TopK lowering to SelectK or custom kernel.
 class GpuCompilerSelectKTest
     : public GpuCompilerTest,
-      public ::testing::WithParamInterface<std::tuple<int, int, TopKImpl>> {};
+      public ::testing::WithParamInterface<
+          std::tuple<absl::string_view, int, int, bool, TopKImpl>> {};
 
 // Test lowering of TopK to different GPU implementations
 // (CustomKernel, raft::select_k, or Sort+Slice (LLVM/CUBSort)).
 TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
-  auto [n, k, expected_impl] = GetParam();
+  auto [dtype, n, k, is_stable, expected_impl] = GetParam();
 
   bool is_rocm = device_description().gpu_compute_capability().IsRocm();
   bool is_oneapi = device_description().gpu_compute_capability().IsOneAPI();
 
-  if (is_rocm && expected_impl == TopKImpl::kSelectK) {
+  if (is_rocm && (expected_impl == TopKImpl::kSelectK ||
+                  expected_impl == TopKImpl::kSelectKWithU64Adapter)) {
     GTEST_SKIP() << "raft::select_k is not supported in ROCm.";
   }
   // TODO(intel-tf): Remove this check once TopK specialization for SYCL/oneAPI
@@ -1774,11 +1782,11 @@ TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
 HloModule m
 
 ENTRY main {
-  p = f32[8,$0]{1,0} parameter(0)
-  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true, is_stable=false
+  p = $0[8,$1]{1,0} parameter(0)
+  ROOT t = ($0[8,$2]{1,0}, s32[8,$2]{1,0}) topk(p), k=$2, largest=true, is_stable=$3
 }
 )",
-                                          n, k);
+                                          dtype, n, k, is_stable);
 
   // Configure module with debug options.
   HloModuleConfig config;
@@ -1830,6 +1838,12 @@ ENTRY main {
       if (kinds.size() == 1) {
         // LLVM
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
+      } else if (kinds.size() == 4 && kinds[0] == Thunk::Kind::kCopy) {
+        // LLVM Bitonic sort (unbundled, with input copy)
+        EXPECT_THAT(kinds,
+                    ElementsAre(Thunk::Kind::kCopy, Thunk::Kind::kCustomKernel,
+                                Thunk::Kind::kCustomKernel,
+                                Thunk::Kind::kCustomKernel));
       } else if (kinds.size() == 4) {
         // CUB sort via FFI custom call
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
@@ -1839,6 +1853,19 @@ ENTRY main {
       } else {
         FAIL() << "Unexpected thunk sequence size: " << kinds.size();
       }
+      break;
+    }
+
+    case TopKImpl::kSelectKWithU64Adapter:
+      EXPECT_THAT(kinds,
+                  ElementsAre(Thunk::Kind::kCustomKernel, Thunk::Kind::kSelectK,
+                              Thunk::Kind::kCustomKernel));
+      break;
+
+    case TopKImpl::kSortWithS32Adapter: {
+      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                     Thunk::Kind::kCustomKernel,
+                                     Thunk::Kind::kCustomKernel));
       break;
     }
 
@@ -1879,7 +1906,7 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
       p_multimem = s32[1] parameter(0)
       p_non_coll = s32[1] parameter(1)
 
-      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_multimem_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
+      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_symmetric_memory_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
       res_multimem = s32[1] get-tuple-element(cc_multimem), index=0
 
       cc_non_coll = (s32[1]{0}) custom-call(p_non_coll), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
@@ -1903,7 +1930,7 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
     // Multimem input parameters are copied to S1
     // CHECK-DAG: [[COPY_MULTI_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P_MULTI]])
 
-    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}backend_config={xla_multimem_parameters = "0"}
+    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}backend_config={xla_symmetric_memory_parameters = "0"}
     // CHECK-DAG: [[CC_NON:%[^ ]+]] = (s32[1]{0}) custom-call([[P_NON]])
 
     // Extracting from the 1-element tuples returned by custom calls (all index=0)
@@ -2572,16 +2599,52 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 auto SelectKTestParams() {
-  // Depending on N and K, XLA chooses different TopK implementations:
-  // CustomKernel, raft::select_k, or Sort+Slice.
+  // Depending on dtype, N, K and is_stable flag, XLA chooses different TopK
+  // implementations:
+  // CustomKernel, raft::select_k, select_k_with_u64_adapter, or Sort+Slice.
   // The heuristic for selecting between TopK CustomKernel and
   // raft::matrix::select_k was developed as part of the initial research
   // described in b/409009349.
-  return ::testing::Values(std::make_tuple(1023, 4, TopKImpl::kSelectK),
-                           std::make_tuple(1024, 4, TopKImpl::kCustomKernel),
-                           std::make_tuple(1024, 16, TopKImpl::kSelectK),
-                           std::make_tuple(8192, 24, TopKImpl::kSelectK),
-                           std::make_tuple(8192, 512, TopKImpl::kSort));
+  return ::testing::Values(
+      // dtype, n, k, is_stable, expected_impl
+      std::make_tuple("f32", 1023, 4, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1023, 4, true, TopKImpl::kSort),
+      std::make_tuple("f32", 1024, 4, false, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 4, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1024, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 8192, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 24, true, TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("f32", 8192, 512, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 512, true, TopKImpl::kSort),
+      // f32: exact upper bound of max_k
+      std::make_tuple("f32", 8192, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 128, true, TopKImpl::kSelectKWithU64Adapter),
+      // f32: just over the upper bound
+      std::make_tuple("f32", 8192, 129, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 129, true, TopKImpl::kSort),
+      // bf16 and size <= 2**16 - use sort(s32) + slice.
+      std::make_tuple("bf16", 1023, 4, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1023, 4, true, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 4, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 4, true, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 16, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 16, true, TopKImpl::kSortWithS32Adapter),
+      // bf16 and size > 2**16.
+      std::make_tuple("bf16", 65540, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("bf16", 65540, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 24, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("bf16", 65540, 512, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 512, true, TopKImpl::kSort),
+      // bf16: exact upper bound of max_k for batch=8
+      std::make_tuple("bf16", 65540, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 128, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      // bf16: just over the upper bound
+      std::make_tuple("bf16", 65540, 129, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 129, true, TopKImpl::kSort));
 }
 // Instantiate the test suite with (n, k, expected_kind) pairs.
 INSTANTIATE_TEST_SUITE_P(SelectKOrCustomKernel, GpuCompilerSelectKTest,

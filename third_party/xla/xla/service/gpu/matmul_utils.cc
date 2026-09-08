@@ -1134,11 +1134,14 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
   TF_RET_CHECK(proto.num_warps() > 0);
   TF_RET_CHECK(proto.num_ctas() > 0);
   TF_RET_CHECK(proto.waves_per_eu() >= 0);
+  // group_size == 0 in old protos (field absent) is treated as 1 (no reorder)
+  TF_RET_CHECK(proto.group_size() >= 0);
 
   return TritonGemmConfig(
       proto.block_m(), proto.block_n(), proto.block_k(), proto.num_stages(),
       proto.num_warps(), proto.num_ctas(), proto.is_tma_allowed(),
-      proto.is_warp_specialization_allowed(), proto.waves_per_eu());
+      proto.is_warp_specialization_allowed(), proto.waves_per_eu(),
+      /*group_size=*/std::max(static_cast<int64_t>(1), proto.group_size()));
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -1152,6 +1155,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_is_tma_allowed(is_tma_allowed);
   key.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
   key.set_waves_per_eu(waves_per_eu);
+  key.set_group_size(group_size);
   return key;
 }
 
@@ -1161,7 +1165,7 @@ std::string TritonGemmConfig::ToString() const {
       ",num_stages:", num_stages, ",num_warps:", num_warps,
       ",num_ctas:", num_ctas, ",is_tma_allowed:", is_tma_allowed,
       ",is_warp_specialization_allowed:", is_warp_specialization_allowed,
-      ",waves_per_eu:", waves_per_eu, "}");
+      ",waves_per_eu:", waves_per_eu, ",group_size:", group_size, "}");
 }
 
 absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(

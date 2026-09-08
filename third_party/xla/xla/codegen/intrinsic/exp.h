@@ -30,7 +30,8 @@ namespace xla::codegen::intrinsics {
 class Exp : public Intrinsic<Exp> {
  public:
   static constexpr absl::string_view kName = "exp";
-  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
     return {
         {Type::S(xla::F64)},
         {Type::V(xla::F64, 2)},

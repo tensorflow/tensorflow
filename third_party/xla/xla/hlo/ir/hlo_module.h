@@ -832,6 +832,12 @@ class HloModule {
   bool hlo_passes_started() const { return hlo_passes_started_; }
   void set_hlo_passes_started(bool started) { hlo_passes_started_ = started; }
 
+  // Increment a per-pass-name invocation counter (returning the 0-based index
+  // of the current invocation). Used by tre --xla_disable_hlo_passes flag.
+  int64_t IncrementPassOccurrenceCount(const std::string& pass_name) {
+    return pass_occurrence_counts_[pass_name]++;
+  }
+
   // Moves (not copies) metadata from this HloModule to `module`. To be used
   // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
@@ -1034,6 +1040,10 @@ class HloModule {
   // debug_options.xla_run_hlo_passes_starting_from.
   // - true: We have reached the starting pass and passes are run as normal.
   bool hlo_passes_started_ = false;
+
+  // Per-pass-name invocation counter for the xla_disable_hlo_passes runtime
+  // gate. Transient (not serialized).
+  absl::flat_hash_map<std::string, int64_t> pass_occurrence_counts_;
 
   // Optional compilation profile handle.
   int64_t profile_version_ = 0;

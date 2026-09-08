@@ -54,6 +54,12 @@ class KeyValueStoreInterface {
 
   virtual absl::Status Set(absl::string_view key, absl::string_view value) = 0;
 
+  // Deletes the key-value pair associated with the provided key. If the key is
+  // a directory, recursively cleans up all key-values under the directory.
+  // There are no concurrency guarantees. To avoid a race / impose an ordering
+  // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
+  virtual absl::Status Delete(absl::string_view key) = 0;
+
   // Async version of `Get`. The `done` callback is invoked when the key-value
   // becomes available.
   // The caller can cancel the underlying RPC call with the `StartCancel()` and

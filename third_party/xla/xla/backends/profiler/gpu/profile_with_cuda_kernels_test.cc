@@ -110,6 +110,12 @@ void HandleRecords(PmSamples* samples) {
 
 void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
                                   bool enable_pm_sampling) {
+  if (enable_activity_hardware_tracing) {
+    if (auto status = CuptiTracer::EnableHES(); !status.ok()) {
+      LOG(WARNING) << "Failed to enable HES: " << status.message();
+    }
+  }
+
   uint32_t cupti_version = 0;
   cuptiGetVersion(&cupti_version);
   LOG(INFO) << "RUNTIME CUPTI version " << cupti_version
@@ -147,10 +153,11 @@ void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
 
   CuptiErrorManager error_manager(std::make_unique<CuptiWrapper>());
   TestableCuptiTracer tracer(&error_manager);
-  tracer.PrepareForProfilerStart(tracer_options).IgnoreError();
+  ASSERT_OK(tracer.PrepareForProfilerStart(tracer_options));
+  ASSERT_OK_AND_ASSIGN(uint64_t start_gputime_ns,
+                       tracer.GetTimestampForSubscriber());
 
   uint64_t start_walltime_ns = absl::GetCurrentTimeNanos();
-  uint64_t start_gputime_ns = tracer.GetTimestampForSubscriber();
   auto collector = CreateCuptiCollector(collector_options, start_walltime_ns,
                                         start_gputime_ns);
 
@@ -191,7 +198,8 @@ void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
   EXPECT_THAT(vec, Each(DistanceFrom(0, Lt(0.001))));
 
   auto space = std::make_unique<tensorflow::profiler::XSpace>();
-  collector->Export(space.get(), tracer.GetTimestampForSubscriber());
+  ASSERT_OK_AND_ASSIGN(uint64_t end_gpu_ns, collector->GetTracingEndTimeNs());
+  collector->Export(space.get(), end_gpu_ns);
   EXPECT_GE(space->planes_size(), 1);
 
   if (enable_pm_sampling) {

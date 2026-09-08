@@ -267,6 +267,10 @@ TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
     HardSwishParams* params = &data->params;
     const TfLiteTensor* input;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+    TF_LITE_ENSURE(context, input->params.zero_point >= INT16_MIN);
+    TF_LITE_ENSURE(context, input->params.zero_point <= INT16_MAX);
+    TF_LITE_ENSURE(context, output->params.zero_point >= INT16_MIN);
+    TF_LITE_ENSURE(context, output->params.zero_point <= INT16_MAX);
     params->input_zero_point = input->params.zero_point;
     params->output_zero_point = output->params.zero_point;
     const float input_scale = input->params.scale;

@@ -43,12 +43,6 @@ struct eval<TensorMirrorPadOp<PaddingDimensions, XprType>, Eigen::Dense> {
   typedef const TensorMirrorPadOp<PaddingDimensions, XprType>& type;
 };
 
-template <typename PaddingDimensions, typename XprType>
-struct nested<
-    TensorMirrorPadOp<PaddingDimensions, XprType>, 1,
-    typename eval<TensorMirrorPadOp<PaddingDimensions, XprType>>::type> {
-  typedef TensorMirrorPadOp<PaddingDimensions, XprType> type;
-};
 }  // namespace internal
 
 template <typename PaddingDimensions, typename XprType>
@@ -59,7 +53,8 @@ class TensorMirrorPadOp
   typedef typename Eigen::internal::traits<TensorMirrorPadOp>::Scalar Scalar;
   typedef typename Eigen::NumTraits<Scalar>::Real RealScalar;
   typedef typename XprType::CoeffReturnType CoeffReturnType;
-  typedef typename Eigen::internal::nested<TensorMirrorPadOp>::type Nested;
+  typedef
+      typename Eigen::internal::ref_selector<TensorMirrorPadOp>::type Nested;
   typedef typename Eigen::internal::traits<TensorMirrorPadOp>::StorageKind
       StorageKind;
   typedef typename Eigen::internal::traits<TensorMirrorPadOp>::Index Index;

@@ -722,6 +722,7 @@ TfLiteDelegate* TFLGpuDelegateCreate(const TFLGpuDelegateOptions* options) {
 }
 
 void TFLGpuDelegateDelete(TfLiteDelegate* delegate) {
+  if (delegate == nullptr) return;
   delete ::tflite::gpu::metal::GetMetalDelegate(delegate);
 }
 

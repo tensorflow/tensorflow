@@ -86,5 +86,21 @@ TEST(ErfTest, F32) {
   }
 }
 
+TEST(ErfTest, F64) {
+  Type type = Type::S(F64);
+  JitRunner runner = CreateJitRunner(type);
+  auto fn = runner.GetScalarFn<double(double)>(Erf::Name(type));
+
+  for (double x_val : GetTestValues<double>()) {
+    double expected = std::erf(x_val);
+    double result = fn(x_val);
+    if (std::isnan(expected)) {
+      EXPECT_TRUE(std::isnan(result));
+    } else {
+      EXPECT_THAT(result, NearUlps<double>(expected, 1));
+    }
+  }
+}
+
 }  // namespace
 }  // namespace xla::codegen::intrinsics

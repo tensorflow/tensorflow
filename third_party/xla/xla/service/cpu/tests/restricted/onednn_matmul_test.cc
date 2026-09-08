@@ -1591,6 +1591,22 @@ TEST_F(MatmulTest, SimpleTestTransposeFusionF16) {
   MatchOptimizedHlo(matmul_module_str, matmul_transpose_rewrite_str_);
 }
 
+// A rank-2 operand has no batch dimension, so its {1,0} transpose should be
+// folded into the matmul instead of being materialized as a copy.
+TEST_F(MatmulTest, SimpleTest2DTransposeFusionF32) {
+  const char* matmul_module_str = R"(
+  ENTRY matmul.test {
+    arg0.1 = f32[384,1024]{1,0} parameter(0), parameter_replication={false}
+    arg0.2 = f32[1024,512]{1,0} parameter(1), parameter_replication={false}
+    transpose.1 = f32[512,1024]{0,1} transpose(arg0.2), dimensions={1,0}
+    copy.1 = f32[512,1024]{1,0} copy(transpose.1)
+    ROOT dot.1 = f32[384,512]{1,0} dot(arg0.1, copy.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_transpose_rewrite_str_);
+}
+
 TEST_F(MatmulTest, SimpleTestNoTransposeFusion1) {
   const char* matmul_module_str = R"(
   ENTRY matmul.test {

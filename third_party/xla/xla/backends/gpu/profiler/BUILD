@@ -50,6 +50,8 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/profiler/utils:time_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],

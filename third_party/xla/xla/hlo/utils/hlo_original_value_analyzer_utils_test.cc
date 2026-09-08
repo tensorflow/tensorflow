@@ -118,6 +118,12 @@ TEST(AbsoluteScopedTensorKeyTest, CreateWithWildcardReplacementSize1) {
   ASSERT_EQ(abs.scope_instructions.size(), 1);
   EXPECT_EQ(abs.scope_instructions[0].instruction_name, "expanded");
   EXPECT_EQ(abs.scope_instructions[0].iteration_index, 5);
+
+  auto abs0 = AbsoluteScopedTensorKey::Create(
+      {ScopeInstruction::Create("call", 0)}, rel, call_map);
+  ASSERT_EQ(abs0.scope_instructions.size(), 1);
+  EXPECT_EQ(abs0.scope_instructions[0].instruction_name, "expanded");
+  EXPECT_EQ(abs0.scope_instructions[0].iteration_index, 0);
 }
 
 TEST(AbsoluteScopedTensorKeyTest, CreateWithWildcardReplacementSizeN) {
@@ -133,6 +139,25 @@ TEST(AbsoluteScopedTensorKeyTest, CreateWithWildcardReplacementSizeN) {
   EXPECT_EQ(abs.scope_instructions[0].iteration_index, 0);
   EXPECT_EQ(abs.scope_instructions[1].instruction_name, "expanded2");
   EXPECT_EQ(abs.scope_instructions[1].iteration_index, 5);
+
+  auto abs0 = AbsoluteScopedTensorKey::Create(
+      {ScopeInstruction::Create("call", 0)}, rel, call_map);
+  ASSERT_EQ(abs0.scope_instructions.size(), 2);
+  EXPECT_EQ(abs0.scope_instructions[0].instruction_name, "expanded1");
+  EXPECT_EQ(abs0.scope_instructions[0].iteration_index, 0);
+  EXPECT_EQ(abs0.scope_instructions[1].instruction_name, "expanded2");
+  EXPECT_EQ(abs0.scope_instructions[1].iteration_index, 0);
+
+  // Wildcard is at expanded1 (not the last element).
+  call_map["call"] = {ScopeInstruction::Create("expanded1", -2),
+                      ScopeInstruction::Create("expanded2", 0)};
+  auto abs_first = AbsoluteScopedTensorKey::Create(
+      {ScopeInstruction::Create("call", 5)}, rel, call_map);
+  ASSERT_EQ(abs_first.scope_instructions.size(), 2);
+  EXPECT_EQ(abs_first.scope_instructions[0].instruction_name, "expanded1");
+  EXPECT_EQ(abs_first.scope_instructions[0].iteration_index, 5);
+  EXPECT_EQ(abs_first.scope_instructions[1].instruction_name, "expanded2");
+  EXPECT_EQ(abs_first.scope_instructions[1].iteration_index, 0);
 }
 
 TEST(AbsoluteScopedTensorKeyTest, CreatePreservesSpecificIndex) {
@@ -146,6 +171,13 @@ TEST(AbsoluteScopedTensorKeyTest, CreatePreservesSpecificIndex) {
   EXPECT_EQ(abs.scope_instructions[0].instruction_name, "main");
   EXPECT_EQ(abs.scope_instructions[1].instruction_name, "expanded");
   EXPECT_EQ(abs.scope_instructions[1].iteration_index, 3);
+
+  auto rel_simple = RelativeScopedTensorKey::FromString("res", {0});
+  auto abs_root = AbsoluteScopedTensorKey::Create(
+      {ScopeInstruction::Create("call", 5)}, rel_simple, call_map);
+  ASSERT_EQ(abs_root.scope_instructions.size(), 1);
+  EXPECT_EQ(abs_root.scope_instructions[0].instruction_name, "expanded");
+  EXPECT_EQ(abs_root.scope_instructions[0].iteration_index, 3);
 }
 
 TEST(AbsoluteScopedTensorKeyTest, CreatePreservesWildcard) {
@@ -159,6 +191,13 @@ TEST(AbsoluteScopedTensorKeyTest, CreatePreservesWildcard) {
   EXPECT_EQ(abs.scope_instructions[0].instruction_name, "main");
   EXPECT_EQ(abs.scope_instructions[1].instruction_name, "expanded");
   EXPECT_EQ(abs.scope_instructions[1].iteration_index, -1);
+
+  auto rel_simple = RelativeScopedTensorKey::FromString("res", {0});
+  auto abs_root = AbsoluteScopedTensorKey::Create(
+      {ScopeInstruction::Create("call", 5)}, rel_simple, call_map);
+  ASSERT_EQ(abs_root.scope_instructions.size(), 1);
+  EXPECT_EQ(abs_root.scope_instructions[0].instruction_name, "expanded");
+  EXPECT_EQ(abs_root.scope_instructions[0].iteration_index, -1);
 }
 
 TEST(HloOriginalValueAnalyzerUtilsTest, GetShardingFromUnshardRecoveryModule) {

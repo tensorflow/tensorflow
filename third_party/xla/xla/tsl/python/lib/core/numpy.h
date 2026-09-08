@@ -20,8 +20,9 @@ limitations under the License.
 #error "Numpy cannot be included before numpy.h."
 #endif
 
-// Disallow Numpy 1.7 deprecated symbols.
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+// Disallow Numpy 2.0 deprecated symbols.
+#define NPY_NO_DEPRECATED_API NPY_2_0_API_VERSION
+#define NPY_TARGET_VERSION NPY_2_0_API_VERSION
 
 // We import_array in the XLA init function only.
 #define PY_ARRAY_UNIQUE_SYMBOL _xla_numpy_api

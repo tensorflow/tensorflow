@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -26,20 +25,15 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_loaded_executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_loaded_executable_test_base.h"
-#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/program_memory_tracer.h"
-#include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -55,35 +49,10 @@ constexpr int64_t kGiB = 1024 * 1024 * 1024;
 class ProgramMemoryTracerTest
     : public xla::ifrt::test_util::IfrtIrLoadedExecutableTestBase {
  protected:
-  std::unique_ptr<IfrtIRCompileOptions> CreateCompileOptions(
-      const DeviceListRef& devices) {
-    std::vector<DeviceId> device_assignments;
-    device_assignments.reserve(devices->size());
-    for (const auto& device : devices->devices()) {
-      device_assignments.push_back(device->Id());
-    }
-    return std::make_unique<IfrtIRCompileOptions>(
-        std::move(device_assignments), AtomExecutableMap(),
-        std::make_shared<absl::flat_hash_map<
-            std::string, std::unique_ptr<CompileOptions>>>());
-  }
-
-  absl::StatusOr<DeviceListRef> PickDevices(int count) {
-    absl::Span<Device* const> devices = client_->devices();
-    TF_RET_CHECK(count <= devices.size())
-        << "Requested " << count << " devices. Only have " << devices.size();
-    return client_->MakeDeviceList(devices.first(count));
-  }
-
-  absl::StatusOr<std::shared_ptr<IfrtIrLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp mlir_module, DeviceListRef devices) {
-    auto program = std::make_unique<IfrtIRProgram>(mlir_module);
-    auto options = CreateCompileOptions(devices);
-    ABSL_ASSIGN_OR_RETURN(
-        LoadedExecutableRef executable,
-        client_->GetDefaultCompiler()
-            ->CompileAndLoad(std::move(program), std::move(options))
-            .Await());
+  absl::StatusOr<std::shared_ptr<IfrtIrLoadedExecutable>> GetIfrtIrExecutable(
+      absl::string_view source, DeviceListRef devices) {
+    ABSL_ASSIGN_OR_RETURN(LoadedExecutableRef executable,
+                     CompileProgram(source, devices));
     return std::static_pointer_cast<IfrtIrLoadedExecutable>(
         std::move(executable));
   }
@@ -115,11 +84,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
-                       CompileAndLoad(mlir_module.get(), devices));
+                       GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 6 * kGiB);
@@ -150,11 +117,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
-                       CompileAndLoad(mlir_module.get(), devices));
+                       GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 6 * kGiB);
@@ -207,11 +172,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
-                       CompileAndLoad(mlir_module.get(), devices));
+                       GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 5 * kGiB);
@@ -277,11 +240,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
-                       CompileAndLoad(mlir_module.get(), devices));
+                       GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 3 * kGiB);
@@ -336,11 +297,9 @@ module @sin_from_offloaded_arg {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
-                       CompileAndLoad(mlir_module.get(), devices));
+                       GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   // Arrays allocated on host memory should not be counted in the memory stats.
@@ -365,11 +324,9 @@ module @padded_arrays_with_layouts {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
-                       CompileAndLoad(mlir_module.get(), devices));
+                       GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 11264);

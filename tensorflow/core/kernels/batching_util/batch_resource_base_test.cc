@@ -315,7 +315,8 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
           /*enable_priority_aware_batch_scheduler=*/false,
           /*enable_priority_aware_batch_scheduler_resplit=*/false,
           /*enable_batching_task_lazy_cancellation=*/
-          GetParam().enable_batching_task_lazy_cancellation);
+          GetParam().enable_batching_task_lazy_cancellation,
+          /*per_criticality_batch_timeout_micros=*/{});
   tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
       new TestBatchResourceBase(true, batcher, queue_options,
                                 allowed_batch_sizes));
@@ -397,7 +398,8 @@ TEST_F(BatchResourceBaseWithPriorityTest,
           MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
           /*enable_priority_aware_batch_scheduler=*/true,
           /*enable_priority_aware_batch_scheduler_resplit=*/false,
-          /*enable_batching_task_lazy_cancellation=*/false);
+          /*enable_batching_task_lazy_cancellation=*/false,
+          /*per_criticality_batch_timeout_micros=*/{});
   tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
       new TestBatchResourceBase(true, batcher, queue_options,
                                 allowed_batch_sizes));
@@ -559,7 +561,8 @@ TEST(GetBatcherQueueOptionsTest,
           MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
           /*enable_priority_aware_batch_scheduler=*/true,
           /*enable_priority_aware_batch_scheduler_resplit=*/false,
-          /*enable_batching_task_lazy_cancellation=*/true);
+          /*enable_batching_task_lazy_cancellation=*/true,
+          /*per_criticality_batch_timeout_micros=*/{});
   EXPECT_TRUE(queue_options.priority_aware_scheduler_options
                   .enable_lazy_cancellation_filtering);
 }

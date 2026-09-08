@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/compilation_environments.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"

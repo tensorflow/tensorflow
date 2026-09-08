@@ -125,3 +125,14 @@ func.func @import_sharding_group_with_unused_result(%arg0: tensor<8x8xf32>) -> t
   %0 = stablehlo.custom_call @xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> tuple<>
   return %arg0 : tensor<8x8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @custom_call_tuple_result_sharding
+func.func @custom_call_tuple_result_sharding(%arg0: tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>> {
+  // CHECK-NEXT: %[[CUSTOM_CALL:.*]]:2 = stablehlo.custom_call @foo(%arg0)
+  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"_axis_0"}, {}]>, <@mesh, [{}, {"_axis_0"}]>]>}
+  // CHECK-SAME: : (tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>)
+  %0 = stablehlo.custom_call @foo(%arg0) {mhlo.sharding = "{{devices=[2,1]<=[2]},{devices=[1,2]<=[1,2]T(1,0)}}"} : (tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+  return %0 : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+}

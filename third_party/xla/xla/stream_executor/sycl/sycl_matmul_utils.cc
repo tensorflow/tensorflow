@@ -161,6 +161,10 @@ struct PrimitiveTypeToNative<xla::F32> {
   using type = float;
 };
 template <>
+struct PrimitiveTypeToNative<xla::F64> {
+  using type = double;
+};
+template <>
 struct PrimitiveTypeToNative<xla::F16> {
   using type = ::sycl::half;
 };
@@ -208,7 +212,7 @@ inline constexpr dnnl::memory::data_type
     OneDnnType<::sycl::ext::oneapi::bfloat16> = dnnl::memory::data_type::bf16;
 
 MatrixDescriptor GetMatrixDesc(const se::gpu::MatrixLayout& layout,
-                               se::DeviceMemoryBase data) {
+                               se::DeviceAddressBase data) {
   bool transpose = layout.order == se::gpu::MatrixLayout::Order::kColumnMajor;
   return MatrixDescriptor{
       data,
@@ -320,32 +324,8 @@ absl::StatusOr<dnnl::memory::desc> ShapeToMemDesc(const xla::Shape& shape) {
   if (dims.empty()) {
     return dnnl::memory::desc{};
   }
-  dnnl::memory::data_type dtype;
-  switch (shape.element_type()) {
-    case xla::PrimitiveType::F16:
-      dtype = dnnl::memory::data_type::f16;
-      break;
-    case xla::PrimitiveType::BF16:
-      dtype = dnnl::memory::data_type::bf16;
-      break;
-    case xla::PrimitiveType::F32:
-      dtype = dnnl::memory::data_type::f32;
-      break;
-    case xla::PrimitiveType::S8:
-      dtype = dnnl::memory::data_type::s8;
-      break;
-    case xla::PrimitiveType::U8:
-      dtype = dnnl::memory::data_type::u8;
-      break;
-    case xla::PrimitiveType::S32:
-      dtype = dnnl::memory::data_type::s32;
-      break;
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrFormat("Unsupported element type: %s",
-                          xla::primitive_util::LowercasePrimitiveTypeName(
-                              shape.element_type())));
-  }
+  ABSL_ASSIGN_OR_RETURN(dnnl::memory::data_type dtype,
+                   sycl::ToOneDnnDataType(shape.element_type()));
   return dnnl::memory::desc(dims, dtype, strides);
 }
 
@@ -382,10 +362,10 @@ CreateMatMulPrimDescFromGemmConfig(
   int64_t batch_size = output_layout.batch_size;
 
   // Create matrix descriptors (without memory buffers)
-  MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, se::DeviceMemoryBase());
-  MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, se::DeviceMemoryBase());
+  MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, se::DeviceAddressBase());
+  MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, se::DeviceAddressBase());
   MatrixDescriptor output =
-      GetMatrixDesc(output_layout, se::DeviceMemoryBase());
+      GetMatrixDesc(output_layout, se::DeviceAddressBase());
 
   // Make BLAS GEMM compatible (handles output transpose)
   MakeBlasGemmCompatible(lhs, rhs, output);
@@ -419,70 +399,12 @@ CreateMatMulPrimDescFromGemmConfig(
   }
 
   // Get OneDNN data type from layout
-  dnnl::memory::data_type lhs_dtype, rhs_dtype, output_dtype;
-  switch (lhs_layout.dtype) {
-    case xla::PrimitiveType::F16:
-      lhs_dtype = dnnl::memory::data_type::f16;
-      break;
-    case xla::PrimitiveType::BF16:
-      lhs_dtype = dnnl::memory::data_type::bf16;
-      break;
-    case xla::PrimitiveType::F32:
-      lhs_dtype = dnnl::memory::data_type::f32;
-      break;
-    case xla::PrimitiveType::S8:
-      lhs_dtype = dnnl::memory::data_type::s8;
-      break;
-    case xla::PrimitiveType::S32:
-      lhs_dtype = dnnl::memory::data_type::s32;
-      break;
-    default:
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Unsupported LHS element type: %s",
-          xla::primitive_util::LowercasePrimitiveTypeName(lhs_layout.dtype)));
-  }
-
-  switch (rhs_layout.dtype) {
-    case xla::PrimitiveType::F16:
-      rhs_dtype = dnnl::memory::data_type::f16;
-      break;
-    case xla::PrimitiveType::BF16:
-      rhs_dtype = dnnl::memory::data_type::bf16;
-      break;
-    case xla::PrimitiveType::F32:
-      rhs_dtype = dnnl::memory::data_type::f32;
-      break;
-    case xla::PrimitiveType::S8:
-      rhs_dtype = dnnl::memory::data_type::s8;
-      break;
-    case xla::PrimitiveType::S32:
-      rhs_dtype = dnnl::memory::data_type::s32;
-      break;
-    default:
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Unsupported RHS element type: %s",
-          xla::primitive_util::LowercasePrimitiveTypeName(rhs_layout.dtype)));
-  }
-
-  switch (output_layout.dtype) {
-    case xla::PrimitiveType::F16:
-      output_dtype = dnnl::memory::data_type::f16;
-      break;
-    case xla::PrimitiveType::BF16:
-      output_dtype = dnnl::memory::data_type::bf16;
-      break;
-    case xla::PrimitiveType::F32:
-      output_dtype = dnnl::memory::data_type::f32;
-      break;
-    case xla::PrimitiveType::S32:
-      output_dtype = dnnl::memory::data_type::s32;
-      break;
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrFormat("Unsupported output element type: %s",
-                          xla::primitive_util::LowercasePrimitiveTypeName(
-                              output_layout.dtype)));
-  }
+  ABSL_ASSIGN_OR_RETURN(dnnl::memory::data_type lhs_dtype,
+                   sycl::ToOneDnnDataType(lhs_layout.dtype));
+  ABSL_ASSIGN_OR_RETURN(dnnl::memory::data_type rhs_dtype,
+                   sycl::ToOneDnnDataType(rhs_layout.dtype));
+  ABSL_ASSIGN_OR_RETURN(dnnl::memory::data_type output_dtype,
+                   sycl::ToOneDnnDataType(output_layout.dtype));
 
   auto lhs_md = dnnl::memory::desc(lhs_dims, lhs_dtype, lhs_strides);
   auto rhs_md = dnnl::memory::desc(rhs_dims, rhs_dtype, rhs_strides);
@@ -524,11 +446,11 @@ CreateMatMulPrimDescFromGemmConfig(
 
 template <typename InputT, typename OutputT>
 absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
-                          const MatrixDescriptor& rhs, se::DeviceMemoryBase c,
+                          const MatrixDescriptor& rhs, se::DeviceAddressBase c,
                           const MatrixDescriptor& output,
-                          se::DeviceMemoryBase bias, float alpha, float beta,
+                          se::DeviceAddressBase bias, float alpha, float beta,
                           sycl_gemm::GemmBackendEpilogue epilogue,
-                          se::Stream* stream, se::DeviceMemoryBase workspace,
+                          se::Stream* stream, se::DeviceAddressBase workspace,
                           se::ScratchAllocator* scratch_allocator) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   ::sycl::queue* stream_handle =
@@ -607,7 +529,7 @@ absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
   void* workspace_addr = workspace.opaque();
   if (scratchpad_size > 0) {
     if (scratch_allocator != nullptr) {
-      ABSL_ASSIGN_OR_RETURN(stream_executor::DeviceMemory<uint8_t> alloc,
+      ABSL_ASSIGN_OR_RETURN(stream_executor::DeviceAddress<uint8_t> alloc,
                        scratch_allocator->AllocateBytes(scratchpad_size));
       workspace_addr = alloc.opaque();
     } else {
@@ -645,7 +567,7 @@ absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
       // Buffers are different - need to copy c_data into destination
       size_t output_size =
           batch_size * output.num_rows * output.num_cols * sizeof(OutputT);
-      se::DeviceMemoryBase dst_mem(out_data, output_size);
+      se::DeviceAddressBase dst_mem(out_data, output_size);
       if (absl::Status status = stream->MemcpyD2D(&dst_mem, c, output_size);
           !status.ok()) {
         return status;
@@ -661,9 +583,9 @@ absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
 
 template <typename InputT, typename OutputT>
 absl::Status DoGemm(int64_t batch_size, const MatrixDescriptor& lhs,
-                    const MatrixDescriptor& rhs, se::DeviceMemoryBase c,
-                    const MatrixDescriptor& output, se::DeviceMemoryBase bias,
-                    se::DeviceMemoryBase workspace, float alpha, float beta,
+                    const MatrixDescriptor& rhs, se::DeviceAddressBase c,
+                    const MatrixDescriptor& output, se::DeviceAddressBase bias,
+                    se::DeviceAddressBase workspace, float alpha, float beta,
                     sycl_gemm::GemmBackendEpilogue epilogue, se::Stream* stream,
                     se::blas::AlgorithmType algorithm,
                     se::ScratchAllocator* scratch_allocator) {
@@ -678,12 +600,12 @@ absl::Status DoGemm(int64_t batch_size, const MatrixDescriptor& lhs,
 }
 
 absl::Status RunGemm(const gpu::GemmConfig& config,
-                     se::DeviceMemoryBase lhs_buffer,
-                     se::DeviceMemoryBase rhs_buffer,
-                     se::DeviceMemoryBase c_buffer,
-                     se::DeviceMemoryBase output_buffer,
-                     se::DeviceMemoryBase bias_buffer,
-                     se::DeviceMemoryBase workspace, se::Stream* stream,
+                     se::DeviceAddressBase lhs_buffer,
+                     se::DeviceAddressBase rhs_buffer,
+                     se::DeviceAddressBase c_buffer,
+                     se::DeviceAddressBase output_buffer,
+                     se::DeviceAddressBase bias_buffer,
+                     se::DeviceAddressBase workspace, se::Stream* stream,
                      sycl_gemm::GemmBackendEpilogue epilogue, int64_t algorithm,
                      se::ScratchAllocator* scratch_allocator) {
   auto lhs_layout = se::gpu::MatrixLayout{config.lhs_layout};
@@ -714,6 +636,7 @@ absl::Status RunGemm(const gpu::GemmConfig& config,
   TYPED_GEMM(xla::BF16, xla::BF16, xla::F32)
   TYPED_GEMM(xla::F16, xla::F16, xla::F16)
   TYPED_GEMM(xla::F16, xla::F16, xla::F32)
+  TYPED_GEMM(xla::F64, xla::F64, xla::F64)
   TYPED_GEMM(xla::S8, xla::S8, xla::S32)
   // TODO (intel-tf): Add support for more combinations of input/output types
 

@@ -184,7 +184,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:utils",
         "//xla/runtime:device_id",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/concurrency:async_value",

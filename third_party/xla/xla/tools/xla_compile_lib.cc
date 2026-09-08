@@ -333,6 +333,7 @@ absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
     if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
             mod->backend_specific_data.get());
         data != nullptr && data->autotune_results.has_value() &&
+        !data->autotune_results->results().empty() &&
         mod->hlo_module->config().debug_options().xla_gpu_autotune_level() >
             0) {
       ABSL_RETURN_IF_ERROR(

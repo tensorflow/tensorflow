@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -65,6 +66,7 @@ mlir::LogicalResult LowerToLLVM(
   mlir::populateFinalizeMemRefToLLVMConversionPatterns(type_converter,
                                                        patterns);
   mlir::ub::populateUBToLLVMConversionPatterns(type_converter, patterns);
+  mlir::vector::populateVectorInsertExtractStridedSliceTransforms(patterns);
   mlir::populateVectorToLLVMConversionPatterns(type_converter, patterns);
   mlir::cf::populateControlFlowToLLVMConversionPatterns(type_converter,
                                                         patterns);

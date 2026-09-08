@@ -755,7 +755,7 @@ def split_compile_and_replicate(
     unpadded_inputs = flat_inputs
     flat_inputs, padding_maps = _pad_all_input(unpadded_inputs,
                                                flat_maximum_shapes,
-                                               padding_spec)
+                                               padding_spec)  # pyrefly: ignore[bad-argument-type]
     if padding_maps:
       dynamic_shape_inputs = True
       logging.info("TPU has inputs with dynamic shapes: %s", inputs[0])
@@ -799,7 +799,7 @@ def split_compile_and_replicate(
         num_replicas), ops.control_dependencies([metadata]):
 
       if dynamic_shape_inputs and xla_options.enable_xla_dynamic_padder:
-        for padding_map in padding_maps:
+        for padding_map in padding_maps:  # pyrefly: ignore[unbound-name]
           input_shape = flat_replicated_inputs[padding_map.arg_index].shape
           flat_replicated_inputs[
               padding_map.arg_index] = tf2xla.set_dynamic_dimension_size(

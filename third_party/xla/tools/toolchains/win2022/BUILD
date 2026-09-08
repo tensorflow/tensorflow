@@ -57,7 +57,7 @@ platform(
     },
 )
 
-# RBE platform for ML Actions.
+# RBE platform for ML Actions using the LLVM 19 compiler-stack image.
 platform(
     name = "windows_ltsc2022_clang_ml_actions",
     constraint_values = [
@@ -66,10 +66,10 @@ platform(
         "@bazel_tools//tools/cpp:clang-cl",
     ],
     exec_properties = {
-        "container-image": "docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-windows@sha256:023fa901fda70be8890b05689d0a667287692c1f59d0abe4add7208ec5a12707",
+        "container-image": "docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-windows@sha256:d9849afa6a7b074be0f3663969020d53099fa082d92e4796828e1bcbdee5bd25",
         "OSFamily": "Windows",
         "Pool": "windows-2022-pool",
         "dockerNetwork": "off",
-        "cache-silo-key": "20260115",
+        "cache-silo-key": "t20260812",
     },
 )

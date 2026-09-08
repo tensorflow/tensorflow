@@ -84,13 +84,14 @@ namespace xla {
   V(kCollectivePermute, "collective-permute", kHloOpcodeIsVariadic)            \
   V(kCollectivePermuteDone, "collective-permute-done", 1)                      \
   V(kCollectivePermuteStart, "collective-permute-start", kHloOpcodeIsVariadic) \
+  V(kCollectiveReduce, "collective-reduce", kHloOpcodeIsVariadic)              \
   V(kCompare, "compare", 2)                                                    \
   V(kComplex, "complex", 2)                                                    \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)                         \
   V(kConditional, "conditional", kHloOpcodeIsVariadic)                         \
   V(kConstant, "constant", 0)                                                  \
   V(kConvert, "convert", 1)                                                    \
-  V(kConvolution, "convolution", 2)                                            \
+  V(kConvolution, "convolution", kHloOpcodeIsVariadic)                         \
   V(kCopy, "copy", 1)                                                          \
   V(kCopyDone, "copy-done", 1)                                                 \
   V(kCopyStart, "copy-start", 1)                                               \

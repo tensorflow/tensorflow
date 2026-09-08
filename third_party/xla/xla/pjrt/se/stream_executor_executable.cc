@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/pjrt/se/stream_executor_executable.h"
 
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "riegeli/base/any.h"
 #include "riegeli/base/maker.h"
 #include "riegeli/bytes/cord_reader.h"
@@ -169,6 +169,7 @@ StreamExecutorExecutable::StreamExecutorExecutable(
   if (mod != nullptr) {
     hlo_module_ = mod->shared_optimized_module();
   }
+  CHECK(hlo_module_ != nullptr);
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
@@ -193,6 +194,7 @@ StreamExecutorExecutable::StreamExecutorExecutable(
   if (local_exec != nullptr) {
     hlo_module_ = local_exec->executable()->shared_module();
   }
+  CHECK(hlo_module_ != nullptr);
 }
 
 absl::StatusOr<CompiledMemoryStats>

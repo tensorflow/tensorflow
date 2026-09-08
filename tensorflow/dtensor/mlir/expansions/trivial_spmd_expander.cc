@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cassert>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

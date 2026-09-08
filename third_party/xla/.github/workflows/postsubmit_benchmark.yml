@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: "{}"
+      experiment_ref:
+        description: "Git ref (SHA, branch, or tag) of the user repository to run benchmarks against."
+        required: false
+        type: string
+        default: ""
 
   push:
     branches:
@@ -54,14 +59,15 @@ concurrency:
 jobs:
   run_benchmarks:
     name: Run XLA Postsubmit Benchmarks
-    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@fd37d1f65a06f0124d9d2022d97efa8dc8812557 # main
+    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@887b34acdb5c70bbd2bc93bb11c2d0a103698e7f # main
     with:
       registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
       tag_filter: "postsubmit"
-      bap_ref: "fd37d1f65a06f0124d9d2022d97efa8dc8812557"
+      bap_ref: "887b34acdb5c70bbd2bc93bb11c2d0a103698e7f"
       publish_metrics: true
       pub_sub_gcp_project_id: "ml-oss-benchmarking-production"
       pub_sub_gcp_topic_id: "public-results-prod"
       benchmark_filter: ${{ inputs.benchmark_filter || '' }}
       environment_filter: ${{ inputs.environment_filter || '' }}
       custom_metadata: ${{ inputs.custom_metadata || '{}' }}
+      experiment_ref: ${{ inputs.experiment_ref || '' }}

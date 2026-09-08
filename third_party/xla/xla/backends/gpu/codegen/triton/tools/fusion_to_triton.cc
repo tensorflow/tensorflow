@@ -30,13 +30,13 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -47,6 +47,8 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+using ::xla::xtile::BlockLevelParameters;
 
 absl::Status RealMain(absl::string_view input_file) {
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,

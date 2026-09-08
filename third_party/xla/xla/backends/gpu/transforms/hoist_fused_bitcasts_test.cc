@@ -76,6 +76,14 @@ class HoistFusedBitcastsReshapeTest
   HoistFusedBitcastsReshapeTest() {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_gemm_fusion_v2(false);
+    return debug_options;
+  }
+
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};

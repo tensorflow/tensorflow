@@ -726,7 +726,7 @@ inline bool IsWellFormed(
           return false;
         }
       } else {
-        const string& regular_name =
+        const std::string& regular_name =
             node_view->GetRegularFanin(i).node_view()->GetName();
         if (regular_name == node_name) {
           return false;

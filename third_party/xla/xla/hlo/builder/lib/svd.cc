@@ -851,6 +851,21 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
   }
   int64_t m = ShapeUtil::GetDimension(a_shape, -2);
   int64_t n = ShapeUtil::GetDimension(a_shape, -1);
+
+  // A matrix with a zero-sized dimension has no singular values, and its
+  // u and v factors are identity matrices; the iteration below assumes
+  // non-empty matrices.
+  if (m == 0 || n == 0) {
+    PrimitiveType type = a_shape.element_type();
+    SVDResult result;
+    result.u = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
+    result.v = Broadcast(IdentityMatrix(builder, type, n, n), batch_dims);
+    std::vector<int64_t> d_dims(batch_dims);
+    d_dims.push_back(0);
+    result.d = Zeros(builder, ShapeUtil::MakeShape(type, d_dims));
+    return result;
+  }
+
   bool maybe_transpose = m < n;
 
   if (maybe_transpose) {

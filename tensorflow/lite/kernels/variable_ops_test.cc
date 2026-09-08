@@ -21,6 +21,9 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/mock_resource.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
 namespace tflite {
@@ -219,6 +222,18 @@ TEST_F(VariableOpsTest, TestReassignToDifferentSize) {
     EXPECT_EQ(GetTensorData<float>(output)[0], 1717);
     EXPECT_EQ(GetTensorData<float>(output)[1], 2121);
   }
+}
+
+TEST_F(VariableOpsTest, TestAssignVariableTypeCollision) {
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  TfLiteTensor* input_data_index = interpreter_->tensor(0);
+  GetTensorData<float>(input_data_index)[0] = 1717;
+
+  // Insert a conflicting resource type into the subgraph resources map at id 0.
+  interpreter_->primary_subgraph().resources().emplace(
+      0, std::make_unique<resource::MockHashTableResource>());
+
+  EXPECT_EQ(interpreter_->Invoke(), kTfLiteError);
 }
 
 }  // namespace

@@ -136,7 +136,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
             coll->operand(0))];
     bool found = false;
     int64_t coll_height = height[coll];
-    for (HloInstruction* earlier_coll : earlier_colls) {
+    for (HloInstruction*& earlier_coll : earlier_colls) {
       if (!ShapeUtil::Equal(earlier_coll->shape(), coll->shape())) {
         continue;
       }

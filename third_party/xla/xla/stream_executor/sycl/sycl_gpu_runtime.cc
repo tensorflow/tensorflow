@@ -186,7 +186,7 @@ bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
   }
 }
 
-DevicePool SyclDevicePool::device_pool_;
+absl::NoDestructor<DevicePool> SyclDevicePool::device_pool_;
 
 absl::Status SyclDevicePool::InitDevicePool() {
   static absl::once_flag device_init_flag;
@@ -217,29 +217,32 @@ absl::Status SyclDevicePool::InitDevicePool() {
           "backend. Check oneAPI installation and environment variables.");
       return;
     }
-    device_pool_ = std::move(devices);
+    // absl::NoDestructor default-constructs an empty DevicePool, so this
+    // dereference is safe.
+    *device_pool_ = std::move(devices);
   });
   return init_status;
 }
 
-absl::StatusOr<::sycl::context> SyclDevicePool::GetDeviceContext() {
+absl::StatusOr<const ::sycl::context&> SyclDevicePool::GetDeviceContext() {
   ABSL_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
-  static ::sycl::context device_context(device_pool_);
-  return device_context;
+  // Leaked for the same reason as SyclDevicePool::device_pool_.
+  static absl::NoDestructor<::sycl::context> device_context(*device_pool_);
+  return *device_context;
 }
 
 absl::StatusOr<int> SyclDevicePool::GetDeviceCount() {
   ABSL_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
   // Cast to int since device_ordinal is usually an int.
-  return static_cast<int>(device_pool_.size());
+  return static_cast<int>(device_pool_->size());
 }
 
 absl::StatusOr<int> SyclDevicePool::GetDeviceOrdinal(
     const ::sycl::device& device) {
   ABSL_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
-  auto it = std::find(device_pool_.begin(), device_pool_.end(), device);
-  if (it != device_pool_.end()) {
-    return static_cast<int>(it - device_pool_.begin());
+  auto it = std::find(device_pool_->begin(), device_pool_->end(), device);
+  if (it != device_pool_->end()) {
+    return static_cast<int>(it - device_pool_->begin());
   }
   return absl::InternalError(
       "SyclDevicePool::GetDeviceOrdinal failed, got invalid device");
@@ -249,10 +252,10 @@ absl::StatusOr<::sycl::device> SyclDevicePool::GetDevice(int device_ordinal) {
   ABSL_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
   ABSL_RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclDevicePool::GetDevice"));
-  return device_pool_[device_ordinal];
+  return (*device_pool_)[device_ordinal];
 }
 
-StreamPoolMap SyclStreamPool::stream_pool_map_;
+absl::NoDestructor<StreamPoolMap> SyclStreamPool::stream_pool_map_;
 absl::Mutex SyclStreamPool::stream_pool_mu_(absl::kConstInit);
 
 void SyclAsyncHandler(::sycl::exception_list ex_list) {
@@ -269,10 +272,10 @@ void SyclAsyncHandler(::sycl::exception_list ex_list) {
 absl::StatusOr<StreamPool*> SyclStreamPool::InitStreamPool(int device_ordinal) {
   {
     absl::ReaderMutexLock read_lock(&stream_pool_mu_);
-    auto it = stream_pool_map_.find(device_ordinal);
+    auto it = stream_pool_map_->find(device_ordinal);
     // Returns the existing non-empty stream pool for this device, if available.
     // The pool may be empty if DestroyStream was called on the last stream.
-    if (it != stream_pool_map_.end() && !it->second.empty()) {
+    if (it != stream_pool_map_->end() && !it->second.empty()) {
       VLOG(2) << "Check 1: Returning existing stream pool for device ordinal "
               << device_ordinal << " whose size is " << it->second.size();
       return &(it->second);
@@ -283,14 +286,14 @@ absl::StatusOr<StreamPool*> SyclStreamPool::InitStreamPool(int device_ordinal) {
                                   ::sycl::property::queue::in_order()};
   ABSL_ASSIGN_OR_RETURN(::sycl::device sycl_device,
                    SyclDevicePool::GetDevice(device_ordinal));
-  ABSL_ASSIGN_OR_RETURN(::sycl::context sycl_context,
+  ABSL_ASSIGN_OR_RETURN(const ::sycl::context& sycl_context,
                    SyclDevicePool::GetDeviceContext());
 
   VLOG(2) << "Creating new stream pool for device ordinal " << device_ordinal;
   absl::MutexLock write_lock(&stream_pool_mu_);
-  auto it = stream_pool_map_.find(device_ordinal);
+  auto it = stream_pool_map_->find(device_ordinal);
   // Double-checks that another thread has not already created the pool.
-  if (it != stream_pool_map_.end() && !it->second.empty()) {
+  if (it != stream_pool_map_->end() && !it->second.empty()) {
     VLOG(2) << "Check 2: Returning existing stream pool for device ordinal "
             << device_ordinal << " whose size is " << it->second.size();
     return &(it->second);
@@ -301,9 +304,9 @@ absl::StatusOr<StreamPool*> SyclStreamPool::InitStreamPool(int device_ordinal) {
 
   // Use assignment (not insert) to update the stream pool if it was
   // previously destroyed.
-  stream_pool_map_[device_ordinal] = std::move(stream_pool);
+  (*stream_pool_map_)[device_ordinal] = std::move(stream_pool);
 
-  return &(stream_pool_map_[device_ordinal]);
+  return &((*stream_pool_map_)[device_ordinal]);
 }
 
 absl::StatusOr<StreamPtr> SyclStreamPool::GetDefaultStream(int device_ordinal) {
@@ -344,7 +347,7 @@ absl::StatusOr<StreamPtr> SyclStreamPool::GetOrCreateStream(
                                   ::sycl::property::queue::in_order()};
   ABSL_ASSIGN_OR_RETURN(::sycl::device sycl_device,
                    SyclDevicePool::GetDevice(device_ordinal));
-  ABSL_ASSIGN_OR_RETURN(::sycl::context sycl_context,
+  ABSL_ASSIGN_OR_RETURN(const ::sycl::context& sycl_context,
                    SyclDevicePool::GetDeviceContext());
   stream_pool->push_back(std::make_shared<::sycl::queue>(
       sycl_context, sycl_device, SyclAsyncHandler, prop_list));
@@ -406,7 +409,7 @@ absl::Status SyclStreamPool::DestroyStream(int device_ordinal,
 
 void SyclStreamPool::Reset() {
   absl::MutexLock write_lock(&stream_pool_mu_);
-  for (auto& [device_ordinal, stream_pool] : stream_pool_map_) {
+  for (auto& [device_ordinal, stream_pool] : *stream_pool_map_) {
     for (auto& stream_handle : stream_pool) {
       if (stream_handle) {
         stream_handle->wait();
@@ -415,7 +418,7 @@ void SyclStreamPool::Reset() {
     }
     stream_pool.clear();
   }
-  stream_pool_map_.clear();
+  stream_pool_map_->clear();
 }
 
 absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal) {

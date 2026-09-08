@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/call_once.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
@@ -121,9 +123,26 @@ class RemapPlan {
   RemapPlan() : rep_(std::make_shared<Rep>()) {}
 
   RemapPlan(std::vector<ArraySpec> input_specs,
+            std::vector<ArraySpec> output_specs,
+            absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+                input_devices_for_output_map)
+      : rep_(std::make_shared<Rep>(std::move(input_specs),
+                                   std::move(output_specs),
+                                   std::move(input_devices_for_output_map))) {}
+
+  RemapPlan(std::vector<ArraySpec> input_specs,
+            std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings)
+      : rep_(std::make_shared<Rep>(std::move(input_specs),
+                                   std::move(output_specs),
+                                   std::move(mappings))) {}
+
+  ABSL_DEPRECATED(
+      "Use the constructor that takes `input_devices_for_output_map` without "
+      "`mappings` instead.")
+  RemapPlan(std::vector<ArraySpec> input_specs,
             std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings,
             absl::flat_hash_map<int, std::vector<InputDeviceRange>>
-                input_devices_for_output_map = {})
+                input_devices_for_output_map)
       : rep_(std::make_shared<Rep>(std::move(input_specs),
                                    std::move(output_specs), std::move(mappings),
                                    std::move(input_devices_for_output_map))) {}
@@ -148,10 +167,17 @@ class RemapPlan {
     return rep_->input_devices_for_output_map;
   }
 
-  // Validates this plan against the requirements (see `RemapPlan` comment).
-  // This is a slow operation. It should not be performed repeatedly.
-  // Implementations of `Client::RemapArrays()` may bypass runtime checks on a
-  // plan's validity, delegating the role to this method.
+  // Validates array-level consistency (dtype, shard shape, memory kind, and
+  // layout) between input and output array pairs. The result will be cached
+  // within the plan. `Client::RemapArrays` implementations should at least do
+  // this validation.
+  absl::Status ValidateArraySpecs() const;
+
+  // Validates this plan against all requirements, including array-level
+  // consistency (via `ValidateArraySpecs()`) and shard-level consistency (input
+  // array shards are correctly mapped to output array shards). This is a slow
+  // operation. The result will be cached within the plan. The users building a
+  // complex `RemapPlan` are strongly encouraged to call this method.
   absl::Status Validate() const;
 
   // Constructs `RemapPlan` from `RemapPlanProto`. Devices are looked up
@@ -198,6 +224,18 @@ class RemapPlan {
  private:
   void Hash(absl::HashState state) const;
 
+  // Validates array-level consistency (dtype, shard shape, memory kind, and
+  // layout) between input and output array pairs.
+  absl::Status ValidateArraySpecsUncached() const;
+
+  // Validates shard-level consistency (input array shards are correctly mapped
+  // to output array shards).
+  //
+  // Prerequisite: `ValidateArraySpecsUncached()` must have succeeded on this
+  // plan. This method assumes that array-level consistency, non-empty inputs,
+  // and array index bounds are already validated.
+  absl::Status ValidateArrayShardMappingsUncached() const;
+
   struct Rep {
     // Specification of inputs.
     std::vector<ArraySpec> input_specs;
@@ -215,9 +253,9 @@ class RemapPlan {
     // and for each input array I a device list containing all of the devices
     // that hold shards coming from I.
     //
-    // Information must be consistent with the information in `mappings`, i.e.,
-    // `input_devices_for_output_map` must duplicate, not replace, information
-    // in `mappings`.
+    // If `mappings` is not empty, information must be consistent with the
+    // information in `mappings`, i.e., `input_devices_for_output_map` must
+    // duplicate, not replace, information in `mappings`.
     //
     // Entries in `input_devices_for_output_map` are strictly optional, but
     // their presence may allow some implementations to be more efficient since
@@ -230,7 +268,19 @@ class RemapPlan {
     static constexpr uint64_t kUnsetHash = 0;
     mutable std::atomic<uint64_t> hash = kUnsetHash;
 
+    mutable absl::once_flag validate_array_specs_once;
+    mutable absl::Status validate_array_specs_status;
+
+    mutable absl::once_flag validate_array_shard_mappings_once;
+    mutable absl::Status validate_array_shard_mappings_status;
+
     Rep() = default;
+
+    Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
+        std::vector<Mapping> mappings)
+        : input_specs(std::move(input_specs)),
+          output_specs(std::move(output_specs)),
+          mappings(std::move(mappings)) {}
 
     Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
         std::vector<Mapping> mappings,
@@ -239,6 +289,14 @@ class RemapPlan {
         : input_specs(std::move(input_specs)),
           output_specs(std::move(output_specs)),
           mappings(std::move(mappings)),
+          input_devices_for_output_map(
+              std::move(input_devices_for_output_map)) {}
+
+    Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
+        absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+            input_devices_for_output_map)
+        : input_specs(std::move(input_specs)),
+          output_specs(std::move(output_specs)),
           input_devices_for_output_map(
               std::move(input_devices_for_output_map)) {}
 

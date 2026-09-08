@@ -23,27 +23,64 @@ source ~/.bashrc
 VERSION=$1
 REQUIREMENTS=$2
 
-# Install Python packages for this container's version
-if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14-nogil" ]]; then
-  cat >pythons.txt <<EOF
-$VERSION
-EOF
-elif [[ ${VERSION} == "python3.14" || ${VERSION} == "python3.13" || ${VERSION} == "python3.12" ]]; then
-  cat >pythons.txt <<EOF
-$VERSION
-$VERSION-dev
-$VERSION-venv
-EOF
+if [[ ${VERSION} =~ ^(python3\.[0-9]+)(-nogil|t)?$ ]]; then
+  BASE_VERSION="${BASH_REMATCH[1]}"
+  NOGIL_SUFFIX="${BASH_REMATCH[2]}"  # e.g., -nogil or t
 else
-  cat >pythons.txt <<EOF
-$VERSION
-$VERSION-dev
-$VERSION-venv
-$VERSION-distutils
-EOF
+  BASE_VERSION="${VERSION}"
+  NOGIL_SUFFIX=""
 fi
 
-/setup.packages.sh pythons.txt
+# Install Python packages for this container's version
+cat >pythons.txt <<EOF
+$VERSION
+$BASE_VERSION-dev
+$BASE_VERSION-venv
+EOF
+
+PYTHON_PRE_RELEASE_VER="3.15.0rc1"
+if [[ ${PYTHON_PRE_RELEASE_VER} =~ ^([0-9]+\.[0-9]+) ]]; then
+  PRE_RELEASE_BASE="python${BASH_REMATCH[1]}" # e.g., python3.15
+else
+  PRE_RELEASE_BASE="python3.15"
+fi
+if [[ ${PYTHON_PRE_RELEASE_VER} =~ ^([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+  PRE_RELEASE_FTP_DIR="${BASH_REMATCH[1]}" # e.g., 3.15.0
+else
+  PRE_RELEASE_FTP_DIR="3.15.0"
+fi
+
+if [[ ${BASE_VERSION} == "${PRE_RELEASE_BASE}" ]]; then
+  if [[ ! -d Python-${PYTHON_PRE_RELEASE_VER} ]]; then
+    apt-get update && apt-get install -y --no-install-recommends clang-18 libssl-dev zlib1g-dev libbz2-dev libreadline-dev libncurses5-dev libffi-dev liblzma-dev
+    wget https://www.python.org/ftp/python/${PRE_RELEASE_FTP_DIR}/Python-${PYTHON_PRE_RELEASE_VER}.tar.xz
+    tar -xf Python-${PYTHON_PRE_RELEASE_VER}.tar.xz
+  fi
+  pushd Python-${PYTHON_PRE_RELEASE_VER}
+
+  if [[ -z "${NOGIL_SUFFIX}" ]]; then
+    PREFIX="/python-${PYTHON_PRE_RELEASE_VER}"
+    CONFIGURE_ARGS=("--with-ensurepip=install")
+  else
+    PREFIX="/python-${PYTHON_PRE_RELEASE_VER}-nogil"
+    CONFIGURE_ARGS=("--disable-gil" "--with-ensurepip=install")
+  fi
+
+  mkdir -p "${PREFIX}"
+  CC=clang-18 CXX=clang++-18 ./configure --prefix "${PREFIX}" "${CONFIGURE_ARGS[@]}"
+  make -j$(nproc)
+  make install -j$(nproc)
+
+  if [[ -z "${NOGIL_SUFFIX}" ]]; then
+    ln -s ${PREFIX}/bin/python3 /usr/bin/${PRE_RELEASE_BASE}
+  else
+    ln -s ${PREFIX}/bin/python3 /usr/bin/${PRE_RELEASE_BASE}-nogil
+    ln -s ${PREFIX}/bin/python3 /usr/bin/${PRE_RELEASE_BASE}t
+  fi
+  popd
+else
+  /setup.packages.sh pythons.txt
+fi
 
 # Python 3.10 include headers fix:
 # sysconfig.get_path('include') incorrectly points to /usr/local/include/python
@@ -53,7 +90,13 @@ if [[ ! -f "/usr/local/include/$VERSION" ]]; then
 fi
 
 # Install pip
-wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 https://bootstrap.pypa.io/get-pip.py
+if [[ ${BASE_VERSION} == "python3.9" ]]; then
+  GET_PIP_URL="https://bootstrap.pypa.io/pip/3.9/get-pip.py"
+else
+  GET_PIP_URL="https://bootstrap.pypa.io/get-pip.py"
+fi
+
+wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 "${GET_PIP_URL}" -O get-pip.py
 /usr/bin/$VERSION get-pip.py
 /usr/bin/$VERSION -m pip install --no-cache-dir --upgrade pip
 /usr/bin/$VERSION -m pip install -U setuptools
@@ -63,10 +106,17 @@ wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 
 # for this Python version and building it from source fails. We only need twine
 # to be present on the system Python which in this case is 3.12.
 # Same reason for Python 3.14.
-if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14" || ${VERSION} == "python3.14-nogil" ]]; then
+if [[ ${VERSION} == "python3.13-nogil" || ${BASE_VERSION} == "${PRE_RELEASE_BASE}" ]]; then
   grep -v "twine" $REQUIREMENTS > requirements_without_twine.txt
   REQUIREMENTS=requirements_without_twine.txt
 fi
 
 # Disable the cache dir to save image space, and install packages
 /usr/bin/$VERSION -m pip install --no-cache-dir -r $REQUIREMENTS -U
+
+# Verify that the installed Python interpreter can create a venv and bootstrap pip
+echo "=== Verifying $VERSION ==="
+"/usr/bin/$VERSION" -m venv "/tmp/venv-$VERSION"
+"/tmp/venv-$VERSION/bin/pip" list
+"/tmp/venv-$VERSION/bin/python" -c "import pip; print(pip.__version__)"
+rm -rf "/tmp/venv-$VERSION"

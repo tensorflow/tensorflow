@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -1144,13 +1145,21 @@ GraphData PopulateMismatchGraphData(
   auto update_score = [&](const HloInstruction* instr, double score) {
     auto [it, inserted] = instr_to_score.try_emplace(instr, score);
     if (!inserted) {
-      it->second = std::max(it->second, score);
+      if (score == kNanInfMismatchDiffScore ||
+          it->second == kNanInfMismatchDiffScore) {
+        it->second = kNanInfMismatchDiffScore;
+      } else {
+        it->second = std::max(it->second, score);
+      }
     }
   };
 
   for (const MismatchDetails& m : mismatches) {
     double score = 100.0;
-    if (m.rel_error > 0.0) {
+    if (std::isnan(m.actual) || std::isinf(m.actual) ||
+        std::isnan(m.expected) || std::isinf(m.expected)) {
+      score = kNanInfMismatchDiffScore;
+    } else if (m.rel_error > 0.0) {
       score = m.rel_error * 100.0;
     }
 

@@ -49,8 +49,8 @@ __device__ int PermutationOrder(int n, const int* __restrict__ pivots) {
 template <typename Scalar, bool compute_log_abs_det = true>
 __global__ void DeterminantFromPivotedLUKernel(
     int nthreads, int n, const Scalar* __restrict__ lu_factor,
-    const int* __restrict__ all_pivots, Scalar* __restrict__ sign,
-    Scalar* __restrict__ log_abs_det) {
+    const int* __restrict__ all_pivots, const int* __restrict__ info,
+    Scalar* __restrict__ sign, Scalar* __restrict__ log_abs_det) {
   typedef typename Eigen::NumTraits<Scalar>::Real RealScalar;
   const int matrix_size = n * n;
   const int stride = n + 1;
@@ -59,6 +59,16 @@ __global__ void DeterminantFromPivotedLUKernel(
   // The main purpose is to avoid having to copy the LU decomposition to
   // host memory.
   GPU_1D_KERNEL_LOOP(o_idx, nthreads) {
+    if (info != nullptr && info[o_idx] > 0) {
+      if (compute_log_abs_det) {
+        sign[o_idx] = Scalar(0);
+        log_abs_det[o_idx] =
+            Scalar(-Eigen::numext::numeric_limits<RealScalar>::infinity());
+      } else {
+        log_abs_det[o_idx] = Scalar(0);
+      }
+      continue;
+    }
     // Initialize sign to (-1)^order.
     const int order = PermutationOrder(n, all_pivots + o_idx * n);
     Scalar prod_sign = order % 2 ? Scalar(-1) : Scalar(1);
@@ -99,7 +109,7 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
   void operator()(const GPUDevice& device,
                   typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
-                  int* info) {
+                  const int* info) {
     const int64_t num_matrices = output.size();
     const int64_t n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
@@ -107,8 +117,8 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
     TF_CHECK_OK(GpuLaunchKernel(
         DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/false>,
         config.block_count, config.thread_per_block, 0, device.stream(),
-        config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
-        output.data()));
+        config.virtual_thread_count, n, lu_factor.data(), pivots, info,
+        /*sign=*/nullptr, output.data()));
   }
 };
 
@@ -122,15 +132,16 @@ struct LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
   void operator()(const GPUDevice& device,
                   typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor sign,
-                  typename TTypes<Scalar, 1>::Tensor log_abs_det) {
+                  typename TTypes<Scalar, 1>::Tensor log_abs_det,
+                  const int* info) {
     const int64_t num_matrices = sign.size();
     const int64_t n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
     TF_CHECK_OK(GpuLaunchKernel(
         DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>,
         config.block_count, config.thread_per_block, 0, device.stream(),
-        config.virtual_thread_count, n, lu_factor.data(), pivots, sign.data(),
-        log_abs_det.data()));
+        config.virtual_thread_count, n, lu_factor.data(), pivots, info,
+        sign.data(), log_abs_det.data()));
   }
 };
 

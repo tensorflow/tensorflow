@@ -219,6 +219,14 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
     return absl::OkStatus();
   }
 
+  // Do not expand if we have block scaling or structured sparsity.
+  if (convolution->block_scaling_config().has_lhs() ||
+      convolution->block_scaling_config().has_rhs() ||
+      convolution->sparsity_config().has_lhs() ||
+      convolution->sparsity_config().has_rhs()) {
+    return absl::OkStatus();
+  }
+
   VLOG(2) << "Dealing with batch_group_count " << batch_group_count
           << " for convolution " << convolution->ToString() << "\n";
 
@@ -316,7 +324,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
             /*batch_group_count=*/1, window, dim_numbers,
             convolution->precision_config(),
             /*preferred_element_type=*/convolution->shape().element_type(),
-            convolution->sparsity_config())
+            convolution->sparsity_config(), convolution->block_scaling_config())
             .value();
     convolution->SetupDerivedInstruction(new_convolution);
     CHECK_OK(computation_->ReplaceInstruction(
@@ -348,7 +356,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
     CHECK(!convolution->sparsity_config().has_lhs() &&
           !convolution->sparsity_config().has_rhs());
     auto new_convolution = add(HloInstruction::CreateConvolve(
-        expanded_filter_shape, activation, filter,
+        expanded_filter_shape, {activation, filter},
         /*feature_group_count=*/1, /*batch_group_count=*/1,
         convolution->window(), dim_numbers, convolution->precision_config(),
         convolution->sparsity_config()));
@@ -444,6 +452,13 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     return absl::OkStatus();
   }
 
+  if (convolution->block_scaling_config().has_lhs() ||
+      convolution->block_scaling_config().has_rhs() ||
+      convolution->sparsity_config().has_lhs() ||
+      convolution->sparsity_config().has_rhs()) {
+    return absl::OkStatus();
+  }
+
   ConvolutionDimensionNumbers dim_numbers =
       convolution->convolution_dimension_numbers();
   auto filter = convolution->mutable_operand(1);
@@ -494,7 +509,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
           expanded_filter, zero_filter));
 
       auto new_convolution = HloInstruction::CreateConvolve(
-          convolution->shape(), convolution->mutable_operand(0), new_filter,
+          convolution->shape(), {convolution->mutable_operand(0), new_filter},
           /*feature_group_count=*/1, /*batch_group_count=*/1,
           convolution->window(), dim_numbers, convolution->precision_config());
       changed_ = true;
@@ -583,7 +598,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
         convolution->shape().element_type(), new_output_dimension);
     HloInstruction* new_convolution =
         computation_->AddInstruction(HloInstruction::CreateConvolve(
-            new_convolution_output_shape, new_activation, new_filter,
+            new_convolution_output_shape, {new_activation, new_filter},
             /*feature_group_count=*/group_count, /*batch_group_count=*/1,
             new_window, dim_numbers, convolution->precision_config()));
     changed_ = true;
@@ -677,7 +692,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
           /*batch_group_count=*/1, window, dim_numbers,
           convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type(),
-          convolution->sparsity_config())
+          convolution->sparsity_config(), convolution->block_scaling_config())
           .value();
   convolution->SetupDerivedInstruction(new_convolution);
   changed_ = true;

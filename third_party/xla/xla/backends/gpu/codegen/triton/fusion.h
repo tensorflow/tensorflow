@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -44,7 +44,7 @@ class TritonFusion : public FusionInterface {
  public:
   struct LaunchConfig {
     LaunchDimensions launch_dimensions;
-    BlockLevelParameters block_level_parameters;
+    xla::xtile::BlockLevelParameters block_level_parameters;
   };
 
   explicit TritonFusion(const HloFusionAnalysis& analysis)

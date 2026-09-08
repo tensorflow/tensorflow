@@ -19,13 +19,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/config_runner.h"
 
 namespace xla {
 
 absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
     std::vector<ConfigRunner::ConfigProfile>& results,
-    int scratch_bytes_window_size_us);
+    int scratch_bytes_window_size_us,
+    absl::Span<const autotuner::Backend> excluded_backends = {});
 
 }  // namespace xla
 

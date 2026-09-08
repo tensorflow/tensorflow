@@ -118,6 +118,9 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   if (cuda_cc.IsAtLeastHopper()) {
     pm->addPass(ttng::createTritonNvidiaGPUTMALoweringPass());
   }
+  if (cuda_cc.IsAtLeastBlackwell()) {
+    pm->addPass(ttng::createTritonNvidiaGPULowerCLCPass());
+  }
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(ttng::createTritonNvidiaGPUInterleaveTMemPass());
   pm->addPass(mt::gpu::createTritonGPUReduceDataDuplication());

@@ -128,6 +128,14 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
         unknown or contains unknown elements (None or -1).
     """
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
+      if (
+          tensor_util.is_tf_type(indices)
+          and indices.dtype.base_dtype != dtypes.int64
+      ):
+        raise TypeError(
+            "`indices` must be a Tensor of dtype int64. "
+            f"Received dtype={indices.dtype}."
+        )
       indices = ops.convert_to_tensor(
           indices, name="indices", dtype=dtypes.int64)
       # TODO(touts): Consider adding mutable_values() when 'values'

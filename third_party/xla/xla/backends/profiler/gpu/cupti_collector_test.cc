@@ -454,6 +454,23 @@ TEST(CuptiCollectorTest, AggregatedTracingOutOfRangeEvents) {
       )pb"))));
 }
 
+TEST(CuptiCollectorTest, ExportScopeRangeIdTreeSkipsIfEmpty) {
+  CuptiTracerCollectorOptions options;
+  options.num_gpus = 1;
+  std::unique_ptr<CuptiTraceCollector> collector =
+      CreateCuptiCollector(options, 0, 0);
+
+  // No events with scope_range_id_tree are added.
+
+  XSpace space;
+  collector->Export(&space, /*end_gpu_ns=*/210);
+
+  tensorflow::profiler::XPlane* tree_plane =
+      tsl::profiler::FindMutablePlaneWithName(
+          &space, tsl::profiler::kScopeRangeIdTreePlaneName);
+  EXPECT_EQ(tree_plane, nullptr);
+}
+
 TEST(CuptiCollectorTest, ExportScopeRangeIdTreePreventsIdOverlap) {
   CuptiTracerCollectorOptions options;
   options.num_gpus = 1;

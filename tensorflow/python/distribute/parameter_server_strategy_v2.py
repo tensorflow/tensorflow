@@ -816,7 +816,7 @@ class ParameterServerStrategyV2Extended(
             shard_index == 0
             and shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS,
         )
-        return initial_value[offsets[shard_index] : offsets[shard_index + 1]]
+        return initial_value[offsets[shard_index] : offsets[shard_index + 1]]  # pyrefly: ignore[bad-index]
       partition_shape = (
           offsets[shard_index + 1] - offsets[shard_index],
       ) + shape[1:]
@@ -827,14 +827,14 @@ class ParameterServerStrategyV2Extended(
           and "shard_info" not in arg_spec.kwonlyargs
       ):
         try:
-          value = initial_value(
+          value = initial_value(  # pyrefly: ignore[not-callable]
               partition_shape=partition_shape, partition_offset=partition_offset
           )
         except (TypeError, ValueError):
           # TypeError: Initializer doesn't accept kwargs
           # ValueError: Initializer doesn't accept partition kwargs
           # In both cases we go ahead creating the full value and then slice.
-          value = initial_value()
+          value = initial_value()  # pyrefly: ignore[not-callable]
 
         if value.shape == partition_shape:
           # Initializer supports partition: value is the partition value.
@@ -851,7 +851,7 @@ class ParameterServerStrategyV2Extended(
           return value[offsets[shard_index] : offsets[shard_index + 1]]
       else:
         # For compatibility with `CheckpointInitialValueCallable`.
-        return initial_value(
+        return initial_value(  # pyrefly: ignore[not-callable]
             shard_info=trackable.ShardInfo(
                 shape=tensor_shape.as_shape(partition_shape),
                 offset=partition_offset,

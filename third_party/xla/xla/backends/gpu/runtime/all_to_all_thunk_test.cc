@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"

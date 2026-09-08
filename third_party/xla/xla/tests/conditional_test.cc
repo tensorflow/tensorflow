@@ -51,11 +51,11 @@ using ::absl_testing::IsOkAndHolds;
 constexpr ErrorSpec kErrorSpec{0.001};
 
 class ConditionalOpTest : public ClientLibraryTestRunnerMixin<
-                              HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                              HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void SetUp() override {
     ClientLibraryTestRunnerMixin<
-        HloPjRtInterpreterReferenceMixin<HloTestBase>>::SetUp();
+        HloInterpreterReferenceMixin<HloTestBase>>::SetUp();
     mutable_debug_options()->set_xla_test_add_command_buffer_mode(true);
   }
 

@@ -240,6 +240,24 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   }
 };
 
+class PrepareOnlyHardSwishOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyHardSwishOpModel(const TensorData& input,
+                              const TensorData& output) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_HARD_SWISH, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_)}, /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+  int output_;
+};
+
 const auto kTanhKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_TANH_REF()},
     {"GenericOptimized", ops::builtin::Register_TANH_GENERIC_OPT()},
@@ -553,6 +571,28 @@ TEST(QuantizedActivationsOpTest, HardSwish) {
       }
     }
   }
+}
+
+TEST(QuantizedActivationsOpTest, HardSwishRejectsZeroPointOutsideInt16Range) {
+  PrepareOnlyHardSwishOpModel input_model(
+      /*input=*/{TensorType_INT8,
+                 {1},
+                 0.0f,
+                 0.0f,
+                 1.0f,
+                 std::numeric_limits<int16_t>::max() + 1},
+      /*output=*/{TensorType_INT8, {}, 0.0f, 0.0f, 1.0f, 0});
+  EXPECT_EQ(input_model.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyHardSwishOpModel output_model(
+      /*input=*/{TensorType_INT8, {1}, 0.0f, 0.0f, 1.0f, 0},
+      /*output=*/{TensorType_INT8,
+                  {},
+                  0.0f,
+                  0.0f,
+                  1.0f,
+                  std::numeric_limits<int16_t>::min() - 1});
+  EXPECT_EQ(output_model.AllocateTensors(), kTfLiteError);
 }
 
 // See the comment in the reference implementation of quantized HardSwish:

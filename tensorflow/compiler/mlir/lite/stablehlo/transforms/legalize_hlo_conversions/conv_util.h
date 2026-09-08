@@ -172,7 +172,7 @@ inline bool IsStandardConv(const ConvView& data) {
 }
 
 // Does this convolution map to a standard conv_2d or conv_3d
-// (not depthwise or tranpose conv)?
+// (not depthwise or transpose conv)?
 inline bool IsStandardConv(mhlo::ConvolutionOp op) {
   const ConvView data(op);
   return IsStandardConv(data);

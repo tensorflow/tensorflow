@@ -206,9 +206,9 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     // Sets up reader streams to read from the file at `current_file_index_`.
     absl::Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (current_file_index_ >= dataset()->filenames_.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "current_file_index_:", current_file_index_,
-            " >= filenames_.size():", dataset()->filenames_.size());
+            " >= filenames_.size():", dataset()->filenames_.size()));
       }
 
       // Actually move on to next file.
@@ -266,7 +266,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ctx->input(kFileNames, &filenames_tensor));
   OP_REQUIRES(
       ctx, filenames_tensor->dims() <= 1,
-      errors::InvalidArgument("`filenames` must be a scalar or a vector."));
+      absl::InvalidArgumentError("`filenames` must be a scalar or a vector."));
 
   tstring compression_type;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
@@ -277,7 +277,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size >= 0,
-      errors::InvalidArgument("`buffer_size` must be >= 0 (0 == default)"));
+      absl::InvalidArgumentError("`buffer_size` must be >= 0 (0 == default)"));
 
   io::ZlibCompressionOptions zlib_compression_options =
       io::ZlibCompressionOptions::DEFAULT();
@@ -287,7 +287,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
     zlib_compression_options = io::ZlibCompressionOptions::GZIP();
   } else {
     OP_REQUIRES(ctx, compression_type.empty(),
-                errors::InvalidArgument("Unsupported compression_type."));
+                absl::InvalidArgumentError("Unsupported compression_type."));
   }
 
   if (buffer_size != 0) {

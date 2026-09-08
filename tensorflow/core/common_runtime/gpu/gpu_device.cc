@@ -1739,22 +1739,20 @@ Status BaseGPUDeviceFactory::CreateDevices(
                                   : std::make_optional(allowed_devices)));
 
   bool should_create_new_pjrt_client = true;
-  xla::StreamExecutorGpuClient* pjrt_se_client = nullptr;
   auto obtained_pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
   if (obtained_pjrt_client.ok()) {
-    pjrt_se_client =
-        absl::down_cast<xla::StreamExecutorGpuClient*>(*obtained_pjrt_client);
     // TODO(b/291943099): This check may not be enough because the virtual
     // device options can change while the device count remains the same.
     // However, it's most likely that in real use cases, CreateDevices() won't
     // be called more than once with different options being set. If such use
     // cases exist we may need to update the check here.
-    if (pjrt_se_client->addressable_device_count() == tf_device_specs.size()) {
+    if ((*obtained_pjrt_client)->addressable_device_count() ==
+        tf_device_specs.size()) {
       should_create_new_pjrt_client = false;
     } else {
       LOG(WARNING) << "A PjRt GPU Client was previously created, but the "
                       "addressable device count: "
-                   << pjrt_se_client->addressable_device_count()
+                   << (*obtained_pjrt_client)->addressable_device_count()
                    << " is not equal to tf_device_specs size: "
                    << tf_device_specs.size()
                    << ". This usually only happens in unit tests and we will "
@@ -1844,9 +1842,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
       VLOG(3) << "should_create_new_pjrt_client="
               << should_create_new_pjrt_client << " for device ordinal " << di
               << ". Re-using local_device_state";
-      auto* pjrt_se_client =
-          absl::down_cast<xla::StreamExecutorGpuClient*>(*obtained_pjrt_client);
-      local_device_state = &(pjrt_se_client->device_state(di));
+      auto* pjrt_se_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+          absl::down_cast<xla::CommonPjRtClient*>(*obtained_pjrt_client)
+              ->raw_client());
+      local_device_state = pjrt_se_client->device_state(xla::LocalDeviceId(di));
+      if (!local_device_state) {
+        return absl::InternalError(absl::StrCat(
+            "GPU local device state for tf_device_id: ", tf_device_id.value(),
+            " does not exist."));
+      }
     }
 
     // CreateGPUDevice sets stream to `gpu_allocator` and preallocates

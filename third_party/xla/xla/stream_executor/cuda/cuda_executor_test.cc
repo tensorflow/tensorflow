@@ -79,7 +79,14 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   DeviceInterconnectInfo info = result->device_interconnect_info();
   if (result->cuda_compute_capability().IsAtLeastHopper() &&
       info.active_links) {
-    EXPECT_GE(info.active_links, 18);
+    const auto cc = result->cuda_compute_capability();
+    if (cc.major == 10 && cc.minor == 7) {
+      EXPECT_EQ(info.active_links, 36);
+    } else if (cc.major == 10 && (cc.minor == 0 || cc.minor == 3)) {
+      EXPECT_EQ(info.active_links, 18);
+    } else {
+      EXPECT_GE(info.active_links, 18);
+    }
     // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
     if (result->kernel_mode_driver_version().major_version() >= 545) {
       EXPECT_THAT(info.clique_id, Not(IsEmpty()));

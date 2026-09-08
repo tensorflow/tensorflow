@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -49,6 +50,15 @@ class TritonDotFusionSearchSpace {
   std::vector<TritonGemmConfig> GenerateConfigs(
       bool autotune_warp_specialization = false) const;
 
+  // Generates the list of promising configs in the search space and optimizes
+  // them against the provided hints.
+  //
+  // If true, `autotune_warp_specialization` extends the search space with warp
+  // specialization support.
+  std::vector<TritonGemmConfig> GenerateAndOptimizeConfigs(
+      absl::Span<const TritonGemmConfig> hints,
+      bool autotune_warp_specialization = false) const;
+
   // Restrict the set of configs to the ones compatible with the hints list.
   // Generally, this will mean that configs are restricted to the ones that
   // appear in hints. The implementation is allowed to deviate though, and
@@ -57,8 +67,8 @@ class TritonDotFusionSearchSpace {
   // hints list is larger than the problem's RHS side, it might restrict that
   // config to the problem's RHS size).
   std::vector<TritonGemmConfig> OptimizeConfigSet(
-      const std::vector<TritonGemmConfig>& configs,
-      const std::vector<TritonGemmConfig>& hints) const;
+      absl::Span<const TritonGemmConfig> configs,
+      absl::Span<const TritonGemmConfig> hints) const;
 
   // Serializes the search space to a human-readable string.
   std::string ToString() const;

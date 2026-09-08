@@ -169,7 +169,7 @@ Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
 }  // namespace
 
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
-                                                const HloDotInstruction& dot) {
+                                                const HloInstruction& dot) {
   ABSL_ASSIGN_OR_RETURN(
       PrimitiveType accumulator_type,
       algorithm_util::GetDefaultGemmAlgorithmAccumulatorType(&dot));
@@ -177,7 +177,7 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
-    mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot) {
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& dot) {
   ABSL_ASSIGN_OR_RETURN(
       Type lhs_type,
       PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
@@ -208,7 +208,7 @@ absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
 // the operands do not already conform to any of them. Returns `std::nullopt` if
 // no casting is a priori needed.
 absl::StatusOr<std::optional<Type>> GetForceOperandsType(
-    mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot,
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& dot,
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
@@ -255,7 +255,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
 }  // namespace
 
 absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
-                                           const HloDotInstruction& dot) {
+                                           const HloInstruction& dot) {
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
 
@@ -269,20 +269,21 @@ absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
-                                        const HloDotInstruction& dot,
+                                        const HloInstruction& instr,
+                                        const DotDimensionNumbers& dim_nums,
                                         DotOperands dot_operands) {
-  PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
+  PrecisionConfig::Algorithm algorithm = instr.precision_config().algorithm();
   PrecisionSpec precision_spec{
       algorithm,
       XlaPrecisionToStableHloPrecision(
-          dot.precision_config().operand_precision(0)),
+          instr.precision_config().operand_precision(0)),
       XlaPrecisionToStableHloPrecision(
-          dot.precision_config().operand_precision(1))};
+          instr.precision_config().operand_precision(1))};
 
   ABSL_ASSIGN_OR_RETURN(std::optional<Type> force_operands_type,
-                   GetForceOperandsType(b, dot, dot_operands));
-
-  ABSL_ASSIGN_OR_RETURN(Type force_accumulator_type, GetDotAccumulatorType(b, dot));
+                   GetForceOperandsType(b, instr, dot_operands));
+  ABSL_ASSIGN_OR_RETURN(Type force_accumulator_type,
+                   GetDotAccumulatorType(b, instr));
 
   if (force_operands_type.has_value()) {
     if (ElementType(dot_operands.lhs) != *force_operands_type) {
@@ -300,8 +301,7 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
   }
 
   mlir::stablehlo::DotDimensionNumbersAttr dot_dimension_numbers =
-      xla::stablehlo::ConvertDotDimensionNumbers(dot.dot_dimension_numbers(),
-                                                 &b);
+      xla::stablehlo::ConvertDotDimensionNumbers(dim_nums, &b);
 
   Value result = EmitStableHloDotAndAdd(b, dot_operands.lhs, dot_operands.rhs,
                                         dot_operands.accumulator,
@@ -315,6 +315,14 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
   }
 
   return result;
+}
+
+// Convenience overload for HloDotInstruction: extracts dimension numbers from
+// the instruction itself.
+absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
+                                        const HloDotInstruction& dot,
+                                        DotOperands dot_operands) {
+  return EmitSingleTileDot(b, dot, dot.dot_dimension_numbers(), dot_operands);
 }
 
 absl::StatusOr<Value> EmitSingleTileScaledDot(

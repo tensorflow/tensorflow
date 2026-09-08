@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -121,6 +122,22 @@ hipDeviceptr_t AsROCmDevicePtr(DeviceAddressBase* gpu_mem) {
 absl::uint128 Fingerprint128(const absl::string_view s) {
   auto fp = tsl::Fingerprint128(s);
   return absl::MakeUint128(fp.high64, fp.low64);
+}
+
+bool ShouldLaunchDelayKernel() {
+  // The delay kernel blocks the stream until the host releases it, so it
+  // deadlocks if the HIP runtime is configured to serialize launches.
+  static bool value = [] {
+    auto is_enabled = [](const char* name) {
+      const char* value = std::getenv(name);
+      return value != nullptr && !absl::string_view{value}.empty() &&
+             absl::string_view{value} != "0";
+    };
+    return !is_enabled("HIP_LAUNCH_BLOCKING") &&
+           !is_enabled("AMD_SERIALIZE_KERNEL") &&
+           !is_enabled("AMD_SERIALIZE_COPY");
+  }();
+  return value;
 }
 
 // Loads HSACO with the ROCM runtime and stores the resulting handle in
@@ -583,7 +600,12 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 RocmExecutor::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
-  ABSL_ASSIGN_OR_RETURN(auto timer, RocmTimer::Create(this, stream));
+  const RocmTimer::TimerType timer_type =
+      (use_delay_kernel && ShouldLaunchDelayKernel())
+          ? RocmTimer::TimerType::kDelayKernel
+          : RocmTimer::TimerType::kEventBased;
+
+  ABSL_ASSIGN_OR_RETURN(auto timer, RocmTimer::Create(this, stream, timer_type));
   return std::make_unique<RocmTimer>(std::move(timer));
 }
 

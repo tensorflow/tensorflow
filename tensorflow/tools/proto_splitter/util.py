@@ -106,13 +106,13 @@ def _walk_fields(proto: message.Message, fields: FieldTypes):
       Index into this repeated field (or None))
   """
   if not isinstance(fields, list):
-    fields = [fields]
+    fields = [fields]  # pyrefly: ignore[bad-assignment]
 
   field_proto = proto
   parent_desc = proto.DESCRIPTOR
   i = 0
-  while i < len(fields):
-    field = fields[i]
+  while i < len(fields):  # pyrefly: ignore[bad-argument-type]
+    field = fields[i]  # pyrefly: ignore[bad-index]
     field_desc = None
     map_key = None
     index = None
@@ -147,9 +147,9 @@ def _walk_fields(proto: message.Message, fields: FieldTypes):
       field_proto = getattr(field_proto, field_desc.name)
 
     # Handle special fields types (map key and list index).
-    if _is_map(parent_desc) and i < len(fields):
+    if _is_map(parent_desc) and i < len(fields):  # pyrefly: ignore[bad-argument-type]
       # Next field is the map key.
-      map_key = fields[i]
+      map_key = fields[i]  # pyrefly: ignore[bad-index]
 
       try:
         field_proto = field_proto[map_key] if field_proto is not None else None
@@ -157,15 +157,15 @@ def _walk_fields(proto: message.Message, fields: FieldTypes):
         field_proto = None
       i += 1
 
-      if i < len(fields):
+      if i < len(fields):  # pyrefly: ignore[bad-argument-type]
         # The next field must be from the Value Message.
         value_desc = parent_desc.fields_by_name["value"]
         assert value_desc.message_type is not None
         parent_desc = value_desc.message_type
 
-    elif is_repeated(field_desc) and i < len(fields):
+    elif is_repeated(field_desc) and i < len(fields):  # pyrefly: ignore[bad-argument-type]
       # The next field is the index within the list.
-      index = fields[i]
+      index = fields[i]  # pyrefly: ignore[bad-index]
       try:
         field_proto = field_proto[index] if field_proto is not None else None
       except IndexError:

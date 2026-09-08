@@ -189,7 +189,7 @@ common:mkl_aarch64 --config=mkl_aarch64_threadpool
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="13.2.0"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
-common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
+common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.30.7"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -300,7 +300,8 @@ common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
 common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
-common:rocm_ci_hermetic --dynamic_mode=off
+common:rocm_ci_hermetic --dynamic_mode=fully
+common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
 common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
@@ -447,8 +448,6 @@ common:avx_linux --copt=-mavx
 common:avx_linux --host_copt=-mavx
 common:avx_win --copt=/arch:AVX
 
-common:win_clang_base --@com_google_protobuf//build_defs:use_dlls=True
-common:win_clang_base --@com_google_absl//absl:use_dlls=True
 common:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 common:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 common:win_clang_base --copt=/clang:-Weverything

@@ -22,7 +22,7 @@ from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 import numpy as np
 
-from xla.benchmarks.core import platform_info  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import platform_info
 
 
 def _vmem_usage_bytes(
@@ -214,6 +214,10 @@ class CostModel:
     rhs_dtype: The dtype of the second operand.
     out_dtype: The dtype of the output.
     acc_dtype: The dtype of the accumulator.
+    subblock_m: The subblock size for the m dimension. This has no effect on
+      window selection unless the TPU generation does not natively support the
+      LHS dtype, in which case it will be used to determine the additional VMEM
+      usage that may be used for the converted LHS operand.
     sparse_rhs: Whether the RHS operand is sparse.
     sp_n: The N value of the N:M sparsity pattern.
     sp_m: The M value of the N:M sparsity pattern.
@@ -233,6 +237,8 @@ class CostModel:
       rhs_dtype: jnp.dtype,
       out_dtype: jnp.dtype,
       acc_dtype: jnp.dtype,
+      *,
+      subblock_m: int | None = None,
       sparse_rhs: bool = False,
       sp_n: int = 1,
       sp_m: int = 1,
@@ -343,6 +349,21 @@ class CostModel:
         sp_n,
         sp_m,
     )
+    # If the LHS is emulated as a different dtype, then the compiler may spill
+    # the converted LHS operand to VMEM, so we account for this below.
+    emulated_lhs = (
+        lhs_dtype not in self._platform_info.matmul_cadence_cycles_by_dtype
+    )
+    if emulated_lhs:
+      emulated_dtype = self._platform_info.get_emulated_dtype(
+          lhs_dtype,
+          self._platform_info.matmul_cadence_cycles_by_dtype,
+      )
+      emulated_bits = jax.dtypes.itemsize_bits(emulated_dtype)
+      block_m = self._block_m
+      if subblock_m is not None:
+        block_m = np.minimum(self._block_m, subblock_m)
+      self._vmem_usage_bytes += block_m * self._block_k * emulated_bits // 8
 
   def _compute_matmul_latency_ns_per_iteration(
       self, p_state: int | None
@@ -366,9 +387,9 @@ class CostModel:
         self._platform_info.mxu_size_by_dtype(self.lhs_dtype)
     )
     clock_speed_ghz = self._platform_info.clock_speed_ghz_by_p_state[p_state]
-    matmul_cadence_cycles = self._platform_info.matmul_cadence_cycles_by_dtype[
+    matmul_cadence_cycles = self._platform_info.get_matmul_cadence_cycles(
         self.lhs_dtype
-    ]
+    )
     mxu_blocks_contracting_dim = self._block_k // mxu_contracting_dim
     mxu_blocks_non_contracting_dim = self._block_n // mxu_non_contracting_dim
     num_latches = mxu_blocks_contracting_dim * mxu_blocks_non_contracting_dim
@@ -387,9 +408,9 @@ class CostModel:
         * mxu_blocks_non_contracting_dim
     )
     rows_per_latch = sublane_count * (32 // self._bits_rhs)
-    latch_cadence_cycles = self._platform_info.latch_cadence_cycles_by_dtype[
+    latch_cadence_cycles = self._platform_info.get_latch_cadence_cycles(
         self.rhs_dtype
-    ]
+    )
     latch_latency_cycles = latch_cadence_cycles * (
         mxu_contracting_dim // rows_per_latch
     )
@@ -406,9 +427,9 @@ class CostModel:
         latch_latency_cycles
         + latch_overhead_cycles * (num_latches / num_mxus - 1)
     ) / clock_speed_ghz
-    matmul_latency_cycles = self._platform_info.matmul_latency_cycles_by_dtype[
+    matmul_latency_cycles = self._platform_info.get_matmul_latency_cycles(
         self.lhs_dtype
-    ]
+    )
     # The first and last matmul_latency_cycles of the iteration will not have
     # full MXU utilization. We approximate this by assuming linear rampup from
     # 0% to 100% utilization over the first and last matmul_latency_cycles. With
@@ -630,6 +651,9 @@ class CostModel:
     Returns:
       A tuple of (block_m, block_k, block_n) representing the window size.
     """
+    # Account for internal scratch bytes required by the compiler, which also
+    # comes from scoped VMEM.
+    vmem_limit_bytes -= self._platform_info.default_internal_scratch_bytes
     if p_state is None:
       # Note that p_state may still be None if the platform doesn't support
       # P-states.
@@ -645,7 +669,11 @@ class CostModel:
     )
     dma_latency_out = self._get_final_operand_transfer_latency()
     total_latency = dma_latency_in + loop_latency + dma_latency_out
-    within_mem_usage = self._vmem_usage_bytes <= vmem_limit_bytes
+    vmem_usage_arr = np.asarray(self._vmem_usage_bytes)
+    within_mem_usage = np.asarray(vmem_usage_arr <= vmem_limit_bytes)
+    if not within_mem_usage.any():
+      ind = int(np.argmin(vmem_usage_arr.ravel()))
+      return self._block_specs.reshape(-1, 3)[ind]
     ind = np.argmin(total_latency[within_mem_usage].ravel())
     min_latency = total_latency[within_mem_usage].ravel()[ind]
     min_block_spec = self._block_specs[within_mem_usage, :].reshape(-1, 3)[ind]

@@ -155,6 +155,16 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     config.set_inter_op_parallelism_threads(10)
 
+  @reset_eager
+  def testInterOpParallelismThreadsNegative(self):
+    with self.assertRaisesRegex(ValueError, 'must be >= 0'):
+      config.set_inter_op_parallelism_threads(-1)
+
+    config.set_inter_op_parallelism_threads(10)
+
+    # None keeps the default behavior instead of failing the comparison.
+    config.set_inter_op_parallelism_threads(None)
+
   @test_util.run_gpu_only
   @reset_eager
   def testSoftPlacement(self):

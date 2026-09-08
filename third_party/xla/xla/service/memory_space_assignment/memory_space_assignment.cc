@@ -648,6 +648,25 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
                                   << position.ToString();
           shape->mutable_layout()->set_memory_space(
               options_.alternate_memory_space);
+          // For asynchronous dynamic slice and dynamic update-slice start
+          // instructions, propagate the alternate memory space coloring
+          // directly to the wrapped instruction's layout so downstream code
+          // generation sees the correct memory space.
+          if (position.instruction->opcode() == HloOpcode::kAsyncStart &&
+              position.index == ShapeIndex({1}) &&
+              position.instruction->async_wrapped_instruction() != nullptr) {
+            HloOpcode wrapped_op = position.instruction->async_wrapped_opcode();
+            if (wrapped_op == HloOpcode::kDynamicUpdateSlice ||
+                wrapped_op == HloOpcode::kDynamicSlice) {
+              Shape* wrapped_shape =
+                  position.instruction->async_wrapped_instruction()
+                      ->mutable_shape();
+              if (wrapped_shape->has_layout()) {
+                wrapped_shape->mutable_layout()->set_memory_space(
+                    options_.alternate_memory_space);
+              }
+            }
+          }
           if (split_result != split_map_.end()) {
             CHECK_EQ(shape->layout().split_configs().size(), 0);
             shape->mutable_layout()->add_split_configs(
@@ -1380,7 +1399,7 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
                                      module_->entry_computation()));
 
   BufferIntervalTree interval_tree;
-  absl::flat_hash_set<int64_t> seen_buffers;
+  absl::flat_hash_map<int64_t, HeapSimulator::Chunk> seen_buffers;
   // The key for events is: time, is_free, value_id. This is so that the events
   // are sorted first by time, then within the same time, allocations are sorted
   // earlier than frees, and finally the value id as a tie breaker.
@@ -1446,13 +1465,41 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
     const HloBuffer& buffer =
         alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
-    CHECK(!seen_buffers.contains(buffer.id()))
-        << "Multiple preset assignments for the same buffer: "
-        << buffer.ToString() << ", pos: " << position.ToString()
-        << ", off: " << chunk.offset << ", size: " << chunk.size;
-    seen_buffers.insert(buffer.id());
+    auto [it, inserted] = seen_buffers.emplace(buffer.id(), chunk);
+    if (!inserted) {
+      CHECK_EQ(it->second.offset, chunk.offset)
+          << "Multiple conflicting preset assignment offsets for buffer: "
+          << buffer.ToString() << ", pos: " << position.ToString()
+          << ", existing off: " << it->second.offset
+          << ", new off: " << chunk.offset;
+      CHECK_EQ(it->second.size, chunk.size)
+          << "Multiple conflicting preset assignment sizes for buffer: "
+          << buffer.ToString() << ", pos: " << position.ToString()
+          << ", existing size: " << it->second.size
+          << ", new size: " << chunk.size;
+      continue;
+    }
 
     for (const HloValue* value : buffer.values()) {
+      // When an asynchronous computation is called by multiple callers (e.g.
+      // in prologue, loop body, and epilogue), HloDataflowAnalysis associates
+      // the single async computation's root HloValue with all invocations.
+      // Doing so causes the HloValue's live range to span from the first
+      // async-start to the last async-done:
+      //
+      // Time: 0 --------- 10 --------- 28 --------- 38 --------- 49
+      // Caller values:    [== 10..28 ==]            [== 38..49 ==]
+      // Async root:       [================ 10..49 ===============]
+      //                                 ^  (gap)   ^
+      //
+      // The actual discrete execution intervals are already accurately tracked
+      // and checked for the respective caller instructions (async-start, body
+      // parameters, async-done, etc.). Thus, skipping validation on the async
+      // root HloValue does not bypass validation.
+      if (value->instruction()->parent()->IsAsyncComputation() &&
+          value->instruction()->parent()->caller_instructions().size() > 1) {
+        continue;
+      }
       const HloLiveRange::LiveRangeBounds& time_bound =
           GetTimeBoundAndExtendIfConcatBitcast(
               value, alias_analysis.dataflow_analysis(), *hlo_live_range);
@@ -1476,8 +1523,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
           [&](const HloInstruction* use_instruction, int64_t start_time,
               int64_t end_time,
               absl::string_view indent_string) -> absl::Status {
-        // Special case when verifying conditional: we internally split the use
-        // of alternate memory in conditionals, so fish them out from the
+        // Special case when verifying conditional: we internally split the
+        // use of alternate memory in conditionals, so fish them out from the
         // conditionals.
         VLOG(3) << indent_string
                 << "Splitting conditional buffer: " << buffer.ToString()
@@ -1536,6 +1583,40 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
           last_use_instruction->opcode() == HloOpcode::kConditional) {
         ABSL_RETURN_IF_ERROR(split_conditional_buffer(
             last_use_instruction, time_bound.start, time_bound.end, " "));
+      } else if (last_use_instruction &&
+                 last_use_instruction->opcode() == HloOpcode::kWhile &&
+                 value->instruction()->parent() !=
+                     last_use_instruction->while_body() &&
+                 value->instruction()->parent() !=
+                     last_use_instruction->while_condition() &&
+                 absl::c_none_of(uses, [&](const HloUse& use) {
+                   return use.instruction->parent() ==
+                              last_use_instruction->while_body() ||
+                          use.instruction->parent() ==
+                              last_use_instruction->while_condition();
+                 })) {
+        // When a value defined in the caller computation is passed into a while
+        // loop and is not directly used inside the loop (i.e., it is not
+        // loop-invariant, so the loop parameter defines a new HloValue), its
+        // last use in the caller computation is the while instruction itself
+        // (which is scheduled after while_body in HloLiveRange).
+        // However, the caller's operand is only live in the parent computation
+        // until the while loop begins execution. Once the while loop starts,
+        // the buffer is accessed inside the while body via the body parameter,
+        // so we truncate the caller value's live range to end before the while
+        // computations start (analogous to split_conditional_buffer above).
+        int64_t cond_start = hlo_live_range->computation_span_times()
+                                 .at(last_use_instruction->while_condition())
+                                 .start;
+        int64_t body_start = hlo_live_range->computation_span_times()
+                                 .at(last_use_instruction->while_body())
+                                 .start;
+        int64_t earliest_while_computation_start_time =
+            std::min(cond_start, body_start);
+        CHECK_LT(time_bound.start, earliest_while_computation_start_time);
+        ABSL_RETURN_IF_ERROR(add_allocation_and_verify(
+            time_bound.start, earliest_while_computation_start_time - 1, chunk,
+            value));
       } else if (!value->GetUses().empty()) {
         last_use_time = std::min(last_use_time, time_bound.end);
         VLOG(3) << " buffer: " << buffer.ToString()
@@ -1574,8 +1655,16 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     HeapSimulatorTrace::Event* heap_trace_event = heap_trace->add_events();
     heap_trace_event->set_kind(kind);
     heap_trace_event->set_buffer_id(buffer_id);
+    // When building heap simulation trace events, unwrap asynchronous
+    // instructions so that profile visualizations display the meaningful
+    // underlying operation name.
+    const HloInstruction* trace_instr = value->instruction();
+    if (trace_instr->IsAsynchronous() &&
+        trace_instr->async_wrapped_instruction() != nullptr) {
+      trace_instr = trace_instr->async_wrapped_instruction();
+    }
     *heap_trace_event->mutable_instruction_name() =
-        std::string(value->instruction()->name());
+        std::string(trace_instr->name());
     *heap_trace_event->mutable_computation_name() =
         std::string(value->instruction()->parent()->name());
 

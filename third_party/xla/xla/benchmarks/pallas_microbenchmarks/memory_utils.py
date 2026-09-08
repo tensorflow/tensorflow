@@ -16,6 +16,7 @@
 """
 
 import jax
+from jax.experimental import layout
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 
@@ -60,3 +61,20 @@ def copy_to_vmem(arr: jax.Array) -> jax.Array:
           ],
       ),
   )(arr)
+
+
+def with_large_2nd_minor_layout(arr: jax.Array) -> jax.Array:
+  """Utility function to apply a layout with a large 2nd minor."""
+  dtype = arr.dtype
+  bits = jax.dtypes.itemsize_bits(dtype)
+  elems_per_word = 32 // bits
+  lanes = pltpu.get_tpu_info().num_lanes
+  sublanes = pltpu.get_tpu_info().num_sublanes
+  return layout.with_layout_constraint(
+      arr,
+      layout.Layout(
+          major_to_minor=tuple(range(0, arr.ndim)),
+          tiling=((elems_per_word * sublanes, lanes), (elems_per_word, 1)),
+      ),
+  )
+

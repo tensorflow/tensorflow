@@ -20,15 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
 namespace tflite {
 namespace reference_ops {
 namespace {
 
-TEST(BroadcastLoopTest, SupportsRankGreaterThanInlineRank) {
-  const RuntimeShape input1_shape({2, 1, 2, 1, 2, 1, 2, 1, 2});
-  const RuntimeShape input2_shape({1, 2, 1, 2, 1, 2, 1, 2, 1});
-  const RuntimeShape output_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
+TEST(BroadcastLoopTest, SupportsMaxRank) {
+  const RuntimeShape input1_shape({2, 1, 2, 1, 2, 1, 2, 1});
+  const RuntimeShape input2_shape({1, 2, 1, 2, 1, 2, 1, 2});
+  const RuntimeShape output_shape({2, 2, 2, 2, 2, 2, 2, 2});
 
   std::vector<int> input1(input1_shape.FlatSize());
   std::vector<int> input2(input2_shape.FlatSize());
@@ -63,6 +64,24 @@ TEST(BroadcastLoopTest, SupportsRankGreaterThanInlineRank) {
         << "output index " << output_index;
   }
 }
+
+#if GTEST_HAS_DEATH_TEST
+TEST(BroadcastLoopTest, RankGreaterThanMaxRankDies) {
+  const RuntimeShape input1_shape({2, 1, 2, 1, 2, 1, 2, 1, 2});
+  const RuntimeShape input2_shape({1, 2, 1, 2, 1, 2, 1, 2, 1});
+  const RuntimeShape output_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
+
+  std::vector<int> input1(input1_shape.FlatSize());
+  std::vector<int> input2(input2_shape.FlatSize());
+  std::vector<int> output(output_shape.FlatSize());
+
+  EXPECT_DEATH(
+      BroadcastBinaryOpSimple(input1_shape, input1.data(), input2_shape,
+                              input2.data(), output_shape, output.data(),
+                              [](int a, int b) { return a + b; }),
+      "");
+}
+#endif  // GTEST_HAS_DEATH_TEST
 
 }  // namespace
 }  // namespace reference_ops

@@ -35,8 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/SHA256.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -46,6 +44,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/sha256.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -72,9 +71,7 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
 
 absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s) {
-  llvm::SHA256 sha256;
-  sha256.update(llvm::StringRef(s));
-  std::array<uint8_t, 32> hash = sha256.final();
+  std::array<uint8_t, 32> hash = tsl::SHA256::Hash(s);
   // C++ strict aliasing rules allow reinterpret casting to (const) char*.
   absl::string_view hash_view(reinterpret_cast<const char*>(hash.data()),
                               hash.size());
@@ -207,7 +204,9 @@ absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto) {
   if (as_textproto) {
     std::string textproto;
-    if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
+    tsl::protobuf::TextFormat::Printer printer;
+    printer.SetExpandAny(true);
+    if (printer.PrintToString(results, &textproto)) {
       return textproto;
     }
     return Internal("Failed to serialize autotune results.");

@@ -44,8 +44,10 @@ cc_library(
         ":type",
         ":vec_name_mangler",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:FuncDialect",
@@ -57,6 +59,7 @@ xla_cc_test(
     name = "intrinsic_test",
     srcs = ["intrinsic_test.cc"],
     deps = [
+        ":intrinsic",
         ":type",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
@@ -130,7 +133,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -275,7 +278,7 @@ cc_library(
         "@llvm-project//llvm:Core",  # buildcleaner: keep
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:IPO",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
@@ -311,7 +314,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -327,7 +330,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -376,7 +379,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -395,7 +398,7 @@ xla_cc_test(
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
@@ -448,7 +451,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )

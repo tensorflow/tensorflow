@@ -86,6 +86,35 @@ xla_cc_binary(
 )
 
 xla_cc_binary(
+    name = "fusion_to_tensorir",
+    testonly = 1,
+    srcs = ["fusion_to_tensorir.cc"],
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = [":codegen_tests"],
+    deps = [
+        "//xla/backends/gpu/codegen/tensor_ir:conversion",
+        "//xla/backends/gpu/codegen/tensor_ir:support",
+        "//xla/hlo/ir:hlo",
+        "//xla/tools:hlo_module_loader",
+        "@cuda_tile//:CudaTileDialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirTranslateMain",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateLib",
+        "@tensor_ir//:NVTensorIRCudaTilePipelines",
+        "@tensor_ir//:NVTensorIRDialect",
+        "@tensor_ir//:NVTensorIRToCudaTileConversion",
+    ],
+)
+
+xla_cc_binary(
     name = "gpu_test_correctness",
     testonly = 1,
     srcs = ["gpu_test_correctness.cc"],
