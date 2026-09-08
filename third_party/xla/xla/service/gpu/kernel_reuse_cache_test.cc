@@ -47,8 +47,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
   EXPECT_FALSE(future.IsReady());
   promise.Set(KernelReuseCache::Entry{kernel_name});
 
-  TF_ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result,
-                          future.Await());
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result, future.Await());
   EXPECT_THAT(result, testing::NotNull());
   EXPECT_EQ(result->kernel_name, kernel_name);
   EXPECT_FALSE(cache.IsEmpty());
@@ -69,7 +68,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
                 compatibility_version: 3
               )pb"));
 
-  TF_EXPECT_OK(cache.Load(proto));
+  EXPECT_OK(cache.Load(proto));
   EXPECT_FALSE(cache.IsEmpty());
 
   {
@@ -77,8 +76,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
       return absl::UnimplementedError("Should be cached");
     });
     EXPECT_TRUE(was_cached);
-    TF_ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result,
-                            future.Await());
+    ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result, future.Await());
     EXPECT_THAT(result, testing::NotNull());
     EXPECT_EQ(result->kernel_name, kernel_name);
   }
@@ -96,7 +94,7 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
       });
       return cache.Export();
     }("k1");
-    TF_EXPECT_OK(
+    EXPECT_OK(
         UpdateDiskKernelCache(cache_file_path, /*do_append=*/false, proto));
   }
   {
@@ -108,11 +106,11 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
       });
       return cache.Export();
     }("k2");
-    TF_EXPECT_OK(
+    EXPECT_OK(
         UpdateDiskKernelCache(cache_file_path, /*do_append=*/true, proto));
   }
   std::string serialized;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), cache_file_path, &serialized));
   CompilationCacheProto proto;
   EXPECT_TRUE(proto.ParseFromString(serialized));
