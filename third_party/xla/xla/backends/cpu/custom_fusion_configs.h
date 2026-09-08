@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_TRANSFORMS_LIBRARY_FUSION_KINDS_H_
-#define XLA_BACKENDS_CPU_TRANSFORMS_LIBRARY_FUSION_KINDS_H_
+#ifndef XLA_BACKENDS_CPU_CUSTOM_FUSION_CONFIGS_H_
+#define XLA_BACKENDS_CPU_CUSTOM_FUSION_CONFIGS_H_
 
 #include "absl/strings/string_view.h"
 
@@ -24,10 +24,10 @@ inline constexpr absl::string_view kYnnFusionKind = "__ynn_fusion";
 // The maximum number of instructions allowed in a library fusion. This avoids
 // crashing libraries with too large graphs. It could break good fusions, e.g.,
 // Softmax, etc. We should deploy a smarter logic in the future.
-inline constexpr int kMaxFusionSize = 100;
+inline constexpr int kMaxLibraryFusionSize = 100;
 
 // TODO(intel-tf): Evaluate if there is performance benefit to increase the
 // limit.
 inline constexpr int kMaxOneDnnFusionSize = 10;
 
-#endif  // XLA_BACKENDS_CPU_TRANSFORMS_LIBRARY_FUSION_KINDS_H_
+#endif  // XLA_BACKENDS_CPU_CUSTOM_FUSION_CONFIGS_H_

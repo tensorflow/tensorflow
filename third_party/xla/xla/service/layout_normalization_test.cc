@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/scatter_simplifier.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -610,8 +610,8 @@ TEST_F(LayoutNormalizationTest, ZeroSizedConstant) {
   ENTRY main() -> s32[0,179] {
     ROOT %constant = s32[0,179]{1,0} constant({  })
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto status, LayoutNormalization().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto status, LayoutNormalization().Run(module.get()));
   EXPECT_FALSE(status);
 }
 
@@ -996,7 +996,7 @@ ENTRY main {
   ROOT custom-call = (f32[2,2]{1,0}) custom-call(p0), custom_call_target="foo"
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   CustomCallTransformer transformer = [](HloCustomCallInstruction* instruction)
       -> absl::StatusOr<std::optional<HloInstruction*>> {
@@ -1005,7 +1005,7 @@ ENTRY main {
   };
 
   LayoutNormalization layout_normalization(transformer);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1024,10 +1024,10 @@ ENTRY main {
   ROOT gte = f32[2,2]{1,0} get-tuple-element(tuple), index=0
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   LayoutNormalization layout_normalization;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
 
   EXPECT_FALSE(changed);
 }

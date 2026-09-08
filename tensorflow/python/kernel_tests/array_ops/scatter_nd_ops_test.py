@@ -203,6 +203,21 @@ class StatefulScatterNdTest(test.TestCase):
         self.evaluate(scatter)
         self.assertAllClose(ref, expected)
 
+  @test_util.run_deprecated_v1
+  def testEmptyRankOneIndices(self):
+    ref = resource_variable_ops.ResourceVariable([1.0])
+    indices = array_ops.placeholder(dtypes.int32, shape=None)
+    updates = array_ops.placeholder(dtypes.float32, shape=None)
+    update = state_ops.scatter_nd_update(ref, indices, updates)
+
+    with self.cached_session(use_gpu=True) as sess:
+      sess.run(ref.initializer)
+      sess.run(update, feed_dict={
+          indices: np.empty(0, dtype=np.int32),
+          updates: np.empty(0, dtype=np.float32),
+      })
+      self.assertAllEqual(sess.run(ref), [1.0])
+
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
     updates = constant_op.constant([11., 12.], dtype=dtypes.float32)
