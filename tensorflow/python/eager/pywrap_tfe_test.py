@@ -363,6 +363,7 @@ class Tests(test.TestCase):
     ctx = context.context()
     ctx.ensure_initialized()
 
+    full_exception_text = ""
     try:
       math_ops.mat_mul([[1., 1.] * 2], [[1., 1.] * 3])
     except errors.InvalidArgumentError:
