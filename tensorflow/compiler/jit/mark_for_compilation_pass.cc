@@ -2001,7 +2001,7 @@ GetAllowlistTable() {
             "Log1p", "Invert", "LogicalNot", "Ndtri", "Neg", "Rint", "Round",
             "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
             "Square", "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Erfinv",
-            "Lgamma", "Digamma",
+            "Lgamma", "Digamma", "BesselI0", "BesselI1",
             // Binary
             "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
             "MulNoNan", "FloorDiv", "Xlogy", "Xlog1py", "Xdivy", "FloorMod",
