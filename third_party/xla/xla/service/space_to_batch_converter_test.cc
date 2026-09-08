@@ -19,12 +19,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -44,8 +44,8 @@ ENTRY computation {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -80,8 +80,8 @@ ENTRY computation {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -124,8 +124,8 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 8});
@@ -145,8 +145,8 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 1});
@@ -168,8 +168,8 @@ TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 1});
@@ -187,8 +187,8 @@ TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
       window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -223,8 +223,8 @@ ENTRY computation {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -263,8 +263,8 @@ TEST_F(SpaceToBatchConverterTest, PropagateThroughDot) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 8});
@@ -291,8 +291,8 @@ TEST_F(SpaceToBatchConverterTest, PropagateOnTrivialReduce) {
     ROOT %reduce.41 = f32[7,160,400]{2,1,0} reduce(%c, %constant.5), dimensions={3}, to_apply=%region_1.37
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -339,8 +339,8 @@ TEST_F(SpaceToBatchConverterTest, DoNotPropagateOnTupleReduce) {
     %constant.5, %constant.6), dimensions={3}, to_apply=%minmax_func.2717
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -372,8 +372,8 @@ TEST_F(SpaceToBatchConverterTest, ReduceDegenerateDim) {
       %convolution.98, f32[] %constant.10559), dimensions={1,4}, to_apply=%region_42.4982
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -406,8 +406,8 @@ ENTRY main.140 {
     dimensions={0,1,2}, to_apply=%region_0.134
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(

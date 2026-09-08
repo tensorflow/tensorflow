@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/ynnpack/copy.h"
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
 #include "tensorflow/lite/delegates/ynnpack/elementwise.h"
+#include "tensorflow/lite/delegates/ynnpack/moe.h"
 #include "tensorflow/lite/delegates/ynnpack/pooling.h"
 #include "tensorflow/lite/delegates/ynnpack/reduction.h"
 #include "tensorflow/lite/delegates/ynnpack/softmax.h"
@@ -70,7 +71,6 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
     tensor_to_value_id_.clear();
     inputs_.clear();
-
     outputs_.clear();
     dummy_inputs_.clear();
     input_shapes_.clear();
@@ -167,7 +167,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     // Now define internal nodes.
-    for (const auto& node : nodes_info_) {
+    for (size_t i = 0; i < nodes_info_.size(); ++i) {
+      const auto& node = nodes_info_[i];
       if (IsUnaryOp(node.builtin_code)) {
         TF_LITE_ENSURE_STATUS(
             DefineUnaryNode(context, subgraph_, tensor_to_value_id_, node));
@@ -256,6 +257,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDequantize) {
         TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
                                                    tensor_to_value_id_, node));
+      } else if (is_moe_node_[i]) {
+        TF_LITE_ENSURE_STATUS(
+            DefineMoeNode(context, subgraph_, tensor_to_value_id_, node));
       } else {
         TF_LITE_ENSURE_MSG(context, false, "Unsupported op: %d",
                            node.builtin_code);
@@ -281,6 +285,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
 
     nodes_info_.clear();
     nodes_info_.reserve(params->nodes_to_replace->size);
+    is_moe_node_.clear();
+    is_moe_node_.reserve(params->nodes_to_replace->size);
     for (int i = 0; i < params->nodes_to_replace->size; ++i) {
       int node_index = params->nodes_to_replace->data[i];
       TfLiteNode* node;
@@ -297,6 +303,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
                                node->outputs->data + node->outputs->size);
       node_info.activation = GetFusedActivation(reg, node);
       nodes_info_.push_back(node_info);
+      is_moe_node_.push_back(IsMoe(reg, node));
     }
 
     return BuildSubgraphAndRuntime(context);
@@ -397,7 +404,6 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
             runtime_, dummy.dummy_val_id, dummy.rank, dims));
       }
-
       TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
     }
 
@@ -433,6 +439,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<TensorMap> outputs_;
 
   std::vector<NodeInfo> nodes_info_;
+  std::vector<bool> is_moe_node_;
   std::vector<int> input_tensor_indices_;
   std::vector<int> output_tensor_indices_;
   std::vector<std::vector<size_t>> input_shapes_;
@@ -522,6 +529,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
              kTfLiteOk;
     } else if (IsSdpa(registration, node)) {
       return IsSdpaSupported(registration, node, context) == kTfLiteOk;
+    } else if (IsMoe(registration, node)) {
+      return IsMoeSupported(registration, node, context) == kTfLiteOk;
     }
     return false;
   }
@@ -545,6 +554,10 @@ class YNNPackDelegate : public SimpleDelegateInterface {
         } else if (IsSdpa(reg, node) &&
                    IsSdpaSupported(reg, node, context) == kTfLiteOk) {
           // Don't inline this supported sdpa.
+          return false;
+        } else if (IsMoe(reg, node) &&
+                   IsMoeSupported(reg, node, context) == kTfLiteOk) {
+          // Don't inline this supported MoE.
           return false;
         }
         return true;

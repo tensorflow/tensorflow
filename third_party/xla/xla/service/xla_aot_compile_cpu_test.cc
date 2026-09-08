@@ -34,9 +34,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_aot_loader.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -48,46 +46,45 @@ TEST(XlaCompileTest, LoadCpuExecutable) {
   std::string path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
                                        "xla_aot_compile_test_cpu_executable");
   std::string serialized_aot_result;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Get a LocalClient
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetPlatform("Host"));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("Host"));
   if (platform->VisibleDeviceCount() <= 0) {
     EXPECT_TRUE(false) << "CPU platform has no visible devices.";
   }
   LocalClientOptions local_client_options;
   local_client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LocalClient * client,
       ClientLibrary::GetOrCreateLocalClient(local_client_options));
 
   // Load from AOT result.
   ExecutableBuildOptions executable_build_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Load(serialized_aot_result, executable_build_options));
 
   // Run loaded excutable.
   Literal input1 = LiteralUtil::CreateR1<double>({0.0f, 1.0f, 2.0f});
   Literal input2 = LiteralUtil::CreateR1<double>({1.0f, 2.0f, 4.0f});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer array1,
       client->LiteralToShapedBuffer(input1, client->default_device_ordinal()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer array2,
       client->LiteralToShapedBuffer(input2, client->default_device_ordinal()));
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_allocator(client->backend().memory_allocator());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer result,
       local_executable->Run(
           absl::Span<const ShapedBuffer* const>{&array1, &array2},
           executable_run_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                          client->ShapedBufferToLiteral(result));
+  ASSERT_OK_AND_ASSIGN(Literal output, client->ShapedBufferToLiteral(result));
   Literal expected = LiteralUtil::CreateR1<double>({1.0f, 3.0f, 6.0f});
   EXPECT_EQ(expected, output);
 }
@@ -97,12 +94,11 @@ TEST(XlaCompileTest, LoadAotResultWithDefinedTargetFeatures) {
       tsl::testing::XlaSrcRoot(), "service",
       "xla_aot_compile_test_cpu_executable_with_target_config");
   std::string serialized_aot_result;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
-      cpu::CpuAotLoader::LoadAotCompilationResult(serialized_aot_result));
+  ASSERT_OK_AND_ASSIGN(auto result, cpu::CpuAotLoader::LoadAotCompilationResult(
+                                        serialized_aot_result));
   const auto& opts = static_cast<cpu::CpuAotCompilationResult*>(result.get())
                          ->proto()
                          .target_machine_options();

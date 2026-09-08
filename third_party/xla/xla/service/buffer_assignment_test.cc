@@ -67,8 +67,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -3464,7 +3462,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   schedule.set_sequence(
       module->entry_computation(),
       {token, infeed, infeed_data, while0, while1, zero, add, while2, tuple});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -4198,7 +4196,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   // If this ASSERT fails, we constructed a bogus sequence above and this test
   // itself is buggy.
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -5461,7 +5459,7 @@ TEST_F(BufferAssignmentTest, LiveRangeStartOrder) {
     opts.assignment_algorithm_for_computations_without_ordering =
         buffer_assignment::
             AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto assignment,
         BufferAssigner::Run(
             module.get(), std::make_unique<SequentialHloOrdering>(schedule),
