@@ -55,54 +55,6 @@ class Client;
 // There is no API-level constraint on their global shapes and shardings.
 class RemapPlan {
  public:
-  // Half-open interval with optional skips. Represents elements at offset
-  // `[start, start + step, start + step * 2, ..., end)` (`end` is excluded).
-  // Using the Python slice representation, it corresponds to
-  // `[start:end:step]`. `start` and `end` must be zero or positive. `step`
-  // must be positive (reverse iteration is disallowed for simplicity).
-  struct Interval {
-    int64_t start;
-    int64_t end;
-    int64_t step;
-
-    bool operator==(const Interval& other) const {
-      return start == other.start && end == other.end && step == other.step;
-    }
-
-    template <typename H>
-    friend H AbslHashValue(H h, const Interval& interval) {
-      return H::combine(std::move(h), interval.start, interval.end,
-                        interval.step);
-    }
-
-    std::string DebugString() const;
-  };
-
-  // Mapping of shards from an input array to an output array. The shards whose
-  // index is chosen by `from` in `arrays[in_array]` will be used for the shards
-  // whose index is chosen by `to` in `out_arrays[out_array]`. `from` and `to`
-  // must contain the same number of `Interval`s, and each corresponding pair of
-  // `Interval` from `from` and `to` must represent the same number of shards.
-  struct Mapping {
-    int in_array;
-    int out_array;
-    std::vector<Interval> from;
-    std::vector<Interval> to;
-
-    bool operator==(const Mapping& other) const {
-      return in_array == other.in_array && out_array == other.out_array &&
-             from == other.from && to == other.to;
-    }
-
-    template <typename H>
-    friend H AbslHashValue(H h, const Mapping& mapping) {
-      return H::combine(std::move(h), mapping.in_array, mapping.out_array,
-                        mapping.from, mapping.to);
-    }
-
-    std::string DebugString() const;
-  };
-
   // List of devices that are used as the source shards for a given input array
   // contributing to a given output array.
   struct InputDeviceRange {
@@ -130,37 +82,11 @@ class RemapPlan {
                                    std::move(output_specs),
                                    std::move(input_devices_for_output_map))) {}
 
-  RemapPlan(std::vector<ArraySpec> input_specs,
-            std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings)
-      : rep_(std::make_shared<Rep>(std::move(input_specs),
-                                   std::move(output_specs),
-                                   std::move(mappings))) {}
-
-  ABSL_DEPRECATED(
-      "Use the constructor that takes `input_devices_for_output_map` without "
-      "`mappings` instead.")
-  RemapPlan(std::vector<ArraySpec> input_specs,
-            std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings,
-            absl::flat_hash_map<int, std::vector<InputDeviceRange>>
-                input_devices_for_output_map)
-      : rep_(std::make_shared<Rep>(std::move(input_specs),
-                                   std::move(output_specs), std::move(mappings),
-                                   std::move(input_devices_for_output_map))) {}
-
-  // A convenience method that calculates `input_devices_for_output_map`,
-  // creates a `RemapPlan`, and validates it. Users who create remap plans with
-  // mappings once and reuse them should prefer this over constructors.
-  static absl::StatusOr<RemapPlan> CreateOptimized(
-      Client* client, std::vector<ArraySpec> input_specs,
-      std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings);
-
   absl::Span<const ArraySpec> input_specs() const { return rep_->input_specs; }
 
   absl::Span<const ArraySpec> output_specs() const {
     return rep_->output_specs;
   }
-
-  absl::Span<const Mapping> mappings() const { return rep_->mappings; }
 
   const absl::flat_hash_map<int, std::vector<InputDeviceRange>>&
   input_devices_for_output_map() const {
@@ -210,7 +136,6 @@ class RemapPlan {
            (absl::HashOf(*this) == absl::HashOf(other) &&
             rep_->input_specs == other.rep_->input_specs &&
             rep_->output_specs == other.rep_->output_specs &&
-            rep_->mappings == other.rep_->mappings &&
             rep_->input_devices_for_output_map ==
                 other.rep_->input_devices_for_output_map);
   }
@@ -243,23 +168,12 @@ class RemapPlan {
     // Specification of outputs.
     std::vector<ArraySpec> output_specs;
 
-    // Mappings.
-    std::vector<Mapping> mappings;
-
     // If a key K is present in `input_devices_for_output_map` then it describes
     // all the inputs that contribute to the output with index K.
     //
     // The value lists all the input array indices that contribute to output K,
     // and for each input array I a device list containing all of the devices
     // that hold shards coming from I.
-    //
-    // If `mappings` is not empty, information must be consistent with the
-    // information in `mappings`, i.e., `input_devices_for_output_map` must
-    // duplicate, not replace, information in `mappings`.
-    //
-    // Entries in `input_devices_for_output_map` are strictly optional, but
-    // their presence may allow some implementations to be more efficient since
-    // the implementation need not construct the device lists at execution time.
     absl::flat_hash_map<int, std::vector<InputDeviceRange>>
         input_devices_for_output_map;
 
@@ -275,22 +189,6 @@ class RemapPlan {
     mutable absl::Status validate_array_shard_mappings_status;
 
     Rep() = default;
-
-    Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
-        std::vector<Mapping> mappings)
-        : input_specs(std::move(input_specs)),
-          output_specs(std::move(output_specs)),
-          mappings(std::move(mappings)) {}
-
-    Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
-        std::vector<Mapping> mappings,
-        absl::flat_hash_map<int, std::vector<InputDeviceRange>>
-            input_devices_for_output_map)
-        : input_specs(std::move(input_specs)),
-          output_specs(std::move(output_specs)),
-          mappings(std::move(mappings)),
-          input_devices_for_output_map(
-              std::move(input_devices_for_output_map)) {}
 
     Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
         absl::flat_hash_map<int, std::vector<InputDeviceRange>>
