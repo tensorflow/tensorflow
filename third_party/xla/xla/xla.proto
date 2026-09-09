@@ -556,6 +556,12 @@ message DebugOptions {
   // --xla_gpu_experimental_enable_fusion_autotuner for that pass.
   repeated autotuner.Backend xla_gpu_experimental_autotune_backends = 442;
 
+  // Preferred autotuner backend. If set and the preferred backend generates
+  // valid configs for an instruction, the autotuner will pick a config from
+  // this backend even if another backend is faster. If no valid config from the
+  // preferred backend is available, the autotuner falls back to other backends.
+  optional autotuner.Backend xla_autotuner_preferred_backend = 546;
+
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
   // its inputs) to the --xla_dump_to directory. This flag is currently
@@ -1850,7 +1856,7 @@ message DebugOptions {
   // available devices in the topology.
   optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
 
-  // Next id: 546
+  // Next id: 547
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
