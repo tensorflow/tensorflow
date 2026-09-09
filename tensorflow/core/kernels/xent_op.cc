@@ -64,7 +64,7 @@ struct XentGradientCorrector<CPUDevice, double> {
     Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
     one_by_class.set(1, num_classes);
 
-    auto probabilities = backprop + labels.broadcast(labels_bcast);
+    auto probabilities = (backprop + labels.broadcast(labels_bcast)).eval();
     scratch.reshape(batch_only).device(d) = backprop.sum(along_class);
     // Remove the row-sum residual that can remain when a probability rounds
     // to one. Running after the selected functor keeps fallback and optimized
