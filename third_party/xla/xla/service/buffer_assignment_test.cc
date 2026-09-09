@@ -130,7 +130,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
                &BufferSizeBytes, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -159,7 +159,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                module,
                std::make_unique<SequentialHloOrdering>(module->schedule()),
                &BufferSizeBytes, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -171,7 +171,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
                &BufferSizeBytes, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -190,7 +190,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
                &BufferSizeBytes, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -204,7 +204,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
                &BufferSizeBytes, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -233,8 +233,8 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
         BufferAssigner::Run(
             module, std::make_unique<DependencyHloOrdering>(module),
-            &BufferSizeBytes, &alias_info_,
-            [](LogicalBuffer::Color) { return 1; }, std::move(opts));
+            &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+            std::move(opts));
     CHECK_OK(assignment.status());
     return std::move(assignment).value();
   }
@@ -285,7 +285,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                &BufferSizeBytes, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -299,7 +299,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
                &BufferSizeBytes, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -314,7 +314,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                module,
                std::make_unique<SequentialHloOrdering>(module->schedule()),
                &BufferSizeBytes, &alias_info_,
-               [](LogicalBuffer::Color) { return 1; }, std::move(opts))
+               [](HloValue::Color) { return 1; }, std::move(opts))
         .value();
   }
 
@@ -724,7 +724,7 @@ TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
   // Run 1: Severely constrained memory -> triggers fallback to DEFAULT.
   int limit_calls_fallback = 0;
   constexpr int64_t kSafetyMargin = int64_t{5} << 29;
-  opts.color_memory_limit = [&](LogicalBuffer::Color color) {
+  opts.color_memory_limit = [&](HloValue::Color color) {
     limit_calls_fallback++;
     return kSafetyMargin + 10;
   };
@@ -733,8 +733,8 @@ TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
       std::unique_ptr<BufferAssignment> assignment_fallback,
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          &BufferSizeBytes, &alias_info_,
-          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+          &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+          std::move(opts)));
 
   // Run 2: Unconstrained memory -> runs optimally on FAST_MERGE.
   BufferAssigner::Options opts_fast;
@@ -748,7 +748,7 @@ TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
       buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
 
   int limit_calls_fast = 0;
-  opts_fast.color_memory_limit = [&](LogicalBuffer::Color color) {
+  opts_fast.color_memory_limit = [&](HloValue::Color color) {
     limit_calls_fast++;
     return kSafetyMargin + 10000000;
   };
@@ -757,8 +757,8 @@ TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
       std::unique_ptr<BufferAssignment> assignment_fast,
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          &BufferSizeBytes, &alias_info_,
-          [](LogicalBuffer::Color) { return 1; }, std::move(opts_fast)));
+          &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+          std::move(opts_fast)));
 
   // Verify both assignments succeeded and independently queried their limits.
   EXPECT_NE(assignment_fallback, nullptr);
@@ -1364,11 +1364,11 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
       for (const auto& alias : buffer.values()) {
         if (alias->instruction()->opcode() == HloOpcode::kAdd ||
             alias->instruction()->opcode() == HloOpcode::kMultiply) {
-          value.set_color(LogicalBuffer::Color(1));
+          value.set_color(HloValue::Color(1));
         }
       }
       if (!value.has_color()) {
-        value.set_color(LogicalBuffer::Color(0));
+        value.set_color(HloValue::Color(0));
       }
     }
     return absl::OkStatus();
@@ -1454,9 +1454,9 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
   EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
   EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
-  EXPECT_EQ(paramscalar_buffer.color(), LogicalBuffer::Color(0));
+  EXPECT_EQ(paramscalar_buffer.color(), HloValue::Color(0));
   EXPECT_NE(param0_buffer.index(), param1_buffer.index());
-  EXPECT_EQ(param0_buffer.color(), LogicalBuffer::Color(0));
+  EXPECT_EQ(param0_buffer.color(), HloValue::Color(0));
 
   // The mul and add use the same preset buffer. Ensure it has the correct color
   // and offsets.
@@ -1464,7 +1464,7 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
   EXPECT_EQ(mul_buffer, add_buffer);
   EXPECT_NE(mul_buffer.index(), param0_buffer.index());
-  EXPECT_EQ(mul_buffer.color(), LogicalBuffer::Color(1));
+  EXPECT_EQ(mul_buffer.color(), HloValue::Color(1));
 
   EXPECT_EQ(mul_buffer.assigned_buffers().size(), 2);
   for (const auto& value_and_offsetsize : mul_buffer.assigned_buffers()) {
@@ -1566,7 +1566,7 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   for (const auto& value_and_offsetsize : data_buffer.assigned_buffers()) {
     EXPECT_EQ(value_and_offsetsize.second.offset, 100);
     EXPECT_EQ(value_and_offsetsize.second.size, 40);
-    EXPECT_EQ(value_and_offsetsize.first->color(), LogicalBuffer::Color(1));
+    EXPECT_EQ(value_and_offsetsize.first->color(), HloValue::Color(1));
   }
 }
 
@@ -2798,8 +2798,8 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
         BufferAssigner::Run(
             module.get(),
             std::make_unique<SequentialHloOrdering>(module->schedule()),
-            &BufferSizeBytes, &alias_info_,
-            [](LogicalBuffer::Color) { return 1; }, std::move(opts))
+            &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+            std::move(opts))
             .value();
     const BufferAllocation& buffer = GetTopLevelAllocation(*assignment, concat);
     EXPECT_FALSE(buffer.IsInputOrOutput());
@@ -3142,7 +3142,7 @@ class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf, &alias_info_,
-               [alignment](LogicalBuffer::Color) { return alignment; },
+               [alignment](HloValue::Color) { return alignment; },
                std::move(opts))
         .value();
   }
@@ -3470,8 +3470,8 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          &BufferSizeBytes, &alias_info_,
-          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+          &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+          std::move(opts)));
 
   // The result tuple elements must be assigned with different buffers.
   ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
@@ -4203,7 +4203,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto assignment =
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          ByteSizeOf, &alias_info_, [](LogicalBuffer::Color) { return 1; },
+          ByteSizeOf, &alias_info_, [](HloValue::Color) { return 1; },
           std::move(opts))
           .value();
 
@@ -5391,8 +5391,8 @@ TEST_F(BufferAssignmentTest, TopologicalOrder) {
     auto assignment =
         BufferAssigner::Run(
             module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-            &BufferSizeBytes, &alias_info_,
-            [](LogicalBuffer::Color) { return 1; }, std::move(opts))
+            &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+            std::move(opts))
             .value();
 
     const BufferAllocation& alloc_small =
@@ -5411,8 +5411,8 @@ TEST_F(BufferAssignmentTest, TopologicalOrder) {
     auto assignment =
         BufferAssigner::Run(
             module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-            &BufferSizeBytes, &alias_info_,
-            [](LogicalBuffer::Color) { return 1; }, std::move(opts))
+            &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+            std::move(opts))
             .value();
 
     const BufferAllocation& alloc_small =
@@ -5463,8 +5463,8 @@ TEST_F(BufferAssignmentTest, LiveRangeStartOrder) {
         auto assignment,
         BufferAssigner::Run(
             module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-            &BufferSizeBytes, &alias_info_,
-            [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+            &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+            std::move(opts)));
 
     const BufferAllocation& alloc_small =
         GetAssignedOutputAllocation(*assignment, small);
@@ -5508,7 +5508,7 @@ TEST_F(BufferAssignmentTest, FastMergeManagerDirectTest) {
       auto assignment,
       assigner.CreateAssignment(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; }));
+          &BufferSizeBytes, [](HloValue::Color) { return 1; }));
 
   auto manager = BufferAssigner::CreateFastMergeManagerForTest(assignment.get(),
                                                                &assigner);
@@ -5602,14 +5602,14 @@ TEST_F(BufferAssignmentTest, FastMergeFallbackWithZeroMemoryLimit) {
       BufferAssignmentAlgorithmProto::FAST_MERGE_WITH_FALLBACK;
   opts.fallback_algorithm =
       buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT;
-  opts.color_memory_limit = [](LogicalBuffer::Color) -> int64_t { return 0; };
+  opts.color_memory_limit = [](HloValue::Color) -> int64_t { return 0; };
 
   ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info_,
-          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+          &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+          std::move(opts)));
   EXPECT_NE(assignment, nullptr);
 }
 
@@ -5630,14 +5630,14 @@ TEST_F(BufferAssignmentTest, FastMergeFallbackWithLowMemoryLimit) {
       buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT;
   // 100 bytes memory limit is less than 1.5GiB safety margin, so adjusted
   // memory limit is 0.
-  opts.color_memory_limit = [](LogicalBuffer::Color) -> int64_t { return 100; };
+  opts.color_memory_limit = [](HloValue::Color) -> int64_t { return 100; };
 
   ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info_,
-          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+          &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+          std::move(opts)));
   EXPECT_NE(assignment, nullptr);
 }
 
@@ -5709,8 +5709,8 @@ TEST_F(BufferAssignmentTest, MultiPage) {
       BufferAssigner::Run(
           module.get(),
           std::make_unique<SequentialHloOrdering>(module->schedule()),
-          &BufferSizeBytes, &alias_info_,
-          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+          &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+          std::move(opts)));
 
   std::vector<std::pair<int64_t, int64_t>> pages_and_sizes;
   for (const BufferAllocation& alloc : buffers->Allocations()) {
@@ -5747,8 +5747,8 @@ TEST_F(BufferAssignmentTest,
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info_,
-          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+          &BufferSizeBytes, &alias_info_, [](HloValue::Color) { return 1; },
+          std::move(opts)));
   EXPECT_NE(assignment, nullptr);
   EXPECT_TRUE(assignment->HasTopLevelAllocation(param));
   EXPECT_TRUE(assignment->HasTopLevelAllocation(add));
@@ -5795,7 +5795,7 @@ void BM_FastMergeManagerStress(::testing::benchmark::State& state) {
       auto base_assignment,
       assigner.CreateAssignment(
           &module, std::make_unique<SequentialHloOrdering>(schedule),
-          &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; }));
+          &BufferSizeBytes, [](HloValue::Color) { return 1; }));
 
   std::vector<const HloBuffer*> buffers;
   buffers.reserve(num_buffers);

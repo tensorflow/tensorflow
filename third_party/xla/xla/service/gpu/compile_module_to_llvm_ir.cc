@@ -201,7 +201,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
           module, std::move(hlo_ordering),
           std::move(buffer_size_bytes_function), alias_info,
           /*color_alignment=*/
-          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          [](HloValue::Color) { return kXlaAllocatedBufferAlignBytes; },
           std::move(opts)));
 
   VLOG(1) << "Buffer Assignment Stats for " << module->name() << "\n"
