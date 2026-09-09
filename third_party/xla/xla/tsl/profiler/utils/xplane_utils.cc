@@ -53,7 +53,8 @@ std::vector<int> FindAll(const protobuf::RepeatedPtrField<T>& array,
                          const Pred& pred) {
   std::vector<int> indices;
   for (int i = 0; i < array.size(); ++i) {
-    if (pred(&array.Get(i))) indices.push_back(i);
+    const T* elem = &array.Get(i);
+    if (elem != nullptr && pred(elem)) indices.push_back(i);
   }
   return indices;
 }
@@ -288,14 +289,16 @@ std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id) {
 }
 
 const XLine* FindLineWithName(const XPlane& plane, absl::string_view name) {
-  int i = Find(plane.lines(),
-               [name](const XLine* line) { return line->name() == name; });
+  int i = Find(plane.lines(), [name](const XLine* line) {
+    return line != nullptr && line->name() == name;
+  });
   return (i != -1) ? &plane.lines(i) : nullptr;
 }
 
 XLine* FindMutableLineWithName(XPlane& plane, absl::string_view name) {
-  int i = Find(plane.lines(),
-               [name](const XLine* line) { return line->name() == name; });
+  int i = Find(plane.lines(), [name](const XLine* line) {
+    return line != nullptr && line->name() == name;
+  });
   return (i != -1) ? plane.mutable_lines(i) : nullptr;
 }
 
