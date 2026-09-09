@@ -18,11 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -176,6 +179,59 @@ ENTRY entry {
   // Verify that MakeInstructionPostOrder() is idempotent.
   auto post_order_2 = module->entry_computation()->MakeInstructionPostOrder();
   EXPECT_EQ(post_order, post_order_2);
+}
+
+TEST_F(HLOComputationTest, MakeInstructionPostOrderOnlineTopologicalSort) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  add0 = f32[100] add(p0, p1)
+  mul0 = f32[100] multiply(p0, add0)
+  ROOT div0 = f32[100] divide(p1, mul0)
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* computation = module->entry_computation();
+
+  auto post_order_topological =
+      computation->MakeInstructionPostOrder(/*dfs_postorder=*/false);
+  auto post_order_dfs =
+      computation->MakeInstructionPostOrder(/*dfs_postorder=*/true);
+
+  EXPECT_EQ(post_order_topological.size(), computation->instruction_count());
+  EXPECT_EQ(post_order_dfs.size(), computation->instruction_count());
+
+  auto verify_post_order = [](absl::Span<HloInstruction* const> post_order) {
+    absl::flat_hash_set<HloInstruction*> seen;
+    for (HloInstruction* instruction : post_order) {
+      for (HloInstruction* operand : instruction->operands()) {
+        EXPECT_TRUE(seen.contains(operand));
+      }
+      for (HloInstruction* pred : instruction->control_predecessors()) {
+        EXPECT_TRUE(seen.contains(pred));
+      }
+      seen.insert(instruction);
+    }
+  };
+
+  verify_post_order(post_order_topological);
+  verify_post_order(post_order_dfs);
+
+  std::vector<HloInstruction*> foreach_topological;
+  computation->ForEachInstructionPostOrder(
+      [&](HloInstruction* inst) { foreach_topological.push_back(inst); },
+      /*dfs_postorder=*/false);
+  EXPECT_EQ(foreach_topological, post_order_topological);
+
+  std::vector<HloInstruction*> foreach_dfs;
+  computation->ForEachInstructionPostOrder(
+      [&](HloInstruction* inst) { foreach_dfs.push_back(inst); },
+      /*dfs_postorder=*/true);
+  EXPECT_EQ(foreach_dfs, post_order_dfs);
 }
 
 // Test AddCallee

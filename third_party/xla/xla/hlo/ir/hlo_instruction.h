@@ -2684,6 +2684,77 @@ class HloInstruction {
   // Change instruction's name to have a given suffix.
   void AddSuffixToInstructionName(absl::string_view suffix);
 
+  using InstructionIterator = PtrVec<HloInstruction*>::const_iterator;
+  class NeighborIterator {
+   public:
+    NeighborIterator(const HloComputation* parent, InstructionIterator it1,
+                     InstructionIterator end1, InstructionIterator it2,
+                     InstructionIterator end2)
+        : parent_(parent), it1_(it1), end1_(end1), it2_(it2), end2_(end2) {
+      SkipInstructionsFromOtherComputations();
+    }
+
+    HloInstruction* operator*() const {
+      return (it1_ != end1_) ? *it1_ : *it2_;
+    }
+    NeighborIterator& operator++() {
+      if (it1_ != end1_) {
+        ++it1_;
+      } else {
+        ++it2_;
+      }
+      SkipInstructionsFromOtherComputations();
+      return *this;
+    }
+    bool operator!=(const NeighborIterator& other) const {
+      return it1_ != other.it1_ || it2_ != other.it2_;
+    }
+    bool operator==(const NeighborIterator& other) const {
+      return it1_ == other.it1_ && it2_ == other.it2_;
+    }
+
+   private:
+    void SkipInstructionsFromOtherComputations() {
+      if (parent_ == nullptr) {
+        it1_ = end1_;
+        it2_ = end2_;
+        return;
+      }
+      while (it1_ != end1_ && (*it1_)->parent() != parent_) {
+        ++it1_;
+      }
+      if (it1_ == end1_) {
+        while (it2_ != end2_ && (*it2_)->parent() != parent_) {
+          ++it2_;
+        }
+      }
+    }
+
+    const HloComputation* parent_;
+    InstructionIterator it1_, end1_, it2_, end2_;
+  };
+
+  NeighborIterator users_begin() const {
+    return NeighborIterator(parent(), users().begin(), users().end(),
+                            control_successors().begin(),
+                            control_successors().end());
+  }
+  NeighborIterator users_end() const {
+    return NeighborIterator(parent(), users().end(), users().end(),
+                            control_successors().end(),
+                            control_successors().end());
+  }
+  NeighborIterator operands_begin() const {
+    return NeighborIterator(parent(), operands().begin(), operands().end(),
+                            control_predecessors().begin(),
+                            control_predecessors().end());
+  }
+  NeighborIterator operands_end() const {
+    return NeighborIterator(parent(), operands().end(), operands().end(),
+                            control_predecessors().end(),
+                            control_predecessors().end());
+  }
+
  private:
   friend class HloComputation;
 
@@ -2729,7 +2800,7 @@ class HloInstruction {
       absl::Span<HloInstruction* const> operands);
 
   // Adds a user for this instruction.
-  void AddUser(HloInstruction* user) { users_.AddUser(user); }
+  void AddUser(HloInstruction* user);
 
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user) { users_.RemoveUser(user); }

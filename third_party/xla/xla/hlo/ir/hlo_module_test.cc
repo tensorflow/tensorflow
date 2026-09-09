@@ -2482,5 +2482,32 @@ TEST(HloModuleTest, CombinedDeduplicationSharesPayloadId) {
   EXPECT_EQ(inst_proto.metadata().metadata_payload().id(), 0);
 }
 
+TEST(HloModuleTest, RemoveComputationAndCleanupPreservesPostOrder) {
+  HloModule m("test_module", HloModuleConfig());
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  // Create 3 computations: entry -> sub2, and unused sub1 in between.
+  HloComputation::Builder b1("sub1");
+  b1.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  HloComputation* sub1 = m.AddEmbeddedComputation(b1.Build());
+
+  HloComputation::Builder b2("sub2");
+  b2.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  HloComputation* sub2 = m.AddEmbeddedComputation(b2.Build());
+
+  HloComputation::Builder b_entry("entry");
+  auto* p =
+      b_entry.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  b_entry.AddInstruction(HloInstruction::CreateCall(shape, {p}, sub2));
+  HloComputation* entry = m.AddEntryComputation(b_entry.Build());
+
+  // Remove sub1 (which is at index 0 in computations_), then compact.
+  TF_ASSERT_OK(m.RemoveEmbeddedComputation(sub1));
+  m.CleanupComputations();
+
+  std::vector<HloComputation*> post_order = m.MakeComputationPostOrder();
+  EXPECT_THAT(post_order, ElementsAre(sub2, entry));
+}
+
 }  // namespace
 }  // namespace xla

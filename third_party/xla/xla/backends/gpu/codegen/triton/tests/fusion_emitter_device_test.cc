@@ -2177,9 +2177,6 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(TritonEmitterTestWithTilingParam,
        ScaledDotIsSupportedByReferencePlatform) {
-  if (GpuComputeCapability().IsRocm()) {
-    GTEST_SKIP() << "Scaled dot is not supported on AMD.";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule ScaledDotIsSupportedByReferencePlatform
 
