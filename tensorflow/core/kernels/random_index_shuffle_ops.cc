@@ -36,7 +36,6 @@ namespace tensorflow {
 namespace {
 
 constexpr absl::string_view kRounds = "rounds";
-constexpr int32_t kMaxRounds = 1000;
 
 template <typename DType>
 std::array<uint32_t, 3> CastSeedFrom(const Tensor& seed_t, const int row) {
@@ -70,11 +69,10 @@ class RandomIndexShuffleOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr(kRounds, &rounds_));
     OP_REQUIRES(
-        context, rounds_ >= 4 && rounds_ <= kMaxRounds && rounds_ % 2 == 0,
+        context, rounds_ >= 4 && rounds_ % 2 == 0,
         absl::InvalidArgumentError(absl::StrCat(
-            "rounds must be an even integer between 4 and ", kMaxRounds,
-            ", but got ",
-            rounds_)));
+            "rounds must be an even integer greater than or equal to 4, but ",
+            "got ", rounds_)));
   }
 
   void Compute(OpKernelContext* context) override {
