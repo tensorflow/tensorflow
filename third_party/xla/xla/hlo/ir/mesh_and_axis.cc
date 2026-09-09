@@ -226,9 +226,18 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   std::vector<int64_t> device_ids(proto.device_ids().begin(),
                                   proto.device_ids().end());
   Array<int64_t> device_ids_array(mesh_axis_sizes);
+<<<<<<< dest:             b2a5ea61cb9a - mobile-perf-hawkeye-api: Generated b...
   CHECK_EQ(device_ids.size(), device_ids_array.num_elements())
       << "Number of device ids must match the product of mesh axis sizes.";
   absl::c_copy(device_ids, device_ids_array.begin());
+||||||| parent of source: 98e29ad236bd - devtools-tdp-server: [TDP] Publish m...
+  absl::c_copy(device_ids, device_ids_array.begin());
+=======
+  const size_t num_to_copy =
+      std::min(device_ids.size(),
+               static_cast<size_t>(device_ids_array.num_elements()));
+  std::copy_n(device_ids.begin(), num_to_copy, device_ids_array.begin());
+>>>>>>> source:           010b027c1021 - huangxia: Validate dimensions, overf...
 
   TileAssignment tile_assignment =
       TileAssignment(std::make_shared<Array<int64_t>>(device_ids_array));
