@@ -1970,12 +1970,17 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   ABSL_RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module, compilation_stats));
 
+  {
+    HloPassPipeline pipeline("fusion-wrapper", compilation_stats);
+    pipeline.AddPass<FusionWrapper>(
+        gpu_topology.gpu_target_config().device_description);
+    ABSL_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   DumpHloModuleIfEnabled(*hlo_module, "before_config_assignment");
 
   {
-    HloPassPipeline pipeline("autotuner", compilation_stats);
-    pipeline.AddPass<FusionWrapper>(
-        gpu_topology.gpu_target_config().device_description);
+    HloPassPipeline pipeline("config-assigner", compilation_stats);
     ABSL_RETURN_IF_ERROR(AddConfigAssignerPass(
         &pipeline, hlo_module, gpu_version, options, thread_pool.get_mutable(),
         stream_exec, &gpu_topology.gpu_target_config(), alias_info,
