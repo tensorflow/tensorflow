@@ -2433,6 +2433,53 @@ LogicalResult UnpackElementwiseOp::verify() {
   return success();
 }
 
+LogicalResult UnpackAndJoinOp::verify() {
+  const auto lower_vty = cast<VectorType>(getLower().getType());
+  const auto upper_vty = cast<VectorType>(getUpper().getType());
+  const auto res_vty = cast<VectorType>(getType());
+  if (lower_vty.getShape() != upper_vty.getShape()) {
+    return emitOpError("Lower and upper operands must have the same shape");
+  }
+  if (lower_vty.getRank() != res_vty.getRank()) {
+    return emitOpError("Operands and result must have the same rank");
+  }
+  const bool shape_match =
+      (lower_vty.getShape() == res_vty.getShape()) ||
+      (lower_vty.getRank() == 3 && res_vty.getRank() == 3 &&
+       lower_vty.getDimSize(0) == res_vty.getDimSize(0) &&
+       lower_vty.getDimSize(1) == res_vty.getDimSize(1) &&
+       lower_vty.getDimSize(2) == 2 * res_vty.getDimSize(2));
+  if (!shape_match) {
+    return emitOpError(
+        "Invalid shapes for unpack_and_join operands and result");
+  }
+  const auto lower_elem = lower_vty.getElementType();
+  const auto upper_elem = upper_vty.getElementType();
+  const auto res_elem = res_vty.getElementType();
+  if (lower_elem != upper_elem) {
+    return emitOpError(
+        "Lower and upper operands must have the same element type");
+  }
+  if (!lower_elem.isSignlessInteger() || !res_elem.isSignlessInteger()) {
+    return emitOpError(
+        "Operands and result must have signless integer element types");
+  }
+  const int32_t in_bitwidth = getInBitwidth();
+  if (in_bitwidth != 2 && in_bitwidth != 4) {
+    return emitOpError(
+               "Only 2-bit (b2.b4) and 4-bit (b4.b8) unpack_and_join are "
+               "supported, "
+               "got in_bitwidth = ")
+           << in_bitwidth;
+  }
+  const int32_t group_id = getSublaneGroupId();
+  if (group_id != 0 && group_id != 1) {
+    return emitOpError("sublane_group_id must be 0 (.l) or 1 (.u), got ")
+           << group_id;
+  }
+  return success();
+}
+
 LogicalResult DynamicGatherOp::verify() {
   const int64_t rank = getSource().getType().getRank();
   SmallVector<bool> seen(rank, false);
