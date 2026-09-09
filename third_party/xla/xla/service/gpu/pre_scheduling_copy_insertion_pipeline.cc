@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/backends/gpu/transforms/alias_passthrough_params.h"
+#include "xla/backends/gpu/transforms/constant_fill_copy_rewriter.h"
 #include "xla/backends/gpu/transforms/copy_fusion.h"
 #include "xla/backends/gpu/transforms/sanitize_constant_names.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -77,6 +78,7 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
     pipeline.AddPass<CopyInsertion>(alias_info);
   }
 
+  pipeline.AddPass<ConstantFillCopyRewriter>();
   pipeline.AddPass<CopyFusion>(device_description);
   pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;

@@ -54,7 +54,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroThunk::Record(
   VLOG(5) << "MemzeroThunk::Record";
   VLOG(5) << "  dest: " << dest_ << " (" << dest_data.opaque() << ")";
 
-  if (dest_.slice.size() == 0) {
+  if (dest_.slice.empty()) {
     VLOG(5) << "Skip recording MemzeroThunk command of 0 bytes";
     return nullptr;
   }

@@ -428,7 +428,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
   if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
       (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
        device_0_is_local)) {
-    auto cond = [&]() { return !status.ok() || num_pending_transfers == 0; };
+    auto cond = [&]() { return num_pending_transfers == 0; };
     absl::MutexLock lock(mu);
     mu.Await(absl::Condition(&cond));
     ABSL_RETURN_IF_ERROR(status);
@@ -1349,11 +1349,19 @@ absl::Status LoadAndRunAndDump(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
                                                 task_id, num_nodes, kv_store));
-  ABSL_ASSIGN_OR_RETURN(
-      FunctionalHloRunner::PerDeviceLiteralVecType output,
-      FunctionalHloRunner::LoadAndRun(client, preproc_options, compile_options,
-                                      running_options, hlo_file, input_format,
-                                      /*arguments=*/{}, engine));
+  xla::FunctionalHloRunner::RunningOptions effective_running_options =
+      running_options;
+  if (dump_output_to.empty() && !running_options.log_input_output() &&
+      effective_running_options.module_output_mode ==
+          FunctionalHloRunner::ModuleOutputMode::kReturnOutputs) {
+    effective_running_options.module_output_mode =
+        FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+  }
+  ABSL_ASSIGN_OR_RETURN(FunctionalHloRunner::PerDeviceLiteralVecType output,
+                   FunctionalHloRunner::LoadAndRun(
+                       client, preproc_options, compile_options,
+                       effective_running_options, hlo_file, input_format,
+                       /*arguments=*/{}, engine));
   LOG(INFO) << "Dump output to: " << dump_output_to;
   return dump_output_to.empty()
              ? absl::OkStatus()
