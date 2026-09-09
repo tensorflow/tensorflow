@@ -155,56 +155,92 @@ mlir::ArrayAttr GetInBoundsAttr(mlir::OpBuilder& builder, int64_t rank,
   return builder.getBoolArrayAttr(llvm::SmallVector<bool>(rank, in_bounds));
 }
 
-template <typename EmitFn>
-void EmitElements(mlir::OpBuilder& builder, mlir::Location loc,
-                  llvm::ArrayRef<int64_t> shape, ValueRange offsets,
-                  llvm::ArrayRef<int64_t> strides,
-                  llvm::ArrayRef<int64_t> memref_shape, EmitFn&& emit_fn) {
+struct EmitElementsResult {
+  ms::LoopNest loop_nest;
+  llvm::SmallVector<Value> ubs;
+};
+
+template <typename BodyFn>
+EmitElementsResult EmitElements(mlir::OpBuilder& builder, mlir::Location loc,
+                                llvm::ArrayRef<int64_t> shape,
+                                ValueRange offsets,
+                                llvm::ArrayRef<int64_t> strides,
+                                llvm::ArrayRef<int64_t> memref_shape,
+                                ValueRange iter_args, BodyFn&& body_fn) {
   int64_t rank = shape.size();
-  llvm::SmallVector<int64_t> vector_coords(rank, 0);
-  llvm::SmallVector<Value> memref_coords(rank);
+  mlir::MLIRContext* ctx = builder.getContext();
 
-  int64_t num_elements = Product(shape);
-  for (int64_t idx = 0; idx < num_elements; ++idx) {
-    bool in_bounds = true;
-    for (int64_t d = 0; d < rank; ++d) {
-      int64_t stride_offset = vector_coords[d] * strides[d];
-      if (d < memref_shape.size() &&
-          !mlir::ShapedType::isDynamic(memref_shape[d])) {
-        int64_t dim_size = memref_shape[d];
-        std::optional<int64_t> const_offset =
-            mlir::getConstantIntValue(offsets[d]);
-        if (const_offset.has_value()) {
-          int64_t coord = *const_offset + stride_offset;
-          if (coord < 0 || coord >= dim_size) {
-            in_bounds = false;
-            break;
-          }
-        } else if (stride_offset >= dim_size) {
-          in_bounds = false;
-          break;
-        }
-      }
-      if (stride_offset == 0) {
-        memref_coords[d] = offsets[d];
-        continue;
-      }
-      Value delta_val =
-          ma::ConstantIndexOp::create(builder, loc, stride_offset);
-      memref_coords[d] =
-          ma::AddIOp::create(builder, loc, offsets[d], delta_val);
+  // Compute lbs and ubs via apply_indexing.
+  // lb_d = max(0, ceil_div(-offset_d, stride_d))
+  // ub_d = min(shape_d, max(0, ceil_div(memref_shape_d - offset_d, stride_d)))
+  llvm::SmallVector<SymbolicExpr> bound_exprs;
+  bound_exprs.reserve(2 * rank);
+  for (int64_t d = 0; d < rank; ++d) {
+    SymbolicExpr offset_expr = xla::CreateDimExpr(d, ctx);
+    SymbolicExpr lb = (-offset_expr).ceilDiv(strides[d]).max(0);
+    SymbolicExpr ub = xla::CreateSymbolicConstant(shape[d], ctx);
+    if (d < memref_shape.size() &&
+        !mlir::ShapedType::isDynamic(memref_shape[d])) {
+      SymbolicExpr rem = -offset_expr + memref_shape[d];
+      ub = rem.ceilDiv(strides[d]).max(0).min(shape[d]);
     }
-    if (in_bounds) {
-      emit_fn(vector_coords, memref_coords);
-    }
-
-    for (int64_t d = rank - 1; d >= 0; --d) {
-      if (++vector_coords[d] < shape[d]) {
-        break;
-      }
-      vector_coords[d] = 0;
-    }
+    bound_exprs.push_back(lb);
+    bound_exprs.push_back(ub);
   }
+
+  xla::SymbolicMap bounds_map =
+      xla::SymbolicMap::Get(ctx, rank, 0, bound_exprs);
+  xla::IndexingMap bounds_indexing_map(bounds_map,
+                                       /*dimensions=*/GetVars(offsets),
+                                       /*range_vars=*/{}, /*rt_vars=*/{});
+  auto bounds_indexing_op =
+      xla::ApplyIndexingOp::create(builder, loc, offsets, bounds_indexing_map);
+
+  llvm::SmallVector<Value> lbs;
+  llvm::SmallVector<Value> ubs;
+  llvm::SmallVector<Value> steps;
+  lbs.reserve(rank);
+  ubs.reserve(rank);
+  steps.reserve(rank);
+
+  Value one = ma::ConstantIndexOp::create(builder, loc, 1);
+  for (int64_t d = 0; d < rank; ++d) {
+    lbs.push_back(bounds_indexing_op.getResult(2 * d));
+    ubs.push_back(bounds_indexing_op.getResult(2 * d + 1));
+    steps.push_back(one);
+  }
+
+  // memref_coords indexing map: (offsets, ivs) -> offsets + ivs * strides
+  // First rank dims are offsets, next rank dims are ivs.
+  llvm::SmallVector<SymbolicExpr> coord_exprs;
+  coord_exprs.reserve(rank);
+  for (int64_t d = 0; d < rank; ++d) {
+    SymbolicExpr offset_expr = xla::CreateDimExpr(d, ctx);
+    SymbolicExpr iv_expr = xla::CreateDimExpr(rank + d, ctx);
+    coord_exprs.push_back(offset_expr + iv_expr * strides[d]);
+  }
+  xla::SymbolicMap coords_map =
+      xla::SymbolicMap::Get(ctx, 2 * rank, 0, coord_exprs);
+
+  llvm::SmallVector<Value> operands;
+  operands.reserve(2 * rank);
+  operands.append(offsets.begin(), offsets.end());
+
+  ms::LoopNest loop_nest = ms::buildLoopNest(
+      builder, loc, lbs, ubs, steps, iter_args,
+      [&](mlir::OpBuilder& b, mlir::Location loc, ValueRange ivs,
+          ValueRange loop_iter_args) -> ms::ValueVector {
+        llvm::SmallVector<Value> all_operands = operands;
+        all_operands.append(ivs.begin(), ivs.end());
+        xla::IndexingMap coords_indexing_map(
+            coords_map,
+            /*dimensions=*/GetVars(all_operands),
+            /*range_vars=*/{}, /*rt_vars=*/{});
+        auto coords_op = xla::ApplyIndexingOp::create(b, loc, all_operands,
+                                                      coords_indexing_map);
+        return body_fn(b, loc, ivs, coords_op.getResults(), loop_iter_args);
+      });
+  return {loop_nest, ubs};
 }
 
 struct ConvertExtractTile
@@ -228,19 +264,41 @@ struct ConvertExtractTile
         rewriter.getZeroAttr(result_vector_type.getElementType()));
 
     if (llvm::any_of(op.getStrides(), llvm::not_equal_to<int64_t>(1))) {
-      mlir::Value res =
-          ma::ConstantOp::create(rewriter, loc, result_vector_type,
-                                 rewriter.getZeroAttr(result_vector_type));
-      EmitElements(rewriter, loc, result_vector_type.getShape(), offsets,
-                   op.getStrides(), source_memref_type.getShape(),
-                   [&](llvm::ArrayRef<int64_t> vector_coords,
-                       llvm::ArrayRef<Value> memref_coords) {
-                     mlir::Value elem = mlir::memref::LoadOp::create(
-                         rewriter, loc, source_memref, memref_coords);
-                     res = mv::InsertOp::create(rewriter, loc, elem, res,
-                                                vector_coords);
-                   });
-      rewriter.replaceOp(op, res);
+      auto buffer_type = mlir::MemRefType::get(
+          result_vector_type.getShape(), result_vector_type.getElementType());
+      Value buffer = mlir::memref::AllocaOp::create(rewriter, loc, buffer_type);
+
+      EmitElementsResult emit_result = EmitElements(
+          rewriter, loc, result_vector_type.getShape(), offsets,
+          op.getStrides(), source_memref_type.getShape(), ValueRange{},
+          [&](mlir::OpBuilder& b, mlir::Location loc, ValueRange ivs,
+              ValueRange memref_coords,
+              ValueRange loop_iter_args) -> ms::ValueVector {
+            Value elem = mlir::memref::LoadOp::create(b, loc, source_memref,
+                                                      memref_coords);
+            mlir::memref::StoreOp::create(b, loc, elem, buffer, ivs);
+            return {};
+          });
+
+      llvm::SmallVector<Value> zero_indices(
+          result_vector_type.getRank(),
+          ma::ConstantIndexOp::create(rewriter, loc, 0));
+      mlir::AffineMap permutation_map =
+          mv::getTransferMinorIdentityMap(buffer_type, result_vector_type);
+      auto permutation_map_attr = mlir::AffineMapAttr::get(permutation_map);
+      mlir::ArrayAttr out_of_bounds_attr =
+          GetInBoundsAttr(rewriter, result_vector_type.getRank(), false);
+
+      auto mask_type = mlir::VectorType::get(result_vector_type.getShape(),
+                                             rewriter.getI1Type());
+      Value mask =
+          mv::CreateMaskOp::create(rewriter, loc, mask_type, emit_result.ubs);
+
+      Value result_vec = mv::TransferReadOp::create(
+          rewriter, loc, result_vector_type, buffer, zero_indices,
+          permutation_map_attr, pad, mask, out_of_bounds_attr);
+
+      rewriter.replaceOp(op, result_vec);
       return mlir::success();
     }
 
@@ -263,39 +321,34 @@ struct ConvertExtractTile
     Value is_in_bounds = GetIsInBoundsCondition(
         rewriter, loc, offsets, source_memref, result_vector_type.getShape());
 
-    // Generate scf.if
-    ms::IfOp if_op = ms::IfOp::create(rewriter, loc, result_vector_type,
-                                      is_in_bounds, /*withElseRegion=*/true);
-
-    // In-bounds branch (Then)
-    rewriter.setInsertionPointToStart(if_op.thenBlock());
-
     mlir::AffineMap permutation_map = mlir::vector::getTransferMinorIdentityMap(
         mlir::cast<mlir::ShapedType>(source_memref.getType()),
         result_vector_type);
     mlir::AffineMapAttr permutation_map_attr =
         mlir::AffineMapAttr::get(permutation_map);
-    mlir::ArrayAttr in_bounds_attr =
-        GetInBoundsAttr(rewriter, result_vector_type.getRank(), true);
 
-    Value in_bounds_read = mv::TransferReadOp::create(
-        rewriter, loc, result_vector_type, source_memref, offsets,
-        permutation_map_attr, pad, /*mask=*/Value(), in_bounds_attr);
-    ms::YieldOp::create(rewriter, loc, in_bounds_read);
-
-    // Out-of-bounds branch (Else)
-    rewriter.setInsertionPointToStart(if_op.elseBlock());
-
-    Value mask =
-        GetMask(rewriter, loc, offsets, source_memref, result_vector_type);
-
-    mlir::ArrayAttr out_of_bounds_attr =
-        GetInBoundsAttr(rewriter, result_vector_type.getRank(), false);
-
-    Value masked_read = mlir::vector::TransferReadOp::create(
-        rewriter, loc, result_vector_type, source_memref, offsets,
-        permutation_map_attr, pad, mask, out_of_bounds_attr);
-    ms::YieldOp::create(rewriter, loc, masked_read);
+    ms::IfOp if_op = ms::IfOp::create(
+        rewriter, loc, is_in_bounds,
+        /*thenBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          mlir::ArrayAttr in_bounds_attr =
+              GetInBoundsAttr(b, result_vector_type.getRank(), true);
+          Value in_bounds_read = mv::TransferReadOp::create(
+              b, loc, result_vector_type, source_memref, offsets,
+              permutation_map_attr, pad, /*mask=*/Value(), in_bounds_attr);
+          ms::YieldOp::create(b, loc, in_bounds_read);
+        },
+        /*elseBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          Value mask =
+              GetMask(b, loc, offsets, source_memref, result_vector_type);
+          mlir::ArrayAttr out_of_bounds_attr =
+              GetInBoundsAttr(b, result_vector_type.getRank(), false);
+          Value masked_read = mlir::vector::TransferReadOp::create(
+              b, loc, result_vector_type, source_memref, offsets,
+              permutation_map_attr, pad, mask, out_of_bounds_attr);
+          ms::YieldOp::create(b, loc, masked_read);
+        });
 
     rewriter.replaceOp(op, if_op.getResult(0));
     return mlir::success();
@@ -320,13 +373,17 @@ struct ConvertInsertTile
 
     if (llvm::any_of(op.getStrides(), llvm::not_equal_to<int64_t>(1))) {
       EmitElements(rewriter, loc, source_vector_type.getShape(), offsets,
-                   op.getStrides(), dest_memref_type.getShape(),
-                   [&](llvm::ArrayRef<int64_t> vector_coords,
-                       llvm::ArrayRef<Value> memref_coords) {
-                     mlir::Value elem = mv::ExtractOp::create(
-                         rewriter, loc, source_vector, vector_coords);
-                     mlir::memref::StoreOp::create(rewriter, loc, elem,
-                                                   dest_memref, memref_coords);
+                   op.getStrides(), dest_memref_type.getShape(), ValueRange{},
+                   [&](mlir::OpBuilder& b, mlir::Location loc, ValueRange ivs,
+                       ValueRange memref_coords,
+                       ValueRange loop_iter_args) -> ms::ValueVector {
+                     llvm::SmallVector<mlir::OpFoldResult> position(ivs.begin(),
+                                                                    ivs.end());
+                     mlir::Value elem =
+                         mv::ExtractOp::create(b, loc, source_vector, position);
+                     mlir::memref::StoreOp::create(b, loc, elem, dest_memref,
+                                                   memref_coords);
+                     return {};
                    });
       rewriter.eraseOp(op);
       return mlir::success();
@@ -350,36 +407,33 @@ struct ConvertInsertTile
     Value is_in_bounds = GetIsInBoundsCondition(
         rewriter, loc, offsets, dest_memref, source_vector_type.getShape());
 
-    // Generate scf.if (no results)
-    ms::IfOp if_op = ms::IfOp::create(rewriter, loc, is_in_bounds,
-                                      /*withElseRegion=*/true);
-
-    // In-bounds branch (Then)
-    rewriter.setInsertionPointToStart(if_op.thenBlock());
-
     mlir::AffineMap permutation_map = mv::getTransferMinorIdentityMap(
         mlir::cast<mlir::ShapedType>(dest_memref.getType()),
         source_vector_type);
     auto permutation_map_attr = mlir::AffineMapAttr::get(permutation_map);
-    mlir::ArrayAttr in_bounds_attr =
-        GetInBoundsAttr(rewriter, source_vector_type.getRank(), true);
 
-    mv::TransferWriteOp::create(rewriter, loc, source_vector, dest_memref,
-                                offsets, permutation_map_attr, /*mask=*/Value(),
-                                in_bounds_attr);
-
-    // Out-of-bounds branch (Else)
-    rewriter.setInsertionPointToStart(if_op.elseBlock());
-
-    Value mask = GetMask(rewriter, op.getLoc(), offsets, dest_memref,
-                         source_vector_type);
-
-    mlir::ArrayAttr out_of_bounds_attr =
-        GetInBoundsAttr(rewriter, source_vector_type.getRank(), false);
-
-    mlir::vector::TransferWriteOp::create(
-        rewriter, op.getLoc(), source_vector, dest_memref, offsets,
-        permutation_map_attr, mask, out_of_bounds_attr);
+    ms::IfOp::create(
+        rewriter, loc, is_in_bounds,
+        /*thenBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          mlir::ArrayAttr in_bounds_attr =
+              GetInBoundsAttr(b, source_vector_type.getRank(), true);
+          mv::TransferWriteOp::create(b, loc, source_vector, dest_memref,
+                                      offsets, permutation_map_attr,
+                                      /*mask=*/Value(), in_bounds_attr);
+          ms::YieldOp::create(b, loc);
+        },
+        /*elseBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          Value mask =
+              GetMask(b, loc, offsets, dest_memref, source_vector_type);
+          mlir::ArrayAttr out_of_bounds_attr =
+              GetInBoundsAttr(b, source_vector_type.getRank(), false);
+          mlir::vector::TransferWriteOp::create(
+              b, loc, source_vector, dest_memref, offsets, permutation_map_attr,
+              mask, out_of_bounds_attr);
+          ms::YieldOp::create(b, loc);
+        });
 
     rewriter.eraseOp(op);
     return mlir::success();
