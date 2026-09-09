@@ -221,6 +221,17 @@ TEST(DequantizeOpTest, Int16) {
                   {-64.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 65.5})));
 }
 
+TEST(DequantizeOpTest, Int16Asymmetric) {
+  // scale = 0.5, zero_point = -10.
+  // result = 0.5 * (val - (-10)) = 0.5 * (val + 10).
+  DequantizeOpModel m(TensorType_INT16, {2, 5}, 0.5, -10, 4);
+  m.SetInput<int16_t>({-130, -120, -10, 0, 10, 20, 30, 40, 50, 60});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-60.0, -55.0, 0.0, 5.0, 10.0,
+                                               15.0, 20.0, 25.0, 30.0, 35.0})));
+}
+
 class DequantizePerChannelOpModel : public DequantizeOpModel {
  public:
   DequantizePerChannelOpModel(TensorType type, std::initializer_list<int> shape,
