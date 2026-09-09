@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -62,13 +61,13 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/primitive_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
+#include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
@@ -353,7 +352,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
 
             std::shared_ptr<const Literal> expected_literal_ptr;
             if (expected_literals != nullptr) {
-              absl::MutexLock lock(*result_mutex.get());
+              absl::MutexLock lock(*result_mutex);
               auto it = expected_literals->find(ref_op_name);
               if (it != expected_literals->end()) {
                 expected_literal_ptr = it->second;
@@ -421,7 +420,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               ADD_FAILURE() << error_message;
               LOG(ERROR) << error_message;
 
-              absl::MutexLock lock(*result_mutex.get());
+              absl::MutexLock lock(*result_mutex);
               NumericCheck* numeric_check = test_result->add_numeric_checks();
               numeric_check->set_name(absl::StrCat("FusionDebugger:", op_name));
               numeric_check->set_expected_contains_inf_or_nan(
@@ -522,6 +521,10 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   result.set_module_name(module.name());
   result.set_module_contains_constant_inf_or_nan(
       ModuleContainsConstantInfOrNan(module));
+  InfNanIntentOptions intent_options;
+  intent_options.reject_unconstrained_ops = options.reject_unconstrained_ops;
+  result.set_is_intentional_inf_nan(
+      IsIntentionalInfNan(module, intent_options));
 
   ABSL_RETURN_IF_ERROR(InitIsolatorOptions(options));
 
@@ -831,6 +834,10 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
         if (main_result.has_module_contains_constant_inf_or_nan()) {
           fusion_result.set_module_contains_constant_inf_or_nan(
               main_result.module_contains_constant_inf_or_nan());
+        }
+        if (main_result.has_is_intentional_inf_nan()) {
+          fusion_result.set_is_intentional_inf_nan(
+              main_result.is_intentional_inf_nan());
         }
 
         NumericCheck* new_check = fusion_result.add_numeric_checks();
@@ -1231,53 +1238,6 @@ bool ComputationHasRng(const HloComputation* computation) {
        computation->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kRng) {
       return true;
-    }
-  }
-  return false;
-}
-
-bool LiteralContainsInfOrNan(const LiteralSlice& literal) {
-  if (literal.shape().IsTuple()) {
-    for (int i = 0; i < ShapeUtil::TupleElementCount(literal.shape()); ++i) {
-      if (LiteralContainsInfOrNan(LiteralSlice(literal, {i}))) {
-        return true;
-      }
-    }
-    return false;
-  }
-  bool contains_inf_or_nan = primitive_util::PrimitiveTypeSwitch<bool>(
-      [&](auto type) -> bool {
-        if constexpr (primitive_util::IsFloatingPointType(type)) {
-          using NativeT = primitive_util::NativeTypeOf<type>;
-          if (!std::numeric_limits<NativeT>::has_infinity &&
-              !std::numeric_limits<NativeT>::has_quiet_NaN) {
-            return false;
-          }
-          bool found = false;
-          literal.EachCellUntilFailure<NativeT>(
-              [&](absl::Span<const int64_t> /*indices*/,
-                  NativeT value) -> bool {
-                if (std::isinf(value) || std::isnan(value)) {
-                  found = true;
-                  return false;  // Abort iteration early.
-                }
-                return true;
-              });
-          return found;
-        }
-        return false;
-      },
-      literal.shape().element_type());
-  return contains_inf_or_nan;
-}
-
-bool ModuleContainsConstantInfOrNan(const HloModule& module) {
-  for (const HloComputation* comp : module.computations()) {
-    for (const HloInstruction* instr : comp->instructions()) {
-      if (instr->opcode() == HloOpcode::kConstant &&
-          LiteralContainsInfOrNan(instr->literal())) {
-        return true;
-      }
     }
   }
   return false;
