@@ -875,17 +875,21 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       // The AllocateBuffer that we're about to create will suffice for every
       // DynamicUpdateSlice we pass through as we walk up the graph.
       dynamic_update_slices_already_allocated_.insert(instruction);
-    } else if (instruction->IsCustomCall("AllocateBuffer")) {
-      VLOG(2) << absl::StreamFormat(
-          "DynamicUpdateSlice \"%s\" already writes into an AllocateBuffer "
-          "\"%s\"",
-          dynamic_update_slice->name(), instruction->name());
-      // At the start of the iteration of this loop, we overwrote the memory
-      // space of this instruction to host memory space. If the AllocateBuffer
-      // was not already in host memory space and still has at least one
-      // non-host memory space user, we need to restore it to its original
-      // memory space and create a new AllocateBuffer on host just for the
-      // instruction that we're walking up the graph from.
+    } else if (instruction->IsCustomCall("AllocateBuffer") ||
+               (instruction->opcode() == HloOpcode::kOptimizationBarrier &&
+                instruction->operand_count() == 1 &&
+                instruction->operand(0)->IsCustomCall("AllocateBuffer"))) {
+      // Sometimes an AllocateBuffer in wrapped by anOptimizationBarrier.
+      const bool is_opt_barrier =
+          instruction->opcode() == HloOpcode::kOptimizationBarrier;
+      HloInstruction* allocate_buffer =
+          is_opt_barrier ? instruction->mutable_operand(0) : instruction;
+      if (is_opt_barrier && allocate_buffer->user_count() != 1) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "AllocateBuffer \"%s\" is expected to be used by only one "
+            "OptimizationBarrier instruction.",
+            allocate_buffer->name()));
+      }
       CHECK(previous_instruction_and_shape.has_value())
           << "We expect to have a previous instruction at this point.";
       ABSL_ASSIGN_OR_RETURN(std::vector<InstructionAndShapeIndex> successors,
@@ -897,20 +901,30 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                 .layout()
                 .memory_space() != Layout::kHostMemorySpace) {
           // We have at least one non-host memory space user. We need to restore
-          // the memory space of this AllocateBuffer. Rather than take over this
+          // the memory space of this instruction. Rather than take over this
           // AllocateBuffer, we will create a new AllocateBuffer on host.
-          SetMemorySpace(ShapeUtil::GetMutableSubshape(
-                             instruction->mutable_shape(), shape_index),
-                         previous_memory_space);
+          if (is_opt_barrier) {
+            SetMemorySpace(ShapeUtil::GetMutableSubshape(
+                               instruction->mutable_shape(), shape_index),
+                           Layout::kDefaultMemorySpace);
+            SetMemorySpace(ShapeUtil::GetMutableSubshape(
+                               allocate_buffer->mutable_shape(), shape_index),
+                           Layout::kDefaultMemorySpace);
+          } else {
+            SetMemorySpace(ShapeUtil::GetMutableSubshape(
+                               instruction->mutable_shape(), shape_index),
+                           previous_memory_space);
+          }
           std::vector<int64_t> operand_indices =
               previous_instruction_and_shape->instruction->operand_indices(
                   instruction);
           if (operand_indices.size() > 1 &&
               previous_instruction_and_shape->instruction->opcode() !=
                   HloOpcode::kTuple) {
-            return absl::UnimplementedError(
-                "We do not yet support adjusting AllocateBuffer when it "
-                "appears in multiple operand indices unless in a tuple.");
+            return absl::UnimplementedError(absl::StrFormat(
+                "We do not yet support adjusting %s when it "
+                "appears in multiple operand indices unless in a tuple.",
+                instruction->name()));
           }
           int operand_index = 0;
           if (instruction->opcode() == HloOpcode::kTuple) {
@@ -918,18 +932,30 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           }
           HloInstruction* new_allocate_buffer =
               instruction->parent()->AddInstruction(
-                  HloInstruction::CreateCustomCall(instruction->shape(), {},
+                  HloInstruction::CreateCustomCall(allocate_buffer->shape(), {},
                                                    "AllocateBuffer"));
           SetMemorySpace(new_allocate_buffer->mutable_shape(),
                          Layout::kHostMemorySpace);
+          HloInstruction* replacement = new_allocate_buffer;
+          if (is_opt_barrier) {
+            replacement = instruction->parent()->AddInstruction(
+                HloInstruction::CreateUnary(instruction->shape(),
+                                            HloOpcode::kOptimizationBarrier,
+                                            new_allocate_buffer));
+            SetMemorySpace(replacement->mutable_shape(),
+                           Layout::kHostMemorySpace);
+          }
           ABSL_RETURN_IF_ERROR(
               previous_instruction_and_shape->instruction->ReplaceOperandWith(
-                  operand_indices[operand_index], new_allocate_buffer));
-          break;
+                  operand_indices[operand_index], replacement));
+          // Buffer is already from AllocateBuffer, stop the process.
+          return absl::OkStatus();
         }
       }
-      // Buffer is already from AllocateBuffer, stop the process.
-      return absl::OkStatus();
+      if (!is_opt_barrier) {
+        // Buffer is already from AllocateBuffer, stop the process.
+        return absl::OkStatus();
+      }
     }
     previous_instruction_and_shape = instruction_and_shape;
 
