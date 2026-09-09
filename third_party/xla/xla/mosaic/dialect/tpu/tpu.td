@@ -87,4 +87,24 @@ def TPU_ConvDimensionNumbersAttr : TPU_Attr<"ConvDimensionNumbers", "conv_dimens
   let constBuilderCall = "::mlir::tpu::ConvDimensionNumbersAttr::get($_builder.getContext(), $0)";
 }
 
+def TPU_EXMYFloatSpec : TPU_Attr<"EXMYFloatSpec", "exmy_float_spec"> {
+  let summary = "EXMY float spec";
+  let description = [{
+    EXMY spec to represent floating point values. Using `EXMYFloatSpec` to
+    represent integer is an undefined behavior. Instead, use `EXMYType::Type`
+    directly for integers.
+  }];
+  let parameters = (ins
+    TypeParameter<"int64_t", "Width of the exponent">:$exponent_width,
+    TypeParameter<"int64_t", "Width of the mantissa">:$mantissa_width,
+    TypeParameter<"int64_t", "Bias">:$bias,
+    TypeParameter<"bool", "Whether the type is satfinite">:$satfinite,
+    AttrParameter<"::mlir::tpu::SpecialValuesAttr", "">:$special_values
+  );
+
+  let genVerifyDecl = 1;
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 #endif  // TPU_BASE

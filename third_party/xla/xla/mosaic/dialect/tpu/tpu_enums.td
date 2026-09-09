@@ -148,4 +148,17 @@ def TPU_RoundingModeEnum : EnumAttr<TPU_Dialect, TPU_RoundingMode, "rounding_mod
     let assemblyFormat = "`<` $value `>`";
 }
 
+def TPU_SpecialValues : I32EnumAttr<"SpecialValues", "Special values for EXMY spec", [
+  I32EnumAttrCase<"FiniteOnly", 0, "finite_only">,
+  I32EnumAttrCase<"NaNOnly", 1, "nan_only">,
+  I32EnumAttrCase<"NaNAndInf", 2, "nan_and_inf">
+]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::tpu";
+}
+
+def TPU_SpecialValuesEnum : EnumAttr<TPU_Dialect, TPU_SpecialValues, "special_values"> {
+    let assemblyFormat = "`<` $value `>`";
+}
+
 #endif  // TPU_ENUMS
