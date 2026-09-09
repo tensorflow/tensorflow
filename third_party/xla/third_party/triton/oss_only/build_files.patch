@@ -19,7 +19,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1318 @@
+@@ -0,0 +1,1332 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -122,8 +122,8 @@ new file mode 100644
 +gentbl_cc_library(
 +    name = "triton_attr_inc_gen",
 +    tbl_outs = {
-+        "include/triton/Dialect/Triton/IR/TritonAttrDefs.h.inc": ["--gen-attrdef-decls"],
-+        "include/triton/Dialect/Triton/IR/TritonAttrDefs.cpp.inc": ["--gen-attrdef-defs"],
++        "include/triton/Dialect/Triton/IR/AttrDefs.h.inc": ["--gen-attrdef-decls"],
++        "include/triton/Dialect/Triton/IR/AttrDefs.cpp.inc": ["--gen-attrdef-defs"],
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
 +    td_file = "include/triton/Dialect/Triton/IR/TritonAttrDefs.td",
@@ -507,11 +507,20 @@ new file mode 100644
 +    tbl_outs = {
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.h.inc": ["--gen-attrdef-decls"],
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.cpp.inc": ["--gen-attrdef-defs"],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.td",
++    deps = ["td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_nvidia_gpu_enums_inc_gen",
++    tbl_outs = {
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/OpsEnums.h.inc": ["--gen-enum-decls"],
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/OpsEnums.cpp.inc": ["--gen-enum-defs"],
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
-+    td_file = "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.td",
++    td_file = "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUEnums.td",
 +    deps = ["td_files"],
 +)
 +
@@ -616,6 +625,7 @@ new file mode 100644
 +        ":gluon_attr_inc_gen",
 +        ":gluon_dialect_inc_gen",
 +        ":gluon_ops_inc_gen",
++        ":triton_attr_inc_gen",
 +        ":triton_canonicalize_inc_gen",
 +        ":triton_dialect_inc_gen",
 +        ":triton_gpu_attr_impls_inc_gen",
@@ -634,6 +644,7 @@ new file mode 100644
 +        ":triton_interfaces_inc_gen",
 +        ":triton_nvidia_gpu_attr_inc_gen",
 +        ":triton_nvidia_gpu_dialect_inc_gen",
++        ":triton_nvidia_gpu_enums_inc_gen",
 +        ":triton_nvidia_gpu_op_interfaces_inc_gen",
 +        ":triton_nvidia_gpu_ops_inc_gen",
 +        ":triton_nvidia_gpu_transforms_inc_gen",
@@ -705,6 +716,7 @@ new file mode 100644
 +        "@llvm-project//mlir:FuncTransforms",
 +        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LLVMDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:SCFTransforms",
@@ -1156,7 +1168,9 @@ new file mode 100644
 +        include = ["include/triton/Tools/*.h"],
 +        exclude = ["include/triton/Tools/PluginUtils.h"],
 +    ),
-+    copts = _no_unused_variable,
++    copts = _no_unused_variable + [
++        "-Wno-thread-safety-analysis",
++    ],
 +    includes = ["include"],
 +    deps = [
 +        "@llvm-project//llvm:Support",
@@ -1343,7 +1357,7 @@ diff --git b/python/BUILD b/python/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/BUILD
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,215 @@
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
@@ -1390,6 +1404,7 @@ new file mode 100644
 +        "@llvm-project//mlir:IR",
 +        "@triton//:Dump",
 +        "@triton//:GetEnv",
++        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
 +    ],
 +)
@@ -3461,7 +3476,7 @@ diff --git b/third_party/proton/BUILD b/third_party/proton/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/proton/BUILD
-@@ -0,0 +1,452 @@
+@@ -0,0 +1,462 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@xla//third_party/rules_python/python:py_extension.bzl", "py_extension")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -3865,6 +3880,11 @@ new file mode 100644
 +        "-Wno-unused-variable",
 +        "-fexceptions",
 +    ],
++    defines = [
++        "PROTON_ROCPROFILER_SDK_HAS_PC_SAMPLING=0",
++        "PROTON_ROCPROFILER_SDK_HAS_CODEOBJ_ADDRESS_TRANSLATE=0",
++        "PROTON_ROCPROFILER_SDK_HAS_HIP_GRAPH=0",
++    ],
 +    features = [
 +        "exceptions",
 +        "-use_header_modules",
@@ -3895,6 +3915,11 @@ new file mode 100644
 +    copts = [
 +        "-fexceptions",
 +        "-Wno-pessimizing-move",
++    ],
++    defines = [
++        "PROTON_ROCPROFILER_SDK_HAS_PC_SAMPLING=0",
++        "PROTON_ROCPROFILER_SDK_HAS_CODEOBJ_ADDRESS_TRANSLATE=0",
++        "PROTON_ROCPROFILER_SDK_HAS_HIP_GRAPH=0",
 +    ],
 +    features = ["-use_header_modules"],
 +    visibility = [

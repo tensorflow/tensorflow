@@ -2055,6 +2055,26 @@ class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
     self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
 
   @test_util.run_v2_only
+  def testGradient1D(self):
+    """Checks the gradient for a 1-D input, which has no batch dimension.
+
+    Pooling happens along the last axis, so a 1-D input has to be treated as
+    a single row rather than as one row per element.
+    """
+
+    @def_function.function
+    def ComputeIsotonicFn(x):
+      y, _ = nn_ops.isotonic_regression(x, decreasing=True)
+      return y
+
+    np.random.seed(0)
+    x_init = np.random.randn(50).astype(np.float64)
+    grad_theoretical, grad_numerical = gradient_checker_v2.compute_gradient(
+        ComputeIsotonicFn, [x_init], delta=1e-5
+    )
+    self.assertAllClose(grad_theoretical, grad_numerical)
+
+  @test_util.run_v2_only
   def testGradientV2(self, dtype=np.float64, batch_size=30, dimensions=50):
 
     @def_function.function
