@@ -1402,6 +1402,7 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
             "Automatic host compute offloading is disabled.");
       }
       host_offload_utils::SetHostComputeFrontendAttribute(*dus);
+      ABSL_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
       changed = true;
     } else if (host_to_host) {
       // Host to host. Execute as host compute. Also set as host memory space.
