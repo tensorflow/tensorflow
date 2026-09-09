@@ -153,7 +153,7 @@ class AOTInterceptionPjrtClient : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       absl::string_view serialized,
-      std::optional<CompileOptions> options) override;
+      std::optional<CompileOptions>&& options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::shared_ptr<PjRtExecutable> executable,
