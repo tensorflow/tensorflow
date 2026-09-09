@@ -21,7 +21,7 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -102,6 +102,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
+@@ -143,6 +143,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
    if (ll.getBasis(kRow, llvm::Log2_32(16)) == ArrayRef{0, 0}) {
      nRow /= 2;
    }
@@ -35,7 +35,7 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
-@@ -226,6 +226,21 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+@@ -226,6 +226,21 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
        auto row = reps.getBasis(kLane, 4, kRow);
        auto col = reps.getBasis(kLane, 4, kCol);
        secondHalfOffset = (row << 16) | col;
@@ -57,3 +57,4 @@ XLA.
        // We "quotient it out", meaning we remove the last basis from reps
        auto basis = reps.getBases();
        basis[kLane][4] = {0, 0};
+

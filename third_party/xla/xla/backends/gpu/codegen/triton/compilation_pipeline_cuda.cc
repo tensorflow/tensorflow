@@ -67,7 +67,9 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
        /*threads_per_warp=*/32, num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
   pm->addPass(mt::gpu::createTritonGPUF32DotTC({cuda_cc.IsAtLeastAmpere()}));
-  pm->addPass(ttng::createTritonNvidiaGPUPlanCTAPass());
+  pm->addPass(ttng::createTritonNvidiaGPUAssignCGALayoutsPass());
+  pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm->addPass(ttng::createTritonNvidiaGPUOptimizeCTALocalityPass());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
   pm->addPass(mt::gpu::createTritonGPUAccelerateMatmul());

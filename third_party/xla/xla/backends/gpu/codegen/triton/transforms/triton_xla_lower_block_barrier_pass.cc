@@ -118,8 +118,6 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
         auto signal_buffer_i64 = mlir::triton::LoadOp::create(
             builder,
             /*ptr=*/signal_buffer_ptr,
-            /*cache=*/mlir::triton::CacheModifier::NONE,
-            /*evict=*/mlir::triton::EvictionPolicy::NORMAL,
             /*isVolatile=*/false);
         // -> tensor<world_size x !tt.ptr<i32>>
         auto signal_buffer = mlir::triton::IntToPtrOp::create(
@@ -154,8 +152,6 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
         auto read_address_i64 = mlir::triton::LoadOp::create(
             builder,
             /*ptr=*/read_address_ptr_to_i64,
-            /*cache=*/mlir::triton::CacheModifier::NONE,
-            /*evict=*/mlir::triton::EvictionPolicy::NORMAL,
             /*isVolatile=*/false);
         // -> !tt.ptr<i32>
         auto read_address = mlir::triton::IntToPtrOp::create(
