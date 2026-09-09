@@ -213,5 +213,62 @@ TEST(ConfigSelectorTest, ScratchBytesOptimizationIgnoresExcludedBackends) {
   EXPECT_EQ(best.scratch_bytes, 100);
 }
 
+TEST(ConfigSelectorTest, PreferredBackendSelectionAndFallback) {
+  MockCodegenBackend cublas_backend;
+  EXPECT_CALL(cublas_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::CUBLASLT_FISSION));
+  MockCodegenBackend triton_backend;
+  EXPECT_CALL(triton_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::TRITON));
+
+  // 1. Prefers config from preferred backend even if slower.
+  std::vector<ConfigRunner::ConfigProfile> profiles;
+  profiles.push_back(
+      CreateProfile(&cublas_backend, "cublas_fast", absl::Microseconds(10)));
+  profiles.push_back(
+      CreateProfile(&triton_backend, "triton_slow", absl::Microseconds(30)));
+  ASSERT_OK_AND_ASSIGN(
+      auto best,
+      PickBestConfig(profiles, /*scratch_bytes_window_size_us=*/0,
+                     /*excluded_backends=*/{}, autotuner::Backend::TRITON));
+  EXPECT_THAT(*best.config.backend_config, ConfigMatcher("triton_slow"));
+
+  // 2. Falls back to other backends when preferred backend configs fail.
+  profiles.back().failure = ConfigRunner::Failure{
+      ConfigRunner::FailureKind::kWrongResults, "mismatch"};
+  ASSERT_OK_AND_ASSIGN(
+      best,
+      PickBestConfig(profiles, /*scratch_bytes_window_size_us=*/0,
+                     /*excluded_backends=*/{}, autotuner::Backend::TRITON));
+  EXPECT_THAT(*best.config.backend_config, ConfigMatcher("cublas_fast"));
+}
+
+TEST(ConfigSelectorTest, OptimizesScratchBytesWithinPreferredBackend) {
+  MockCodegenBackend cublas_backend;
+  EXPECT_CALL(cublas_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::CUBLASLT_FISSION));
+  MockCodegenBackend triton_backend;
+  EXPECT_CALL(triton_backend, backend())
+      .WillRepeatedly(::testing::Return(autotuner::Backend::TRITON));
+
+  std::vector<ConfigRunner::ConfigProfile> profiles;
+  profiles.push_back(CreateProfile(&cublas_backend, "cublas_least_scratch",
+                                   absl::Microseconds(15),
+                                   /*scratch_bytes=*/0));
+  profiles.push_back(CreateProfile(&triton_backend, "triton_fast",
+                                   absl::Microseconds(20),
+                                   /*scratch_bytes=*/200));
+  profiles.push_back(CreateProfile(&triton_backend, "triton_opt_scratch",
+                                   absl::Microseconds(25),
+                                   /*scratch_bytes=*/100));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto best,
+      PickBestConfig(profiles, /*scratch_bytes_window_size_us=*/8,
+                     /*excluded_backends=*/{}, autotuner::Backend::TRITON));
+  EXPECT_THAT(*best.config.backend_config, ConfigMatcher("triton_opt_scratch"));
+  EXPECT_EQ(best.scratch_bytes, 100);
+}
+
 }  // namespace
 }  // namespace xla

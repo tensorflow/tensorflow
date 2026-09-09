@@ -342,6 +342,8 @@ Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
     autotuner_options.excluded_backends.push_back(
         autotuner::Backend::HIPBLASLT_FISSION);
   }
+  autotuner_options.preferred_backend =
+      debug_options.xla_autotuner_preferred_backend();
   autotuner_options.correctness_check_options.enable_correctness_check =
       is_buffer_check_supported && debug_options.xla_gpu_autotune_level() >= 4;
   autotuner_options.correctness_check_options.relative_tolerance =
