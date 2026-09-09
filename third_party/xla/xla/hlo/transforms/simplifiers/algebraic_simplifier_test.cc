@@ -7586,6 +7586,104 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
                                          m::Parameter(), m::Constant())));
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfDynamicUpdateSliceMatching) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule SliceOfDynamicUpdateSliceMatching
+
+ENTRY main {
+  operand = f32[10,20] parameter(0)
+  update = f32[3,5] parameter(1)
+  c0 = s32[] constant(2)
+  c1 = s32[] constant(4)
+  dus = f32[10,20] dynamic-update-slice(operand, update, c0, c1)
+  ROOT slice = f32[3,5] slice(dus), slice={[2:5], [4:9]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfDynamicUpdateSliceClampedMatching) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule SliceOfDynamicUpdateSliceClampedMatching
+
+ENTRY main {
+  operand = f32[10,20] parameter(0)
+  update = f32[3,5] parameter(1)
+  c0 = s32[] constant(-5)
+  c1 = s32[] constant(100)
+  dus = f32[10,20] dynamic-update-slice(operand, update, c0, c1)
+  ROOT slice = f32[3,5] slice(dus), slice={[0:3], [15:20]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfDynamicUpdateSliceSubslice) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule SliceOfDynamicUpdateSliceSubslice
+
+ENTRY main {
+  operand = f32[10,20] parameter(0)
+  update = f32[4,6] parameter(1)
+  c0 = s32[] constant(2)
+  c1 = s32[] constant(3)
+  dus = f32[10,20] dynamic-update-slice(operand, update, c0, c1)
+  ROOT slice = f32[2,3] slice(dus), slice={[3:5], [4:7]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfDynamicUpdateSliceStrided) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule SliceOfDynamicUpdateSliceStrided
+
+ENTRY main {
+  operand = f32[10,20] parameter(0)
+  update = f32[4,6] parameter(1)
+  c0 = s32[] constant(2)
+  c1 = s32[] constant(3)
+  dus = f32[10,20] dynamic-update-slice(operand, update, c0, c1)
+  ROOT slice = f32[2,6] slice(dus), slice={[2:6:2], [3:9:1]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfDynamicUpdateSliceNotMatching) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule SliceOfDynamicUpdateSliceNotMatching
+
+ENTRY main {
+  operand = f32[10,20] parameter(0)
+  update = f32[3,5] parameter(1)
+  c0 = s32[] constant(2)
+  c1 = s32[] constant(4)
+  dus = f32[10,20] dynamic-update-slice(operand, update, c0, c1)
+  ROOT slice = f32[3,5] slice(dus), slice={[1:4], [4:9]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfPadToConcatHigh) {
   constexpr absl::string_view hlo_string = R"(
 HloModule DynamicUpdateSliceOfPadToConcatHigh
