@@ -3037,7 +3037,12 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/reduce_scatter.mlir b/stablehlo
 diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir b/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
 --- stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
 +++ stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
-@@ -5,7 +5,7 @@
+@@ -1,11 +1,11 @@
+-// RUN: stablehlo-opt %s -stablehlo-compatibility-expander="target=1.14.0" -allow-unregistered-dialect | FileCheck %s
++// RUN: stablehlo-opt %s -stablehlo-compatibility-expander="target=1.14.0" | FileCheck %s
+ 
+ module {
+ 
  
    // CHECK-LABEL: @all_reduce_rgv3
    func.func @all_reduce_rgv3(%arg0: tensor<4xf32>) -> tensor<4xf32> {
@@ -3064,7 +3069,12 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
      %0 = "stablehlo.all_to_all"(%arg0) {
        concat_dimension = 0 : i64,
        split_dimension = 0 : i64,
-@@ -44,7 +44,7 @@
+@@ -40,11 +40,11 @@
+ 
+     return %0 : tensor<4xf32>
+   }
+-  "sdy.mesh"() {sym_name = "sdy_mesh", stablehlo.mesh = {axes = [{name = "x", size = 2 : i64}, {name = "y", size = 2 : i64}]}} : () -> ()
++  func.func private @sdy_mesh() attributes {stablehlo.mesh = {axes = [{name = "x", size = 2 : i64}, {name = "y", size = 2 : i64}]}}
  
    // CHECK-LABEL: @all_reduce_sdy_mesh
    func.func @all_reduce_sdy_mesh(%arg0: tensor<4xf32>) -> tensor<4xf32> {
@@ -3073,7 +3083,12 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
      %0 = "stablehlo.all_reduce"(%arg0) ({
      ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
        %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-@@ -59,7 +59,7 @@
+@@ -55,11 +55,11 @@
+     return %0 : tensor<4xf32>
+   }
+ 
+-  "sdy.mesh"() {sym_name = "sdy_mesh_dev", stablehlo.mesh = {axes = [{name = "x", size = 2 : i64}, {name = "y", size = 2 : i64}], device_ids = dense<[0, 2, 1, 3]> : tensor<4xi64>}} : () -> ()
++  func.func private @sdy_mesh_dev() attributes {stablehlo.mesh = {axes = [{name = "x", size = 2 : i64}, {name = "y", size = 2 : i64}], device_ids = dense<[0, 2, 1, 3]> : tensor<4xi64>}}
  
    // CHECK-LABEL: @all_reduce_sdy_mesh_dev
    func.func @all_reduce_sdy_mesh_dev(%arg0: tensor<4xf32>) -> tensor<4xf32> {
@@ -3082,6 +3097,15 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
      %0 = "stablehlo.all_reduce"(%arg0) ({
      ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
        %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+@@ -70,7 +70,7 @@
+     return %0 : tensor<4xf32>
+   }
+ 
+-  "sdy.mesh"() {sym_name = "sdy_mesh_max", stablehlo.mesh = {axes = [], device_ids = dense<0> : tensor<1xi64>}} : () -> ()
++  func.func private @sdy_mesh_max() attributes {stablehlo.mesh = {axes = [], device_ids = dense<0> : tensor<1xi64>}}
+ 
+   // CHECK-LABEL: @all_reduce_sdy_mesh_max
+   func.func @all_reduce_sdy_mesh_max(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 @@ -84,4 +84,56 @@
      } : (tensor<4xf32>) -> tensor<4xf32>
      return %0 : tensor<4xf32>

@@ -224,6 +224,32 @@ diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/LifetimeSafetyTest.cpp 
      Analysis =
          std::make_unique<LifetimeSafetyAnalysis>(*AnalysisCtx, nullptr, LSOpts);
      Analysis->run();
+diff -ruN --strip-trailing-cr a/libcxx/include/tuple b/libcxx/include/tuple
+--- a/libcxx/include/tuple
++++ b/libcxx/include/tuple
+@@ -1396,7 +1396,7 @@
+                   "Attempted construction of reference element binds to a temporary whose lifetime has ended");
+   }
+ #      endif // _LIBCPP_STD_VER >= 23
+-  return std::apply([]<class... _Args>(_Args&&... __args) { return _Tp(std::forward<_Args>(__args)...); },
++  return std::apply([]<class... _Args>(_Args&&... __args) -> _Tp { return _Tp(std::forward<_Args>(__args)...); },
+                     std::forward<_Tuple>(__tuple));
+ }
+ 
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp b/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp
+--- a/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp
++++ b/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp
+@@ -255,5 +255,10 @@
+     test_perfect_forwarding();
+     test_noexcept();
+ 
++  { // Test that constructing a T& returns the same object
++    int i;
++    assert(&std::make_from_tuple<const int&>(std::tuple<int&>(i)) == &i);
++  }
++
+   return 0;
+ }
 diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp
 --- a/llvm/lib/Target/X86/X86InstrInfo.cpp
 +++ b/llvm/lib/Target/X86/X86InstrInfo.cpp

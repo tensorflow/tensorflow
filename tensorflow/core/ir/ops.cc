@@ -541,7 +541,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser& parser, OperationState& result) {
 
   // Parse the name as a symbol.
   StringAttr name_attr;
-  if (parser.parseSymbolName(name_attr, SymbolTable::getSymbolAttrName(),
+  if (parser.parseSymbolName(name_attr, getSymNameAttrName(result.name),
                              result.attributes))
     return failure();
 
@@ -660,8 +660,7 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
   }
   if (getGeneric()) p << "generic ";
   auto funcName =
-      op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
-          .getValue();
+      op->getAttrOfType<StringAttr>(getSymNameAttrName()).getValue();
   p.printSymbolName(funcName);
   argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
