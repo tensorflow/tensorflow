@@ -101,17 +101,6 @@ bool IsSdpa(const TfLiteRegistration* registration, const TfLiteNode* node) {
   return false;
 }
 
-bool IsSdpa(TfLiteContext* context, int node_index) {
-  TfLiteNode* node = nullptr;
-  TfLiteRegistration* registration = nullptr;
-  if (context == nullptr ||
-      context->GetNodeAndRegistration(context, node_index, &node,
-                                      &registration) != kTfLiteOk) {
-    return false;
-  }
-  return IsSdpa(registration, node);
-}
-
 TfLiteStatus IsSdpaSupported(const TfLiteRegistration* registration,
                              const TfLiteNode* node, TfLiteContext* context) {
   TF_LITE_ENSURE(context, IsSdpa(registration, node));

@@ -25,8 +25,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -70,8 +68,8 @@ ENTRY entry {
 )";
 
   // Compile and execute the computation.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR0Equal(3, result);
@@ -122,12 +120,12 @@ TEST_F(CpuWhileTest, WhileSort) {
   )";
 
   // Compile and execute the computation.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal input = LiteralUtil::CreateR1<float>({3, 1, 4, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(module), {&input}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(module), {&input}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR1Equal(absl::MakeConstSpan({4.0f, 3.0f, 2.0f, 1.0f}),
@@ -278,8 +276,8 @@ TEST_F(CpuWhileTest, WhileDotDoesNotError) {
   Literal input_real = LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}});
   Literal input_imag = LiteralUtil::CreateR3<float>({{{9, 10}, {11, 12}}});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_EXPECT_OK(Execute(std::move(module), {&input_real, &input_imag}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_OK(Execute(std::move(module), {&input_real, &input_imag}));
 }
 
 TEST_F(CpuWhileTest, FusedDynamicUpdateSliceInSmallWhileLoop) {

@@ -21,6 +21,8 @@ cc_library(
         "dot.h",
         "elementwise.cc",
         "elementwise.h",
+        "moe.cc",
+        "moe.h",
         "pooling.cc",
         "pooling.h",
         "reduction.cc",
@@ -91,5 +93,38 @@ cc_test(
         ":ynnpack_delegate",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "moe_test",
+    srcs = ["moe_test.cc"],
+    copts = tflite_copts(),
+    deps = [
+        ":ynnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_binary(
+    name = "moe_bench",
+    testonly = True,
+    srcs = ["moe_bench.cc"],
+    copts = tflite_copts(),
+    deps = [
+        ":ynnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_benchmark//:benchmark_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )

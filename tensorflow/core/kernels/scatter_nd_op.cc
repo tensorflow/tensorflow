@@ -965,7 +965,6 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
                      slice_dim));
   }
 
-
   IndexFlattener<Device, Index> index_flattener;
   auto indices_flat = index_flattener(c, indices);
   auto updates_flat = updates.shaped<T, 2>({num_updates, slice_size});

@@ -16,12 +16,17 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -32,9 +37,13 @@ namespace xla {
 
 namespace tpu_xla_executable_abi_version_serdes {
 
+ABSL_ATTRIBUTE_WEAK
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
 PjRtExecutableAbiVersionFromProto(
-    const xla::PjRtExecutableAbiVersionProto& proto);
+    const xla::PjRtExecutableAbiVersionProto& proto) {
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
+}
 
 }  // namespace tpu_xla_executable_abi_version_serdes
 
@@ -93,7 +102,6 @@ bool register_tpu_abi_version_serdes =
 
 }  // namespace
 
-[[maybe_unused]] char TpuXlaExecutableAbiVersion::ID = 0;
 [[maybe_unused]] char TpuXlaExecutableAbiVersionSerDes::ID = 0;
 
 }  // namespace xla

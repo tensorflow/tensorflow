@@ -190,7 +190,7 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;

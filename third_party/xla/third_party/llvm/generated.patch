@@ -1,73 +1,551 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/include/lldb/Symbol/Symbol.h b/lldb/include/lldb/Symbol/Symbol.h
---- a/lldb/include/lldb/Symbol/Symbol.h
-+++ b/lldb/include/lldb/Symbol/Symbol.h
-@@ -53,11 +53,7 @@
+diff -ruN --strip-trailing-cr a/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h b/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
+--- a/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
++++ b/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
+@@ -41,6 +41,11 @@
  
-   Symbol(const Symbol &rhs);
- 
--  ~Symbol() {
--    if (m_type != lldb::eSymbolTypeReExported &&
--        m_type != lldb::eSymbolTypeInvalid)
--      m_addr_or_reexport.GetAddressRange(*this).Clear();
--  }
-+  ~Symbol() { m_addr_or_reexport.Clear(*this); }
- 
-   const Symbol &operator=(const Symbol &rhs);
- 
-@@ -419,6 +415,13 @@
-     // impl to let the compiler know it's handled.
-     ~AddrRangeOrReExport() {}
- 
-+    void Clear(const Symbol &sym) {
-+      if (sym.GetType() == lldb::eSymbolTypeReExported)
-+        m_reexport_info.Clear();
-+      else
-+        m_addr_range.Clear();
-+    }
+   /// Whether to suggest lifetime annotations.
+   bool SuggestAnnotations;
 +
-   private:
-     union {
-       // Contains the value, or the section offset address when the value is an
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
---- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-@@ -5964,6 +5964,8 @@
-                                 ISD::matchUnaryPredicate(
-                                     Y,
-                                     [&](auto *C) {
-+                                      if (!C)
-+                                        return true;
-                                       const APInt &YConst = C->getAsAPIntVal();
-                                       return (Opcode == ISD::ABDS)
-                                                  ? YConst.isSignedIntN(Bits)
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/abd-combine.ll b/llvm/test/CodeGen/AArch64/abd-combine.ll
---- a/llvm/test/CodeGen/AArch64/abd-combine.ll
-+++ b/llvm/test/CodeGen/AArch64/abd-combine.ll
-@@ -523,9 +523,26 @@
-   ret <1 x i64> %10
- }
++  bool CheckNoescapeViolations;
++  bool CheckLifetimeboundViolations;
++  bool CheckMisplacedLifetimebound;
++  bool CheckInapplicableLifetimebound;
+ };
  
-+; Poison elements in the constant operand pass a null ConstantSDNode to the
-+; matchUnaryPredicate lambda in visitABD; make sure that does not crash.
-+define <4 x i32> @abdu_const_poison(<4 x i8> %x) {
-+; CHECK-LABEL: abdu_const_poison:
-+; CHECK:       // %bb.0:
-+; CHECK-NEXT:    mov w8, #8388736 // =0x800080
-+; CHECK-NEXT:    bic v0.4h, #255, lsl #8
-+; CHECK-NEXT:    fmov d1, x8
-+; CHECK-NEXT:    uabdl v0.4s, v0.4h, v1.4h
-+; CHECK-NEXT:    ret
-+  %ext = zext <4 x i8> %x to <4 x i32>
-+  %sub = sub <4 x i32> <i32 128, i32 128, i32 poison, i32 poison>, %ext
-+  %abs = call <4 x i32> @llvm.abs.v4i32(<4 x i32> %sub, i1 false)
-+  ret <4 x i32> %abs
+ /// Enum to track functions visible across or within TU.
+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/LifetimeSafety/Checker.cpp b/clang/lib/Analysis/LifetimeSafety/Checker.cpp
+--- a/clang/lib/Analysis/LifetimeSafety/Checker.cpp
++++ b/clang/lib/Analysis/LifetimeSafety/Checker.cpp
+@@ -105,10 +105,14 @@
+           checkAnnotations(OEF);
+     issuePendingWarnings();
+     suggestAnnotations();
+-    reportNoescapeViolations();
+-    reportLifetimeboundViolations();
+-    reportMisplacedLifetimebound();
+-    reportInapplicableLifetimebound();
++    if (LSOpts.CheckNoescapeViolations)
++      reportNoescapeViolations();
++    if (LSOpts.CheckLifetimeboundViolations)
++      reportLifetimeboundViolations();
++    if (LSOpts.CheckMisplacedLifetimebound)
++      reportMisplacedLifetimebound();
++    if (LSOpts.CheckInapplicableLifetimebound)
++      reportInapplicableLifetimebound();
+     //  Annotation inference is currently guarded by a frontend flag. In the
+     //  future, this might be replaced by a design that differentiates between
+     //  explicit and inferred findings with separate warning groups.
+@@ -254,6 +258,7 @@
+   }
+ 
+   void issuePendingWarnings() {
++    llvm::TimeTraceScope TimeTrace("IssuePendingWarnings");
+     if (!SemaHelper)
+       return;
+     for (const auto &[LID, Warning] : FinalWarningsMap) {
+@@ -433,6 +438,7 @@
+   }
+ 
+   void reportNoescapeViolations() {
++    llvm::TimeTraceScope TimeTrace("ReportNoescapeViolations");
+     for (auto [PVD, EscapeTarget] : NoescapeWarningsMap) {
+       if (const auto *E = EscapeTarget.dyn_cast<const Expr *>())
+         SemaHelper->reportNoescapeViolation(PVD, E);
+@@ -446,6 +452,7 @@
+   }
+ 
+   void reportLifetimeboundViolations() {
++    llvm::TimeTraceScope TimeTrace("ReportLifetimeboundViolations");
+     if (!isa<FunctionDecl>(FD))
+       return;
+     if (const auto *MD = dyn_cast<CXXMethodDecl>(FD);
+@@ -468,6 +475,7 @@
+   // Reports lifetimebound attributes that are placed on a function definition
+   // but not on the corresponding declaration.
+   void reportMisplacedLifetimebound() {
++    llvm::TimeTraceScope TimeTrace("ReportMisplacedLifetimebound");
+     const FunctionDecl *FDef = dyn_cast<FunctionDecl>(FD);
+     if (!FDef)
+       return;
+@@ -498,6 +506,7 @@
+   }
+ 
+   void reportInapplicableLifetimebound() {
++    llvm::TimeTraceScope TimeTrace("ReportInapplicableLifetimebound");
+     const auto *FDef = dyn_cast<FunctionDecl>(FD);
+     if (!FDef)
+       return;
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaLifetimeSafety.h b/clang/lib/Sema/SemaLifetimeSafety.h
+--- a/clang/lib/Sema/SemaLifetimeSafety.h
++++ b/clang/lib/Sema/SemaLifetimeSafety.h
+@@ -25,28 +25,7 @@
+ 
+ namespace clang::lifetimes {
+ 
+-inline bool IsLifetimeSafetyEnabled(Sema &S, const Decl *D) {
+-  // TODO: Enable ObjectiveC later when we know it's stable enough.
+-  if (S.getLangOpts().ObjC)
+-    return false;
+-
+-  // TODO: Default this flag to on in the future.
+-  if (!S.getLangOpts().CPlusPlus && !S.getLangOpts().EnableLifetimeSafetyInC)
+-    return false;
+-
+-  // Translation-unit mode: whole-program analysis runs once on TU.
+-  // Individual function analysis is disabled when TU mode is enabled.
+-  if (S.getLangOpts().EnableLifetimeSafetyTUAnalysis)
+-    return isa<TranslationUnitDecl>(D);
+-
+-  // Per-function mode: analysis runs on each function/method individually.
+-  // Skip TU-level calls when per-function mode is enabled.
+-  if (isa<TranslationUnitDecl>(D))
+-    return false;
+-
+-  // Enable per-function mode via debug flag or specific diagnostics.
+-  if (S.getLangOpts().DebugRunLifetimeSafety)
+-    return true;
++inline bool ShouldCheckSafety(Sema &S, const Decl *D) {
+   DiagnosticsEngine &Diags = S.getDiagnostics();
+   constexpr unsigned DiagIDs[] = {
+       diag::warn_lifetime_safety_use_after_scope,
+@@ -59,25 +38,40 @@
+       diag::warn_lifetime_safety_dangling_field_moved,
+       diag::warn_lifetime_safety_dangling_global,
+       diag::warn_lifetime_safety_dangling_global_moved,
+-      diag::warn_lifetime_safety_noescape_escapes,
+-      diag::warn_lifetime_safety_lifetimebound_violation,
+-      diag::warn_lifetime_safety_cross_tu_misplaced_lifetimebound,
+-      diag::warn_lifetime_safety_intra_tu_misplaced_lifetimebound,
+       diag::warn_lifetime_safety_invalidated_field,
+-      diag::warn_lifetime_safety_invalidated_global,
+-      diag::warn_lifetime_safety_cross_tu_param_suggestion,
+-      diag::warn_lifetime_safety_intra_tu_param_suggestion,
+-      diag::warn_lifetime_safety_cross_tu_ctor_param_suggestion,
+-      diag::warn_lifetime_safety_intra_tu_ctor_param_suggestion,
+-      diag::warn_lifetime_safety_cross_tu_this_suggestion,
+-      diag::warn_lifetime_safety_intra_tu_this_suggestion,
+-      diag::warn_lifetime_safety_inapplicable_lifetimebound};
++      diag::warn_lifetime_safety_invalidated_global};
++  for (unsigned DiagID : DiagIDs)
++    if (!Diags.isIgnored(DiagID, D->getBeginLoc()))
++      return true;
++  return false;
 +}
 +
- declare <8 x i8> @llvm.aarch64.neon.umax.v8i8(<8 x i8>, <8 x i8>)
- declare <1 x i64> @llvm.aarch64.neon.saddlp.v1i64.v2i32(<2 x i32>)
- declare <8 x i8> @llvm.aarch64.neon.uabd.v8i8(<8 x i8>, <8 x i8>)
- declare <8 x i16> @llvm.aarch64.neon.uabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i16> @llvm.aarch64.neon.sabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i32> @llvm.abs.v8i32(<8 x i32>, i1)
-+declare <4 x i32> @llvm.abs.v4i32(<4 x i32>, i1)
++inline bool ShouldCheckNoescapeViolations(Sema &S, const Decl *D) {
++  return !S.getDiagnostics().isIgnored(
++      diag::warn_lifetime_safety_noescape_escapes, D->getBeginLoc());
++}
++
++inline bool ShouldCheckLifetimeboundViolations(Sema &S, const Decl *D) {
++  return !S.getDiagnostics().isIgnored(
++      diag::warn_lifetime_safety_lifetimebound_violation, D->getBeginLoc());
++}
++
++inline bool ShouldCheckMisplacedLifetimebound(Sema &S, const Decl *D) {
++  DiagnosticsEngine &Diags = S.getDiagnostics();
++  constexpr unsigned DiagIDs[] = {
++      diag::warn_lifetime_safety_cross_tu_misplaced_lifetimebound,
++      diag::warn_lifetime_safety_intra_tu_misplaced_lifetimebound};
+   for (unsigned DiagID : DiagIDs)
+     if (!Diags.isIgnored(DiagID, D->getBeginLoc()))
+       return true;
+   return false;
+ }
+ 
++inline bool ShouldCheckInapplicableLifetimebound(Sema &S, const Decl *D) {
++  return !S.getDiagnostics().isIgnored(
++      diag::warn_lifetime_safety_inapplicable_lifetimebound, D->getBeginLoc());
++}
++
+ inline bool ShouldSuggestLifetimeAnnotations(Sema &S, const Decl *D) {
+   DiagnosticsEngine &Diags = S.getDiagnostics();
+   constexpr unsigned DiagIDs[] = {
+@@ -93,10 +87,46 @@
+   return false;
+ }
+ 
++inline bool IsLifetimeSafetyEnabled(Sema &S, const Decl *D) {
++  // TODO: Enable ObjectiveC later when we know it's stable enough.
++  if (S.getLangOpts().ObjC)
++    return false;
++
++  // TODO: Default this flag to on in the future.
++  if (!S.getLangOpts().CPlusPlus && !S.getLangOpts().EnableLifetimeSafetyInC)
++    return false;
++
++  // Translation-unit mode: whole-program analysis runs once on TU.
++  // Individual function analysis is disabled when TU mode is enabled.
++  if (S.getLangOpts().EnableLifetimeSafetyTUAnalysis)
++    return isa<TranslationUnitDecl>(D);
++
++  // Per-function mode: analysis runs on each function/method individually.
++  // Skip TU-level calls when per-function mode is enabled.
++  if (isa<TranslationUnitDecl>(D))
++    return false;
++
++  // Enable per-function mode via debug flag or specific diagnostics.
++  if (S.getLangOpts().DebugRunLifetimeSafety)
++    return true;
++
++  return ShouldCheckSafety(S, D) || ShouldCheckNoescapeViolations(S, D) ||
++         ShouldCheckLifetimeboundViolations(S, D) ||
++         ShouldCheckMisplacedLifetimebound(S, D) ||
++         ShouldCheckInapplicableLifetimebound(S, D) ||
++         ShouldSuggestLifetimeAnnotations(S, D);
++}
++
+ inline LifetimeSafetyOpts GetLifetimeSafetyOpts(Sema &S, const Decl *D) {
+   LifetimeSafetyOpts LSOpts;
+   LSOpts.MaxCFGBlocks = S.getLangOpts().LifetimeSafetyMaxCFGBlocks;
+   LSOpts.SuggestAnnotations = ShouldSuggestLifetimeAnnotations(S, D);
++  LSOpts.CheckNoescapeViolations = ShouldCheckNoescapeViolations(S, D);
++  LSOpts.CheckLifetimeboundViolations =
++      ShouldCheckLifetimeboundViolations(S, D);
++  LSOpts.CheckMisplacedLifetimebound = ShouldCheckMisplacedLifetimebound(S, D);
++  LSOpts.CheckInapplicableLifetimebound =
++      ShouldCheckInapplicableLifetimebound(S, D);
+   return LSOpts;
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/LifetimeSafetyTest.cpp b/clang/unittests/Analysis/LifetimeSafetyTest.cpp
+--- a/clang/unittests/Analysis/LifetimeSafetyTest.cpp
++++ b/clang/unittests/Analysis/LifetimeSafetyTest.cpp
+@@ -66,6 +66,11 @@
+     // Run the main analysis.
+     LifetimeSafetyOpts LSOpts;
+     LSOpts.MaxCFGBlocks = 0;
++    LSOpts.SuggestAnnotations = true;
++    LSOpts.CheckNoescapeViolations = true;
++    LSOpts.CheckLifetimeboundViolations = true;
++    LSOpts.CheckMisplacedLifetimebound = true;
++    LSOpts.CheckInapplicableLifetimebound = true;
+     Analysis =
+         std::make_unique<LifetimeSafetyAnalysis>(*AnalysisCtx, nullptr, LSOpts);
+     Analysis->run();
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp
+--- a/llvm/lib/Target/X86/X86InstrInfo.cpp
++++ b/llvm/lib/Target/X86/X86InstrInfo.cpp
+@@ -8607,7 +8607,9 @@
+       break;
+     case X86::AVX512_512_SETALLONES:
+       IsAllOnes = true;
+-      [[fallthrough]];
++      Ty = FixedVectorType::get(Type::getInt32Ty(MF.getFunction().getContext()),
++                                16);
++      break;
+     case X86::AVX1_SETALLONES:
+     case X86::AVX2_SETALLONES:
+     case X86::AVX512_256_SETALLONES:
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
+--- a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
++++ b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
+@@ -2609,6 +2609,13 @@
+     setOrigin(&I, getOrigin(&I, 0));
+   }
+ 
++  void visitPtrToAddrInst(PtrToAddrInst &I) {
++    IRBuilder<> IRB(&I);
++    setShadow(&I, IRB.CreateIntCast(getShadow(&I, 0), getShadowTy(&I), false,
++                                    "_msprop_ptrtoaddr"));
++    setOrigin(&I, getOrigin(&I, 0));
++  }
++
+   void visitIntToPtrInst(IntToPtrInst &I) {
+     IRBuilder<> IRB(&I);
+     setShadow(&I, IRB.CreateIntCast(getShadow(&I, 0), getShadowTy(&I), false,
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -949,6 +949,7 @@
+     ExternalUses.clear();
+     ExternalUsesAsOriginalScalar.clear();
+     ExternalUsesWithNonUsers.clear();
++    ExternalUseReplacements.clear();
+     RTChecks.clear();
+     HasRuntimeCheckableBlockers = false;
+     HasNonCheckableMemBlocker = false;
+@@ -2504,6 +2505,7 @@
+         if (auto *OpI = dyn_cast_if_present<Instruction>(U.get());
+             OpI && !DeletedInstructions.contains(OpI) && OpI->hasOneUser() &&
+             wouldInstructionBeTriviallyDead(OpI, TLI) &&
++            !ExternalUseReplacements.contains(OpI) &&
+             (Entries.empty() || none_of(Entries, [&](const TreeEntry *Entry) {
+                return Entry->VectorizedValue == OpI;
+              })))
+@@ -2553,6 +2555,7 @@
+         // loop iteration.
+         if (auto *OpI = dyn_cast<Instruction>(OpV))
+           if (!DeletedInstructions.contains(OpI) &&
++              !ExternalUseReplacements.contains(OpI) &&
+               (!OpI->getType()->isVectorTy() ||
+                none_of(
+                    VectorValuesAndScales,
+@@ -3960,6 +3963,11 @@
+   /// uses.
+   SmallPtrSet<Value *, 4> ExternalUsesWithNonUsers;
+ 
++  /// Replacements emitted for the external uses without users, consumed after
++  /// the tree vectorization; must not be collected as dead operands of the
++  /// erased scalars.
++  SmallPtrSet<Value *, 4> ExternalUseReplacements;
++
+   /// Values used only by @llvm.assume calls.
+   SmallPtrSet<const Value *, 32> EphValues;
+ 
+@@ -25883,7 +25891,17 @@
+         assert((!isa<ExtractElementInst>(Scalar) ||
+                 !IgnoredExtracts.contains(cast<ExtractElementInst>(Scalar))) &&
+                "Extractelements should not be replaced.");
++        // Reduced values that are not operands of the reduction ops (e.g.
++        // narrowed reduction leaves) lose all users once the tree scalars are
++        // erased; keep the replacement alive for the reduction epilogue.
++        bool NeedsProtection =
++            UserIgnoreList && none_of(Scalar->users(), [&](llvm::User *U) {
++              return UserIgnoreList->contains(U);
++            });
+         Scalar->replaceAllUsesWith(NewInst);
++        if (NeedsProtection)
++          if (auto *I = dyn_cast<Instruction>(NewInst))
++            ExternalUseReplacements.insert(I);
+       }
+       continue;
+     }
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-setallones-512.ll b/llvm/test/CodeGen/X86/fold-setallones-512.ll
+--- a/llvm/test/CodeGen/X86/fold-setallones-512.ll
++++ b/llvm/test/CodeGen/X86/fold-setallones-512.ll
+@@ -0,0 +1,152 @@
++; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
++; RUN: llc < %s -mtriple=x86_64-- -mattr=+avx512bw -regalloc=basic | FileCheck %s
++
++; The all-ones value is live across a region where all 32 ZMM registers are in
++; use, so the register allocator folds AVX512_512_SETALLONES into the users as a
++; constant pool load. Make sure the constant pool entry is 512 bits wide.
++
++declare <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16>, <32 x i16>)
++
++define void @fold_512_setallones(ptr %p) nounwind {
++; CHECK-LABEL: fold_512_setallones:
++; CHECK:       # %bb.0: # %entry
++; CHECK-NEXT:    vmovdqa64 (%rdi), %zmm0
++; CHECK-NEXT:    vmovaps (%rdi), %zmm31
++; CHECK-NEXT:    vmovaps (%rdi), %zmm30
++; CHECK-NEXT:    vmovaps (%rdi), %zmm29
++; CHECK-NEXT:    vmovaps (%rdi), %zmm28
++; CHECK-NEXT:    vmovaps (%rdi), %zmm27
++; CHECK-NEXT:    vmovaps (%rdi), %zmm26
++; CHECK-NEXT:    vmovaps (%rdi), %zmm25
++; CHECK-NEXT:    vmovaps (%rdi), %zmm24
++; CHECK-NEXT:    vmovaps (%rdi), %zmm23
++; CHECK-NEXT:    vmovaps (%rdi), %zmm22
++; CHECK-NEXT:    vmovaps (%rdi), %zmm21
++; CHECK-NEXT:    vmovaps (%rdi), %zmm20
++; CHECK-NEXT:    vmovaps (%rdi), %zmm19
++; CHECK-NEXT:    vmovaps (%rdi), %zmm18
++; CHECK-NEXT:    vmovaps (%rdi), %zmm17
++; CHECK-NEXT:    vmovaps (%rdi), %zmm16
++; CHECK-NEXT:    vmovaps (%rdi), %zmm15
++; CHECK-NEXT:    vmovaps (%rdi), %zmm14
++; CHECK-NEXT:    vmovaps (%rdi), %zmm13
++; CHECK-NEXT:    vmovaps (%rdi), %zmm12
++; CHECK-NEXT:    vmovaps (%rdi), %zmm11
++; CHECK-NEXT:    vmovaps (%rdi), %zmm10
++; CHECK-NEXT:    vmovaps (%rdi), %zmm9
++; CHECK-NEXT:    vmovaps (%rdi), %zmm8
++; CHECK-NEXT:    vmovaps (%rdi), %zmm7
++; CHECK-NEXT:    vmovaps (%rdi), %zmm6
++; CHECK-NEXT:    vmovaps (%rdi), %zmm5
++; CHECK-NEXT:    vmovaps (%rdi), %zmm4
++; CHECK-NEXT:    vmovaps (%rdi), %zmm3
++; CHECK-NEXT:    vmovaps (%rdi), %zmm2
++; CHECK-NEXT:    vmovdqa64 (%rdi), %zmm1
++; CHECK-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm0, %zmm0 # [4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]
++; CHECK-NEXT:    vmovdqa64 %zmm0, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm31, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm30, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm29, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm28, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm27, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm26, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm25, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm24, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm23, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm22, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm21, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm20, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm19, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm18, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm17, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm16, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm15, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm14, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm13, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm12, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm11, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm10, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm9, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm8, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm7, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm6, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm5, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm4, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm3, (%rdi)
++; CHECK-NEXT:    vmovaps %zmm2, (%rdi)
++; CHECK-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm1, %zmm0 # [4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]
++; CHECK-NEXT:    vmovdqa64 %zmm0, (%rdi)
++; CHECK-NEXT:    vzeroupper
++; CHECK-NEXT:    retq
++entry:
++  %v0 = load volatile <32 x i16>, ptr %p
++  %v1 = load volatile <32 x i16>, ptr %p
++  %v2 = load volatile <32 x i16>, ptr %p
++  %v3 = load volatile <32 x i16>, ptr %p
++  %v4 = load volatile <32 x i16>, ptr %p
++  %v5 = load volatile <32 x i16>, ptr %p
++  %v6 = load volatile <32 x i16>, ptr %p
++  %v7 = load volatile <32 x i16>, ptr %p
++  %v8 = load volatile <32 x i16>, ptr %p
++  %v9 = load volatile <32 x i16>, ptr %p
++  %v10 = load volatile <32 x i16>, ptr %p
++  %v11 = load volatile <32 x i16>, ptr %p
++  %v12 = load volatile <32 x i16>, ptr %p
++  %v13 = load volatile <32 x i16>, ptr %p
++  %v14 = load volatile <32 x i16>, ptr %p
++  %v15 = load volatile <32 x i16>, ptr %p
++  %v16 = load volatile <32 x i16>, ptr %p
++  %v17 = load volatile <32 x i16>, ptr %p
++  %v18 = load volatile <32 x i16>, ptr %p
++  %v19 = load volatile <32 x i16>, ptr %p
++  %v20 = load volatile <32 x i16>, ptr %p
++  %v21 = load volatile <32 x i16>, ptr %p
++  %v22 = load volatile <32 x i16>, ptr %p
++  %v23 = load volatile <32 x i16>, ptr %p
++  %v24 = load volatile <32 x i16>, ptr %p
++  %v25 = load volatile <32 x i16>, ptr %p
++  %v26 = load volatile <32 x i16>, ptr %p
++  %v27 = load volatile <32 x i16>, ptr %p
++  %v28 = load volatile <32 x i16>, ptr %p
++  %v29 = load volatile <32 x i16>, ptr %p
++  %v30 = load volatile <32 x i16>, ptr %p
++  %v31 = load volatile <32 x i16>, ptr %p
++  br label %bb1
++
++bb1:
++  %n0 = call <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16> %v0, <32 x i16> splat (i16 -1))
++  store volatile <16 x i32> %n0, ptr %p
++  store volatile <32 x i16> %v1, ptr %p
++  store volatile <32 x i16> %v2, ptr %p
++  store volatile <32 x i16> %v3, ptr %p
++  store volatile <32 x i16> %v4, ptr %p
++  store volatile <32 x i16> %v5, ptr %p
++  store volatile <32 x i16> %v6, ptr %p
++  store volatile <32 x i16> %v7, ptr %p
++  store volatile <32 x i16> %v8, ptr %p
++  store volatile <32 x i16> %v9, ptr %p
++  store volatile <32 x i16> %v10, ptr %p
++  store volatile <32 x i16> %v11, ptr %p
++  store volatile <32 x i16> %v12, ptr %p
++  store volatile <32 x i16> %v13, ptr %p
++  store volatile <32 x i16> %v14, ptr %p
++  store volatile <32 x i16> %v15, ptr %p
++  store volatile <32 x i16> %v16, ptr %p
++  store volatile <32 x i16> %v17, ptr %p
++  store volatile <32 x i16> %v18, ptr %p
++  store volatile <32 x i16> %v19, ptr %p
++  store volatile <32 x i16> %v20, ptr %p
++  store volatile <32 x i16> %v21, ptr %p
++  store volatile <32 x i16> %v22, ptr %p
++  store volatile <32 x i16> %v23, ptr %p
++  store volatile <32 x i16> %v24, ptr %p
++  store volatile <32 x i16> %v25, ptr %p
++  store volatile <32 x i16> %v26, ptr %p
++  store volatile <32 x i16> %v27, ptr %p
++  store volatile <32 x i16> %v28, ptr %p
++  store volatile <32 x i16> %v29, ptr %p
++  store volatile <32 x i16> %v30, ptr %p
++  %n1 = call <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16> %v31, <32 x i16> splat (i16 -1))
++  store volatile <16 x i32> %n1, ptr %p
++  ret void
++}
+diff -ruN --strip-trailing-cr a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
+--- a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
++++ b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
+@@ -0,0 +1,14 @@
++; RUN: opt < %s -S -passes=msan 2>&1 | FileCheck %s
++
++target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
++target triple = "x86_64-unknown-linux-gnu"
++
++; CHECK-LABEL: @ptrtoaddr_propagate(
++; CHECK:       %[[SHADOW:.*]] = load i64, ptr @__msan_param_tls
++; CHECK-NOT:   __msan_warning
++; CHECK:       store i64 %[[SHADOW]], ptr @__msan_retval_tls
++; CHECK:       ret i64
++define i64 @ptrtoaddr_propagate(ptr %p) sanitize_memory {
++  %addr = ptrtoaddr ptr %p to i64
++  ret i64 %addr
++}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll b/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll
+@@ -0,0 +1,59 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
++; RUN: opt -passes=slp-vectorizer -S -mtriple=x86_64-unknown-linux-gnu -mcpu=x86-64-v2 < %s | FileCheck %s
++
++define void @test() {
++; CHECK-LABEL: define void @test(
++; CHECK-SAME: ) #[[ATTR0:[0-9]+]] {
++; CHECK-NEXT:  [[ENTRY:.*]]:
++; CHECK-NEXT:    [[T2:%.*]] = trunc i32 0 to i8
++; CHECK-NEXT:    br label %[[LOOP:.*]]
++; CHECK:       [[LOOP]]:
++; CHECK-NEXT:    [[TMP0:%.*]] = phi <4 x i8> [ [[TMP4:%.*]], %[[LOOP]] ], [ zeroinitializer, %[[ENTRY]] ]
++; CHECK-NEXT:    [[LD:%.*]] = load i32, ptr null, align 1
++; CHECK-NEXT:    [[SH:%.*]] = lshr i32 [[LD]], 0
++; CHECK-NEXT:    [[TMP1:%.*]] = insertelement <4 x i32> <i32 poison, i32 0, i32 0, i32 0>, i32 [[LD]], i64 0
++; CHECK-NEXT:    [[TMP2:%.*]] = lshr <4 x i32> [[TMP1]], zeroinitializer
++; CHECK-NEXT:    [[TMP3:%.*]] = trunc <4 x i32> [[TMP2]] to <4 x i8>
++; CHECK-NEXT:    [[T3:%.*]] = trunc i32 [[SH]] to i8
++; CHECK-NEXT:    [[TMP4]] = or <4 x i8> [[TMP0]], [[TMP3]]
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i32>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
++; CHECK-NEXT:    [[TMP7:%.*]] = zext i8 [[T2]] to i32
++; CHECK-NEXT:    [[OP_RDX:%.*]] = or i32 [[TMP6]], [[TMP7]]
++; CHECK-NEXT:    [[TMP8:%.*]] = zext i8 [[T2]] to i32
++; CHECK-NEXT:    [[TMP9:%.*]] = zext i8 [[T3]] to i32
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = or i32 [[TMP8]], [[TMP9]]
++; CHECK-NEXT:    [[OP_RDX2:%.*]] = or i32 [[OP_RDX]], [[OP_RDX1]]
++; CHECK-NEXT:    store i32 [[OP_RDX2]], ptr null, align 1
++; CHECK-NEXT:    br label %[[LOOP]]
++;
++entry:
++  br label %loop
++
++loop:
++  %p3 = phi i8 [ %o3, %loop ], [ 0, %entry ]
++  %p2 = phi i8 [ %o2, %loop ], [ 0, %entry ]
++  %p1 = phi i8 [ %o1, %loop ], [ 0, %entry ]
++  %p0 = phi i8 [ %o0, %loop ], [ 0, %entry ]
++  %t0 = trunc i32 0 to i8
++  %o0 = or i8 %p0, %t0
++  %t1 = trunc i32 0 to i8
++  %o1 = or i8 %p1, %t1
++  %t2 = trunc i32 0 to i8
++  %o2 = or i8 %p2, %t2
++  %ld = load i32, ptr null, align 1
++  %sh = lshr i32 %ld, 0
++  %t3 = trunc i32 %sh to i8
++  %o3 = or i8 %p3, %t3
++  %z3 = zext i8 %o3 to i32
++  %s3 = shl i32 %z3, 0
++  %z2 = zext i8 %o2 to i32
++  %a1 = or i32 %s3, %z2
++  %z1 = zext i8 %p1 to i32
++  %s1 = shl i32 %z1, 0
++  %a2 = or i32 %a1, %s1
++  %z0 = zext i8 %o0 to i32
++  %a3 = or i32 %a2, %z0
++  store i32 %a3, ptr null, align 1
++  br label %loop
++}

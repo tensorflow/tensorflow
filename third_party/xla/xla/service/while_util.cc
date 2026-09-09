@@ -35,7 +35,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/frontend_attributes.h"
@@ -88,7 +90,8 @@ WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
       HloInstruction::CreateCall(ShapeUtil::MakeShape(PRED, {}),
                                  {truncated_parameter}, narrow_condition));
   call_narrow_cond->set_original_value(
-      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+      std::make_shared<OriginalValue>(call_narrow_cond->shape(),
+                                      /*call_hierarchy=*/""));
 
   wide_while_cond->set_root_instruction(call_narrow_cond);
 
@@ -119,7 +122,8 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
       wide_while_body->AddInstruction(HloInstruction::CreateCall(
           narrow_shape, {truncated_parameter}, narrow_body));
   call_narrow_body->set_original_value(
-      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+      std::make_shared<OriginalValue>(call_narrow_body->shape(),
+                                      /*call_hierarchy=*/""));
 
   std::vector<HloInstruction*> live_through_values;
   for (int i = narrow_shape.tuple_shapes().size();
@@ -180,19 +184,30 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
             old_instruction->CloneWithNewOperands(old_instruction->shape(),
                                                   new_operands));
 
-        std::optional<std::string> original_call_instructions;
-        if (while_instr->original_value() != nullptr) {
-          original_call_instructions =
-              while_instr->original_value()->GetOriginalCallLikeInstructions();
-        }
-        if (original_call_instructions.has_value() &&
+        if (while_instr->original_value() != nullptr &&
             old_instruction->original_value() != nullptr) {
+          std::optional<std::string> call_hierarchy =
+              while_instr->original_value()->call_hierarchy();
+
           std::string original_call_prefix;
-          if (!original_call_instructions->empty()) {
-            // We only add the wildcard iteration count if the call-like
-            // instruction is available.
-            original_call_prefix =
-                absl::StrCat(*original_call_instructions, "#*/");
+          if (call_hierarchy.has_value() && !call_hierarchy->empty()) {
+            std::string hoisted_call_hierarchy = *call_hierarchy;
+            if (absl::StrContains(hoisted_call_hierarchy, "#$")) {
+              absl::StrReplaceAll({{"#$", "#*"}}, &hoisted_call_hierarchy);
+            } else if (!absl::EndsWith(hoisted_call_hierarchy, "#*")) {
+              absl::StrAppend(&hoisted_call_hierarchy, "#*");
+            }
+            original_call_prefix = absl::StrCat(hoisted_call_hierarchy, "/");
+          } else if (!while_instr->original_value()->IsEmpty()) {
+            const auto& first_leaf = while_instr->original_value()
+                                         ->original_arrays()
+                                         .begin()
+                                         ->second;
+            if (first_leaf.has_value() &&
+                !first_leaf->instruction_name.empty()) {
+              original_call_prefix =
+                  absl::StrCat(first_leaf->instruction_name, "#*/");
+            }
           }
 
           auto new_original_value = std::make_shared<OriginalValue>(
@@ -204,6 +219,24 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
                   original_call_prefix, original_array->instruction_name);
             }
           }
+
+          if (call_hierarchy.has_value()) {
+            std::string hoisted_call_hierarchy = *call_hierarchy;
+            if (absl::StrContains(hoisted_call_hierarchy, "#$")) {
+              absl::StrReplaceAll({{"#$", "#*"}}, &hoisted_call_hierarchy);
+            } else if (!absl::EndsWith(hoisted_call_hierarchy, "#*")) {
+              absl::StrAppend(&hoisted_call_hierarchy, "#*");
+            }
+            if (new_original_value->call_hierarchy().has_value()) {
+              new_original_value->set_call_hierarchy(
+                  absl::StrCat(hoisted_call_hierarchy, "/",
+                               *new_original_value->call_hierarchy()));
+            } else {
+              new_original_value->set_call_hierarchy(
+                  std::move(hoisted_call_hierarchy));
+            }
+          }
+
           new_instruction->set_original_value(std::move(new_original_value));
         }
         set_hoisted(old_instruction, new_instruction);
@@ -253,7 +286,8 @@ WhileUtil::MakeInstructionsLiveIn(
       HloInstruction::CreateWhile(new_while_shape, new_while_condition,
                                   new_while_body, new_while_init));
   if (while_instr->original_value() != nullptr) {
-    OriginalValue new_original_value(new_while_shape);
+    OriginalValue new_original_value(
+        new_while_shape, while_instr->original_value()->call_hierarchy());
     for (auto& [shape_index, original_array] :
          new_original_value.mutable_original_arrays()) {
       // The hoisted instructions are appended to the end of the while

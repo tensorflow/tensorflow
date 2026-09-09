@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/slim_model_importer.h"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -65,10 +70,34 @@ using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
 using ::mlir::func::FuncOp;
 
-absl::Status InjectMappedArg(
-    FuncOp func, int arg_idx, size_t offset,
-    const std::shared_ptr<llvm::MemoryBuffer>& weights_buffer,
-    llvm::DenseMap<uint64_t, mlir::Attribute>& cache) {
+absl::Status PreadAll(int fd, char* dst, size_t count, size_t offset) {
+  size_t total_read = 0;
+  while (total_read < count) {
+    // Read in chunks of at most 1GB to remain well within POSIX SSIZE_MAX
+    // limits.
+    size_t chunk_size =
+        std::min<size_t>(count - total_read, 1024 * 1024 * 1024);
+    ssize_t bytes_read =
+        pread(fd, dst + total_read, chunk_size, offset + total_read);
+    if (bytes_read < 0) {
+      if (errno == EINTR) continue;
+      return absl::InternalError(absl::StrCat("pread failed at offset ",
+                                              offset + total_read,
+                                              " (errno=", errno, ")"));
+    }
+    if (bytes_read == 0) {
+      return absl::InternalError(absl::StrCat(
+          "Unexpected EOF while reading weight at offset ", offset + total_read,
+          ": read ", total_read, " of ", count, " bytes"));
+    }
+    total_read += static_cast<size_t>(bytes_read);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InjectMappedArg(FuncOp func, int arg_idx, size_t offset,
+                             int weights_fd, size_t file_size,
+                             llvm::DenseMap<uint64_t, mlir::Attribute>& cache) {
   if (arg_idx < 0 || arg_idx >= (int)func.getNumArguments()) {
     return absl::InvalidArgumentError(
         absl::StrCat("Argument index out of bounds: arg_idx=", arg_idx,
@@ -91,26 +120,27 @@ absl::Status InjectMappedArg(
     size_t num_elements = shaped_type.getNumElements();
     size_t bit_width = shaped_type.getElementTypeBitWidth();
     size_t packed_bytes = (num_elements * bit_width + 7) / 8;
-    if (offset + packed_bytes > weights_buffer->getBufferSize()) {
+    if (offset + packed_bytes > file_size) {
       return absl::InvalidArgumentError("Weight offset out of bounds.");
     }
 
     if (num_elements > 64) {
-      auto deleter = [weights_buffer](void*, size_t, size_t) {};
-      // The exporter pads each tensor payload to a 64-byte boundary in
-      // params.bin for SIMD and mmap alignment.
-      auto blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
-          llvm::ArrayRef<char>(weights_buffer->getBufferStart() + offset,
-                               packed_bytes),
-          /*align=*/64, std::move(deleter), /*dataIsMutable=*/false);
+      auto blob = mlir::HeapAsmResourceBlob::allocate(
+          packed_bytes, /*align=*/64, /*dataIsMutable=*/true);
+      auto status =
+          PreadAll(weights_fd, const_cast<char*>(blob.getData().data()),
+                   packed_bytes, offset);
+      if (!status.ok()) return status;
       std::string blob_name = absl::StrCat("dense_resource_off_", offset);
       attr = mlir::DenseResourceElementsAttr::get(shaped_type, blob_name,
                                                   std::move(blob));
     } else {
+      std::vector<char> small_buf(packed_bytes);
+      auto status =
+          PreadAll(weights_fd, small_buf.data(), packed_bytes, offset);
+      if (!status.ok()) return status;
       attr = mlir::DenseElementsAttr::getFromRawBuffer(
-          shaped_type,
-          llvm::ArrayRef<char>(weights_buffer->getBufferStart() + offset,
-                               packed_bytes));
+          shaped_type, llvm::ArrayRef<char>(small_buf.data(), packed_bytes));
     }
     cache[offset] = attr;
   }
@@ -123,9 +153,8 @@ absl::Status InjectMappedArg(
   return absl::OkStatus();
 }
 
-absl::Status InjectWeights(
-    ModuleOp module, const std::shared_ptr<llvm::MemoryBuffer>& weights_buffer,
-    const llvm::json::Object& metadata) {
+absl::Status InjectWeights(ModuleOp module, int weights_fd, size_t file_size,
+                           const llvm::json::Object& metadata) {
   llvm::DenseMap<uint64_t, mlir::Attribute> cache;
 
   const auto* signatures = metadata.getObject("signatures");
@@ -155,7 +184,7 @@ absl::Status InjectWeights(
       if (arg_index && offset) {
         auto status =
             InjectMappedArg(func, *arg_index, static_cast<size_t>(*offset),
-                            weights_buffer, cache);
+                            weights_fd, file_size, cache);
         if (!status.ok()) return status;
         args_to_erase.push_back(*arg_index);
       }
@@ -281,12 +310,25 @@ absl::StatusOr<OwningOpRef<ModuleOp>> LoadSlimModel(
       llvm::StringRef(model_dir.data(), model_dir.size()));
   llvm::sys::path::append(weights_path_buf, "params.bin");
   std::string weights_path = std::string(weights_path_buf.str());
-  auto weights_buffer_or_err = llvm::MemoryBuffer::getFile(weights_path);
-  if (weights_buffer_or_err) {
-    std::shared_ptr<llvm::MemoryBuffer> weights_buffer =
-        std::move(weights_buffer_or_err.get());
+  int weights_fd = open(weights_path.c_str(), O_RDONLY);
+  if (weights_fd < 0) {
+    if (errno != ENOENT) {
+      return absl::InternalError(absl::StrCat("Failed to open weights file '",
+                                              weights_path, "' (errno=", errno,
+                                              ")"));
+    }
+  } else {
+    struct stat st;
+    if (fstat(weights_fd, &st) != 0) {
+      close(weights_fd);
+      return absl::InternalError(absl::StrCat("Failed to fstat weights file '",
+                                              weights_path, "' (errno=", errno,
+                                              ")"));
+    }
+    size_t file_size = st.st_size;
     auto status =
-        InjectWeights(*combined_module, weights_buffer, *metadata_obj);
+        InjectWeights(*combined_module, weights_fd, file_size, *metadata_obj);
+    close(weights_fd);
     if (!status.ok()) return status;
   }
 

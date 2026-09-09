@@ -561,7 +561,7 @@ TEST(HostExecuteDoneThunkTest, WaitingOnAvailableEvent) {
 
   auto async_events = std::make_shared<HostExecuteAsyncEvents>();
 
-  HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events);
+  HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events, {});
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
@@ -596,7 +596,7 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
 
   auto async_events = std::make_shared<HostExecuteAsyncEvents>();
 
-  HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events);
+  HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events, {});
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
@@ -702,8 +702,9 @@ TEST(HostExecuteThunkTest, ProtoRoundTripPairing) {
                            {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                            {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
-  HostExecuteDoneThunk done_thunk_orig(Thunk::ThunkInfo(),
-                                       start_thunk_orig->async_events());
+  HostExecuteDoneThunk done_thunk_orig(
+      Thunk::ThunkInfo(), start_thunk_orig->async_events(),
+      {{slice_result, ShapeUtil::MakeShape(S32, {})}});
 
   ASSERT_OK_AND_ASSIGN(ThunkProto start_proto, start_thunk_orig->ToProto());
   ASSERT_OK_AND_ASSIGN(ThunkProto done_proto, done_thunk_orig.ToProto());
@@ -871,8 +872,9 @@ void BM_HostExecuteThunkOverhead(benchmark::State& state) {
                            {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
   CHECK_OK(start_thunk->Initialize(init_params));
 
-  HostExecuteDoneThunk done_thunk(Thunk::ThunkInfo(),
-                                  start_thunk->async_events());
+  HostExecuteDoneThunk done_thunk(
+      Thunk::ThunkInfo(), start_thunk->async_events(),
+      {{slice_result, ShapeUtil::MakeShape(S32, {})}});
   CHECK_OK(done_thunk.Initialize(init_params));
 
   for (auto s : state) {

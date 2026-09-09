@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/status/status.h"
+#include <memory>
+
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/pjrt/triton.h"
+#include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
+#include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
 
-namespace xla::triton {
+namespace xla {
+namespace gpu_xla_executable_abi_version_serdes {
 
-absl::StatusOr<CompilationResult> Compile(absl::string_view module,
-                                          absl::string_view arch_name,
-                                          int num_warps, int num_ctas,
-                                          int num_stages) {
-  return absl::UnimplementedError(
-      "Triton compilation is not supported on this platform");
+absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
+PjRtExecutableAbiVersionFromProto(
+    const xla::PjRtExecutableAbiVersionProto& proto) {
+  return StreamExecutorPjRtExecutableAbiVersion::FromProto(proto);
 }
 
-}  // namespace xla::triton
+}  // namespace gpu_xla_executable_abi_version_serdes
+}  // namespace xla

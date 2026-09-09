@@ -54,6 +54,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -80,6 +81,7 @@ limitations under the License.
 #include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -131,6 +133,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tsl/platform/tstring.h"
 
@@ -280,6 +283,64 @@ static bool IsConst(Operation* op) {
              tfl::ConstOp, tfl::QConstOp, tfl::SparseConstOp,
              tfl::ExternalConstOp, tfl::SparseQConstOp, mlir::TFL::NoValueOp,
              mlir::stablehlo::ConstantOp, mlir::vhlo::ConstantOpV1>(op);
+}
+
+static mlir::AsmResourceBlob* GetBlob(
+    mlir::DenseResourceElementsAttr resource_attr) {
+  mlir::AsmResourceBlob* blob = resource_attr.getRawHandle().getBlob();
+  if (!blob && resource_attr.getRawHandle().getResource()) {
+    blob = resource_attr.getRawHandle().getResource()->getBlob();
+  }
+  return blob;
+}
+
+static bool IsBf16ToF32CastOnConstant(Operation* op,
+                                      ElementsAttr* const_attr = nullptr,
+                                      Operation** const_op = nullptr) {
+  auto cast_op = dyn_cast_or_null<mlir::TFL::CastOp>(op);
+  if (!cast_op) return false;
+  Value input = cast_op.getInput();
+  auto in_type = mlir::dyn_cast<mlir::ShapedType>(input.getType());
+  auto out_type = mlir::dyn_cast<mlir::ShapedType>(cast_op.getType());
+  if (!in_type || !out_type || !in_type.hasStaticShape() ||
+      !out_type.hasStaticShape()) {
+    return false;
+  }
+  Type in_elem = in_type.getElementType();
+  Type out_elem = out_type.getElementType();
+  if (!(in_elem.isBF16() || in_elem.isF16()) || !out_elem.isF32()) {
+    return false;
+  }
+  Operation* op_def = input.getDefiningOp();
+  if (!op_def) return false;
+
+  ElementsAttr attr;
+  if (!matchPattern(input, m_Constant(&attr))) {
+    if (auto cst = dyn_cast<tfl::ConstOp>(op_def)) {
+      attr = cst.getValue();
+    } else if (auto cst = dyn_cast<mlir::arith::ConstantOp>(op_def)) {
+      attr = mlir::cast<ElementsAttr>(cst.getValue());
+    } else {
+      return false;
+    }
+  }
+  if (!attr) return false;
+  if (const_attr) *const_attr = attr;
+  if (const_op) *const_op = op_def;
+  return true;
+}
+
+static bool AllUsersAreStreamingCasts(Operation* op) {
+  if (!op || op->use_empty()) return false;
+  for (Value result : op->getResults()) {
+    if (result.use_empty()) return false;
+    for (Operation* user : result.getUsers()) {
+      if (!IsBf16ToF32CastOnConstant(user)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 static bool IsTFResourceOp(Operation* op) {
@@ -605,8 +666,22 @@ class ExportBufferStorage {
       return data;
     }
 
+    inline void ReleaseData() {
+      using ResItemT = std::pair<mlir::Attribute, mlir::Operation*>;
+      if constexpr (std::is_same_v<ItemT, ResItemT>) {
+        if (auto res_attr =
+                mlir::dyn_cast_or_null<mlir::DenseResourceElementsAttr>(
+                    item_.first)) {
+          if (auto* blob = GetBlob(res_attr)) {
+            *blob = mlir::AsmResourceBlob();
+          }
+        }
+      }
+    }
+
     uint64_t hash() const { return hash_; }
     uint64_t byte_size_hint() const { return byte_size_hint_; }
+    const ItemT& item() const { return item_; }
 
     ExportBuffer(const ExportBuffer&) = delete;
     ExportBuffer& operator=(const ExportBuffer&) = delete;
@@ -851,6 +926,10 @@ class Translator {
   // calculate the offsets
   absl::Status AppendBufferData();
 
+  void ReleaseBufferData(
+      ExportBufferStorage<int, std::pair<mlir::Attribute, mlir::Operation*>>::
+          ExportBuffer& buffer);
+
   // Update constant & custom op buffer offsets
   // Return false if fail to update offset
   bool UpdateBufferOffsets(tflite::Model* mutable_model);
@@ -970,6 +1049,7 @@ class Translator {
   absl::flat_hash_map<int, std::pair<uint64_t, uint64_t>> buffer_idx_map_;
   ExportBufferStorage<int, std::pair<mlir::Attribute, mlir::Operation*>>
       const_buffer_storage_;
+  absl::flat_hash_map<mlir::AsmResourceBlob*, int> resource_ref_counts_;
 
   // Maps custom options data to corresponding node
   // Key is set to be the list of input tensor indices and list of output tensor
@@ -1035,6 +1115,7 @@ class Translator {
   // Map from mlir constant attribute to the buffer index. This is used to
   // deduplicate the buffers in the flatbuffer.
   llvm::DenseMap<mlir::ElementsAttr, int> const_attribute_to_buffer_map_;
+  llvm::DenseMap<mlir::ElementsAttr, int> cast_attribute_to_buffer_map_;
 
   // Map subgraph name to its debug metadata index and all of its operations'
   // debug metadata indexes. It is built during debug metadata creation, and is
@@ -1111,15 +1192,6 @@ Translator::BuildExternalBuffer(mlir::Value value,
       builder_, external_buffer_id, group_index, offset, length,
       builder_.CreateString(packing));
   return external_buffer;
-}
-
-static mlir::AsmResourceBlob* GetBlob(
-    mlir::DenseResourceElementsAttr resource_attr) {
-  mlir::AsmResourceBlob* blob = resource_attr.getRawHandle().getBlob();
-  if (!blob && resource_attr.getRawHandle().getResource()) {
-    blob = resource_attr.getRawHandle().getResource()->getBlob();
-  }
-  return blob;
 }
 
 static uint64_t GetPhysicalBufferHash(mlir::ElementsAttr attr) {
@@ -1205,7 +1277,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   can_be_deduplicated = can_be_deduplicated && !disable_buffer_deduping_;
   auto inst = value.getDefiningOp();
   ElementsAttr attr;
-  if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
+  bool is_streaming_cast = false;
+  if (IsBf16ToF32CastOnConstant(inst, &attr)) {
+    is_streaming_cast = true;
+  } else if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
     // arith::ConstantOp have ElementAttr at this point due to validation of the
     // TFLite module.
     attr = mlir::cast<ElementsAttr>(cst.getValue());
@@ -1233,12 +1308,13 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   }
 
   if (can_be_deduplicated) {
-    if (const_attribute_to_buffer_map_.find(attr) !=
-        const_attribute_to_buffer_map_.end()) {
-      index = const_attribute_to_buffer_map_[attr];
+    auto& dedup_map = is_streaming_cast ? cast_attribute_to_buffer_map_
+                                        : const_attribute_to_buffer_map_;
+    if (dedup_map.find(attr) != dedup_map.end()) {
+      index = dedup_map[attr];
       return empty_buffer_;
     }
-    const_attribute_to_buffer_map_[attr] = index;
+    dedup_map[attr] = index;
   }
 
   tflite::FlatbufferExportAttributeBufferApplier applier = nullptr;
@@ -1251,105 +1327,210 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).value();
 
-  // Default appliers
-  int low_bit_width = GetLowBitWidth(tflite_element_type);
-  if (low_bit_width > 0) {
+  if (is_streaming_cast) {
+    auto cast_in_type = mlir::cast<mlir::ShapedType>(attr.getType());
+    Type cast_in_elem = cast_in_type.getElementType();
+    size_t num_elements = cast_in_type.getNumElements();
+
     applier =
-        [low_bit_width](
+        [cast_in_elem, num_elements](
             const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
-            auto apply) {
-          return PackLowBitElementsAttr(attr_and_inst.first, low_bit_width,
-                                        apply);
-        };
+            auto apply) -> absl::Status {
+      auto [attr_, inst_] = attr_and_inst;
+      auto attr = mlir::cast<ElementsAttr>(attr_);
+
+      if (num_elements == 0) {
+        return absl::OkStatus();
+      }
+
+      const char* raw_src = nullptr;
+      bool is_splat = false;
+      if (auto res_attr =
+              mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+        mlir::AsmResourceBlob* blob = GetBlob(res_attr);
+        if (blob) {
+          raw_src = reinterpret_cast<const char*>(blob->getData().data());
+          if (blob->getData().size() < num_elements * 2) {
+            return absl::InternalError(
+                "Blob data size smaller than expected elements");
+          }
+        }
+      } else if (auto dense_attr =
+                     mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+        raw_src = dense_attr.getRawData().data();
+        is_splat = dense_attr.isSplat();
+        if (!is_splat && dense_attr.getRawData().size() < num_elements * 2) {
+          return absl::InternalError(
+              "Dense data size smaller than expected elements");
+        }
+      }
+
+      if (!raw_src) {
+        return absl::InternalError("Failed to get raw data for streaming cast");
+      }
+
+      constexpr size_t kChunkSize = 65536;
+
+      if (is_splat) {
+        uint16_t b = *reinterpret_cast<const uint16_t*>(raw_src);
+        float val;
+        if (cast_in_elem.isBF16()) {
+          uint32_t u32 = static_cast<uint32_t>(b) << 16;
+          std::memcpy(&val, &u32, sizeof(float));
+        } else {
+          val = llvm::APFloat(llvm::APFloat::IEEEhalf(), llvm::APInt(16, b))
+                    .convertToFloat();
+        }
+        std::vector<float> chunk(kChunkSize, val);
+        for (size_t offset = 0; offset < num_elements; offset += kChunkSize) {
+          size_t current_chunk = std::min(kChunkSize, num_elements - offset);
+          auto status = apply(
+              absl::string_view(reinterpret_cast<const char*>(chunk.data()),
+                                current_chunk * sizeof(float)));
+          if (!status.ok()) return status;
+        }
+        return absl::OkStatus();
+      }
+
+      std::vector<float> chunk(kChunkSize);
+      const uint16_t* in = reinterpret_cast<const uint16_t*>(raw_src);
+
+      if (cast_in_elem.isBF16()) {
+        for (size_t offset = 0; offset < num_elements; offset += kChunkSize) {
+          size_t current_chunk = std::min(kChunkSize, num_elements - offset);
+          for (size_t i = 0; i < current_chunk; ++i) {
+            uint16_t b = in[offset + i];
+            uint32_t u32 = static_cast<uint32_t>(b) << 16;
+            std::memcpy(&chunk[i], &u32, sizeof(float));
+          }
+          auto status = apply(
+              absl::string_view(reinterpret_cast<const char*>(chunk.data()),
+                                current_chunk * sizeof(float)));
+          if (!status.ok()) return status;
+        }
+      } else if (cast_in_elem.isF16()) {
+        for (size_t offset = 0; offset < num_elements; offset += kChunkSize) {
+          size_t current_chunk = std::min(kChunkSize, num_elements - offset);
+          for (size_t i = 0; i < current_chunk; ++i) {
+            chunk[i] = llvm::APFloat(llvm::APFloat::IEEEhalf(),
+                                     llvm::APInt(16, in[offset + i]))
+                           .convertToFloat();
+          }
+          auto status = apply(
+              absl::string_view(reinterpret_cast<const char*>(chunk.data()),
+                                current_chunk * sizeof(float)));
+          if (!status.ok()) return status;
+        }
+      } else {
+        return absl::InvalidArgumentError(
+            "Unsupported streaming cast input type");
+      }
+
+      return absl::OkStatus();
+    };
   } else {
-    applier =
-        [](const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
-           auto apply) {
-          auto [attr_, inst] = attr_and_inst;
-          auto attr = mlir::cast<ElementsAttr>(attr_);
-          auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(attr.getType());
+    // Default appliers
+    int low_bit_width = GetLowBitWidth(tflite_element_type);
+    if (low_bit_width > 0) {
+      applier =
+          [low_bit_width](
+              const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
+              auto apply) {
+            return PackLowBitElementsAttr(attr_and_inst.first, low_bit_width,
+                                          apply);
+          };
+    } else {
+      applier =
+          [](const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
+             auto apply) {
+            auto [attr_, inst] = attr_and_inst;
+            auto attr = mlir::cast<ElementsAttr>(attr_);
+            auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(attr.getType());
 
-          // Optimization Path for Numeric Dtypes (f32, i32, etc.)
-          // Flatbuffer requires little endian for numeric types. If the host
-          // is big endian, rely on the TensorFlow path below to reverse the
-          // byte order.
-          if (llvm::sys::IsLittleEndianHost && shaped_type &&
-              (shaped_type.getElementType().isIntOrFloat() ||
-               mlir::isa<mlir::quant::QuantizedType>(
-                   shaped_type.getElementType()))) {
-            int64_t expected_size = mlir::TFL::GetSizeInBytes(shaped_type);
+            // Optimization Path for Numeric Dtypes (f32, i32, etc.)
+            // Flatbuffer requires little endian for numeric types. If the host
+            // is big endian, rely on the TensorFlow path below to reverse the
+            // byte order.
+            if (llvm::sys::IsLittleEndianHost && shaped_type &&
+                (shaped_type.getElementType().isIntOrFloat() ||
+                 mlir::isa<mlir::quant::QuantizedType>(
+                     shaped_type.getElementType()))) {
+              int64_t expected_size = mlir::TFL::GetSizeInBytes(shaped_type);
 
-            // DenseElementsAttr
-            if (auto dense_attr =
-                    mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
-              // Only use the optimization if it's not a single-value (Splat)
-              // and the raw memory matches the logical dimensions exactly.
-              if (!dense_attr.isSplat() &&
-                  dense_attr.getRawData().size() == expected_size) {
-                return apply(absl::string_view(dense_attr.getRawData().data(),
-                                               dense_attr.getRawData().size()));
+              // DenseElementsAttr
+              if (auto dense_attr =
+                      mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+                // Only use the optimization if it's not a single-value (Splat)
+                // and the raw memory matches the logical dimensions exactly.
+                if (!dense_attr.isSplat() &&
+                    dense_attr.getRawData().size() == expected_size) {
+                  return apply(
+                      absl::string_view(dense_attr.getRawData().data(),
+                                        dense_attr.getRawData().size()));
+                }
+              }
+
+              // DenseResourceElementsAttr
+              if (auto res_attr =
+                      mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+                mlir::AsmResourceBlob* blob = GetBlob(res_attr);
+                if (blob && blob->getData().size() == expected_size) {
+                  return apply(absl::string_view(
+                      reinterpret_cast<const char*>(blob->getData().data()),
+                      blob->getData().size()));
+                }
               }
             }
 
-            // DenseResourceElementsAttr
-            if (auto res_attr =
-                    mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
-              mlir::AsmResourceBlob* blob = GetBlob(res_attr);
-              if (blob && blob->getData().size() == expected_size) {
-                return apply(absl::string_view(
-                    reinterpret_cast<const char*>(blob->getData().data()),
-                    blob->getData().size()));
-              }
-            }
-          }
+            // Fallback Path: use TensorFlow's conversion for compatibility.
+            auto tensor = std::make_unique<tensorflow::Tensor>();
+            auto status = tensorflow::ConvertToTensor(attr, tensor.get());
 
-          // Fallback Path: use TensorFlow's conversion for compatibility.
-          auto tensor = std::make_unique<tensorflow::Tensor>();
-          auto status = tensorflow::ConvertToTensor(attr, tensor.get());
-
-          if (!status.ok()) {
-            std::string error_message =
-                "failed to convert value attribute to tensor with error: " +
-                status.ToString();
-            inst->emitError(Twine(error_message));
-            return absl::InvalidArgumentError(error_message);
-          }
-
-          // TensorFlow and TensorFlow Lite use different string encoding
-          // formats. Convert to TensorFlow Lite format is it's a constant
-          // string tensor.
-          if (tensor->dtype() == tensorflow::DT_STRING) {
-            ::mlir::TFL::SimpleDynamicBuffer dynamic_buffer;
-            auto flat = tensor->flat<::tensorflow::tstring>();
-            for (int i = 0; i < flat.size(); ++i) {
-              const auto& str = flat(i);
-              if (!dynamic_buffer.AddString(str.c_str(), str.length())) {
-                std::string error_message =
-                    "failed to add string to dynamic buffer with error: " +
-                    status.ToString();
-                inst->emitError(Twine(error_message));
-                return absl::InvalidArgumentError(error_message);
-              }
+            if (!status.ok()) {
+              std::string error_message =
+                  "failed to convert value attribute to tensor with error: " +
+                  status.ToString();
+              inst->emitError(Twine(error_message));
+              return absl::InvalidArgumentError(error_message);
             }
 
-            char* tensor_buffer;
-            int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
-            auto apply_result = apply(absl::string_view(tensor_buffer, bytes));
-            free(tensor_buffer);
+            // TensorFlow and TensorFlow Lite use different string encoding
+            // formats. Convert to TensorFlow Lite format is it's a constant
+            // string tensor.
+            if (tensor->dtype() == tensorflow::DT_STRING) {
+              ::mlir::TFL::SimpleDynamicBuffer dynamic_buffer;
+              auto flat = tensor->flat<::tensorflow::tstring>();
+              for (int i = 0; i < flat.size(); ++i) {
+                const auto& str = flat(i);
+                if (!dynamic_buffer.AddString(str.c_str(), str.length())) {
+                  std::string error_message =
+                      "failed to add string to dynamic buffer with error: " +
+                      status.ToString();
+                  inst->emitError(Twine(error_message));
+                  return absl::InvalidArgumentError(error_message);
+                }
+              }
 
-            return apply_result;
-          } else {
-            return apply(tensor->tensor_data());
-          }
-        };
-  }
+              char* tensor_buffer;
+              int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
+              auto apply_result =
+                  apply(absl::string_view(tensor_buffer, bytes));
+              free(tensor_buffer);
 
-  // Try to get custom appliers
-  for (auto& factory : attribute_buffer_applier_factories_) {
-    auto applier_or = factory(attr, inst);
-    if (applier_or.has_value()) {
-      applier = std::move(applier_or.value());
-      break;
+              return apply_result;
+            } else {
+              return apply(tensor->tensor_data());
+            }
+          };
+    }
+
+    // Try to get custom appliers
+    for (auto& factory : attribute_buffer_applier_factories_) {
+      auto applier_or = factory(attr, inst);
+      if (applier_or.has_value()) {
+        applier = std::move(applier_or.value());
+        break;
+      }
     }
   }
 
@@ -1362,6 +1543,9 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     // cases where the MLIR attributes are not deduped properly (e.g. when two
     // consts of the same value are held in different attribute types).
     uint64_t h = GetPhysicalBufferHash(attr);
+    if (is_streaming_cast) {
+      h = llvm::hash_combine(h, 0xbf16f32);
+    }
     const_buffer_storage_.Insert(
         index, std::make_pair(attr, inst), std::move(applier),
         /*hash=*/h,
@@ -1378,6 +1562,7 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
       builder_.ForceVectorAlignment(buffer_data.size(), sizeof(uint8_t),
                                     custom_option_alignment_.value());
     }
+    ReleaseBufferData(buffer);
     return tflite::CreateBuffer(
         builder_, builder_.CreateVector(
                       reinterpret_cast<const uint8_t*>(buffer_data.data()),
@@ -3609,6 +3794,11 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
             llvm::dyn_cast<mlir::quantfork::StatisticsOp>(inst)) {
       continue;
     }
+
+    // Skip constant ops whose only uses are streaming casts to f32. Their data
+    // will be converted directly into f32 during the export of the cast ops.
+    if (IsConst(&inst) && AllUsersAreStreamingCasts(&inst)) continue;
+
     std::vector<int32_t> intermediates;
     // Build intermediate tensors for tfl.lstm and insert these tensors into
     // flatbuffer.
@@ -3636,7 +3826,15 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     }
 
     for (auto val : inst.getResults()) {
-      std::string tensor_name = UniqueName(val);
+      std::string tensor_name;
+      Operation* const_op = nullptr;
+      if (IsBf16ToF32CastOnConstant(&inst, nullptr, &const_op) && const_op &&
+          const_op->getNumResults() > 0) {
+        tensor_name = UniqueName(const_op->getResult(0));
+      }
+      if (tensor_name.empty()) {
+        tensor_name = UniqueName(val);
+      }
       // For "tfl.numeric_verify" op, the name is used to find out the
       // original activation tensor rather than its own unique name in the
       // visualization or debugging tools.
@@ -3653,7 +3851,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     }
 
     // Skip constant ops as they don't represent a TFLite operator.
-    if (IsConst(&inst)) continue;
+    if (IsConst(&inst) || IsBf16ToF32CastOnConstant(&inst)) continue;
 
     // Fetch operand and result tensor indices.
     std::vector<int32_t> results;
@@ -4498,15 +4696,41 @@ absl::Status Translator::TranslateInternal() {
   return absl::OkStatus();
 }
 
+void Translator::ReleaseBufferData(
+    ExportBufferStorage<int, std::pair<mlir::Attribute, mlir::Operation*>>::
+        ExportBuffer& buffer) {
+  if (auto res_attr = mlir::dyn_cast_or_null<mlir::DenseResourceElementsAttr>(
+          buffer.item().first)) {
+    if (auto* blob = GetBlob(res_attr)) {
+      auto it = resource_ref_counts_.find(blob);
+      if (it != resource_ref_counts_.end()) {
+        if (--it->second <= 0) {
+          *blob = mlir::AsmResourceBlob();
+          resource_ref_counts_.erase(it);
+        }
+        return;
+      }
+    }
+  }
+  buffer.ReleaseData();
+}
+
 absl::Status Translator::AppendBufferData() {
   auto offset = [this]() { return export_stream_.get().tell(); };
 
   // Reserve extra space for the buffer data. The pessimistic estimation is to
   // account for the worst-case padding of 32 bytes for each buffer.
   uint64_t estimated_buffer_size = 0;
+  resource_ref_counts_.clear();
   for (const auto& [_, buffer] : const_buffer_storage_.buffers()) {
     estimated_buffer_size += buffer->byte_size_hint();
     estimated_buffer_size += 32;  // worst case padding
+    if (auto res_attr = mlir::dyn_cast_or_null<mlir::DenseResourceElementsAttr>(
+            buffer->item().first)) {
+      if (auto* blob = GetBlob(res_attr)) {
+        resource_ref_counts_[blob]++;
+      }
+    }
   }
   for (const auto& [_, buffer] : custom_op_buffer_storage_.buffers()) {
     estimated_buffer_size += buffer->byte_size_hint();
@@ -4531,9 +4755,11 @@ absl::Status Translator::AppendBufferData() {
       }
       hashcode_to_pos[hash] = std::make_pair(buffer_offset, size);
       buffer_idx_map_[index] = std::make_pair(buffer_offset, size);
+      ReleaseBufferData(*buffer);
     } else {
       // only update offset/index.
       buffer_idx_map_[index] = hashcode_to_pos[hash];
+      ReleaseBufferData(*buffer);
     }
   }
   // pad 16 bytes for the last buffer for XNNPack

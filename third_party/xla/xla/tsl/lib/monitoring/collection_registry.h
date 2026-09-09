@@ -235,10 +235,9 @@ class CollectionRegistry {
   //     }
   //   });
   class RegistrationHandle;
-  std::unique_ptr<RegistrationHandle> Register(
+  [[nodiscard]] std::unique_ptr<RegistrationHandle> Register(
       const AbstractMetricDef* metric_def,
-      const CollectionFunction& collection_function)
-      ABSL_LOCKS_EXCLUDED(mu_) ABSL_MUST_USE_RESULT;
+      const CollectionFunction& collection_function) ABSL_LOCKS_EXCLUDED(mu_);
 
   // Options for collecting metrics.
   struct CollectMetricsOptions {

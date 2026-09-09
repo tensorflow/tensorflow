@@ -224,28 +224,36 @@ class StatefulScatterNdTest(test.TestCase):
       # Test that invalid empty indices (rank 2 but inner dim 0) raise
       # InvalidArgumentError
       ref_invalid = resource_variable_ops.ResourceVariable(
-          [1, 2, 3, 4], dtype=dtype)
+          [1, 2, 3, 4], dtype=dtype
+      )
       indices_invalid = constant_op.constant(
-          [], shape=[0, 0], dtype=dtypes.int32)
+          [], shape=[0, 0], dtype=dtypes.int32
+      )
       updates_invalid = constant_op.constant([], dtype=dtype)
       self.evaluate(ref_invalid.initializer)
       with self.assertRaises((ValueError, errors.InvalidArgumentError)):
         self.evaluate(
             state_ops.scatter_nd_update(
-                ref_invalid, indices_invalid, updates_invalid))
+                ref_invalid, indices_invalid, updates_invalid
+            )
+        )
 
       # Test that empty indices but non-empty updates raise
       # InvalidArgumentError
       ref_mismatch = resource_variable_ops.ResourceVariable(
-          [1, 2, 3, 4], dtype=dtype)
+          [1, 2, 3, 4], dtype=dtype
+      )
       indices_mismatch = constant_op.constant(
-          [], shape=[0, 1], dtype=dtypes.int32)
+          [], shape=[0, 1], dtype=dtypes.int32
+      )
       updates_mismatch = constant_op.constant([5], dtype=dtype)
       self.evaluate(ref_mismatch.initializer)
       with self.assertRaises((ValueError, errors.InvalidArgumentError)):
         self.evaluate(
             state_ops.scatter_nd_update(
-                ref_mismatch, indices_mismatch, updates_mismatch))
+                ref_mismatch, indices_mismatch, updates_mismatch
+            )
+        )
 
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
@@ -557,7 +565,6 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     result = self.evaluate(scatter)
     self.assertAllEqual(expected, result)
-
 
   @test_util.run_in_graph_and_eager_modes
   def testInvalidShape(self):
@@ -1026,10 +1033,11 @@ class ScatterNdTensorTest(test.TestCase):
       def _TestFn():
         indices = constant_op.constant([[4], [3], [1], [7]])
         updates = constant_op.constant(
-            [9, 10, 11, 12],
-            dtype=dtype)  # pylint: disable=cell-var-from-loop
+            [9, 10, 11, 12], dtype=dtype
+        )  # pylint: disable=cell-var-from-loop
         t = array_ops.ones(
-            [8], dtype=dtype)  # pylint: disable=cell-var-from-loop
+            [8], dtype=dtype
+        )  # pylint: disable=cell-var-from-loop
 
         return array_ops.tensor_scatter_update(t, indices, updates)
 
