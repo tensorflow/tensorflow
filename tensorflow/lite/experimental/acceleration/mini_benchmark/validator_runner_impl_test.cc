@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_impl.h"
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -36,13 +37,17 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
-#include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
+#include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"  // NOLINT(misc-include-cleaner)
 #include "tensorflow/lite/stderr_reporter.h"
 #ifdef __ANDROID__
 #include <dlfcn.h>
 
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_validator_runner_entrypoint.h"
 #endif  // __ANDROID__
+
+extern "C" int DummyValidationEntrypointFunction(int argc, char** argv) {
+  return 0;
+}
 
 namespace tflite {
 namespace acceleration {
@@ -330,6 +335,34 @@ TEST_F(ValidatorRunnerImplTest, FailIfCannotEmbedInputData) {
       1, std::vector<std::vector<uint8_t>>(2));
   EXPECT_EQ(CreateValidator().Init(),
             kMinibenchmarkValidationSubgraphBuildFailed);
+}
+
+TEST_F(ValidatorRunnerImplTest,
+       TriggerValidationAsyncDoesNotUseAfterFreeWhenRunnerDestroyed) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+  options_.validation_entrypoint_name = "DummyValidationEntrypointFunction";
+  std::vector<flatbuffers::FlatBufferBuilder> tflite_settings(1);
+  tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
+
+  auto validator = std::make_unique<ValidatorRunnerImpl>(
+      CreateModelLoaderPath(options_), options_.storage_path,
+      options_.data_directory_path, options_.per_test_timeout_ms,
+      std::move(custom_validation_embedder_), options_.error_reporter,
+      options_.nnapi_sl, options_.gpu_plugin_handle,
+      options_.validation_entrypoint_name,
+      options_.benchmark_result_evaluator);
+  ASSERT_EQ(validator->Init(), kMinibenchmarkSuccess);
+  validator->TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
+  validator.reset();
+  usleep(absl::ToInt64Microseconds(absl::Milliseconds(100)));
+  FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
+                                            options_.error_reporter);
+  storage.Read();
+  EXPECT_GE(storage.Count(), 1);
 }
 
 }  // namespace
