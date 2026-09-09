@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
@@ -195,16 +196,47 @@ void WriteResults(const std::vector<HloIsolationTestResult>& pipeline_results) {
   }
 }
 
+void ApplyBoundingBoxToMismatch(
+    const absl::flat_hash_map<
+        int64_t, numerics::debug_info::MismatchBoundingBox>& computed_bboxes,
+    NumericMismatch& mismatch) {
+  int64_t idx = mismatch.output_shape_index();
+  auto it = computed_bboxes.find(idx);
+  if (it != computed_bboxes.end()) {
+    const auto& bbox = it->second;
+    for (int64_t dim : bbox.tensor_shape) {
+      mismatch.add_tensor_dimensions(dim);
+    }
+    for (int64_t val : bbox.box_min) {
+      mismatch.add_mismatch_box_min(val);
+    }
+    for (int64_t val : bbox.box_max) {
+      mismatch.add_mismatch_box_max(val);
+    }
+    if (mismatch.top_mismatch_index().empty() &&
+        !bbox.top_mismatch_coords.empty()) {
+      for (int64_t coord : bbox.top_mismatch_coords.front()) {
+        mismatch.add_top_mismatch_index(coord);
+      }
+    }
+    mismatch.set_mismatch_count(bbox.mismatch_count);
+    mismatch.set_total_elements(bbox.total_elements);
+  }
+}
+
 absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
                             const Literal& reference_output,
                             HloIsolationTestResult& result,
                             const ModuleIsolationOptions& options,
                             absl::string_view check_name) {
   ErrorSpec error_spec(options.abs_error_bound, options.rel_error_bound);
+  absl::flat_hash_map<int64_t, numerics::debug_info::MismatchBoundingBox>
+      computed_bboxes;
   auto on_miscompare =
-      [&module](const LiteralSlice& expected, const LiteralSlice& actual,
-                const LiteralSlice& mismatches, const ShapeIndex& shape_index,
-                const literal_comparison::ErrorBuckets& /*error_buckets*/) {
+      [&module, &computed_bboxes](
+          const LiteralSlice& expected, const LiteralSlice& actual,
+          const LiteralSlice& mismatches, const ShapeIndex& shape_index,
+          const literal_comparison::ErrorBuckets& /*error_buckets*/) {
         std::string escaped_shape_index = absl::StrReplaceAll(
             shape_index.ToString(), {{",", "_"}, {"{", ""}, {"}", ""}});
         std::string shape_suffix =
@@ -217,6 +249,9 @@ absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
                                absl::StrCat("actual", shape_suffix));
         WriteLiteralToTempFile(mismatches, module.name(),
                                absl::StrCat("mismatches", shape_suffix));
+        int64_t idx = shape_index.empty() ? 0 : shape_index.front();
+        computed_bboxes[idx] =
+            numerics::debug_info::ComputeBoundingBoxFromLiteralMask(mismatches);
       };
   absl::Status status = literal_comparison::Near(
       reference_output, test_output, error_spec, true, on_miscompare);
@@ -233,6 +268,11 @@ absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
     options.on_mismatch_fn(module, test_output, reference_output, status);
     absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
         ExtractAndEnrichTopMismatches(std::string(status.message()), &module);
+    if (top_mismatches.ok()) {
+      for (NumericMismatch& mismatch : *top_mismatches) {
+        ApplyBoundingBoxToMismatch(computed_bboxes, mismatch);
+      }
+    }
     PopulateNumericCheckMismatches(numeric_check, top_mismatches);
   }
   return status;
@@ -379,8 +419,11 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               return;
             }
 
+            absl::flat_hash_map<int64_t,
+                                numerics::debug_info::MismatchBoundingBox>
+                computed_bboxes;
             auto on_miscompare =
-                [module_name, op_name](
+                [module_name, op_name, &computed_bboxes](
                     const LiteralSlice& expected, const LiteralSlice& actual,
                     const LiteralSlice& mismatches,
                     const ShapeIndex& shape_index,
@@ -401,6 +444,10 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
                   WriteLiteralToTempFile(
                       mismatches, module_name,
                       absl::StrCat(op_name, "-mismatches", shape_suffix));
+                  int64_t idx = shape_index.empty() ? 0 : shape_index.front();
+                  computed_bboxes[idx] =
+                      numerics::debug_info::ComputeBoundingBoxFromLiteralMask(
+                          mismatches);
                 };
 
             xla::ErrorSpec error_spec(static_cast<float>(abs_error),
@@ -431,6 +478,11 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
                   ExtractTopMismatches(std::string(matched.message()),
                                        literals[0]->shape().IsTuple());
+              if (top_mismatches.ok()) {
+                for (NumericMismatch& mismatch : *top_mismatches) {
+                  ApplyBoundingBoxToMismatch(computed_bboxes, mismatch);
+                }
+              }
               PopulateNumericCheckMismatches(numeric_check, top_mismatches);
             }
           };
@@ -896,6 +948,15 @@ absl::StatusOr<NumericMismatch> ParseMismatchLine(absl::string_view line) {
     data.set_actual(actual_double);
     data.set_expected(expected_double);
     data.set_rel_error(rel_error_double);
+    std::string clean_indices =
+        absl::StrReplaceAll(index_str, {{"{", ""}, {"}", ""}, {" ", ""}});
+    for (absl::string_view idx_part :
+         absl::StrSplit(clean_indices, ',', absl::SkipEmpty())) {
+      int64_t coord;
+      if (absl::SimpleAtoi(idx_part, &coord)) {
+        data.add_top_mismatch_index(coord);
+      }
+    }
     return data;
   }
   return absl::InvalidArgumentError(
@@ -1101,6 +1162,22 @@ numerics::debug_info::MismatchDetails ConvertToMismatchDetails(
   }
   if (m.has_result_of_reduce()) {
     details.result_of_reduce = m.result_of_reduce();
+  }
+  if (!m.tensor_dimensions().empty() || !m.top_mismatch_index().empty()) {
+    numerics::debug_info::MismatchBoundingBox bbox;
+    bbox.tensor_shape.assign(m.tensor_dimensions().begin(),
+                             m.tensor_dimensions().end());
+    bbox.box_min.assign(m.mismatch_box_min().begin(),
+                        m.mismatch_box_min().end());
+    bbox.box_max.assign(m.mismatch_box_max().begin(),
+                        m.mismatch_box_max().end());
+    if (!m.top_mismatch_index().empty()) {
+      bbox.top_mismatch_coords.push_back(std::vector<int64_t>(
+          m.top_mismatch_index().begin(), m.top_mismatch_index().end()));
+    }
+    bbox.mismatch_count = m.mismatch_count();
+    bbox.total_elements = m.total_elements();
+    details.bounding_box = std::move(bbox);
   }
   return details;
 }

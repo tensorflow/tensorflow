@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
 
+#include <array>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -26,10 +29,15 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -891,6 +899,642 @@ ENTRY main {
   EXPECT_TRUE(absl::StrContains(html, "bg-pink"));
   EXPECT_TRUE(absl::StrContains(html, "Numeric Mismatch:"));
   EXPECT_TRUE(absl::StrContains(html, "sin.0"));
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBoxCleanMaskReturnsZeroMismatches) {
+  Literal mask = LiteralUtil::CreateR2<bool>({
+      {false, false, false},
+      {false, false, false},
+  });
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.mismatch_count, 0);
+  EXPECT_EQ(box.total_elements, 6);
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBox1D) {
+  std::array<bool, 16> values{};
+  values[3] = true;
+  values[10] = true;
+  Literal mask = LiteralUtil::CreateR1<bool>(absl::MakeConstSpan(values));
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.box_min, std::vector<int64_t>{3});
+  EXPECT_EQ(box.box_max, std::vector<int64_t>{10});
+  EXPECT_EQ(box.mismatch_count, 2);
+  EXPECT_EQ(box.total_elements, 16);
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBox2D) {
+  Literal mask = LiteralUtil::CreateR2<bool>({
+      {false, false, false, false, false},
+      {false, false, true, false, false},
+      {false, false, false, false, false},
+      {false, true, false, false, false},
+  });
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.box_min, (std::vector<int64_t>{1, 1}));
+  EXPECT_EQ(box.box_max, (std::vector<int64_t>{3, 2}));
+  EXPECT_EQ(box.mismatch_count, 2);
+  EXPECT_EQ(box.total_elements, 20);
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBox3D) {
+  Literal mask = LiteralUtil::CreateR3<bool>({
+      {
+          {false, false, false, false},
+          {false, false, false, false},
+          {false, false, false, false},
+      },
+      {
+          {false, false, true, false},
+          {false, false, false, false},
+          {false, false, false, false},
+      },
+  });
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.box_min, (std::vector<int64_t>{1, 0, 2}));
+  EXPECT_EQ(box.box_max, (std::vector<int64_t>{1, 0, 2}));
+  EXPECT_EQ(box.mismatch_count, 1);
+  EXPECT_EQ(box.total_elements, 24);
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBoxScalar0D) {
+  Literal clean_scalar = LiteralUtil::CreateR0<bool>(false);
+  MismatchBoundingBox clean_box =
+      ComputeBoundingBoxFromLiteralMask(clean_scalar);
+  EXPECT_EQ(clean_box.mismatch_count, 0);
+  EXPECT_EQ(clean_box.total_elements, 1);
+  EXPECT_TRUE(clean_box.box_min.empty());
+  EXPECT_TRUE(clean_box.box_max.empty());
+
+  Literal mismatch_scalar = LiteralUtil::CreateR0<bool>(true);
+  MismatchBoundingBox mismatch_box =
+      ComputeBoundingBoxFromLiteralMask(mismatch_scalar);
+  EXPECT_EQ(mismatch_box.mismatch_count, 1);
+  EXPECT_EQ(mismatch_box.total_elements, 1);
+  EXPECT_TRUE(mismatch_box.box_min.empty());
+  EXPECT_TRUE(mismatch_box.box_max.empty());
+  ASSERT_EQ(mismatch_box.top_mismatch_coords.size(), 1);
+  EXPECT_TRUE(mismatch_box.top_mismatch_coords[0].empty());
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBox4D) {
+  Shape shape = ShapeUtil::MakeShape(PRED, {2, 3, 4, 5});
+  Literal mask(shape);
+  mask.PopulateWithValue(false);
+  mask.Set<bool>({0, 1, 2, 3}, true);
+  mask.Set<bool>({1, 2, 0, 4}, true);
+
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.mismatch_count, 2);
+  EXPECT_EQ(box.total_elements, 120);
+  EXPECT_EQ(box.box_min, (std::vector<int64_t>{0, 1, 0, 3}));
+  EXPECT_EQ(box.box_max, (std::vector<int64_t>{1, 2, 2, 4}));
+  EXPECT_GE(box.top_mismatch_coords.size(), 2);
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBoxMultipleCoordsInRow) {
+  Shape shape = ShapeUtil::MakeShape(PRED, {16});
+  Literal mask(shape);
+  mask.PopulateWithValue(false);
+  mask.Set<bool>({1}, true);
+  mask.Set<bool>({3}, true);
+  mask.Set<bool>({5}, true);
+  mask.Set<bool>({7}, true);
+  mask.Set<bool>({9}, true);
+  mask.Set<bool>({11}, true);
+
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.mismatch_count, 6);
+  EXPECT_EQ(box.box_min, (std::vector<int64_t>{1}));
+  EXPECT_EQ(box.box_max, (std::vector<int64_t>{11}));
+  EXPECT_EQ(box.top_mismatch_coords.size(), 6);
+  EXPECT_EQ(box.top_mismatch_coords[0], (std::vector<int64_t>{1}));
+  EXPECT_EQ(box.top_mismatch_coords[1], (std::vector<int64_t>{3}));
+  EXPECT_EQ(box.top_mismatch_coords[2], (std::vector<int64_t>{5}));
+  EXPECT_EQ(box.top_mismatch_coords[3], (std::vector<int64_t>{7}));
+  EXPECT_EQ(box.top_mismatch_coords[4], (std::vector<int64_t>{9}));
+  EXPECT_EQ(box.top_mismatch_coords[5], (std::vector<int64_t>{11}));
+  EXPECT_EQ(box.pattern, "STRIDED (stride 2)");
+}
+
+MismatchBoundingBox MakeBoundingBox(
+    std::vector<int64_t> shape, std::vector<int64_t> box_min,
+    std::vector<int64_t> box_max, int64_t mismatch_count,
+    int64_t total_elements, std::string pattern = "",
+    std::vector<std::vector<int64_t>> top_coords = {}) {
+  MismatchBoundingBox bbox;
+  bbox.tensor_shape = std::move(shape);
+  bbox.box_min = std::move(box_min);
+  bbox.box_max = std::move(box_max);
+  bbox.mismatch_count = mismatch_count;
+  bbox.total_elements = total_elements;
+  bbox.pattern = std::move(pattern);
+  bbox.top_mismatch_coords = std::move(top_coords);
+  return bbox;
+}
+
+MismatchDetails CreateSampleMismatch(std::string instruction_name,
+                                     std::optional<int64_t> output_shape_index,
+                                     double actual, double expected,
+                                     double rel_error,
+                                     MismatchBoundingBox bounding_box) {
+  MismatchDetails m;
+  m.target_instruction_name = std::move(instruction_name);
+  m.output_shape_index = output_shape_index;
+  m.actual = actual;
+  m.expected = expected;
+  m.rel_error = rel_error;
+  m.bounding_box = std::move(bounding_box);
+  return m;
+}
+
+void ExpectSliceBox(
+    const absl::flat_hash_map<std::string, SliceBoundingBox>& slice_boxes,
+    absl::string_view key, const std::vector<int64_t>& expected_min,
+    const std::vector<int64_t>& expected_max, int64_t expected_count) {
+  SCOPED_TRACE(key);
+  ASSERT_TRUE(slice_boxes.contains(key));
+  const auto& sbox = slice_boxes.at(key);
+  EXPECT_EQ(sbox.box_min, expected_min);
+  EXPECT_EQ(sbox.box_max, expected_max);
+  EXPECT_EQ(sbox.mismatch_count, expected_count);
+}
+
+TEST(HloDumpUtilsTest, ClassifyMismatchPatternTests) {
+  // 1. Dense Block (density >= 70%)
+  EXPECT_EQ(ClassifyMismatchPattern(
+                MakeBoundingBox({10, 10}, {0, 0}, {9, 9}, 85, 100)),
+            "DENSE_BLOCK");
+
+  // 2. Sparse Outliers (density < 2% and count < 16)
+  EXPECT_EQ(ClassifyMismatchPattern(
+                MakeBoundingBox({100, 100}, {0, 0}, {99, 99}, 5, 10000)),
+            "SPARSE_OUTLIERS");
+
+  // 3. Strided (periodic delta between mismatch coordinates in minor dimension)
+  EXPECT_EQ(ClassifyMismatchPattern(
+                MakeBoundingBox({8, 32}, {0, 0}, {7, 24}, 24, 256,
+                                /*pattern=*/"", {{1, 8}, {1, 16}, {2, 24}})),
+            "STRIDED (stride 8)");
+
+  // 4. Boundary (errors concentrated at min and max bounds with hollow
+  // interior)
+  EXPECT_EQ(ClassifyMismatchPattern(MakeBoundingBox(
+                {10, 20}, {0, 2}, {9, 18}, 20, 200, /*pattern=*/"",
+                {{0, 5}, {9, 5}, {0, 6}, {9, 6}})),
+            "BOUNDARY");
+
+  // 5. Single Slice (span is 1 along one or more dimensions)
+  EXPECT_EQ(
+      ClassifyMismatchPattern(MakeBoundingBox(
+          {8, 16}, {3, 2}, {3, 10}, 8, 128, /*pattern=*/"", {{3, 2}, {3, 3}})),
+      "SINGLE_SLICE");
+
+  // 6. Boundary with coordinates that have column delta >= 2 (must remain
+  // BOUNDARY, not STRIDED)
+  EXPECT_EQ(ClassifyMismatchPattern(MakeBoundingBox(
+                {10, 20}, {0, 4}, {9, 12}, 20, 200, /*pattern=*/"",
+                {{0, 4}, {9, 4}, {0, 12}, {9, 12}})),
+            "BOUNDARY");
+
+  // 7. Sparse outliers where points have coordinate delta >= 2 (must remain
+  // SPARSE_OUTLIERS, not STRIDED)
+  EXPECT_EQ(ClassifyMismatchPattern(
+                MakeBoundingBox({100, 100}, {0, 4}, {99, 12}, 2, 10000,
+                                /*pattern=*/"", {{0, 4}, {99, 12}})),
+            "SPARSE_OUTLIERS");
+
+  // 8. Irregular deltas with common even factor (e.g. 100 and 2) must not
+  // trigger STRIDED
+  EXPECT_NE(ClassifyMismatchPattern(
+                MakeBoundingBox({10, 200}, {1, 0}, {5, 102}, 30, 2000,
+                                /*pattern=*/"", {{1, 0}, {2, 100}, {3, 102}})),
+            "STRIDED (stride 2)");
+
+  // 9. Scalar tensor (rank 0) with mismatch
+  EXPECT_EQ(ClassifyMismatchPattern(MakeBoundingBox({}, {}, {}, 1, 1)),
+            "DENSE_BLOCK");
+
+  // 10. Empty / 0 mismatch count returns empty string
+  EXPECT_EQ(ClassifyMismatchPattern(
+                MakeBoundingBox({10, 10}, {0, 0}, {0, 0}, 0, 100)),
+            "");
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBoxFromLiteralMask_4DMismatchedSlices) {
+  Literal mask = LiteralUtil::CreateR4<bool>({
+      {{{true, false}, {false, false}}, {{false, false}, {false, false}}},
+      {{{false, false}, {false, false}}, {{false, false}, {false, false}}},
+      {{{false, false}, {false, true}}, {{false, false}, {false, false}}},
+      {{{false, false}, {false, false}}, {{false, false}, {false, false}}},
+  });
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.mismatch_count, 2);
+  EXPECT_EQ(box.box_min, (std::vector<int64_t>{0, 0, 0, 0}));
+  EXPECT_EQ(box.box_max, (std::vector<int64_t>{2, 0, 1, 1}));
+  EXPECT_EQ(box.mismatched_slices, (std::vector<int64_t>{0, 2}));
+  ASSERT_EQ(box.slice_boxes.size(), 2);
+  ExpectSliceBox(box.slice_boxes, "0", {0, 0, 0, 0}, {0, 0, 0, 0}, 1);
+  EXPECT_EQ(box.slice_boxes.at("0").slice_index, 0);
+  EXPECT_EQ(box.slice_boxes.at("0").slice_key, "0");
+
+  ExpectSliceBox(box.slice_boxes, "2", {2, 0, 1, 1}, {2, 0, 1, 1}, 1);
+  EXPECT_EQ(box.slice_boxes.at("2").slice_index, 2);
+  EXPECT_EQ(box.slice_boxes.at("2").slice_key, "2");
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBoxFromLiteralMask_5DMultiSliceKeying) {
+  Shape shape = ShapeUtil::MakeShape(PRED, {2, 3, 4, 8, 16});
+  Literal mask(shape);
+  mask.PopulateWithValue(false);
+  // Two mismatches in distinct outer batches (dim 0 = 0 vs 1) but sharing dim 1
+  // = 2 (which is rank - 4).
+  mask.Set<bool>({0, 2, 1, 2, 3}, true);
+  mask.Set<bool>({1, 2, 2, 4, 6}, true);
+
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.mismatch_count, 2);
+  EXPECT_EQ(box.box_min, (std::vector<int64_t>{0, 2, 1, 2, 3}));
+  EXPECT_EQ(box.box_max, (std::vector<int64_t>{1, 2, 2, 4, 6}));
+
+  ASSERT_EQ(box.slice_boxes.size(), 2);
+  ExpectSliceBox(box.slice_boxes, "0,2", {0, 2, 1, 2, 3}, {0, 2, 1, 2, 3}, 1);
+  EXPECT_EQ(box.slice_boxes.at("0,2").slice_key, "0,2");
+  EXPECT_EQ(box.slice_boxes.at("0,2").slice_coords,
+            (std::vector<int64_t>{0, 2}));
+  EXPECT_EQ(box.slice_boxes.at("0,2").slice_index, 2);
+
+  ExpectSliceBox(box.slice_boxes, "1,2", {1, 2, 2, 4, 6}, {1, 2, 2, 4, 6}, 1);
+  EXPECT_EQ(box.slice_boxes.at("1,2").slice_key, "1,2");
+  EXPECT_EQ(box.slice_boxes.at("1,2").slice_coords,
+            (std::vector<int64_t>{1, 2}));
+  EXPECT_EQ(box.slice_boxes.at("1,2").slice_index, 2);
+}
+
+TEST(HloDumpUtilsTest, ComputeBoundingBoxFromLiteralMask_ReservoirSampling) {
+  Shape shape = ShapeUtil::MakeShape(PRED, {100, 32});
+  Literal mask(shape);
+  mask.PopulateWithValue(false);
+
+  // Set 17 mismatches across rows 0-3 (exceeding reservoir capacity k=16).
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 5; ++c) {
+      mask.Set<bool>({r, c}, true);
+    }
+  }
+  mask.Set<bool>({3, 0}, true);
+  mask.Set<bool>({3, 1}, true);
+
+  // Set 15 mismatches across later rows (rows 50, 90, 99).
+  for (int c = 0; c < 5; ++c) {
+    mask.Set<bool>({50, c}, true);
+    mask.Set<bool>({90, c}, true);
+    mask.Set<bool>({99, c}, true);
+  }
+
+  MismatchBoundingBox box = ComputeBoundingBoxFromLiteralMask(mask);
+  EXPECT_EQ(box.mismatch_count, 32);
+  EXPECT_EQ(box.top_mismatch_coords.size(), 16);
+
+  // Reservoir sampling must ensure spatial representation across both early and
+  // late rows.
+  bool has_early_row = false;
+  bool has_late_row = false;
+  for (const auto& coord : box.top_mismatch_coords) {
+    if (coord[0] <= 3) {
+      has_early_row = true;
+    }
+    if (coord[0] >= 50) {
+      has_late_row = true;
+    }
+  }
+  EXPECT_TRUE(has_early_row);
+  EXPECT_TRUE(has_late_row);
+}
+
+TEST(HloDumpUtilsTest, PopulateTensorVisualizationsAndSerialize) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  ROOT %p0 = f32[10,20] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails mismatch =
+      CreateSampleMismatch("p0", 0, 1.0, 2.0, 0.5,
+                           MakeBoundingBox({10, 20}, {1, 2}, {5, 8}, 15, 200,
+                                           /*pattern=*/"", {{2, 3}}));
+
+  auto vis_map = PopulateTensorVisualizations(*module, {mismatch});
+  ASSERT_TRUE(vis_map.contains("p0"));
+  const auto& item = vis_map["p0"];
+  EXPECT_EQ(item.instruction_name, "p0");
+  EXPECT_EQ(item.opcode, "parameter");
+  EXPECT_EQ(item.shape, (std::vector<int64_t>{10, 20}));
+  EXPECT_TRUE(item.has_mismatch);
+  EXPECT_EQ(item.box_min, (std::vector<int64_t>{1, 2}));
+  EXPECT_EQ(item.box_max, (std::vector<int64_t>{5, 8}));
+  EXPECT_EQ(item.mismatch_count, 15);
+  EXPECT_EQ(item.total_elements, 200);
+
+  std::string js = SerializeTensorVisualizationsJs(vis_map);
+  EXPECT_TRUE(absl::StrContains(js, "\"has_mismatch\": true"));
+  EXPECT_TRUE(absl::StrContains(js, "\"opcode\": \"parameter\""));
+  EXPECT_TRUE(absl::StrContains(js, "\"box_min\": [1, 2]"));
+  EXPECT_TRUE(absl::StrContains(js, "\"box_max\": [5, 8]"));
+  EXPECT_TRUE(absl::StrContains(js, "\"mismatch_count\": 15"));
+  EXPECT_TRUE(absl::StrContains(js, "\"total_elements\": 200"));
+
+  std::string html = ConvertHloToHtml(
+      module->name(), module->ToString(), /*annotations=*/{},
+      /*recovery_info=*/{}, /*stack_frame_index=*/nullptr,
+      /*graph_data=*/nullptr, /*tensor_visualizations=*/&vis_map);
+  EXPECT_TRUE(absl::StrContains(html, "window.tensorVisualizations ="));
+  EXPECT_TRUE(absl::StrContains(html, "\"mismatch_count\": 15"));
+}
+
+TEST(HloDumpUtilsTest, SerializeTensorVisualizationsJsSpecialFloats) {
+  absl::flat_hash_map<std::string, TensorVisualizationInfo> vis_map;
+  TensorVisualizationInfo item;
+  item.instruction_name = "test_op";
+  item.opcode = "custom-call";
+  item.shape = {2, 2};
+  item.has_mismatch = true;
+  item.top_mismatches = {
+      {{0, 0}, std::numeric_limits<double>::infinity()},
+      {{0, 1}, -std::numeric_limits<double>::infinity()},
+      {{1, 0}, std::numeric_limits<double>::quiet_NaN()},
+      {{1, 1}, 0.25},
+  };
+  vis_map["test_op"] = item;
+
+  std::string js = SerializeTensorVisualizationsJs(vis_map);
+  EXPECT_TRUE(absl::StrContains(js, "\"rel_error\": Infinity"));
+  EXPECT_TRUE(absl::StrContains(js, "\"rel_error\": -Infinity"));
+  EXPECT_TRUE(absl::StrContains(js, "\"rel_error\": NaN"));
+  EXPECT_TRUE(absl::StrContains(js, "\"rel_error\": 0.25"));
+  EXPECT_FALSE(absl::StrContains(js, "\"rel_error\": inf"));
+  EXPECT_FALSE(absl::StrContains(js, "\"rel_error\": -inf"));
+  EXPECT_FALSE(absl::StrContains(js, "\"rel_error\": nan"));
+}
+
+std::vector<MismatchDetails> CreateMultiRankSampleMismatches() {
+  std::vector<MismatchDetails> mismatches;
+
+  // 1. Rank 5 tensor (add) with 3 composite slice boxes
+  {
+    auto bbox =
+        MakeBoundingBox({2, 4, 8, 16, 32}, {0, 0, 0, 1, 2}, {1, 2, 7, 15, 30},
+                        130, 2 * 4 * 8 * 16 * 32, "STRIDED (stride 8)",
+                        {{0, 0, 1, 3, 8}, {0, 1, 4, 8, 16}, {1, 2, 6, 13, 24}});
+    bbox.mismatched_slices = {0, 1, 2};
+    // Slice 0: [0, 0, ...] -> High density cluster (72 / 84 cells = 85.71%
+    // density) -> solid rich fill
+    bbox.slice_boxes["0,0"] = {
+        0, "0,0", {0, 0}, {0, 0, 0, 1, 2}, {0, 0, 2, 4, 8}, 72};
+    // Slice 1: [0, 1, ...] -> Medium density cluster (48 / 135 cells = 35.56%
+    // density) -> standard fill
+    bbox.slice_boxes["0,1"] = {
+        1, "0,1", {0, 1}, {0, 1, 3, 6, 12}, {0, 1, 5, 10, 20}, 48};
+    // Slice 2: [1, 2, ...] -> Low density sparse lattice (10 / 135 cells
+    // = 7.41% density) -> hollow ghost dashed lattice
+    bbox.slice_boxes["1,2"] = {
+        2, "1,2", {1, 2}, {1, 2, 5, 11, 22}, {1, 2, 7, 15, 30}, 10};
+    mismatches.push_back(
+        CreateSampleMismatch("add", 0, 1.45, 1.0, 0.45, std::move(bbox)));
+  }
+
+  // 2. Rank 2 matrix (sub)
+  {
+    auto bbox = MakeBoundingBox({64, 128}, {10, 20}, {40, 80}, 1200, 64 * 128,
+                                "DENSE_BLOCK", {{25, 50}});
+    mismatches.push_back(
+        CreateSampleMismatch("sub", 1, 3.2, 3.0, 0.067, std::move(bbox)));
+  }
+
+  // 3. Rank 6 tensor (mul) with 3 composite slice boxes
+  {
+    auto bbox = MakeBoundingBox(
+        {4, 5, 6, 7, 8, 6}, {1, 2, 3, 0, 1, 1}, {2, 3, 5, 5, 7, 5}, 64,
+        4 * 5 * 6 * 7 * 8 * 6, "STRIDED (stride 4)",
+        {{1, 2, 3, 2, 3, 2}, {1, 2, 4, 3, 2, 3}, {2, 3, 5, 1, 5, 3}});
+    bbox.mismatched_slices = {3, 4, 5};
+    // Slice 3: [1, 2, 3, ...] -> High density (36 / 48 cells = 75.0% density)
+    bbox.slice_boxes["1,2,3"] = {
+        3, "1,2,3", {1, 2, 3}, {1, 2, 3, 1, 2, 1}, {1, 2, 3, 4, 5, 3}, 36};
+    // Slice 4: [1, 2, 4, ...] -> Medium density (20 / 48 cells = 41.67%
+    // density)
+    bbox.slice_boxes["1,2,4"] = {
+        4, "1,2,4", {1, 2, 4}, {1, 2, 4, 2, 1, 2}, {1, 2, 4, 5, 4, 4}, 20};
+    // Slice 5: [2, 3, 5, ...] -> Low density (8 / 96 cells = 8.33% density)
+    bbox.slice_boxes["2,3,5"] = {
+        5, "2,3,5", {2, 3, 5}, {2, 3, 5, 0, 4, 2}, {2, 3, 5, 5, 7, 5}, 8};
+    mismatches.push_back(
+        CreateSampleMismatch("mul", 2, 5.92, 4.0, 0.48, std::move(bbox)));
+  }
+
+  // 4. Rank 1 vector (neg)
+  {
+    auto bbox =
+        MakeBoundingBox({256}, {64}, {95}, 32, 256, "CONTIGUOUS", {{72}});
+    mismatches.push_back(
+        CreateSampleMismatch("neg", 3, -0.575, -0.5, 0.15, std::move(bbox)));
+  }
+
+  // 5. Rank 0 scalar (abs)
+  {
+    auto bbox = MakeBoundingBox({}, {}, {}, 1, 1, "", {{}});
+    mismatches.push_back(
+        CreateSampleMismatch("abs", 4, 1.42, 1.0, 0.42, std::move(bbox)));
+  }
+
+  return mismatches;
+}
+
+void VerifyMultiRankTensorVisualizations(
+    const absl::flat_hash_map<std::string, TensorVisualizationInfo>&
+        tensor_visualizations) {
+  // Check tensor visualizations for clean vs failing operations.
+  ASSERT_TRUE(tensor_visualizations.contains("p0"));
+  EXPECT_FALSE(tensor_visualizations.at("p0").has_mismatch);
+  ASSERT_TRUE(tensor_visualizations.contains("tuple"));
+  EXPECT_FALSE(tensor_visualizations.at("tuple").has_mismatch);
+
+  // Rank 0 scalar (abs)
+  ASSERT_TRUE(tensor_visualizations.contains("abs"));
+  const auto& abs_vis = tensor_visualizations.at("abs");
+  EXPECT_TRUE(abs_vis.has_mismatch);
+  EXPECT_EQ(abs_vis.shape, (std::vector<int64_t>{}));
+  EXPECT_EQ(abs_vis.total_elements, 1);
+  EXPECT_EQ(abs_vis.mismatch_count, 1);
+  ASSERT_FALSE(abs_vis.top_mismatches.empty());
+  EXPECT_DOUBLE_EQ(abs_vis.top_mismatches[0].rel_error, 0.42);
+
+  // Rank 1 vector (neg)
+  ASSERT_TRUE(tensor_visualizations.contains("neg"));
+  const auto& neg_vis = tensor_visualizations.at("neg");
+  EXPECT_TRUE(neg_vis.has_mismatch);
+  EXPECT_EQ(neg_vis.shape, (std::vector<int64_t>{256}));
+  EXPECT_EQ(neg_vis.box_min, (std::vector<int64_t>{64}));
+  EXPECT_EQ(neg_vis.box_max, (std::vector<int64_t>{95}));
+  EXPECT_EQ(neg_vis.pattern, "CONTIGUOUS");
+  EXPECT_EQ(neg_vis.mismatch_count, 32);
+  EXPECT_EQ(neg_vis.total_elements, 256);
+  ASSERT_FALSE(neg_vis.top_mismatches.empty());
+  EXPECT_DOUBLE_EQ(neg_vis.top_mismatches[0].rel_error, 0.15);
+
+  // Rank 2 matrix (sub)
+  ASSERT_TRUE(tensor_visualizations.contains("sub"));
+  const auto& sub_vis = tensor_visualizations.at("sub");
+  EXPECT_TRUE(sub_vis.has_mismatch);
+  EXPECT_EQ(sub_vis.shape, (std::vector<int64_t>{64, 128}));
+  EXPECT_EQ(sub_vis.box_min, (std::vector<int64_t>{10, 20}));
+  EXPECT_EQ(sub_vis.box_max, (std::vector<int64_t>{40, 80}));
+  EXPECT_EQ(sub_vis.pattern, "DENSE_BLOCK");
+  EXPECT_EQ(sub_vis.mismatch_count, 1200);
+  EXPECT_EQ(sub_vis.total_elements, 64 * 128);
+
+  // Rank 5 tensor (add) with 3 slice boxes
+  ASSERT_TRUE(tensor_visualizations.contains("add"));
+  const auto& add_vis = tensor_visualizations.at("add");
+  EXPECT_TRUE(add_vis.has_mismatch);
+  EXPECT_EQ(add_vis.shape, (std::vector<int64_t>{2, 4, 8, 16, 32}));
+  EXPECT_EQ(add_vis.pattern, "STRIDED (stride 8)");
+  EXPECT_EQ(add_vis.slice_boxes.size(), 3);
+  ExpectSliceBox(add_vis.slice_boxes, "0,0", {0, 0, 0, 1, 2}, {0, 0, 2, 4, 8},
+                 72);
+  ExpectSliceBox(add_vis.slice_boxes, "0,1", {0, 1, 3, 6, 12},
+                 {0, 1, 5, 10, 20}, 48);
+  ExpectSliceBox(add_vis.slice_boxes, "1,2", {1, 2, 5, 11, 22},
+                 {1, 2, 7, 15, 30}, 10);
+
+  // Rank 6 tensor (mul) with 3 slice boxes
+  ASSERT_TRUE(tensor_visualizations.contains("mul"));
+  const auto& mul_vis = tensor_visualizations.at("mul");
+  EXPECT_TRUE(mul_vis.has_mismatch);
+  EXPECT_EQ(mul_vis.shape, (std::vector<int64_t>{4, 5, 6, 7, 8, 6}));
+  EXPECT_EQ(mul_vis.pattern, "STRIDED (stride 4)");
+  EXPECT_EQ(mul_vis.slice_boxes.size(), 3);
+  ExpectSliceBox(mul_vis.slice_boxes, "1,2,3", {1, 2, 3, 1, 2, 1},
+                 {1, 2, 3, 4, 5, 3}, 36);
+  ExpectSliceBox(mul_vis.slice_boxes, "1,2,4", {1, 2, 4, 2, 1, 2},
+                 {1, 2, 4, 5, 4, 4}, 20);
+  ExpectSliceBox(mul_vis.slice_boxes, "2,3,5", {2, 3, 5, 0, 4, 2},
+                 {2, 3, 5, 5, 7, 5}, 8);
+  ASSERT_FALSE(mul_vis.top_mismatches.empty());
+  EXPECT_DOUBLE_EQ(mul_vis.top_mismatches[0].rel_error, 0.48);
+}
+
+void VerifyDumpedHtmlReport(absl::string_view file_content) {
+  constexpr absl::string_view kExpectedSubstrings[] = {
+      // Expected container elements and script injections
+      "window.tensorVisualizations =",
+      "window.compressedGraphData =",
+      "demo_pipeline",
+      "id=\"graph-module-title\"",
+      "id=\"tensor-inspector\"",
+      "id=\"tensor-3d-canvas\"",
+      "id=\"splitter-sidebar\"",
+      "id=\"zoom-in-btn\"",
+      "id=\"zoom-out-btn\"",
+      "id=\"zoom-fit-btn\"",
+      // Instruction anchors
+      "id=\"instr_p0\"",
+      "id=\"instr_add\"",
+      "id=\"instr_sub\"",
+      "id=\"instr_mul\"",
+      "id=\"instr_neg\"",
+      "id=\"instr_abs\"",
+      "id=\"instr_tuple\"",
+      // JSON representations for each rank
+      "\"abs\":",
+      "\"rel_error\": 0.42",
+      "\"neg\":",
+      "\"pattern\": \"CONTIGUOUS\"",
+      "\"sub\":",
+      "\"pattern\": \"DENSE_BLOCK\"",
+      "\"add\":",
+      "\"pattern\": \"STRIDED (stride 8)\"",
+      "\"0,0\":",
+      "\"0,1\":",
+      "\"1,2\":",
+      "\"mul\":",
+      "\"pattern\": \"STRIDED (stride 4)\"",
+      "\"1,2,3\":",
+      "\"1,2,4\":",
+      "\"2,3,5\":",
+  };
+  for (absl::string_view needle : kExpectedSubstrings) {
+    EXPECT_TRUE(absl::StrContains(file_content, needle)) << needle;
+  }
+
+  constexpr absl::string_view kUnexpectedSubstrings[] = {
+      "toggle-inspector-btn",
+      "3D Tensor</button>",
+  };
+  for (absl::string_view needle : kUnexpectedSubstrings) {
+    EXPECT_FALSE(absl::StrContains(file_content, needle)) << needle;
+  }
+}
+
+TEST(HloDumpUtilsTest, DumpHloModuleMismatchWithGraphData) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule demo_pipeline
+ENTRY main {
+  p0 = f32[2,4,8,16,32] parameter(0)
+  p1 = f32[2,4,8,16,32] parameter(1)
+  add = f32[2,4,8,16,32] add(p0, p1)
+  p2 = f32[64,128] parameter(2)
+  p3 = f32[64,128] parameter(3)
+  sub = f32[64,128] subtract(p2, p3)
+  p4 = f32[4,5,6,7,8,6] parameter(4)
+  p5 = f32[4,5,6,7,8,6] parameter(5)
+  mul = f32[4,5,6,7,8,6] multiply(p4, p5)
+  p6 = f32[256] parameter(6)
+  neg = f32[256] negate(p6)
+  p7 = f32[] parameter(7)
+  abs = f32[] abs(p7)
+  ROOT tuple = (f32[2,4,8,16,32], f32[64,128], f32[4,5,6,7,8,6], f32[256], f32[]) tuple(add, sub, mul, neg, abs)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  std::vector<MismatchDetails> mismatches = CreateMultiRankSampleMismatches();
+
+  ASSERT_OK_AND_ASSIGN(const std::string html_filename,
+                       DumpHloModuleMismatchWithGraphData(
+                           *module, mismatches, "sample_mismatch_report.html"));
+  EXPECT_FALSE(html_filename.empty());
+
+  // 1. Verify that the dumped file exists and read its contents back from disk.
+  std::ifstream ifs(html_filename);
+  ASSERT_TRUE(ifs.is_open()) << "Failed to open dumped file: " << html_filename;
+  std::string file_content((std::istreambuf_iterator<char>(ifs)),
+                           std::istreambuf_iterator<char>());
+  EXPECT_GT(file_content.size(), 50000);
+
+  // 2. Check the populated data structures directly.
+  GraphData graph_data = PopulateMismatchGraphData(*module, mismatches);
+  EXPECT_EQ(graph_data.nodes.size(), 14);
+  EXPECT_FALSE(graph_data.edges.empty());
+
+  VerifyMultiRankTensorVisualizations(
+      PopulateTensorVisualizations(*module, mismatches));
+
+  // 3. Verify the dumped HTML file content strings.
+  VerifyDumpedHtmlReport(file_content);
+
+  // 4. Mirror to /tmp/mismatch_demo/sample_mismatch_report.html for local live
+  // inspection.
+  tsl::Env::Default()->RecursivelyCreateDir("/tmp/mismatch_demo").IgnoreError();
+  std::ofstream ofs("/tmp/mismatch_demo/sample_mismatch_report.html");
+  if (ofs.is_open()) {
+    ofs << file_content;
+    ofs.close();
+  }
 }
 
 }  // namespace
