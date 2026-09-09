@@ -75,7 +75,8 @@ void RecvOutputsFromRendezvousAsync(
         keys.size(), "; alloc_attrs.size() = ", alloc_attrs.size())));
   }
 
-  received_tensors->reserve(keys.size());
+  const size_t start_index = received_tensors->size();
+  received_tensors->reserve(start_index + keys.size());
   std::vector<std::tuple<std::string, Tensor*, Rendezvous::ParsedKey,
                          AllocatorAttributes>>
       arguments;
@@ -91,8 +92,8 @@ void RecvOutputsFromRendezvousAsync(
     if (!alloc_attrs.empty()) {
       alloc_attr = alloc_attrs[i];
     }
-    arguments.emplace_back(keys[i], &((*received_tensors)[i]), parsed,
-                           alloc_attr);
+    arguments.emplace_back(keys[i], &((*received_tensors)[start_index + i]),
+                           parsed, alloc_attr);
   }
 
   auto status_cb = new ReffedStatusCallback(std::move(done));
