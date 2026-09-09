@@ -248,6 +248,12 @@ class ShapeInference {
   static absl::StatusOr<Shape> InferReverseShape(
       const Shape& operand_shape, absl::Span<const int64_t> dimensions);
 
+  // Infers the shape of a shuffle instruction, which rearranges the operand's
+  // elements along the given dimensions according to `mode`.
+  static absl::StatusOr<Shape> InferShuffleShape(
+      const Shape& operand_shape, absl::Span<const int64_t> dimensions,
+      const ShuffleMode& mode);
+
   // Infers the shape produced by a slice operation spanning from the starts to
   // the limits in the original shape's dimensions.
   //
