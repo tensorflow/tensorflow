@@ -1198,6 +1198,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(out, out_expected)
 
   def testTakeAlongAxisJitCompile(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # Regression test for GitHub issue 62391: the axis-swapping branch was
     # emitted as a real conditional whose branches have different shapes, so
     # the result shape XLA computed disagreed with the shape set on the
@@ -1218,6 +1220,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllClose(expected, actual)
 
   def testTakeAlongAxisUnknownRank(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # The tensor predicate is still used when the rank is not known
     # statically.
     @def_function.function(
