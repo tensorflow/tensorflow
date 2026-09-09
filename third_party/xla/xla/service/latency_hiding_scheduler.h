@@ -73,6 +73,18 @@ struct CanonicalAsyncOp {
 
 CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
 
+// Returns the matching start instruction for an async-done instruction.
+// Supports both canonical async ops (e.g. kAsyncDone, kAllGatherDone) and
+// legacy async ops (kCopyDone, kSendDone, kRecvDone).
+const HloInstruction* FindStart(const HloInstruction* done);
+HloInstruction* FindStart(HloInstruction* done);
+
+// Returns the matching done instruction for an async-start instruction.
+// Supports both canonical async ops (e.g. kAsyncStart, kAllGatherStart) and
+// legacy async ops (kCopyStart, kSend, kRecv).
+const HloInstruction* FindDone(const HloInstruction* start);
+HloInstruction* FindDone(HloInstruction* start);
+
 inline bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
