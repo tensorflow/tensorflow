@@ -643,6 +643,9 @@ absl::StatusOr<unsigned int> GetNvLinkCount(nvmlDevice_t nvml_device) {
   field_value.fieldId = NVML_FI_DEV_NVLINK_LINK_COUNT;
   ABSL_RETURN_IF_ERROR(
       ToStatus(nvmlDeviceGetFieldValues(nvml_device, 1, &field_value)));
+  if (field_value.nvmlReturn == NVML_ERROR_NOT_SUPPORTED) {
+    return 0;
+  }
   ABSL_RETURN_IF_ERROR(ToStatus(field_value.nvmlReturn));
   if (field_value.valueType != NVML_VALUE_TYPE_UNSIGNED_INT) {
     return absl::InternalError(
