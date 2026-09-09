@@ -5168,5 +5168,113 @@ ENTRY main {
   TestShapeHasMemorySpace(dus->shape(), Layout::kHostMemorySpace);
 }
 
+TEST_F(HostOffloaderTest, HostComputeUpdateInDynamicUpdateSlice) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+  offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  pad = f32[1,2048,2048] pad(offload_custom_call, constant_f32_0), padding=0_0x0_0x0_0
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, pad, index_param, constant_s32_0, constant_s32_0)
+  dynamic_slice = f32[1,2048,2048] dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  ROOT load_custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+
+  HloInstruction* allocate_buffer = nullptr;
+  for (HloInstruction* instr : module->entry_computation()->instructions()) {
+    if (instr->IsCustomCall("AllocateBuffer")) {
+      allocate_buffer = instr;
+      break;
+    }
+  }
+  ASSERT_NE(allocate_buffer, nullptr);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* dus = FindInstruction(module.get(), "dynamic_update_slice");
+  ASSERT_NE(dus, nullptr);
+  TestShapeHasMemorySpace(dus->shape(), Layout::kHostMemorySpace);
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dus));
+}
+
+TEST_F(HostOffloaderTest, HostComputeUpdateInWhileLoopDynamicUpdateSlice) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+
+while_body {
+  param = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) parameter(0)
+  idx = s32[] get-tuple-element(param), index=0
+  buf = f32[2,2048,2048]{2,1,0} get-tuple-element(param), index=1
+  data = f32[1,2048,2048]{2,1,0} get-tuple-element(param), index=2
+  offload_custom_call = f32[1,2048,2048]{2,1,0} custom-call(data), custom_call_target="MoveToHost"
+  constant_f32_0 = f32[] constant(0)
+  pad = f32[1,2048,2048]{2,1,0} pad(offload_custom_call, constant_f32_0), padding=0_0x0_0x0_0
+  constant_s32_0 = s32[] constant(0)
+  dynamic_update_slice = f32[2,2048,2048]{2,1,0} dynamic-update-slice(buf, pad, idx, constant_s32_0, constant_s32_0)
+  constant_1 = s32[] constant(1)
+  next_idx = s32[] add(idx, constant_1)
+  ROOT tuple = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) tuple(next_idx, dynamic_update_slice, data)
+}
+
+while_condition {
+  param = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) parameter(0)
+  idx = s32[] get-tuple-element(param), index=0
+  constant_2 = s32[] constant(2)
+  ROOT pred_result = pred[] compare(idx, constant_2), direction=LT
+}
+
+ENTRY main {
+  data_param = f32[1,2048,2048]{2,1,0} parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048]{2,1,0} broadcast(constant_f32_0), dimensions={}
+  while_init = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) tuple(index_param, broadcast, data_param)
+  while = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) while(while_init), condition=while_condition, body=while_body
+  dynamic_update_slice_out = f32[2,2048,2048]{2,1,0} get-tuple-element(while), index=1
+  dynamic_slice = f32[1,2048,2048]{2,1,0} dynamic-slice(dynamic_update_slice_out, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  ROOT load_custom_call = f32[1,2048,2048]{2,1,0} custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+
+  HloInstruction* allocate_buffer = nullptr;
+  for (HloInstruction* instr : module->entry_computation()->instructions()) {
+    if (instr->IsCustomCall("AllocateBuffer")) {
+      allocate_buffer = instr;
+      break;
+    }
+  }
+  ASSERT_NE(allocate_buffer, nullptr);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* dus = FindInstruction(module.get(), "dynamic_update_slice");
+  ASSERT_NE(dus, nullptr);
+  TestShapeHasMemorySpace(dus->shape(), Layout::kHostMemorySpace);
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dus));
+
+  HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  ASSERT_NE(while_instr, nullptr);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(while_instr->shape(), {1}),
+                          Layout::kHostMemorySpace);
+}
+
 }  // namespace
 }  // namespace xla
