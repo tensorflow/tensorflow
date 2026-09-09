@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -110,6 +111,19 @@ struct FakeArgumentsOptions {
   // If `get_index_known_zeroes` is set, the generated indices will have the
   // given number of zeroes in the given dimension.
   GetIndexKnownZeroesFn get_index_known_zeroes = nullptr;
+
+  // Restricts generated values for specific parameters to a custom [min, max]
+  // range, while still respecting all graph constraints.
+  //
+  // Keyed by parameter index (e.g. 0 for param 0). For tuple parameters,
+  // each element gets its own sequential index (e.g. if param 1 is a 2-tuple,
+  // its elements are indices 1 and 2).
+  //
+  // Returns an error if the requested range conflicts with what the graph needs
+  // (e.g. requesting negative numbers for an input fed into sqrt).
+  //
+  // Note: Currently supported only in MakeDataflowConstrainedArguments.
+  absl::flat_hash_map<int64_t, std::pair<double, double>> parameter_ranges;
 };
 
 // Generates a vector of arguments containing fake data. The number, shape and
@@ -126,6 +140,8 @@ struct FakeArgumentsOptions {
 //  (3) Keys of key/value sorts should contain no duplicates.
 //
 // These constraints are best-effort only.
+// Note: `parameter_ranges` in `options` is not supported and returns an
+// Unimplemented error if provided.
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, const FakeArgumentsOptions& options = {});
 
@@ -134,6 +150,8 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
 // op semantics (e.g., `sqrt(x)` implies `x >= 0`) and then propagates these
 // constraints backward through the graph. This allows generating test inputs
 // that are more likely to be valid for the graph.
+// Note: `max_bits_of_precision` in `options` is not supported and returns an
+// Unimplemented error if provided.
 absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
     const HloModule* module, const FakeArgumentsOptions& options = {});
 
