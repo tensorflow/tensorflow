@@ -16,13 +16,18 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <initializer_list>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
