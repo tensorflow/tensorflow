@@ -338,7 +338,10 @@ tf_kernel_library(
 tf_cuda_only_cc_test(
     name = "conv_2d_gpu_test",
     size = "small",
-    srcs = ["conv_2d_gpu_test.cu.cc"],
+    srcs = [
+        "conv_2d_gpu.h",
+        "conv_2d_gpu_test.cu.cc",
+    ],
     features = if_cuda(["-layering_check"]),
     deps = [
         ":conv_2d",

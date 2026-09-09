@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #include "tensorflow/core/kernels/conv_2d_gpu.h"
 
 #include <cstdint>
@@ -35,3 +37,5 @@ TEST(TensorIndexToFlatTest, HandlesFlatIndexPastInt32Limit) {
 }  // namespace
 }  // namespace functor
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
