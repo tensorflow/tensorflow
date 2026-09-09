@@ -27,24 +27,27 @@ cc_library(
         [
             "src/*.cpp",
         ],
-        exclude = ["src/nb_combined.cpp"],
+        exclude = [
+            "src/nb_backend.cpp",
+            "src/nb_combined.cpp",
+        ],
     ),
     copts = ["-fexceptions"],
     defines = select({
         "@rules_python//python/config_settings:is_py_freethreaded": [
             "NB_FREE_THREADED=1",
-            "NB_BUILD=1",
             "NB_SHARED=1",
         ],
         "//conditions:default": [
-            "NB_BUILD=1",
             "NB_SHARED=1",
         ],
     }),
     includes = ["include"],
+    local_defines = ["NB_BUILD=1"],
     textual_hdrs = glob(
         [
             "include/**/*.h",
+            "include/**/*.inl",
             "src/*.h",
         ],
     ),
