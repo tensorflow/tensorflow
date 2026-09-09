@@ -51,7 +51,7 @@ namespace xla {
 class TestBFloat16Support : public FloatSupport {
  public:
   TestBFloat16Support() : FloatSupport(BF16) {}
-  ~TestBFloat16Support() override {}
+  ~TestBFloat16Support() override = default;
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {
