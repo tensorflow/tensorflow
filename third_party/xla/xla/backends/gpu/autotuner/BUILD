@@ -711,6 +711,7 @@ xla_test(
     name = "gpu_profiler_test",
     srcs = ["gpu_profiler_test.cc"],
     backends = ["gpu"],
+    tags = ["cuda-only"],
     use_legacy_runtime = True,
     deps = [
         ":gpu_profiler",
