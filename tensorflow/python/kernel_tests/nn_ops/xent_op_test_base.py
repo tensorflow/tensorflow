@@ -23,7 +23,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -194,9 +193,9 @@ class XentOpTestBase(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testDoublePreservesSmallGradient(self):
     tail_probability = 5.551115123125776e-17
-    _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+    _, gradient = self._opFwdBwd(
         labels=np.array([[1.0, 0.0]], dtype=np.float64),
-        features=np.array([[37.42994775023705, 0.0]], dtype=np.float64))
+        logits=np.array([[37.42994775023705, 0.0]], dtype=np.float64))
     gradient = self.evaluate(gradient)
 
     self.assertAllClose(
