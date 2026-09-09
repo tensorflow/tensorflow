@@ -93,6 +93,9 @@ CUmemAllocationProp BuildVmmAllocationProp(
 absl::StatusOr<CudaDeviceAllocator::Options> QueryDeviceAllocatorOptions(
     CUdevice device);
 
+// Returns whether CUDA VMM fabric handle type is supported for the device.
+absl::StatusOr<bool> IsFabricSupported(CUdevice device);
+
 }  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_DEVICE_ALLOCATOR_H_
