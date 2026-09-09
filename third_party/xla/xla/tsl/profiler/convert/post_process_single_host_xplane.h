@@ -21,6 +21,14 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+// Aligns Mosaic GPU on-device traces with corresponding kernel execution events
+// on the host. This function finds pairs of Mosaic launch and dump events on
+// the CPU, correlates them with CUPTI kernel launch events, and then uses the
+// correlation ID to find the actual kernel execution times on the GPU. The
+// timestamps of the Mosaic on-device trace plane are then adjusted accordingly.
+// This should be called before MergeHostPlanes.
+void AlignMosaicGpuOndeviceTrace(tensorflow::profiler::XSpace* space);
+
 // Post process XSpaces collected locally from multiple profilers.
 void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
                                  uint64_t start_time_ns, uint64_t stop_time_ns);
