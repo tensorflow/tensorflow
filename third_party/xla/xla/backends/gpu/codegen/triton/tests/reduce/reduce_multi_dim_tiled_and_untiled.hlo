@@ -1,0 +1,39 @@
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
+
+region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  p = f32[8,16,12,32,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce = f32[16,32] reduce(p, c), dimensions={0,2,4}, to_apply=region,
+    backend_config={sizes:[8,4,8]}
+}
+
+ENTRY main {
+  p = f32[8,16,12,32,16] parameter(0)
+  ROOT fusion = f32[16,32] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["8", "16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:  %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:  %[[C3:.*]] = arith.constant 3 : index
+// CHECK:      %[[FOR1:.*]] = scf.for %{{.*}} = %[[C0]] to %[[C3]] step %[[C1]]
+// CHECK:        %[[FOR2:.*]] = scf.for %{{.*}} = %[[C0]] to %[[C2]] step %[[C1]]
+// CHECK:          xtile.extract %{{.*}}[%[[C0]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] [8, 8, 4, 16, 8]
+// CHECK:      %[[RED1:.*]] = "tt.reduce"(%[[FOR1]]) <{axis = 4 : i32}>
+// CHECK:      %[[RED2:.*]] = "tt.reduce"(%[[RED1]]) <{axis = 2 : i32}>
+// CHECK:      %[[RED3:.*]] = "tt.reduce"(%[[RED2]]) <{axis = 0 : i32}>

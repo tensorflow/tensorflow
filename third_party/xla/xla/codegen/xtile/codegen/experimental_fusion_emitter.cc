@@ -1687,18 +1687,16 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
   ABSL_ASSIGN_OR_RETURN(
       SmallVector<int64_t> loop_iteration_counts,
       GetSequentialLoopIterationCounts(tiled_hlo, sequential_dim_ids));
-  TF_RET_CHECK(!loop_iteration_counts.empty())
-      << "Expected at least one loop iteration count for reduce";
-
   SmallVector<mlir::Value> lbs, ubs, steps;
-  lbs.reserve(sequential_dim_ids.size());
-  ubs.reserve(sequential_dim_ids.size());
-  steps.reserve(sequential_dim_ids.size());
   for (int64_t count : loop_iteration_counts) {
-    lbs.push_back(MakeIndex(b, 0));
-    ubs.push_back(MakeIndex(b, count));
-    steps.push_back(MakeIndex(b, 1));
+    if (count > 1) {
+      lbs.push_back(MakeIndex(b, 0));
+      ubs.push_back(MakeIndex(b, count));
+      steps.push_back(MakeIndex(b, 1));
+    }
   }
+  TF_RET_CHECK(!lbs.empty())
+      << "Expected at least one loop iteration count > 1 for reduce";
 
   absl::Status loop_nest_status = absl::OkStatus();
   mlir::scf::LoopNest loop_nest = mlir::scf::buildLoopNest(
@@ -1710,14 +1708,27 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
         auto body = [&]() -> absl::StatusOr<mlir::scf::ValueVector> {
           mlir::ImplicitLocOpBuilder nested_b(loc, loop_builder);
 
+          int iv_index = 0;
+          SmallVector<mlir::Value> dim_ivs;
+          dim_ivs.reserve(sequential_dim_ids.size());
           for (int i = 0; i < sequential_dim_ids.size(); ++i) {
-            const ge::TilingSpace::DimensionInfo& dim_info =
-                tiled_hlo.tile().tiling_space().GetDimensionInfo(
-                    *tiled_hlo.hlo(), sequential_dim_ids[i]);
-            TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
-                dim_info.id, ivs[i], Interval{0, loop_iteration_counts[i] - 1}))
-                << "MapSymbolIdToSequentialDimValue failed for symbolic "
-                   "dimension";
+            if (loop_iteration_counts[i] > 1) {
+              mlir::Value iv = ivs[iv_index++];
+              dim_ivs.push_back(iv);
+              const ge::TilingSpace::DimensionInfo& dim_info =
+                  tiled_hlo.tile().tiling_space().GetDimensionInfo(
+                      *tiled_hlo.hlo(), sequential_dim_ids[i]);
+              TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+                  dim_info.id, iv, Interval{0, loop_iteration_counts[i] - 1}))
+                  << "MapSymbolIdToSequentialDimValue failed for symbolic "
+                     "dimension";
+            } else {
+              // Untiled reduction dimensions (count == 1) are fully covered by
+              // a single tile. Their symbol ID is already mapped to 0 at module
+              // entry (via EmitFullyTiledSequentialDimensions), and their
+              // offset index is 0.
+              dim_ivs.push_back(MakeIndex(nested_b, 0));
+            }
           }
 
           ABSL_ASSIGN_OR_RETURN(
@@ -1730,7 +1741,8 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
 
           for (int i = 0; i < sequential_dim_ids.size(); ++i) {
             int64_t reduce_dim = reduce_hlo.dimensions()[i];
-            mlir::Value iv_i32 = Cast(nested_b, ivs[i], nested_b.getI32Type());
+            mlir::Value iv_i32 =
+                Cast(nested_b, dim_ivs[i], nested_b.getI32Type());
             ABSL_ASSIGN_OR_RETURN(input_tile,
                              MaskOperand(nested_b, *tiled_input, input_tile,
                                          iv_i32, reduce_dim, neutral_value));
@@ -1935,6 +1947,11 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
   for (const auto& tiled_hlo : region.instructions()) {
+    // Re-use already emitted tensor values. This can happen in diamond
+    // patterns, such as softmax.
+    if (emitter_ctx.FindTiledHloTensorValue(*tiled_hlo).has_value()) {
+      continue;
+    }
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
     ABSL_ASSIGN_OR_RETURN(TensorValue result,
