@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/robust_stats.h"
+
+#include <vector>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
