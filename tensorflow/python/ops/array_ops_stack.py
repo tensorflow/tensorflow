@@ -15,6 +15,8 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Operations to stack and unstack tensors."""
 
+import warnings
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.util import dispatch
@@ -69,8 +71,17 @@ def stack(values, axis=0, name="stack"):
     ValueError: If `axis` is out of the range [-(R+1), R+1).
   """
   if ops.is_dense_tensor_like(values):
+    if axis == 0:
+      warnings.warn(
+          "Passing a single Tensor to tf.stack is deprecated and will be"
+          " removed in a future release. Argument `values` must be a sequence"
+          " of Tensor objects.",
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      return ops.convert_to_tensor(values, name=name)
     raise TypeError(
-        f"Argument `values` must be a sequence of Tensor objects, but got a "
+        "Argument `values` must be a sequence of Tensor objects, but got a "
         f"single Tensor of type {type(values).__name__}."
     )
 

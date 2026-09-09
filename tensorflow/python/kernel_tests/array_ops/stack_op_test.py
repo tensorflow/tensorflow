@@ -14,6 +14,8 @@
 # ==============================================================================
 """Functional tests for Stack and ParallelStack Ops."""
 
+import warnings
+
 import numpy as np
 
 from tensorflow.python import tf2
@@ -401,7 +403,20 @@ class AutomaticStackingTest(test.TestCase):
     with self.assertRaisesRegex(
         TypeError, r"Argument `values` must be a sequence of Tensor objects"
     ):
-      array_ops_stack.stack(t)
+      array_ops_stack.stack(t, axis=1)
+
+  def testSingleTensorAxis0EmitsDeprecationWarning(self):
+    t = constant_op.constant([1, 2, 3])
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      res = array_ops_stack.stack(t, axis=0)
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[-1].category, DeprecationWarning))
+      self.assertIn(
+          "Passing a single Tensor to tf.stack is deprecated",
+          str(w[-1].message),
+      )
+      self.assertAllEqual(res, t)
 
 
 if __name__ == "__main__":
