@@ -659,7 +659,7 @@ class ParallelSortThunkTest : public testing::TestWithParam<bool> {
     }
     int64_t sort_dim_size = shape.dimensions(dimension);
     int64_t inner_dim_size = 1;
-    for (int64_t i = dimension + 1; i < shape.dimensions_size(); ++i) {
+    for (int64_t i = dimension + 1; i < shape.dimensions().size(); ++i) {
       inner_dim_size *= shape.dimensions(i);
     }
 
