@@ -3606,6 +3606,12 @@ def tfcompile_dfsan_enabled():
 def tfcompile_dfsan_abilists():
     return []
 
+def tfcompile_msan_enabled():
+    return False
+
+def tfcompile_msan_track_origins():
+    return 0
+
 def tfcompile_friends():
     return ["public"]
 

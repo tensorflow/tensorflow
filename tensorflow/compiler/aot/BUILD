@@ -51,6 +51,14 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "msan_track_origins_build",
+    flag_values = {
+        "//tools/cpp:compiler": "msan-track-origins",
+    },
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "thunk_proto_execution_deserializer",
     srcs = ["thunk_proto_execution_deserializer.cc"],
