@@ -95,7 +95,7 @@ absl::Status ThunkExecutor::ExecuteOnStream(
     tsl::profiler::TraceMe trace(thunk->profile_annotation());
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(thunk->profile_annotation());
+        GetInstructionAnnotation(thunk->profile_annotation());
 
     // If progress tracker is installed for current thread, verify that a
     // thunk indexing record exists for the given `thunk`.

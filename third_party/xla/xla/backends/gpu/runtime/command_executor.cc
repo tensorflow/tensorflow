@@ -496,7 +496,7 @@ CommandExecutor::RecordCreate(
     Command* command = commands_[id];
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
+        GetInstructionAnnotation(command->profile_annotation());
 
     // Skip recording collective commands if mock collectives are enabled.
     if (execute_params.mock_collectives && command->IsCollective()) {
@@ -657,7 +657,7 @@ absl::Status CommandExecutor::RecordUpdate(
     }
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
+        GetInstructionAnnotation(command->profile_annotation());
 
     Command::RecordUpdate record_action{recorded_commands[id]};
     ABSL_ASSIGN_OR_RETURN(recorded_commands[id],
