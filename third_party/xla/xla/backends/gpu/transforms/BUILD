@@ -1975,6 +1975,7 @@ cc_library(
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/hlo/analysis:shape_tracker",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",

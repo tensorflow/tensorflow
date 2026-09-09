@@ -1932,8 +1932,8 @@ TEST_P(GemmFusionTestVersioned, Int4ConvertPlusNegateIsRewritten) {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_P(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
-  const std::string kInt4Dot = R"(
+TEST_P(GemmFusionTestVersioned, Int4WithMinorBatchDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
     ENTRY main {
       lhs = s4[8,1024,16]{2,1,0} parameter(0)
       lhs_converted = bf16[8,1024,16]{2,1,0} convert(lhs)
@@ -1943,6 +1943,119 @@ TEST_P(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
         lhs_contracting_dims={1},
         rhs_batch_dims={0},
         rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_P(GemmFusionTestVersioned,
+       Int4WithMinorBatchDimAndOperandTransposeIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[1024,8,16]{2,1,0} parameter(0)
+      lhs_tr = s4[8,1024,16]{2,1,0} transpose(lhs), dimensions={1,0,2}
+      lhs_converted = bf16[8,1024,16]{2,1,0} convert(lhs_tr)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={2},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_P(GemmFusionTestVersioned, Int4WithMinorContractingDimIsRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[16,8,1024]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,8,1024]{2,1,0} convert(lhs)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={2},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_P(GemmFusionTestVersioned, Int4WithMinorNonContractingDimIsRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[16,1024,8]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,1024,8]{2,1,0} convert(lhs)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_P(GemmFusionTestVersioned, Int4WithMinorReshapedBatchDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[1024,64,4,2]{3,2,1,0} parameter(0)
+      lhs_bc = s4[1024,64,8]{2,1,0} bitcast(lhs)
+      lhs_converted = bf16[1024,64,8]{2,1,0} convert(lhs_bc)
+      rhs = bf16[8,64,16]{2,1,0} parameter(1)
+      ROOT dot = bf16[8,1024,16]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={2},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_P(GemmFusionTestV2,
+       Int4WithMinorReshapedBatchAndNonContractingDimIsRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[8192,64]{0,1} parameter(0)
+      lhs_converted = bf16[8192,64]{0,1} convert(lhs)
+      lhs_reshaped = bf16[8,64,1024]{2,1,0} reshape(lhs_converted)
+      rhs = bf16[8,64,16]{2,1,0} parameter(1)
+      ROOT dot = bf16[8,1024,16]{2,1,0} dot(lhs_reshaped, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_P(GemmFusionTestV2,
+       Int4WithUntileableMinorNonContractingDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[128,64,192]{0,1,2} parameter(0)
+      lhs_converted = bf16[128,64,192]{0,1,2} convert(lhs)
+      lhs_transposed = bf16[128,192,64]{2,1,0} transpose(lhs_converted), dimensions={0,2,1}
+      lhs_bitcast = bf16[24576,64]{1,0} bitcast(lhs_transposed)
+      rhs = bf16[256,64]{1,0} parameter(1)
+      ROOT dot = bf16[24576,256]{1,0} dot(lhs_bitcast, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1}
     }
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
