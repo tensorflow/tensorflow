@@ -20,13 +20,10 @@ import os
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.distribute.experimental import (
     multi_worker_mirrored_strategy)
-from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -65,11 +62,14 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
   # Check for TPUs
   try:
     resolver = tpu_cluster_resolver.TPUClusterResolver()
+    from tensorflow.python.distribute import tpu_strategy  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.tpu import tpu_strategy_util  # pylint: disable=g-import-not-at-top
 
     # Must connect to the cluster before initializing the system
     if hasattr(config, "experimental_connect_to_cluster"):
       config.experimental_connect_to_cluster(resolver)
     else:
+      from tensorflow.python.eager import remote  # pylint: disable=g-import-not-at-top
       remote.connect_to_cluster(resolver)
 
     if not tpu_strategy_util.get_initialized_tpu_systems():
