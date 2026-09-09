@@ -2859,6 +2859,43 @@ LogicalResult SubcoreIdOp::verify() {
   }
   return success();
 }
+
+LogicalResult TileSizeOp::verify() {
+  MemRefType memref_ty = getSource().getType();
+  const int32_t index = getIndex();
+  if (index < 0 || index >= memref_ty.getRank()) {
+    return emitOpError("Index out of bounds");
+  }
+  return success();
+}
+
+OpFoldResult TileSizeOp::fold(FoldAdaptor adaptor) {
+  MemRefType memref_ty = getSource().getType();
+  auto tiled_layout = dyn_cast<TiledLayoutAttr>(memref_ty.getLayout());
+  if (!tiled_layout) {
+    return {};
+  }
+  auto get_i32_int_attr = [&](int64_t value) {
+    return IntegerAttr::get(IntegerType::get(getContext(), 32), value);
+  };
+
+  ArrayRef<xla::Tile> tiles = tiled_layout.getTiles();
+  if (tiles.empty()) {
+    return get_i32_int_attr(1);
+  }
+
+  const xla::Tile& first_tile = tiles.front();
+  const int64_t num_tiled_dims = first_tile.dimensions().size();
+  const int64_t first_tiled_dim = memref_ty.getRank() - num_tiled_dims;
+  const int32_t index = getIndex();
+  if (index < first_tiled_dim) {
+    return get_i32_int_attr(1);
+  }
+
+  int64_t tile_size = first_tile.dimension(index - first_tiled_dim);
+  return get_i32_int_attr(tile_size);
+}
+
 }  // namespace tpu
 }  // namespace mlir
 
