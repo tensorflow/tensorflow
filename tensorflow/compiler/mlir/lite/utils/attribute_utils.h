@@ -87,7 +87,7 @@ size_t GetDenseElementBitWidth(Type elt_type);
 // a common API to access the values of an DenseResourceElementsAttr.
 template <typename ElementType>
 using IntFloatValueTemplateCheckT =
-    std::enable_if_t<(!std::is_same<ElementType, bool>::value &&
+    std::enable_if_t<(!std::is_same_v<ElementType, bool> &&
                       std::numeric_limits<ElementType>::is_integer) ||
                      is_valid_cpp_fp_type<ElementType>::value>;
 template <typename ElementType,
