@@ -33,14 +33,19 @@ cc_library(
         ],
     ),
     copts = ["-fexceptions"],
+    # On Linux/macOS, NB_SHARED=1 gives nanobind symbols default visibility so
+    # they can be shared across extensions. On Windows, NB_SHARED=1 causes
+    # downstream headers (where NB_BUILD is not defined) to declare nanobind
+    # functions as __declspec(dllimport) (__imp_*), which fails to link when
+    # nanobind's object files are linked directly into the binary.
     defines = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["NB_SHARED=1"],
+    }) + select({
         "@rules_python//python/config_settings:is_py_freethreaded": [
             "NB_FREE_THREADED=1",
-            "NB_SHARED=1",
         ],
-        "//conditions:default": [
-            "NB_SHARED=1",
-        ],
+        "//conditions:default": [],
     }),
     includes = ["include"],
     local_defines = ["NB_BUILD=1"],
