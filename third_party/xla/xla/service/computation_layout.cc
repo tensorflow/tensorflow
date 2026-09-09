@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/service/computation_layout.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"

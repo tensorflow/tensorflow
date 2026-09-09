@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/all_reduce_promotion.h"
 
+#include <memory>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
