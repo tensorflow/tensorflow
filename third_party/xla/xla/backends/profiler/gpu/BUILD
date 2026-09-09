@@ -139,7 +139,6 @@ cc_library(
     tags = [
         "cuda-only",
         "gpu",
-        "requires-gpu-nvidia",
     ],
     deps = [
         "@com_google_absl//absl/base:no_destructor",
@@ -158,7 +157,7 @@ xla_cc_test(
         "gpu",
         "no_mac",
         "nomsan",  # Disable  msan for cuda related tests.
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cuda_version_variants",
