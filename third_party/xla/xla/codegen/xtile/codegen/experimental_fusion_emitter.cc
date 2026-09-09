@@ -1935,6 +1935,11 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
   for (const auto& tiled_hlo : region.instructions()) {
+    // Re-use already emitted tensor values. This can happen in diamond
+    // patterns, such as softmax.
+    if (emitter_ctx.FindTiledHloTensorValue(*tiled_hlo).has_value()) {
+      continue;
+    }
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
     ABSL_ASSIGN_OR_RETURN(TensorValue result,
