@@ -173,14 +173,18 @@ class RNNOpModel : public SingleOpModel {
   RNNOpModel(int batches, int units, int size,
              const TensorType& weights = TensorType_FLOAT32,
              const TensorType& recurrent_weights = TensorType_FLOAT32,
-             bool asymmetric_quantize_inputs = false)
+             bool asymmetric_quantize_inputs = false,
+             const TensorType& bias = TensorType_FLOAT32,
+             const TensorType& hidden_state = TensorType_FLOAT32,
+             const TensorType& output = TensorType_FLOAT32,
+             bool allocate_tensors = true)
       : batches_(batches), units_(units), input_size_(size) {
     input_ = AddInput(TensorType_FLOAT32);
     weights_ = AddInput(weights);
     recurrent_weights_ = AddInput(recurrent_weights);
-    bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
+    bias_ = AddInput(bias);
+    hidden_state_ = AddVariableInput(hidden_state);
+    output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
                  CreateRNNOptions(builder_, ActivationFunctionType_RELU,
                                   asymmetric_quantize_inputs)
@@ -189,7 +193,11 @@ class RNNOpModel : public SingleOpModel {
                       {units_, input_size_},    // weights tensor
                       {units_, units_},         // recurrent weights tensor
                       {units_},                 // bias tensor
-                      {batches_, units_}});     // hidden state tensor
+                      {batches_, units_}},      // hidden state tensor
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/allocate_tensors);
   }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
@@ -343,6 +351,27 @@ TEST_P(HybridRnnOpTest, BlackBoxTestInt8) {
 
 INSTANTIATE_TEST_SUITE_P(HybridRnnOpTest, HybridRnnOpTest,
                          ::testing::ValuesIn({false, true}));
+
+TEST(RnnOpTest, MismatchedBiasTypeFails) {
+  RNNOpModel rnn(2, 16, 8, TensorType_FLOAT32, TensorType_FLOAT32, false,
+                 /*bias=*/TensorType_INT8, TensorType_FLOAT32,
+                 TensorType_FLOAT32, /*allocate_tensors=*/false);
+  EXPECT_NE(rnn.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(RnnOpTest, MismatchedHiddenStateTypeFails) {
+  RNNOpModel rnn(2, 16, 8, TensorType_FLOAT32, TensorType_FLOAT32, false,
+                 TensorType_FLOAT32, /*hidden_state=*/TensorType_INT8,
+                 TensorType_FLOAT32, /*allocate_tensors=*/false);
+  EXPECT_NE(rnn.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(RnnOpTest, MismatchedOutputTypeFails) {
+  RNNOpModel rnn(2, 16, 8, TensorType_FLOAT32, TensorType_FLOAT32, false,
+                 TensorType_FLOAT32, TensorType_FLOAT32,
+                 /*output=*/TensorType_INT8, /*allocate_tensors=*/false);
+  EXPECT_NE(rnn.AllocateTensors(), kTfLiteOk);
+}
 
 }  // namespace
 }  // namespace tflite
