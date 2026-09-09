@@ -48,7 +48,6 @@ def create_input(
 
 
 emitter_types = [
-    testlib_cpu.ElementalKernelEmitter,
     testlib_cpu.DotKernelEmitter,
 ]
 

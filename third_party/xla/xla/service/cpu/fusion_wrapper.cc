@@ -99,7 +99,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
-      return using_new_fusion_emitter_;
+      return true;
     case HloOpcode::kCopy:
       // If it is a simple copy with no change in layout then it is more
       // efficient to use the default copy thunk which will just be a simple

@@ -30,10 +30,9 @@ namespace cpu {
 class FusionWrapper : public emitters::FusionWrapperBase {
  public:
   explicit FusionWrapper(
-      bool using_new_fusion_emitter, bool use_tiled_emitter,
+      bool use_tiled_emitter,
       const TargetMachineFeatures* target_machine_features = nullptr)
-      : using_new_fusion_emitter_(using_new_fusion_emitter),
-        target_machine_features_(target_machine_features) {}
+      : target_machine_features_(target_machine_features) {}
   ~FusionWrapper() override = default;
 
   absl::string_view name() const override { return "fusion-wrapper"; }
@@ -41,7 +40,6 @@ class FusionWrapper : public emitters::FusionWrapperBase {
   bool MustWrapInstruction(const HloInstruction& instruction) override;
 
  private:
-  bool using_new_fusion_emitter_;
   const TargetMachineFeatures* target_machine_features_;
 };
 

@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -29,9 +28,7 @@ limitations under the License.
 #include "llvm/IR/Analysis.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -61,20 +58,12 @@ absl::Status CanDoFastConcatenate(const HloInstruction& instruction) {
 }
 
 ConcatenateKernelEmitter::ConcatenateKernelEmitter(
-    const HloInstruction* instr, const BufferAssignment* buffer_assignment,
-    const TargetMachineFeatures* target_machine)
-    : instr_(instr),
-      buffer_assignment_(buffer_assignment),
-      target_machine_(target_machine) {}
+    const HloInstruction* instr, const BufferAssignment* buffer_assignment)
+    : instr_(instr), buffer_assignment_(buffer_assignment) {}
 
 absl::StatusOr<ConcatenateKernelEmitter::KernelDefinition>
 ConcatenateKernelEmitter::EmitKernelDefinition() {
-  if (absl::Status status = CanDoFastConcatenate(*instr_); !status.ok()) {
-    VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
-            << ": " << status.message();
-    return ElementalKernelEmitter(instr_, buffer_assignment_, target_machine_)
-        .EmitKernelDefinition();
-  }
+  ABSL_RETURN_IF_ERROR(CanDoFastConcatenate(*instr_));
 
   auto ctx = std::make_unique<llvm::LLVMContext>();
 

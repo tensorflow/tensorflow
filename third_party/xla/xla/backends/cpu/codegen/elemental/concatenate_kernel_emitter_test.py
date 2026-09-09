@@ -31,7 +31,6 @@ HloInstruction = base_testlib.HloInstruction
 class ConcatenateKernelRunnerTest(parameterized.TestCase):
 
   @parameterized.product(
-      cycle_layout=[True, False],
       dtype=[
           np.dtype(np.uint8),
           np.dtype(np.uint16),
@@ -47,23 +46,13 @@ class ConcatenateKernelRunnerTest(parameterized.TestCase):
       ],
       concat_dimension=[0, 1, 2],
   )
-  def test_concatenate(self, cycle_layout, dtype, concat_dimension):
+  def test_concatenate(self, dtype, concat_dimension):
     num_inputs = 5
     shape = (4, 4, 4)
     np_inputs = [
         (np.random.rand(*shape) * 10).astype(dtype) for _ in range(num_inputs)
     ]
-    if cycle_layout:
-      # Give the inputs different layouts to test the slow path.
-      default_layout = [0, 1, 2]
-      input_literals = [
-          create_literal(input_array, np.roll(default_layout, idx))
-          for idx, input_array in enumerate(np_inputs)
-      ]
-    else:
-      input_literals = [
-          create_literal(input_array) for input_array in np_inputs
-      ]
+    input_literals = [create_literal(input_array) for input_array in np_inputs]
 
     expected_output = np.concatenate(np_inputs, axis=concat_dimension)
     output_literal = create_literal(np.zeros_like(expected_output))
@@ -85,7 +74,6 @@ class ConcatenateKernelRunnerTest(parameterized.TestCase):
     emitter = cpu_testlib.ConcatenateKernelEmitter(
         hlo_module.get_root_instruction(),
         buffer_assignment,
-        jit_compiler.get_target_machine(),
     )
 
     kernel_definition = emitter.emit_kernel_definition()

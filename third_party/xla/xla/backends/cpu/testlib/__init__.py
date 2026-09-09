@@ -21,7 +21,6 @@ from xla.backends.cpu.testlib import _extension
 ComputationKernelEmitter = _extension.ComputationKernelEmitter
 ConcatenateKernelEmitter = _extension.ConcatenateKernelEmitter
 DotKernelEmitter = _extension.DotKernelEmitter
-ElementalKernelEmitter = _extension.ElementalKernelEmitter
 HloCompiler = _extension.HloCompiler
 JitCompiler = _extension.JitCompiler
 KernelRunner = _extension.KernelRunner
