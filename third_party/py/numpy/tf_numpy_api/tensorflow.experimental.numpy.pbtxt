@@ -302,7 +302,7 @@ tf_module {
   }
   member_method {
     name: "count_nonzero"
-    argspec: "args=[\'a\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'a\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "cross"
