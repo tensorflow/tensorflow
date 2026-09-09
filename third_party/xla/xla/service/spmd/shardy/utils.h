@@ -196,11 +196,15 @@ mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
 
 // Converts a non-tuple XLA HloSharding to an SDY TensorShardingAttr.
 mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
-    const HloSharding& hloSharding, mlir::MLIRContext* context);
+    const HloSharding& hloSharding, int64_t rank,
+    mlir::sdy::MeshAttr globalMesh, mlir::FlatSymbolRefAttr globalMeshRef,
+    mlir::MLIRContext* context);
 
 // Converts a tuple XLA HloSharding to an SDY TensorShardingPerValueAttr.
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
-    const HloSharding& hloSharding, mlir::MLIRContext* context);
+    const HloSharding& hloSharding, mlir::TypeRange types,
+    mlir::sdy::MeshAttr globalMesh, mlir::FlatSymbolRefAttr globalMeshRef,
+    mlir::MLIRContext* context);
 
 // Returns whether the call is on a manual computation.
 bool isManualComputation(mlir::func::CallOp callOp);
