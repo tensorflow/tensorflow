@@ -72,6 +72,7 @@ deviceless_tests = [
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
     "constraints/max_tensor_elements_violation.hlo",
     "dot/duplicate_dot_operand.hlo",
+    "reshape/reshape_expand_high_rank.hlo",
 ]
 
 lit_test_suite(
