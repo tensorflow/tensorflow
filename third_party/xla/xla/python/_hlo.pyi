@@ -15,6 +15,7 @@
 from collections.abc import Sequence
 import enum
 from typing import Annotated, TypeAlias, overload
+
 import numpy
 from numpy.typing import NDArray
 

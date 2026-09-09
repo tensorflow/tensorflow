@@ -15,8 +15,7 @@
 """Utilities for visiting program execution data."""
 
 from collections.abc import Iterator
-
-from typing_extensions import CapsuleType
+import types
 
 class ProfileEvent:
   """Wraps XEvent protobuf and provides accessors to its contents."""
@@ -85,7 +84,7 @@ class ProfileData:
   def __init__(self, arg: bytes, /) -> None: ...
   @staticmethod
   def from_raw_cpp_ptr(
-      capsule: CapsuleType,
+      capsule: types.CapsuleType,
   ) -> ProfileData:
     """Creates a ProfileData from a raw C++ pointer enclosed in a capsule to a XSpace proto."""
 
