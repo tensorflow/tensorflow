@@ -15,13 +15,16 @@ limitations under the License.
 #include "tensorflow/core/data/service/validate_utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <numeric>
-#include <random>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/random/random.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
