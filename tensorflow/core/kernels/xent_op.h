@@ -17,8 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_XENT_OP_H_
 // Functor definition for XentOp, must be compilable by nvcc.
 
-#include <type_traits>
-
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #include "tensorflow/core/framework/tensor_types.h"
@@ -106,19 +104,8 @@ struct XentEigenImpl {
 
     // backprop: prob - labels, where
     //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
-    if (std::is_same<T, double>::value) {
-      backprop.device(d) = backprop.exp() / scratch.broadcast(one_by_class);
-      // Remove the row-sum residual that can remain when a probability rounds
-      // to one. For normalized labels, this is zero in exact arithmetic.
-      scratch.reshape(batch_only).device(d) =
-          (backprop - labels.broadcast(labels_bcast)).sum(along_class);
-      backprop.device(d) =
-          (backprop - labels.broadcast(labels_bcast)) -
-          scratch.broadcast(one_by_class) * backprop;
-    } else {
-      backprop.device(d) = (backprop.exp() / scratch.broadcast(one_by_class)) -
-                           labels.broadcast(labels_bcast);
-    }
+    backprop.device(d) = (backprop.exp() / scratch.broadcast(one_by_class)) -
+                         labels.broadcast(labels_bcast);
   }
 };
 
