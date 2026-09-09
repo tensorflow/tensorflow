@@ -54,7 +54,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Visitor that build a new HLO module with an given root HLO instruction. Only
+// Visitor that build a new HLO module with a given root HLO instruction. Only
 // HLOs that are reachable from the new root instruction are included in the new
 // module.
 //

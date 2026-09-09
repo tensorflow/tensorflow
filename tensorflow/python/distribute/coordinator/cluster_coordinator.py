@@ -365,7 +365,7 @@ class _CoordinatedClosureQueue(object):
 
     # The following is a lock to make sure when `wait` is called and before it
     # returns no `put` can be executed during this period. It is because `wait`
-    # won't know what to do with newly put closures. This lock adds an cutoff
+    # won't know what to do with newly put closures. This lock adds a cutoff
     # for `wait` so that closures put into the queue while waiting would not be
     # taken responsible by this `wait`.
     #

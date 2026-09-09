@@ -224,7 +224,7 @@ class CallGraph {
   }
 
   // Returns the nearest call graph ancestors of instructions 'a' and 'b' for
-  // which the ancestors are in the same computation. An instruction is an call
+  // which the ancestors are in the same computation. An instruction is a call
   // graph ancestor of 'a' if the instruction calls the computation containing
   // 'a' either directly or transitively. Degeneratively an instruction is an
   // ancestor of itself. nullptr is returned if there is no common ancestor or

@@ -20,7 +20,7 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 
-// Makes an copy of the model at input_path and writes it to output_path, adding
+// Makes a copy of the model at input_path and writes it to output_path, adding
 // tensors to the model needed for calibration.
 // Returns true if it is successful.
 // Example: a/b/c.tflite becomes a/b/c.calibrated.tflite and has

@@ -200,7 +200,7 @@ const NnApi LoadNnApi() {
   static const char nnapi_library_name[] = "libneuralnetworks.so";
   libneuralnetworks = dlopen(nnapi_library_name, RTLD_LAZY | RTLD_LOCAL);
 #ifdef __ANDROID__
-  // Note: If there is an problem trying to open the NNAPI library on a
+  // Note: If there is a problem trying to open the NNAPI library on a
   // non-Android system, the error message is suppressed. This is to avoid
   // showing confusing errors when running in environments that do not support
   // NNAPI. As more platforms support NNAPI, the #ifdef logic above can be

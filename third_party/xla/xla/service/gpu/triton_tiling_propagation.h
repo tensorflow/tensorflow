@@ -169,7 +169,7 @@ class DimensionOrder {
     std::string ToString() const;
     std::string ToLongString() const;
 
-    // Label carrying the dimension number of an defining operation.
+    // Label carrying the dimension number of a defining operation.
     int dst_dim_number() const { return dst_dim_number_; }
     // Total number of elements in the fragment ignoring slicing.
     int64_t full_count() const { return count_; }

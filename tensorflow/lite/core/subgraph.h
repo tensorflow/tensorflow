@@ -818,14 +818,14 @@ class Subgraph {
   // Does not report invoke status through profiler.
   TfLiteStatus ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate);
 
-  // Request an tensor be resized implementation. If the given tensor is of
+  // Request a tensor be resized implementation. If the given tensor is of
   // type kTfLiteDynamic it will also be allocated new memory.
   TfLiteStatus ResizeTensorImpl(TfLiteTensor* tensor, TfLiteIntArray* new_size);
 
   // Report a detailed error string (will be printed to stderr).
   void ReportErrorImpl(const char* format, va_list args);
 
-  // Entry point for C node plugin API to request an tensor be resized.
+  // Entry point for C node plugin API to request a tensor be resized.
   static TfLiteStatus ResizeTensor(TfLiteContext* context, TfLiteTensor* tensor,
                                    TfLiteIntArray* new_size);
   // Entry point for C node plugin API to report an error.

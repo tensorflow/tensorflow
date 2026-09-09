@@ -18,7 +18,7 @@ Note: for now the tests only provides correctness checks, i.e. classifier
 predicts the correct category on the test image, but no on-device latency
 measurements. To test the latency measurement functionality, the tests will
 print the latency running on a desktop computer, which is not indicative of the
-on-device run-time. We are releasing an benchmarker Apk that would allow
+on-device run-time. We are releasing a benchmarker Apk that would allow
 developers to measure latency on their own devices.
 
 ### Obtain the sample models

@@ -1193,7 +1193,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
     return result;
   }
 
-  // Rewrites an gemm+all-to-all into multiple independent partial gemm+a2a's
+  // Rewrites a gemm+all-to-all into multiple independent partial gemm+a2a's
   // to minimize communication overhead. To do this, the original input will be
   // sliced into replica_group size and perform gemm+all-to-all.
   absl::Status HandleAllToAll(HloInstruction* inst) override {

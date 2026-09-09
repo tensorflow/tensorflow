@@ -341,7 +341,7 @@ def TFR_GetElementOp : TFR_Op<"get_element", [Pure]> {
 def TFR_BuildListOp : TFR_Op<"build_list", [Pure]> {
   let description = [{
    The `build_list` operation builds a tensor list from a list of tensors, or
-   an tfr.attr from a list of scalars.
+   a tfr.attr from a list of scalars.
 
     Example:
 

@@ -757,7 +757,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
             if (opcode == HloOpcode::kDivide &&
                 this->IsValueEffectiveInteger(root->operand_ids(1))) {
               // Because in many cases the lower bound of a value is
-              // integer 0, instead of throwing an divide-by-zero error
+              // integer 0, instead of throwing a divide-by-zero error
               // at compile time, we set the bound defer the check to
               // runtime. In those cases we use the upper-bound of
               // first operand as a placeholder.

@@ -314,7 +314,7 @@ class BlasSupport {
       const void *alpha, const void *beta,
       std::vector<blas::AlgorithmType> *out_algorithms) = 0;
 
-  // Like DoBlasGemm, but accepts an algorithm and an compute type.
+  // Like DoBlasGemm, but accepts an algorithm and a compute type.
   //
   // The compute type lets you say (e.g.) that the inputs and outputs are
   // Eigen::halfs, but you want the internal computations to be done with

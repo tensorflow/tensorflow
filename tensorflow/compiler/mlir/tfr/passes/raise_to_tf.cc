@@ -183,7 +183,7 @@ LogicalResult RewriteTFRCallOp::AddDerivedAttrs(
     ArrayRef<Attribute> input_types,
     llvm::StringMap<Attribute>* derived_attrs) const {
   // If there is an attribute associated to the input in the signature, we
-  // store it as an derived attribute.
+  // store it as a derived attribute.
   if (auto tensor_type = mlir::dyn_cast<TFRTensorType>(input_tfr_type)) {
     auto attr_names = tensor_type.getAttrKeys();
     if (attr_names.empty()) return success();
@@ -195,7 +195,7 @@ LogicalResult RewriteTFRCallOp::AddDerivedAttrs(
   }
 
   // If there is an attribute associated to the input in the signature,
-  // we store it as an derived attribute.
+  // we store it as a derived attribute.
   if (auto list_type = mlir::dyn_cast<TFRTensorListType>(input_tfr_type)) {
     auto attr_names = list_type.getAttrKeys();
     if (attr_names.empty()) return success();
