@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -201,6 +201,96 @@ absl::StatusOr<mlir::Operation*> ImportStablehloAsyncDone(
   return op.getOperation();
 }
 
+// Finds the defining MHLO AsyncStartOp by traversing backwards through
+// transparent dataflow intermediaries (tuples, optimization barriers, and
+// get-tuple-element). Maintains a tuple index stack to correctly navigate
+// through multi-level nested tuples.
+mlir::mhlo::AsyncStartOp FindMhloAsyncStartImpl(
+    mlir::Value value, llvm::SmallVectorImpl<int64_t>& tuple_indices_stack) {
+  while (value) {
+    mlir::Operation* defining_op = value.getDefiningOp();
+    if (!defining_op) {
+      return nullptr;
+    }
+
+    // Base case: Reached the target AsyncStartOp.
+    if (auto async_start =
+            llvm::dyn_cast<mlir::mhlo::AsyncStartOp>(defining_op)) {
+      return async_start;
+    }
+
+    // GetTupleElement (StableHLO / MHLO): Push the tuple index onto the
+    // stack so that when we encounter the matching TupleOp upstream, we select
+    // the correct operand branch.
+    if (auto gte =
+            llvm::dyn_cast<mlir::stablehlo::GetTupleElementOp>(defining_op)) {
+      tuple_indices_stack.push_back(gte.getIndex());
+      value = gte.getOperand();
+      continue;
+    }
+    if (auto gte = llvm::dyn_cast<mlir::mhlo::GetTupleElementOp>(defining_op)) {
+      tuple_indices_stack.push_back(gte.getIndex());
+      value = gte.getOperand();
+      continue;
+    }
+
+    // TupleOp (StableHLO / MHLO): Pop the expected tuple index from the
+    // stack to step into the corresponding tuple element operand. If no index
+    // was tracked, default to operand 0.
+    auto handle_tuple = [&](auto tuple_op) -> mlir::Value {
+      if (tuple_op->getNumOperands() == 0) {
+        return nullptr;
+      }
+      if (tuple_indices_stack.empty()) {
+        return tuple_op->getOperand(0);
+      }
+      int64_t idx = tuple_indices_stack.pop_back_val();
+      if (idx < 0 || idx >= tuple_op->getNumOperands()) {
+        return nullptr;
+      }
+      return tuple_op->getOperand(idx);
+    };
+    if (auto tuple_op = llvm::dyn_cast<mlir::stablehlo::TupleOp>(defining_op)) {
+      value = handle_tuple(tuple_op);
+      continue;
+    }
+    if (auto tuple_op = llvm::dyn_cast<mlir::mhlo::TupleOp>(defining_op)) {
+      value = handle_tuple(tuple_op);
+      continue;
+    }
+
+    // OptimizationBarrierOp (StableHLO / MHLO): The barrier is transparent;
+    // trace the corresponding input operand matching this OpResult's result
+    // number.
+    auto handle_barrier = [&](auto barrier_op) -> mlir::Value {
+      auto op_result = mlir::dyn_cast<mlir::OpResult>(value);
+      if (!op_result) {
+        return nullptr;
+      }
+      unsigned res_num = op_result.getResultNumber();
+      if (res_num >= barrier_op->getNumOperands()) {
+        return nullptr;
+      }
+      return barrier_op->getOperand(res_num);
+    };
+    if (auto barrier = llvm::dyn_cast<mlir::stablehlo::OptimizationBarrierOp>(
+            defining_op)) {
+      value = handle_barrier(barrier);
+      continue;
+    }
+    if (auto barrier =
+            llvm::dyn_cast<mlir::mhlo::OptimizationBarrierOp>(defining_op)) {
+      value = handle_barrier(barrier);
+      continue;
+    }
+
+    // Non-transparent defining op; async-start could not be found along this
+    // path.
+    return nullptr;
+  }
+  return nullptr;
+}
+
 absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
     const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
@@ -208,7 +298,8 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
     bool useBundleResult = false) {
   assert(operands.size() == 1 &&
          "*-done ops must take only a single async_bundle operand");
-  auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
+  llvm::SmallVector<int64_t, 4> tuple_indices_stack;
+  auto async_start = FindMhloAsyncStartImpl(operands[0], tuple_indices_stack);
   if (!async_start) {
     return InvalidArgument("*-start requires *-done as input");
   }
@@ -229,7 +320,9 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
                                               operands, attributes);
     return {op};
   }
-  if (useBundleResult) result_type = async_bundle.getTypes()[1];
+  if (useBundleResult) {
+    result_type = async_bundle.getTypes()[1];
+  }
   auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, Untuple(result_type),
                                             operands, attributes);
   return CreateTupleFromOpResults(builder, loc, op.getOperation(), result_type);
@@ -548,6 +641,11 @@ absl::StatusOr<mlir::Operation*> ImportAsyncOpDone(
   }
   return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
                                  builder);
+}
+
+mlir::mhlo::AsyncStartOp FindMhloAsyncStart(mlir::Value value) {
+  llvm::SmallVector<int64_t, 4> tuple_indices_stack;
+  return FindMhloAsyncStartImpl(value, tuple_indices_stack);
 }
 
 }  // namespace xla
