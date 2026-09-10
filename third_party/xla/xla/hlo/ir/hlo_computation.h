@@ -1005,6 +1005,8 @@ class HloComputation {
   // provided permutation.
   absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
 
+  bool IsEntryInstUnboundedDynamic() const;
+
  private:
   friend class HloModule;
 
