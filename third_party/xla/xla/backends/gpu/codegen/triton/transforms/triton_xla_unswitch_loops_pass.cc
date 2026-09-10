@@ -67,7 +67,7 @@ LogicalResult UnswitchLoop(mlir::scf::ForOp for_op,
     // number. In this case it might make sense to make it a parameter
     // of the pass.
     return rewriter.notifyMatchFailure(
-        for_op, "more than 2 ifs are found inside the loop");
+        for_op, "more than 2 if-statements are found inside the loop");
   }
   if (!if_op) {
     return rewriter.notifyMatchFailure(for_op, "no if found inside the loop");
