@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_COMPUTATION_H_
 #define XLA_HLO_IR_HLO_COMPUTATION_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -434,22 +435,60 @@ class HloComputation {
   // with respect to HloComputation::Equal() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloComputation& computation) {
-    // Walk the computation in post-order, computing (and caching) the
-    // Absl::Hash after each instruction to use to as an operand for
-    // subsequent instructions.
     auto instructions = computation.MakeInstructionPostOrder();
-    absl::flat_hash_map<HloInstruction*, size_t> instruction_hash_cache;
-    instruction_hash_cache.reserve(instructions.size());
+    std::vector<size_t> intermediate_hashes(computation.instruction_count());
+    absl::InlinedVector<size_t, 4> component_root_hashes;
+
     for (auto* instruction : instructions) {
       absl::InlinedVector<size_t, 2> operand_hashes;
       for (auto* operand : instruction->operands()) {
-        operand_hashes.push_back(instruction_hash_cache[operand]);
+        size_t id = operand->local_id_;
+        if (id >= intermediate_hashes.size()) {
+          intermediate_hashes.resize(id + 1);
+        }
+        operand_hashes.push_back(intermediate_hashes[id]);
       }
-      instruction_hash_cache.emplace(
-          instruction, absl::HashOf(*instruction, operand_hashes));
+
+      absl::InlinedVector<size_t, 2> control_predecessor_hashes;
+      int64_t control_predecessor_count =
+          instruction->control_predecessors().size();
+      if (control_predecessor_count > 0) {
+        control_predecessor_hashes.reserve(control_predecessor_count);
+        for (auto* pred : instruction->control_predecessors()) {
+          size_t id = pred->local_id_;
+          if (id >= intermediate_hashes.size()) {
+            intermediate_hashes.resize(id + 1);
+          }
+          control_predecessor_hashes.push_back(intermediate_hashes[id]);
+        }
+        if (control_predecessor_count > 1) {
+          std::sort(control_predecessor_hashes.begin(),
+                    control_predecessor_hashes.end());
+        }
+      }
+      size_t hash = absl::HashOf(*instruction, operand_hashes,
+                                 control_predecessor_hashes);
+
+      if (instruction->user_count() == 0 &&
+          instruction->control_successors().empty() &&
+          instruction != computation.root_instruction()) {
+        component_root_hashes.push_back(hash);
+      } else {
+        size_t id = instruction->local_id_;
+        if (id >= intermediate_hashes.size()) {
+          intermediate_hashes.resize(id + 1);
+        }
+        intermediate_hashes[id] = hash;
+      }
     }
-    return H::combine(std::move(h),
-                      instruction_hash_cache[computation.root_instruction()],
+
+    std::sort(component_root_hashes.begin(), component_root_hashes.end());
+    size_t root_id = computation.root_instruction()->local_id_;
+    size_t root_hash = 0;
+    if (root_id < intermediate_hashes.size()) {
+      root_hash = intermediate_hashes[root_id];
+    }
+    return H::combine(std::move(h), root_hash, component_root_hashes,
                       instructions.size());
   }
 
