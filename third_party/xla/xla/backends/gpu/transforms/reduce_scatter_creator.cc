@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_opt_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -44,7 +43,6 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloModuleConfig& config = module->config();
-  int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
   for (HloComputation* computation :
@@ -89,17 +87,11 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
       }
       scatter_shape.set_dimensions(split_dim, scatter_dim_size);
 
-      std::optional<int64_t> channel_id;
-      if (ar->channel_id()) {
-        // We cannot reuse the channel_id on all-reduce for reduce-scatter.
-        channel_id = next_channel_id++;
-      }
-
       HloInstruction* ars =
           computation->AddInstruction(HloInstruction::CreateReduceScatter(
               scatter_shape, {rs_input}, ar->to_apply(), ar->device_list(),
-              ar->constrain_layout(), channel_id, ar->use_global_device_ids(),
-              ar_spec->split_dim));
+              ar->constrain_layout(), ar->channel_id(),
+              ar->use_global_device_ids(), ar_spec->split_dim));
       ar->SetupDerivedInstruction(ars);
 
       // SetupDerivedInstruction only copies backend configuration for matching
