@@ -1236,6 +1236,8 @@ class HloModule {
     return debug_attributes_;
   }
 
+  bool IsEntryComputationUnboundedDynamic() const;
+
  private:
   absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>
       debug_attributes_;
