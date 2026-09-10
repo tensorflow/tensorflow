@@ -34,6 +34,7 @@ cc_library(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+        "@com_google_absl//absl/synchronization",
     ] + select({
         # Stable delegate does not support Windows because the shared library loader hasn't been
         # extended to support Windows.

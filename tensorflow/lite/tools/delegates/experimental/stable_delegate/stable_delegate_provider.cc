@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
+
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -72,12 +74,18 @@ class StableDelegatePluginLoader {
   const CacheEntry* LoadStableDelegatePlugin(
       const std::string& json_settings_file_path);
 
-  std::map<std::string /*settings_file_path*/, CacheEntry> cache_;
+  absl::Mutex mutex_;
+  std::map<std::string /*settings_file_path*/, CacheEntry> cache_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 const StableDelegatePluginLoader::CacheEntry*
 StableDelegatePluginLoader::LoadStableDelegatePlugin(
     const std::string& json_settings_file_path) {
+  if (json_settings_file_path.empty()) {
+    return nullptr;
+  }
+  absl::MutexLock lock(&mutex_);
   auto it = cache_.find(json_settings_file_path);
   if (it != cache_.end()) {
     return &it->second;
