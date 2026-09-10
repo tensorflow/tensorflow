@@ -1790,9 +1790,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     if (bandwidth.ok()) {
       desc.set_pcie_bandwidth(*bandwidth);
     } else {
-      LOG(ERROR) << bandwidth.status().message()
-                 << " Assuming PCIe gen 3 x16 bandwidth.";
-      bandwidth = 16LL * 1024 * 1024 * 1024;
+      LOG(ERROR) << "Unable to determine PCIe bandwidth: "
+                 << bandwidth.status().message();
     }
 
     absl::StatusOr<int64_t> p2p_link_count =
