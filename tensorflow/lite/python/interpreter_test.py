@@ -277,6 +277,31 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
     self.assertEqual(len(data), len(test_input_tensor.item(0)))
 
+  def testStringZeroDimObjectArray(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/gather_string_0d.tflite'))
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+
+    # 0D object array containing non-string object (e.g. dict) should fail.
+    invalid_obj_arr = np.array({'foo': 'bar'}, dtype=object)
+    with self.assertRaises(ValueError):
+      interpreter.set_tensor(input_details[0]['index'], invalid_obj_arr)
+
+    # 0D object array containing string should work properly.
+    valid_str_arr = np.array('hello', dtype=object)
+    interpreter.set_tensor(input_details[0]['index'], valid_str_arr)
+    test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
+    self.assertEqual(b'hello', test_input_tensor.item(0))
+
+    # 0D object array containing bytes should work properly.
+    valid_bytes_arr = np.array(b'world', dtype=object)
+    interpreter.set_tensor(input_details[0]['index'], valid_bytes_arr)
+    test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
+    self.assertEqual(b'world', test_input_tensor.item(0))
+
   def testPerChannelParams(self):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile('testdata/pc_conv.bin'))
