@@ -312,11 +312,20 @@ absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
       rm->default_container(), compiler_name, pjrt_device_compiler);
   if (s.ok() && device_type == DEVICE_TPU) {
     auto* existing_pjrt_client = (*pjrt_device_compiler)->client();
-    TF_ASSIGN_OR_RETURN(auto* latest_pjrt_client, GetPjRtClient(device_type));
+    auto status_or_latest_client = GetPjRtClient(device_type);
+    if (!status_or_latest_client.ok()) {
+      (*pjrt_device_compiler)->Unref();
+      *pjrt_device_compiler = nullptr;
+      return status_or_latest_client.status();
+    }
+    auto* latest_pjrt_client = status_or_latest_client.value();
 
     if (existing_pjrt_client != latest_pjrt_client) {
       // PjRtClient has changed. Delete the PjRtDeviceCompiler (and the cache
       // within) and create a new one.
+      (*pjrt_device_compiler)->Unref();
+      *pjrt_device_compiler = nullptr;
+
       TF_RETURN_IF_ERROR(rm->Delete<PjRtDeviceCompiler>(rm->default_container(),
                                                         compiler_name));
       TF_RETURN_IF_ERROR(rm->Delete<DeviceCompilationProfiler>(
@@ -343,12 +352,19 @@ absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
         }));
   }
 
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
+  absl::Status profiler_status = rm->LookupOrCreate<DeviceCompilationProfiler>(
       rm->default_container(), profiler_name, profiler,
       [](DeviceCompilationProfiler** profiler) {
         *profiler = new DeviceCompilationProfiler();
         return absl::OkStatus();
-      }));
+      });
+  if (!profiler_status.ok()) {
+    if (*pjrt_device_compiler != nullptr) {
+      (*pjrt_device_compiler)->Unref();
+      *pjrt_device_compiler = nullptr;
+    }
+    return profiler_status;
+  }
 
   return absl::OkStatus();
 }
