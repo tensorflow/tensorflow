@@ -59,16 +59,24 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
                                         const TfLiteTensor* size,
                                         std::vector<int>* output_shape_vector) {
   for (int idx = 0; idx < NumDimensions(input); ++idx) {
+    T begin_value = GetTensorData<T>(begin)[idx];
+    if (begin_value < 0) {
+      TF_LITE_KERNEL_LOG(context, "Invalid begin.");
+      return kTfLiteError;
+    }
     T size_value = GetTensorData<T>(size)[idx];
     if (size_value < 0) {
       if (size_value != -1) {
         TF_LITE_KERNEL_LOG(context, "Invalid size.");
         return kTfLiteError;
       }
-      size_value = SizeOfDimension(input, idx) - GetTensorData<T>(begin)[idx];
+      size_value = SizeOfDimension(input, idx) - begin_value;
+      if (size_value < 0) {
+        TF_LITE_KERNEL_LOG(context, "Invalid size.");
+        return kTfLiteError;
+      }
     } else {
-      if (SizeOfDimension(input, idx) <
-          GetTensorData<T>(begin)[idx] + size_value) {
+      if (SizeOfDimension(input, idx) < begin_value + size_value) {
         TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
         return kTfLiteError;
       }
@@ -92,6 +100,18 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
                                const TfLiteTensor* input,
                                const TfLiteTensor* begin,
                                const TfLiteTensor* size, TfLiteTensor* output) {
+  if (begin->type != size->type) {
+    TF_LITE_KERNEL_LOG(context,
+                       "begin type %d and size type %d do not match.",
+                       begin->type, size->type);
+    return kTfLiteError;
+  }
+  if (NumElements(begin) != NumDimensions(input)) {
+    TF_LITE_KERNEL_LOG(context,
+                       "begin size %d does not match input dimensions %d.",
+                       NumElements(begin), NumDimensions(input));
+    return kTfLiteError;
+  }
   std::vector<int> output_shape_vector;
 
   if (begin->type == kTfLiteInt32) {
@@ -140,9 +160,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  begin->type == kTfLiteInt32 || begin->type == kTfLiteInt64);
   TF_LITE_ENSURE(context,
                  size->type == kTfLiteInt32 || size->type == kTfLiteInt64);
+  TF_LITE_ENSURE_TYPES_EQ(context, begin->type, size->type);
   TF_LITE_ENSURE_EQ(context, NumDimensions(begin), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
+  TF_LITE_ENSURE_EQ(context, NumElements(begin), NumDimensions(input));
   // If the shape of output is fully specified then resize even if
   // the input shape is not staticly defined.
   if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
@@ -171,6 +193,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+
+  if (begin->type != size->type) {
+    TF_LITE_KERNEL_LOG(context,
+                       "begin type %d and size type %d do not match.",
+                       begin->type, size->type);
+    return kTfLiteError;
+  }
+  if (NumElements(begin) != NumDimensions(input)) {
+    TF_LITE_KERNEL_LOG(context,
+                       "begin size %d does not match input dimensions %d.",
+                       NumElements(begin), NumDimensions(input));
+    return kTfLiteError;
+  }
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,

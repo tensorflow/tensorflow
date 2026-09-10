@@ -408,6 +408,49 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
 }
 
+class SliceOpMismatchTypeModel : public SingleOpModel {
+ public:
+  SliceOpMismatchTypeModel() {
+    input_ = AddInput(TensorType_FLOAT32);
+    begin_ = AddInput(TensorType_INT32);
+    size_ = AddInput(TensorType_INT64);
+    output_ = AddOutput(TensorData(TensorType_FLOAT32, {}));
+    SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
+                 CreateSliceOptions(builder_).Union());
+    BuildInterpreter({{4}, {1}, {1}});
+    PopulateTensor<int32_t>(begin_, {0});
+    PopulateTensor<int64_t>(size_, {1});
+  }
+
+ private:
+  int input_;
+  int begin_;
+  int size_;
+  int output_;
+};
+
+TEST(SliceValidationTest, TestInvalidInputs) {
+  // Test 1: Highly negative begin index for dynamic tensors returns kTfLiteError on Invoke
+  {
+    SliceOpModel<float, int32_t> m({4}, {1}, {-100}, {1}, {1}, TensorType_INT32,
+                                   TensorType_FLOAT32, TestType::kDynamic);
+    EXPECT_EQ(m.Invoke(), kTfLiteError);
+  }
+
+  // Test 2: Mismatched begin and size tensor types rejects allocation in Prepare
+#if GTEST_HAS_DEATH_TEST
+  EXPECT_DEATH((SliceOpMismatchTypeModel()), "Cannot allocate tensors");
+#endif
+
+  // Test 3: Mismatched begin length vs input dimensions rejects allocation in Prepare
+#if GTEST_HAS_DEATH_TEST
+  EXPECT_DEATH(
+      (SliceOpModel<float, int32_t>({2, 3}, {1}, {0}, {1}, {1}, TensorType_INT32,
+                                    TensorType_FLOAT32, TestType::kDynamic)),
+      "Cannot allocate tensors");
+#endif
+}
+
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
