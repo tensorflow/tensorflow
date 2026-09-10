@@ -145,11 +145,35 @@ tf_cc_test(
     srcs = [],
     args = ["$(location :metal_plugin.so)"],
     data = [":metal_plugin.so"],
+    linkopts = [
+        # The plugin resolves the C API through the flat namespace at dlopen,
+        # so the implementation has to be in this binary. Nothing here calls
+        # it, though, and the linker keeps an archive member only when
+        # something references it, so name one symbol per translation unit
+        # that defines part of the API: pulling the member in brings the rest
+        # of its symbols with it. tf_status.cc needs no entry, since the test
+        # itself calls TF_NewStatus.
+        "-Wl,-u,_TF_NewKernelBuilder",  # kernels.cc
+        "-Wl,-u,_TF_AssignVariable",  # kernels_experimental.cc
+        "-Wl,-u,_TF_TensorData",  # tf_tensor.cc
+        "-Wl,-u,_TF_DataTypeSize",  # tf_datatype.cc
+        # -c opt puts the linker in dead-strip mode, which would then drop
+        # every symbol the members brought in but nothing calls. Exported
+        # symbols are dead-strip roots, and the plugin looks these up by name.
+        "-Wl,-exported_symbol,_TF_*",
+    ],
     tags = [
         "manual",
         "no_oss",
         "notap",
     ],
     target_compatible_with = MACOS_ONLY,
-    deps = [":stream_executor_test_lib"],
+    deps = [
+        ":stream_executor_test_lib",
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:kernels_experimental",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
+    ],
 )
