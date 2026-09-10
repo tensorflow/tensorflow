@@ -766,7 +766,6 @@ lit_test_suite_for_gpus(
             "single_instruction.hlo",
             "reduce_unnested.hlo",
             "reduction_vectorization_sm_all.hlo",
-            "vectorization.hlo",
             "pdl.hlo",
         ],
         "mi300": [
@@ -779,7 +778,6 @@ lit_test_suite_for_gpus(
         "mi350": [
             "dot_bf16.hlo",
             "single_instruction.hlo",
-            "vectorization.hlo",
             "pdl.hlo",
         ],
         "mi450": [
