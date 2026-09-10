@@ -1327,7 +1327,7 @@ class SymbolicShapeRefiner {
       VLOG(3) << "Failed to instantiate a function. Error: "
               << function_instantiated.message();
       fun_to_grappler_function_item_[function_def->signature().name()] =
-          absl::nullopt;
+          std::nullopt;
       return absl::OkStatus();
     }
 
