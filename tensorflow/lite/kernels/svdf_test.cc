@@ -600,5 +600,81 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
   }
 }
 
+class InvalidSVDFOpModel : public SingleOpModel {
+ public:
+  InvalidSVDFOpModel(const TensorData& input, const TensorData& weights_feature,
+                     const TensorData& weights_time, const TensorData& state,
+                     const TensorData& output,
+                     const TensorData* bias = nullptr, int rank = 1) {
+    input_ = AddInput(input);
+    weights_feature_ = AddInput(weights_feature);
+    weights_time_ = AddInput(weights_time);
+    if (bias) {
+      bias_ = AddInput(*bias);
+    } else {
+      bias_ = AddNullInput();
+    }
+    activation_state_ = AddVariableInput(state);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+                 CreateSVDFOptions(builder_, rank, ActivationFunctionType_NONE,
+                                   /*asymmetric_quantize_inputs=*/false)
+                     .Union());
+    BuildInterpreter({input.shape, weights_feature.shape, weights_time.shape,
+                      bias ? bias->shape : std::vector<int>{}, state.shape},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ protected:
+  int input_;
+  int weights_feature_;
+  int weights_time_;
+  int bias_;
+  int activation_state_;
+  int output_;
+};
+
+TEST(SVDFTest, RankValidationInputTest) {
+  InvalidSVDFOpModel model(
+      /*input=*/{TensorType_FLOAT32, {2}},  // rank 1 instead of 2
+      /*weights_feature=*/{TensorType_FLOAT32, {4, 3}},
+      /*weights_time=*/{TensorType_FLOAT32, {4, 10}},
+      /*state=*/{TensorType_FLOAT32, {2, 40}},
+      /*output=*/{TensorType_FLOAT32, {2, 4}});
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SVDFTest, RankValidationWeightsFeatureTest) {
+  InvalidSVDFOpModel model(
+      /*input=*/{TensorType_FLOAT32, {2, 3}},
+      /*weights_feature=*/{TensorType_FLOAT32, {12}},  // rank 1 instead of 2
+      /*weights_time=*/{TensorType_FLOAT32, {4, 10}},
+      /*state=*/{TensorType_FLOAT32, {2, 40}},
+      /*output=*/{TensorType_FLOAT32, {2, 4}});
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SVDFTest, TypeConfusionHybridStateTest) {
+  InvalidSVDFOpModel model(
+      /*input=*/{TensorType_FLOAT32, {2, 3}},
+      /*weights_feature=*/{TensorType_INT8, {4, 3}},
+      /*weights_time=*/{TensorType_INT8, {4, 10}},
+      /*state=*/{TensorType_INT8, {2, 40}},  // INT8 instead of FLOAT32
+      /*output=*/{TensorType_FLOAT32, {2, 4}});
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SVDFTest, TypeConfusionHybridOutputTest) {
+  InvalidSVDFOpModel model(
+      /*input=*/{TensorType_FLOAT32, {2, 3}},
+      /*weights_feature=*/{TensorType_INT8, {4, 3}},
+      /*weights_time=*/{TensorType_INT8, {4, 10}},
+      /*state=*/{TensorType_FLOAT32, {2, 40}},
+      /*output=*/{TensorType_INT8, {2, 4}});  // INT8 instead of FLOAT32
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
