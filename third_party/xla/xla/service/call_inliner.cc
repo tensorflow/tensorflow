@@ -297,8 +297,12 @@ CallInliner::Inline(HloInstruction* call, bool propagate_metadata) {
         if (instruction->IsFusible()) {
           FrontendAttributes frontend_attributes =
               instruction->frontend_attributes();
-          frontend_attributes.mutable_map()->insert(
-              {attribute, call_attributes.map().at(attribute)});
+          // Use assignment to overwrite any existing inner attributes. This
+          // ensures that in nested fusion scopes, the outermost scope's ID
+          // overrides inner IDs, unifying the entire region under a single
+          // logical ID instead of fragmenting it.
+          (*frontend_attributes.mutable_map())[attribute] =
+              call_attributes.map().at(attribute);
           instruction->set_frontend_attributes(frontend_attributes);
         }
       }
