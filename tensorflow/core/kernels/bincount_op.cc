@@ -236,8 +236,9 @@ class BincountOp : public OpKernel {
     const auto arr = arr_t.flat<int32_t>();
     const auto weights = weights_t.flat<T>();
     Tensor* output_t;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, TensorShape({size}), &output_t));
+    TensorShape output_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape({size}, &output_shape));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_t));
     auto output = output_t->flat<T>();
     OP_REQUIRES_OK(ctx,
                    functor::BincountFunctor<Device, int32_t, T, false>::Compute(
@@ -310,7 +311,9 @@ class DenseBincountOp : public OpKernel {
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
     if (data.dims() <= 1) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
+      TensorShape output_shape;
+      OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape({size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);
       if (binary_output_) {
@@ -328,8 +331,10 @@ class DenseBincountOp : public OpKernel {
           (weights.NumElements() == 0)
               ? weights.shaped<T, 2>(absl::InlinedVector<int64_t, 2UL>(2, 0))
               : weights.matrix<T>();
+      TensorShape output_shape;
       OP_REQUIRES_OK(
-          ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
+          ctx, TensorShape::BuildTensorShape({num_rows, size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
       if (binary_output_) {
@@ -420,7 +425,9 @@ class SparseBincountOp : public OpKernel {
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
     if (is_1d) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
+      TensorShape output_shape;
+      OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape({size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);
       if (binary_output_) {
@@ -435,8 +442,10 @@ class SparseBincountOp : public OpKernel {
     } else {
       const auto shape = dense_shape.flat<int64_t>();
       const int64_t num_rows = shape(0);
+      TensorShape output_shape;
       OP_REQUIRES_OK(
-          ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
+          ctx, TensorShape::BuildTensorShape({num_rows, size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       const auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
       const auto indices_mat = indices.matrix<int64_t>();
@@ -520,8 +529,10 @@ class RaggedBincountOp : public OpKernel {
                     splits(num_rows), " instead of ", num_values)));
 
     Tensor* out_t;
+    TensorShape output_shape;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
+        ctx, TensorShape::BuildTensorShape({num_rows, size}, &output_shape));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
     functor::SetZeroFunctor<Device, T> fill;
     fill(ctx->eigen_device<Device>(), out_t->flat<T>());
     const auto out = out_t->matrix<T>();
