@@ -37,3 +37,20 @@ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llv
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
+diff --git a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -10879,6 +10879,13 @@
+ 
+ cc_library(
+     name = "OpenMPDialect",
++    copts = select({
++        "@bazel_tools//src/conditions:windows": [
++            "/clang:-ftemplate-depth=1024",
++            "/clang:-fbracket-depth=1024",
++        ],
++        "//conditions:default": [],
++    }),
+     srcs = glob([
+         "lib/Dialect/OpenMP/IR/*.cpp",
+         "lib/Dialect/OpenMP/Utils/*.cpp",
