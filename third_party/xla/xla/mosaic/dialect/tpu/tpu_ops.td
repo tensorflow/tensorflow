@@ -1570,7 +1570,7 @@ def TPU_WaitDMAOp : TPU_Op<"wait_dma", [AttrSizedOperandSegments]> {
     Optional<I32>:$subcore_id,
     DefaultValuedAttr<I32Attr, "0">:$priority,
     DefaultValuedAttr<BoolAttr, "false">:$strict_ordering,
-    BoolAttr:$wait_target
+    DefaultValuedAttr<BoolAttr, "true">:$wait_target
   );
   let assemblyFormat = [{
     `source` `(` $source `:` type($source) `)`
