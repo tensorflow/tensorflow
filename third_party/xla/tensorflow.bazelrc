@@ -338,10 +338,6 @@ common:macos --copt=-w
 common:macos --host_copt=-w
 common:windows --copt=/W0
 common:windows --host_copt=/W0
-common:windows --copt=/clang:-ftemplate-depth=1024
-common:windows --copt=/clang:-fbracket-depth=1024
-common:windows --host_copt=/clang:-ftemplate-depth=1024
-common:windows --host_copt=/clang:-fbracket-depth=1024
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
@@ -456,10 +452,6 @@ common:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 common:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 common:win_clang_base --copt=/clang:-Weverything
 common:win_clang_base --host_copt=/clang:-Weverything
-common:win_clang_base --copt=/clang:-ftemplate-depth=1024
-common:win_clang_base --copt=/clang:-fbracket-depth=1024
-common:win_clang_base --host_copt=/clang:-ftemplate-depth=1024
-common:win_clang_base --host_copt=/clang:-fbracket-depth=1024
 common:win_clang_base --compiler=clang-cl
 common:win_clang_base --linkopt=/FORCE:MULTIPLE
 common:win_clang_base --host_linkopt=/FORCE:MULTIPLE

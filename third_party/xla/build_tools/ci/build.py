@@ -85,15 +85,7 @@ def sh(args, check=True, **kwargs):
 
 def _dict_to_cli_options(d: Dict[str, Any]) -> List[str]:
   # pylint: disable=g-bool-id-comparison
-  opts = []
-  for k, v in d.items():
-    if v is True:
-      opts.append(f"--{k}")
-    elif isinstance(v, (list, tuple)):
-      opts.extend(f"--{k}={item}" for item in v)
-    else:
-      opts.append(f"--{k}={v}")
-  return opts
+  return [f"--{k}" if v is True else f"--{k}={v}" for k, v in d.items()]
 
 
 class BuildType(enum.Enum):
@@ -427,14 +419,6 @@ Build(
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "//xla/tsl:ci_build": True,
-        "copt": (
-            "/clang:-ftemplate-depth=1024",
-            "/clang:-fbracket-depth=1024",
-        ),
-        "host_copt": (
-            "/clang:-ftemplate-depth=1024",
-            "/clang:-fbracket-depth=1024",
-        ),
     },
     subcommand="build",
     startup_options={
@@ -850,18 +834,7 @@ Build(
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
     ),
-    options={
-        **_DEFAULT_BAZEL_OPTIONS,
-        "build_runfile_links": False,
-        "copt": (
-            "/clang:-ftemplate-depth=1024",
-            "/clang:-fbracket-depth=1024",
-        ),
-        "host_copt": (
-            "/clang:-ftemplate-depth=1024",
-            "/clang:-fbracket-depth=1024",
-        ),
-    },
+    options={**_DEFAULT_BAZEL_OPTIONS, "build_runfile_links": False},
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
     subcommand="build",
     startup_options={
