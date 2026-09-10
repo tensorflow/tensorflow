@@ -136,6 +136,37 @@ TEST(PerImageStandardizationDeathTest, WrongOutputTypeFails) {
   const Algo* per_image_standardization = Impl_PerImageStandardization();
   EXPECT_DEATH(per_image_standardization->process({&img}, {&output}), "");
 }
+
+TEST(PerImageStandardizationTest, InvalidRankInputsHandledSafely) {
+  const Algo* per_image_standardization = Impl_PerImageStandardization();
+
+  // Test 1D tensor
+  {
+    OwningVectorRef img(etype_t::f32);
+    img.Resize({4});
+    OwningVectorRef output(etype_t::f32);
+    per_image_standardization->process({&img}, {&output});
+    EXPECT_EQ(output.Dims().size(), 0);
+  }
+
+  // Test 2D tensor
+  {
+    OwningVectorRef img(etype_t::f32);
+    img.Resize({2, 2});
+    OwningVectorRef output(etype_t::f32);
+    per_image_standardization->process({&img}, {&output});
+    EXPECT_EQ(output.Dims().size(), 0);
+  }
+
+  // Test 3D tensor
+  {
+    OwningVectorRef img(etype_t::f32);
+    img.Resize({1, 2, 2});
+    OwningVectorRef output(etype_t::f32);
+    per_image_standardization->process({&img}, {&output});
+    EXPECT_EQ(output.Dims().size(), 0);
+  }
+}
 }  // namespace
 }  // namespace per_image_standardization
 }  // namespace ml_adj
