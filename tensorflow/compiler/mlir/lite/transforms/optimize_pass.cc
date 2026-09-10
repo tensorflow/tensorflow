@@ -120,13 +120,42 @@ ElementsAttr ReshapeNCHWBiasToNHWC(Value v, Attribute a) {
 }
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
-  if (axis.getNumElements() != 1) {
+  if (axis.getNumElements() == 0) {
     return false;
   }
 
-  const int reduce_axis = *axis.getValues<int>().begin();
-  const int64_t rank = mlir::cast<ShapedType>(sq_op.getType()).getRank();
-  return reduce_axis == rank - 1 || reduce_axis == -1;
+  auto shape = mlir::dyn_cast<ShapedType>(sq_op.getType());
+  if (!shape || !shape.hasRank()) {
+    return false;
+  }
+
+  const int64_t rank = shape.getRank();
+  if (axis.getNumElements() == 1) {
+    const int reduce_axis = *axis.getValues<int>().begin();
+    return reduce_axis == rank - 1 || reduce_axis == -1;
+  }
+
+  if (!shape.hasStaticShape() || shape.getNumElements() == 0) {
+    return false;
+  }
+  if (axis.getNumElements() != rank) {
+    return false;
+  }
+
+  SmallVector<int, 4> elems{axis.getValues<int>().begin(),
+                            axis.getValues<int>().end()};
+  for (int i = 0; i < rank; ++i) {
+    if (i != elems[i]) return false;
+  }
+
+  // Reducing across all dimensions is only equivalent to TFL L2 normalization
+  // (which reduces along the trailing dimension) if all leading dimensions
+  // have size 1.
+  for (int i = 0; i < rank - 1; ++i) {
+    if (shape.getDimSize(i) != 1) return false;
+  }
+
+  return true;
 }
 
 // Checks if a ReshapeOp is equivalent to a `keep_dims=true` reduction by

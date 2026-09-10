@@ -2054,6 +2054,20 @@ func.func @InvalidL2NormalizePattern3(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: @L2NormalizePatternAllAxesUnitLeadingDimensions
+// Reducing all dimensions is equivalent to TFL L2 normalization when every
+// leading dimension has size 1.
+func.func @L2NormalizePatternAllAxesUnitLeadingDimensions(%arg0: tensor<1x3xf32>) -> tensor<1x3xf32> {
+  %cst = arith.constant dense<[0, 1]> : tensor<2xi32>
+  %0 = "tfl.square"(%arg0) : (tensor<1x3xf32>) -> tensor<1x3xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<1x3xf32>, tensor<2xi32>) -> tensor<f32>
+  %2 = "tfl.rsqrt"(%1) : (tensor<f32>) -> tensor<f32>
+  %3 = "tfl.mul"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<1x3xf32>, tensor<f32>) -> tensor<1x3xf32>
+  func.return %3: tensor<1x3xf32>
+  // CHECK: %[[RES:.*]] = "tfl.l2_normalization"(%arg0) <{fused_activation_function = "NONE"}> : (tensor<1x3xf32>) -> tensor<1x3xf32>
+  // CHECK: return %[[RES]]
+}
+
 // CHECK-LABEL: @InvalidL2NormalizePatternMultiAxis
 // Reducing all dimensions is not equivalent to TFL L2 normalization, which
 // only reduces the trailing dimension.
@@ -5248,4 +5262,3 @@ func.func @do_not_fuse_sum_mul_with_arbitrary_factor(%arg0: tensor<2x3x4xf32>) -
   // CHECK:     tfl.mul
   // CHECK-NOT: "tfl.mean"
 }
-
