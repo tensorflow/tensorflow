@@ -43,6 +43,7 @@ namespace m = ::xla::match;
 
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
+using ::testing::UnorderedElementsAre;
 
 MATCHER_P(InstructionAdaptorName, name, "") { return arg.name() == name; }
 
@@ -748,6 +749,56 @@ TEST_F(HloTraversalTest, HloFindUseChain) {
   EXPECT_THAT(HloFindUseChain(p1, exp), ElementsAre(p1, exp));
   EXPECT_THAT(HloFindUseChain(negate, exp), IsEmpty());
   EXPECT_THAT(HloFindUseChain(call, p0), IsEmpty());
+}
+
+TEST_F(HloTraversalTest, HloFindAllUseChains) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    computation {
+      p0.1 = f32[] parameter(0)
+      p1.1 = f32[] parameter(1)
+      negate = f32[] negate(p0.1)
+      log = f32[] log(p0.1)
+      sum = f32[] add(p0.1, log)
+      exp = f32[] exponential(p1.1)
+      ROOT call = f32[] custom-call(negate, exp, sum), custom_call_target="it"
+    }
+
+    ENTRY entry {
+      p0.2 = f32[] parameter(0)
+      p1.2 = f32[] parameter(1)
+      ROOT fusion = f32[] fusion(p0.2, p1.2), kind=kLoop, calls=computation
+    }
+    )"));
+
+  auto* fusion_computation = module->GetComputationWithName("computation");
+  auto fusion = HloFusionAdaptor::ForComputation(fusion_computation);
+  auto get = [&](absl::string_view name) {
+    return HloInstructionAdaptor{
+        *fusion_computation->GetInstructionWithName(name), fusion.get()};
+  };
+  auto p0 = get("p0.1");
+  auto p1 = get("p1.1");
+  auto log = get("log");
+  auto sum = get("sum");
+  auto negate = get("negate");
+  auto exp = get("exp");
+  auto call = get("call");
+
+  EXPECT_THAT(HloFindAllUseChains(p0, p0), ElementsAre(ElementsAre(p0)));
+  EXPECT_THAT(HloFindAllUseChains(p0, p1), IsEmpty());
+
+  EXPECT_THAT(HloFindAllUseChains(p0, call),
+              UnorderedElementsAre(ElementsAre(p0, negate, call),
+                                   ElementsAre(p0, sum, call),
+                                   ElementsAre(p0, log, sum, call)));
+
+  EXPECT_THAT(
+      HloFindAllUseChains(p0, sum),
+      UnorderedElementsAre(ElementsAre(p0, sum), ElementsAre(p0, log, sum)));
+
+  EXPECT_THAT(HloFindAllUseChains(p1, exp), ElementsAre(ElementsAre(p1, exp)));
+  EXPECT_THAT(HloFindAllUseChains(negate, exp), IsEmpty());
+  EXPECT_THAT(HloFindAllUseChains(call, p0), IsEmpty());
 }
 
 TEST_F(HloTraversalTest, DoNotResolveIntoNestedFusions) {
