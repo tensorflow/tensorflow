@@ -226,6 +226,7 @@ HloComputation::~HloComputation() {
   // Delete the map from caller instructions to count, if it exists.
   delete GetCallersMap();
 
+  topological_sort_.clear();
   for (const auto& i : instructions_) {
     delete i.inst();
   }
@@ -279,6 +280,7 @@ void HloComputation::CopyLocalIdsFromComputation(
   // Rewrites the instructions_ vector to copy the local_id_ from the source
   // computation to the destination computation since the local_id_ represents
   // physical order of the instructions in the computation.
+  std::vector<int> old_to_new(instructions_.size(), -1);
   HloInstructionList cloned_instructions(
       source_computation.instructions_.size());
   for (HloInstruction* source_instruction : source_computation.instructions()) {
@@ -301,12 +303,14 @@ void HloComputation::CopyLocalIdsFromComputation(
         << source_instruction->local_id_;
     destination_instruction->ClearUniqueIdInternal();
     destination_instruction->SetLocalId(source_instruction->local_id_);
+    old_to_new[original_destination_local_id] = source_instruction->local_id_;
     cloned_instructions[source_instruction->local_id_] =
         std::move(instructions_[original_destination_local_id]);
   }
 
   instructions_ = std::move(cloned_instructions);
   next_instruction_unique_id_ = instructions_.size();
+  topological_sort_.Reindex(old_to_new);
 }
 
 static void IncrementCount(
@@ -397,6 +401,13 @@ absl::flat_hash_map<HloInstruction*, int>* const HloComputation::GetCallersMap()
   return nullptr;
 }
 
+void HloComputation::AddDependency(HloInstruction* user,
+                                   HloInstruction* operand) {
+  if (user->parent() == this && operand->parent() == this) {
+    topological_sort_.AddEdge(user, operand);
+  }
+}
+
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction, bool preserve_unique_id) {
   if (parent() != nullptr) {
@@ -432,6 +443,28 @@ HloInstruction* HloComputation::AddInstructionInternal(
   }
 
   instruction_count_++;
+
+  topological_sort_.AddNode(pinst);
+  for (HloInstruction* operand : pinst->operands()) {
+    if (operand->parent() == this) {
+      topological_sort_.AddEdge(pinst, operand);
+    }
+  }
+  for (HloInstruction* user : pinst->users()) {
+    if (user->parent() == this) {
+      topological_sort_.AddEdge(user, pinst);
+    }
+  }
+  for (HloInstruction* pred : pinst->control_predecessors()) {
+    if (pred->parent() == this) {
+      topological_sort_.AddEdge(pinst, pred);
+    }
+  }
+  for (HloInstruction* succ : pinst->control_successors()) {
+    if (succ->parent() == this) {
+      topological_sort_.AddEdge(succ, pinst);
+    }
+  }
 
   for (HloComputation* called_computation : pinst->called_computations()) {
     CHECK(called_computation);
@@ -815,6 +848,7 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
 
   HloInstructionInfo* info = &instructions_[instruction->local_id_];
   DCHECK_EQ(info->inst(), instruction);
+  topological_sort_.RemoveNode(instruction);
   to_be_deleted_.push_back(info->inst());  // Takes ownership
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
@@ -854,8 +888,13 @@ void HloComputation::Cleanup() {
   auto is_marked_for_removal = [](const HloInstructionInfo& info) {
     return info.inst() == nullptr;
   };
+  std::vector<int> old_to_new(instructions_.size(), -1);
   auto marked_it = absl::c_find_if(instructions_, is_marked_for_removal);
   DCHECK(marked_it < instructions_.end());
+  int first_marked_idx = std::distance(instructions_.begin(), marked_it);
+  for (int i = 0; i < first_marked_idx; ++i) {
+    old_to_new[i] = i;
+  }
   for (auto it = marked_it + 1; it < instructions_.end(); ++it) {
     if (is_marked_for_removal(*it)) {
       continue;
@@ -863,8 +902,9 @@ void HloComputation::Cleanup() {
     // Update reverse mapping and overwrite the 'marked' entry.
     HloInstruction* unmarked_instruction = it->inst();
     // Changes the unique_id of the instruction due to recompaction.
-    unmarked_instruction->local_id_ =
-        std::distance(instructions_.begin(), marked_it);
+    int new_id = std::distance(instructions_.begin(), marked_it);
+    old_to_new[unmarked_instruction->local_id_] = new_id;
+    unmarked_instruction->local_id_ = new_id;
     *marked_it++ = std::move(*it);
   }
 
@@ -875,11 +915,13 @@ void HloComputation::Cleanup() {
   to_be_deleted_.clear();
   instructions_.resize(instruction_count());
   next_instruction_unique_id_ = instructions_.size();
+  topological_sort_.Reindex(old_to_new);
 }
 
 void HloComputation::CanonicalizeLocalIds() {
   Cleanup();
-  auto post_order = MakeInstructionPostOrder();
+  auto post_order = MakeInstructionPostOrder(/*dfs_postorder=*/true);
+  std::vector<int> old_to_new(instructions_.size(), -1);
   std::vector<HloInstructionInfo> new_instructions;
   new_instructions.reserve(post_order.size());
 
@@ -888,12 +930,14 @@ void HloComputation::CanonicalizeLocalIds() {
     HloInstructionInfo info;
     info.inst_ = inst;
     info.opcode_ = inst->opcode();
+    old_to_new[inst->local_id_] = i;
     inst->local_id_ = i;
     new_instructions.push_back(info);
   }
 
   instructions_ = std::move(new_instructions);
   next_instruction_unique_id_ = instructions_.size();
+  topological_sort_.Reindex(old_to_new);
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
@@ -998,9 +1042,18 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
   return post_order;
 }
 
-std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
+    bool dfs_postorder) const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
+  if (!dfs_postorder) {
+    topological_sort_.ForEachPostOrder([&](int32_t local_id) {
+      post_order.push_back(instructions_[local_id].inst());
+    });
+    CHECK_EQ(instruction_count(), post_order.size())
+        << "number of instructions does not match post order size";
+    return post_order;
+  }
   VisitMap visited(instructions_.size());
   std::vector<HloInstruction*> dfs_stack_scratch;
   dfs_stack_scratch.reserve(instruction_count());
@@ -1085,7 +1138,12 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
 }
 
 void HloComputation::ForEachInstructionPostOrder(
-    absl::FunctionRef<void(HloInstruction*)> func) const {
+    absl::FunctionRef<void(HloInstruction*)> func, bool dfs_postorder) const {
+  if (!dfs_postorder) {
+    topological_sort_.ForEachPostOrder(
+        [&](int32_t local_id) { func(instructions_[local_id].inst()); });
+    return;
+  }
   VisitMap visited(instructions_.size());
   std::vector<HloInstruction*> dfs_stack_scratch;
   dfs_stack_scratch.reserve(instruction_count());
@@ -1230,7 +1288,7 @@ void HloComputation::Print(
     };
     // Use post-order if order is not specified.
     if (instruction_order.empty()) {
-      ForEachInstructionPostOrder(print_one);
+      ForEachInstructionPostOrder(print_one, /*dfs_postorder=*/true);
     } else {
       for (const HloInstruction* const instruction : instruction_order) {
         print_one(instruction);
@@ -2308,6 +2366,15 @@ void HloComputation::SetUniqueIdHelper(int64_t id) {
   for (auto& [computation, count] : callee_computations_) {
     computation->caller_computations_[this] = count;
   }
+}
+
+bool HloComputation::IsEntryInstUnboundedDynamic() const {
+  for (HloInstruction* instruction : parameter_instructions()) {
+    if (instruction->shape().is_unbounded_dynamic()) {
+      return true;
+    }
+  }
+  return root_instruction()->shape().is_unbounded_dynamic();
 }
 
 }  // namespace xla

@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/online_topsort.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +30,9 @@ limitations under the License.
 #include "absl/random/random.h"
 #include "absl/strings/str_join.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
+namespace xla {
 namespace {
 
 struct TestNode {
@@ -37,7 +41,6 @@ struct TestNode {
   int id;
   std::vector<TestNode*> in;
   std::vector<TestNode*> out;
-  TopologicalSortNode<TestNode> node;
 
   std::vector<TestNode*>::const_iterator incoming_begin() const {
     return in.begin();
@@ -54,7 +57,7 @@ struct TestNode {
 };
 
 using Topsort =
-    TopologicalSort<TestNode, int, &TestNode::node, &TestNode::id,
+    TopologicalSort<TestNode, int, &TestNode::id,
                     std::vector<TestNode*>::const_iterator,
                     &TestNode::incoming_begin, &TestNode::incoming_end,
                     std::vector<TestNode*>::const_iterator,
@@ -123,16 +126,16 @@ struct TestGraph {
   std::optional<std::pair<int, int>> TopologicalOrderIsValid() const {
     std::vector<int> order(node_index.size(), -1);
     int i = 0;
-    std::vector<const TestNode*> forward;
-    for (const TestNode& node : topsort) {
-      forward.push_back(&node);
-      order[node.id] = i++;
+    std::vector<int> forward;
+    for (int id : topsort) {
+      forward.push_back(id);
+      order[id] = i++;
     }
 
     // Verifies that the reverse iterator gives the same order.
-    std::vector<const TestNode*> reverse;
+    std::vector<int> reverse;
     for (auto it = topsort.rbegin(); it != topsort.rend(); ++it) {
-      reverse.push_back(&*it);
+      reverse.push_back(*it);
     }
     absl::c_reverse(reverse);
     CHECK(forward == reverse);
@@ -154,8 +157,8 @@ struct TestGraph {
 
 std::string OrderString(const Topsort& top) {
   std::vector<int> order;
-  for (TestNode& node : top) {
-    order.push_back(node.id);
+  for (int id : top) {
+    order.push_back(id);
   }
   return absl::StrJoin(order, ",");
 }
@@ -272,4 +275,124 @@ TEST(TopologicalSortTest, Random) {
   }
 }
 
+// Node sized to 320 bytes to match the memory footprint of HloInstruction.
+struct LargeNode {
+  explicit LargeNode(int id = 0) : id(id) {}
+
+  int id;
+  std::vector<LargeNode*> in;
+  std::vector<LargeNode*> out;
+  char padding[256];
+
+  std::vector<LargeNode*>::const_iterator incoming_begin() const {
+    return in.begin();
+  }
+  std::vector<LargeNode*>::const_iterator incoming_end() const {
+    return in.end();
+  }
+  std::vector<LargeNode*>::const_iterator outgoing_begin() const {
+    return out.begin();
+  }
+  std::vector<LargeNode*>::const_iterator outgoing_end() const {
+    return out.end();
+  }
+};
+
+using LargeTopsort =
+    TopologicalSort<LargeNode, int, &LargeNode::id,
+                    std::vector<LargeNode*>::const_iterator,
+                    &LargeNode::incoming_begin, &LargeNode::incoming_end,
+                    std::vector<LargeNode*>::const_iterator,
+                    &LargeNode::outgoing_begin, &LargeNode::outgoing_end>;
+
+std::vector<std::pair<int, int>> MakeRandomDagEdges(int n) {
+  std::seed_seq seq{42};
+  absl::BitGen gen(seq);
+  // Locally permute node ranks with 10% probability so that ~10% of edges go
+  // against insertion order (u < v) and trigger incremental topological search,
+  // while guaranteeing an acyclic DAG.
+  std::vector<int> perm(n);
+  absl::c_iota(perm, 0);
+  for (int i = 0; i + 1 < n; ++i) {
+    if (absl::Bernoulli(gen, 0.1)) {
+      int offset = absl::Uniform<int>(gen, 1, std::min(n - i, 64));
+      std::swap(perm[i], perm[i + offset]);
+    }
+  }
+  std::vector<std::pair<int, int>> edges;
+  edges.reserve(n * 2);
+  for (int i = 1; i < n; ++i) {
+    int window = std::min(i, 64);
+    int j1 = i - absl::Uniform<int>(gen, 1, window + 1);
+    edges.emplace_back(perm[i], perm[j1]);
+    if (i > 1) {
+      int j2 = i - absl::Uniform<int>(gen, 1, window + 1);
+      if (j2 != j1) {
+        edges.emplace_back(perm[i], perm[j2]);
+      }
+    }
+  }
+  return edges;
+}
+
+void BM_RandomDagConstruction(::testing::benchmark::State& state) {
+  int n = state.range(0);
+  auto edges = MakeRandomDagEdges(n);
+
+  for (auto _ : state) {
+    state.PauseTiming();
+    std::vector<std::unique_ptr<LargeNode>> nodes(n);
+    for (int i = 0; i < n; ++i) {
+      nodes[i] = std::make_unique<LargeNode>(i);
+    }
+    state.ResumeTiming();
+
+    LargeTopsort topsort;
+    for (int i = 0; i < n; ++i) {
+      topsort.AddNode(nodes[i].get());
+    }
+    for (auto [u, v] : edges) {
+      nodes[u]->out.push_back(nodes[v].get());
+      nodes[v]->in.push_back(nodes[u].get());
+      topsort.AddEdge(nodes[u].get(), nodes[v].get());
+    }
+  }
+}
+BENCHMARK(BM_RandomDagConstruction)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(100000)
+    ->Arg(1000000);
+
+void BM_PostOrderTraversal(::testing::benchmark::State& state) {
+  int n = state.range(0);
+  auto edges = MakeRandomDagEdges(n);
+
+  std::vector<std::unique_ptr<LargeNode>> nodes(n);
+  LargeTopsort topsort;
+  for (int i = 0; i < n; ++i) {
+    nodes[i] = std::make_unique<LargeNode>(i);
+    topsort.AddNode(nodes[i].get());
+  }
+  for (auto [u, v] : edges) {
+    nodes[u]->out.push_back(nodes[v].get());
+    nodes[v]->in.push_back(nodes[u].get());
+    topsort.AddEdge(nodes[u].get(), nodes[v].get());
+  }
+
+  for (auto _ : state) {
+    int64_t sum = 0;
+    for (auto it = topsort.rbegin(); it != topsort.rend(); ++it) {
+      sum += nodes[*it]->id;
+    }
+    ::benchmark::DoNotOptimize(sum);
+  }
+}
+BENCHMARK(BM_PostOrderTraversal)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(100000)
+    ->Arg(1000000);
+
 }  // namespace
+}  // namespace xla

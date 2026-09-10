@@ -148,6 +148,14 @@ void HloInstruction::Users::AddUser(HloInstruction* user) {
   }
 }
 
+void HloInstruction::AddUser(HloInstruction* user) {
+  bool was_contained = users_.Contains(user);
+  users_.AddUser(user);
+  if (!was_contained && parent() != nullptr && user->parent() == parent()) {
+    parent()->AddDependency(user, this);
+  }
+}
+
 int64_t HloInstruction::Users::UserId(HloInstruction* user) {
   if (user_map_ == nullptr) {
     auto it = std::find(users_.begin(), users_.end(), user);
@@ -3217,6 +3225,9 @@ absl::Status HloInstruction::AddControlDependencyTo(
     TF_RET_CHECK(!absl::c_linear_search(
         instruction->rare()->control_predecessors, this));
     instruction->mutable_rare()->control_predecessors.push_back(this);
+    if (parent() != nullptr) {
+      parent()->AddDependency(instruction, this);
+    }
   }
   return absl::OkStatus();
 }
