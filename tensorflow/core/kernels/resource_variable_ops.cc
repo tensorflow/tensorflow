@@ -1214,9 +1214,8 @@ class ResourceScatterUpdateOp : public OpKernel {
                     ", params.shape ", params->shape().DebugString())));
     for (int d = 0; d < updates.dims(); ++d) {
       const int64_t expected_dim =
-          d < indices.dims()
-              ? indices.dim_size(d)
-              : params->dim_size(d - indices.dims() + 1);
+          d < indices.dims() ? indices.dim_size(d)
+                             : params->dim_size(d - indices.dims() + 1);
       OP_REQUIRES(c, updates.dim_size(d) == expected_dim,
                   absl::InvalidArgumentError(absl::StrCat(
                       "Must have updates.shape = indices.shape + "
