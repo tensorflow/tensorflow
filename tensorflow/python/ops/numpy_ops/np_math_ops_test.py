@@ -428,6 +428,36 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np.isclose(a, b, rtol=1e-6, atol=0.5),
     )
 
+  def testIsinf(self):
+    x = np.array([1.0, np.inf, -np.inf, np.nan], np.float64)
+    self.match(np_math_ops.isinf(x), np.isinf(x))
+    self.match(np_math_ops.isinf(np.array([1, 2])), np.isinf(np.array([1, 2])))
+    # NumPy supports complex inputs: True if either part is infinite.
+    c = np.array(
+        [1 + 2j, complex(np.inf, 0), complex(0, np.inf), complex(np.nan, 0)]
+    )
+    self.match(np_math_ops.isinf(c), np.isinf(c))
+
+  def testIsneginf(self):
+    x = np.array([1.0, np.inf, -np.inf, np.nan], np.float64)
+    self.match(np_math_ops.isneginf(x), np.isneginf(x))
+    self.match(
+        np_math_ops.isneginf(np.array([1, 2])), np.isneginf(np.array([1, 2]))
+    )
+    # NumPy rejects complex inputs as ambiguous.
+    with self.assertRaisesRegex(TypeError, 'ambiguous'):
+      np_math_ops.isneginf(np.array([1 + 2j]))
+
+  def testIsposinf(self):
+    x = np.array([1.0, np.inf, -np.inf, np.nan], np.float64)
+    self.match(np_math_ops.isposinf(x), np.isposinf(x))
+    self.match(
+        np_math_ops.isposinf(np.array([1, 2])), np.isposinf(np.array([1, 2]))
+    )
+    # NumPy rejects complex inputs as ambiguous.
+    with self.assertRaisesRegex(TypeError, 'ambiguous'):
+      np_math_ops.isposinf(np.array([1 + 2j]))
+
   @parameterized.named_parameters(
       ('isclose_int32', np_math_ops.isclose, np.int32),
       ('allclose_int32', np_math_ops.allclose, np.int32),

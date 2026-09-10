@@ -1105,6 +1105,14 @@ def isinf(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return _scalar(math_ops.is_inf, x, True)
+  if x.dtype.is_complex:
+    # Match NumPy: a complex value is infinite if either its real or its
+    # imaginary part is infinite. The IsInf kernel has no complex variant,
+    # so check the two parts separately.
+    return math_ops.logical_or(
+        _scalar(math_ops.is_inf, math_ops.real(x), True),
+        _scalar(math_ops.is_inf, math_ops.imag(x), True),
+    )
   return np_array_ops.zeros_like(x, dtypes.bool)
 
 
@@ -1114,6 +1122,12 @@ def isneginf(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, -np.inf)
+  if x.dtype.is_complex:
+    # Match NumPy, which rejects complex inputs as ambiguous.
+    raise TypeError(
+        f'This operation is not supported for {x.dtype.name} values '
+        'because it would be ambiguous.'
+    )
   return np_array_ops.zeros_like(x, dtypes.bool)
 
 
@@ -1123,6 +1137,12 @@ def isposinf(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, np.inf)
+  if x.dtype.is_complex:
+    # Match NumPy, which rejects complex inputs as ambiguous.
+    raise TypeError(
+        f'This operation is not supported for {x.dtype.name} values '
+        'because it would be ambiguous.'
+    )
   return np_array_ops.zeros_like(x, dtypes.bool)
 
 
