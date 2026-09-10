@@ -33,7 +33,9 @@ namespace detail {
 template <typename T>
 __global__ void RangeInitKernel(const T start, const T delta, const T size,
                                 T* out) {
-  GPU_1D_KERNEL_LOOP(i, size) { out[i] = start + i * delta; }
+  for (T i : GpuGridRangeX<T>(size)) {
+    out[i] = start + i * delta;
+  }
 }
 
 // Initialize out with range start, start + delta, start + 2 * delta, ...

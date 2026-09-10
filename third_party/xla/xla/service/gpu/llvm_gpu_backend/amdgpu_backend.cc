@@ -629,63 +629,28 @@ absl::Status AMDGPUTargetModuleLinker(llvm::Module* module,
   module->addModuleFlag(llvm::Module::Error, "amdhsa_code_object_version",
                         kAMDGPUAbiVersion);
 
+  absl::InlinedVector<absl::string_view, 3> tokens =
+      absl::StrSplit(compute_capability->gcn_arch_name(), ':');
+  CHECK(!tokens.empty());
+  for (auto token : absl::MakeSpan(tokens).subspan(1)) {
+    if (token == "xnack+") {
+      module->addModuleFlag(llvm::Module::Error, "amdgpu.xnack", 1u);
+    } else if (token == "xnack-") {
+      module->addModuleFlag(llvm::Module::Error, "amdgpu.xnack", 0u);
+    } else if (token == "sramecc+") {
+      module->addModuleFlag(llvm::Module::Error, "amdgpu.sramecc", 1u);
+    } else if (token == "sramecc-") {
+      module->addModuleFlag(llvm::Module::Error, "amdgpu.sramecc", 0u);
+    } else {
+      LOG(FATAL) << "Unknown feature'" << token << "' in '"
+                 << compute_capability->gcn_arch_name() << "'";
+    }
+  }
+
   return absl::OkStatus();
 }
 
-// The following routine maps a feature token extracted from the
-// hipDeviceProp_t::gcnArchName string, and maps it to a valid feature_str
-// to be used for creating the AMDGPUTarget.
-// This mapping is currently in a state of flux because TF XLA uses its
-// own copy of LLVM, which is different from the LLVM version used by
-// hipcc/runtime in the ROCm install. Ordinarily this is not a problem,
-// but right now, the LLVM version used by hipcc/runtime has "targetID"
-// related changes which have not yet been upstreamed (to the LLVM repo)
-// When that upstreaming happens (and TF LLVM pointer moves past the
-// upstream commit), the following mapping will need to change
-std::string MapGCNArchNameTokenToFeatureStr(const std::string& token,
-                                            const std::string& gfx) {
-  if (token == "sramecc+") {
-    return "+sramecc";
-  }
-  if (token == "sramecc-") {
-    if (gfx == "gfx90a" || gfx == "gfx942") {
-      return "";
-    }
-    return "-sramecc";
-  }
-  if (token == "xnack+") {
-    return "+xnack";
-  }
-  if (token == "xnack-") {
-    return "-xnack";
-  }
-  return "";
-}
-
-std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
-    const std::string& gcn_arch_name) {
-  std::string gfx = gcn_arch_name;
-  // For ROCm versions 4.0 and greater, we need to specify the correct
-  // feature str, based on the underlying GPU HW to get max performance.
-  std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
-  if (!tokens.empty()) {
-    gfx = tokens[0];
-  }
-
-  std::string mapped_tokens;
-  for (size_t i = 1; i < tokens.size(); i++) {
-    // Skip the first token, that is the gfxNNN str
-    // The rest of the tokens are the feature/targetid strings
-    auto mapped_token = MapGCNArchNameTokenToFeatureStr(tokens[i], gfx);
-    if (!mapped_token.empty()) {
-      if (!mapped_tokens.empty()) mapped_tokens += ",";
-      mapped_tokens += mapped_token;
-    }
-  }
-  return std::pair{gfx, mapped_tokens};
-}
-
-void AMDGPUBackendInit(const DebugOptions& debug_options) {
+void AMDGPUBackendInit() {
   // Initialize the AMDGPU target; it's the only target we link with, so call
   // its specific initialization functions instead of the catch-all
   // InitializeAll*.
@@ -703,7 +668,7 @@ absl::StatusOr<amdgpu::HsacoResult> CompileToHsacoInternal(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, std::string* hsaco_temp_path) {
   static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options);
+  absl::call_once(backend_init_flag, AMDGPUBackendInit);
 
   auto cc = gpu_version.rocm_compute_capability();
   if (!cc) {
@@ -711,9 +676,8 @@ absl::StatusOr<amdgpu::HsacoResult> CompileToHsacoInternal(
   }
   llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
   // Construct LLVM TargetMachine for AMDGPU.
-  auto [gfx, feature_str] = GetFeatureStrFromGCNArchName(cc->gcn_arch_name());
-  auto target_machine =
-      GetTargetMachine(default_target_triple, gfx, debug_options, feature_str);
+  auto target_machine = GetTargetMachine(default_target_triple,
+                                         cc->gfx_version(), debug_options, "");
 
   // Link with ROCm-Device-Libs, and optimize the LLVM module.
   ABSL_RETURN_IF_ERROR(gpu::LinkAndOptimizeModule(
