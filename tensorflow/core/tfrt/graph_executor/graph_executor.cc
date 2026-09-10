@@ -98,6 +98,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
+#include "tsl/platform/context.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/statusor.h"
@@ -204,8 +205,12 @@ absl::Status RunMlrtFunction(
 
   // TODO(chky): Set up cancellation.
 
-  work_queue.AddTask(
-      [&execution_context]() { mlrt::Execute(execution_context); });
+  // Propagate the current thread's context (including census tags for device
+  // time measurement) to the work queue thread. Without this, census tags set
+  // by DeviceTimeMeasurement (e.g. for TPU cost tracking) would be lost when
+  // crossing the thread boundary.
+  work_queue.AddTask(tsl::WithCurrentContext(
+      [&execution_context]() { mlrt::Execute(execution_context); }));
 
   work_queue.Await(chain);
 
@@ -437,9 +442,13 @@ absl::Status GraphExecutionRunOnFunction(
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 4> chain_and_results;
   chain_and_results.resize(func->result_types().size());
 
-  // Hand over the execution to thread pool.
+  // Hand over the execution to thread pool. Propagate the current thread's
+  // context (including census tags for device time measurement) to the work
+  // queue thread.
+  auto ctx = tsl::Context(tsl::ContextKind::kThread);
   std::array<tfrt::RCReference<tfrt::AsyncValue>, 1> executed = {
-      EnqueueWork(exec_ctx, [&]() -> tfrt::Chain {
+      EnqueueWork(exec_ctx, [&, ctx = std::move(ctx)]() -> tfrt::Chain {
+        tsl::WithContext wc(ctx);
         func->Execute(exec_ctx, arguments, chain_and_results);
         return {};
       })};
