@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <thread>
@@ -616,6 +617,27 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
     remote_eager_workers_ = nullptr;
   }
 #endif  // !IS_MOBILE_PLATFORM
+}
+
+void EagerContext::Release() {
+  if (RefCountIsOne()) {
+    bool is_tf_thread = false;
+#if defined(__linux__) && !defined(__ANDROID__)
+    char name[16] = {0};
+    if (pthread_getname_np(pthread_self(), name, sizeof(name)) == 0) {
+      if (strncmp(name, "tf_", 3) == 0) {
+        is_tf_thread = true;
+      }
+    }
+#endif
+    if (is_tf_thread) {
+      std::thread([this]() { this->Unref(); }).detach();
+    } else {
+      Unref();
+    }
+  } else {
+    Unref();
+  }
 }
 
 EagerContext::~EagerContext() {
