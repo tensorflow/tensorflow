@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <limits>
 #include <memory>
 
 #include "tensorflow/core/framework/allocator.h"
@@ -163,6 +164,34 @@ TEST_F(SummaryHistoOpTest, Error_TooManyTagValues) {
   AddInputFromArray<float>(TensorShape({2, 1}), {1.0f, -0.73f});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(), "tags must be scalar")) << s;
+}
+
+TEST_F(SummaryHistoOpTest, Error_NanInValues) {
+  MakeOp(DT_FLOAT);
+
+  // Feed and run
+  AddInputFromArray<tstring>(TensorShape({}), {"taghisto"});
+  AddInputFromArray<float>(
+      TensorShape({3, 2}),
+      {0.1f, -0.7f, 4.1f, std::numeric_limits<float>::quiet_NaN(), 5.f, 4.f});
+  absl::Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "INVALID_ARGUMENT: Nan in summary histogram for: myop"))
+      << s;
+}
+
+TEST_F(SummaryHistoOpTest, Error_InfinityInValues) {
+  MakeOp(DT_FLOAT);
+
+  // Feed and run
+  AddInputFromArray<tstring>(TensorShape({}), {"taghisto"});
+  AddInputFromArray<float>(
+      TensorShape({3, 2}),
+      {0.1f, -0.7f, 4.1f, std::numeric_limits<float>::infinity(), 5.f, 4.f});
+  absl::Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "INVALID_ARGUMENT: Infinity in Histogram for: myop"))
+      << s;
 }
 
 // --------------------------------------------------------------------------
