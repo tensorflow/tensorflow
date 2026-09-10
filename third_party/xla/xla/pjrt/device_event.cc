@@ -16,8 +16,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <initializer_list>
 #include <optional>
+#include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
