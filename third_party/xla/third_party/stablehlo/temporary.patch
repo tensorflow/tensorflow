@@ -1236,7 +1236,7 @@ diff --ruN a/stablehlo/build_tools/lit_test_suite.bzl b/stablehlo/build_tools/li
 +
 +"""Defines the `lit_test_suite` macro."""
 +
-+load("//third_party/llvm/build_defs:lit.bzl", "lit_test")
++load("@llvm-project//llvm:lit_test.bzl", "lit_test")
 +
 +def lit_test_suite(
 +        name,
@@ -1268,18 +1268,18 @@ diff --ruN a/stablehlo/build_tools/lit_test_suite.bzl b/stablehlo/build_tools/li
 +    for src in srcs:
 +        test_name = "%s.test" % src
 +        lit_test(
-+            # copybara:uncomment name = test_name,
-+            name = src,  # copybara:comment
-+            # copybara:uncomment srcs = [src],
-+            src = src,  # copybara:comment
++            name = test_name,
++            # name = src,  # copybara:comment
++            srcs = [src],
++            # src = src,  # copybara:comment
 +            args = args,
 +            data = data + native.glob(
 +                ["%s.bc" % src],
 +                # Allow empty since not all `.mlir` tests have `.mlir.bc` files.
 +                allow_empty = True,
 +            ),
-+            # copybara:uncomment deps = ["@rules_python//python/runfiles"],
-+            driver = "//third_party/llvm/llvm-project/mlir:run_lit.sh",  # copybara:comment
++            deps = ["@rules_python//python/runfiles"],
++            # driver = "//third_party/llvm/llvm-project/mlir:run_lit.sh",  # copybara:comment
 +            tags = tags,
 +            size = size_per_test,
 +        )
