@@ -2809,3 +2809,48 @@ func.func @func_xla_sharding_consistent(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi
   %1 = "tf.A"(%0) : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
   func.return %1 : tensor<4x8xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @unpack_dynamic
+func.func @unpack_dynamic(%arg0: tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+  // CHECK: %[[START0:.*]] = tensor.from_elements {{.*}} : tensor<2xi32>
+  // CHECK: %[[LIMIT0:.*]] = tensor.from_elements {{.*}} : tensor<2xi32>
+  // CHECK: %[[SLICE0:.*]] = mhlo.real_dynamic_slice %arg0, %[[START0]], %[[LIMIT0]], {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE0:.*]] = mhlo.dynamic_reshape %[[SLICE0]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: %[[START1:.*]] = tensor.from_elements {{.*}} : tensor<2xi32>
+  // CHECK: %[[LIMIT1:.*]] = tensor.from_elements {{.*}} : tensor<2xi32>
+  // CHECK: %[[SLICE1:.*]] = mhlo.real_dynamic_slice %arg0, %[[START1]], %[[LIMIT1]], {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE1:.*]] = mhlo.dynamic_reshape %[[SLICE1]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: return %[[RESHAPE0]], %[[RESHAPE1]]
+  %0:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @unpack_dynamic_negative_axis
+func.func @unpack_dynamic_negative_axis(%arg0: tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+  // CHECK: %[[SLICE0:.*]] = mhlo.real_dynamic_slice %arg0, {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE0:.*]] = mhlo.dynamic_reshape %[[SLICE0]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: %[[SLICE1:.*]] = mhlo.real_dynamic_slice %arg0, {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE1:.*]] = mhlo.dynamic_reshape %[[SLICE1]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: return %[[RESHAPE0]], %[[RESHAPE1]]
+  %0:2 = "tf.Unpack"(%arg0) {axis = -2 : i64} : (tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @unpack_dynamic_axis
+func.func @unpack_dynamic_axis(%arg0: tensor<?x4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  // CHECK: %[[SLICE0:.*]] = mhlo.real_dynamic_slice %arg0, {{.*}} : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
+  // CHECK: %[[RESHAPE0:.*]] = mhlo.dynamic_reshape %[[SLICE0]], {{.*}} : (tensor<1x4xf32>, tensor<1xi32>) -> tensor<4xf32>
+  // CHECK: %[[SLICE1:.*]] = mhlo.real_dynamic_slice %arg0, {{.*}} : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
+  // CHECK: %[[RESHAPE1:.*]] = mhlo.dynamic_reshape %[[SLICE1]], {{.*}} : (tensor<1x4xf32>, tensor<1xi32>) -> tensor<4xf32>
+  // CHECK: return %[[RESHAPE0]], %[[RESHAPE1]]
+  %0:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<?x4xf32>) -> (tensor<4xf32>, tensor<4xf32>)
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+}
+
+
