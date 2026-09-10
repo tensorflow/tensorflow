@@ -20,7 +20,6 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <ostream>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -221,8 +220,18 @@ std::string ComputationLayoutConstraint::ToString() const {
                          layout_state_, computation_layout_.ToString());
 }
 
+void LayoutAssignment::SetPointsToAnalysis(
+    std::unique_ptr<TuplePointsToAnalysis> analysis) {
+  points_to_analysis_ = std::move(analysis);
+  buffer_sets_cache_.clear();
+  buffer_sets_cache_analysis_ = points_to_analysis_.get();
+}
+
 PointsToSet::BufferSet* LayoutAssignment::GetBufferSet(
     const HloInstruction* instruction) const {
+  DCHECK_EQ(buffer_sets_cache_analysis_, points_to_analysis_.get())
+      << "points_to_analysis_ changed behind buffer_sets_cache_; use "
+         "SetPointsToAnalysis";
   auto it = buffer_sets_cache_.find(instruction);
   if (it != buffer_sets_cache_.end()) {
     return it->second.get();
@@ -247,9 +256,15 @@ bool LayoutAssignment::AnyOperandBufferForwarded(
   PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
   PointsToSet::BufferSet* operand_buffers =
       GetBufferSet(instruction->operand(operand_no));
-  return absl::c_any_of(*output_buffers, [&](const LogicalBuffer* b) {
-    return operand_buffers->count(b) > 0;
-  });
+  // Probe the larger set with elements of the smaller one; intersection
+  // emptiness is symmetric.
+  PointsToSet::BufferSet* small = output_buffers;
+  PointsToSet::BufferSet* large = operand_buffers;
+  if (small->size() > large->size()) {
+    std::swap(small, large);
+  }
+  return absl::c_any_of(
+      *small, [&](const LogicalBuffer* b) { return large->count(b) > 0; });
 }
 
 bool LayoutAssignment::AllOperandBuffersForwarded(
@@ -286,10 +301,12 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   }
   ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
 
-  auto& buffer_constraint = buffer_constraints_[&buffer];
+  BufferLayoutConstraint* buffer_constraint =
+      buffer_constraints_.Find(buffer.id());
   if (buffer_constraint == nullptr) {
-    buffer_constraint = std::make_unique<BufferLayoutConstraint>(
-        layout, buffer, mandatory, dfs, priority);
+    buffer_constraint = buffer_constraints_.Insert(
+        buffer.id(), std::make_unique<BufferLayoutConstraint>(
+                         layout, buffer, mandatory, dfs, priority));
   } else {
     if (buffer_constraint->UpdateLayout(priority, layout, mandatory, dfs, this,
                                         user)) {
@@ -306,7 +323,7 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   }
   VLOG(3) << "SUCC setting buffer constraint: "
           << buffer_constraint->ToString();
-  PushAddedConstraints(buffer_constraint.get());
+  PushAddedConstraints(buffer_constraint);
   const HloInstruction* instruction = buffer.instruction();
   if (HloCallableInstruction::ClassOf(instruction)) {
     // Check and propagate via output-operand aliasing
@@ -518,8 +535,7 @@ absl::Status LayoutAssignment::SetInstructionLayout(
 
 const BufferLayoutConstraint* LayoutAssignment::GetBufferLayoutConstraint(
     const LogicalBuffer& buffer) const {
-  auto it = buffer_constraints_.find(&buffer);
-  return it == buffer_constraints_.end() ? nullptr : it->second.get();
+  return buffer_constraints_.Find(buffer.id());
 }
 
 const ShapeLayout* LayoutAssignment::LayoutConstraints::OperandLayout(
@@ -3577,7 +3593,7 @@ absl::StatusOr<std::vector<HloComputation*>> LayoutAssignment::SetupPropagation(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   ABSL_ASSIGN_OR_RETURN(auto points_to_analysis, TuplePointsToAnalysis::Run(module));
-  points_to_analysis_ = std::move(points_to_analysis);
+  SetPointsToAnalysis(std::move(points_to_analysis));
   auto computations_to_work =
       module->MakeNonfusionComputations(execution_threads);
   // If the reverse_computation_order_ flag is set, reverse the ordering of
@@ -3929,8 +3945,9 @@ absl::Status LayoutAssignment::ClearPreviousPassSideEffects(
   }
   unconstrained_layout_instructions_.clear();
   unconstrained_buffer_ids_.clear();
-  buffer_constraints_.clear();
-  buffer_sets_cache_.clear();
+  buffer_constraints_.Clear();
+  // buffer_sets_cache_ stays: it depends only on points_to_analysis_, which
+  // SetPointsToAnalysis owns.
   return absl::OkStatus();
 }
 absl::Status LayoutAssignment::AddCopyForOperand(HloInstruction* instruction,
