@@ -619,10 +619,12 @@ class GraphBuilder(object):
       stmts_entered = self.owners[second] - self.owners[first]
       for stmt in stmts_entered:
         stmt_prev[stmt].add(first)
-    for stmt in stmt_next:
-      stmt_next[stmt] = frozenset(stmt_next[stmt])
-    for stmt in stmt_prev:
-      stmt_prev[stmt] = frozenset(stmt_prev[stmt])
+    stmt_next = {
+        stmt: frozenset(next_nodes) for stmt, next_nodes in stmt_next.items()
+    }
+    stmt_prev = {
+        stmt: frozenset(prev_nodes) for stmt, prev_nodes in stmt_prev.items()
+    }
 
     # Construct the final graph object.
     result = Graph(
@@ -835,6 +837,28 @@ class AstToCfg(gast.NodeVisitor):
     self.builder.new_cond_branch(node)
     for stmt in node.orelse:
       self.visit(stmt)
+
+    self.builder.exit_cond_section(node)
+    self.builder.end_statement(node)
+
+  def visit_Match(self, node):
+    self.builder.begin_statement(node)
+
+    # Match statements run at trace time, but their branches still need a
+    # conservative CFG for the static analyses that precede conversion.
+    self.builder.enter_cond_section(node)
+    self._process_basic_statement(node.subject)
+
+    for case in node.cases:
+      self.builder.new_cond_branch(node)
+      self._process_basic_statement(case.pattern)
+      if case.guard is not None:
+        self._process_basic_statement(case.guard)
+      for stmt in case.body:
+        self.visit(stmt)
+
+    # A match statement may leave all cases unmatched.
+    self.builder.new_cond_branch(node)
 
     self.builder.exit_cond_section(node)
     self.builder.end_statement(node)

@@ -21,7 +21,7 @@ wheel ~= 0.41.2
 wrapt ~= 1.14.1
 
 # We need to pin the gast dependency exactly
-gast == 0.4.0
+gast == 0.6.0
 
 # Finally, install tensorboard and keras
 # Note that here we want the latest version that matches TF major.minor version

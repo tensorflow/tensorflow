@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for cfg module."""
 
+import textwrap
+
 import gast
 
 from tensorflow.python.autograph.pyct import cfg
@@ -357,6 +359,39 @@ class AstToCfgTest(test.TestCase):
         (('a', 'If:2', None),),
     )
     self.assertGraphEnds(graph, 'a', ('a > 0', 'return'))
+
+  def test_match_straightline(self):
+    node = parser.parse(textwrap.dedent("""
+      def test_fn(value):
+        match value:
+          case 0:
+            result = 'zero'
+          case 1 if value > 0:
+            result = 'one'
+        return result
+    """).strip())
+
+    graph, = cfg.build(node).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            (None, 'value', 'value'),
+            ('value', 'value', ('0', '1', 'return result')),
+            ('value', '0', "result = 'zero'"),
+            ('0', "result = 'zero'", 'return result'),
+            ('value', '1', 'value > 0'),
+            ('1', 'value > 0', "result = 'one'"),
+            ('value > 0', "result = 'one'", 'return result'),
+            (("result = 'zero'", "result = 'one'", 'value'),
+             'return result', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (('value', 'Match:2', 'return result'),),
+    )
+    self.assertGraphEnds(graph, 'value', ('return result',))
 
   def test_while_straightline(self):
 
