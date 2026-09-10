@@ -19,6 +19,7 @@ on:
     branches:
       - master
       - r2.**
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,33 +30,36 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'master' }}
 
 jobs:
-  build-linux-x86-cpu:
-    uses: ./.github/workflows/build-reusable.yml
-    with:
-      runner: 'linux-x86-n2-16'
-      tfci: 'py313,linux_x86,rbe,no_docker'
+  api-compat-py314-windows:
+    name: py314-api-compat
+    runs-on: windows-x86-n2-16
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout API compatibility branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        env:
+          GIT_CONFIG_PARAMETERS: "'checkout.workers=12' 'core.featureManyFiles=true'"
+        with:
+          repository: vladbelit/tensorflow
+          ref: vladbelit/api-compat-runtime-normalization
+          persist-credentials: false
+          fetch-depth: 1
 
-  build-linux-x86-cuda:
-    uses: ./.github/workflows/build-reusable.yml
-    with:
-      runner: 'linux-x86-n2-16'
-      tfci: 'py313,linux_x86_cuda,rbe,no_docker'
-
-  build-linux-x86-cuda13:
-    uses: ./.github/workflows/build-reusable.yml
-    with:
-      runner: 'linux-x86-n2-16'
-      tfci: 'py313,linux_x86_cuda13_nvcc,rbe,no_docker'
-
-  build-arm64:
-    uses: ./.github/workflows/build-reusable.yml
-    with:
-      runner: 'linux-x86-n2-16'
-      tfci: 'py313,linux_arm64_cross_compile,rbe,no_docker,enable_pycpp_build'
-      job_name: 'build-only'
-
-  build-windows-x86:
-    uses: ./.github/workflows/build-reusable.yml
-    with:
-      runner: 'windows-x86-n2-16'
-      tfci: 'py313,windows_x86_ml_actions,rbe'
+      - name: Run Python 3.14 API compatibility test
+        env:
+          TFCI: py314,windows_x86_ml_actions,rbe
+          TFCI_GITHUB_ACTIONS: true
+        run: |
+          bash -eo pipefail -c '
+            source ./ci/official/utilities/setup.sh
+            tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test \
+              $TFCI_BAZEL_COMMON_ARGS \
+              --noenable_runfiles \
+              --nobuild_runfile_links \
+              --test_output=errors \
+              --verbose_failures \
+              //tensorflow/tools/api/tests:api_compatibility_test
+          ' ./ci/official/pycpp.sh
