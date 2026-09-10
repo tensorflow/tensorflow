@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
@@ -80,8 +81,30 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       std::min(std::max(1, static_cast<int>(num_inputs) / 2),
                cpu_backend_context->max_num_threads());
 
+  // The scratch buffer holds thread_count copies of the input element count and
+  // scratch_shape->data[0] is int32_t. The dimensions are attacker-controlled
+  // and NumElements() has no release-mode overflow check, so compute the count
+  // with CheckedShapeProductToInt() and verify the scratch size fits in int32_t
+  // before allocating scratch_shape (created only after the checks pass, so it
+  // is never leaked on an early return).
+  int num_elements = 0;
+  TF_LITE_ENSURE_OK(context,
+                    CheckedShapeProductToInt(
+                        context, input1->dims->data, input1->dims->size,
+                        "add_n input element count overflowed.", num_elements));
+  // CpuBackendContext::SetMaxNumThreads(0) is accepted and stored as-is, which
+  // would make thread_count zero. That makes the division below undefined, and
+  // optimized_ops::AddN() recomputes the same thread_count and would then copy
+  // num_elements out of a zero-sized scratch buffer, so reject it here.
+  TF_LITE_ENSURE_MSG(
+      context, thread_count > 0,
+      "add_n requires a positive thread count; a CpuBackendContext with "
+      "max_num_threads() == 0 is not supported.");
+  TF_LITE_ENSURE(context, num_elements <= std::numeric_limits<int32_t>::max() /
+                                              thread_count);
+
   TfLiteIntArray* scratch_shape = TfLiteIntArrayCreate(1);
-  scratch_shape->data[0] = thread_count * NumElements(input1);
+  scratch_shape->data[0] = thread_count * num_elements;
   TF_LITE_ENSURE_OK(
       context, context->ResizeTensor(context, scratch_tensor, scratch_shape));
 
