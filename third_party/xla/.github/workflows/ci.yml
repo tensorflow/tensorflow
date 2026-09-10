@@ -114,6 +114,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: "openxla/xla"
+          fetch-depth: 2
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
@@ -135,6 +136,11 @@ jobs:
       - name: "Run build.py"
         working-directory: ${{ matrix.job_info.repo }}
         timeout-minutes: 60
+        env:
+          XLA_CI_BAZEL_DIFF_MODE: ${{ github.event_name == 'pull_request' && 'enforce' || 'off' }}
+          XLA_CI_BAZEL_DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          XLA_CI_BAZEL_DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XLA_CI_DISABLE_BAZEL_DIFF: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
         run: |
           # Shellcheck doesn't understand GitHub Actions expressions and incorrectly
           # thinks this comparison will always fail.
@@ -142,7 +148,7 @@ jobs:
           if [[ "${{ matrix.job_info.pool }}" == *"windows"* ]]; then
             python "$GITHUB_WORKSPACE"\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
           else
-            "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
+            python3 "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
 
 
