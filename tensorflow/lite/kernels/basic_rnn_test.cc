@@ -173,14 +173,17 @@ class RNNOpModel : public SingleOpModel {
   RNNOpModel(int batches, int units, int size,
              const TensorType& weights = TensorType_FLOAT32,
              const TensorType& recurrent_weights = TensorType_FLOAT32,
-             bool asymmetric_quantize_inputs = false)
+             bool asymmetric_quantize_inputs = false,
+             const TensorType& bias = TensorType_FLOAT32,
+             const TensorType& hidden_state = TensorType_FLOAT32,
+             const TensorType& output = TensorType_FLOAT32)
       : batches_(batches), units_(units), input_size_(size) {
     input_ = AddInput(TensorType_FLOAT32);
     weights_ = AddInput(weights);
     recurrent_weights_ = AddInput(recurrent_weights);
-    bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
+    bias_ = AddInput(bias);
+    hidden_state_ = AddVariableInput(hidden_state);
+    output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
                  CreateRNNOptions(builder_, ActivationFunctionType_RELU,
                                   asymmetric_quantize_inputs)
@@ -343,6 +346,28 @@ TEST_P(HybridRnnOpTest, BlackBoxTestInt8) {
 
 INSTANTIATE_TEST_SUITE_P(HybridRnnOpTest, HybridRnnOpTest,
                          ::testing::ValuesIn({false, true}));
+
+TEST(RnnOpTest, InvalidBiasTypeTest) {
+  EXPECT_DEATH_IF_SUPPORTED(
+      RNNOpModel rnn(2, 16, 8, TensorType_FLOAT32, TensorType_FLOAT32, false,
+                     /*bias=*/TensorType_INT8),
+      "");
+}
+
+TEST(RnnOpTest, InvalidHiddenStateTypeTest) {
+  EXPECT_DEATH_IF_SUPPORTED(
+      RNNOpModel rnn(2, 16, 8, TensorType_FLOAT32, TensorType_FLOAT32, false,
+                     TensorType_FLOAT32, /*hidden_state=*/TensorType_INT8),
+      "");
+}
+
+TEST(RnnOpTest, InvalidOutputTypeTest) {
+  EXPECT_DEATH_IF_SUPPORTED(
+      RNNOpModel rnn(2, 16, 8, TensorType_FLOAT32, TensorType_FLOAT32, false,
+                     TensorType_FLOAT32, TensorType_FLOAT32,
+                     /*output=*/TensorType_INT8),
+      "");
+}
 
 }  // namespace
 }  // namespace tflite
