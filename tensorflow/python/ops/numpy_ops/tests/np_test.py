@@ -747,6 +747,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
       ]
       for lhs_dtype, rhs_dtype in CombosWithReplacement(
           minus(number_dtypes, complex_dtypes), 2)))
+  @unittest.skipIf(onp.__version__ >= onp.lib.NumpyVersion('2.0.0'),
+                   'tf numpy is implemented to be numpy 1.x compatible')
   def testCross(self, lhs_shape, lhs_dtype, rhs_shape, rhs_dtype, axes, rng_factory):
     rng = rng_factory()
     args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
@@ -930,7 +932,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
     check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
         (onp.int32, onp.int64))
 
-    tol = {onp.float64: 1e-14, onp.float16: 0.04, onp.complex128: 6e-15}
+    tol = {
+        onp.float32: 1e-4,
+        onp.complex64: 1e-4,
+        onp.float64: 1e-14,
+        onp.float16: 0.04,
+        onp.complex128: 6e-15,
+    }
     tol = max(jtu.tolerance(lhs_dtype, tol), jtu.tolerance(rhs_dtype, tol))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
                           check_incomplete_shape=True,

@@ -432,7 +432,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
             tensor.TensorSpec([None, 2], np.float32),
         ],
     )
-    self.match(compiled_cross_2(a2, b2), np.cross(a2, b2), check_dtype=False)
+    try:
+      expected_2 = np.cross(a2, b2)
+    except ValueError:
+      expected_2 = a2[..., 0] * b2[..., 1] - a2[..., 1] * b2[..., 0]
+    self.match(compiled_cross_2(a2, b2), expected_2, check_dtype=False)
 
   def testCrossDynamicUnknownBatchDim(self):
     # A fully dynamic shape still works outside of jit compilation.
