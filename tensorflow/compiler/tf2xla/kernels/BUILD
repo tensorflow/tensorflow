@@ -883,6 +883,7 @@ tf_kernel_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 

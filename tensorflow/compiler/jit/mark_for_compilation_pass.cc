@@ -2023,7 +2023,7 @@ GetAllowlistTable() {
             "Snapshot", "_EagerConst"}},
           // clang-format off
     {"RED",
-     {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
+     {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum", "EuclideanNorm"}},
           // clang-format on
           {"PWRED",
            {"ArgMax", "ArgMin", "DiagPart", "Softmax",
