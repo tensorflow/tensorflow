@@ -571,14 +571,15 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
             instr->operand_count() == 1);
   };
 
-  // Ensure param_gte has no competing readers: only a single path of wrappers
-  // leading to the in-place update operation.
+  // Ensure param_gte has no competing readers inside the loop body unless the
+  // loop is explicitly annotated as disjoint.
   const HloInstruction* single_reader = param_gte;
   while (single_reader->user_count() == 1 &&
          is_transparent_wrapper(single_reader->users()[0])) {
     single_reader = single_reader->users()[0];
   }
-  if (single_reader->user_count() != 1) {
+  if (single_reader->user_count() != 1 &&
+      !HasDisjointReadWriteRegionsAttr(while_instr)) {
     return false;
   }
 
@@ -1305,9 +1306,17 @@ HloInstruction* FindEndOpForRotatedNonCopyableChain(
 absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
     HloInstruction* chain_start, HloInstruction* chain_end) {
   HloComputation* while_body = chain_start->parent();
+  bool disable_loop_copies = false;
+  for (const HloInstruction* caller :
+       while_body->caller_instructions(HloOpcode::kWhile)) {
+    if (HasDisableWhileLoopCopiesAttr(caller)) {
+      disable_loop_copies = true;
+      break;
+    }
+  }
   // Handle aliasing input for the op, where we transition from copyable to
   // non-copyable.
-  if (!chain_start->operands().empty()) {
+  if (!chain_start->operands().empty() && !disable_loop_copies) {
     // A chain_start may have multiple operands, but we assume only the first
     // operand is a buffer aliasing with the output, which is true currently.
     HloInstruction* operand = chain_start->mutable_operand(0);
@@ -1425,6 +1434,9 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
       unique_user->opcode() == HloOpcode::kTuple &&
       unique_user->users().size() == 1 &&
       unique_user->users().front()->opcode() == HloOpcode::kWhile) {
+    if (HasDisableWhileLoopCopiesAttr(unique_user->users().front())) {
+      return absl::OkStatus();
+    }
     HloInstruction* operand = chain_start->mutable_operand(0);
     HloInstruction* copied_operand =
         parent->AddInstruction(HloInstruction::CreateUnary(
@@ -1538,19 +1550,30 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
             continue;
           }
 
-          // Skip copies for aliasing input/output pairs iff:
-          // *) Instruction has frontend attribute which indicates that the
-          //    write region of the input/output aliased buffer updated by
-          //    'instruction' is disjoint from the read region of the shared
-          //    buffer.
-          // *) All uses of the operand are 'instruction'.
-          if (HasDisjointReadWriteRegionsAttr(instruction) &&
-              absl::c_all_of(
-                  instruction->operand(operand_index_in_this_intr)->users(),
-                  [&instruction](const HloInstruction* user) {
-                    return user == instruction ||
-                           HasDisjointReadWriteRegionsAttr(user);
-                  })) {
+          // Skip copies for aliasing input/output pairs when the instruction or
+          // its enclosing while loop is annotated with
+          // xla_disjoint_read_write_regions, as fusion may wrap companion
+          // dynamic-slice readers into fusions without preserving the
+          // attribute on every user.
+          bool has_disjoint_loop = false;
+          if (instruction->parent() != nullptr) {
+            for (const HloInstruction* caller :
+                 instruction->parent()->caller_instructions(
+                     HloOpcode::kWhile)) {
+              if (HasDisjointReadWriteRegionsAttr(caller)) {
+                has_disjoint_loop = true;
+                break;
+              }
+            }
+          }
+          if (has_disjoint_loop ||
+              (HasDisjointReadWriteRegionsAttr(instruction) &&
+               absl::c_all_of(
+                   instruction->operand(operand_index_in_this_intr)->users(),
+                   [&instruction](const HloInstruction* user) {
+                     return user == instruction ||
+                            HasDisjointReadWriteRegionsAttr(user);
+                   }))) {
             continue;
           }
           if ((instruction->opcode() == HloOpcode::kAsyncDone ||

@@ -5780,6 +5780,53 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 0);
 }
 
+TEST_F(CopyInsertionTest, DisjointInPlaceWhileLoopWithReadOnlySliceNoCopy) {
+  // When a while loop is annotated with xla_disable_while_loop_copies and
+  // xla_disjoint_read_write_regions, an in-place dynamic-update-slice on a
+  // loop state element that also has a read-only dynamic-slice user should not
+  // insert loop-state copies.
+  absl::string_view hlo_string = R"(
+HloModule DisjointWhileModule
+
+while_cond {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(4)
+  ROOT cmp = pred[] compare(iter, limit), direction=LT
+}
+
+while_body {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  c1 = s32[] constant(1)
+  next_iter = s32[] add(iter, c1)
+  buf = f32[8] get-tuple-element(state), index=1
+  old_slice = f32[2] dynamic-slice(buf, iter), dynamic_slice_sizes={2}
+  new_val = f32[2] constant({1.0, 2.0})
+  p_cond = pred[] constant(true)
+  pred_bcast = pred[2] broadcast(p_cond), dimensions={}
+  update_slice = f32[2] select(pred_bcast, new_val, old_slice)
+  updated_buf = f32[8] dynamic-update-slice(buf, update_slice, iter), frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT next_state = (s32[], f32[8]) tuple(next_iter, updated_buf)
+}
+
+ENTRY main {
+  c0 = s32[] constant(0)
+  p0 = f32[8] parameter(0)
+  init = (s32[], f32[8]) tuple(c0, p0)
+  loop = (s32[], f32[8]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true", xla_disjoint_read_write_regions="true"}
+  ROOT out = f32[8] get-tuple-element(loop), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  for (const HloInstruction* instr : while_body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kCopy);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
                          ::testing::Combine(::testing::Bool(),
                                             ::testing::Values(int64_t{0},
