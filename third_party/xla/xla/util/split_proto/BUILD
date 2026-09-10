@@ -25,7 +25,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla:__subpackages__"],
+    default_visibility = ["//xla:friends"],
     licenses = ["notice"],
 )
 
@@ -33,8 +33,7 @@ tf_proto_library(
     name = "split_proto",
     srcs = ["split_proto.proto"],
     visibility = [
-        # This proto is an implementation detail of the split proto format,
-        # it shouldn't be used outside of this package, and the split_proto_cli.
+        "//xla:friends",
         "//xla/tools/split_proto:__subpackages__",
     ],
 )
@@ -209,9 +208,6 @@ cc_library(
     srcs = ["split_proto_write_record.cc"],
     hdrs = ["split_proto_write_record.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    visibility = [
-        "//visibility:private",
-    ],
     deps = [
         ":proto_field_size_utils",
         "@com_google_absl//absl/status",
@@ -241,9 +237,6 @@ cc_library(
     name = "split_proto_riegeli_options",
     hdrs = ["split_proto_riegeli_options.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    visibility = [
-        "//visibility:private",
-    ],
     deps = ["@riegeli//riegeli/records:record_writer"],
 )
 
