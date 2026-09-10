@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace python {
@@ -39,27 +40,27 @@ using UniquePyObjectRef = std::unique_ptr<PyObject, PyObjectDereferencer>;
 int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
   switch (tf_lite_type) {
     case kTfLiteFloat32:
-      return NPY_FLOAT32;
+      return NPY_FLOAT32;  // NOLINT(misc-include-cleaner)
     case kTfLiteFloat16:
-      return NPY_FLOAT16;
+      return NPY_FLOAT16;  // NOLINT(misc-include-cleaner)
     case kTfLiteBFloat16:
       // TODO(b/329491949): Supports other ml_dtypes user-defined types.
       return NPY_USERDEF;
     case kTfLiteFloat64:
-      return NPY_FLOAT64;
+      return NPY_FLOAT64;  // NOLINT(misc-include-cleaner)
     case kTfLiteInt32:
-      return NPY_INT32;
+      return NPY_INT32;  // NOLINT(misc-include-cleaner)
     case kTfLiteUInt32:
-      return NPY_UINT32;
+      return NPY_UINT32;  // NOLINT(misc-include-cleaner)
     case kTfLiteUInt16:
-      return NPY_UINT16;
+      return NPY_UINT16;  // NOLINT(misc-include-cleaner)
     case kTfLiteInt16:
-      return NPY_INT16;
+      return NPY_INT16;  // NOLINT(misc-include-cleaner)
     case kTfLiteInt4:
       // TODO(b/246806634): NPY_INT4 currently doesn't exist
       return NPY_BYTE;
     case kTfLiteUInt4:
-      return NPY_UINT8;
+      return NPY_UINT8;  // NOLINT(misc-include-cleaner)
     case kTfLiteFloat8E4M3FN:
     case kTfLiteFloat8E5M2:
       return NPY_BYTE;
@@ -67,21 +68,21 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       // TODO(b/246806634): NPY_INT2 currently doesn't exist
       return NPY_BYTE;
     case kTfLiteUInt8:
-      return NPY_UINT8;
+      return NPY_UINT8;  // NOLINT(misc-include-cleaner)
     case kTfLiteInt8:
-      return NPY_INT8;
+      return NPY_INT8;  // NOLINT(misc-include-cleaner)
     case kTfLiteInt64:
-      return NPY_INT64;
+      return NPY_INT64;  // NOLINT(misc-include-cleaner)
     case kTfLiteUInt64:
-      return NPY_UINT64;
+      return NPY_UINT64;  // NOLINT(misc-include-cleaner)
     case kTfLiteString:
       return NPY_STRING;
     case kTfLiteBool:
       return NPY_BOOL;
     case kTfLiteComplex64:
-      return NPY_COMPLEX64;
+      return NPY_COMPLEX64;  // NOLINT(misc-include-cleaner)
     case kTfLiteComplex128:
-      return NPY_COMPLEX128;
+      return NPY_COMPLEX128;  // NOLINT(misc-include-cleaner)
     case kTfLiteResource:
     case kTfLiteVariant:
       return NPY_OBJECT;
@@ -197,7 +198,6 @@ bool FillStringBufferWithPyArray(PyObject* value,
 
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
   switch (PyArray_TYPE(array)) {
-    case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE: {
       if (PyArray_NDIM(array) == 0) {
@@ -205,6 +205,9 @@ bool FillStringBufferWithPyArray(PyObject* value,
                                   PyArray_NBYTES(array));
         return true;
       }
+      [[fallthrough]];
+    }
+    case NPY_OBJECT: {
       UniquePyObjectRef iter(PyArray_IterNew(value));
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(
