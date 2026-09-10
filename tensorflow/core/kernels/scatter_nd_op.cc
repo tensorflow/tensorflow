@@ -911,6 +911,30 @@ absl::Status PrepareAndValidateInputs(const TensorShape& params_shape,
                    ? indices_shape.dim_size(indices_shape.dims() - 1)
                    : 1;
 
+  // Check that the product of the leading ("batch") dimensions --
+  // params_shape[0, *slice_dim) -- fits in Index. This product determines
+  // the per-dimension strides ScatterNdFunctor uses to compute the
+  // accumulated linear output offset. Unlike slice_size (the product of the
+  // trailing dimensions, checked below), it was previously validated only
+  // for dim_size(0) in isolation, just above -- dims 1..(*slice_dim - 1),
+  // and their product, were never checked. A shape whose individual leading
+  // dimensions each fit in Index but whose product does not (e.g.
+  // [1, 46342, 46341] with a 3-D indices tensor) passed validation while
+  // silently overflowing Index inside the functor, turning the computed
+  // output offset negative and reading/writing outside Toutput's
+  // allocation.
+  int64_t batch_volume_big = 1;
+  for (int64_t i = 0; i < *slice_dim; ++i) {
+    batch_volume_big *= params_shape.dim_size(i);
+    if (batch_volume_big > std::numeric_limits<Index>::max()) {
+      return errors::InvalidArgument(
+          "Product of the leading (batch) dimensions of params_shape=",
+          params_shape.DebugString(), " is too large for ",
+          DataTypeString(DataTypeToEnum<Index>::v()), " indexing: exceeds ",
+          std::numeric_limits<Index>::max());
+    }
+  }
+
   // Calculate the number of elements that make up each slice of our updated
   // tensor. This allows us to work with flattened tensors and copy over whole
   // slices at a time.

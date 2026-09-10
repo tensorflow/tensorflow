@@ -540,6 +540,29 @@ TEST_F(ScatterNdOpTest, Error_IndexOutOfRange) {
       << s;
 }
 
+TEST_F(ScatterNdOpTest, Error_BatchDimensionProductOverflowsIndex) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // None of the individual leading ("batch") dimensions of this shape
+  // exceeds INT32_MAX, and neither does dim_size(0) alone, but their
+  // product (46342 * 46341 = 2,147,534,622) does. Before the accompanying
+  // fix, PrepareAndValidateInputs never checked that product, so this shape
+  // passed validation and the corresponding stride computation in
+  // ScatterNdFunctor silently overflowed Index (int32), turning the
+  // accumulated output offset negative and reading/writing outside the
+  // output tensor's allocation. This must now be rejected during
+  // validation -- before any output tensor is allocated -- so this test
+  // stays cheap regardless of how large the (rejected) shape is.
+  AddInputFromArray<int32_t>(TensorShape({1, 3}), {0, 0, 0});
+  AddInputFromArray<float>(TensorShape({1}), {1});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 46342, 46341});
+  absl::Status s = RunOpKernel();
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(absl::StrContains(s.ToString(),
+                                "Product of the leading (batch) dimensions"))
+      << s;
+}
+
 class ScatterNdOpErrorOnBadIndicesTest : public OpsTestBase {
  protected:
   void MakeOp(DataType variable_type, DataType index_type) {

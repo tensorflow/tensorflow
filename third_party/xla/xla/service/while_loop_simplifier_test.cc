@@ -1164,6 +1164,94 @@ TEST_F(WhileLoopSimplifierTest, LoopWithUnusedNonPassthroughElementSimplified) {
               AllOf(op::While(), op::Shape("(s32[], s32[])")));
 }
 
+// Index 65 lives in the second 64 bit word of the dependency bitset. The
+// parameter at that index has no use after the loop and is kept only because a
+// live output depends on it, so the test fails if Add, Merge, or ForEachIndex
+// mishandles bits beyond the first word.
+TEST_F(WhileLoopSimplifierTest, RemoveDeadParamsAcrossBitsetWordBoundary) {
+  constexpr int64_t kTupleSize = 70;
+  constexpr int64_t kHighIndex = 65;
+  std::string tuple_shape = "(s32[]";
+  for (int64_t i = 1; i < kTupleSize; ++i) {
+    absl::StrAppend(&tuple_shape, ", s32[]");
+  }
+  absl::StrAppend(&tuple_shape, ")");
+  std::string body_gtes;
+  for (int64_t i = 2; i < kTupleSize; ++i) {
+    absl::StrAppend(&body_gtes, "    gte.", i,
+                    " = s32[] get-tuple-element(loop_var), index=", i, "\n");
+  }
+  std::string body_outputs = "counter, sum";
+  for (int64_t i = 2; i < kTupleSize; ++i) {
+    absl::StrAppend(&body_outputs, ", gte.", i);
+  }
+  std::string entry_params;
+  std::string init_elements = "p0";
+  absl::StrAppend(&entry_params, "    p0 = s32[] parameter(0)\n");
+  for (int64_t i = 1; i < kTupleSize; ++i) {
+    absl::StrAppend(&entry_params, "    p", i, " = s32[] parameter(", i, ")\n");
+    absl::StrAppend(&init_elements, ", p", i);
+  }
+  const std::string hlo_string = absl::StrCat(
+      R"(
+  HloModule BitsetWordBoundary
+  BitsetWordBoundary.body {
+    loop_var = )",
+      tuple_shape, R"( parameter(0)
+    gte.0 = s32[] get-tuple-element(loop_var), index=0
+    gte.1 = s32[] get-tuple-element(loop_var), index=1
+)",
+      body_gtes,
+      R"(    one = s32[] constant(1)
+    counter = s32[] add(gte.0, one)
+    sum = s32[] add(gte.1, gte.)",
+      kHighIndex, R"()
+    ROOT tuple = )",
+      tuple_shape, " tuple(", body_outputs, R"()
+  }
+  BitsetWordBoundary.cond {
+    cond_param = )",
+      tuple_shape, R"( parameter(0)
+    cond_counter = s32[] get-tuple-element(cond_param), index=0
+    limit = s32[] constant(100)
+    ROOT lt = pred[] compare(cond_counter, limit), direction=LT
+  }
+  ENTRY BitsetWordBoundary {
+)",
+      entry_params, "    init = ", tuple_shape, " tuple(", init_elements, R"()
+    while = )",
+      tuple_shape,
+      R"( while(init), condition=BitsetWordBoundary.cond, body=BitsetWordBoundary.body
+    ROOT result = s32[] get-tuple-element(while), index=1
+  }
+  )");
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(m.get()));
+  ASSERT_TRUE(changed);
+
+  // Kept: index 0 feeds the condition, index 1 is used after the loop, and
+  // index 65 feeds output 1. Everything else is dead.
+  const auto& instrs = m->entry_computation()->instructions();
+  auto it = absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kWhile && instr->name() != "while";
+  });
+  ASSERT_NE(it, instrs.end());
+  HloInstruction* new_while_op = *it;
+  EXPECT_EQ(ShapeUtil::TupleElementCount(new_while_op->shape()), 3);
+  EXPECT_THAT(
+      new_while_op->while_init(),
+      op::Tuple(op::Parameter(0), op::Parameter(1), op::Parameter(kHighIndex)));
+  EXPECT_THAT(
+      new_while_op->while_body()->root_instruction(),
+      op::Tuple(
+          op::Add(op::GetTupleElement(op::Parameter(0), /*tuple_index=*/0),
+                  op::Constant()),
+          op::Add(op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1),
+                  op::GetTupleElement(op::Parameter(0), /*tuple_index=*/2)),
+          op::GetTupleElement(op::Parameter(0), /*tuple_index=*/2)));
+}
+
 // Check that we can remove unused loop params even if the loop contains
 // sends/recvs.
 TEST_F(WhileLoopSimplifierTest, RemoveUnusedParamsDespiteSendRecv) {
