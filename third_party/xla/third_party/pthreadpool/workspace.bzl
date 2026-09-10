@@ -20,7 +20,7 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "5ab4e8f63e3dcf62048360c216532bdf62f00dc204883a52d91230402f0feb6a",
-        strip_prefix = "pthreadpool-02460584c6092e527c8b89f7df4de143d70e801f",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/02460584c6092e527c8b89f7df4de143d70e801f.zip"),
+        sha256 = "9b9fb1179b71021c0c048504eab636424c58e9c8374404754ece6d7cd90f26d4",
+        strip_prefix = "pthreadpool-15a6644ba1c45f1acc16ac1e883efc3e56c6bed2",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/15a6644ba1c45f1acc16ac1e883efc3e56c6bed2.zip"),
     )
