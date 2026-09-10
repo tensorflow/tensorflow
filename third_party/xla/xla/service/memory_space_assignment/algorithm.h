@@ -1086,11 +1086,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                                           const Allocation& aliased_allocation,
                                           AliasedOffset* offset);
 
-  // Returns true if a buffer is allocated in the alternate memory space
-  // throughout the live range of a conditional and used in the conditional.
-  // The uses inside the conditional read the buffer from mirrored
-  // allocation.
-  bool NeedsMirroredAllocation(
+  // Returns true if an outer allocation value satisfies the conditions
+  // (allocated in the alternate memory space and spanning the duration of the
+  // nested computation) to serve as the source/anchor for mirrored allocations
+  // in nested computations (such as conditionals). The uses inside the nested
+  // computation read the buffer from the mirrored allocation.
+  bool CanBeMirroredByNestedComputations(
       const AllocationValue& allocation_value,
       const AllocationValue::Use& current_use,
       // We check if the previous use is a conditional operand.
