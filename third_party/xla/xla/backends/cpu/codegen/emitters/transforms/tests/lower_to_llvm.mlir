@@ -80,10 +80,10 @@ func.func @load_memref(%call_frame: !xla_cpu.call_frame) -> memref<2x4xi32> {
 
 // CHECK-LABEL: @load_memref(
 // CHECK-SAME:    %[[CALLFRAME:.*]]: !xla_cpu.call_frame) -> memref<2x4xi32> {
-// CHECK-DAG:  %[[C_1:.*]] = llvm.mlir.constant(1 : index) : i64
-// CHECK-DAG:  %[[C_4:.*]] = llvm.mlir.constant(4 : index) : i64
-// CHECK-DAG:  %[[C_2:.*]] = llvm.mlir.constant(2 : index) : i64
-// CHECK-DAG:  %[[C_0:.*]] = llvm.mlir.constant(0 : index) : i64
+// CHECK-DAG:  %[[C_1:.*]] = llvm.mlir.constant(1 : i64) : i64
+// CHECK-DAG:  %[[C_4:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-DAG:  %[[C_2:.*]] = llvm.mlir.constant(2 : i64) : i64
+// CHECK-DAG:  %[[C_0:.*]] = llvm.mlir.constant(0 : i64) : i64
 // CHECK-DAG:  %[[INIT:.*]] = llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-DAG:  %[[CALLFRAME_PTR:.*]] = builtin.unrealized_conversion_cast %[[CALLFRAME]] : !xla_cpu.call_frame to !llvm.ptr
 // CHECK-DAG:  %[[ARGS_GEP:.*]] = llvm.getelementptr inbounds %[[CALLFRAME_PTR]][0, 3] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<"XLA_CPU_KernelCallFrame", (ptr, ptr, i64, ptr)>

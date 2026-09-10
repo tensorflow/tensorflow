@@ -60,5 +60,6 @@ common_patch_list = [
     "//third_party/triton:common/proxy_fence_insertion_speedup.patch",
     "//third_party/triton:common/llvm_cl977665408.patch",
     "//third_party/triton:common/llvm_cl978258752.patch",
+    "//third_party/triton:common/llvm_cl978877110.patch",
     # Add new patches just above this line
 ]
