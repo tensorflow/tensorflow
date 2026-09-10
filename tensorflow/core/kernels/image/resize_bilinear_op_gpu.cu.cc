@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <type_traits>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
