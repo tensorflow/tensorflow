@@ -1572,6 +1572,7 @@ xla_cc_test(
     deps = [
         ":online_topsort",
         "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
