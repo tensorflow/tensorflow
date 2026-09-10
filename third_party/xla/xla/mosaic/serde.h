@@ -51,7 +51,9 @@ using SerdeRuleType =
     ::mlir::ModuleOp module,
     const llvm::StringMap<SerdeRuleType>& upgrade_rules,
     const llvm::StringMap<SerdeRuleType>& downgrade_rules, bool serialize,
-    SerdeOptions options, bool keep_version_attr = false);
+    SerdeOptions options, bool keep_version_attr = false,
+    std::function<::mlir::LogicalResult(::mlir::Operation*)> legality_check =
+        {});
 
 }  // namespace jaxlib::mosaic
 

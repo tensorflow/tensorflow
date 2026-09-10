@@ -55,7 +55,8 @@ std::optional<llvm::StringRef> demangle(llvm::StringRef name,
 mlir::LogicalResult RunSerde(
     mlir::ModuleOp module, const llvm::StringMap<SerdeRuleType>& upgrade_rules,
     const llvm::StringMap<SerdeRuleType>& downgrade_rules, bool serialize,
-    SerdeOptions options, bool keep_version_attr) {
+    SerdeOptions options, bool keep_version_attr,
+    std::function<mlir::LogicalResult(mlir::Operation*)> legality_check) {
   int version = options.highest_version;
   int serialize_version = options.serialize_version;
   if (!serialize && serialize_version != -1) {
@@ -145,6 +146,10 @@ mlir::LogicalResult RunSerde(
             op->getRegions());
         op->getBlock()->getOperations().insertAfter(mlir::Block::iterator(op),
                                                     new_op);
+        if (!serialize && legality_check != nullptr &&
+            mlir::failed(legality_check(new_op))) {
+          return mlir::WalkResult::interrupt();
+        }
         // Downgrade the op to the target version, if needed.
         bool downgrade_failed = false;
         if (serialize && version != serialize_version) {
