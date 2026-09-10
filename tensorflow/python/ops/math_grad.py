@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops import sqrt_ops
 
 
 @ops.RegisterGradient("ArgMax")
@@ -706,6 +707,9 @@ def _SquareGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("Sqrt")
 def _SqrtGrad(op: ops.Operation, grad):
+  x = op.inputs[0]
+  if x.dtype == dtypes.float64:
+    return sqrt_ops.sqrt_grad(x, grad)
   y = op.outputs[0]  # y = x^(1/2)
   return gen_math_ops.sqrt_grad(y, grad)
 
