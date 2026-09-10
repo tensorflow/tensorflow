@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -27,6 +28,7 @@ limitations under the License.
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -616,6 +618,31 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
     remote_eager_workers_ = nullptr;
   }
 #endif  // !IS_MOBILE_PLATFORM
+}
+
+namespace internal {
+bool IsTensorFlowExecutorThread() {
+  std::string name;
+  if (tsl::Env::Default()->GetCurrentThreadName(&name) &&
+      absl::StartsWith(name, "tf_")) {
+    return true;
+  }
+  return false;
+}
+}  // namespace internal
+
+void EagerContext::Release() {
+  // If we are on a TF executor thread, we must not execute the destructor
+  // synchronously to avoid a deadlock when it waits on the same thread pool.
+  // We unconditionally detach a thread rather than checking RefCountIsOne()
+  // to prevent TOCTOU races where another thread drops the last reference
+  // concurrently.
+  if (internal::IsTensorFlowExecutorThread()) {
+    env_->StartDetachedThread(ThreadOptions(), "eager_context_cleanup",
+                              [this]() { this->Unref(); });
+  } else {
+    Unref();
+  }
 }
 
 EagerContext::~EagerContext() {
