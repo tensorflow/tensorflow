@@ -2330,6 +2330,9 @@ ShapeUtil::ByteStrides(const Shape& shape) {
   if (shape.layout().tiles().empty()) {
     return ByteSizeOfElements(shape);
   }
+  if (shape.is_unbounded_dynamic()) {
+    return Shape::kUnboundedSize;
+  }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
   auto minor_to_major = shape.layout().minor_to_major();

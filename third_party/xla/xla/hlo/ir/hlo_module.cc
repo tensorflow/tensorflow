@@ -2106,4 +2106,11 @@ void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryComputation(
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
 
+bool HloModule::IsEntryComputationUnboundedDynamic() const {
+  if (computations().begin() == computations().end()) {
+    return false;
+  }
+  return (*computations().begin())->IsEntryInstUnboundedDynamic();
+}
+
 }  // namespace xla
