@@ -1722,6 +1722,10 @@ xla_test(
     backends = [
         "gpu",
     ],
+    # This test exercises the cross-host one-shot all-gather path, which relies
+    # on kLoadStoreAccessible symmetric memory (NCCL symmetric-memory windows).
+    # That mechanism is not available on ROCm/RCCL, so restrict to CUDA.
+    tags = ["cuda-only"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -1779,6 +1783,10 @@ xla_test(
     backends = [
         "gpu",
     ],
+    # This test exercises the cross-host one-shot all-reduce path, which relies
+    # on kLoadStoreAccessible symmetric memory (NCCL symmetric-memory windows).
+    # That mechanism is not available on ROCm/RCCL, so restrict to CUDA.
+    tags = ["cuda-only"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
