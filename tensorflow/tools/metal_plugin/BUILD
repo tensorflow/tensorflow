@@ -26,7 +26,7 @@
 # same position as //tensorflow/lite/delegates/gpu/metal, which has carried
 # sixty Objective-C++ sources under objc_library on those terms.
 
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_test")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load(
     "//tensorflow:tensorflow.bzl",
