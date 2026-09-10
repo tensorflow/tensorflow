@@ -135,13 +135,20 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     // We must relay the control dependencies from this call instruction to
     // the successors too after inlining. The will now depend on the newly
     // inlined root.
+    // If new_root is an operand of call_ (e.g. an identity function call(x) ->
+    // x), do not propagate call-level frontend attributes backward onto
+    // existing caller operands. Otherwise, newly cloned instructions inherit
+    // the call's frontend attributes.
+    bool preserve_frontend_attributes =
+        !absl::c_linear_search(call_->operands(), new_root);
     auto result =
         outer_
             ->ReplaceInstruction(
                 /*old_instruction=*/call_, /*new_instruction=*/new_root,
                 /*preserve_sharding=*/false,
                 /*relay_control_dependency=*/true,
-                /*remove_unused_operands=*/false)
+                /*remove_unused_operands=*/false,
+                /*preserve_frontend_attributes=*/preserve_frontend_attributes)
             .status();
     // Restores the original value of the new root, which gets overwritten
     // when it's used to replace the call instruction.
