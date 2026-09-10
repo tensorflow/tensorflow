@@ -109,6 +109,10 @@ struct MhloToScalarOp<mhlo::ErfOp> {
   using FOp = ::mlir::math::ErfOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::ErfcOp> {
+  using FOp = ::mlir::math::ErfcOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::ExpOp> {
   using FOp = ::mlir::math::ExpOp;
   using COp = ::mlir::complex::ExpOp;
