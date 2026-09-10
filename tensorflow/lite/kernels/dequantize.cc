@@ -67,8 +67,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
   is_supported_type = is_supported_type ||
                       op_context.input->type == kTfLiteFloat8E4M3FN ||
-                      op_context.input->type == kTfLiteFloat8E5M2 ||
-                      op_context.input->type == kTfLiteFloat8E8M0FNU;
+                      op_context.input->type == kTfLiteFloat8E5M2;
 #endif
   TF_LITE_ENSURE(context, is_supported_type);
 

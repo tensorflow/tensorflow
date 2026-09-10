@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
-#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -201,8 +200,6 @@ absl::Status CreateVectorCopyData(const TfLiteTensor& src, T* dst) {
         return absl::UnimplementedError("src can't be float8_e4m3fn.");
       case kTfLiteFloat8E5M2:
         return absl::UnimplementedError("src can't be float8_e5m2.");
-      case kTfLiteFloat8E8M0FNU:
-        return absl::UnimplementedError("src can't be float8_e8m0fnu.");
     }
   }
 }

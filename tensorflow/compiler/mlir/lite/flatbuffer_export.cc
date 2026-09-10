@@ -216,8 +216,6 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_FLOAT8_E4M3FN;
   } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
     return tflite::TensorType_FLOAT8_E5M2;
-  } else if (mlir::isa<mlir::Float8E8M0FNUType>(type)) {
-    return tflite::TensorType_FLOAT8_E8M0FNU;
   } else if (mlir::isa<mlir::TF::StringType>(type)) {
     return tflite::TensorType_STRING;
   } else if (mlir::isa<mlir::TF::Quint8Type>(type)) {
