@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <limits>
 
 #include "third_party/fft2d/fft2d.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -117,12 +118,24 @@ TfLiteStatus ResizeOutputandTemporaryTensors(TfLiteContext* context,
                     GetInputSafe(context, node, kFftLengthTensor, &fft_length));
   const int32_t* fft_length_data = GetTensorData<int32_t>(fft_length);
   // The lib, fft2d, can only handle fft_lengths of power of 2.
+  TF_LITE_ENSURE(context, fft_length_data[0] > 0);
+  TF_LITE_ENSURE(context, fft_length_data[1] > 0);
   TF_LITE_ENSURE(context, IsPowerOfTwo(fft_length_data[0]));
   TF_LITE_ENSURE(context, IsPowerOfTwo(fft_length_data[1]));
 
   int fft_height, fft_width;
   fft_height = fft_length_data[0];
   fft_width = fft_length_data[1];
+
+  int64_t fft_size =
+      static_cast<int64_t>(fft_height) * static_cast<int64_t>(fft_width);
+  TF_LITE_ENSURE(context, fft_size <= std::numeric_limits<int32_t>::max());
+  TF_LITE_ENSURE(
+      context,
+      static_cast<int64_t>(fft_height) * 8 <= std::numeric_limits<int32_t>::max());
+  TF_LITE_ENSURE(
+      context,
+      static_cast<int64_t>(fft_width) * 8 <= std::numeric_limits<int32_t>::max());
   int fft_working_length = std::max(fft_height, fft_width / 2);
   int half_fft_working_length = fft_working_length / 2;
 
@@ -279,7 +292,7 @@ void PrepareInputBuffer(const complex<float>* input_data, int input_height,
   int valid_input_height = std::min(input_height, fft_height);
   int valid_input_width = std::min(input_width, fft_width / 2 + 1);
   for (int i = 0; i < valid_input_height; ++i) {
-    int in_pos = i * input_width;
+    int64_t in_pos = static_cast<int64_t>(i) * input_width;
     for (int j = 0; j < valid_input_width; ++j) {
       fft_input_output[i][2 * j] = input_data[in_pos].real();
       fft_input_output[i][2 * j + 1] = input_data[in_pos].imag();
@@ -303,8 +316,9 @@ void PrepareInputBuffer(const complex<float>* input_data, int input_height,
 
 void PrepareOutputBuffer(float* output_data, int fft_height, int fft_width,
                          double** fft_input_output) {
-  int cnt = 0;
-  float norm = 2.0 / static_cast<float>(fft_height * fft_width);
+  size_t cnt = 0;
+  double norm =
+      2.0 / (static_cast<double>(fft_height) * static_cast<double>(fft_width));
   for (int i = 0; i < fft_height; ++i) {
     for (int j = 0; j < fft_width; ++j) {
       output_data[cnt++] = fft_input_output[i][j] * norm;
@@ -320,6 +334,7 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kFftLengthTensor, &fft_length));
   const int32_t* fft_length_data = GetTensorData<int32_t>(fft_length);
+  TF_LITE_ENSURE(context, fft_length_data != nullptr);
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
@@ -329,20 +344,43 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   fft_height = fft_length_data[0];
   fft_width = fft_length_data[1];
 
+  TF_LITE_ENSURE(context, fft_height > 0 && fft_width > 0);
+  TF_LITE_ENSURE(context, IsPowerOfTwo(fft_height));
+  TF_LITE_ENSURE(context, IsPowerOfTwo(fft_width));
+  int64_t fft_size =
+      static_cast<int64_t>(fft_height) * static_cast<int64_t>(fft_width);
+  TF_LITE_ENSURE(context, fft_size <= std::numeric_limits<int32_t>::max());
+  TF_LITE_ENSURE(
+      context,
+      static_cast<int64_t>(fft_height) * 8 <= std::numeric_limits<int32_t>::max());
+  TF_LITE_ENSURE(
+      context,
+      static_cast<int64_t>(fft_width) * 8 <= std::numeric_limits<int32_t>::max());
+
   // FFT is processed for every slice on the inner most 2 dimensions.
   // Count the number of slices in the input tensor.
   const RuntimeShape input_shape = GetTensorShape(input);
   const int input_dims_count = input_shape.DimensionsCount();
   const auto* input_dims_data = input_shape.DimsData();
-  int num_slices = 1;
+  int64_t num_slices = 1;
   for (int i = 0; i < input_dims_count - 2; ++i) {
-    num_slices *= input_dims_data[i];
+    int64_t dim = input_dims_data[i];
+    TF_LITE_ENSURE(context, dim > 0);
+    num_slices *= dim;
+    TF_LITE_ENSURE(context, num_slices <= std::numeric_limits<int32_t>::max());
   }
 
-  int input_height = input_dims_data[input_dims_count - 2];
-  int input_width = input_dims_data[input_dims_count - 1];
-  int input_slice_size = input_height * input_width;
-  int output_slice_size = fft_height * fft_width;
+  int64_t input_height = input_dims_data[input_dims_count - 2];
+  int64_t input_width = input_dims_data[input_dims_count - 1];
+  TF_LITE_ENSURE(context, input_height > 0 && input_width > 0);
+  int64_t input_slice_size = input_height * input_width;
+  TF_LITE_ENSURE(context,
+                 input_slice_size <= std::numeric_limits<int32_t>::max());
+
+  int64_t output_slice_size =
+      static_cast<int64_t>(fft_height) * static_cast<int64_t>(fft_width);
+  TF_LITE_ENSURE(context,
+                 output_slice_size <= std::numeric_limits<int32_t>::max());
 
   // Get buffer for integer working area.
   TfLiteTensor* fft_integer_working_area;
@@ -374,13 +412,15 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   double* fft_input_output_data_ptr =
       reinterpret_cast<double*>(GetTensorData<int64_t>(fft_input_output_data));
   for (int i = 0; i < fft_height; ++i) {
-    fft_input_output[i] = fft_input_output_data_ptr + i * (fft_width + 2);
+    fft_input_output[i] =
+        fft_input_output_data_ptr + static_cast<int64_t>(i) * (fft_width + 2);
   }
 
   // Process every slice in the input buffer
-  for (int i = 0; i < num_slices; ++i) {
-    PrepareInputBuffer(input_data, input_height, input_width, fft_height,
-                       fft_width, fft_input_output);
+  for (int64_t i = 0; i < num_slices; ++i) {
+    PrepareInputBuffer(input_data, static_cast<int>(input_height),
+                       static_cast<int>(input_width), fft_height, fft_width,
+                       fft_input_output);
     memset(fft_integer_working_area_data, 0, fft_integer_working_area->bytes);
     memset(fft_double_working_area_data, 0, fft_double_working_area->bytes);
     Irfft2dImpl(fft_height, fft_width, fft_input_output,
