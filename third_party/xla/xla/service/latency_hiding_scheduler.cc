@@ -361,7 +361,12 @@ const HloInstruction* FindStart(const HloInstruction* done) {
     return nullptr;
   }
   if (done->IsAsyncDone()) {
-    return hlo_instruction_utils::async::FindAsyncStart(done);
+    const HloInstruction* start =
+        hlo_instruction_utils::async::FindAsyncStart(done);
+    if (start != nullptr && start->parent() != done->parent()) {
+      return done->operand(0);
+    }
+    return start;
   }
   switch (done->opcode()) {
     case HloOpcode::kCopyDone:
