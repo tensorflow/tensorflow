@@ -6425,5 +6425,55 @@ ENTRY main {
   EXPECT_EQ(FindDone(const_barrier_async_start), barrier_async_done);
 }
 
+TEST_F(LatencyHidingSchedulerTest, FindStartPipelinedWhileLoopTest) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+async_comp {
+  p = f32[8] parameter(0)
+  ROOT r = f32[8] negate(p)
+}
+
+while_cond {
+  state = (s32[], ((f32[8]), f32[8], s32[])) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(4)
+  ROOT cmp = pred[] compare(iter, limit), direction=LT
+}
+
+while_body {
+  state = (s32[], ((f32[8]), f32[8], s32[])) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  c1 = s32[] constant(1)
+  next_iter = s32[] add(iter, c1)
+  pipelined_ctx = ((f32[8]), f32[8], s32[]) get-tuple-element(state), index=1
+  done = f32[8] async-done(pipelined_ctx), calls=async_comp
+  next_start = ((f32[8]), f32[8], s32[]) async-start(done), calls=async_comp
+  ROOT next_state = (s32[], ((f32[8]), f32[8], s32[])) tuple(next_iter, next_start)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  c0 = s32[] constant(0)
+  prologue_start = ((f32[8]), f32[8], s32[]) async-start(p0), calls=async_comp
+  init_state = (s32[], ((f32[8]), f32[8], s32[])) tuple(c0, prologue_start)
+  loop = (s32[], ((f32[8]), f32[8], s32[])) while(init_state), condition=while_cond, body=while_body
+  epilogue_ctx = ((f32[8]), f32[8], s32[]) get-tuple-element(loop), index=1
+  ROOT epilogue_done = f32[8] async-done(epilogue_ctx), calls=async_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseHloText(hlo_string));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  HloInstruction* done = while_body->GetInstructionWithName("done");
+  HloInstruction* pipelined_ctx =
+      while_body->GetInstructionWithName("pipelined_ctx");
+  // `done` consumes `pipelined_ctx` inside `while_body`, whose corresponding
+  // `async-start` (`prologue_start`) is in `ENTRY main`. Because
+  // LatencyHidingScheduler builds per-computation HloScheduleGraphs,
+  // `FindStart(done)` must return `pipelined_ctx` within `while_body` rather
+  // than crossing the loop boundary into `ENTRY main`.
+  EXPECT_EQ(FindStart(done), pipelined_ctx);
+}
+
 }  // namespace
 }  // namespace xla
