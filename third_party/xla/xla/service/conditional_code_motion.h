@@ -243,6 +243,14 @@ class ConditionalCodeMotion : public HloModulePass {
       HloInstruction* conditional, std::vector<Boundary>& to_move_in);
   void SetDefaultMoveConfig();
 };
+
+// Updates or preserves the OriginalValue of an instruction whose shape was
+// modified during conditional code motion (e.g. widening conditional branch
+// parameters or tuples), maintaining structural consistency with
+// instruction->shape().
+void UpdateInstructionOriginalValue(HloInstruction* instruction,
+                                    HloInstruction* operand_source = nullptr);
+
 }  // namespace conditional_opt
 
 }  // namespace xla
