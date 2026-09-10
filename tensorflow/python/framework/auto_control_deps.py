@@ -606,6 +606,7 @@ def _identity_resolver(op, resource_reads, resource_writes):
 def _get_resource_inputs(op):
   """Returns an iterable of resources touched by this `op`."""
   reads, writes = utils.get_read_write_resource_inputs(op)
+  reads = reads.difference(writes)
   saturated = False
   while not saturated:
     saturated = True
@@ -619,6 +620,9 @@ def _get_resource_inputs(op):
         # Conservatively remove any resources from `reads` that are also writes.
         reads = reads.difference(writes)
       saturated = saturated and not updated
+
+  # Conservatively remove any resources from `reads` that are also writes.
+  reads = reads.difference(writes)
 
   # Note: A resource handle that is not written to is treated as read-only. We
   # don't have a special way of denoting an unused resource.
