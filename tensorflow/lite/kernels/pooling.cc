@@ -90,6 +90,8 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   // Prevent division by 0 in optimized pooling implementations
   TF_LITE_ENSURE(context, params->stride_height > 0);
   TF_LITE_ENSURE(context, params->stride_width > 0);
+  TF_LITE_ENSURE(context, params->filter_height > 0);
+  TF_LITE_ENSURE(context, params->filter_width > 0);
 
   data->padding = ComputePaddingHeightWidth(
       params->stride_height, params->stride_width, 1, 1, height, width,
