@@ -4876,6 +4876,147 @@ static void BuildSelectV2Op(Builder* builder, OperationState& result,
   }
 }
 
+namespace {
+
+DenseElementsAttr BroadcastDenseElements(DenseElementsAttr in_attr,
+                                         ShapedType out_type) {
+  if (in_attr.getType() == out_type) {
+    return in_attr;
+  }
+  if (in_attr.isSplat()) {
+    return DenseElementsAttr::get(out_type, in_attr.getSplatValue<Attribute>());
+  }
+  const auto in_new_shape =
+      GetPaddedShape(in_attr.getType().getShape(), out_type.getRank());
+  const auto result_shape = out_type.getShape();
+  const int64_t num_elements = out_type.getNumElements();
+  auto in_values = in_attr.getValues<Attribute>();
+  llvm::SmallVector<Attribute> results;
+  results.reserve(num_elements);
+  std::vector<int64_t> current_index(out_type.getRank(), 0);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    results.push_back(in_values[GetElementIndex(in_new_shape, current_index)]);
+    IncrementIndex(result_shape, &current_index);
+  }
+  return DenseElementsAttr::get(out_type, results);
+}
+
+}  // namespace
+
+OpFoldResult SelectV2Op::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  if (getX() == getY() && getX().getType() == getType()) {
+    return getX();
+  }
+
+  auto out_type = llvm::dyn_cast<ShapedType>(getType());
+  if (!out_type || !out_type.hasStaticShape()) {
+    return {};
+  }
+
+  auto condition_vals =
+      llvm::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getCondition());
+
+  if (condition_vals && condition_vals.getElementType().isInteger(1) &&
+      condition_vals.isSplat()) {
+    const bool val = condition_vals.getSplatValue<bool>();
+    Value selected_val = val ? getX() : getY();
+    if (selected_val.getType() == getType()) {
+      return selected_val;
+    }
+    Attribute selected_attr = val ? adaptor.getX() : adaptor.getY();
+    if (auto dense_attr =
+            llvm::dyn_cast_or_null<DenseElementsAttr>(selected_attr)) {
+      return BroadcastDenseElements(dense_attr, out_type);
+    }
+  }
+
+  if (!condition_vals || !condition_vals.getElementType().isInteger(1)) {
+    return {};
+  }
+
+  auto lhs_vals = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getX());
+  auto rhs_vals = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getY());
+  if (!lhs_vals || !rhs_vals) {
+    return {};
+  }
+
+  if (lhs_vals.getElementType() != rhs_vals.getElementType()) {
+    return {};
+  }
+
+  if (condition_vals.isSplat() && lhs_vals.isSplat() && rhs_vals.isSplat()) {
+    const bool cond_val = condition_vals.getSplatValue<bool>();
+    Attribute chosen_val = cond_val ? lhs_vals.getSplatValue<Attribute>()
+                                    : rhs_vals.getSplatValue<Attribute>();
+    return DenseElementsAttr::get(out_type, chosen_val);
+  }
+
+  const auto cond_shape = condition_vals.getType().getShape();
+  const auto lhs_shape = lhs_vals.getType().getShape();
+  const auto rhs_shape = rhs_vals.getType().getShape();
+  const auto result_shape = out_type.getShape();
+  const int64_t num_elements = out_type.getNumElements();
+
+  llvm::SmallVector<Attribute> results;
+  results.reserve(num_elements);
+
+  if (cond_shape == result_shape && lhs_shape == result_shape &&
+      rhs_shape == result_shape && !condition_vals.isSplat() &&
+      !lhs_vals.isSplat() && !rhs_vals.isSplat()) {
+    auto cond_it = condition_vals.getValues<bool>().begin();
+    auto lhs_it = lhs_vals.getValues<Attribute>().begin();
+    auto rhs_it = rhs_vals.getValues<Attribute>().begin();
+    for (int64_t i = 0; i < num_elements; ++i) {
+      results.push_back(*cond_it++ ? *lhs_it++ : *rhs_it++);
+    }
+    return DenseElementsAttr::get(out_type, results);
+  }
+
+  const auto cond_new_shape = GetPaddedShape(cond_shape, out_type.getRank());
+  const auto lhs_new_shape = GetPaddedShape(lhs_shape, out_type.getRank());
+  const auto rhs_new_shape = GetPaddedShape(rhs_shape, out_type.getRank());
+
+  const bool cond_is_splat = condition_vals.isSplat();
+  const bool lhs_is_splat = lhs_vals.isSplat();
+  const bool rhs_is_splat = rhs_vals.isSplat();
+
+  const bool cond_splat_val =
+      cond_is_splat ? condition_vals.getSplatValue<bool>() : false;
+  const Attribute lhs_splat_val =
+      lhs_is_splat ? lhs_vals.getSplatValue<Attribute>() : Attribute();
+  const Attribute rhs_splat_val =
+      rhs_is_splat ? rhs_vals.getSplatValue<Attribute>() : Attribute();
+
+  auto cond_values = condition_vals.getValues<bool>();
+  auto lhs_values = lhs_vals.getValues<Attribute>();
+  auto rhs_values = rhs_vals.getValues<Attribute>();
+
+  std::vector<int64_t> current_index(out_type.getRank(), 0);
+
+  for (int64_t i = 0; i < num_elements; ++i) {
+    const bool cond =
+        cond_is_splat
+            ? cond_splat_val
+            : cond_values[GetElementIndex(cond_new_shape, current_index)];
+    if (cond) {
+      results.push_back(
+          lhs_is_splat
+              ? lhs_splat_val
+              : lhs_values[GetElementIndex(lhs_new_shape, current_index)]);
+    } else {
+      results.push_back(
+          rhs_is_splat
+              ? rhs_splat_val
+              : rhs_values[GetElementIndex(rhs_new_shape, current_index)]);
+    }
+    IncrementIndex(result_shape, &current_index);
+  }
+
+  return DenseElementsAttr::get(out_type, results);
+}
+
 //===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
