@@ -754,6 +754,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:name_uniquer",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/container:flat_hash_map",
