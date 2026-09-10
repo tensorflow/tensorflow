@@ -58,15 +58,16 @@ class AsyncSleepOp : public AsyncOpKernel {
     const auto& delay_tensor = ctx->input(0);
     OP_REQUIRES_ASYNC(
         ctx, ::tensorflow::TensorShapeUtils::IsScalar(delay_tensor.shape()),
-        InvalidArgument("Input `delay` must be a scalar."),
+        absl::InvalidArgumentError("Input `delay` must be a scalar."),
         done);  // Important: call `done` in every execution path
     const float delay = delay_tensor.flat<float>()(0);
-    OP_REQUIRES_ASYNC(ctx, delay >= 0.0,
-                      InvalidArgument("Input `delay` must be non-negative."),
-                      done);  // Important: call `done` in every execution path
+    OP_REQUIRES_ASYNC(
+        ctx, delay >= 0.0,
+        absl::InvalidArgumentError("Input `delay` must be non-negative."),
+        done);  // Important: call `done` in every execution path
     auto thread_pool = ctx->device()->tensorflow_cpu_worker_threads()->workers;
     OP_REQUIRES_ASYNC(ctx, thread_pool != nullptr,
-                      Internal("No thread_pool found."),
+                      absl::InternalError("No thread_pool found."),
                       done);  // Important: call `done` in every execution path
 
     Tensor* output_tensor = nullptr;
@@ -114,10 +115,11 @@ class SyncSleepOp : public OpKernel {
     const auto& delay_tensor = ctx->input(0);
     OP_REQUIRES(ctx,
                 ::tensorflow::TensorShapeUtils::IsScalar(delay_tensor.shape()),
-                InvalidArgument("Input `delay` must be a scalar."));
+                absl::InvalidArgumentError("Input `delay` must be a scalar."));
     const float delay = delay_tensor.flat<float>()(0);
-    OP_REQUIRES(ctx, delay >= 0.0,
-                InvalidArgument("Input `delay` must be non-negative."));
+    OP_REQUIRES(
+        ctx, delay >= 0.0,
+        absl::InvalidArgumentError("Input `delay` must be non-negative."));
     VLOG(1) << "BEFORE SYNC SLEEP" << ctx->op_kernel().name();
     absl::SleepFor(absl::Seconds(delay));
     VLOG(1) << "AFTER SYNC SLEEP" << ctx->op_kernel().name();
