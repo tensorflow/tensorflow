@@ -47,9 +47,13 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* input,
                                 const TfLiteTensor* size,
                                 TfLiteTensor* output) {
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
+  const int32* size_data = GetTensorData<int32>(size);
+  TF_LITE_ENSURE(context, size_data[0] > 0);
+  TF_LITE_ENSURE(context, size_data[1] > 0);
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = input->dims->data[0];
-  const int32* size_data = GetTensorData<int32>(size);
   output_size->data[1] = size_data[0];
   output_size->data[2] = size_data[1];
   output_size->data[3] = input->dims->data[3];
@@ -71,6 +75,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Our current implementations relies on the input being 4D,
   // and the size being 1D tensor with exactly 2 elements.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_TYPES_EQ(context, size->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
