@@ -328,6 +328,11 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
       [v_rank],
   )
 
+  if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
+    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
+  elif not isscalar(k):
+    raise ValueError(f'k must be an integer scalar, got {k}')
+
   def _diag(v, k):
     return np_utils.cond(
         math_ops.equal(array_ops.size(v), 0),
