@@ -45,7 +45,7 @@ diff --git a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llv
  cc_library(
      name = "OpenMPDialect",
 +    copts = select({
-+        "@bazel_tools//src/conditions:windows": [
++        "@platforms//os:windows": [
 +            "/clang:-ftemplate-depth=1024",
 +            "/clang:-fbracket-depth=1024",
 +        ],
