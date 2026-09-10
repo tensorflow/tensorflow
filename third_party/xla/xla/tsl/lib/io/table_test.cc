@@ -645,5 +645,49 @@ TEST(TableTest, SeekToFirstKeyDoesNotReadTooMuch) {
   EXPECT_LT(c.BytesRead(), 200);
 }
 
+TEST(BlockTest, DecodeEntryOverflow) {
+  std::string data;
+  data.push_back(0);  // shared = 0
+
+  // non_shared = 0xFFFFFFFF (Varint)
+  data.push_back(0xFF);
+  data.push_back(0xFF);
+  data.push_back(0xFF);
+  data.push_back(0xFF);
+  data.push_back(0x0F);
+
+  // value_length = 1 (Varint)
+  data.push_back(1);
+
+  // 10 bytes of padding
+  data.append(10, 'x');
+
+  // Restarts array (1 restart at offset 0) -> 0x00000000
+  data.push_back(0);
+  data.push_back(0);
+  data.push_back(0);
+  data.push_back(0);
+
+  // Num restarts = 1 -> 0x00000001
+  data.push_back(1);
+  data.push_back(0);
+  data.push_back(0);
+  data.push_back(0);
+
+  BlockContents contents;
+  contents.data = data;
+  contents.cacheable = false;
+  contents.heap_allocated = false;
+
+  Block block(contents);
+  Iterator* iter = block.NewIterator();
+  iter->SeekToFirst();  // This calls ParseNextKey
+
+  EXPECT_FALSE(iter->Valid());
+  EXPECT_FALSE(iter->status().ok());
+
+  delete iter;
+}
+
 }  // namespace table
 }  // namespace tsl
