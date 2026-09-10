@@ -181,8 +181,8 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   // The constant 1/log(2),
   const llvm::APFloat cephes_LOG2EF = GetIeeeF32(1.44269504088896341);
 
-  const llvm::APFloat cephes_exp_C1 = GetIeeeF32(0.693359375);
-  const llvm::APFloat cephes_exp_C2 = GetIeeeF32(-2.12194440e-4);
+  const llvm::APFloat cephes_exp_C1 = GetIeeeF32(0.693145751953125);
+  const llvm::APFloat cephes_exp_C2 = GetIeeeF32(1.4286067653301877e-6);
 
   const llvm::APFloat cephes_exp_p0 = GetIeeeF32(1.9875691500E-4);
   const llvm::APFloat cephes_exp_p1 = GetIeeeF32(1.3981999507E-3);
@@ -235,14 +235,13 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   // But it turns out this approach is quite slow, probably because it
   // manipulates subnormal values.
   //
-  // The approach we use instead is to clamp n to [-127, 127]. Let n' be the
-  // value of n clamped to [-127, 127]. In the case where n' = 127, `a` can grow
-  // up to as large as 88.8 - 127 * log(2) which is about 0.7703. Even though
-  // this value of `a` is outside our previously specified range, e^a will still
-  // only have a relative error of approximately 2^-16 at worse. In practice
-  // this seems to work well enough; it passes our exhaustive tests, breaking
-  // only one result, and by one ulp (we return exp(88.7228394) = max-float but
-  // we should return inf).
+  // The approach we use instead is to clamp n to [-127, 128]. Let n' be the
+  // value of n clamped to [-127, 128]. Allowing n' = 128 keeps `a = x - n' *
+  // log(2)` within [-log(2)/2, 0.0766], well inside the (-0.5, 0.5) interval
+  // where the polynomial is accurate. To scale e^a by 2^128 without 2^n'
+  // overflowing float32 or requiring a second float multiply, we split n' into
+  // n1 = min(n', 127) and n2 = n' - n1: we construct 2^n1 directly and add
+  // n2 << 23 to the exponent bits of e^a before multiplying.
   //
   // In the case where n' = -127, the original input value of x is so small that
   // e^x, our final answer, is less than 2^-126. Since 2^-126 is the smallest
@@ -260,7 +259,7 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   //              implies e^x < 2^-126.5 < 2^-126
   //
   //    This proves that n' = -127 implies e^x < 2^-126.
-  n = vb.Clamp(n, GetIeeeF32(-127), GetIeeeF32(127));
+  n = vb.Clamp(n, GetIeeeF32(-127), GetIeeeF32(128));
 
   // Computes x = x - n' * log(2), the value for `a`
   x = vb.Sub(x, vb.Mul(cephes_exp_C1, n));
@@ -276,23 +275,32 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   z = vb.Add(one, z);
 
   // Convert n' to an i32.  This is safe because we clamped it above.
-  llvm::Value* n_i32 = b->CreateFPToSI(
-      n, llvm::VectorType::get(b->getInt32Ty(), vector_width, false));
+  // FPToSI(NaN) yields poison in LLVM IR; freeze it so smin/sub do not
+  // propagate poison into pow2_1/pow2_2 and fold z * pow2 to poison on NaN.
+  llvm::Value* n_i32 = b->CreateFreeze(b->CreateFPToSI(
+      n, llvm::VectorType::get(b->getInt32Ty(), vector_width, false)));
 
   auto splat_i32 = [&](int32_t v) {
     return b->CreateVectorSplat(vector_width, b->getInt32(v));
   };
 
-  // Creates the value 2^n' if -126 <= n' <= 127 and 0 if n' = -127.
+  // Creates the value 2^n' if -126 <= n' <= 127 and 0 if n' = -127. For
+  // n' = 128, clamp pow2 to 2^127 (0x7f000000) and add the remaining 1 << 23 to
+  // z's exponent bits so z * 2^n' requires only a single float multiplication.
   const int32_t kF32SignificandBits = 23;
   llvm::Value* exp_bias = splat_i32(0x7f);
-  llvm::Value* pow2 =
-      b->CreateBitCast(b->CreateShl(b->CreateAdd(n_i32, exp_bias),
-                                    splat_i32(kF32SignificandBits)),
-                       vb.vector_type());
+  llvm::Value* biased_shl = b->CreateShl(b->CreateAdd(n_i32, exp_bias),
+                                         splat_i32(kF32SignificandBits));
+  llvm::Value* pow2_bits = b->CreateBinaryIntrinsic(
+      llvm::Intrinsic::umin, biased_shl, splat_i32(0x7f000000));
+  llvm::Value* rem_bits = b->CreateSub(biased_shl, pow2_bits);
+  llvm::Value* z_scaled = b->CreateBitCast(
+      b->CreateAdd(b->CreateBitCast(z, biased_shl->getType()), rem_bits),
+      vb.vector_type());
+  llvm::Value* pow2 = b->CreateBitCast(pow2_bits, vb.vector_type());
 
-  // Return z * 2^n' if -126 <= n' <= 127 and 0 if n = -127.
-  return vb.Mul(z, pow2);
+  // Return z * 2^n' if -126 <= n' <= 128 and 0 if n = -127.
+  return vb.Mul(z_scaled, pow2);
 }
 
 llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
