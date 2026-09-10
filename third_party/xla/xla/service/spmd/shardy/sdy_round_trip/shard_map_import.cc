@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseSet.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
@@ -74,6 +78,119 @@ using ::mlir::func::FuncOp;
 using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
+
+// Reconstructs the global tensor sharding for an input of
+// `sdy.manual_computation` from its local sharding on
+// `xla.sdy.GlobalToLocalShape` and the manual axes.
+sdy::TensorShardingAttr reconstructGlobalInSharding(
+    sdy::TensorShardingAttr localSharding, mlir::Type globalType,
+    mlir::Type localType, ArrayRef<StringAttr> manualAxes,
+    const mlir::SymbolTable& symbolTable) {
+  if (!localSharding || manualAxes.empty()) {
+    return localSharding;
+  }
+  sdy::MeshAttr meshAttr = localSharding.getMesh(symbolTable);
+  if (!meshAttr) {
+    return localSharding;
+  }
+  auto globalTensorType =
+      mlir::dyn_cast_or_null<mlir::RankedTensorType>(globalType);
+  auto localTensorType =
+      mlir::dyn_cast_or_null<mlir::RankedTensorType>(localType);
+  if (!globalTensorType || !localTensorType) {
+    return localSharding;
+  }
+
+  int64_t rank = globalTensorType.getRank();
+  SmallVector<sdy::DimensionShardingAttr> dimShardings =
+      llvm::to_vector(localSharding.getDimShardings());
+  if (static_cast<int64_t>(dimShardings.size()) != rank) {
+    return localSharding;
+  }
+
+  llvm::DenseSet<StringRef> usedManualAxes;
+  for (int64_t d = 0; d < rank; ++d) {
+    int64_t globalDim = globalTensorType.getDimSize(d);
+    int64_t localDim = localTensorType.getDimSize(d);
+    if (localDim <= 0 || globalDim == localDim) {
+      continue;
+    }
+    int64_t ratio = globalDim / localDim;
+    SmallVector<sdy::AxisRefAttr> axesForDim;
+    for (StringAttr manualAxis : manualAxes) {
+      if (usedManualAxes.contains(manualAxis.getValue())) {
+        continue;
+      }
+      int64_t axisSize = meshAttr.getAxisSize(manualAxis.getValue());
+      if (axisSize > 1 && (ratio % axisSize == 0)) {
+        axesForDim.push_back(sdy::AxisRefAttr::get(manualAxis.getContext(),
+                                                   manualAxis.getValue()));
+        usedManualAxes.insert(manualAxis.getValue());
+        ratio /= axisSize;
+      }
+    }
+    sdy::DimensionShardingAttr existingDim = dimShardings[d];
+    SmallVector<sdy::AxisRefAttr> newDimAxes = std::move(axesForDim);
+    llvm::append_range(newDimAxes, existingDim.getAxes());
+    dimShardings[d] = sdy::DimensionShardingAttr::get(
+        existingDim.getContext(), newDimAxes, existingDim.getIsClosed(),
+        existingDim.getPriority());
+  }
+
+  SmallVector<sdy::AxisRefAttr> replicatedAxes =
+      llvm::to_vector(localSharding.getReplicatedAxes());
+  for (StringAttr manualAxis : manualAxes) {
+    if (!usedManualAxes.contains(manualAxis.getValue())) {
+      replicatedAxes.push_back(sdy::AxisRefAttr::get(manualAxis.getContext(),
+                                                     manualAxis.getValue()));
+    }
+  }
+
+  return sdy::TensorShardingAttr::get(
+      localSharding.getContext(), localSharding.getMeshOrRef(), dimShardings,
+      replicatedAxes, localSharding.getUnreducedAxes());
+}
+
+// Infers manual axes from output shape expansion ratios on LocalToGlobalShape
+// when GlobalToLocalShape is absent (input-free manual computation).
+sdy::ManualAxesAttr inferManualAxesFromOutputs(
+    CustomCallOp localToGlobalShape,
+    sdy::TensorShardingPerValueAttr outShardings,
+    const mlir::SymbolTable& symbolTable, MLIRContext* context) {
+  if (!localToGlobalShape || !outShardings) {
+    return sdy::ManualAxesAttr::get(context, {});
+  }
+  SmallVector<StringAttr> manualAxes;
+  llvm::SmallDenseSet<StringRef> seenAxes;
+  mlir::ValueRange localOperands = localToGlobalShape.getOperands();
+  mlir::ResultRange globalResults = localToGlobalShape.getResults();
+  for (auto [i, sharding] : llvm::enumerate(outShardings.getShardings())) {
+    if (i >= localOperands.size() || i >= globalResults.size()) break;
+    auto globalType =
+        mlir::dyn_cast<mlir::RankedTensorType>(globalResults[i].getType());
+    auto localType =
+        mlir::dyn_cast<mlir::RankedTensorType>(localOperands[i].getType());
+    if (!globalType || !localType) continue;
+    sdy::MeshAttr mesh = sharding.getMesh(symbolTable);
+    if (!mesh) continue;
+    for (int64_t d = 0; d < globalType.getRank(); ++d) {
+      int64_t globalDim = globalType.getDimSize(d);
+      int64_t localDim = localType.getDimSize(d);
+      if (localDim <= 0 || globalDim <= localDim) continue;
+      int64_t ratio = globalDim / localDim;
+      for (sdy::AxisRefAttr axisRef : sharding.getDimShardings()[d].getAxes()) {
+        if (seenAxes.contains(axisRef.getName())) continue;
+        int64_t size = mesh.getAxisSize(axisRef.getName());
+        if (size > 1 && (ratio % size == 0)) {
+          manualAxes.push_back(StringAttr::get(context, axisRef.getName()));
+          seenAxes.insert(axisRef.getName());
+          ratio /= size;
+        }
+      }
+    }
+  }
+  return sdy::ManualAxesAttr::get(context, manualAxes);
+}
 
 mlir::LogicalResult rewriteManualComputation(
     CallOp callOp, mlir::IRRewriter& rewriter,
@@ -150,10 +267,13 @@ mlir::LogicalResult rewriteManualComputation(
     if (!customCallOp) {
       return;
     }
+
     if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
-      shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
-          frontendAttrs, shardingAttrName);
-      if (manualAxes.empty()) {
+      if (hasKey(frontendAttrs, shardingAttrName)) {
+        shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+            frontendAttrs, shardingAttrName);
+      }
+      if (manualAxes.empty() && hasKey(frontendAttrs, kManualAxes)) {
         manualAxes =
             parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes);
       }
@@ -162,6 +282,64 @@ mlir::LogicalResult rewriteManualComputation(
 
   setShardingAttrs(globalToLocalShape, inShardings, kInShardings);
   setShardingAttrs(localToGlobalShape, outShardings, kOutShardings);
+
+  auto getDirectSharding =
+      [&](CustomCallOp op) -> sdy::TensorShardingPerValueAttr {
+    if (!op) return nullptr;
+    if (auto sharding = op->getAttrOfType<sdy::TensorShardingPerValueAttr>(
+            sdy::kShardingAttr)) {
+      return sharding;
+    }
+    if (auto single =
+            op->getAttrOfType<sdy::TensorShardingAttr>(sdy::kShardingAttr)) {
+      return sdy::TensorShardingPerValueAttr::get(context, single);
+    }
+    return nullptr;
+  };
+
+  if ((!outShardings || outShardings.empty()) && localToGlobalShape) {
+    outShardings = getDirectSharding(localToGlobalShape);
+  }
+
+  // If frontend attributes were not present, read directly from custom call
+  // attributes (HloShardingV3 round-trip).
+  if (manualAxes.empty()) {
+    for (CustomCallOp op : {globalToLocalShape, localToGlobalShape}) {
+      if (op &&
+          (manualAxes = op->getAttrOfType<sdy::ManualAxesAttr>(kManualAxes))) {
+        break;
+      }
+    }
+    if ((!manualAxes || manualAxes.empty()) && localToGlobalShape) {
+      manualAxes = inferManualAxesFromOutputs(localToGlobalShape, outShardings,
+                                              symbolTable, context);
+    }
+    if (!manualAxes) {
+      manualAxes = sdy::ManualAxesAttr::get(context, {});
+    }
+  }
+
+  if ((!inShardings || inShardings.empty()) && globalToLocalShape) {
+    if (sdy::TensorShardingPerValueAttr localInShardings =
+            getDirectSharding(globalToLocalShape)) {
+      SmallVector<sdy::TensorShardingAttr> reconstructedShardings;
+      mlir::ValueRange globalOperands = globalToLocalShape.getOperands();
+      mlir::ResultRange localResults = globalToLocalShape.getResults();
+      for (auto [i, localSharding] :
+           llvm::enumerate(localInShardings.getShardings())) {
+        mlir::Type globalType =
+            i < globalOperands.size() ? globalOperands[i].getType() : nullptr;
+        mlir::Type localType =
+            i < localResults.size() ? localResults[i].getType() : nullptr;
+        reconstructedShardings.push_back(
+            reconstructGlobalInSharding(localSharding, globalType, localType,
+                                        manualAxes.getValue(), symbolTable));
+      }
+      inShardings =
+          sdy::TensorShardingPerValueAttr::get(context, reconstructedShardings);
+    }
+  }
+
   auto manualComputationOp =
       rewriter.replaceOpWithNewOp<sdy::ManualComputationOp>(
           callOp, resultTypes, operands, inShardings, outShardings, manualAxes);

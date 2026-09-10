@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -59,14 +60,42 @@ using ::mlir::func::FuncOp;
 namespace stablehlo = ::mlir::stablehlo;
 namespace sdy = ::mlir::sdy;
 
+sdy::TensorShardingPerValueAttr getLocalSharding(
+    sdy::TensorShardingPerValueAttr globalSharding,
+    llvm::ArrayRef<mlir::StringAttr> manualAxes) {
+  if (!globalSharding || manualAxes.empty()) {
+    return globalSharding;
+  }
+  llvm::SmallVector<sdy::TensorShardingAttr> localShardings;
+  localShardings.reserve(globalSharding.getShardings().size());
+  for (sdy::TensorShardingAttr sharding : globalSharding.getShardings()) {
+    localShardings.push_back(sdy::eraseManualAxes(sharding, manualAxes));
+  }
+  return sdy::TensorShardingPerValueAttr::get(globalSharding.getContext(),
+                                              localShardings);
+}
+
 class SdyRoundTripShardMapExportPass
     : public mlir::PassWrapper<SdyRoundTripShardMapExportPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SdyRoundTripShardMapExportPass)
 
-  SdyRoundTripShardMapExportPass(bool enableHloShardingV3)
-      : enableHloShardingV3(enableHloShardingV3) {}
+  SdyRoundTripShardMapExportPass() = default;
+  explicit SdyRoundTripShardMapExportPass(bool enableHloShardingV3) {
+    this->enableHloShardingV3 = enableHloShardingV3;
+  }
+  SdyRoundTripShardMapExportPass(const SdyRoundTripShardMapExportPass& other)
+      : mlir::PassWrapper<SdyRoundTripShardMapExportPass,
+                          mlir::OperationPass<ModuleOp>>(other) {
+    this->enableHloShardingV3 = other.enableHloShardingV3.getValue();
+  }
+
+  Option<bool> enableHloShardingV3{
+      *this, "enable-hlo-sharding-v3",
+      llvm::cl::desc("Whether to enable HloShardingV3 which is the mesh and "
+                     "axis based sharding representation."),
+      llvm::cl::init(false)};
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -101,10 +130,17 @@ class SdyRoundTripShardMapExportPass
             manualComputation.getInShardings();
         if (enableHloShardingV3) {
           inShardings = sdy::inlineMesh(symbolTable, inShardings);
+          sdy::TensorShardingPerValueAttr localInShardings =
+              getLocalSharding(inShardings, manualComputation.getManualAxes());
+          globalToLocalShape->setAttr(mlir::sdy::kShardingAttr,
+                                      localInShardings);
+          globalToLocalShape->setAttr(kManualAxes,
+                                      manualComputation.getManualAxesAttr());
+        } else {
+          setFrontendAttribute(globalToLocalShape, kInShardings, inShardings);
+          setFrontendAttribute(globalToLocalShape, kManualAxes,
+                               manualComputation.getManualAxesAttr());
         }
-        setFrontendAttribute(globalToLocalShape, kInShardings, inShardings);
-        setFrontendAttribute(globalToLocalShape, kManualAxes,
-                             manualComputation.getManualAxesAttr());
         operands = globalToLocalShape->getResults();
       }
 
@@ -126,10 +162,12 @@ class SdyRoundTripShardMapExportPass
             manualComputation.getOutShardings();
         if (enableHloShardingV3) {
           outShardings = sdy::inlineMesh(symbolTable, outShardings);
+          localToGlobalShape->setAttr(mlir::sdy::kShardingAttr, outShardings);
+        } else {
+          setFrontendAttribute(localToGlobalShape, kOutShardings, outShardings);
+          setFrontendAttribute(localToGlobalShape, kManualAxes,
+                               manualComputation.getManualAxesAttr());
         }
-        setFrontendAttribute(localToGlobalShape, kOutShardings, outShardings);
-        setFrontendAttribute(localToGlobalShape, kManualAxes,
-                             manualComputation.getManualAxesAttr());
         results = localToGlobalShape->getResults();
       }
       sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
@@ -153,9 +191,6 @@ class SdyRoundTripShardMapExportPass
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<stablehlo::StablehloDialect>();
   }
-
- private:
-  bool enableHloShardingV3 = false;
 };
 
 }  // namespace
