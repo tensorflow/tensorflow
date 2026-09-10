@@ -31,7 +31,7 @@ gpu.module @kernel_module attributes {gpu.binary_blob = "BLOB!"} {
 // CHECK-LABEL: llvm.func @launch
 // CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64
 func.func @launch(%ctx: !tf_framework.op_kernel_context, %memref: memref<?x10xf32>) {
-  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
+  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64) : i64
   // CHECK: %[[BLOB:.*]] = llvm.mlir.addressof @kernel_module_blob : !llvm.ptr
   // CHECK: %[[BLOB_PTR:.*]] = llvm.getelementptr %[[BLOB]][0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<5 x i8>
   // CHECK: %[[NAME:.*]] = llvm.mlir.addressof @kernel_module_the_kernel_kernel_name : !llvm.ptr
