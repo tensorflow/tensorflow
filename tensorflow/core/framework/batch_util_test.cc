@@ -21,6 +21,30 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+TEST(CopyElementToSliceTest, ZeroElementSlice) {
+  Tensor element(DT_FLOAT, {0, 3});
+  Tensor parent(DT_FLOAT, {2, 0, 3});
+
+  auto status = batch_util::CopyElementToSlice(element, &parent, 1);
+  EXPECT_EQ(error::OK, status.code());
+}
+
+TEST(CopySliceToElementTest, ZeroElementSlice) {
+  Tensor parent(DT_FLOAT, {2, 0, 3});
+  Tensor element(DT_FLOAT, {0, 3});
+
+  auto status = batch_util::CopySliceToElement(parent, &element, 1);
+  EXPECT_EQ(error::OK, status.code());
+}
+
+TEST(MaybeMoveSliceToElementTest, ZeroElementSlice) {
+  Tensor parent(DT_FLOAT, {2, 0, 3});
+  Tensor element(DT_FLOAT, {0, 3});
+
+  auto status = batch_util::MaybeMoveSliceToElement(&parent, &element, 1);
+  EXPECT_EQ(error::OK, status.code());
+}
+
 TEST(CopyContiguousSlicesTest, CompatibleShape) {
   Tensor src(DT_FLOAT, {7, 1, 2});
   Tensor dst(DT_FLOAT, {9, 2, 1});
