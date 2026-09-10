@@ -17,50 +17,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 
 namespace tensorflow {
-
-// Initializes the TPU system globally. The state of initialization can then be
-// shared by different sessions running on these TPUs, on the same process. This
-// API is provided for multi-tenant usecases where multiple sessions in a
-// process are using the same set of TPUs.
-//
-// Returns status errors if initialization is unsuccessful and returns the TPU
-// TopologyProto as an output parameter.
-//
-// REQUIRES:
-// * Call this API before any sessions using TPUs are run.
-// * If you are using this API for initialization, please don't use the TPU
-// configuration ops within your graph. This will cause errors to be returned
-// from the API which is called second.
-//
-// DISTRIBUTED SETUP:
-// To properly initialize a TPU topology that is beyond donut level, caller is
-// required to provide correct following arguments:
-//
-// 1. job_name
-// The name of the job under distributed settings. For example, if the job is
-// '/job:tpu_worker/replica:0/task:0/...', the "tpu_worker" is the desired
-// job_name here.
-//
-// 2. session_target
-// The target string that will be used to create a Session and run the
-// distributed TPU initialization graph. Generally this would be the master
-// session from the cluster.
-//
-// 3.device_set
-// The GLOBAL set of devices in the distributed setting, including proper
-// "TPU_SYSTEM" devices across all tasks.
-// For example, device_set should contain two "TPU_SYSTEM" devices on 2 tasks
-// for a 4x2 (2 TPU workers) setup, and other non "TPU_SYSTEM" devices.
-absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
-                                         absl::string_view session_target,
-                                         const DeviceSet& device_set, Env* env,
-                                         tpu::TopologyProto* tpu_topology);
 
 absl::Status InitializeTPUSystemGlobally(Env* env,
                                          tpu::TopologyProto* tpu_topology);
