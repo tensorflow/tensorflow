@@ -635,6 +635,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":functionalize_control_flow",
         ":host_compute_metadata_proto_cc",
         ":layout_util",
         ":rearrange_function_argument",
