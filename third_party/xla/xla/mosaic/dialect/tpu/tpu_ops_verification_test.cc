@@ -1941,5 +1941,34 @@ TEST_F(TpuOpsVerificationTest, ConvOpBatchGroupCountValid) {
       /*precision=*/nullptr);
   ASSERT_OK(VerifyOp(conv));
 }
+
+TEST_F(TpuOpsVerificationTest, TileSizeOpValid) {
+  Value memref = AllocaI32(/*shape=*/{16, 256});
+  auto tile_size_op = Create<TileSizeOp>(
+      /*result=*/builder().getI32Type(),
+      /*source=*/memref,
+      /*index=*/builder().getI32IntegerAttr(0));
+  EXPECT_OK(VerifyOp(tile_size_op));
+}
+
+TEST_F(TpuOpsVerificationTest, TileSizeOpIndexOutOfBoundsNegative) {
+  Value memref = AllocaI32(/*shape=*/{16, 256});
+  auto tile_size_op = Create<TileSizeOp>(
+      /*result=*/builder().getI32Type(),
+      /*source=*/memref,
+      /*index=*/builder().getI32IntegerAttr(-1));
+  EXPECT_THAT(VerifyOp(tile_size_op),
+              StatusIs(_, HasSubstr("Index out of bounds")));
+}
+
+TEST_F(TpuOpsVerificationTest, TileSizeOpIndexOutOfBoundsTooLarge) {
+  Value memref = AllocaI32(/*shape=*/{16, 256});
+  auto tile_size_op = Create<TileSizeOp>(
+      /*result=*/builder().getI32Type(),
+      /*source=*/memref,
+      /*index=*/builder().getI32IntegerAttr(2));
+  EXPECT_THAT(VerifyOp(tile_size_op),
+              StatusIs(_, HasSubstr("Index out of bounds")));
+}
 }  // namespace
 }  // namespace mlir::tpu

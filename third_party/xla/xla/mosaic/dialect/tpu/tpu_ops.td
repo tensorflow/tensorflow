@@ -1821,4 +1821,23 @@ def TPU_FetchAndAddSyncOp : TPU_Op<"fetch_and_add_sync", [DefaultMemRead, Defaul
   let hasVerifier = 1;
 }
 
+def TPU_TileSizeOp : TPU_Op<"tile_size", [Pure]> {
+  let summary = "Get the top level tile size of a given memref.";
+  let description = [{
+    Get the tile size of a memref at the given dimension index. This only
+    returns the first level of tiles. If the dimension is not tiled, the value
+    is always 1.
+  }];
+
+  let arguments = (ins AnyMemRef:$source, I32Attr:$index);
+  let results = (outs I32:$result);
+
+  let assemblyFormat = [{
+    attr-dict $source `,` $index `:` type($source)
+  }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
 #endif  // TPU_OPS
