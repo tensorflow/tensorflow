@@ -27,7 +27,11 @@
 # sixty Objective-C++ sources under objc_library on those terms.
 
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_object",
+    "tf_cc_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -136,8 +140,9 @@ objc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "stream_executor_test",
+    srcs = [],
     args = ["$(location :metal_plugin.so)"],
     data = [":metal_plugin.so"],
     tags = [
