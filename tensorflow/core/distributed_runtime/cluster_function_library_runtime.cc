@@ -14,11 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
