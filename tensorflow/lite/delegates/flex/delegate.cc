@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/lite/core/c/common.h"
