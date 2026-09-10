@@ -261,6 +261,8 @@ cc_library(
         "cupti_wrapper_stub.cc",
     ],
     hdrs = ["cupti_wrapper.h"],
+    # -supports_dynamic_linker: Forces static linking even with --dynamic_mode=fully
+    features = ["-supports_dynamic_linker"],
     linkstatic = 1,
     tags = [
         "cuda-only",

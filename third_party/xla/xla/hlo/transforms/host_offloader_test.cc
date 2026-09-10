@@ -5114,5 +5114,164 @@ ENTRY main {
   TestShapeHasMemorySpace(dus->shape(), Layout::kHostMemorySpace);
 }
 
+TEST_F(HostOffloaderTest, VariadicReduceOnHostMemoryBecomesHostCompute) {
+  // A variadic reduce has a tuple shape; the walk must handle it like a
+  // non-variadic reduce instead of crashing.
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[16,8]{1,0})->(f32[16]{0}, f32[16]{0})}
+
+reducer {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  c = f32[] parameter(2)
+  d = f32[] parameter(3)
+  max = f32[] maximum(a, c)
+  add = f32[] add(b, d)
+  ROOT t = (f32[], f32[]) tuple(max, add)
+}
+
+ENTRY main {
+  p = f32[16,8] parameter(0)
+  mth = f32[16,8] custom-call(p), custom_call_target="MoveToHost"
+  slice = f32[16,4] slice(mth), slice={[0:16], [0:4]}
+  c0 = f32[] constant(0)
+  reduce = (f32[16], f32[16]) reduce(slice, slice, c0, c0), dimensions={1}, to_apply=reducer
+  gte0 = f32[16] get-tuple-element(reduce), index=0
+  gte1 = f32[16] get-tuple-element(reduce), index=1
+  mtd0 = f32[16] custom-call(gte0), custom_call_target="MoveToDevice"
+  mtd1 = f32[16] custom-call(gte1), custom_call_target="MoveToDevice"
+  ROOT t = (f32[16], f32[16]) tuple(mtd0, mtd1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << "module after: " << module->ToString();
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+
+  HloInstruction* slice = FindInstruction(module.get(), "slice");
+  ASSERT_NE(slice, nullptr);
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(slice));
+  TestShapeHasMemorySpace(slice->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* reduce = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(reduce));
+  ASSERT_TRUE(reduce->shape().IsTuple());
+  for (const Shape& subshape : reduce->shape().tuple_shapes()) {
+    TestShapeHasMemorySpace(subshape, Layout::kHostMemorySpace);
+  }
+
+  // Both outputs are followed and copied back to device.
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kTuple);
+  for (const HloInstruction* copy : root->operands()) {
+    EXPECT_EQ(copy->opcode(), HloOpcode::kCopy);
+    TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
+    EXPECT_EQ(copy->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+    TestShapeHasMemorySpace(copy->operand(0)->shape(),
+                            Layout::kHostMemorySpace);
+  }
+}
+
+TEST_F(HostOffloaderTest, TrivialVariadicReduceBetweenDsAndMoveToDevice) {
+  // A variadic reduce that only removes a unit dimension is allowed between
+  // the dynamic-slice and MoveToDevice, like a non-variadic one.
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[16,8]{1,0})->f32[16]{0}}
+
+reducer {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  c = f32[] parameter(2)
+  d = f32[] parameter(3)
+  max = f32[] maximum(a, c)
+  add = f32[] add(b, d)
+  ROOT t = (f32[], f32[]) tuple(max, add)
+}
+
+ENTRY main {
+  p = f32[16,8] parameter(0)
+  mth = f32[16,8] custom-call(p), custom_call_target="MoveToHost"
+  zero = s32[] constant(0)
+  ds = f32[16,1] dynamic-slice(mth, zero, zero), dynamic_slice_sizes={16,1}
+  c0 = f32[] constant(0)
+  reduce = (f32[16], f32[16]) reduce(ds, ds, c0, c0), dimensions={1}, to_apply=reducer
+  gte = f32[16] get-tuple-element(reduce), index=0
+  ROOT mtd = f32[16] custom-call(gte), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << "module after: " << module->ToString();
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+
+  // The dynamic-slice moves the data back to device; nothing after it is
+  // host compute.
+  HloInstruction* ds = FindInstruction(module.get(), "ds");
+  ASSERT_NE(ds, nullptr);
+  TestShapeHasMemorySpace(ds->operand(0)->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(ds->shape(), Layout::kDefaultMemorySpace);
+
+  HloInstruction* reduce = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_FALSE(host_offload_utils::ComputeTypeIsHost(reduce));
+  ASSERT_TRUE(reduce->shape().IsTuple());
+  for (const Shape& subshape : reduce->shape().tuple_shapes()) {
+    TestShapeHasMemorySpace(subshape, Layout::kDefaultMemorySpace);
+  }
+}
+
+TEST_F(HostOffloaderTest, VariadicReduceAsEntryRootOutputStreamed) {
+  // The entry result shape is a tuple; every leaf is in host memory.
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[16,8]{1,0})->(f32[16]{0:S(5)}, f32[16]{0:S(5)})}
+
+reducer {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  c = f32[] parameter(2)
+  d = f32[] parameter(3)
+  max = f32[] maximum(a, c)
+  add = f32[] add(b, d)
+  ROOT t = (f32[], f32[]) tuple(max, add)
+}
+
+ENTRY main {
+  p = f32[16,8] parameter(0)
+  mth = f32[16,8] custom-call(p), custom_call_target="MoveToHost"
+  slice = f32[16,4] slice(mth), slice={[0:16], [0:4]}
+  c0 = f32[] constant(0)
+  ROOT reduce = (f32[16], f32[16]) reduce(slice, slice, c0, c0), dimensions={1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << "module after: " << module->ToString();
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+
+  HloInstruction* reduce = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(reduce));
+  ASSERT_TRUE(reduce->shape().IsTuple());
+  for (const Shape& subshape : reduce->shape().tuple_shapes()) {
+    TestShapeHasMemorySpace(subshape, Layout::kHostMemorySpace);
+  }
+}
+
 }  // namespace
 }  // namespace xla

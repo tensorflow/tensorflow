@@ -3320,7 +3320,14 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cuda_compute_capability",
         ":cuda_fatbin",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -3333,8 +3340,11 @@ xla_cc_test(
         "gpu",
     ],
     deps = [
+        ":cuda_compute_capability",
         ":cuda_elf_utils",
         ":cuda_fatbin",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

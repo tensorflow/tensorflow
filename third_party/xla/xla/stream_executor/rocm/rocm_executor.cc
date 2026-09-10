@@ -1181,26 +1181,31 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    std::optional<int64_t> pcie_bw = gpu::GetRocmPcieBandwidth(pci_bus_id);
-    if (pcie_bw.has_value()) {
+    absl::StatusOr<int64_t> pcie_bw = gpu::GetRocmPcieBandwidth(pci_bus_id);
+    if (pcie_bw.ok()) {
       desc.set_pcie_bandwidth(*pcie_bw);
     } else {
       LOG(WARNING) << "Could not determine PCIe bandwidth for device "
-                   << device_ordinal
-                   << " via rocm_smi. Assuming PCIe Gen4 x16.";
+                   << device_ordinal << " via SMI ("
+                   << pcie_bw.status().message()
+                   << "). Assuming PCIe Gen4 x16.";
       desc.set_pcie_bandwidth(32LL * 1024 * 1024 * 1024);
     }
   }
 
   {
-    gpu::XgmiTopologyInfo xgmi = gpu::GetRocmXgmiTopology(pci_bus_id);
-    if (xgmi.active_links > 0) {
+    absl::StatusOr<gpu::XgmiTopologyInfo> xgmi =
+        gpu::GetRocmXgmiTopology(pci_bus_id);
+    if (!xgmi.ok()) {
+      LOG(WARNING) << "Could not determine xGMI topology for device "
+                   << device_ordinal << " via SMI: " << xgmi.status().message();
+    } else if (xgmi->active_links > 0) {
       DeviceInterconnectInfo info;
-      info.active_links = xgmi.active_links;
+      info.active_links = xgmi->active_links;
       desc.set_device_interconnect_info(info);
       VLOG(1) << "Device " << device_ordinal << ": detected "
-              << xgmi.active_links << " active xGMI links"
-              << " (hive_id=" << xgmi.hive_id << ")";
+              << xgmi->active_links << " active xGMI links"
+              << " (hive_id=" << xgmi->hive_id << ")";
     }
   }
 
