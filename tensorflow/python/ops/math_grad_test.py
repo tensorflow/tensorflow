@@ -60,6 +60,91 @@ class InferGradientReductionAxes(test.TestCase, parameterized.TestCase):
     self.assertEqual(expected_y_axes, y_axes1)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class SigmoidGradTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      (dtypes.float16, [0., 1., 5., 10.], 3e-3),
+      (dtypes.bfloat16, [0., 1., 5., 20.], 2e-2),
+      (dtypes.float32, [0., 1., 17., 50., 80.], 2e-6),
+      (dtypes.float64, [0., 1., 37.42994775023705, 50., 700.], 1e-12),
+  )
+  def testGradientInBothTails(self, dtype, positive_values, rtol):
+    values = np.array([positive_values, -np.array(positive_values)])
+    x = constant_op.constant(values, dtype=dtype)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    grad = tape.gradient(y, x)
+    # Evaluate the reference in float64 without subtracting from a rounded 1.
+    values = self.evaluate(x).astype(np.float64)
+    exp_neg_abs = np.exp(-np.abs(values))
+    expected = exp_neg_abs / (1. + exp_neg_abs)**2
+    actual = self.evaluate(grad)
+    self.assertAllClose(expected, actual, rtol=rtol, atol=0.)
+    self.assertAllClose(actual[0], actual[1], rtol=rtol, atol=0.)
+
+  def testReportedFloat64Gradient(self):
+    x = constant_op.constant(37.42994775023705, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    self.assertAllClose(
+        5.551115123125775e-17, tape.gradient(y, x), rtol=1e-12, atol=0.)
+
+  def testHigherDerivatives(self):
+    values = np.array([-50., -1., 0., 1., 50.])
+    x = constant_op.constant(values, dtype=dtypes.float64)
+    with backprop.GradientTape() as third_tape:
+      third_tape.watch(x)
+      with backprop.GradientTape() as second_tape:
+        second_tape.watch(x)
+        with backprop.GradientTape() as first_tape:
+          first_tape.watch(x)
+          y = math_ops.sigmoid(x)
+        first = first_tape.gradient(y, x)
+      second = second_tape.gradient(first, x)
+    third = third_tape.gradient(second, x)
+    exp_neg_abs = np.exp(-np.abs(values))
+    expected_first = exp_neg_abs / (1. + exp_neg_abs)**2
+    expected_second = -expected_first * np.tanh(values / 2.)
+    expected_third = expected_first * (1. - 6. * expected_first)
+    self.assertAllClose(expected_second, second, rtol=1e-12, atol=0.)
+    self.assertAllClose(expected_third, third, rtol=1e-12, atol=0.)
+
+  def testUpstreamGradient(self):
+    values = np.array([-50., 0., 50.])
+    x = constant_op.constant(values, dtype=dtypes.float64)
+    upstream = constant_op.constant([-2., 0., 3.], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    grad = tape.gradient(y, x, output_gradients=upstream)
+    exp_neg_abs = np.exp(-np.abs(values))
+    expected = [-2., 0., 3.] * (exp_neg_abs / (1. + exp_neg_abs)**2)
+    self.assertAllClose(expected, grad, rtol=1e-12, atol=0.)
+
+  def testNonFiniteInputs(self):
+    x = constant_op.constant([-np.inf, np.inf, np.nan], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    self.assertAllEqual([0., 0., np.nan], tape.gradient(y, x))
+
+  @parameterized.parameters(dtypes.complex64, dtypes.complex128)
+  def testComplexGradient(self, dtype):
+    values = np.array([-1. + 0.5j, 0. - 1.j, 1. + 0.5j])
+    x = constant_op.constant(values, dtype=dtype)
+    upstream = constant_op.constant([1. + 2.j, -1.j, -2. + 1.j], dtype=dtype)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.sigmoid(x)
+    grad = tape.gradient(y, x, output_gradients=upstream)
+    sigmoid = 1. / (1. + np.exp(-values))
+    expected = np.conj(sigmoid * (1. - sigmoid)) * self.evaluate(upstream)
+    self.assertAllClose(expected, grad, rtol=2e-6, atol=0.)
+
+
 class SquaredDifferenceOpTest(test.TestCase):
 
   def _testGrad(self, left_shape, right_shape):
