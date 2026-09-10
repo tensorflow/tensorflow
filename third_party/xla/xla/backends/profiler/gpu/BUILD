@@ -770,6 +770,7 @@ cc_library(
         ":cupti_interface",
         ":cupti_marker_data_parser",
         ":cupti_utils",
+        ":string_deduper",
         "//xla/tsl/cuda:cupti",
         "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/utils:buffer_pool",
@@ -777,7 +778,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -815,13 +815,9 @@ cc_library(
     name = "ondevice_event_exporter",
     srcs = ["ondevice_event_exporter.cc"],
     hdrs = ["ondevice_event_exporter.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
     visibility = ["//visibility:public"],
     deps = [
-        ":cupti_buffer_events",
+        ":string_deduper",
         "//xla/tsl/profiler/backends/gpu:ondevice_event_collector",
         "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
         "//xla/tsl/profiler/utils:lock_free_queue",
@@ -834,6 +830,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -843,15 +840,35 @@ xla_cc_test(
     name = "ondevice_event_exporter_test",
     srcs = ["ondevice_event_exporter_test.cc"],
     tags = [
-        "cuda-only",
-        "gpu",
         "no_mac",
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":ondevice_event_exporter",
         "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
         "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "string_deduper",
+    srcs = ["string_deduper.cc"],
+    hdrs = ["string_deduper.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "string_deduper_test",
+    srcs = ["string_deduper_test.cc"],
+    tags = ["no_mac"],
+    deps = [
+        ":string_deduper",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
