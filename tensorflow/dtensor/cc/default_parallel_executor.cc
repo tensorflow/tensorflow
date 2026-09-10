@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/log.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/dtensor/cc/parallel_executor.h"
