@@ -454,9 +454,6 @@ class HloCompareInstruction : public HloInstruction {
       std::optional<ComparisonOrder> order = std::nullopt);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
   ComparisonOrder order() const { return compare_.GetOrder(); }
-  [[deprecated("Use order()")]] Comparison::Type type() const {
-    return compare_.GetType();
-  }
   const Comparison& comparison() const { return compare_; }
   void ToProto(HloInstructionProto* proto) const override;
 
