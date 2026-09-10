@@ -62,6 +62,9 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
+    _tf_cuda_2gpu_tests_tags = "tf_cuda_2gpu_tests_tags",
+    _tf_cuda_base_tests_tags = "tf_cuda_base_tests_tags",
+    _tf_cuda_tests_tags = "tf_cuda_tests_tags",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -115,7 +118,10 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 VERSION = TF_VERSION
 VERSION_MAJOR = VERSION.split(".")[0]
-two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
+
+tf_cuda_base_tests_tags = _tf_cuda_base_tests_tags
+tf_cuda_tests_tags = _tf_cuda_tests_tags
+tf_cuda_2gpu_tests_tags = _tf_cuda_2gpu_tests_tags
 
 # The workspace root, to be used to set workspace 'include' paths in a way that
 # will still work correctly when TensorFlow is included as a dependency of an
@@ -1738,7 +1744,7 @@ def tf_gpu_cc_test(
             "//conditions:default": 0,
         }),
         suffix = "_gpu",
-        tags = tags + tf_gpu_tests_tags(),
+        tags = tags + tf_cuda_tests_tags(),
         deps = deps + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
@@ -1746,7 +1752,7 @@ def tf_gpu_cc_test(
     )
     targets.append(name + "_gpu")
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
-        cleaned_tags = tags + two_gpu_tags
+        cleaned_tags = tags + tf_cuda_2gpu_tests_tags()
         if "requires-gpu-nvidia" in cleaned_tags:
             cleaned_tags.remove("requires-gpu-nvidia")
         tf_cc_test(
@@ -2865,9 +2871,9 @@ def gpu_py_test(
         test_name = name
         test_tags = tags
         if config == "gpu":
-            test_tags = test_tags + tf_gpu_tests_tags()
+            test_tags = test_tags + tf_cuda_tests_tags()
         if config == "2gpu":
-            test_tags = test_tags + two_gpu_tags
+            test_tags = test_tags + tf_cuda_2gpu_tests_tags()
             if "requires-gpu-nvidia" in test_tags:
                 test_tags.remove("requires-gpu-nvidia")
 
