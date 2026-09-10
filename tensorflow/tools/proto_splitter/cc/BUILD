@@ -134,7 +134,6 @@ cc_library(
     visibility = [
         "//learning/brain/tfrt/aot:__subpackages__",
         "//tensorflow/cc/saved_model:__subpackages__",
-        "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
     ],
     deps = [
