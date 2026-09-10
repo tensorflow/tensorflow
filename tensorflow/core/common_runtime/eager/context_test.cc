@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace {
@@ -69,12 +72,15 @@ class EagerContextTest : public ::testing::Test {
   EagerContext* context() { return context_.get(); }
 
   void InitContext(const SessionOptions& opts,
-                   ContextDevicePlacementPolicy policy, bool async = false) {
+                   ContextDevicePlacementPolicy policy, bool async = false,
+                   tsl::core::RefCountPtr<Rendezvous> rendezvous = nullptr) {
     ASSERT_EQ(context_, nullptr);
-    InitDeviceManager();
+    if (!device_manager_) {
+      InitDeviceManager();
+    }
     context_ = core::RefCountPtr<EagerContext>(new EagerContext(
         opts, policy, async, device_manager_.get(),
-        /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
+        /*device_mgr_owned=*/false, std::move(rendezvous),
         /*cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
         /*run_eager_op_as_function=*/true));
   }
@@ -412,6 +418,89 @@ TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
 
   TestGlobalRendezvous(context(), true);
+}
+
+TEST_F(EagerContextTest, IsTensorFlowExecutorThreadTest) {
+#if defined(__linux__) && !defined(__ANDROID__)
+  char old_name[16] = {0};
+  pthread_getname_np(pthread_self(), old_name, sizeof(old_name));
+
+  pthread_setname_np(pthread_self(), "tf_test");
+  EXPECT_TRUE(IsTensorFlowExecutorThread());
+
+  pthread_setname_np(pthread_self(), "other_name");
+  EXPECT_FALSE(IsTensorFlowExecutorThread());
+
+  pthread_setname_np(pthread_self(), old_name);
+#endif
+}
+
+class NotificationRendezvous : public Rendezvous {
+ public:
+#if defined(__linux__) && !defined(__ANDROID__)
+  explicit NotificationRendezvous(absl::Notification* n, pthread_t* thread_id)
+      : n_(n), destructor_thread_id_(thread_id) {}
+  ~NotificationRendezvous() override {
+    if (destructor_thread_id_) {
+      *destructor_thread_id_ = pthread_self();
+    }
+    n_->Notify();
+  }
+#else
+  explicit NotificationRendezvous(absl::Notification* n) : n_(n) {}
+  ~NotificationRendezvous() override { n_->Notify(); }
+#endif
+
+  absl::Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
+                    const bool is_dead) override {
+    return absl::OkStatus();
+  }
+  void RecvAsync(const ParsedKey& key, const Args& args,
+                 DoneCallback done) override {}
+  void StartAbort(const absl::Status& status) override {}
+
+ private:
+  absl::Notification* n_;
+#if defined(__linux__) && !defined(__ANDROID__)
+  pthread_t* destructor_thread_id_ = nullptr;
+#endif
+};
+
+TEST_F(EagerContextTest, ReleaseOnTfThread) {
+  absl::Notification n;
+#if defined(__linux__) && !defined(__ANDROID__)
+  pthread_t rendezvous_destructor_thread_id;
+  auto rendezvous = core::RefCountPtr<Rendezvous>(
+      new NotificationRendezvous(&n, &rendezvous_destructor_thread_id));
+#else
+  auto rendezvous =
+      core::RefCountPtr<Rendezvous>(new NotificationRendezvous(&n));
+#endif
+  InitDeviceManager();
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT, false,
+              std::move(rendezvous));
+
+#if defined(__linux__) && !defined(__ANDROID__)
+  char old_name[16] = {0};
+  pthread_getname_np(pthread_self(), old_name, sizeof(old_name));
+  pthread_setname_np(pthread_self(), "tf_test");
+#endif
+
+  // Drop the last reference to context_. Because the thread is named "tf_test",
+  // EagerContext::Release() will detach a thread to execute Unref().
+  context_.release()->Release();
+
+#if defined(__linux__) && !defined(__ANDROID__)
+  pthread_setname_np(pthread_self(), old_name);
+#endif
+
+  // Wait deterministically for the detached thread to finish the deletion
+  // by waiting for the EagerContext's rendezvous member to be destroyed.
+  n.WaitForNotification();
+
+#if defined(__linux__) && !defined(__ANDROID__)
+  EXPECT_FALSE(pthread_equal(rendezvous_destructor_thread_id, pthread_self()));
+#endif
 }
 
 }  // namespace

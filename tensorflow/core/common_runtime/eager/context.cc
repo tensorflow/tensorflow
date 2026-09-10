@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <memory>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -616,6 +616,31 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
     remote_eager_workers_ = nullptr;
   }
 #endif  // !IS_MOBILE_PLATFORM
+}
+
+bool IsTensorFlowExecutorThread() {
+#if defined(__linux__) && !defined(__ANDROID__)
+  char name[16] = {0};
+  if (pthread_getname_np(pthread_self(), name, sizeof(name)) == 0) {
+    if (strncmp(name, "tf_", 3) == 0) {
+      return true;
+    }
+  }
+#endif
+  return false;
+}
+
+void EagerContext::Release() {
+  // If we are on a TF executor thread, we must not execute the destructor
+  // synchronously to avoid a deadlock when it waits on the same thread pool.
+  // We unconditionally detach a thread rather than checking RefCountIsOne()
+  // to prevent TOCTOU races where another thread drops the last reference
+  // concurrently.
+  if (IsTensorFlowExecutorThread()) {
+    env_->SchedClosure([this]() { this->Unref(); });
+  } else {
+    Unref();
+  }
 }
 
 EagerContext::~EagerContext() {
