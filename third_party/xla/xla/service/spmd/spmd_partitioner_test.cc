@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
