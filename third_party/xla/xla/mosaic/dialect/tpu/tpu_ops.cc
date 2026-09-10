@@ -372,14 +372,6 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
   const int64_t lane_count = tc_target_shape[1];
   for (int64_t i = 0; i < tile_rank; ++i) {
     int64_t tile_dim = first_tile.dimension(i);
-    const int64_t dim = untiled_dims + i;
-    if (!isGuaranteedDivisible(getBaseIdx()[dim], tile_dim)) {
-      return absl::StrCat(
-          "Offsets along tiled dimensions must be aligned to tiles. Failed "
-          "to verify that the index at dimension ",
-          dim, " is divisible by the tile dimension ", tile_dim,
-          ". If it is, use tpu.assume_multiple to suppress this error.");
-    }
     // We only require alignment to compact 2nd minor for large 2nd minor.
     if (tile_rank == 2 && i == 0) {
       int64_t packing = tile_dim / sublane_count;
@@ -388,6 +380,14 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
           packing <= sublane_count) {
         tile_dim = sublane_count;
       }
+    }
+    const int64_t dim = untiled_dims + i;
+    if (!isGuaranteedDivisible(getBaseIdx()[dim], tile_dim)) {
+      return absl::StrCat(
+          "Offsets along tiled dimensions must be aligned to tiles. Failed "
+          "to verify that the index at dimension ",
+          dim, " is divisible by the tile dimension ", tile_dim,
+          ". If it is, use tpu.assume_multiple to suppress this error.");
     }
     bool size_is_aligned;
     if (result_type.getShape()[dim] == ShapedType::kDynamic) {
