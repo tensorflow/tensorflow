@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.platform import test
 
 
@@ -101,6 +102,25 @@ class BarrierTest(test.TestCase):
       with self.assertRaisesOpError(
           ".*Tensors with no elements are not supported.*"):
         insert_0_op.run()
+
+  @test_util.run_deprecated_v1
+  def testTakeManyNegativeNumElements(self):
+    # Test case for GitHub issue 112742. A negative num_elements reached the
+    # underlying queue, which built an output shape with a negative dimension
+    # and aborted the process. The raw op is used here because Barrier.take_many
+    # rejects a negative count while building the graph, before the kernel runs.
+    with self.cached_session() as sess:
+      b = data_flow_ops.Barrier(
+          (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
+      keys = [b"a", b"b"]
+      insert_0_op = b.insert_many(0, keys, [10.0, 20.0])
+      insert_1_op = b.insert_many(1, keys, [100.0, 200.0])
+      sess.run([insert_0_op, insert_1_op])
+      take_t = gen_data_flow_ops.barrier_take_many(
+          b.barrier_ref, -1, (dtypes.float32, dtypes.float32),
+          allow_small_batch=False)
+      with self.assertRaisesOpError("requested -1 < 0 elements"):
+        sess.run(take_t)
 
   @test_util.run_deprecated_v1
   def testTakeMany(self):
