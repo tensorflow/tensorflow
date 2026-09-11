@@ -42,7 +42,11 @@ jobs:
     defaults:
       run:
         shell: bash
-    container: ${{ (contains(inputs.runner, 'linux-x86') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest') || (contains(inputs.runner, 'linux-arm64') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest') || (contains(inputs.runner, 'windows-x86') && null) }} # zizmor: ignore[unpinned-images]
+    # CI intentionally follows the latest published build image; this is the
+    # repository's accepted exception to zizmor's immutable-image policy.
+    container: ${{ (contains(inputs.runner, 'linux-x86') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest') ||
+                   (contains(inputs.runner, 'linux-arm64') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest') ||
+                   (contains(inputs.runner, 'windows-x86') && null) }} # zizmor: ignore[unpinned-images]
     timeout-minutes: 300
     steps:
 

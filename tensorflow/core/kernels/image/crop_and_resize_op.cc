@@ -55,10 +55,6 @@ using Callback = std::function<void()>;
 static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                                  const Tensor& box_index,
                                                  int* num_boxes) {
-  if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
-    *num_boxes = 0;
-    return absl::OkStatus();
-  }
   // The shape of 'boxes' is [num_boxes, 4].
   if (boxes.dims() != 2) {
     return absl::InvalidArgumentError(
