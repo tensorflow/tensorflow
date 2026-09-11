@@ -344,6 +344,10 @@ class FractionalMaxPoolGradOp : public OpKernel {
       for (int64_t hs = 0; hs < height_seq_tensor.dim_size(0) - 1; ++hs) {
         // height start and end.
         const int64_t height_start = height_seq_tensor_flat(hs);
+        OP_REQUIRES(context, height_start >= 0,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Row sequence tensor values must not be negative, got ",
+                        height_seq_tensor.DebugString())));
         int64_t height_end = overlapping_ ? height_seq_tensor_flat(hs + 1)
                                           : height_seq_tensor_flat(hs + 1) - 1;
         height_end = std::min(height_end, height_max);
@@ -354,6 +358,10 @@ class FractionalMaxPoolGradOp : public OpKernel {
               (b * output_size[1] + hs) * output_size[2] + ws;
           // width start and end.
           const int64_t width_start = width_seq_tensor_flat(ws);
+          OP_REQUIRES(context, width_start >= 0,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Col sequence tensor values must not be negative, got ",
+                          width_seq_tensor.DebugString())));
           int64_t width_end = overlapping_ ? width_seq_tensor_flat(ws + 1)
                                            : width_seq_tensor_flat(ws + 1) - 1;
           width_end = std::min(width_end, width_max);
