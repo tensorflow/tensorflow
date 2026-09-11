@@ -81,7 +81,13 @@ UNARY_TEST(Exp, {
       })
       .Run();
 })
-UNARY_TEST(Expm1, { Expm1Op<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
+UNARY_TEST(Expm1, {
+  Expm1Op<kT>(this)
+      .CpuError(
+          +[](NativeT) { return ErrorSpec::Builder().distance_err(1).build(); })
+      .Error(GetDefaultSpecGenerator())
+      .Run();
+})
 UNARY_TEST(Exp2, { Exp2Op<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
 
 UNARY_TEST(Logistic, {

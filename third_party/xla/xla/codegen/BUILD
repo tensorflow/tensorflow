@@ -193,6 +193,7 @@ cc_library(
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:erf",
         "//xla/codegen/intrinsic:exp",
+        "//xla/codegen/intrinsic:expm1",
         "//xla/codegen/intrinsic:fptrunc",
         "//xla/codegen/intrinsic:ldexp",
         "//xla/codegen/intrinsic:log1p",
