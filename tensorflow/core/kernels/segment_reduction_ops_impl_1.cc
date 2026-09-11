@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/math_ops.cc.
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/segment_reduction_ops_impl.h"
 
 namespace tensorflow {
