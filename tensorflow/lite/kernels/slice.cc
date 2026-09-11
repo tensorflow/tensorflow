@@ -143,6 +143,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(begin), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
+  if (ShapeHasRank(input->dims)) {
+    TF_LITE_ENSURE_EQ(context, NumElements(begin), NumDimensions(input));
+  }
   // If the shape of output is fully specified then resize even if
   // the input shape is not staticly defined.
   if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
