@@ -59,19 +59,25 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
                                         const TfLiteTensor* size,
                                         std::vector<int>* output_shape_vector) {
   for (int idx = 0; idx < NumDimensions(input); ++idx) {
-    T size_value = GetTensorData<T>(size)[idx];
+    // Widen to int64_t so that `begin_value + size_value` below cannot overflow
+    // the index type: for T = int32_t, begin = INT32_MAX and size = 1 would
+    // otherwise wrap to a negative value and pass the bounds check.
+    const int64_t dim_size = SizeOfDimension(input, idx);
+    const int64_t begin_value = GetTensorData<T>(begin)[idx];
+    if (begin_value < 0 || begin_value > dim_size) {
+      TF_LITE_KERNEL_LOG(context, "Invalid begin.");
+      return kTfLiteError;
+    }
+    int64_t size_value = GetTensorData<T>(size)[idx];
     if (size_value < 0) {
       if (size_value != -1) {
         TF_LITE_KERNEL_LOG(context, "Invalid size.");
         return kTfLiteError;
       }
-      size_value = SizeOfDimension(input, idx) - GetTensorData<T>(begin)[idx];
-    } else {
-      if (SizeOfDimension(input, idx) <
-          GetTensorData<T>(begin)[idx] + size_value) {
-        TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
-        return kTfLiteError;
-      }
+      size_value = dim_size - begin_value;
+    } else if (size_value > dim_size - begin_value) {
+      TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
+      return kTfLiteError;
     }
     output_shape_vector->push_back(static_cast<int>(size_value));
   }
