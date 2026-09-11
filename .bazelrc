@@ -168,9 +168,11 @@ common --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # common --incompatible_config_setting_private_default_visibility
 
-# TODO: Enable Bzlmod
-common --noenable_bzlmod
-common --enable_workspace
+# Enable bzlmod by default
+common --enable_bzlmod --noenable_workspace
+
+## Enable WORKSPACE (to be removed after bzlmod migration is complete)
+common:workspace --noenable_bzlmod --enable_workspace
 
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1

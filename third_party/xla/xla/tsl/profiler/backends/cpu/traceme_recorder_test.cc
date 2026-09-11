@@ -197,11 +197,11 @@ TEST(RecorderTest, EnableSourceLocation) {
 
 TEST(RecorderTest, DisableSourceLocation) {
   bool original_value = TraceMeGlobalFlags::IsSourceLocationEnabled();
-  g_enable_source_location.store(false);
+  TraceMeGlobalFlags::SetSourceLocationEnabled(false);
   EXPECT_FALSE(TraceMeGlobalFlags::IsSourceLocationEnabled());
   EXPECT_FALSE(absl::StrContains(TraceMeEncode("Hello", {}), "_src="));
   // Reset the flag to its original value.
-  g_enable_source_location.store(original_value);
+  TraceMeGlobalFlags::SetSourceLocationEnabled(original_value);
 }
 
 TEST(RecorderTest, FlushComplexLifetimes) {

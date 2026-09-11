@@ -1,0 +1,53 @@
+--- a/pybind11_abseil/BUILD
++++ b/pybind11_abseil/BUILD
+@@ -2,6 +2,7 @@
+ 
+ # Placeholder: load py_extension
+ # Placeholder: load py_library
++load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+ load("@pybind11_bazel//:build_defs.bzl", "pybind_extension", "pybind_library")
+ 
+ package(
+@@ -56,6 +57,12 @@
+     ],
+ )
+ 
++copy_file(
++    name = "ok_status_singleton_pyd",
++    src = ":ok_status_singleton.so",
++    out = "ok_status_singleton.pyd",
++)
++
+ cc_library(
+     name = "no_throw_status",
+     hdrs = ["no_throw_status.h"],
+@@ -159,11 +166,28 @@
+     ],
+ )
+ 
++copy_file(
++    name = "status_pyd",
++    src = ":status.so",
++    out = "status.pyd",
++)
++
+ pybind_library(
+     name = "import_status_module",
+     srcs = ["import_status_module.cc"],
+     hdrs = ["import_status_module.h"],
+-    data = ["status.so"],
++    data = select({
++        "@platforms//os:windows": [
++            ":status.pyd",
++            ":ok_status_singleton.pyd",
++            "__init__.py",
++        ],
++        "//conditions:default": [
++            ":status.so",
++            ":ok_status_singleton.so",
++            "__init__.py",
++        ],
++    }),
+ )
+ 
+ pybind_library(

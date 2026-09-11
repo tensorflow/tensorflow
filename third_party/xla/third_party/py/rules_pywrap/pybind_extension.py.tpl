@@ -23,13 +23,17 @@ def __try_import():
       __update_globals(__name__, pywrap_m)
       return
     except ImportError as e:
-      exceptions.append(str(e))
+      msg = str(e)
+      cause = getattr(e, "__cause__", None)
+      if cause:
+        msg = f"{msg} (caused by {type(cause).__name__}: {cause})"
+      exceptions.append(msg)
       last_exception = e
       pass
 
   raise RuntimeError(f"""
 Could not import original test/binary location, import paths tried: {imports_paths}. 
-Previous exceptions: {exceptions}""", last_exception)
+Previous exceptions: {exceptions}""") from last_exception
 
 
 __try_import()

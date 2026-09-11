@@ -29,7 +29,8 @@ def _transitive_parameters_library_impl(ctx):
         transitive = [dep[CcInfo].compilation_context.defines for dep in ctx.attr.original_deps],
     )
     system_includes = depset(
-        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps],
+        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps] +
+                     [dep[CcInfo].compilation_context.external_includes for dep in ctx.attr.original_deps if hasattr(dep[CcInfo].compilation_context, "external_includes")],
     )
     includes = depset(
         transitive = [dep[CcInfo].compilation_context.includes for dep in ctx.attr.original_deps],

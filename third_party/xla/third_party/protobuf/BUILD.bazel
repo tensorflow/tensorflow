@@ -1,0 +1,8 @@
+licenses(["notice"])  # Apache 2.0
+
+exports_files([
+    "protobuf.patch",
+    "protobuf_arena.patch",
+    "fix_message_lite_incomplete_type.patch",
+    "fix_python_dist_package.patch",
+])

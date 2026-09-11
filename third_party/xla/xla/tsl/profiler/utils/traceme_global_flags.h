@@ -28,16 +28,11 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-// TODO(b/510350752): Hide g_enable_source_location variable and only expose
-// wrapper functions. Also consider moving other global flags into this file.
-TF_EXPORT extern std::atomic<bool> g_enable_source_location;
-
 class TraceMeGlobalFlags {
  public:
   // Returns whether source location is enabled.
-  static bool IsSourceLocationEnabled() {
-    return g_enable_source_location.load(std::memory_order_relaxed);
-  }
+  TF_EXPORT static bool IsSourceLocationEnabled();
+  TF_EXPORT static void SetSourceLocationEnabled(bool enable_source_location);
 };
 
 }  // namespace profiler

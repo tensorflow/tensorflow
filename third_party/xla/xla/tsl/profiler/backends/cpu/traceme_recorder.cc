@@ -224,8 +224,8 @@ static SplitEventTracker* split_event_tracker
   level = std::max(0, level);
   internal::g_trace_filter_bitmap.store(filter_masks,
                                         std::memory_order_relaxed);
-  tsl::profiler::g_enable_source_location.store(enable_source_location,
-                                                std::memory_order_relaxed);
+  tsl::profiler::TraceMeGlobalFlags::SetSourceLocationEnabled(
+      enable_source_location);
 
   int expected = kTracingDisabled;
   bool started = internal::g_trace_level.compare_exchange_strong(
@@ -251,8 +251,7 @@ static SplitEventTracker* split_event_tracker
   internal::g_trace_filter_bitmap.store(std::numeric_limits<uint64_t>::max(),
                                         std::memory_order_relaxed);
   // Reset the source location flag to true.
-  tsl::profiler::g_enable_source_location.store(true,
-                                                std::memory_order_relaxed);
+  tsl::profiler::TraceMeGlobalFlags::SetSourceLocationEnabled(true);
   return events;
 }
 
