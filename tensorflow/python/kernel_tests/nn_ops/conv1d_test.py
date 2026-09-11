@@ -15,6 +15,8 @@
 """Tests for convolution related functionality in tensorflow.ops.nn."""
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -76,6 +78,66 @@ class Conv1DTest(test.TestCase):
           self.assertAllClose(
               output,
               [[2 * 1 + 1 * 2, 2 * 3 + 1 * 4], [2 * 1 + 1 * 2, 2 * 3 + 1 * 4]])
+
+  def testTensorLikeInputsWithValidPadding(self):
+    values = [[[1.0], [2.0], [3.0]]]
+    filters = [[[1.0]], [[1.0]]]
+    for value, filter_value in (
+        (values, filters),
+        (np.asarray(values, dtype=np.float32),
+         np.asarray(filters, dtype=np.float32)),
+    ):
+      with self.subTest(input_type=type(value).__name__):
+        result = nn_ops.conv1d(
+            value, filter_value, stride=1, padding="VALID")
+        self.assertAllClose(self.evaluate(result), [[[3.0], [5.0]]])
+
+  def testConv1DRejectsNegativeValidOutputShape(self):
+    with context.eager_mode():
+      x = array_ops.zeros([1, 2, 1])
+      filters = array_ops.zeros([5, 1, 1])
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        nn_ops.conv1d(x, filters, stride=1, padding="VALID")
+
+      zero_output = nn_ops.conv1d(
+          array_ops.zeros([1, 3, 1]), filters, stride=2, padding="VALID")
+      self.assertAllEqual(zero_output.shape.as_list(), [1, 0, 1])
+
+      valid_x = array_ops.zeros([1, 5, 1])
+      self.evaluate(
+          nn_ops.conv1d(valid_x, filters, stride=1, padding="VALID"))
+      self.evaluate(nn_ops.conv1d(x, filters, stride=1, padding="SAME"))
+
+      dilated_filters = array_ops.zeros([3, 1, 1])
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        nn_ops.conv1d(
+            x, dilated_filters, stride=1, padding="VALID", dilations=2)
+
+      expanded_batch_x = array_ops.zeros([2, 3, 2, 1])
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        nn_ops.conv1d(expanded_batch_x, filters, stride=1, padding="VALID")
+
+      ncw_x = array_ops.zeros([2, 3, 1, 2])
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        nn_ops.conv1d(
+            ncw_x, filters, stride=1, padding="VALID", data_format="NCW")
+
+    @def_function.function
+    def graph_conv_invalid():
+      x = array_ops.zeros([1, 2, 1])
+      filters = array_ops.zeros([5, 1, 1])
+      return nn_ops.conv1d(x, filters, stride=1, padding="VALID")
+
+    with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+      graph_conv_invalid()
+
+    @def_function.function
+    def graph_conv_zero_output():
+      x = array_ops.zeros([1, 3, 1])
+      filters = array_ops.zeros([5, 1, 1])
+      return nn_ops.conv1d(x, filters, stride=2, padding="VALID")
+
+    self.assertAllEqual(graph_conv_zero_output().shape.as_list(), [1, 0, 1])
 
   def testConv1DTranspose(self):
     with self.cached_session():

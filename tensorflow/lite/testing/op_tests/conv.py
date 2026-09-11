@@ -145,4 +145,4 @@ def make_conv_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=60)
+      expected_tf_failures=18)
