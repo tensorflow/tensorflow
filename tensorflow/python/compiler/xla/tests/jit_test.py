@@ -17,6 +17,7 @@
 from absl.testing import parameterized
 
 from tensorflow.python.compiler.xla import jit
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
@@ -26,6 +27,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -178,6 +180,16 @@ class JITTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(func_attrs["_XlaCompile"].b)
       # Ensure _XlaScope is inherited from enclosing context.
       self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
+
+  @test_util.run_v2_only
+  @test_util.run_gpu_only
+  def testCheckNumerics(self):
+    @def_function.function(jit_compile=True)
+    def check_nan(x):
+      return numerics.check_numerics(x, message="CheckNumerics failed")
+
+    with self.assertRaisesRegex(Exception, "CheckNumerics failed"):
+      check_nan(constant_op.constant(float("nan")))
 
 
 class CompilationEnabledInGradientTest(test.TestCase, parameterized.TestCase):

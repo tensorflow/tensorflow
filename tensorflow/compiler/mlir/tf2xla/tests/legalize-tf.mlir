@@ -1311,13 +1311,6 @@ func.func @preventgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // -----
 
-// CHECK-LABEL: func @checkNumerics
-func.func @checkNumerics(%arg0: tensor<1xf32>) -> tensor<1xf32> {
-  // CHECK-NEXT:  return %arg0 : tensor<1xf32>
-  %0 = "tf.CheckNumerics"(%arg0) {message = "check numerics"} : (tensor<1xf32>) -> tensor<1xf32>
-  func.return %0: tensor<1xf32>
-}
-
 //===----------------------------------------------------------------------===//
 // InfeedDequeueTuple legalization
 //===----------------------------------------------------------------------===//
