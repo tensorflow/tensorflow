@@ -185,6 +185,16 @@ DEFINE_UNARY_TEST_OP(
     Expm1Op, { return [](XlaOp x) { return Expm1(x); }; },
     { return std::expm1; });
 DEFINE_UNARY_TEST_OP(
+    Expm1HighestOp,
+    {
+      return [](XlaOp x) {
+        ResultAccuracy accuracy;
+        accuracy.set_mode(ResultAccuracy::HIGHEST);
+        return Expm1(x, accuracy);
+      };
+    },
+    { return std::expm1; });
+DEFINE_UNARY_TEST_OP(
     LogisticOp, { return [](XlaOp x) { return Logistic(x); }; },
     {
       return +[](Traits::NativeRefT x) { return 1.0f / (1.0f + std::exp(-x)); };
