@@ -115,7 +115,7 @@ class MethodNameUpdater(object):
 
     Args:
       new_export_dir: Path where the updated `SavedModel` will be saved. If
-          None, the input `SavedModel` will be overriden with the updates.
+          None, the input `SavedModel` will be overridden with the updates.
 
     Raises:
       errors.OpError: If there are errors during the file save operation.
