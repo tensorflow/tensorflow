@@ -746,7 +746,8 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
   if (incoming_type != tensor->type) {
     bool allow_raw_bytes =
         (tensor->type == kTfLiteFloat8E4M3FN ||
-         tensor->type == kTfLiteFloat8E5M2) &&
+         tensor->type == kTfLiteFloat8E5M2 ||
+         tensor->type == kTfLiteFloat8E8M0FNU) &&
         (incoming_type == kTfLiteInt8 || incoming_type == kTfLiteUInt8);
     if (!allow_raw_bytes) {
       PyErr_Format(

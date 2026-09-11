@@ -31,6 +31,7 @@ namespace tflite;
 
 // This corresponds to the version.
 file_identifier "TFL3";
+
 // File extension of any written files.
 file_extension "tflite";
 
@@ -38,7 +39,7 @@ file_extension "tflite";
 // end to ensure backwards compatibility.
 
 // The type of data stored in a tensor.
-enum TensorType : byte {
+enum TensorType:byte {
   FLOAT32 = 0,
   FLOAT16 = 1,
   INT32 = 2,
@@ -52,6 +53,7 @@ enum TensorType : byte {
   FLOAT64 = 10,
   COMPLEX128 = 11,
   UINT64 = 12,
+
   // Experimental: Resource and variant types are experimental, that are subject
   // to change. Do not implement custom kernels using resource & variant types
   // now.
@@ -65,6 +67,7 @@ enum TensorType : byte {
   UINT4 = 20,
   FLOAT8_E4M3FN = 21,
   FLOAT8_E5M2 = 22,
+  FLOAT8_E8M0FNU = 23,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -84,30 +87,32 @@ union QuantizationDetails {
 table BlockwiseQuantization {
   // index to the scale tensor, the tensor can be found in tensors array in
   // subgraph.
-  scales: int;
+  scales:int;
+
   // index to the zero point tensor. If zero_points is -1, the zero point is
   // assumed to be 0, following the convention of optional tensors in tflite.
-  zero_points: int;
+  zero_points:int;
+
   // The block size of the tensor.
-  block_size: int;
+  block_size:int;
 }
 
 table MultiAxisQuantization {
   // index to the scale tensor, the tensor can be found in tensors array in
   // subgraph.
-  scales: int;
+  scales:int;
 
   // index to the zero point tensor. If zero_points is -1, the zero point is
   // assumed to be 0, following the convention of optional tensors in tflite.
-  zero_points: int;
+  zero_points:int;
 
   // The block size of the tensor if it's block-wise quantized.
   // For per-channel, 0.
-  block_size: int;
+  block_size:int;
 
   // The quantized dimensions, same as the quantization_dimension field in
   // QuantizationParameters, but supports multiple dimensions.
-  quantized_dimensions: [int];
+  quantized_dimensions:[int];
 }
 
 // Parameters for converting a quantized tensor back to float.
@@ -163,7 +168,7 @@ table QuantizationParameters {
 //      compression technique is the same what CSR uses.
 // More types like a sparse dimension with a different compression technique
 // could be added to the list in the future.
-enum DimensionType : byte {
+enum DimensionType:byte {
   DENSE = 0,
   SPARSE_CSR = 1,
 }
@@ -186,12 +191,13 @@ table Uint8Vector {
 union SparseIndexVector {
   Int32Vector,
   Uint16Vector,
-  Uint8Vector
+  Uint8Vector,
 }
 
 table DimensionMetadata {
   // Whether a dimension is dense or sparse.
   format:DimensionType;
+
   // Index metadata used for a dimension.
   //   - If format is DimensionType.DENSE then we use the dense_size field to
   //     store the size of that dimension. Each index in that dimension is
@@ -223,12 +229,14 @@ table SparsityParameters {
   //     example, a 2-D matrix with 2-D blocks, both stored in row-major order
   //     would have traversal_order = (d0, d1, d2, d3).
   traversal_order:[int];
+
   // For an n-dimensional tensor with a k-dimensional block (0 <= k <= n),
   // stores how a block dimension in (dn, ..., dn+k-1) maps to the original
   // tensor dimension in (d0, ..., dn).
   // It's stored in the order of (dn, ..., dn+k-1).
   // If not block-sparse, this field is NULL.
   block_map:[int];
+
   // In the traversal order defined above, the metadata needed for
   // each dimension to locate the non-zero values in the original dense tensor.
   // The size of the dim_metadata array = the size of the traversal_order array
@@ -241,9 +249,10 @@ table VariantSubType {
   // The tensor shape.
   shape:[int];
   type:TensorType;
+
   // If false, the rank or the number of tensor dimensions is unknown.
   // If false, "shape" must be [].
-  has_rank: bool = false;
+  has_rank:bool = false;
 }
 
 table Tensor {
@@ -252,6 +261,7 @@ table Tensor {
   // Tensorflow's NHWC).
   shape:[int];
   type:TensorType;
+
   // An index that refers to the buffers table at the root of the model. Or,
   // if there is no data buffer associated (i.e. intermediate results), then
   // this is 0 (which refers to an always existent empty buffer).
@@ -272,7 +282,7 @@ table Tensor {
 
   // Encodes `shape` with unknown dimensions. Unknown dimensions are
   // represented with -1.
-  shape_signature:[int]; // Optional.
+  shape_signature:[int];  // Optional.
 
   // This field is added to distinguish between scalars and tensors of unknown
   // ranks (both of which shape is []).
@@ -280,7 +290,7 @@ table Tensor {
   // For tensors with known rank (rank > 0) and shape, shape = [...] and
   // has_rank = true.
   // For tensors with unknown rank and shape, shape = [] and has_rank = false.
-  has_rank: bool = false;
+  has_rank:bool = false;
 
   // The nested Tensor types for VARIANT type. This is always empty for
   // non-VARIANT types. This is optional because the nested type can be omitted.
@@ -294,12 +304,13 @@ table Tensor {
   external_buffer:uint;
 }
 
-// A list of builtin operators. Builtin operators are slightly faster than custom
+// A list of builtin operators. Builtin operators are slightly faster than
+// custom
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
 // LINT.IfChange
-enum BuiltinOperator : int32 {
+enum BuiltinOperator:int32 {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
   CONCATENATION = 2,
@@ -320,6 +331,7 @@ enum BuiltinOperator : int32 {
   MAX_POOL_2D = 17,
   MUL = 18,
   RELU = 19,
+
   // NOTE(aselle): RELU_N1_TO_1 used to be called RELU1, but it was renamed
   // since different model developers use RELU1 in different ways. Never
   // create another op called RELU1.
@@ -354,6 +366,7 @@ enum BuiltinOperator : int32 {
   TOPK_V2 = 48,
   SPLIT = 49,
   LOG_SOFTMAX = 50,
+
   // DELEGATE is a special op type for the operations which are delegated to
   // other backends.
   // WARNING: Experimental interface, subject to change
@@ -439,9 +452,9 @@ enum BuiltinOperator : int32 {
   BROADCAST_TO = 130,
   RFFT2D = 131,
   CONV_3D = 132,
-  IMAG=133,
-  REAL=134,
-  COMPLEX_ABS=135,
+  IMAG = 133,
+  REAL = 134,
+  COMPLEX_ABS = 135,
   HASHTABLE = 136,
   HASHTABLE_FIND = 137,
   HASHTABLE_IMPORT = 138,
@@ -468,57 +481,59 @@ enum BuiltinOperator : int32 {
   BITCAST = 159,
   BITWISE_XOR = 160,
   RIGHT_SHIFT = 161,
+
   // All Operators start with STABLEHLO_ prefixes are subject to change
   // Many of the ops below can not be executed by TFlite runtime
-  STABLEHLO_LOGISTIC = 162, // WARNING: Do not have runtime support
+  STABLEHLO_LOGISTIC = 162,  // WARNING: Do not have runtime support
   STABLEHLO_ADD = 163,
-  STABLEHLO_DIVIDE = 164, // WARNING: No runtime support yet
+  STABLEHLO_DIVIDE = 164,  // WARNING: No runtime support yet
   STABLEHLO_MULTIPLY = 165,
   STABLEHLO_MAXIMUM = 166,
-  STABLEHLO_RESHAPE = 167, // WARNING: No runtime support yet
-  STABLEHLO_CLAMP = 168, // WARNING: No runtime support
-  STABLEHLO_CONCATENATE = 169, // WARNING: No runtime support
-  STABLEHLO_BROADCAST_IN_DIM = 170, // WARNING: No runtime support
-  STABLEHLO_CONVOLUTION = 171, // WARNING: No runtime support
-  STABLEHLO_SLICE = 172, // WARNING: No runtime support
-  STABLEHLO_CUSTOM_CALL = 173, // WARNING: No runtime support
-  STABLEHLO_REDUCE = 174, // WARNING: No runtime support
-  STABLEHLO_ABS = 175, // WARNING: No runtime support
-  STABLEHLO_AND = 176, // WARNING: No runtime support
-  STABLEHLO_COSINE = 177, // WARNING: No runtime support
-  STABLEHLO_EXPONENTIAL = 178, // WARNING: No runtime support
-  STABLEHLO_FLOOR = 179, // WARNING: No runtime support
-  STABLEHLO_LOG = 180, // WARNING: No runtime support
+  STABLEHLO_RESHAPE = 167,  // WARNING: No runtime support yet
+  STABLEHLO_CLAMP = 168,  // WARNING: No runtime support
+  STABLEHLO_CONCATENATE = 169,  // WARNING: No runtime support
+  STABLEHLO_BROADCAST_IN_DIM = 170,  // WARNING: No runtime support
+  STABLEHLO_CONVOLUTION = 171,  // WARNING: No runtime support
+  STABLEHLO_SLICE = 172,  // WARNING: No runtime support
+  STABLEHLO_CUSTOM_CALL = 173,  // WARNING: No runtime support
+  STABLEHLO_REDUCE = 174,  // WARNING: No runtime support
+  STABLEHLO_ABS = 175,  // WARNING: No runtime support
+  STABLEHLO_AND = 176,  // WARNING: No runtime support
+  STABLEHLO_COSINE = 177,  // WARNING: No runtime support
+  STABLEHLO_EXPONENTIAL = 178,  // WARNING: No runtime support
+  STABLEHLO_FLOOR = 179,  // WARNING: No runtime support
+  STABLEHLO_LOG = 180,  // WARNING: No runtime support
   STABLEHLO_MINIMUM = 181,
-  STABLEHLO_NEGATE = 182, // WARNING: No runtime support
-  STABLEHLO_OR = 183, // WARNING: No runtime support
-  STABLEHLO_POWER = 184, // WARNING: No runtime support
-  STABLEHLO_REMAINDER = 185, // WARNING: No runtime support
-  STABLEHLO_RSQRT = 186, // WARNING: No runtime support
-  STABLEHLO_SELECT = 187, // WARNING: No runtime support
-  STABLEHLO_SUBTRACT = 188, // WARNING: No runtime support
-  STABLEHLO_TANH = 189, // WARNING: No runtime support
+  STABLEHLO_NEGATE = 182,  // WARNING: No runtime support
+  STABLEHLO_OR = 183,  // WARNING: No runtime support
+  STABLEHLO_POWER = 184,  // WARNING: No runtime support
+  STABLEHLO_REMAINDER = 185,  // WARNING: No runtime support
+  STABLEHLO_RSQRT = 186,  // WARNING: No runtime support
+  STABLEHLO_SELECT = 187,  // WARNING: No runtime support
+  STABLEHLO_SUBTRACT = 188,  // WARNING: No runtime support
+  STABLEHLO_TANH = 189,  // WARNING: No runtime support
   STABLEHLO_SCATTER = 190,
-  STABLEHLO_COMPARE = 191, // WARNING: No runtime support
-  STABLEHLO_CONVERT = 192, // WARNING: No runtime support
-  STABLEHLO_DYNAMIC_SLICE = 193, // WARNING: No runtime support
-  STABLEHLO_DYNAMIC_UPDATE_SLICE = 194, // WARNING: No runtime support
+  STABLEHLO_COMPARE = 191,  // WARNING: No runtime support
+  STABLEHLO_CONVERT = 192,  // WARNING: No runtime support
+  STABLEHLO_DYNAMIC_SLICE = 193,  // WARNING: No runtime support
+  STABLEHLO_DYNAMIC_UPDATE_SLICE = 194,  // WARNING: No runtime support
   STABLEHLO_PAD = 195,
-  STABLEHLO_IOTA = 196, // WARNING: No runtime support
-  STABLEHLO_DOT_GENERAL = 197, // WARNING: No runtime support
+  STABLEHLO_IOTA = 196,  // WARNING: No runtime support
+  STABLEHLO_DOT_GENERAL = 197,  // WARNING: No runtime support
   STABLEHLO_REDUCE_WINDOW = 198,
-  STABLEHLO_SORT = 199, // WARNING: No runtime support
-  STABLEHLO_WHILE = 200, // WARNING: No runtime support
+  STABLEHLO_SORT = 199,  // WARNING: No runtime support
+  STABLEHLO_WHILE = 200,  // WARNING: No runtime support
   STABLEHLO_GATHER = 201,
-  STABLEHLO_TRANSPOSE = 202, // WARNING: No runtime support
+  STABLEHLO_TRANSPOSE = 202,  // WARNING: No runtime support
   DILATE = 203,
   STABLEHLO_RNG_BIT_GENERATOR = 204,
   REDUCE_WINDOW = 205 (deprecated),
-  STABLEHLO_COMPOSITE = 206, // WARNING: No runtime support
+  STABLEHLO_COMPOSITE = 206,  // WARNING: No runtime support
   STABLEHLO_SHIFT_LEFT = 207,
-  STABLEHLO_CBRT = 208, // WARNING: No runtime support
+  STABLEHLO_CBRT = 208,  // WARNING: No runtime support
   STABLEHLO_CASE = 209,
 }
+
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
 // Options for the builtin operators.
@@ -649,12 +664,12 @@ union BuiltinOptions {
   BitcastOptions,
   BitwiseXorOptions,
   RightShiftOptions,
-  // DO NOT add new options this union, will cause failure in Java api
-  // generation otherwise
-  // Add new builtin options into builtin options 2 instead
+// DO NOT add new options this union, will cause failure in Java api
+// generation otherwise
+// Add new builtin options into builtin options 2 instead
 }
 
-union BuiltinOptions2{
+union BuiltinOptions2 {
   StablehloConcatenateOptions,
   StablehloBroadcastInDimOptions,
   StablehloSliceOptions,
@@ -680,72 +695,71 @@ union BuiltinOptions2{
   StablehloCaseOptions,
 }
 
-table StablehloGatherOptions{
-  offset_dims : [long];
-  collapsed_slice_dims : [long];
-  start_index_map : [long];
-  index_vector_dim : long;
-  slice_sizes : [long];
-  indices_are_sorted : bool;
+table StablehloGatherOptions {
+  offset_dims:[long];
+  collapsed_slice_dims:[long];
+  start_index_map:[long];
+  index_vector_dim:long;
+  slice_sizes:[long];
+  indices_are_sorted:bool;
 }
 
-table StablehloTransposeOptions{
-  permutation : [long];
+table StablehloTransposeOptions {
+  permutation:[long];
 }
 
-enum StablehloPrecisionConfig : uint {
+enum StablehloPrecisionConfig:uint {
   DEFAULT,
   HIGH,
   HIGHEST,
 }
 
-table StablehloDotGeneralOptions{
-  lhs_batching_dimensions : [long];
-  rhs_batching_dimensions : [long];
-  lhs_contracting_dimensions : [long];
-  rhs_contracting_dimensions : [long];
-  precision_config : [StablehloPrecisionConfig];
+table StablehloDotGeneralOptions {
+  lhs_batching_dimensions:[long];
+  rhs_batching_dimensions:[long];
+  lhs_contracting_dimensions:[long];
+  rhs_contracting_dimensions:[long];
+  precision_config:[StablehloPrecisionConfig];
 }
 
-table StablehloReduceWindowOptions{
-  window_dimensions : [long];
-  window_strides : [long];
-  base_dilations : [long];
-  window_dilations : [long];
-  padding : [long];
-  body_subgraph_index : int;
+table StablehloReduceWindowOptions {
+  window_dimensions:[long];
+  window_strides:[long];
+  base_dilations:[long];
+  window_dilations:[long];
+  padding:[long];
+  body_subgraph_index:int;
 }
 
-table StablehloWhileOptions{
-  cond_subgraph_index : int;
-  body_subgraph_index : int;
+table StablehloWhileOptions {
+  cond_subgraph_index:int;
+  body_subgraph_index:int;
 }
 
-table StablehloSortOptions{
-  dimension : long;
-  is_stable : bool;
-  comparator_subgraph_index : int;
+table StablehloSortOptions {
+  dimension:long;
+  is_stable:bool;
+  comparator_subgraph_index:int;
 }
 
 table StablehloConcatenateOptions {
-  dimension : long;
+  dimension:long;
 }
 
-table StablehloBroadcastInDimOptions{
-  broadcast_dimensions : [long];
+table StablehloBroadcastInDimOptions {
+  broadcast_dimensions:[long];
 }
 
-enum StablehloComparisonDirection : uint {
+enum StablehloComparisonDirection:uint {
   STABLEHLO_COMPARISON_DIRECTION_EQ,
   STABLEHLO_COMPARISON_DIRECTION_NE,
   STABLEHLO_COMPARISON_DIRECTION_GE,
   STABLEHLO_COMPARISON_DIRECTION_GT,
   STABLEHLO_COMPARISON_DIRECTION_LE,
   STABLEHLO_COMPARISON_DIRECTION_LT,
-
 }
 
-enum StablehloComparisonType : uint {
+enum StablehloComparisonType:uint {
   STABLEHLO_COMPARISON_TYPE_NOTYPE,
   STABLEHLO_COMPARISON_TYPE_FLOAT,
   STABLEHLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER,
@@ -753,86 +767,88 @@ enum StablehloComparisonType : uint {
   STABLEHLO_COMPARISON_TYPE_UNSIGNED,
 }
 
-table StablehloCompareOptions{
-  comparison_direction : StablehloComparisonDirection;
-  compare_type : StablehloComparisonType;
+table StablehloCompareOptions {
+  comparison_direction:StablehloComparisonDirection;
+  compare_type:StablehloComparisonType;
 }
 
-table StablehloDynamicSliceOptions{
-  slice_sizes : [long];
+table StablehloDynamicSliceOptions {
+  slice_sizes:[long];
 }
 
-table StablehloPadOptions{
-  edge_padding_low : [long];
-  edge_padding_high : [long];
-  interior_padding : [long];
+table StablehloPadOptions {
+  edge_padding_low:[long];
+  edge_padding_high:[long];
+  interior_padding:[long];
 }
 
-table StablehloIotaOptions{
-  iota_dimension : long;
+table StablehloIotaOptions {
+  iota_dimension:long;
 }
 
 table StablehloCustomCallOptions {
-  call_target_name : string;
-  has_side_effect : bool;
-  backend_config: string;
-  api_version : int; // will be decprecated
-  called_computations: [int]; // should point to subgraphs of the computations
-  custom_attributes : [ubyte];
+  call_target_name:string;
+  has_side_effect:bool;
+  backend_config:string;
+  api_version:int;  // will be decprecated
+  called_computations:[int];  // should point to subgraphs of the computations
+  custom_attributes:[ubyte];
 }
 
 table StablehloReduceOptions {
-  dimensions : [long];
-  body_subgraph_index : int;
+  dimensions:[long];
+  body_subgraph_index:int;
 }
 
-table StablehloSliceOptions{
-  start_indices : [long];
-  limit_indices : [long];
-  strides : [long];
+table StablehloSliceOptions {
+  start_indices:[long];
+  limit_indices:[long];
+  strides:[long];
 }
 
-table StablehloConvolutionOptions{
-  window_strides : [long];
-  padding : [long];
-  lhs_dilation : [long];
-  rhs_dilation : [long];
-  window_reversal : [bool];
-  input_batch_dimension : long;
-  input_feature_dimension : long;
-  input_spatial_dimensions : [long];
-  kernel_input_feature_dimension : long;
-  kernel_output_feature_dimension : long;
-  kernel_spatial_dimensions : [long];
-  output_batch_dimension : long;
-  output_feature_dimension : long;
-  output_spatial_dimensions	: [long];
-  feature_group_count : long;
-  batch_group_count : long;
-  precision_config : [StablehloPrecisionConfig];
+table StablehloConvolutionOptions {
+  window_strides:[long];
+  padding:[long];
+  lhs_dilation:[long];
+  rhs_dilation:[long];
+  window_reversal:[bool];
+  input_batch_dimension:long;
+  input_feature_dimension:long;
+  input_spatial_dimensions:[long];
+  kernel_input_feature_dimension:long;
+  kernel_output_feature_dimension:long;
+  kernel_spatial_dimensions:[long];
+  output_batch_dimension:long;
+  output_feature_dimension:long;
+  output_spatial_dimensions:[long];
+  feature_group_count:long;
+  batch_group_count:long;
+  precision_config:[StablehloPrecisionConfig];
 }
 
 table StablehloScatterOptions {
-  indices_are_sorted: bool;
-  update_window_dims: [long];
-  inserted_window_dims: [long];
-  scatter_dims_to_operand_dims: [long];
-  index_vector_dim: long;
-  unique_indices: bool;
-  update_computation_subgraph_index: int;
+  indices_are_sorted:bool;
+  update_window_dims:[long];
+  inserted_window_dims:[long];
+  scatter_dims_to_operand_dims:[long];
+  index_vector_dim:long;
+  unique_indices:bool;
+  update_computation_subgraph_index:int;
 }
 
-table StablehloCaseOptions{
-  branch_subgraph_indices : [int];
+table StablehloCaseOptions {
+  branch_subgraph_indices:[int];
 }
 
-enum RngAlgorithm : byte {
+enum RngAlgorithm:byte {
   // An algorithm auto-selected by the system according to device type.
   DEFAULT = 0,
+
   // The Philox algorithm, as described in paper
   // ['Parallel Random Numbers: As Easy as 1, 2, 3']
   // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
   PHILOX = 1,
+
   // The ThreeFry algorithm, as described in paper
   // ['Parallel Random Numbers: As Easy as 1, 2, 3']
   // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
@@ -844,11 +860,15 @@ table StablehloRngBitGeneratorOptions {
 }
 
 // LINT.IfChange
-enum Padding : byte { SAME, VALID }
+enum Padding:byte {
+  SAME,
+  VALID,
+}
+
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 // LINT.IfChange
-enum ActivationFunctionType : byte {
+enum ActivationFunctionType:byte {
   NONE = 0,
   RELU = 1,
   RELU_N1_TO_1 = 2,
@@ -856,6 +876,7 @@ enum ActivationFunctionType : byte {
   TANH = 4,
   SIGN_BIT = 5,
 }
+
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 table Conv2DOptions {
@@ -865,9 +886,11 @@ table Conv2DOptions {
   fused_activation_function:ActivationFunctionType;
   dilation_w_factor:int = 1;
   dilation_h_factor:int = 1;
+
   // Parameters for Conv2D version 8 or above.
-  // When set, quantized_bias_type defines the dtype for both bias and accumulator.
-  quantized_bias_type: TensorType;
+  // When set, quantized_bias_type defines the dtype for both bias and
+  // accumulator.
+  quantized_bias_type:TensorType;
 }
 
 // Options for both Conv3D and Conv3DTranspose.
@@ -896,11 +919,13 @@ table DepthwiseConv2DOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+
   // `depth_multiplier` is redundant. It's used by CPU kernels in
   // TensorFlow 2.0 or below, but ignored in versions above.
   // See comments in lite/c/builtin_op_data.h for more details.
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
+
   // Parameters for DepthwiseConv version 2 or above.
   dilation_w_factor:int = 1;
   dilation_h_factor:int = 1;
@@ -909,22 +934,23 @@ table DepthwiseConv2DOptions {
 table ConcatEmbeddingsOptions {
   num_channels:int;
   num_columns_per_channel:[int];
-  embedding_dim_per_channel:[int]; // This could be inferred from parameters.
+  embedding_dim_per_channel:[int];  // This could be inferred from parameters.
 }
 
-enum LSHProjectionType: byte {
+enum LSHProjectionType:byte {
   UNKNOWN = 0,
   SPARSE = 1,
   DENSE = 2,
 }
 
 table LSHProjectionOptions {
-  type: LSHProjectionType;
+  type:LSHProjectionType;
 }
 
 table SVDFOptions {
   rank:int;
   fused_activation_function:ActivationFunctionType;
+
   // For weights-only quantization, use asymmetric quantization for non
   // constant inputs at evaluation time.
   asymmetric_quantize_inputs:bool;
@@ -947,15 +973,16 @@ table SequenceRNNOptions {
 table BidirectionalSequenceRNNOptions {
   time_major:bool;
   fused_activation_function:ActivationFunctionType;
-  merge_outputs: bool;
+  merge_outputs:bool;
   asymmetric_quantize_inputs:bool;
 }
 
 // LINT.IfChange
-enum FullyConnectedOptionsWeightsFormat: byte {
+enum FullyConnectedOptionsWeightsFormat:byte {
   DEFAULT = 0,
   SHUFFLED4x16INT8 = 1,
 }
+
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
@@ -969,20 +996,21 @@ table FullyConnectedOptions {
   // Parameters for FullyConnected version 5 or above.
   // If set to true, then the number of dimension is preserved. Furthermore,
   // all but the last dimension of the input and output shapes will be equal.
-  keep_num_dims: bool;
+  keep_num_dims:bool;
 
   // Parameters for FullyConnected version 7 or above.
   // If set to true, then weights-only op will use asymmetric quantization for
   // inputs.
-  asymmetric_quantize_inputs: bool;
+  asymmetric_quantize_inputs:bool;
 
   // Parameters for FullyConnected version 11 or above.
-  // When set, quantized_bias_type defines the dtype for both bias and accumulator.
-  quantized_bias_type: TensorType;
+  // When set, quantized_bias_type defines the dtype for both bias and
+  // accumulator.
+  quantized_bias_type:TensorType;
 }
 
 table SoftmaxOptions {
-  beta: float;
+  beta:float;
 }
 
 // An implementation of TensorFlow concat.
@@ -993,6 +1021,7 @@ table ConcatenationOptions {
 
 table AddOptions {
   fused_activation_function:ActivationFunctionType;
+
   // Parameters supported by version 3.
   pot_scale_int16:bool = true;
 }
@@ -1014,34 +1043,36 @@ table LocalResponseNormalizationOptions {
 }
 
 // LINT.IfChange
-enum LSTMKernelType : byte {
+enum LSTMKernelType:byte {
   // Full LSTM kernel which supports peephole and projection.
   FULL = 0,
+
   // Basic LSTM kernels. Equivalent to TensorFlow BasicLSTMCell.
   BASIC = 1,
 }
+
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 // An implementation of TensorFlow LSTMCell and CoupledInputForgetGateLSTMCell
 table LSTMOptions {
   // Parameters for LSTM version 1 or above.
   fused_activation_function:ActivationFunctionType;
-  cell_clip: float; // Optional, 0.0 means no clipping
-  proj_clip: float; // Optional, 0.0 means no clipping
+  cell_clip:float;  // Optional, 0.0 means no clipping
+  proj_clip:float;  // Optional, 0.0 means no clipping
 
   // Parameters for LSTM version 2 or above.
   // Basic kernel is only supported in version 2 or above.
-  kernel_type: LSTMKernelType = FULL;
+  kernel_type:LSTMKernelType = FULL;
 
   // Parameters for LSTM version 4 or above.
-  asymmetric_quantize_inputs: bool;
+  asymmetric_quantize_inputs:bool;
 }
 
 // An implementation of TensorFlow dynamic_rnn with LSTMCell.
 table UnidirectionalSequenceLSTMOptions {
   fused_activation_function:ActivationFunctionType;
-  cell_clip: float; // Optional, 0.0 means no clipping
-  proj_clip: float; // Optional, 0.0 means no clipping
+  cell_clip:float;  // Optional, 0.0 means no clipping
+  proj_clip:float;  // Optional, 0.0 means no clipping
 
   // If true then first dimension is sequence, otherwise batch.
   time_major:bool;
@@ -1056,32 +1087,32 @@ table UnidirectionalSequenceLSTMOptions {
 table BidirectionalSequenceLSTMOptions {
   // Parameters supported by version 1:
   fused_activation_function:ActivationFunctionType;
-  cell_clip: float; // Optional, 0.0 means no clipping
-  proj_clip: float; // Optional, 0.0 means no clipping
+  cell_clip:float;  // Optional, 0.0 means no clipping
+  proj_clip:float;  // Optional, 0.0 means no clipping
 
   // If true, store the outputs of both directions into the first output.
-  merge_outputs: bool;
+  merge_outputs:bool;
 
   // Parameters supported by version 2:
   // If true then first dimension is sequence, otherwise batch.
   // Version 1 implementations assumed time_major to be true, so this default
   // value should never change.
-  time_major: bool = true;
+  time_major:bool = true;
 
   // Parameters for version 3 or above.
   asymmetric_quantize_inputs:bool;
 }
 
 table ResizeBilinearOptions {
-  new_height: int (deprecated);
-  new_width: int (deprecated);
-  align_corners: bool;
-  half_pixel_centers: bool;
+  new_height:int (deprecated);
+  new_width:int (deprecated);
+  align_corners:bool;
+  half_pixel_centers:bool;
 }
 
 table ResizeNearestNeighborOptions {
-  align_corners: bool;
-  half_pixel_centers: bool;
+  align_corners:bool;
+  half_pixel_centers:bool;
 }
 
 // A call operation options
@@ -1107,21 +1138,22 @@ table BatchToSpaceNDOptions {
 }
 
 table SkipGramOptions {
-  ngram_size: int;
-  max_skip_size: int;
-  include_all_ngrams: bool;
+  ngram_size:int;
+  max_skip_size:int;
+  include_all_ngrams:bool;
 }
 
 table SpaceToDepthOptions {
-  block_size: int;
+  block_size:int;
 }
 
 table DepthToSpaceOptions {
-  block_size: int;
+  block_size:int;
 }
 
 table SubOptions {
   fused_activation_function:ActivationFunctionType;
+
   // Parameters supported by version 5
   pot_scale_int16:bool = true;
 }
@@ -1133,7 +1165,7 @@ table DivOptions {
 table TopKV2Options {
 }
 
-enum CombinerType : byte {
+enum CombinerType:byte {
   SUM = 0,
   MEAN = 1,
   SQRTN = 2,
@@ -1144,9 +1176,10 @@ table EmbeddingLookupSparseOptions {
 }
 
 table GatherOptions {
-  axis: int;
+  axis:int;
+
   // Parameters for Gather version 5 or above.
-  batch_dims: int = 0;
+  batch_dims:int = 0;
 }
 
 table TransposeOptions {
@@ -1159,7 +1192,7 @@ table CosOptions {
 }
 
 table ReducerOptions {
-  keep_dims: bool;
+  keep_dims:bool;
 }
 
 table SqueezeOptions {
@@ -1167,29 +1200,30 @@ table SqueezeOptions {
 }
 
 table SplitOptions {
-  num_splits: int;
+  num_splits:int;
 }
 
 table SplitVOptions {
-  num_splits: int;
+  num_splits:int;
 }
 
 table StridedSliceOptions {
-  begin_mask: int;
-  end_mask: int;
-  ellipsis_mask: int;
-  new_axis_mask: int;
-  shrink_axis_mask: int;
+  begin_mask:int;
+  end_mask:int;
+  ellipsis_mask:int;
+  new_axis_mask:int;
+  shrink_axis_mask:int;
+
   // If true, then the end tensor is an offset of the begin tensor.
-  offset: bool;
+  offset:bool;
 }
 
 table LogSoftmaxOptions {
 }
 
 table CastOptions {
-  in_data_type: TensorType;
-  out_data_type: TensorType;
+  in_data_type:TensorType;
+  out_data_type:TensorType;
 }
 
 table DequantizeOptions {
@@ -1202,11 +1236,11 @@ table TileOptions {
 }
 
 table ArgMaxOptions {
-  output_type : TensorType;
+  output_type:TensorType;
 }
 
 table ArgMinOptions {
-  output_type : TensorType;
+  output_type:TensorType;
 }
 
 table GreaterOptions {
@@ -1241,8 +1275,9 @@ table TransposeConvOptions {
 
   // Parameters for TransposeConv version 5 or above.
   // If set, use this for bias and accumulator.
-  // When set, quantized_bias_type defines the dtype for both bias and accumulator.
-  quantized_bias_type: TensorType;
+  // When set, quantized_bias_type defines the dtype for both bias and
+  // accumulator.
+  quantized_bias_type:TensorType;
 }
 
 table ExpandDimsOptions {
@@ -1260,7 +1295,7 @@ table NotEqualOptions {
 
 table ShapeOptions {
   // Optional output type of the operation (int32 or int64). Defaults to int32.
-  out_type : TensorType;
+  out_type:TensorType;
 }
 
 table RankOptions {
@@ -1293,7 +1328,6 @@ table OneHotOptions {
 
 table AbsOptions {
 }
-
 
 table HardSwishOptions {
 }
@@ -1335,12 +1369,14 @@ table SquaredDifferenceOptions {
 }
 
 // LINT.IfChange
-enum MirrorPadMode : byte {
+enum MirrorPadMode:byte {
   // Doesn't include borders.
   REFLECT = 0,
+
   // Includes borders.
   SYMMETRIC = 1,
 }
+
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 table MirrorPadOptions {
@@ -1412,10 +1448,11 @@ table SegmentSumOptions {
 table BatchMatMulOptions {
   adj_x:bool;
   adj_y:bool;
+
   // Parameters for BatchMatMul version 4 or above.
   // If set to true, then weights-only op will use asymmetric quantization for
   // inputs.
-  asymmetric_quantize_inputs: bool;
+  asymmetric_quantize_inputs:bool;
 }
 
 table CumsumOptions {
@@ -1458,16 +1495,16 @@ table AssignVariableOptions {
 }
 
 table RandomOptions {
-  seed: long;
-  seed2: long;
+  seed:long;
+  seed2:long;
 }
 
 table BucketizeOptions {
-  boundaries: [float];  // The bucket boundaries.
+  boundaries:[float];  // The bucket boundaries.
 }
 
 table GeluOptions {
-  approximate: bool;
+  approximate:bool;
 }
 
 table DynamicUpdateSliceOptions {
@@ -1485,7 +1522,7 @@ table UnsortedSegmentSumOptions {
 table ATan2Options {
 }
 
-table UnsortedSegmentMinOptions{
+table UnsortedSegmentMinOptions {
 }
 
 table SignOptions {
@@ -1503,7 +1540,7 @@ table RightShiftOptions {
 table DilateOptions {
 }
 
-enum ReduceWindowFunction : int {
+enum ReduceWindowFunction:int {
   UNSUPPORTED,
   ADD,
   MUL,
@@ -1514,7 +1551,7 @@ enum ReduceWindowFunction : int {
 }
 
 table ReduceWindowOptions (deprecated) {
-  reduce_function: ReduceWindowFunction;
+  reduce_function:ReduceWindowFunction;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
@@ -1537,7 +1574,7 @@ table OperatorCode {
   builtin_code:BuiltinOperator;
 }
 
-enum CustomOptionsFormat : byte {
+enum CustomOptionsFormat:byte {
   FLEXBUFFERS = 0,
 }
 
@@ -1592,16 +1629,16 @@ table Operator {
   // we instead use the following attributes to find the buffer location which
   // is stored outside of flatbuffers, the offset is calculated relative to the
   // beginning of the file and is only valid if > 1
-  large_custom_options_offset: ulong;
-  large_custom_options_size: ulong;
+  large_custom_options_offset:ulong;
+  large_custom_options_size:ulong;
 
   // Flatbuffers union struct has a 128 elements limit in JAVA, so a second
   // union is added, in the case of where BuitlinOptions2 runs out, a third
   // one can be added
-  builtin_options_2 : BuiltinOptions2;
+  builtin_options_2:BuiltinOptions2;
 
   // Index into operators_debug_metadata list.
-  debug_metadata_index: int = -1;
+  debug_metadata_index:int = -1;
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -1626,7 +1663,7 @@ table SubGraph {
   name:string;
 
   // Index into subgraphs_debug_metadata list.
-  debug_metadata_index: int = -1;
+  debug_metadata_index:int = -1;
 }
 
 // Table of raw data buffers (used for constant tensors). Referenced by tensors
@@ -1638,8 +1675,8 @@ table Buffer {
   // attributes to find stored data, which is outside of flatbuffers
   // the offset is calculated relative to the beginning of the file and is only
   // valid if > 1.
-  offset: ulong;
-  size: ulong;
+  offset:ulong;
+  size:ulong;
 }
 
 // Groups external buffers by file/URI.
@@ -1651,6 +1688,7 @@ table ExternalBufferGroup {
 table ExternalBuffer {
   // Unique identifier for this external buffer.
   id:uint;
+
   // Index into the external_buffer_groups array.
   group:uint;
   offset:ulong;
@@ -1661,6 +1699,7 @@ table ExternalBuffer {
 table Metadata {
   // A human readable string to uniquely identify a Metadata.
   name:string;
+
   // An index to the buffers table.
   buffer:uint;
 }
