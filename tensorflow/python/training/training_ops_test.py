@@ -198,6 +198,60 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = np.arange(100).astype(dtype)
       self._testTypesForAdagrad(x, y, lr, grad, use_gpu)
 
+  @test_util.run_v1_only("ApplyAdadelta op returns a ref, so it is not "
+                         "supported in eager mode.")
+  def testApplyAdadeltaMismatchedShape(self):
+    for dtype in [dtypes.float32]:
+      var = variable_v1.VariableV1([1.0, 2.0], dtype=dtype)
+      accum = variable_v1.VariableV1([1.0, 2.0], dtype=dtype)
+      accum_update = variable_v1.VariableV1([1.0], dtype=dtype)
+      lr = constant_op.constant(1.0, dtype=dtype)
+      rho = constant_op.constant(0.9, dtype=dtype)
+      epsilon = constant_op.constant(1e-6, dtype=dtype)
+      grad = constant_op.constant([0.1, 0.2], dtype=dtype)
+      with self.cached_session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          self.evaluate(
+              gen_training_ops.apply_adadelta(
+                  var,
+                  accum,
+                  accum_update,
+                  lr,
+                  rho,
+                  epsilon,
+                  grad,
+                  use_locking=False,
+              )
+          )
+
+  @test_util.run_v1_only("ResourceApplyAdadelta op returns a ref, so it is not "
+                         "supported in eager mode.")
+  def testResourceApplyAdadeltaMismatchedShape(self):
+    for dtype in [dtypes.float32]:
+      var = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      accum = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      accum_update = resource_variable_ops.ResourceVariable([1.0], dtype=dtype)
+      lr = constant_op.constant(1.0, dtype=dtype)
+      rho = constant_op.constant(0.9, dtype=dtype)
+      epsilon = constant_op.constant(1e-6, dtype=dtype)
+      grad = constant_op.constant([0.1, 0.2], dtype=dtype)
+      with self.cached_session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          self.evaluate(
+              gen_training_ops.resource_apply_adadelta(
+                  var.handle,
+                  accum.handle,
+                  accum_update.handle,
+                  lr,
+                  rho,
+                  epsilon,
+                  grad,
+                  use_locking=False,
+              )
+          )
+
   @test_util.run_v1_only("ApplyFtrl op returns a ref, so it is not "
                          "supported in eager mode.")
   def testApplyFtrl(self):
