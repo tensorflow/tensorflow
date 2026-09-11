@@ -267,7 +267,7 @@ class SparseCount : public OpKernel {
     }
 
     bool is_1d = shape.NumElements() == 1;
-    int num_batches = is_1d ? 1 : shape_vector(0);
+    int64_t num_batches = is_1d ? 1 : shape_vector(0);
     OP_REQUIRES(context, 0 < num_batches && num_batches < kMaxBatches,
                 absl::InvalidArgumentError(
                     absl::StrCat("Cannot allocate ", num_batches,
@@ -280,7 +280,7 @@ class SparseCount : public OpKernel {
     T max_value = 0;
 
     for (int idx = 0; idx < num_values; ++idx) {
-      int batch = is_1d ? 0 : indices_values(idx, 0);
+      int64_t batch = is_1d ? 0 : indices_values(idx, 0);
       if (batch >= num_batches) {
         OP_REQUIRES(context, batch < num_batches,
                     absl::InvalidArgumentError(absl::StrCat(
