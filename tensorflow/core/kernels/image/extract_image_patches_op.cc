@@ -102,10 +102,10 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
 
     int64_t patch_size = MultiplyWithoutOverflow(
         ksize_rows, MultiplyWithoutOverflow(ksize_cols, depth));
-    OP_REQUIRES(
-        context, patch_size >= 0,
-        errors::InvalidArgument("Output size would overflow: ", ksize_rows,
-                                " x ", ksize_cols, " x ", depth));
+    OP_REQUIRES(context, patch_size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Output size would overflow: ", ksize_rows,
+                                 " x ", ksize_cols, " x ", depth)));
 
     const std::vector<int64_t> out_sizes = {batch, out_rows, out_cols,
                                             patch_size};
