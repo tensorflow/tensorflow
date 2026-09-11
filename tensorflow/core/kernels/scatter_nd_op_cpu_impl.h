@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <atomic>
+#include <cstdint>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
@@ -118,7 +119,18 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
 
     const Eigen::DenseIndex batch_size = Tindices.dimension(0);
 
-    Index batch_strides[IXDIM];
+    // batch_strides and the accumulated linear index below are computed in
+    // int64_t regardless of Index's width. output_shape_prefix entries are
+    // int64 (Eigen::DenseIndex), and their product (and the subsequent
+    // per-dimension accumulation into the linear output offset) can exceed
+    // INT32_MAX for legitimately large output shapes; narrowing either the
+    // stride table or the accumulator to a 32-bit Index silently truncates
+    // that value, which can turn `i` negative and read/write outside
+    // Toutput's allocation. FastBoundsCheck below only validates each raw
+    // per-dimension index against its own dimension size -- it does not (and
+    // cannot, on its own) catch overflow of the accumulated product, so both
+    // of these must stay wide enough to hold the true value.
+    int64_t batch_strides[IXDIM];
     if (IXDIM > 0) {
       batch_strides[IXDIM - 1] = 1;
     }
@@ -128,12 +140,12 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
     }
 
     for (Eigen::DenseIndex loc = 0; loc < batch_size; ++loc) {
-      Index i = 0;
+      int64_t i = 0;
       bool out_of_bounds = false;
       for (int dim = 0; dim < IXDIM; ++dim) {
         const Index ix_d = internal::SubtleMustCopy(Tindices(loc, dim));
         out_of_bounds |= !FastBoundsCheck(ix_d, output_shape_prefix[dim]);
-        i += ix_d * batch_strides[dim];
+        i += static_cast<int64_t>(ix_d) * batch_strides[dim];
       }
       if (TF_PREDICT_FALSE(out_of_bounds)) {
         error_loc = loc;
