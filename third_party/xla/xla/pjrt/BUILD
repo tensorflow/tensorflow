@@ -200,6 +200,7 @@ cc_library(
         ":infer_dispatch_info",
         ":pjrt_client",
         ":pjrt_compiler",
+        ":pjrt_device_description",
         ":pjrt_executable",
         ":raw_buffer",
         ":raw_pjrt_client",

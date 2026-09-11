@@ -4293,4 +4293,94 @@ CommonPjRtClientImpl::RuntimeAbiVersion() const {
   return raw_client_->RuntimeAbiVersion();
 }
 
+void CommonPjRtDevice::SetClient(PjRtClient* client) {
+  CHECK(client_ == nullptr);
+  CHECK(client != nullptr);
+  client_ = absl::down_cast<CommonPjRtClient*>(client);
+}
+
+PjRtPlatformId CommonPjRtDevice::platform_id() const {
+  CHECK(client_ != nullptr);
+  return client_->platform_id();
+}
+
+absl::string_view CommonPjRtDevice::platform_name() const {
+  CHECK(client_ != nullptr);
+  return client_->platform_name();
+}
+
+absl::Status CommonPjRtDevice::TransferToInfeed(const LiteralSlice& literal) {
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->TransferToInfeed(local_device_id(), literal);
+}
+
+absl::Status CommonPjRtDevice::TransferFromOutfeed(
+    MutableBorrowingLiteral literal) {
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->TransferFromOutfeed(local_device_id(), literal);
+}
+
+void CommonPjRtDevice::AttachMemorySpace(PjRtMemorySpace* memory_space,
+                                         bool is_default) {
+  CHECK(memory_space != nullptr);
+  CHECK(client_ == memory_space->client()) << absl::StrFormat(
+      "Could not attach a device to a PjRtMemorySpace owned by a different "
+      "client, the device's client: %s, the memory space's client: %s.",
+      client_->platform_name(), memory_space->client()->platform_name());
+
+  memory_spaces_.push_back(memory_space);
+  memory_spaces_by_id_.emplace(memory_space->kind_id(), memory_space);
+  if (is_default) {
+    CHECK(default_memory_space_ == nullptr)
+        << "Default memory space already set to "
+        << default_memory_space_->DebugString() << ".";
+    default_memory_space_ = memory_space;
+  }
+}
+
+absl::Span<PjRtMemorySpace* const> CommonPjRtDevice::memory_spaces() const {
+  return memory_spaces_;
+}
+
+absl::StatusOr<PjRtMemorySpace*> CommonPjRtDevice::default_memory_space()
+    const {
+  if (default_memory_space_ != nullptr) {
+    return default_memory_space_;
+  }
+  if (!memory_spaces_.empty()) {
+    return memory_spaces_.front();
+  }
+  return absl::InternalError("No default memory space is set for this device.");
+}
+
+absl::StatusOr<PjRtMemorySpace*> CommonPjRtDevice::memory_space_by_kind(
+    absl::string_view memory_space_kind) const {
+  auto it =
+      absl::c_find_if(memory_spaces_, [memory_space_kind](PjRtMemorySpace* ms) {
+        return ms->kind() == memory_space_kind;
+      });
+  if (it != memory_spaces_.end()) {
+    return *it;
+  }
+  return absl::InternalError(
+      absl::StrCat("No memory space found (kind: ", memory_space_kind, ")"));
+}
+
+absl::StatusOr<PjRtMemorySpace*> CommonPjRtDevice::memory_space_by_kind_id(
+    int id) const {
+  auto it = memory_spaces_by_id_.find(id);
+  if (it == memory_spaces_by_id_.end()) {
+    return absl::InternalError(
+        absl::StrCat("No memory space found (kind_id: ", id, ")"));
+  }
+  return it->second;
+}
+
+absl::StatusOr<bool> CommonPjRtDevice::PoisonExecution(int32_t launch_id,
+                                                       absl::Status error) {
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->PoisonExecution(local_device_id(), launch_id,
+                                                std::move(error));
+}
+
 }  // namespace xla
