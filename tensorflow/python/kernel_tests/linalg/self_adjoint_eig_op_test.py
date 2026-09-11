@@ -20,6 +20,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -47,6 +48,17 @@ class SelfAdjointEigTest(test.TestCase):
     vector = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       linalg_ops.self_adjoint_eig(vector)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testComputeVFalseReturnsEmptyV(self):
+    # Regression test for GitHub issue 102352: with compute_v=False the raw
+    # op used to return an uninitialized scalar in `v` instead of an empty
+    # tensor.
+    matrix = constant_op.constant([[1., 2.], [2., 5.]])
+    e, v = gen_linalg_ops.self_adjoint_eig_v2(matrix, compute_v=False)
+    self.assertEqual([2], e.shape.as_list())
+    self.assertEqual([0], v.shape.as_list())
+    self.assertEqual(0, self.evaluate(v).size)
 
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
