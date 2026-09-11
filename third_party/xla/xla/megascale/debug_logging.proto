@@ -1,0 +1,124 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package xla.megascale.runtime;
+
+import public "third_party/tensorflow/compiler/xla/megascale/action_graph.proto";
+import public "third_party/tensorflow/compiler/xla/megascale/tpu_chip_enums.proto";
+
+import "xla/tsl/protobuf/status.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "DebugLogging";
+
+// Basic information about a HLO program run.
+message ProgramRunInfo {
+  // run_id is only relevant within a TPU and shouldn't be compared across TPUs.
+  uint64 run_id = 1;
+  // launch_id should be consistent across TPUs running the same execution.
+  // (within and across slices)
+  int32 launch_id = 2;
+  // The name of the HLO module/program.
+  string name = 3;
+  // We store the fingerprint (as a hex string) just in case there are different
+  // modules that happen to have the same module_name, which generally shouldn't
+  // happen.
+  string fingerprint = 4;
+}
+
+// TPU core and its currently running HLO.
+// Next ID: 20
+message TpuCoreHLO {
+  // The type of the TPU core.
+  TpuCoreTypeProto tpu_core_type = 13;
+  // Chip ID local to the slice.
+  int32 chip_id = 1;
+  // Core index within its chip.
+  int32 core_idx = 2;
+  reserved 17;
+  // Short name of the HLO.
+  string hlo_name = 9;
+  // Short name of the computation where the HLO resides in.
+  string computation_name = 15;
+  // Full HLO details.
+  string hlo = 3;
+  // Fingerprint of the running executable.
+  string executable_fingerprint = 4;
+  // Module name of the running executable.
+  string module_name = 10;
+  // Launch ID of the running executable.
+  int32 launch_id = 12;
+  reserved 5;
+  // Current program counter
+  optional int64 pc = 6;
+  // Tag information to be used with PC
+  optional int64 tag = 7;
+  string hostname = 8;
+  reserved 11;
+  // The error when obtaining the TPU core information.
+  repeated tensorflow.StatusProto errors = 19;
+  // Basic debug info about recently completed programs runs. Sorted in reverse
+  // chronological order. (the first entry is the most recently completed run)
+  repeated ProgramRunInfo recent_completions = 16;
+  // True if the TPU is running a program actively.
+  optional bool active = 18;
+}
+
+message ExecutorTelemetry {
+  message PendingGraphState {
+    xla.megascale.telemetry.MegaScaleActionGraph graph = 1;
+    int32 launch_id = 2;
+    reserved 5;
+    repeated int32 completed_actions = 3;
+    repeated int32 pending_actions = 4;
+    repeated int32 active_actions = 6;
+  }
+
+  repeated PendingGraphState pending_graphs = 1;
+  reserved 2;
+}
+
+// RapidEye info contains snapshots of the system during a hang event, which
+// will be used later for root cause analysis.
+//
+// NEXT ID: 12
+message RapidEyeInfo {
+  ExecutorTelemetry telemetry = 1;
+
+  repeated TpuCoreHLO tpu_core_hlos = 2;
+
+  reserved 11;
+
+  // Whether the RapidEyeInfo was truncated due to exceeding the size limit.
+  bool is_truncated = 3;
+
+  // The number of slices, tasks per slice, local slice ID and task ID that are
+  // obtained from the workers' last used topology. This is useful for the error
+  // aggregator to determine if all error messages have been received.
+  int64 num_slices = 4;
+  int64 num_tasks_per_slice = 5;
+  int32 slice_id = 6;
+  int32 task_id = 7;
+
+  // The incarnation ID for the workload shared across all workers. This will
+  // reset everytime the workload restart.
+  int64 incarnation_id = 8;
+
+  // Specifies the TPU platform type.
+  int32 tpu_version = 9;
+  string chip_config_name = 10;
+}
