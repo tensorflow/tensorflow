@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
+namespace xla {
 namespace {
 
 struct TestNode {
@@ -40,7 +41,6 @@ struct TestNode {
   int id;
   std::vector<TestNode*> in;
   std::vector<TestNode*> out;
-  TopologicalSortNode<TestNode> node;
 
   std::vector<TestNode*>::const_iterator incoming_begin() const {
     return in.begin();
@@ -57,7 +57,7 @@ struct TestNode {
 };
 
 using Topsort =
-    TopologicalSort<TestNode, int, &TestNode::node, &TestNode::id,
+    TopologicalSort<TestNode, int, &TestNode::id,
                     std::vector<TestNode*>::const_iterator,
                     &TestNode::incoming_begin, &TestNode::incoming_end,
                     std::vector<TestNode*>::const_iterator,
@@ -126,16 +126,16 @@ struct TestGraph {
   std::optional<std::pair<int, int>> TopologicalOrderIsValid() const {
     std::vector<int> order(node_index.size(), -1);
     int i = 0;
-    std::vector<const TestNode*> forward;
-    for (const TestNode& node : topsort) {
-      forward.push_back(&node);
-      order[node.id] = i++;
+    std::vector<int> forward;
+    for (int id : topsort) {
+      forward.push_back(id);
+      order[id] = i++;
     }
 
     // Verifies that the reverse iterator gives the same order.
-    std::vector<const TestNode*> reverse;
+    std::vector<int> reverse;
     for (auto it = topsort.rbegin(); it != topsort.rend(); ++it) {
-      reverse.push_back(&*it);
+      reverse.push_back(*it);
     }
     absl::c_reverse(reverse);
     CHECK(forward == reverse);
@@ -157,8 +157,8 @@ struct TestGraph {
 
 std::string OrderString(const Topsort& top) {
   std::vector<int> order;
-  for (TestNode& node : top) {
-    order.push_back(node.id);
+  for (int id : top) {
+    order.push_back(id);
   }
   return absl::StrJoin(order, ",");
 }
@@ -282,7 +282,6 @@ struct LargeNode {
   int id;
   std::vector<LargeNode*> in;
   std::vector<LargeNode*> out;
-  TopologicalSortNode<LargeNode> node;
   char padding[256];
 
   std::vector<LargeNode*>::const_iterator incoming_begin() const {
@@ -300,7 +299,7 @@ struct LargeNode {
 };
 
 using LargeTopsort =
-    TopologicalSort<LargeNode, int, &LargeNode::node, &LargeNode::id,
+    TopologicalSort<LargeNode, int, &LargeNode::id,
                     std::vector<LargeNode*>::const_iterator,
                     &LargeNode::incoming_begin, &LargeNode::incoming_end,
                     std::vector<LargeNode*>::const_iterator,
@@ -384,7 +383,7 @@ void BM_PostOrderTraversal(::testing::benchmark::State& state) {
   for (auto _ : state) {
     int64_t sum = 0;
     for (auto it = topsort.rbegin(); it != topsort.rend(); ++it) {
-      sum += it->id;
+      sum += nodes[*it]->id;
     }
     ::benchmark::DoNotOptimize(sum);
   }
@@ -396,3 +395,4 @@ BENCHMARK(BM_PostOrderTraversal)
     ->Arg(1000000);
 
 }  // namespace
+}  // namespace xla

@@ -1079,11 +1079,8 @@ class HloModule {
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this
   // module.
-  // TODO(phawkins): unique_id_ may not be as dense as we might like for this
-  // data structure.
-  TopologicalSort<HloComputation, int64_t,
-                  &HloComputation::topological_sort_node_,
-                  &HloComputation::unique_id_, HloComputation::NeighborIterator,
+  TopologicalSort<HloComputation, int32_t, &HloComputation::index_in_module_,
+                  HloComputation::NeighborIterator,
                   &HloComputation::callers_begin, &HloComputation::callers_end,
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>

@@ -203,19 +203,21 @@ HloComputation* HloModule::AddComputationInternal(
   }
 
   computation->set_parent(this);
-  topological_sort_.AddNode(computation.get());
-  for (auto& [caller, count] : computation->caller_computations_) {
-    if (caller->parent() == this) {
-      topological_sort_.AddEdge(caller, computation.get());
-    }
-  }
-  for (auto& [callee, count] : computation->callee_computations_) {
-    if (callee->parent() == this) {
-      topological_sort_.AddEdge(computation.get(), callee);
-    }
-  }
+  computation->index_in_module_ = computations_.size();
+  HloComputation* computation_raw_ptr = computation.get();
   computations_.push_back(std::move(computation));
-  return computations_.back().get();
+  topological_sort_.AddNode(computation_raw_ptr);
+  for (auto& [caller, count] : computation_raw_ptr->caller_computations_) {
+    if (caller->parent() == this) {
+      topological_sort_.AddEdge(caller, computation_raw_ptr);
+    }
+  }
+  for (auto& [callee, count] : computation_raw_ptr->callee_computations_) {
+    if (callee->parent() == this) {
+      topological_sort_.AddEdge(computation_raw_ptr, callee);
+    }
+  }
+  return computation_raw_ptr;
 }
 
 HloComputation* HloModule::AddEntryComputation(
@@ -1358,12 +1360,18 @@ void HloModule::CleanupComputations() {
   if (to_be_deleted_computations_.empty()) {
     return;
   }
+  std::vector<int> old_to_new(computations_.size(), -1);
   computations_.erase(
       std::remove_if(computations_.begin(), computations_.end(),
                      [](const std::unique_ptr<HloComputation>& comp) {
                        return comp == nullptr;
                      }),
       computations_.end());
+  for (size_t i = 0; i < computations_.size(); ++i) {
+    old_to_new[computations_[i]->index_in_module_] = i;
+    computations_[i]->index_in_module_ = i;
+  }
+  topological_sort_.Reindex(old_to_new);
   to_be_deleted_computations_.clear();
 }
 
@@ -1393,13 +1401,18 @@ absl::Status HloModule::ReorderComputationsToPostOrder() {
     comp_map[comp_ptr] = std::move(comp);
   }
 
+  std::vector<int> old_to_new(computations_.size(), -1);
   computations_.clear();
   computations_.reserve(post_order.size());
-  for (HloComputation* comp : post_order) {
+  for (size_t i = 0; i < post_order.size(); ++i) {
+    HloComputation* comp = post_order[i];
     auto it = comp_map.find(comp);
     TF_RET_CHECK(it != comp_map.end()) << "Computation not found in module";
+    old_to_new[comp->index_in_module_] = i;
+    comp->index_in_module_ = i;
     computations_.push_back(std::move(it->second));
   }
+  topological_sort_.Reindex(old_to_new);
 
   TF_RET_CHECK(computations_.size() == comp_map.size())
       << "Lost computations during reordering. Original count: "
@@ -1597,16 +1610,18 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
        ++it) {
     ++num_computations;
+    HloComputation* computation = computations_[*it].get();
     if (execution_threads.empty() ||
-        execution_threads.contains(it->execution_thread())) {
-      post_order.push_back(&*it);
+        execution_threads.contains(computation->execution_thread())) {
+      post_order.push_back(computation);
     }
   }
 
   if (num_computations != computation_count()) {
-    for (HloComputation& computation : topological_sort_) {
-      LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
-                 << computation.parent()->name() << ")";
+    for (int32_t idx : topological_sort_) {
+      HloComputation* computation = computations_[idx].get();
+      LOG(ERROR) << "Reverse postorder: " << computation->name() << " ("
+                 << computation->parent()->name() << ")";
     }
     for (const HloComputation* computation : computations()) {
       LOG(ERROR) << "Computations: " << computation->name() << " ("
@@ -1788,6 +1803,12 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
     LOG(ERROR) << "Failed to sort module computations for " << name() << "; "
                << status;
   }
+  std::vector<int> old_to_new(module->computations_.size(), -1);
+  for (size_t i = 0; i < module->computations_.size(); ++i) {
+    old_to_new[module->computations_[i]->index_in_module_] = i;
+    module->computations_[i]->index_in_module_ = i;
+  }
+  module->topological_sort_.Reindex(old_to_new);
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(
