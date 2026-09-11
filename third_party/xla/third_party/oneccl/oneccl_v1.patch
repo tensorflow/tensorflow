@@ -12,6 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+diff --git a/src/coll/algorithms/reduce_scatter/sycl/reduce_scatter_large_sycl_ring.hpp b/src/coll/algorithms/reduce_scatter/sycl/reduce_scatter_large_sycl_ring.hpp
+index 3a5a89c..17980c0 100644
+--- a/src/coll/algorithms/reduce_scatter/sycl/reduce_scatter_large_sycl_ring.hpp
++++ b/src/coll/algorithms/reduce_scatter/sycl/reduce_scatter_large_sycl_ring.hpp
+@@ -433,7 +433,9 @@ struct reduce_scatter_coll_params {
+ };
+ 
+ template <typename T, int vec_size>
++#if !RS_USE_PARALLEL_FOR
+ SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
++#endif
+ void inline reduce_scatter_kernel_wrap(const void *send_buf,
+                                        void *recv_buf,
+                                        size_t recv_count,
 diff --git a/src/common/api_wrapper/ze_api_wrapper.cpp b/src/common/api_wrapper/ze_api_wrapper.cpp
 index 2253c64..b274ea2 100644
 --- a/src/common/api_wrapper/ze_api_wrapper.cpp
