@@ -274,7 +274,6 @@ cc_library(
     deps = [
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_types_hdr",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:statusor",

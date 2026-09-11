@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
@@ -40,8 +39,5 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetCpuClient(
 }
 
 REGISTER_PJRT_CLIENT_FACTORY(cpu_client, tensorflow::DEVICE_CPU, GetCpuClient);
-
-REGISTER_PJRT_CLIENT_FACTORY(xla_cpu_client, tensorflow::DEVICE_XLA_CPU,
-                             GetCpuClient);
 
 }  // namespace xla

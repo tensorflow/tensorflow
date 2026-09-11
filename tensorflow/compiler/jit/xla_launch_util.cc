@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -44,23 +43,22 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/local_client.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/runtime/device_id.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_address.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
@@ -70,7 +68,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
@@ -82,9 +79,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace {
@@ -867,17 +867,14 @@ absl::Status RunPjRtExecutable(
     OpKernelContext* ctx) {
   const CompositeDevice::AcceleratorDeviceInfo* accelerator_device_info =
       ctx->device()->tensorflow_accelerator_device_info();
-  const DeviceType& device_type = GetDeviceType(ctx);
   const bool use_pjrt_tensor_buffer =
-      device_type == DEVICE_GPU || accelerator_device_info == nullptr ||
-      accelerator_device_info->use_pjrt_tensor_buffer;
-  int pjrt_device_id = 0;
-  if (device_type == DEVICE_CPU || device_type == DEVICE_XLA_CPU) {
-    pjrt_device_id = 0;
-  } else {
-    pjrt_device_id =
-        tsl::GetDeviceIdFromDeviceParsedName(ctx->device()->parsed_name());
-  }
+      (accelerator_device_info == nullptr)
+          ? true
+          : accelerator_device_info->use_pjrt_tensor_buffer;
+
+  const DeviceType& device_type = GetDeviceType(ctx);
+  const int pjrt_device_id =
+      tsl::GetDeviceIdFromDeviceParsedName(ctx->device()->parsed_name());
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * device,
       pjrt_client->LookupAddressableDevice(xla::LocalDeviceId(pjrt_device_id)));

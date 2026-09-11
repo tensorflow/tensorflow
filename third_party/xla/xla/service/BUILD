@@ -1834,7 +1834,6 @@ cc_library(
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
-        "//learning/brain/google/xla:__pkg__",
     ]),
     deps = [
         ":buffer_value",

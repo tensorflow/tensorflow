@@ -33,14 +33,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/client/client_library.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
-#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
-#include "xla/tsl/lib/monitoring/cell_reader.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
@@ -49,10 +50,10 @@ namespace tensorflow {
 namespace tf2xla {
 namespace internal {
 
+using ::tensorflow::monitoring::testing::CellReader;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 using tpu::TPUCompileMetadataProto;
-using tsl::monitoring::testing::CellReader;
 
 static constexpr char kMlirLegalizeCount[] =
     "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_count";
@@ -101,8 +102,10 @@ absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
     mlir_to_hlo_args.mlir_module_op = mlir_module.get();
   }
 
-  TF_ASSIGN_OR_RETURN(auto* compiler,
-                      xla::GetDefaultPjRtCompiler(xla::CpuName()));
+  se::Platform* platform =
+      se::PlatformManager::PlatformWithName("Host").value();
+  auto client =
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
   std::vector<TensorShape> arg_shapes = {{1}};
   TPUCompileMetadataProto metadata_proto;
@@ -120,7 +123,7 @@ absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
                          /*device_type=*/"XLA_TPU_JIT",
                          /*shape_determination_fns=*/{}, arg_shapes,
                          &arg_core_mapping, &per_core_arg_shapes,
-                         custom_legalization_passes, compiler,
+                         custom_legalization_passes, client,
                          compilation_result.get());
 }
 
