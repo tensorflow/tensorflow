@@ -24,6 +24,7 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Adds support for FP16 in Transpose and DynamicUpdateSlice operator.
     * Transpose now supports up to 8D tensors.
     * Adds support for FLOAT8_E4M3FN and FLOAT8_E5M2 data types.
+* `tf.experimental.fold`: Adds support for folding/reconstructing image tensors from extracted spatial patches as an inverse operation to `tf.image.extract_patches`.
 
 ### Bug Fixes and Other Changes
 
