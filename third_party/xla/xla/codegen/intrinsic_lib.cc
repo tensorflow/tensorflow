@@ -124,19 +124,13 @@ class IntrinsicAdapter : public IntrinsicFunction {
 };
 
 IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
-    : options_(options) {
-  if (options.device_type == intrinsics::DeviceType::kIntelCpu ||
-      options.device_type == intrinsics::DeviceType::kAmdCpu ||
-      options.device_type == intrinsics::DeviceType::kArmCpu) {
-    auto eigen_lib = std::make_unique<CppGenIntrinsicLibrary>(
-        GetCppGenIrString(options), "eigen");
-    ir_libraries_.push_back(std::move(eigen_lib));
-  }
-
+    : options_(options), ir_libraries_(GetCppGenLibraries(options)) {
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Ldexp>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Exp>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Expm1>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::FpTrunc>>());
   intrinsic_functions_.push_back(
@@ -289,7 +283,7 @@ IntrinsicFunctionLib::DefineIntrinsicFunctions(llvm::Module& module) {
         for (const auto& signature : signatures) {
           if (!ir_libraries_linked) {
             for (const auto& lib : ir_libraries_) {
-              lib->LinkIntoModule(module);
+              lib.LinkIntoModule(module);
             }
             ir_libraries_linked = true;
           }

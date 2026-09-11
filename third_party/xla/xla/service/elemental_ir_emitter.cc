@@ -51,9 +51,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/log1p.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -2219,28 +2220,20 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(
     PrimitiveType prim_type, llvm::Value* value) {
-  auto x = value;
-  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_->getContext());
-  auto one = llvm::ConstantFP::get(type, 1.0);
-  auto half = llvm::ConstantFP::get(type, 0.5);
-  auto zero = llvm::ConstantFP::get(type, 0.0);
-
-  // expm1(x) == tanh(x/2)*(exp(x)+1)
-  // x/2 can underflow, if it does we approximate expm1 with x.
-  auto x_over_two = FMul(x, half);
-  auto x_over_two_is_zero = FCmpOEQ(x_over_two, zero);
-  auto abs_x =
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {x}, {type}, b_);
-  // Use a naive exp(x)-1 calculation if |x| is > 0.5
-  auto x_magnitude_is_large = FCmpOGT(abs_x, half);
-  ABSL_ASSIGN_OR_RETURN(auto tanh_of_x_over_two, EmitTanh(prim_type, x_over_two));
-  ABSL_ASSIGN_OR_RETURN(auto exp_of_x, EmitExp(prim_type, x, ""));
-  auto exp_of_x_plus_one = FAdd(exp_of_x, one);
-  auto exp_of_x_minus_one = FSub(exp_of_x, one);
-  auto expm1_of_x = FMul(tanh_of_x_over_two, exp_of_x_plus_one);
-  expm1_of_x = Select(x_magnitude_is_large, exp_of_x_minus_one, expm1_of_x);
-  expm1_of_x = Select(x_over_two_is_zero, x, expm1_of_x);
-  return expm1_of_x;
+  if (prim_type == F32 || prim_type == F64) {
+    llvm::Function* expm1 = codegen::intrinsics::Expm1::GetOrInsertDeclaration(
+        module_, IntrinsicType::S(prim_type));
+    return b_->CreateCall(expm1, {value});
+  }
+  if (prim_type == F16 || prim_type == BF16) {
+    llvm::Type* f32_type = b_->getFloatTy();
+    llvm::Value* f32_value = b_->CreateFPExt(value, f32_type);
+    llvm::Function* expm1 = codegen::intrinsics::Expm1::GetOrInsertDeclaration(
+        module_, IntrinsicType::S(F32));
+    llvm::Value* f32_result = b_->CreateCall(expm1, {f32_value});
+    return b_->CreateFPTrunc(f32_result, value->getType());
+  }
+  return Unimplemented("expm1");
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(

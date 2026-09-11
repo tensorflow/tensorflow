@@ -36,22 +36,47 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_32_ll.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
+#include "xla/codegen/intrinsic/cpp/expm1_32_ll.h"
+#include "xla/codegen/intrinsic/cpp/expm1_64_ll.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla::codegen {
 
-const std::string& GetCppGenIrString(
-    const intrinsics::IntrinsicOptions& options) {
-  if (options.Contains("+avx512f") && (options.prefer_vector_width == 512 ||
-                                       options.prefer_vector_width == 0)) {
-    return ::llvm_ir::kEigenUnary64LlIr;
+namespace {
+
+const std::string& SelectIrString(const intrinsics::IntrinsicOptions& options,
+                                  const std::string& ir_32,
+                                  const std::string& ir_64) {
+  if (options.Contains("+avx512f")) {
+    return ir_64;
   }
-  return ::llvm_ir::kEigenUnary32LlIr;
+  return ir_32;
 }
 
-bool AreEigenIntrinsicsAvailable() {
+}  // namespace
+
+const std::string& GetCppGenIrString(
+    const intrinsics::IntrinsicOptions& options) {
+  return SelectIrString(options, ::llvm_ir::kEigenUnary32LlIr,
+                        ::llvm_ir::kEigenUnary64LlIr);
+}
+
+bool AreCppGenIntrinsicsAvailable() {
   return !GetCppGenIrString(intrinsics::IntrinsicOptions()).empty();
+}
+
+std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
+    const intrinsics::IntrinsicOptions& options) {
+  return {
+      CppGenIntrinsicLibrary(
+          SelectIrString(options, ::llvm_ir::kEigenUnary32LlIr,
+                         ::llvm_ir::kEigenUnary64LlIr),
+          "eigen"),
+      CppGenIntrinsicLibrary(SelectIrString(options, ::llvm_ir::kExpm132LlIr,
+                                            ::llvm_ir::kExpm164LlIr),
+                             "expm1"),
+  };
 }
 
 llvm::Function* GetCppGenFunction(llvm::Module* module,
