@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <utility>
+
+#include "Python.h"
 
 #include "absl/status/status.h"
 #include "pybind11/attr.h"  // from @pybind11
@@ -27,27 +30,102 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_events_writer, m) {
+
+#ifdef Py_GIL_DISABLED
+namespace {
+
+class ScopedPyObjectCriticalSection {
+ public:
+  explicit ScopedPyObjectCriticalSection(PyObject* object) {
+    PyCriticalSection_Begin(&critical_section_, object);
+  }
+
+  ~ScopedPyObjectCriticalSection() {
+    PyCriticalSection_End(&critical_section_);
+  }
+
+ private:
+  PyCriticalSection critical_section_;
+};
+
+}  // namespace
+#endif
+
+template <typename F>
+decltype(auto) RunEventsWriterMethod(py::handle self, F&& fn) {
+#ifdef Py_GIL_DISABLED
+  ScopedPyObjectCriticalSection critical_section(self.ptr());
+#else
+  (void)self;
+#endif
+  return std::forward<F>(fn)();
+}
+
+PYBIND11_MODULE(
+    _pywrap_events_writer, m, pybind11::mod_gil_not_used()) {
   py::class_<absl::Status> Status(m, "Status", py::module_local());
   py::class_<tensorflow::EventsWriter> events_writer_class(m, "EventsWriter");
+
   events_writer_class.def(py::init<const std::string&>())
       .def("InitWithSuffix",
-           [](tensorflow::EventsWriter& self, const std::string& suffix) {
-             return self.InitWithSuffix(suffix);
+           [](py::object self_obj, const std::string& suffix) {
+             auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+             if (self == nullptr) {
+               throw py::value_error("EventsWriter is not initialized");
+             }
+             return RunEventsWriterMethod(
+                 self_obj, [&]() { return self->InitWithSuffix(suffix); });
            })
-      .def("FileName",
-           [](tensorflow::EventsWriter& self) { return self.FileName(); })
+      .def("FileName", [](py::object self_obj) {
+        auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+        if (self == nullptr) {
+          throw py::value_error("EventsWriter is not initialized");
+        }
+        return RunEventsWriterMethod(
+            self_obj, [&]() { return self->FileName(); });
+      })
       .def("_WriteSerializedEvent",
-           [](tensorflow::EventsWriter& self, const std::string& event_str) {
-             self.WriteSerializedEvent(event_str);
+           [](py::object self_obj, const std::string& event_str) {
+             auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+             if (self == nullptr) {
+               throw py::value_error("EventsWriter is not initialized");
+             }
+             RunEventsWriterMethod(
+                 self_obj, [&]() { self->WriteSerializedEvent(event_str); });
            })
-      .def("Flush", [](tensorflow::EventsWriter& self) { return self.Flush(); })
-      .def("Close", [](tensorflow::EventsWriter& self) { return self.Close(); })
+      .def("Flush", [](py::object self_obj) {
+        auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+        if (self == nullptr) {
+          throw py::value_error("EventsWriter is not initialized");
+        }
+        return RunEventsWriterMethod(
+            self_obj, [&]() { return self->Flush(); });
+      })
+      .def("Close", [](py::object self_obj) {
+        auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+        if (self == nullptr) {
+          throw py::value_error("EventsWriter is not initialized");
+        }
+        return RunEventsWriterMethod(
+            self_obj, [&]() { return self->Close(); });
+      })
       .def("WriteEvent",
-           [](tensorflow::EventsWriter& self, const py::object obj) {
-             // Verify the proto type is an event prior to writing.
+           [](py::object self_obj, const py::object obj) {
+             auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+             if (self == nullptr) {
+               throw py::value_error("EventsWriter is not initialized");
+             }
+
              tensorflow::CheckProtoType(obj, "tensorflow.Event");
-             self.WriteSerializedEvent(
-                 obj.attr("SerializeToString")().cast<std::string>());
+
+             // Python conversion must happen outside the native object's
+             // critical section to avoid re-entrant Python execution while
+             // the object is locked.
+             std::string serialized_event =
+                 obj.attr("SerializeToString")().cast<std::string>();
+
+             RunEventsWriterMethod(self_obj, [&]() {
+               self->WriteSerializedEvent(serialized_event);
+             });
            });
 };

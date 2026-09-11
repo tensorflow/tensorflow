@@ -67,7 +67,7 @@ bool EqualsGraphDef(std::string graphdef_string1, std::string graphdef_string2,
   return differencer.Compare(graph_def_1, graph_def_2);
 }
 
-PYBIND11_MODULE(_proto_comparators, m) {
+PYBIND11_MODULE(_proto_comparators, m, pybind11::mod_gil_not_used()) {
   py::class_<tensorflow::ProtoComparisonOptions>(m, "ProtoComparisonOptions")
       .def(py::init<const bool&>());
   m.def("EqualsGraphDef", &EqualsGraphDef,

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "Python.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "pybind11/attr.h"  // from @pybind11
@@ -684,6 +685,11 @@ struct PyTensorData {
   py::object shape_val = py::none();
   py::object uid = py::none();
 
+#ifdef Py_GIL_DISABLED
+  // Guards shape_val when running under free-threaded Python.
+  absl::Mutex shape_val_mu;
+#endif  // Py_GIL_DISABLED
+
   tf_handle<PyOperation> op;
   tf_handle<PyGraph> graph;
 
@@ -867,7 +873,8 @@ int64_t PyGraph::add_op(py::object obj) {
   return op_id;
 }
 
-PYBIND11_MODULE(_pywrap_tf_session, m) {
+PYBIND11_MODULE(
+    _pywrap_tf_session, m, pybind11::mod_gil_not_used()) {
   pybind11_protobuf::ImportNativeProtoCasters();
 
   // Numpy initialization code for array checks.
@@ -1041,11 +1048,31 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         });
     c_tensor.attr("_shape_val") = property(
         [](py::handle handle) {
-          auto py_tensor = AsPyTfObject<PyTensor>(handle);
-          return py_tensor->data->shape_val;
+          auto* data = AsPyTfObjectData<PyTensor>(handle);
+#ifdef Py_GIL_DISABLED
+          PyObject* shape_val;
+          {
+            absl::MutexLock lock(&data->shape_val_mu);
+            shape_val = data->shape_val.ptr();
+            Py_XINCREF(shape_val);
+          }
+          return py::reinterpret_steal<py::object>(shape_val);
+#else
+          return data->shape_val;
+#endif  // Py_GIL_DISABLED
         },
         [](py::handle handle, py::object shape) {
-          AsPyTfObjectData<PyTensor>(handle)->shape_val = shape;
+          auto* data = AsPyTfObjectData<PyTensor>(handle);
+#ifdef Py_GIL_DISABLED
+          py::object old_shape;
+          {
+            absl::MutexLock lock(&data->shape_val_mu);
+            old_shape = std::move(data->shape_val);
+            data->shape_val = std::move(shape);
+          }
+#else
+          data->shape_val = std::move(shape);
+#endif  // Py_GIL_DISABLED
         });
     c_tensor.attr("_id") = property(
         [](py::handle handle) {

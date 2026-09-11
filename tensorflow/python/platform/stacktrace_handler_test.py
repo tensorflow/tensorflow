@@ -63,7 +63,7 @@ class StacktraceHandlerTest(test.TestCase):
     logging.info(child_output)
 
     # Verify a stack trace is printed.
-    self.assertIn(b'PyEval_EvalFrame', child_output)
+    self.assertRegex(child_output, rb'PyEval_Eval(?:Frame|Code)')
 
 
 if __name__ == '__main__':
