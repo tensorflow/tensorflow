@@ -47,6 +47,19 @@ class KernelArgPackingRelocation {
   static absl::StatusOr<KernelArgPackingRelocation> FromProto(
       const KernelArgPackingRelocationProto& proto);
 
+  friend bool operator==(const KernelArgPackingRelocation& a,
+                         const KernelArgPackingRelocation& b) {
+    return a.kind_ == b.kind_ && a.argument_index_ == b.argument_index_;
+  }
+  friend bool operator!=(const KernelArgPackingRelocation& a,
+                         const KernelArgPackingRelocation& b) {
+    return !(a == b);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const KernelArgPackingRelocation& r) {
+    return H::combine(std::move(h), r.kind_, r.argument_index_);
+  }
+
  private:
   Kind kind_;
   int argument_index_;
@@ -85,6 +98,19 @@ class KernelArgPackingSpec {
 
   static absl::StatusOr<KernelArgPackingSpec> FromProto(
       const KernelArgPackingSpecProto& proto);
+
+  friend bool operator==(const KernelArgPackingSpec& a,
+                         const KernelArgPackingSpec& b) {
+    return a.constant_ == b.constant_ && a.relocation_ == b.relocation_;
+  }
+  friend bool operator!=(const KernelArgPackingSpec& a,
+                         const KernelArgPackingSpec& b) {
+    return !(a == b);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const KernelArgPackingSpec& s) {
+    return H::combine(std::move(h), s.constant_, s.relocation_);
+  }
 
  private:
   KernelArgPackingSpec(std::vector<char> constant,
@@ -174,6 +200,19 @@ class KernelArgsPackingSpec {
 
   static absl::StatusOr<KernelArgsPackingSpec> FromProto(
       const KernelArgsPackingSpecProto& proto);
+
+  friend bool operator==(const KernelArgsPackingSpec& a,
+                         const KernelArgsPackingSpec& b) {
+    return a.kernel_arguments_ == b.kernel_arguments_;
+  }
+  friend bool operator!=(const KernelArgsPackingSpec& a,
+                         const KernelArgsPackingSpec& b) {
+    return !(a == b);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const KernelArgsPackingSpec& s) {
+    return H::combine(std::move(h), s.kernel_arguments_);
+  }
 
  private:
   std::vector<KernelArgPackingSpec> kernel_arguments_;
