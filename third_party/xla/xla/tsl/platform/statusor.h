@@ -99,8 +99,10 @@ inline void TfAssertOkAndAssignDeprecationMarker() {}
 
 #define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr)                  \
   auto statusor = (::tsl::TfAssertOkAndAssignDeprecationMarker(), (rexpr)); \
-  ASSERT_TRUE(statusor.status().ok())                                       \
-      << ADD_SOURCE_LOCATION(statusor.status());                            \
+  if (!statusor.status().ok()) {                                            \
+    FAIL() << ADD_SOURCE_LOCATION(statusor.status());                       \
+    return;                                                                 \
+  }                                                                         \
   lhs = std::move(statusor).value()
 
 #define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)
