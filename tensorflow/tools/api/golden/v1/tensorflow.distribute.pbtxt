@@ -65,6 +65,10 @@ tf_module {
     mtype: "<class \'module\'>"
   }
   member_method {
+    name: "AutoStrategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "experimental_set_strategy"
     argspec: "args=[\'strategy\'], varargs=None, keywords=None, defaults=None"
   }
