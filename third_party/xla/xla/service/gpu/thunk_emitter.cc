@@ -2494,7 +2494,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostSend(
   return ThunkSequence::Of<HostSendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      src->shape(), slice.slice, *instr->channel_id(), send_recv_events_,
+      slice, *instr->channel_id(), send_recv_events_,
       ConvertFrontendAttributes(instr->frontend_attributes()),
       DeviceConstraint(instr));
 }
@@ -2528,10 +2528,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostSendDone(
         "Unknown channel id in host transfer send done instruction");
   }
 
+  const HloInstruction* src = host_transfer->operand(0);
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
+
   return ThunkSequence::Of<HostSendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           done, ir_emitter_context_->GetNextThunkId()),
-      *host_transfer->channel_id(), send_recv_events_,
+      slice, *host_transfer->channel_id(), send_recv_events_,
       DeviceConstraint(host_transfer));
 }
 
@@ -2543,10 +2546,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostRecvDone(
         "Unknown channel id in host transfer recv done instruction");
   }
 
+  const HloInstruction* src = host_transfer->operand(0);
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
+
   return ThunkSequence::Of<HostRecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           done, ir_emitter_context_->GetNextThunkId()),
-      *host_transfer->channel_id(), send_recv_events_,
+      slice, *host_transfer->channel_id(), send_recv_events_,
       DeviceConstraint(host_transfer));
 }
 
