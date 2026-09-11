@@ -182,6 +182,19 @@ class SoftmaxTest(test.TestCase):
     )
     self.assertEqual(gradient[0], -gradient[1])
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testSoftmaxDoubleGradientPreservesSmallComponent(self):
+    logits = constant_op.constant([37.42994775023705, 0.0], dtypes.float64)
+    cotangent = constant_op.constant([1.0, 0.0], dtypes.float64)
+    with backprop_lib.GradientTape() as tape:
+      tape.watch(logits)
+      objective = math_ops.reduce_sum(nn_ops.softmax(logits) * cotangent)
+    gradient = self.evaluate(tape.gradient(objective, logits))
+
+    tail = 5.551115123125775e-17
+    self.assertAllClose([tail, -tail], gradient, rtol=1e-14, atol=0.0)
+    self.assertEqual(gradient[0], -gradient[1])
+
   @unittest.skipUnless(test.is_built_with_gpu_support(),
                        "Test only applicable when running on GPUs")
   def testDoubleGPU(self):
