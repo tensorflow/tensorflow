@@ -148,6 +148,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/service/gpu:gpu_executable_proto_cc",
+        "//xla/stream_executor:kernel_spec_proto_cc",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
