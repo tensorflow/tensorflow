@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -636,73 +637,131 @@ void MemRefSqueezeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 LogicalResult MemRefReshapeOp::verify() {
-  auto src_ty = getInput().getType();
-  auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  const MemRefType input_ty = getInput().getType();
+  const MemRefType result_ty = getType();
+  if (result_ty.getMemorySpace() != input_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
-  if (src_ty.getShape().size() < 2 || tgt_ty.getShape().size() < 2) {
-    return emitError("Not implemented: 1d memref reshape.");
-  }
-  if (tgt_ty.getElementType() != src_ty.getElementType()) {
+  if (result_ty.getElementType() != input_ty.getElementType()) {
     return emitOpError("Element types don't match.");
   }
-  auto src_elements_num = ShapedType::getNumElements(src_ty.getShape());
-  auto tgt_elements_num = ShapedType::getNumElements(tgt_ty.getShape());
-  if (src_elements_num != tgt_elements_num) {
-    return emitOpError(
-        "Number of elements doesn't match between input and output memref "
-        "type.");
-  }
-  if (src_ty.getLayout().isIdentity() && tgt_ty.getLayout().isIdentity()) {
-    return success();  // Untiled reshape
-  }
-  auto src_layout = dyn_cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = dyn_cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (!src_layout || !tgt_layout) {
-    return emitOpError("Only identity or tiled layouts supported.");
-  }
-  return verifyTiling();
-}
-
-mlir::InFlightDiagnostic MemRefReshapeOp::verifyTiling() {
-  auto src_ty = getInput().getType();
-  auto tgt_ty = getType();
-  auto src_layout = cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (src_layout.getTiles() != tgt_layout.getTiles()) {
-    return emitOpError(
-        "Expected the same tiling for the input and output memref.");
-  }
-  if (src_layout.getTiles().empty()) {
-    return {};  // Untiled reshape
-  }
-  auto tile = src_layout.getTiles().front().dimensions();
-  if (tile.size() != 2) {
-    return emitOpError("Not implemented: memref reshape with 1D tiling.");
-  }
-  if (!src_layout.tilesAreKnownContiguous(src_ty.getShape()) ||
-      !tgt_layout.tilesAreKnownContiguous(tgt_ty.getShape())) {
-    return emitOpError("Not implemented: reshape on a non-contiguous memref.");
-  }
-  auto src_tiled_shape = src_ty.getShape().take_back(tile.size());
-  auto tgt_tiled_shape = tgt_ty.getShape().take_back(tile.size());
-  bool is_src_align_tile_2nd_minor = src_tiled_shape[0] % tile[0] == 0;
-  bool is_src_align_tile_minor = src_tiled_shape[1] % tile[1] == 0;
-  bool is_tgt_align_tile_2nd_minor = tgt_tiled_shape[0] % tile[0] == 0;
-  bool is_tgt_align_tile_minor = tgt_tiled_shape[1] % tile[1] == 0;
-  if (tile[0] == 1 && is_src_align_tile_minor && is_tgt_align_tile_minor) {
-    // When the tiling is (1, ?) and the source and target shapes are aligned
-    // to the tile, we support reshape on any dims.
-  } else if (tgt_tiled_shape[1] != src_tiled_shape[1]) {
-    return emitOpError("Expected the minormost dimension to be unchanged");
-  } else if (tgt_tiled_shape[0] != src_tiled_shape[0]) {
-    if (!is_src_align_tile_2nd_minor || !is_tgt_align_tile_2nd_minor) {
-      return emitOpError(
-          "Expected the 2nd minor dimension is aligned to the tile");
+  int64_t input_static_elements = 1;
+  int64_t result_static_elements = 1;
+  int64_t input_dynamic_dims = 0;
+  int64_t result_dynamic_dims = 0;
+  for (const int64_t dim : input_ty.getShape()) {
+    if (ShapedType::isDynamic(dim)) {
+      ++input_dynamic_dims;
+    } else {
+      input_static_elements *= dim;
     }
   }
-  return {};
+  for (const int64_t dim : result_ty.getShape()) {
+    if (ShapedType::isDynamic(dim)) {
+      ++result_dynamic_dims;
+    } else {
+      result_static_elements *= dim;
+    }
+  }
+  const bool is_static = input_dynamic_dims == 0;
+  if (is_static != (result_dynamic_dims == 0)) {
+    return emitOpError(
+        "Input and result shapes must be both static or both dynamic.");
+  }
+  if (is_static && input_static_elements != result_static_elements) {
+    return emitOpError("Input and result number of elements don't match.");
+  }
+  if (result_dynamic_dims > 1) {
+    return emitOpError(
+        "Multiple result dynamic dimensions (their values are ambiguous).");
+  }
+  // The above checks are fundamental, the following is simply unimplemented:
+  if (!is_static && (input_dynamic_dims > 1 ||
+                     input_static_elements != result_static_elements)) {
+    // inferResultLayout relies on this check. Make sure to update it when
+    // removing this.
+    return emitOpError(
+        "Not implemented: Input with multiple dynamic dimensions or a changing "
+        "single dynamic dimension.");
+  }
+  FAILUREOR_ASSIGN_OR_RETURN(
+      const MemRefLayoutAttrInterface expected_result_layout,
+      inferResultLayout(input_ty, result_ty.getShape(),
+                        [&]() { return emitOpError(); }));
+  if (expected_result_layout != result_ty.getLayout()) {
+    return emitOpError("Expected result layout to be ")
+           << expected_result_layout;
+  }
+  return success();
+}
+
+FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
+    const MemRefType input_type, const ArrayRef<int64_t> result_shape,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  MLIRContext* const ctx = input_type.getContext();
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  const MemRefLayoutAttrInterface input_layout = input_type.getLayout();
+  const int64_t result_rank = result_shape.size();
+  if (const auto input_tiled_layout = dyn_cast<TiledLayoutAttr>(input_layout)) {
+    if (!input_tiled_layout.tilesAreKnownContiguous(input_type.getShape())) {
+      return emit_error()
+             << "Not implemented: Reshape on a non-contiguous memref.";
+    }
+    const ArrayRef<xla::Tile> input_tiles = input_tiled_layout.getTiles();
+    if (input_tiles.empty()) {
+      // Untiled reshape
+      return MemRefLayoutAttrInterface(
+          TiledLayoutAttr::getContiguous(ctx, /*tiles=*/{}, result_shape));
+    }
+    const ArrayRef<int64_t> input_first_tile = input_tiles.front().dimensions();
+    const int64_t input_first_tile_rank = input_first_tile.size();
+    if (result_rank < input_first_tile_rank) {
+      return emit_error() << "Not implemented: Result has smaller rank than "
+                             "input's first tile";
+    }
+    int64_t i = 0;
+    // Leading tile dimensions of size 1 can be effectively ignored.
+    while (i < input_first_tile_rank && input_first_tile[i] == 1) {
+      ++i;
+    }
+    if (i == input_first_tile_rank) {
+      // Untiled reshape
+      return MemRefLayoutAttrInterface(
+          TiledLayoutAttr::getContiguous(ctx, /*tiles=*/{}, result_shape));
+    }
+    // Excluding leading ones, tiled dimensions must remain unchanged, with the
+    // possible exception of the first. Dimensions can be folded into or
+    // unfolded from it if it is tile-aligned in both the input and result.
+    // NOTE: This relies on the verifier enforcing that, if there is a dynamic
+    //       dimension, it is preserved between input and result.
+    auto input_dim_it = input_shape.end() - input_first_tile_rank + i;
+    auto result_dim_it = result_shape.end() - input_first_tile_rank + i;
+    bool can_preserve_tiling = *input_dim_it == *result_dim_it ||
+                               (ShapedType::isStatic(*input_dim_it) &&
+                                ShapedType::isStatic(*result_dim_it) &&
+                                *input_dim_it % input_first_tile[i] == 0 &&
+                                *result_dim_it % input_first_tile[i] == 0);
+    ++i;
+    ++input_dim_it;
+    ++result_dim_it;
+    for (; i < input_first_tile_rank; ++i, ++input_dim_it, ++result_dim_it) {
+      can_preserve_tiling &= *input_dim_it == *result_dim_it;
+    }
+    if (can_preserve_tiling) {
+      return MemRefLayoutAttrInterface(
+          TiledLayoutAttr::getContiguous(ctx, input_tiles, result_shape));
+    }
+    return emit_error()
+           << "Not implemented: Supported only when tiled dimensions remain "
+              "unchanged, except maybe for tile-aligned folding/unfolding of "
+              "the first tiled dimension.";
+  }
+  if (input_layout.isIdentity()) {
+    // Untiled reshape
+    return MemRefLayoutAttrInterface(AffineMapAttr::get(
+        AffineMap::getMultiDimIdentityMap(result_rank, ctx)));
+  }
+  return emit_error() << "Only tiled or identity layouts supported.";
 }
 
 LogicalResult TransposeOp::verify() {
