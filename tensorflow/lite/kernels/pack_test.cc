@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <type_traits>
 #include <vector>
 
@@ -83,6 +84,50 @@ class PackOpModel : public SingleOpModel {
  private:
   int output_;
 };
+
+class PrepareOnlyPackOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyPackOpModel(const std::vector<int>& input_shape, int axis,
+                         int values_count) {
+    std::vector<std::vector<int>> all_input_shapes;
+    for (int i = 0; i < values_count; ++i) {
+      all_input_shapes.push_back(input_shape);
+      AddInput({TensorType_FLOAT32, input_shape});
+    }
+    AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(BuiltinOperator_PACK, BuiltinOptions_PackOptions,
+                 CreatePackOptions(builder_, values_count, axis).Union());
+    BuildInterpreter(all_input_shapes,
+                     /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+};
+
+TEST(PackPrepareTest, RejectsAxisOutsideInt8Range) {
+  constexpr int kAxis = std::numeric_limits<int8_t>::max() + 1;
+  const std::vector<int> input_shape(kAxis, 1);
+  PrepareOnlyPackOpModel too_large(input_shape, kAxis, /*values_count=*/2);
+  EXPECT_EQ(too_large.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyPackOpModel normalized_too_large(input_shape, /*axis=*/-1,
+                                              /*values_count=*/2);
+  EXPECT_EQ(normalized_too_large.AllocateTensors(), kTfLiteError);
+}
+
+TEST(PackOpTest, PacksAtInt8MaxAxis) {
+  constexpr int kAxis = std::numeric_limits<int8_t>::max();
+  const std::vector<int> input_shape(kAxis, 1);
+  PackOpModel<float> model({TensorType_FLOAT32, input_shape}, kAxis,
+                           /*values_count=*/2);
+  model.SetInput(0, {1});
+  model.SetInput(1, {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  std::vector<int> expected_shape = input_shape;
+  expected_shape.push_back(/*values_count=*/2);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray(expected_shape));
+}
 
 // float32 tests.
 TEST(PackOpTest, FloatThreeInputs) {
