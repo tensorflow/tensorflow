@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,45 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
-#define XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
+#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_PROMOTION_H_
+#define XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_PROMOTION_H_
 
-#include <cstdint>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/change_op_data_type.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-// Combines small non-dependent CollectivePermute ops into larger combined
-// CollectivePermute ops. A single combined op is more efficient as each
-// collective op has some inherent overhead including kernel launching.
-class CollectivePermuteCombiner : public HloModulePass {
+class AllReducePromotion : public HloModulePass {
  public:
-  CollectivePermuteCombiner(int64_t combine_threshold_in_bytes,
-                            int64_t combine_threshold_count);
-
-  absl::string_view name() const override {
-    return "collective-permute-combiner";
-  }
-
-  // Combine collective permute ops up to this threshold.
-  int64_t combine_threshold_in_bytes_;
-
-  // Combine collective permute ops up to this threshold (number of operands).
-  int64_t combine_threshold_count_;
+  // If `promote_all_reduce_only` is true, kReduceScatter is skipped and
+  // only kAllReduce instructions are promoted.
+  explicit AllReducePromotion(
+      absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types,
+      bool promote_all_reduce_only = false);
+  absl::string_view name() const override { return "all-reduce-promotion"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  ChangeOpDataType pass_;
 };
 
 }  // namespace xla
-
-#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
+#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_PROMOTION_H_
