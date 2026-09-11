@@ -146,6 +146,42 @@ TEST(TensorListTest, DecodeValidRoundTripCompatibility) {
   EXPECT_EQ(decoded.tensors()[3].scalar<int32_t>()(), 9);
 }
 
+TEST(TensorListTest, DecodeRejectsElementLargerThanFullyDefinedShape) {
+  // element_shape is fully defined as [1], but the stored element holds 4
+  // values. Consumers (e.g. TensorListStack) skip the per-element shape check
+  // when element_shape is fully defined and size the output from element_shape,
+  // so this element would overrun the output buffer.
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(1);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = Tensor(DT_FLOAT, TensorShape({4}));
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsElementDtypeMismatch) {
+  TensorShapeProto shape;
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = ScalarInt32Tensor(1);
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeAcceptsElementCompatibleWithPartialShape) {
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(-1);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = Tensor(DT_FLOAT, TensorShape({4}));
+  EXPECT_TRUE(TensorList().Decode(data));
+}
+
 TEST(TensorListTest, DecodeRejectsOutOfRangeMaxNumElements) {
   TensorShapeProto shape;
   VariantTensorData data;
