@@ -27,6 +27,7 @@ limitations under the License.
 #define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
 #endif
 
+#include <limits>
 #include <numeric>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -128,6 +129,21 @@ class SplitVOpBase : public OpKernel {
                                        "input."));
         neg_one_dim = d;
       } else {
+        // Accumulate with an explicit overflow guard. `determined_size += size`
+        // wraps for large `size_splits`, and a wrapped total can equal
+        // `input_size_split_dim` and pass the check below, letting the aligned
+        // slicing path compute an endpoint that reaches a fatal `Tensor::Slice`
+        // invariant. Rejecting overflow here also keeps that later path safe,
+        // since the accepted total then bounds every partial sum.
+        const bool overflow =
+            (size > 0 &&
+             determined_size > std::numeric_limits<Tlen>::max() - size) ||
+            (size < 0 &&
+             determined_size < std::numeric_limits<Tlen>::min() - size);
+        OP_REQUIRES(context, !overflow,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Sum of size_splits overflows the index type at index ",
+                        d, ".")));
         determined_size += size;
       }
     }
