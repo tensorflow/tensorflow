@@ -3884,6 +3884,7 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         ":gpu_prim_hdrs",
         ":transpose_functor",
+        "//tensorflow/core/util:overflow",
     ],
 )
 
