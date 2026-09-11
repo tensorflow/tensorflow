@@ -148,6 +148,7 @@ cc_library(
         "@xla//xla/client:client_library",
         "@xla//xla/client:compile_only_client",
         "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/service:compiler",
         "@xla//xla/service/cpu:cpu_aot_compilation_result",
         "@xla//xla/service/cpu:cpu_compiler",

@@ -122,7 +122,6 @@ class DeviceExecutionPersistorTest : public ::testing::Test {
   XlaCompiler::Options DefaultXlaOptions() {
     XlaCompiler::Options options;
     options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
-    options.client = xla_compiler_client_->client();
     options.flib_def = flib_def_.get();
     return options;
   }
@@ -130,7 +129,9 @@ class DeviceExecutionPersistorTest : public ::testing::Test {
   XlaCompiler::Options DefaultPjRtOptions() {
     XlaCompiler::Options options;
     options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
-    options.client = nullptr;
+    if (pjrt_compiler_client_ != nullptr) {
+      options.client = pjrt_compiler_client_->client();
+    }
     options.flib_def = flib_def_.get();
     return options;
   }

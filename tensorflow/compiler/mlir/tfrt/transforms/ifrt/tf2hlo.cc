@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -51,14 +52,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/client_library.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/service/device_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -71,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -244,12 +244,8 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
   VLOG(1) << "device_type: " << device_type;
 
-  TF_ASSIGN_OR_RETURN(
-      auto* platform,
-      stream_executor::PlatformManager::PlatformWithName("Host"));
-  TF_ASSIGN_OR_RETURN(
-      auto* client, xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform));
-
+  TF_ASSIGN_OR_RETURN(auto* compiler,
+                      xla::GetDefaultPjRtCompiler(xla::CpuName()));
 
   std::vector<TensorShape> arg_shapes;
   arg_shapes.reserve(arg.input_dtypes_and_shapes.size());
@@ -286,7 +282,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
           tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns(
               tensorflow::UseNoPreferenceLayoutFn(),
               arg.shape_representation_fn),
-          arg_shapes, &arg_core_mapping, &per_core_arg_shapes, client));
+          arg_shapes, &arg_core_mapping, &per_core_arg_shapes, compiler));
 
   for (auto arg_shapes_iter = per_core_arg_shapes.begin() + 1;
        arg_shapes_iter != per_core_arg_shapes.end(); ++arg_shapes_iter) {

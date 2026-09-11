@@ -46,6 +46,8 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -185,7 +187,8 @@ class XlaCompiler {
     // -1 indicates the default device should be used.
     int device_ordinal = -1;
 
-    xla::Client* client = nullptr;
+    xla::PjRtCompiler* compiler = nullptr;
+    xla::PjRtClient* client = nullptr;
 
     // Function library in which to find function definitions. Must be non-null.
     const FunctionLibraryDefinition* flib_def = nullptr;
@@ -342,7 +345,8 @@ class XlaCompiler {
       const std::string& host_compute_name, xla::XlaOp handle);
 
   const Options& options() const { return options_; }
-  xla::Client* client() const { return options_.client; }
+  xla::PjRtCompiler* compiler() const { return options_.compiler; }
+  xla::PjRtClient* client() const { return options_.client; }
   FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
   void PushNodeTokenMapping();
