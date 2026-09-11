@@ -823,6 +823,27 @@ class ArrayMethodsTest(test.TestCase):
     self.assertRaises(ValueError, np_array_ops.amax, np.ones([2, 2]), out=[])
     self.assertRaises(ValueError, np_array_ops.amin, np.ones([2, 2]), out=[])
 
+    # A non-reduced axis being empty is fine; the result is just empty too.
+    # (Not `.tolist()`: a zero-size leading dimension collapses to `[]` and
+    # loses the trailing shape, e.g. `np.zeros((0, 3)).tolist() == []`.)
+    run_test(np.zeros((3, 0)), axis=0)
+    run_test(np.zeros((0, 3)), axis=1)
+
+    # max/min have no identity element, so (like NumPy) reducing over an
+    # empty axis must raise instead of silently returning +/-inf.
+    for arr, axis in [
+        (np.zeros((3, 0)), 1),
+        (np.zeros((3, 0)), None),
+        (np.zeros((0, 3)), 0),
+        (np.zeros((0,)), None),
+        (np.zeros((2, 0, 3)), 1),
+        (np.zeros((2, 0, 3)), -2),
+    ]:
+      for fn in self.array_transforms:
+        arr_arg = fn(arr)
+        self.assertRaises(ValueError, np_array_ops.amax, arr_arg, axis=axis)
+        self.assertRaises(ValueError, np_array_ops.amin, arr_arg, axis=axis)
+
   def testMean(self):
 
     def run_test(arr, *args, **kwargs):

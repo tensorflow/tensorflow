@@ -699,11 +699,55 @@ def mean(a, axis=None, dtype=None, out=None, keepdims=None):
   )
 
 
+def _raise_if_empty_reduction(a, axis, op_name):
+  """Raises like NumPy does when reducing over a zero-size axis.
+
+  Unlike `sum` (identity 0) or `mean` (defined via NaN), `max`/`min` have no
+  identity element, so NumPy raises a `ValueError` instead of silently
+  returning +/-inf when a reduced axis is empty. This only checks cases where
+  both the relevant shape and the axis are statically known: if `a`'s rank,
+  a relevant dimension, or `axis` itself (e.g. a symbolic tensor while
+  tracing a `tf.function`) can't be resolved to concrete values, no error is
+  raised here and the underlying reduction proceeds as before.
+
+  Args:
+    a: the (already converted) array being reduced.
+    axis: the `axis` argument as passed to `amax`/`amin`. May be `None`, a
+      Python/NumPy integer, a sequence of them, or a Tensor.
+    op_name: 'maximum' or 'minimum', to match NumPy's error message.
+  """
+  rank = a.shape.rank
+  if rank is None:
+    return
+  dims = a.shape.as_list()
+  if axis is None:
+    axes = list(range(rank))
+  else:
+    if isinstance(axis, tensor_lib.Tensor):
+      if not isinstance(axis, ops.EagerTensor):
+        return  # Symbolic axis: can't resolve statically.
+      axis = axis.numpy()
+    try:
+      axis_arr = np.asarray(axis)
+      axes = [int(ax) for ax in np.atleast_1d(axis_arr)]
+    except (TypeError, ValueError):
+      return  # Unrecognized axis representation: be conservative.
+  for ax in axes:
+    norm_ax = ax + rank if ax < 0 else ax
+    if 0 <= norm_ax < rank and dims[norm_ax] == 0:
+      raise ValueError(
+          f'zero-size array to reduction operation {op_name} which has no'
+          ' identity'
+      )
+
+
 @tf_export.tf_export('experimental.numpy.amax', v1=[])
 @np_utils.np_doc('amax', unsupported_params=['out'])
 def amax(a, axis=None, out=None, keepdims=None):
   if out is not None:
     raise ValueError('Setting out is not supported.')
+  a = asarray(a)
+  _raise_if_empty_reduction(a, axis, 'maximum')
   return _reduce(
       math_ops.reduce_max,
       a,
@@ -721,6 +765,8 @@ def amax(a, axis=None, out=None, keepdims=None):
 def amin(a, axis=None, out=None, keepdims=None):
   if out is not None:
     raise ValueError('Setting out is not supported.')
+  a = asarray(a)
+  _raise_if_empty_reduction(a, axis, 'minimum')
   return _reduce(
       math_ops.reduce_min,
       a,
