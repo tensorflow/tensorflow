@@ -58,19 +58,44 @@ cuda_version = 0  # placeholder
 cuda_major_version = '12'  # placeholder
 cuda_wheel_suffix = ''  # placeholder
 
-nvidia_cublas_version = ''  # placeholder
-nvidia_cuda_cupti_version = ''  # placeholder
-nvidia_cuda_nvcc_version = ''  # placeholder
-nvidia_cuda_runtime_version = ''  # placeholder
-nvidia_cudnn_version = ''  # placeholder
-nvidia_cufft_version = ''  # placeholder
-nvidia_cusolver_version = ''  # placeholder
-nvidia_cusparse_version = ''  # placeholder
-nvidia_nccl_version = ''  # placeholder
-nvidia_nvjitlink_version = ''  # placeholder
-nvidia_cuda_nvrtc_version = ''  # placeholder
-nvidia_curand_version = ''  # placeholder
-nvidia_nvshmem_version = ''  # placeholder
+cuda12_nvidia_cublas_version = ''  # placeholder
+cuda12_nvidia_cuda_cupti_version = ''  # placeholder
+cuda12_nvidia_cuda_nvcc_version = ''  # placeholder
+cuda12_nvidia_cuda_runtime_version = ''  # placeholder
+cuda12_nvidia_cudnn_version = ''  # placeholder
+cuda12_nvidia_cufft_version = ''  # placeholder
+cuda12_nvidia_cusolver_version = ''  # placeholder
+cuda12_nvidia_cusparse_version = ''  # placeholder
+cuda12_nvidia_nccl_version = ''  # placeholder
+cuda12_nvidia_nvjitlink_version = ''  # placeholder
+cuda12_nvidia_cuda_nvrtc_version = ''  # placeholder
+cuda12_nvidia_curand_version = ''  # placeholder
+cuda12_nvidia_nvshmem_version = ''  # placeholder
+
+cuda13_nvidia_cublas_version = ''  # placeholder
+cuda13_nvidia_cuda_cupti_version = ''  # placeholder
+cuda13_nvidia_cuda_nvcc_version = ''  # placeholder
+cuda13_nvidia_cuda_runtime_version = ''  # placeholder
+cuda13_nvidia_cudnn_version = ''  # placeholder
+cuda13_nvidia_cufft_version = ''  # placeholder
+cuda13_nvidia_cusolver_version = ''  # placeholder
+cuda13_nvidia_cusparse_version = ''  # placeholder
+cuda13_nvidia_nccl_version = ''  # placeholder
+cuda13_nvidia_nvjitlink_version = ''  # placeholder
+cuda13_nvidia_cuda_nvrtc_version = ''  # placeholder
+cuda13_nvidia_curand_version = ''  # placeholder
+cuda13_nvidia_nvshmem_version = ''  # placeholder
+cuda13_nvidia_nvvm_version = ''  # placeholder
+cuda13_nvidia_cuda_crt_version = ''  # placeholder
+
+if str(cuda_major_version) == '13':
+  nvidia_cuda_nvcc_version = cuda13_nvidia_cuda_nvcc_version
+  nvidia_cuda_nvrtc_version = cuda13_nvidia_cuda_nvrtc_version
+  nvidia_cuda_runtime_version = cuda13_nvidia_cuda_runtime_version
+else:
+  nvidia_cuda_nvcc_version = cuda12_nvidia_cuda_nvcc_version
+  nvidia_cuda_nvrtc_version = cuda12_nvidia_cuda_nvrtc_version
+  nvidia_cuda_runtime_version = cuda12_nvidia_cuda_runtime_version
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
@@ -156,32 +181,59 @@ if collaborator_build:
       + ';platform_system=="Windows"',
   ]
 
+NVIDIA_CUDA12_PACKAGES = [
+    f'nvidia-cublas-cu12{cuda12_nvidia_cublas_version}',
+    f'nvidia-cuda-cupti-cu12{cuda12_nvidia_cuda_cupti_version}',
+    f'nvidia-cuda-nvcc-cu12{cuda12_nvidia_cuda_nvcc_version}',
+    f'nvidia-cuda-nvrtc-cu12{cuda12_nvidia_cuda_nvrtc_version}',
+    f'nvidia-cuda-runtime-cu12{cuda12_nvidia_cuda_runtime_version}',
+    f'nvidia-cudnn-cu12{cuda12_nvidia_cudnn_version}',
+    f'nvidia-cufft-cu12{cuda12_nvidia_cufft_version}',
+    f'nvidia-curand-cu12{cuda12_nvidia_curand_version}',
+    f'nvidia-cusolver-cu12{cuda12_nvidia_cusolver_version}',
+    f'nvidia-cusparse-cu12{cuda12_nvidia_cusparse_version}',
+    f'nvidia-nccl-cu12{cuda12_nvidia_nccl_version}',
+    f'nvidia-nvjitlink-cu12{cuda12_nvidia_nvjitlink_version}',
+    f'nvidia-nvshmem-cu12{cuda12_nvidia_nvshmem_version}',
+]
+
+NVIDIA_CUDA13_PACKAGES = [
+    f'nvidia-cublas{cuda13_nvidia_cublas_version}',
+    f'nvidia-cuda-cupti{cuda13_nvidia_cuda_cupti_version}',
+    f'nvidia-cuda-nvcc{cuda13_nvidia_cuda_nvcc_version}',
+    f'nvidia-cuda-nvrtc{cuda13_nvidia_cuda_nvrtc_version}',
+    f'nvidia-cuda-runtime{cuda13_nvidia_cuda_runtime_version}',
+    f'nvidia-cudnn-cu13{cuda13_nvidia_cudnn_version}',
+    f'nvidia-cufft{cuda13_nvidia_cufft_version}',
+    f'nvidia-curand{cuda13_nvidia_curand_version}',
+    f'nvidia-cusolver{cuda13_nvidia_cusolver_version}',
+    f'nvidia-cusparse{cuda13_nvidia_cusparse_version}',
+    f'nvidia-nccl-cu13{cuda13_nvidia_nccl_version}',
+    f'nvidia-nvjitlink{cuda13_nvidia_nvjitlink_version}',
+    f'nvidia-nvshmem-cu13{cuda13_nvidia_nvshmem_version}',
+    f'nvidia-nvvm{cuda13_nvidia_nvvm_version}',
+    f'nvidia-cuda-crt{cuda13_nvidia_cuda_crt_version}',
+]
+
 # Set up extra packages, which are optional sets of other Python package deps.
-# E.g. "pip install tensorflow[and-cuda]" below installs the normal TF deps,
-# plus the CUDA libraries listed.
+# E.g. "pip install tensorflow[cuda12]" or "pip install tensorflow[cuda13]"
 EXTRA_PACKAGES = {
-    'and-cuda': [
-        # TODO(nluehr): set nvidia-* versions based on build components.
-        f'nvidia-cublas{cuda_wheel_suffix}{nvidia_cublas_version}',
-        f'nvidia-cuda-cupti{cuda_wheel_suffix}{nvidia_cuda_cupti_version}',
-        f'nvidia-cuda-nvcc{cuda_wheel_suffix}{nvidia_cuda_nvcc_version}',
-        f'nvidia-cuda-nvrtc{cuda_wheel_suffix}{nvidia_cuda_nvrtc_version}',
-        f'nvidia-cuda-runtime{cuda_wheel_suffix}{nvidia_cuda_runtime_version}',
-        f'nvidia-cudnn-cu13{nvidia_cudnn_version}' if cuda_major_version == '13' else f'nvidia-cudnn-cu12{nvidia_cudnn_version}',
-        f'nvidia-cufft{cuda_wheel_suffix}{nvidia_cufft_version}',
-        f'nvidia-curand{cuda_wheel_suffix}{nvidia_curand_version}',
-        f'nvidia-cusolver{cuda_wheel_suffix}{nvidia_cusolver_version}',
-        f'nvidia-cusparse{cuda_wheel_suffix}{nvidia_cusparse_version}',
-        f'nvidia-nccl-cu13{nvidia_nccl_version}' if cuda_major_version == '13' else f'nvidia-nccl-cu12{nvidia_nccl_version}',
-        f'nvidia-nvjitlink{cuda_wheel_suffix}{nvidia_nvjitlink_version}',
-        f'nvidia-nvshmem-cu13{nvidia_nvshmem_version}' if cuda_major_version == '13' else f'nvidia-nvshmem-cu12{nvidia_nvshmem_version}',
-    ],
+    'and-cuda': (
+        NVIDIA_CUDA13_PACKAGES
+        if cuda_major_version == '13'
+        else NVIDIA_CUDA12_PACKAGES
+    ),
+    'cuda': NVIDIA_CUDA12_PACKAGES,
+    'cuda12': NVIDIA_CUDA12_PACKAGES,
+    'cuda12-local': [],
+    'cuda13': NVIDIA_CUDA13_PACKAGES,
+    'cuda13-local': [],
     'gcs-filesystem': [
         ('tensorflow-io-gcs-filesystem>=0.23.1; '
          'sys_platform!="win32" and python_version<"3.13"'),
         ('tensorflow-io-gcs-filesystem>=0.23.1; '
          'sys_platform=="win32" and python_version<"3.12"'),
-    ]
+    ],
 }
 
 DOCLINES = __doc__.split('\n')

@@ -73,6 +73,52 @@ absl::StatusOr<void*> GetDsoHandle(const std::string& name,
   VLOG(1) << message;
   return absl::Status(absl::StatusCode::kFailedPrecondition, message);
 }
+absl::StatusOr<void*> GetCudaDsoHandle(const std::string& name,
+                                       absl::string_view version) {
+  auto handle = GetDsoHandle(name, version);
+  if (handle.ok()) return handle;
+  auto primary_status = handle.status();
+
+  // Determine alternative major version across CUDA 12 and CUDA 13 ecosystems.
+  absl::string_view alt_version = "";
+  if (name == "cufft" || name == "cusolver") {
+    alt_version = (version == "12") ? "11" : (version == "11" ? "12" : "");
+  } else if (name == "cudnn") {
+    alt_version = (version == "9") ? "8" : (version == "8" ? "9" : "");
+  } else {
+    alt_version = (version == "13") ? "12" : (version == "12" ? "13" : "");
+  }
+
+  if (!alt_version.empty()) {
+    handle = GetDsoHandle(name, alt_version);
+    if (handle.ok()) return handle;
+  }
+
+  // Fallback to unversioned library (e.g. system libcublas.so).
+  handle = GetDsoHandle(name, "");
+  if (handle.ok()) return handle;
+
+  // If all attempts failed, report primary failure with fallback context.
+  std::string tried = absl::StrCat(
+      "'", tsl::internal::FormatLibraryFileName(name, std::string(version)),
+      "'");
+  if (!alt_version.empty()) {
+    absl::StrAppend(
+        &tried, ", '",
+        tsl::internal::FormatLibraryFileName(name, std::string(alt_version)),
+        "'");
+  }
+  absl::StrAppend(&tried, ", '", tsl::internal::FormatLibraryFileName(name, ""),
+                  "'");
+
+  auto message = absl::StrCat("Could not load dynamic library (tried ", tried,
+                              "); dlerror: ", primary_status.message());
+  if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
+    absl::StrAppend(&message, "; LD_LIBRARY_PATH: ", ld_library_path);
+  }
+  VLOG(1) << message;
+  return absl::Status(absl::StatusCode::kFailedPrecondition, message);
+}
 }  // namespace
 
 namespace DsoLoader {
@@ -95,51 +141,47 @@ absl::StatusOr<void*> GetNvmlDsoHandle() {
 }
 
 absl::StatusOr<void*> GetNvrtcDsoHandle() {
-  return GetDsoHandle("nvrtc", GetCudaRtVersion());
+  return GetCudaDsoHandle("nvrtc", GetCudaRtVersion());
 }
 
 absl::StatusOr<void*> GetCudaRuntimeDsoHandle() {
-  return GetDsoHandle("cudart", GetCudaRtVersion());
+  return GetCudaDsoHandle("cudart", GetCudaRtVersion());
 }
 
 absl::StatusOr<void*> GetCublasDsoHandle() {
-  return GetDsoHandle("cublas", GetCublasVersion());
+  return GetCudaDsoHandle("cublas", GetCublasVersion());
 }
 
 absl::StatusOr<void*> GetCublasLtDsoHandle() {
-  return GetDsoHandle("cublasLt", GetCublasVersion());
+  return GetCudaDsoHandle("cublasLt", GetCublasVersion());
 }
 
 absl::StatusOr<void*> GetCufftDsoHandle() {
-  return GetDsoHandle("cufft", GetCufftVersion());
+  return GetCudaDsoHandle("cufft", GetCufftVersion());
 }
 
 absl::StatusOr<void*> GetCusolverDsoHandle() {
-  return GetDsoHandle("cusolver", GetCusolverVersion());
+  return GetCudaDsoHandle("cusolver", GetCusolverVersion());
 }
 
 absl::StatusOr<void*> GetCusparseDsoHandle() {
-  return GetDsoHandle("cusparse", GetCusparseVersion());
+  return GetCudaDsoHandle("cusparse", GetCusparseVersion());
 }
 
 absl::StatusOr<void*> GetCuptiDsoHandle() {
-  // Load specific version of CUPTI this is built.
-  auto status_or_handle = GetDsoHandle("cupti", GetCuptiVersion());
-  if (status_or_handle.ok()) return status_or_handle;
-  // Load whatever libcupti.so user specified.
-  return GetDsoHandle("cupti", "");
+  return GetCudaDsoHandle("cupti", GetCuptiVersion());
 }
 
 absl::StatusOr<void*> GetCudnnDsoHandle() {
-  return GetDsoHandle("cudnn", GetCudnnVersion());
+  return GetCudaDsoHandle("cudnn", GetCudnnVersion());
 }
 
 absl::StatusOr<void*> GetNcclDsoHandle() {
-  return GetDsoHandle("nccl", GetNcclVersion());
+  return GetCudaDsoHandle("nccl", GetNcclVersion());
 }
 
 absl::StatusOr<void*> GetNvshmemDsoHandle() {
-  return GetDsoHandle("nvshmem_host", GetNvshmemVersion());
+  return GetCudaDsoHandle("nvshmem_host", GetNvshmemVersion());
 }
 
 absl::StatusOr<void*> GetNvInferDsoHandle() {
