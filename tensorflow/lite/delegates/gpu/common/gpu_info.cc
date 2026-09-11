@@ -54,6 +54,8 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
+      // Adreno 8xx series
+      {"831", AdrenoGpu::kAdreno831},
       // Adreno 7xx series
       {"750", AdrenoGpu::kAdreno750},
       {"740", AdrenoGpu::kAdreno740},
@@ -231,6 +233,10 @@ bool AdrenoInfo::IsAdreno6xx() const {
          adreno_gpu == AdrenoGpu::kAdreno685;
 }
 
+bool AdrenoInfo::IsAdreno8xx() const {
+  return adreno_gpu == AdrenoGpu::kAdreno831;
+}
+
 bool AdrenoInfo::IsAdreno7xx() const {
   return adreno_gpu == AdrenoGpu::kAdreno730 ||
          adreno_gpu == AdrenoGpu::kAdreno740 ||
@@ -243,11 +249,12 @@ bool AdrenoInfo::IsBetterThan(AdrenoGpu gpu) const {
 }
 
 bool AdrenoInfo::IsAdreno6xxOrHigher() const {
-  return (!compiler_bugs_in_a6xx && IsAdreno6xx()) || IsAdreno7xx();
+  return (!compiler_bugs_in_a6xx && IsAdreno6xx()) || IsAdreno7xx() ||
+         IsAdreno8xx();
 }
 
 int AdrenoInfo::GetMaximumWavesCount() const {
-  if (IsAdreno7xx()) {
+  if (IsAdreno8xx() || IsAdreno7xx()) {
     return 16;
   } else if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
@@ -262,7 +269,7 @@ int AdrenoInfo::GetMaximumWavesCount() const {
 }
 
 int AdrenoInfo::GetRegisterMemorySizePerComputeUnit() const {
-  if (IsAdreno7xx()) {
+  if (IsAdreno8xx() || IsAdreno7xx()) {
     return 128 * 96 * 16;
   } else if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
@@ -290,7 +297,7 @@ int AdrenoInfo::GetMaximumWavesCount(int register_footprint_per_tread,
 }
 
 int AdrenoInfo::GetWaveSize(bool full_wave) const {
-  if (IsAdreno7xx()) {
+  if (IsAdreno8xx() || IsAdreno7xx()) {
     return full_wave ? 128 : 64;
   } else if (IsAdreno6xx()) {
     return full_wave ? 128 : 64;
@@ -304,6 +311,9 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
 int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
+    // Adreno 8xx series
+    case AdrenoGpu::kAdreno831:
+      return 12;
     // Adreno 7xx series
     case AdrenoGpu::kAdreno750:
       return 6;
@@ -1050,6 +1060,13 @@ bool GpuInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
 }
 
 int GpuInfo::GetComputeUnitsCount() const {
+  if (IsAdreno() && adreno_info.GetComputeUnitsCount() > 0) {
+    if (IsApiOpenCl() && opencl_info.compute_units_count > 0) {
+      return std::max(opencl_info.compute_units_count,
+                      adreno_info.GetComputeUnitsCount());
+    }
+    return adreno_info.GetComputeUnitsCount();
+  }
   if (IsApiOpenCl()) {
     return opencl_info.compute_units_count;
   }
@@ -1063,9 +1080,6 @@ int GpuInfo::GetComputeUnitsCount() const {
       // approximate number
       return 16;
     }
-  }
-  if (IsAdreno()) {
-    return adreno_info.GetComputeUnitsCount();
   }
   if (IsMali()) {
     return mali_info.GetApproximateComputeUnitsCount();
