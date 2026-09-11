@@ -465,18 +465,19 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       break;
     case CudaComputeCapabilities::kHopper: {
       DebugOptions debug_options = GetDebugOptionsForTest();
-      std::string dot_kernel_name = "tf32f32";
+      ::testing::Matcher<const std::string&> dot_kernel_matcher =
+          ::testing::HasSubstr("tf32f32");
       if (debug_options.xla_gpu_enable_cublaslt()) {
-        // CublasLt uses cutlass for TF32.
-        dot_kernel_name = "cutlass_80";
+        dot_kernel_matcher =
+            ::testing::AnyOf(::testing::HasSubstr("cutlass_80"),
+                             ::testing::HasSubstr("sm90_xmma_gemm"));
       }
       EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
                                     ::testing::HasSubstr("loop_and_subtract"),
                                     ::testing::HasSubstr("loop_and_subtract"),
                                     ::testing::HasSubstr("loop_select_fusion"),
-                                    ::testing::HasSubstr(dot_kernel_name),
-                                    ::testing::HasSubstr(dot_kernel_name),
-                                    ::testing::HasSubstr(dot_kernel_name)));
+                                    dot_kernel_matcher, dot_kernel_matcher,
+                                    dot_kernel_matcher));
       break;
     }
     default:
