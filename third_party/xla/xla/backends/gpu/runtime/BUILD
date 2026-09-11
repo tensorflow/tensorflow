@@ -4647,6 +4647,7 @@ cc_library(
     srcs = ["host_execute_thunk.cc"],
     hdrs = ["host_execute_thunk.h"],
     deps = [
+        ":command",
         ":host_async_thunk",
         ":thunk",
         ":thunk_proto_cc",
@@ -4667,6 +4668,7 @@ cc_library(
         "//xla/service:shaped_slice",
         "//xla/service:shaped_slice_proto_cc",
         "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -4697,6 +4699,7 @@ xla_test(
     srcs = ["host_execute_thunk_test.cc"],
     backends = ["gpu"],
     deps = [
+        ":command_state",
         ":host_execute_thunk",
         ":thunk",
         "//xla:executable_run_options",
