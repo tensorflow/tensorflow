@@ -60,7 +60,7 @@ class CpuUtils {
 #if defined(__ANDROID__)
     return GetCpuUtilsHelperSingletonInstance().GetCurrentClockCycle();
 // ----------------------------------------------------------------
-#elif defined(_WIN32)
+#elif defined(_WIN32) && !defined(_M_ARM64)
     return __rdtsc();
 // ----------------------------------------------------------------
 #elif defined(__x86_64__) || defined(__amd64__)
