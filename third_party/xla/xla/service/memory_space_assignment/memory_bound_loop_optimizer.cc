@@ -472,7 +472,8 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
     // and use fields for the current, previous, and next iterations along with
     // the loop indices.
     for (const HloPosition& position : value->positions()) {
-      if (position.instruction->opcode() == HloOpcode::kGetTupleElement) {
+      if (position.instruction->opcode() == HloOpcode::kGetTupleElement ||
+          position.instruction->opcode() == HloOpcode::kTuple) {
         continue;
       }
       std::optional<int64_t> loop_index =

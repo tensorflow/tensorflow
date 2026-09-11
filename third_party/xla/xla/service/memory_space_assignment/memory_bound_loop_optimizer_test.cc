@@ -1706,6 +1706,41 @@ ENTRY entry {
                        RunMsa(module.get(), /*alternate_memory_size=*/512));
 }
 
+TEST_F(MemoryBoundLoopOptimizerTest, TuplePositionAfterUseDoesNotCrash) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[1,4] parameter(0)
+    p1 = f32[1,4] parameter(1)
+    p2 = f32[1,4] parameter(2)
+    p3 = f32[1,4] parameter(3)
+
+    // Iteration 0
+    c0 = f32[1,4] tanh(p0)
+    t0 = (f32[1,4], f32[1,4]) tuple(c0, p0)
+    op1_0 = f32[1,4] tanh(c0)
+    op2_0 = f32[1,4] add(op1_0, op1_0)
+
+    // Iteration 1
+    c1 = f32[1,4] tanh(p1)
+    t1 = (f32[1,4], f32[1,4]) tuple(c1, p1)
+    op1_1 = f32[1,4] tanh(c1)
+    op2_1 = f32[1,4] add(op1_1, op1_1)
+
+    // Iteration 2
+    c2 = f32[1,4] tanh(p2)
+    t2 = (f32[1,4], f32[1,4]) tuple(c2, p2)
+    op1_2 = f32[1,4] tanh(c2)
+    op2_2 = f32[1,4] add(op1_2, op1_2)
+
+    ROOT root = tuple(t0, t1, t2, op2_0, op2_1, op2_2)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto preset_assignments, RunMsa(module.get()));
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
