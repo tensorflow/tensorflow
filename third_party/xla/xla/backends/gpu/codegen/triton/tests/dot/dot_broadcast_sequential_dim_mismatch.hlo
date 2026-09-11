@@ -17,7 +17,7 @@ fusion {
 // CHECK-SAME: %[[ARG0:[^:]+]]: memref<16x32xf32>,
 // CHECK-SAME: %[[ARG1:[^:]+]]: memref<32x16xf32>,
 // CHECK-SAME: %[[ARG2:[^:]+]]: memref<2x16x16xf32>,
-// CHECK-SAME: %[[PID:[^:]+]]: index)
+// CHECK-SAME: %[[PID:[^:]+]]: index{{( \{xla.range = \[0 : index, 1 : index\]\})?}})
 // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<16x16xf32>
 // CHECK-DAG: %[[CONSTANT_0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[CONSTANT_1:.*]] = arith.constant 1 : index

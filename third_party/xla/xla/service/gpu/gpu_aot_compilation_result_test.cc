@@ -30,9 +30,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/internable_kernel_loader_spec.pb.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.pb.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -60,6 +64,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util/split_proto/split_proto_reader.h"
@@ -104,7 +109,11 @@ class GpuAotCompilationResultTest : public ::testing::Test {
   void* const kCudaSymbol = reinterpret_cast<void*>(0x1234567890);
 
   // Creates a dummy GpuExecutableProto, the actual values don't matter much.
-  absl::StatusOr<GpuExecutableProto> CreateGpuExecutableProto() {
+  //
+  // `num_custom_kernels` custom kernel thunks are emitted, all of them running
+  // the same kernel, which is what deduplication is meant to collapse.
+  absl::StatusOr<GpuExecutableProto> CreateGpuExecutableProto(
+      int num_custom_kernels = 1, bool deduplicate_kernel_specs = false) {
     Thunk::ThunkInfo thunk_info;
     thunk_info.thunk_id = 123;
 
@@ -123,8 +132,10 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 /*arity=*/42),
         stream_executor::BlockDim(), stream_executor::ThreadDim(),
         /*shared_memory_bytes=*/23};
-    thunk_sequence.Emplace<CustomKernelThunk>(thunk_info, custom_kernel,
-                                              emitters::KernelArguments({}));
+    for (int i = 0; i < num_custom_kernels; ++i) {
+      thunk_sequence.Emplace<CustomKernelThunk>(thunk_info, custom_kernel,
+                                                emitters::KernelArguments({}));
+    }
 
     auto hlo_module = std::make_unique<HloModule>("test_module_with_shape",
                                                   HloModuleConfig());
@@ -137,6 +148,9 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.debug_module = std::move(hlo_module);
     params.binary = {1, 2, 3};
     params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
+    params.debug_options
+        .set_xla_gpu_experimental_deduplicate_custom_kernel_specs(
+            deduplicate_kernel_specs);
 
     thunk_info.thunk_id = 456;
     params.executable =
@@ -236,10 +250,14 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
 
   EnsureCudaSymbolIsRegistered();
 
+  std::shared_ptr<HloModule> expected_module =
+      result->shared_optimized_module();
+
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
                                         DebugOptions()));
+  EXPECT_EQ(executable->shared_module(), expected_module);
 
   {
     ASSERT_OK_AND_ASSIGN(
@@ -280,6 +298,165 @@ TEST_F(GpuAotCompilationResultTest, GetCompiledMemoryStats) {
   EXPECT_EQ(memory_stats.peak_memory_in_bytes, 1024);
   EXPECT_EQ(memory_stats.serialized_buffer_assignment,
             reference_executable.buffer_assignment().SerializeAsString());
+}
+
+TEST_F(GpuAotCompilationResultTest, DeduplicatesRepeatedCustomKernels) {
+  constexpr int kNumCustomKernels = 4;
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto executable,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/true));
+
+  EXPECT_EQ(executable.kernel_spec_table().kernel_specs_size(), 1);
+  int num_custom_kernel_thunks = 0;
+  for (const ThunkProto& thunk : executable.thunks()) {
+    if (!thunk.has_custom_kernel_thunk()) {
+      continue;
+    }
+    ++num_custom_kernel_thunks;
+    const CustomKernelProto& custom_kernel =
+        thunk.custom_kernel_thunk().custom_kernel();
+    EXPECT_TRUE(custom_kernel.has_internable_kernel_spec());
+    EXPECT_TRUE(custom_kernel.internable_kernel_spec().has_kernel_spec_index());
+    EXPECT_EQ(custom_kernel.internable_kernel_spec().kernel_spec_index(), 0);
+  }
+  EXPECT_EQ(num_custom_kernel_thunks, kNumCustomKernels);
+}
+
+TEST_F(GpuAotCompilationResultTest, DeduplicationShrinksTheExecutable) {
+  constexpr int kNumCustomKernels = 4;
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto inlined,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto deduplicated,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/true));
+
+  EXPECT_LT(deduplicated.ByteSizeLong(), inlined.ByteSizeLong());
+}
+
+TEST_F(GpuAotCompilationResultTest, DeduplicationIsDeterministic) {
+  constexpr int kNumCustomKernels = 4;
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto first,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/true));
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto second,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/true));
+
+  // Module IDs come from a global counter, so they differ between the two
+  // compilations for reasons unrelated to deduplication.
+  first.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
+  second.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
+
+  std::string first_bytes;
+  std::string second_bytes;
+  ASSERT_TRUE(tsl::SerializeToStringDeterministic(first, &first_bytes));
+  ASSERT_TRUE(tsl::SerializeToStringDeterministic(second, &second_bytes));
+  EXPECT_EQ(first_bytes, second_bytes);
+}
+
+// Reading a deduplicated executable must produce exactly the same thunks as
+// reading an executable with inline kernel specs. Re-serializing with
+// deduplication disabled is a convenient way to observe that.
+TEST_F(GpuAotCompilationResultTest, LoadsDeduplicatedExecutable) {
+  constexpr int kNumCustomKernels = 4;
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto inlined,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto deduplicated,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/true));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuAotCompilationResult> result,
+                       GpuAotCompilationResult::FromProto(deduplicated));
+  EnsureCudaSymbolIsRegistered();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
+                                        DebugOptions()));
+  auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";
+
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reserialized,
+                       gpu_executable->ToProto());
+  EXPECT_EQ(reserialized.kernel_spec_table().kernel_specs_size(), 0);
+
+  // HLO module IDs are re-created during deserialization.
+  reserialized.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
+  inlined.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
+  EXPECT_THAT(reserialized, EqualsProto(inlined));
+}
+
+// The mirror image of the test above: an executable that predates
+// deduplication must still load, and re-serializing it with deduplication
+// enabled must produce the deduplicated representation.
+TEST_F(GpuAotCompilationResultTest, LoadsExecutableWithInlineKernelSpecs) {
+  constexpr int kNumCustomKernels = 4;
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto inlined,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto deduplicated,
+      CreateGpuExecutableProto(kNumCustomKernels,
+                               /*deduplicate_kernel_specs=*/true));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuAotCompilationResult> result,
+                       GpuAotCompilationResult::FromProto(inlined));
+  EnsureCudaSymbolIsRegistered();
+
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_experimental_deduplicate_custom_kernel_specs(true);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
+                                        debug_options));
+  auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";
+
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reserialized,
+                       gpu_executable->ToProto());
+  reserialized.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
+  deduplicated.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
+  EXPECT_THAT(reserialized, EqualsProto(deduplicated));
+}
+
+TEST_F(GpuAotCompilationResultTest, SerializesDeduplicatedExecutable) {
+  ASSERT_OK_AND_ASSIGN(
+      GpuExecutableProto reference_executable,
+      CreateGpuExecutableProto(/*num_custom_kernels=*/4,
+                               /*deduplicate_kernel_specs=*/true));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> result,
+      GpuAotCompilationResult::FromProto(reference_executable));
+  ASSERT_OK_AND_ASSIGN(std::string serialized_result,
+                       result->SerializeAsString());
+
+  GpuExecutableProto deserialized_executable;
+  ASSERT_OK(ReadSplitProto(
+      std::make_unique<riegeli::StringReader<>>(serialized_result),
+      deserialized_executable));
+
+  deserialized_executable.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
+  reference_executable.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
+  EXPECT_THAT(deserialized_executable, EqualsProto(reference_executable));
 }
 
 }  // namespace

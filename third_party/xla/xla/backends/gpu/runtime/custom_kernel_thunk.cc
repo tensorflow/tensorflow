@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
 #include "xla/backends/gpu/runtime/lock_free_kernel_cache.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -240,11 +242,11 @@ absl::StatusOr<ThunkProto> CustomKernelThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<CustomKernelThunk>> CustomKernelThunk::FromProto(
     ThunkInfo thunk_info, const CustomKernelThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-        symbol_resolver) {
-  ABSL_ASSIGN_OR_RETURN(
-      CustomKernel custom_kernel,
-      CustomKernel::FromProto(proto.custom_kernel(), symbol_resolver));
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>& symbol_resolver,
+    const KernelSpecTable* absl_nullable kernel_spec_table) {
+  ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
+                   CustomKernel::FromProto(proto.custom_kernel(),
+                                           symbol_resolver, kernel_spec_table));
   std::vector<ShapedSlice> args;
   args.reserve(proto.args_size());
   for (const ShapedSliceProto& arg_proto : proto.args()) {

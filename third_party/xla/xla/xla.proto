@@ -1875,7 +1875,13 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 550
+  // If true, the GPU compiler stores each distinct custom kernel only once in
+  // the serialized executable, in `GpuExecutableProto.kernel_specs`, instead of
+  // inlining a copy into every `CustomKernelThunkProto`. Readers support both
+  // representations regardless of this flag.
+  optional bool xla_gpu_experimental_deduplicate_custom_kernel_specs = 550;
+
+  // Next id: 551
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

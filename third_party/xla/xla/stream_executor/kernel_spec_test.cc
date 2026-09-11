@@ -289,6 +289,7 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
 TEST(KernelLoaderSpec, InProcessSymbolToProto) {
   auto non_serializable_spec = KernelLoaderSpec::CreateInProcessSymbolSpec(
       /*symbol=*/nullptr, "kernel_name", 42);
+  EXPECT_FALSE(non_serializable_spec.IsSerializable());
 
   // InProcessSymbol specs without a persistent name cannot be serialized.
   EXPECT_THAT(non_serializable_spec.ToProto(),
@@ -297,6 +298,7 @@ TEST(KernelLoaderSpec, InProcessSymbolToProto) {
   auto serializable_spec =
       KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
           "persistent_kernel_name", nullptr, "kernel_name", 42);
+  EXPECT_TRUE(serializable_spec.IsSerializable());
   EXPECT_THAT(serializable_spec.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
                 in_process_symbol { persistent_name: "persistent_kernel_name" }
                 kernel_name: "kernel_name"

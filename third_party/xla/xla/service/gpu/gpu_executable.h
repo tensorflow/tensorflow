@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_memory_cache.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -83,6 +84,8 @@ class GpuExecutable : public Executable {
   struct NumAdditionalStreams {
     int compute = 0;
     int communication = 0;
+    bool need_d2h_stream = false;
+    bool need_h2d_stream = false;
   };
 
   using ConstantInfo = GpuModuleGlobals::ConstantInfo;
@@ -127,7 +130,7 @@ class GpuExecutable : public Executable {
     std::unique_ptr<GpuAliasInfo> alias_info;
     DebugOptions debug_options;
     se::DeviceDescription device_description;
-    std::unique_ptr<HloModule> debug_module = nullptr;
+    std::shared_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
     se::ExecutableAbiVersion executable_abi_version;
@@ -242,12 +245,17 @@ class GpuExecutable : public Executable {
   absl::StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       se::Stream* stream);
 
+  // Creates a `GpuExecutable` from its proto representation.
+  //
+  // If `debug_module` isn't populated, the HLO module is deserialized from the
+  // proto, which can be expensive.
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
       const se::DeviceDescription& device_description,
       absl::string_view platform, DebugOptions debug_options,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-          symbol_resolver = std::nullopt);
+          symbol_resolver = std::nullopt,
+      std::shared_ptr<HloModule> debug_module = nullptr);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
 
@@ -277,7 +285,7 @@ class GpuExecutable : public Executable {
 
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
-      std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+      std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
       BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
       std::unique_ptr<ThunkExecutor> executable, std::string module_name,
       ProgramShape program_shape, std::vector<BufferAllocation> allocations,
@@ -287,6 +295,7 @@ class GpuExecutable : public Executable {
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
+      std::unique_ptr<KernelSpecTable> kernel_spec_table,
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
@@ -405,6 +414,11 @@ class GpuExecutable : public Executable {
   // Stores the thunk sequence as a proto from before running the thunk pass.
   // Might contain an error if the given thunk graph is not serializable.
   absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
+
+  // Kernel loader specs hoisted out of `thunk_sequence_proto_`, which then
+  // refers to them by index. Empty unless deduplication is enabled. Held via
+  // unique_ptr so that its address remains stable if GpuExecutable is moved.
+  std::unique_ptr<KernelSpecTable> kernel_spec_table_;
 
   se::ExecutableAbiVersion executable_abi_version_;
 
