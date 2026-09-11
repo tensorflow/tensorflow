@@ -1056,11 +1056,11 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
   bool include_batch_in_index_;
 };
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Targmax>
 struct LaunchMaxPoolingGradWithArgmax;
 
-template <typename T>
-struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
+template <typename T, typename Targmax>
+struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T, Targmax> {
   typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       EigenMatrixMap;
 
@@ -1080,7 +1080,7 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
 
       {
         auto grad_out_flat = grad_out->flat<T>();
-        auto argmax_flat = argmax.flat<int64_t>();
+        auto argmax_flat = argmax.flat<Targmax>();
         auto grad_in_flat = grad_in.flat<T>();
 
         const int64_t output_start = start * output_size_per_batch;
@@ -1116,8 +1116,7 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
   }
 };
 
-// TODO(b/175733711): Support int32 argmax type in MaxPoolGradWithArgmax op.
-template <typename Device, typename T>
+template <typename Device, typename T, typename Targmax>
 class MaxPoolingGradWithArgmaxOp : public OpKernel {
  public:
   explicit MaxPoolingGradWithArgmaxOp(OpKernelConstruction* context)
@@ -1195,7 +1194,7 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
 
     if (out_shape.num_elements() == 0) return;  // nothing to be done
 
-    LaunchMaxPoolingGradWithArgmax<Device, T>::launch(
+    LaunchMaxPoolingGradWithArgmax<Device, T, Targmax>::launch(
         context, params, grad_in, argmax, grad_out, include_batch_in_index_);
   }
 
@@ -1529,7 +1528,7 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T, int64_t> {
 };
 
 template <typename T>
-struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
+struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T, int64_t> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out, const bool include_batch_in_index) {
@@ -1605,21 +1604,26 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
                               .Device(DEVICE_##D)                        \
                               .TypeConstraint<T>("T")                    \
                               .TypeConstraint<int64_t>("Targmax"),       \
-                          MaxPoolingGradWithArgmaxOp<D##Device, T>);
+                          MaxPoolingGradWithArgmaxOp<D##Device, T, int64_t>);
 
 // Below kernels implemented only for CPU device.
-#define REGISTER_CPU_ONLY_POOL_KERNELS(T)                          \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("MaxPool").Device(DEVICE_CPU).TypeConstraint<T>("T"),   \
-      MaxPoolingOp<CPUDevice, T>);                                 \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("MaxPoolV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      MaxPoolingV2Op<CPUDevice, T>);                               \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")                \
-                              .Device(DEVICE_CPU)                  \
-                              .TypeConstraint<int32>("Targmax")    \
-                              .TypeConstraint<T>("T"),             \
-                          MaxPoolingWithArgmaxOp<CPUDevice, T, int32>);
+#define REGISTER_CPU_ONLY_POOL_KERNELS(T)                               \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("MaxPool").Device(DEVICE_CPU).TypeConstraint<T>("T"),        \
+      MaxPoolingOp<CPUDevice, T>);                                      \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("MaxPoolV2").Device(DEVICE_CPU).TypeConstraint<T>("T"),      \
+      MaxPoolingV2Op<CPUDevice, T>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")                     \
+                              .Device(DEVICE_CPU)                       \
+                              .TypeConstraint<int32>("Targmax")         \
+                              .TypeConstraint<T>("T"),                  \
+                          MaxPoolingWithArgmaxOp<CPUDevice, T, int32>); \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolGradWithArgmax")                 \
+                              .Device(DEVICE_CPU)                       \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int32>("Targmax"),        \
+                          MaxPoolingGradWithArgmaxOp<CPUDevice, T, int32>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_ONLY_POOL_KERNELS);
 #undef REGISTER_CPU_ONLY_POOL_KERNELS
 
