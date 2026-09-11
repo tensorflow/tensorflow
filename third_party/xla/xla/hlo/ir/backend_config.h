@@ -38,8 +38,8 @@ limitations under the License.
 namespace xla {
 
 template <typename T>
-using EnableIfProto = typename std::enable_if_t<
-    std::is_base_of<tsl::protobuf::Message, T>::value>;
+using EnableIfProto =
+    typename std::enable_if_t<std::is_base_of_v<tsl::protobuf::Message, T>>;
 
 // Returns a string representation of a proto in the format used by
 // HloInstruction::raw_backend_config_string.
