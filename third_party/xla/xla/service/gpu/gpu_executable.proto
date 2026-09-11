@@ -24,6 +24,7 @@ import "xla/service/hlo.proto";
 import "xla/shape_util.proto";
 import "xla/stream_executor/abi/executable_abi_version.proto";
 import "xla/stream_executor/device_description.proto";
+import "xla/stream_executor/kernel_spec.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
@@ -121,6 +122,16 @@ message GpuExecutableProto {
   // OOMs, includes the Hlo op metadata for every buffer associated with each
   // allocation.
   string buffer_allocations_debug_summary = 16;
+
+  // Deduplicated table of kernel loader specs, referenced by
+  // `CustomKernelProto.kernel_spec_index` from anywhere within `thunks`,
+  // including nested thunk sequences. Entries are ordered by first use in a
+  // deterministic traversal of `thunks`.
+  //
+  // Only populated when the compiler deduplicates custom kernels. Readers must
+  // keep supporting thunks that carry an inline `CustomKernelProto.kernel_spec`
+  // instead.
+  repeated stream_executor.KernelLoaderSpecProto kernel_specs = 17;
 
   reserved 7;
 }

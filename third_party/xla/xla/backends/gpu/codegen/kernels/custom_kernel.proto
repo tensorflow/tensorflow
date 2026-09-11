@@ -25,7 +25,21 @@ option java_outer_classname = "CustomKernel";
 
 message CustomKernelProto {
   string name = 1;
-  stream_executor.KernelLoaderSpecProto kernel_spec = 2;
+
+  // How to find the kernel loader spec for this kernel. Exactly one of these
+  // is set.
+  //
+  // Moving the pre-existing `kernel_spec` field into a new oneof keeps the wire
+  // format and the generated accessors compatible.
+  oneof spec {
+    // The kernel loader spec, inlined into this message.
+    stream_executor.KernelLoaderSpecProto kernel_spec = 2;
+
+    // An index into `GpuExecutableProto.kernel_specs`. Lets a kernel that is
+    // invoked several times in a module be stored only once.
+    int32 kernel_spec_index = 7;
+  }
+
   stream_executor.BlockDimProto block_dims = 3;
   stream_executor.ThreadDimProto thread_dims = 4;
   optional stream_executor.ClusterDimProto cluster_dim = 5;

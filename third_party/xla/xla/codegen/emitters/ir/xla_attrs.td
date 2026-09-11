@@ -109,6 +109,8 @@ def WorkGroupDimension : I32EnumAttr<"WorkGroupDimension",
   let genSpecializedAttr = 0;
   let cppNamespace = "::xla";
 }
-def WorkGroupDimensionAttr : EnumAttr<XlaDialect, WorkGroupDimension, "dim">;
+def WorkGroupDimensionAttr : EnumAttr<XlaDialect, WorkGroupDimension, "dim"> {
+  let assemblyFormat = "$value";
+}
 
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_ATTRS
