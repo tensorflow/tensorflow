@@ -268,3 +268,21 @@ tf_cc_fuzz_test(
         "@xla//xla/tsl/platform:env",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "decode_gif_fuzz",
+    srcs = ["decode_gif_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:gif_internal",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "decode_jpeg_fuzz",
+    srcs = ["decode_jpeg_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:jpeg_internal",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
