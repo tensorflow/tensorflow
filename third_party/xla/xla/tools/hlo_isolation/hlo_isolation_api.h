@@ -63,6 +63,20 @@ struct ModuleIsolationOptions {
   int64_t max_module_size_bytes = 0;
   bool reject_unconstrained_ops = false;
 
+  // XLA allows a backend to compute an instruction in a wider type than the
+  // one declared by the HLO (see DebugOptions::xla_allow_excess_precision).
+  // A fusion can therefore keep intermediates in f32 where the defused
+  // reference is forced to round to bf16 at every instruction boundary, which
+  // shows up as a numeric mismatch even though both results are correct. When
+  // this is true, a mismatch against the defused reference is re-checked with
+  // excess precision disabled on both sides before it is reported.
+  //
+  // Off by default: the re-check recompiles the module under test, so a
+  // genuine miscompile that only reproduces with excess precision enabled
+  // would be silently accepted. Enable it only for fuzzing-style runs where
+  // the false positive rate matters more than the miss rate.
+  bool retry_without_excess_precision = false;
+
   std::function<absl::StatusOr<Literal>(
       std::unique_ptr<HloModule> module, HloRunnerInterface* runner,
       absl::Span<const Literal> input_data, const RunModuleOptions& options)>
