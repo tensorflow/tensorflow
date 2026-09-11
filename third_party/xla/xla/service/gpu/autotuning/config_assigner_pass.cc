@@ -519,9 +519,8 @@ absl::StatusOr<bool> ConfigAssignerPass::RunImpl(
     ABSL_RETURN_IF_ERROR(
         config_assigner_->AssignConfigs(module, should_assign_config_to_));
   }
-  VLOG(1) << "Config assigner cache stats: hits="
-          << config_assigner_->GetCacheStats().hits
-          << ", misses=" << config_assigner_->GetCacheStats().misses;
+  VLOG(1) << "Config assigner cache stats: "
+          << config_assigner_->GetCacheStats().ToString();
   return true;
 }
 
