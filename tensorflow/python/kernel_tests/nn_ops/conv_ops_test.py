@@ -3077,31 +3077,26 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           nn_ops.conv2d(
               input_val, filter_val, strides=[1, 1, 1, 2], padding="SAME"))
 
-    # TODO(b/195689143): Will enable when fixed for V2 behavior
-    # # Filter larger than input.
-    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-    #   input_val = np.ones([32, 20, 20, 3])
-    #   filter_val = np.ones([20, 21, 3, 2])
-    #   self.evaluate(
-    #       nn_ops.conv2d(
-    #           input_val, filter_val, strides=[1, 1, 1, 1], padding="VALID"))
-    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-    #   input_val = np.ones([32, 20, 20, 3])
-    #   filter_val = np.ones([21, 20, 3, 2])
-    #   self.evaluate(
-    #       nn_ops.conv2d(
-    #           input_val, filter_val, strides=[1, 1, 1, 1], padding="VALID"))
-    #
-    # # Filter larger than input + padding.
-    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-    #   input_val = np.ones([32, 20, 20, 3])
-    # filter_val = np.ones([24, 25, 3, 2])
-    #   self.evaluate(
-    #       nn_ops.conv2d(
-    #           input_val,
-    #           filter_val,
-    #           strides=[1, 1, 1, 1],
-    #           padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
+    # Filter larger than input by at most the stride: zero-sized output.
+    input_val = np.ones([32, 20, 20, 3])
+    filter_val = np.ones([20, 21, 3, 2])
+    self.assertAllEqual(
+        self.evaluate(
+            nn_ops.conv2d(
+                input_val, filter_val, strides=[1, 1, 1, 1],
+                padding="VALID")).shape, [32, 1, 0, 2])
+
+    # Filter larger than input + padding.
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Negative dimension size|Computed output size would be negative"):
+      filter_val = np.ones([24, 26, 3, 2])
+      self.evaluate(
+          nn_ops.conv2d(
+              input_val,
+              filter_val,
+              strides=[1, 1, 1, 1],
+              padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
     # Filter dimensions must be greater than 0.
     with self.assertRaisesRegex(
@@ -3137,6 +3132,39 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
               out_backprop_val,
               strides=[1, 1, 1, 1],
               padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+
+  @test_util.run_deprecated_v1
+  def testFilterLargerThanInputShape(self):
+    # Shape inference must accept what the kernels accept, otherwise the same
+    # op is refused with static shapes and allowed with unknown ones
+    # (b/195689143).
+    input_t = array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3])
+    for filter_shape, expected in (([20, 21, 3, 2], [32, 1, 0, 2]),
+                                   ([21, 20, 3, 2], [32, 0, 1, 2])):
+      filter_t = array_ops.placeholder(dtypes.float32, shape=filter_shape)
+      out = nn_ops.conv2d(
+          input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+      self.assertEqual(out.shape.as_list(), expected)
+
+    with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+      filter_t = array_ops.placeholder(dtypes.float32, shape=[22, 20, 3, 2])
+      nn_ops.conv2d(input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFilterLargerThanInputGradient(self):
+    for device in ("CPU:0", "GPU:0"):
+      if device == "GPU:0" and not test.is_gpu_available():
+        continue
+      with ops.device(device):
+        input_t = array_ops.ones((1, 1, 1, 1))
+        filter_t = array_ops.ones((2, 2, 1, 1))
+        out = nn_ops.conv2d(
+            input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+        filter_grad = nn_ops.conv2d_backprop_filter(
+            input_t, filter_t.shape, array_ops.zeros_like(out),
+            strides=[1, 1, 1, 1], padding="VALID")
+      self.assertAllEqual(
+          self.evaluate(filter_grad), np.zeros((2, 2, 1, 1)))
 
   def testConvOpEdgeCases(self):
     # Illegal strides.

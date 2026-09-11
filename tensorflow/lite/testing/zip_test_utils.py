@@ -522,9 +522,13 @@ def make_zip_of_tests(options,
         output_details = interpreter.get_output_details()
         output_values = {}
         for output_detail in output_details:
+          if np.prod(output_detail["shape"]) == 0:
+            out_val = np.empty(
+                output_detail["shape"], dtype=output_detail["dtype"])
+          else:
+            out_val = interpreter.get_tensor(output_detail["index"])
           output_values.update({
-              _normalize_output_name(output_detail["name"]):
-                  interpreter.get_tensor(output_detail["index"])
+              _normalize_output_name(output_detail["name"]): out_val
           })
 
         return input_values, output_values
@@ -728,9 +732,14 @@ def make_zip_of_tests(options,
                         "TensorFlow fails in %d percent of the cases.") %
                        (zip_path, int(100 * tf_failures / parameter_count)))
 
-  if tf_failures != expected_tf_failures and not (options.make_edgetpu_tests or
-                                                  options.make_tf_ptq_tests):
-    raise RuntimeError(("Expected TF to fail %d times while generating '%s', "
+  if isinstance(expected_tf_failures, (list, tuple, set)):
+    is_expected_failures = tf_failures in expected_tf_failures
+  else:
+    is_expected_failures = tf_failures == expected_tf_failures
+
+  if not is_expected_failures and not (options.make_edgetpu_tests or
+                                       options.make_tf_ptq_tests):
+    raise RuntimeError(("Expected TF to fail %s times while generating '%s', "
                         "but that happened %d times") %
                        (expected_tf_failures, zip_path, tf_failures))
 

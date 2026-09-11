@@ -45,7 +45,8 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
     shape_inference::DimensionHandle input_size,
     shape_inference::DimensionOrConstant filter_size, int64_t dilation_rate,
     int64_t stride, Padding padding_type, int64_t padding_before,
-    int64_t padding_after, shape_inference::DimensionHandle* output_size) {
+    int64_t padding_after, shape_inference::DimensionHandle* output_size,
+    bool allow_zero_output) {
   if (stride <= 0) {
     return absl::InvalidArgumentError(
         absl::StrCat("Stride must be > 0, but got ", stride));
@@ -61,24 +62,35 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
     case Padding::VALID:
       padding_before = padding_after = 0;
       TF_FALLTHROUGH_INTENDED;
-    case Padding::EXPLICIT:
+    case Padding::EXPLICIT: {
       TF_RETURN_IF_ERROR(
           c->Add(input_size, padding_before + padding_after, &input_size));
+      DimensionHandle window_size = c->MakeDim(filter_size);
       if (dilation_rate > 1) {
-        DimensionHandle window_size;
-        TF_RETURN_IF_ERROR(
-            c->Subtract(c->MakeDim(filter_size), 1, &window_size));
+        TF_RETURN_IF_ERROR(c->Subtract(window_size, 1, &window_size));
         TF_RETURN_IF_ERROR(
             c->Multiply(window_size, dilation_rate, &window_size));
         TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
-        TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
-      } else {
-        TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
       }
+
+      // Subtract() cannot represent the negative intermediate value in the
+      // VALID/EXPLICIT formula, even when adding the stride makes the final
+      // output size zero. Handle just that boundary without adding the stride
+      // to input_size first, which could overflow a valid dimension.
+      if (allow_zero_output && c->ValueKnown(input_size) &&
+          c->ValueKnown(window_size) &&
+          c->Value(window_size) > c->Value(input_size) &&
+          c->Value(window_size) - c->Value(input_size) <= stride) {
+        *output_size = c->MakeDim(0);
+        break;
+      }
+
+      TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
       TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
                                    /*evenly_divisible=*/false, output_size));
       break;
+    }
     case Padding::SAME:
       TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
@@ -597,7 +609,8 @@ absl::Status ShapeFromDimensions(DimensionHandle batch_dim,
 namespace {
 
 absl::Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
-                             bool supports_explicit_padding) {
+                             bool supports_explicit_padding,
+                             bool allow_zero_output) {
   std::string data_format_str, filter_format_str;
   if (!c->GetAttr("data_format", &data_format_str).ok()) {
     data_format_str = "NHWC";
@@ -753,10 +766,12 @@ absl::Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
   }
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
       c, input_spatial_dims[0], filter_rows_dim, dilation_rows, stride_rows,
-      padding, pad_rows_before, pad_rows_after, &output_rows));
+      padding, pad_rows_before, pad_rows_after, &output_rows,
+      allow_zero_output));
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
       c, input_spatial_dims[1], filter_cols_dim, dilation_cols, stride_cols,
-      padding, pad_cols_before, pad_cols_after, &output_cols));
+      padding, pad_cols_before, pad_cols_after, &output_cols,
+      allow_zero_output));
 
   std::optional<DimensionHandle> vect_size;
   if (data_format == FORMAT_NCHW_VECT_C) {
@@ -995,13 +1010,18 @@ absl::Status ConvShape(shape_inference::InferenceContext* c) {
 // Shape function for Conv2D-like operations that support explicit padding.
 absl::Status Conv2DShapeWithExplicitPadding(
     shape_inference::InferenceContext* c) {
-  return Conv2DShapeImpl(c, true);
+  return Conv2DShapeImpl(c, true, false);
+}
+
+absl::Status Conv2DShapeWithExplicitPaddingAllowZero(
+    shape_inference::InferenceContext* c) {
+  return Conv2DShapeImpl(c, true, true);
 }
 
 // Shape function for Conv2D-like operations that do not support explicit
 // padding.
 absl::Status Conv2DShape(shape_inference::InferenceContext* c) {
-  return Conv2DShapeImpl(c, false);
+  return Conv2DShapeImpl(c, false, false);
 }
 
 // TODO(mjanusz): Unify all conv/pooling shape functions.
@@ -2856,7 +2876,7 @@ absl::Status FusedQuantizedConvShape(InferenceContext* c, int num_dims) {
 }
 
 absl::Status FusedQuantizedConv2DShape(InferenceContext* c) {
-  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true));
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeWithExplicitPadding(c));
   TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
   return absl::OkStatus();
 }

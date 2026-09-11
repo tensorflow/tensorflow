@@ -147,6 +147,15 @@ TEST_F(OpsUtilTest, Get2dOutputSizeNegativeSizeTest) {
   VerifyGet2dOutputSizeBoundaries(pad_struct, error::INVALID_ARGUMENT);
 }
 
+TEST_F(OpsUtilTest, Get2dOutputSizeZeroBoundaryTest) {
+  padding_struct pad_struct = {{4, 4, 8, 8, 4, 4, VALID}, {0, 0, 0, 0, 0, 0}};
+  VerifyGet2dOutputSizeValues(pad_struct, error::OK);
+
+  pad_struct.input.filter_height = 9;
+  pad_struct.input.filter_width = 9;
+  VerifyGet2dOutputSizeBoundaries(pad_struct, error::INVALID_ARGUMENT);
+}
+
 TEST_F(OpsUtilTest, Get2dOutputSizeSquareFilterTest) {
   padding_struct pad_struct1 = {{3, 3, 2, 2, 2, 2, SAME}, {2, 2, 0, 0, 0, 0}};
   padding_struct pad_struct2 = {{3, 3, 2, 2, 2, 2, VALID}, {1, 1, 0, 0, 0, 0}};
