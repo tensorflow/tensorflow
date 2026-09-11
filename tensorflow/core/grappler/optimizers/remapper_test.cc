@@ -1492,6 +1492,111 @@ TEST_F(RemapperTest, FuseMatmulWithAdd) {
   test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
 }
 
+// Fuse matmul(transpose_a=true) + add {1,C}
+TEST_F(RemapperTest, FuseMatmulTransposeAWithAdd) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+
+  using ::tensorflow::ops::Placeholder;
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto lhs_shape = ops::Placeholder::Shape({32, 8});
+  auto rhs_shape = ops::Placeholder::Shape({32, 64});
+
+  auto lhs = Placeholder(s.WithOpName("lhs"), DT_FLOAT, lhs_shape);
+  auto rhs = Placeholder(s.WithOpName("rhs"), DT_FLOAT, rhs_shape);
+
+  auto matmul = ops::MatMul(s.WithOpName("matmul"), lhs, rhs,
+                            ops::MatMul::Attrs().TransposeA(true));
+  auto add_const = ops::Const(s.WithOpName("add_const"), 1.0f, {1, 64});
+  auto add = ops::Add(s.WithOpName("add"), matmul, add_const);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), add);
+
+  auto lhs_t = GenerateTensorWithSetRandom<DT_FLOAT>({32, 8});
+  auto rhs_t = GenerateTensorWithSetRandom<DT_FLOAT>({32, 64});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "add") {
+      EXPECT_EQ(node.op(), "_FusedMatMul");
+      ASSERT_GE(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "lhs");
+      EXPECT_EQ(node.input(1), "rhs");
+
+      EXPECT_EQ(node.attr().at("num_args").i(), 1);
+      EXPECT_EQ(node.input(2), "add_const");
+
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      ASSERT_EQ(fused_ops.size(), 1);
+      EXPECT_EQ(fused_ops[0], "BiasAdd");
+      found++;
+    }
+  }
+  EXPECT_EQ(1, found);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
+}
+
+// Do not fuse matmul with add when addend has higher rank than matmul output
+TEST_F(RemapperTest, DoNotFuseMatmulWithAddHigherRank) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+
+  using ::tensorflow::ops::Placeholder;
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto lhs_shape = ops::Placeholder::Shape({8, 32});
+  auto rhs_shape = ops::Placeholder::Shape({32, 64});
+
+  auto lhs = Placeholder(s.WithOpName("lhs"), DT_FLOAT, lhs_shape);
+  auto rhs = Placeholder(s.WithOpName("rhs"), DT_FLOAT, rhs_shape);
+
+  auto matmul = ops::MatMul(s.WithOpName("matmul"), lhs, rhs);
+  auto add_const = ops::Const(s.WithOpName("add_const"), 1.0f, {1, 1, 1, 64});
+  auto add = ops::Add(s.WithOpName("add"), matmul, add_const);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), add);
+
+  auto lhs_t = GenerateTensorWithSetRandom<DT_FLOAT>({8, 32});
+  auto rhs_t = GenerateTensorWithSetRandom<DT_FLOAT>({32, 64});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int fused_found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "_FusedMatMul") {
+      fused_found++;
+    }
+  }
+  EXPECT_EQ(0, fused_found);
+}
+
 class RemapperFuseSoftplusTanhMul : public RemapperTest {
  public:
   template <DataType DTYPE>
