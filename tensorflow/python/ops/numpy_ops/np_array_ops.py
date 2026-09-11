@@ -16,7 +16,7 @@
 # pylint: disable=g-direct-tensorflow-import
 
 import builtins
-import collections
+import collections.abc
 import enum
 import functools
 import math
