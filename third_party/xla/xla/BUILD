@@ -522,7 +522,6 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1379,6 +1378,26 @@ xla_cc_test(
 cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
+)
+
+cc_library(
+    name = "inlined_bit_set",
+    hdrs = ["inlined_bit_set.h"],
+    deps = [
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_cc_test(
+    name = "inlined_bit_set_test",
+    srcs = ["inlined_bit_set_test.cc"],
+    deps = [
+        ":inlined_bit_set",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
 )
 
 cc_library(

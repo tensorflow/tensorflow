@@ -206,13 +206,14 @@ class ShapeUtil {
   // This serialized size includes the header of the serialized format, and so
   // should not be used for subshapes.  Use SerializedSizeOfData for that
   // purpose.
-  static absl::StatusOr<int64_t> SerializedSize(const Shape& shape);
+  static absl::StatusOr<int64_t> SerializedSize(const Shape& shape,
+                                                bool pack_pred = true);
 
   // As above, but assumes the given ShapeProto is the result of
   // shape.ToProto().  This can be used to avoid converting the shape to a
   // protobuf multiple times.
   static absl::StatusOr<int64_t> SerializedSizeWithProto(
-      const Shape& shape, const ShapeProto& proto);
+      const Shape& shape, const ShapeProto& proto, bool pack_pred = true);
 
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
