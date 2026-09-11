@@ -32,7 +32,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,7 +44,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -69,7 +71,7 @@ class LayoutAssignment;
 // layouts.
 //
 // Specific constraint types derived from LayoutConstraint include:
-// - BufferLayoutConstraint: Constrains the layout of a LogicalBuffer produced
+// - BufferLayoutConstraint: Constrains the layout of an HloValue produced
 //   by an instruction.
 // - OperandLayoutConstraint: Constrains the layout expected for an operand by
 //   its consumer instruction.
@@ -120,28 +122,28 @@ class LayoutConstraint {
 
 std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
 
-// Layout constraint on a single LogicalBuffer.
+// Layout constraint on a single HloValue.
 //
 // BufferLayoutConstraint specifies the memory layout of an array buffer
 // produced by a specific HloInstruction. Unlike OperandLayoutConstraint (which
 // constrains a use site and can be satisfied via an inserted copy), a
-// BufferLayoutConstraint directly constrains the definition of the logical
-// buffer.
+// BufferLayoutConstraint directly constrains the definition of the buffer.
 //
 // Data Structure Usage:
-// - `buffer_`: Points to the LogicalBuffer instance whose output layout is
+// - `buffer_`: Points to the HloValue instance whose output layout is
 //   constrained.
 // - `layout_`: Inlined vector storing the assigned Layout object(s).
 // - `from_user_`: Optional pointer to the user HloInstruction that requested
 //   or induced this buffer layout constraint.
 class BufferLayoutConstraint : public LayoutConstraint {
  public:
-  // Constructs a BufferLayoutConstraint for the given LogicalBuffer.
-  BufferLayoutConstraint(const Layout& layout, const LogicalBuffer& buffer,
+  // Constructs a BufferLayoutConstraint for the given HloValue.
+  BufferLayoutConstraint(const Layout& layout, const HloValue& buffer,
                          bool mandatory, bool dfs, int64_t priority);
 
-  // Returns the constrained LogicalBuffer.
-  const LogicalBuffer& buffer() const { return *buffer_; }
+  // Returns the constrained buffer.
+  const HloValue& buffer() const { return *buffer_; }
+  const HloValue& hlo_value() const { return *buffer_; }
 
   // Returns the target Layout for the buffer.
   const Layout& layout() const { return layout_[0]; }
@@ -158,8 +160,8 @@ class BufferLayoutConstraint : public LayoutConstraint {
   // The constrained layout(s) for the buffer.
   absl::InlinedVector<Layout, 2> layout_;
 
-  // The LogicalBuffer being constrained.
-  const LogicalBuffer* buffer_;
+  // The HloValue being constrained.
+  const HloValue* buffer_;
 
   // The consumer instruction that induced this constraint, if any.
   const HloInstruction* from_user_ = nullptr;
@@ -397,11 +399,20 @@ class LayoutAssignment : public HloModulePass {
   explicit LayoutAssignment(
       ComputationLayout* entry_computation_layout,
       ChannelLayoutConstraints* channel_constraints = nullptr,
-      bool reverse_computation_order = false);
+      bool reverse_computation_order = false,
+      const AliasInfo* alias_info = nullptr);
   ~LayoutAssignment() override {}
-  const TuplePointsToAnalysis& points_to_analysis() const {
-    return *points_to_analysis_;
+  const HloAliasAnalysis& alias_analysis() const { return *alias_analysis_; }
+  const HloDataflowAnalysis& dataflow_analysis() const {
+    return alias_analysis_->dataflow_analysis();
   }
+  absl::StatusOr<const HloValue*> GetBufferDefinedAt(
+      const HloInstruction* instruction, const ShapeIndex& index = {}) const;
+  void set_alias_info(const AliasInfo* alias_info) { alias_info_ = alias_info; }
+  const AliasInfo* alias_info() const { return alias_info_; }
+
+  using BufferSet = absl::flat_hash_set<const HloValue*>;
+
   absl::string_view name() const override { return "layout-assignment"; }
 
   // Encapsulates all layout constraints associated with a single
@@ -570,17 +581,15 @@ class LayoutAssignment : public HloModulePass {
                                     bool mandatory = true, bool dfs = true,
                                     bool allow_alias = false,
                                     int64_t priority = -1);
-  // Add a constraint on the layout of a LogicalBuffer, the layout of the
-  // operand of the instruction, or the layout of the result of the computation,
+  // Add a constraint on the layout of an HloValue, the layout of the operand
+  // of the instruction, or the layout of the result of the computation,
   // respectively.
-  absl::Status SetBufferLayout(const Layout& layout,
-                               const LogicalBuffer& buffer,
+  absl::Status SetBufferLayout(const Layout& layout, const HloValue& buffer,
                                bool mandatory = true, bool dfs = true) {
     return SetBufferLayout(layout, buffer, mandatory, dfs, current_priority_);
   }
-  absl::Status SetBufferLayout(const Layout& layout,
-                               const LogicalBuffer& buffer, bool mandatory,
-                               bool dfs, int64_t priority,
+  absl::Status SetBufferLayout(const Layout& layout, const HloValue& buffer,
+                               bool mandatory, bool dfs, int64_t priority,
                                const HloInstruction* from_user = nullptr);
   absl::Status SetOperandLayout(const Shape& shape_with_layout,
                                 const HloInstruction* instruction,
@@ -646,7 +655,7 @@ class LayoutAssignment : public HloModulePass {
       const ComputationLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
-  virtual Layout GetUnconstrainedLayout(const LogicalBuffer& buffer) {
+  virtual Layout GetUnconstrainedLayout(const HloValue& buffer) {
     return LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
   }
   // Called after layouts of an instruction have been finalized to allow
@@ -657,13 +666,13 @@ class LayoutAssignment : public HloModulePass {
 
   absl::Status PropagateUnconstraintedBuffers(LayoutConstraints* constraints);
   const BufferLayoutConstraint* GetBufferLayoutConstraint(
-      const LogicalBuffer& buffer) const;
+      const HloValue& buffer) const;
   absl::StatusOr<const BufferLayoutConstraint*>
   GetInstructionBufferLayoutConstraint(const HloInstruction* instruction) const;
   // Find a bufferset in the bufferset cache. This is useful since we can
   // currently create the flattened buffer set for the same instruction many
   // times, which is often slow.
-  PointsToSet::BufferSet* GetBufferSet(const HloInstruction* instruction) const;
+  BufferSet* GetBufferSet(const HloInstruction* instruction) const;
   // Similar to above, but returns true only if all buffers associated with that
   // operand are forwarded.
   bool AllOperandBuffersForwarded(const HloInstruction* instruction,
@@ -682,7 +691,7 @@ class LayoutAssignment : public HloModulePass {
       LayoutConstraints* constraints);
 
   // Propagates a layout constraint on the use of the result of the given
-  // instruction to the definitions of the LogicalBuffers which make up the
+  // instruction to the definitions of the HloValues which make up the
   // result.
   absl::Status PropagateUseConstraintToDefs(
       const ShapeLayout& shape_layout, const HloInstruction* instruction,
@@ -902,14 +911,14 @@ class LayoutAssignment : public HloModulePass {
   // computation satisfying the given ComputationLayout, if not nullptr.
   // Otherwise the ComputationLayout will be calculated by propagating the
   // computation instruction constraints.
-  // Layouts constraints are added, then propagated until all LogicalBuffers in
+  // Layouts constraints are added, then propagated until all HloValues in
   // the computation are constrained.
   absl::Status RunOnComputation(LayoutConstraints* constraints,
                                 ChannelLayoutConstraints* channel_constraints);
 
   // Assign layouts to the instructions of a computation which satisfy the given
   // layout constraints. Copies may be added to satisfy the constraints. The
-  // given LayoutConstraints must have layout constraints every logical buffer
+  // given LayoutConstraints must have layout constraints for every buffer
   // in the computation.
   absl::Status AssignLayouts(LayoutConstraints& constraints);
 
@@ -1018,8 +1027,10 @@ class LayoutAssignment : public HloModulePass {
   // Adds constraints related to host Send/Recv instructions.
   absl::Status BuildHostChannelConstraints(HloComputation* computation);
 
-  // Module points to analysis that can be updated for cloned computations.
-  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+  // Module alias analysis that can be updated for cloned computations.
+  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+  const AliasInfo* alias_info_ = nullptr;
+  AliasInfo default_alias_info_;
 
   // The set of HLO instructions which lacked any layout constraint, thus
   // receiving propagated default layouts.
@@ -1063,15 +1074,13 @@ class LayoutAssignment : public HloModulePass {
   ChannelLayoutConstraints host_channel_constraints_;
 
   // Array-shaped buffers which have not yet been constrained.
-  std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
+  std::set<HloValue::Id> unconstrained_buffer_ids_;
 
-  mutable absl::flat_hash_map<const HloInstruction*,
-                              std::unique_ptr<PointsToSet::BufferSet>>
+  mutable absl::flat_hash_map<const HloInstruction*, std::unique_ptr<BufferSet>>
       buffer_sets_cache_;
 
   // The set of BufferLayoutConstraints applied to the computation.
-  absl::flat_hash_map<const LogicalBuffer*,
-                      std::unique_ptr<BufferLayoutConstraint>>
+  absl::flat_hash_map<const HloValue*, std::unique_ptr<BufferLayoutConstraint>>
       buffer_constraints_;
 
   // A vector which holds constraints as they are added. Can be cleared with
