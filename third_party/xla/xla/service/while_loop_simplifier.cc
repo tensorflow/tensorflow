@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -26,10 +25,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/bits.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,10 +38,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/inlined_bit_set.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
@@ -54,13 +53,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -360,7 +355,6 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   }
 
   // Don't try this transformation if the while loop isn't removable, since if
-
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
   if (!while_op->parent()->IsSafelyRemovable(while_op)) {
@@ -403,67 +397,31 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
                "empty.";
     return false;
   }
-  absl::flat_hash_set<int64_t> used_indices_after_loop;
+  InlinedBitSet<> used_indices_after_loop(tuple_size);
   if (while_op == while_op->parent()->root_instruction()) {
-    for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
-      used_indices_after_loop.insert(i);
-    }
+    used_indices_after_loop.SetAll(tuple_size);
   }
   for (auto user : while_op->users()) {
     if (user->opcode() != HloOpcode::kGetTupleElement) {
-      for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
-        used_indices_after_loop.insert(i);
-      }
+      used_indices_after_loop.SetAll(tuple_size);
       break;
     }
-    used_indices_after_loop.insert(user->tuple_index());
+    used_indices_after_loop.Set(user->tuple_index());
   }
 
-  // We identify unused inputs in two cases:
-  // 1) There is no use after loop, and the input does not affect other outputs.
-  // 2) If a group of elements have inter-dependencies, but their outputs are
-  // not used or are passed-through inputs, they can be removed as a group. We
-  // use a UnionFind to approximate this implementation. (It has false
-  // negatives, e.g., when a subset of a group (uni-directionally) depend on
-  // other parts. UnionFind does not separate such a subset.)
+  // We identify dead loop parameters in two cases (provided they do not cause
+  // side effects or affect the loop condition):
+  // 1) There is no use after the loop, and the input does not affect other
+  // outputs (though it may update itself).
+  // 2) A group of mutually dependent elements whose outputs are either unused
+  // after the loop or are passed-through unmodified. We use UnionFind to
+  // approximate connected components (which has false negatives for directed
+  // dependencies).
 
   // Tracks the set of inputs that each instruction depends on (in one
-  // iteration), as a bitset over tuple indices. For case 1). Big while tuples
-  // (1000+ elements) made unions of hash sets the dominant cost here; ORing
-  // whole words computes the same memberships far cheaper.
-  struct InputIndicesSet {
-    void Merge(const InputIndicesSet& other) {
-      if (other.bits.empty()) {
-        return;
-      }
-      if (bits.size() < other.bits.size()) {
-        bits.resize(other.bits.size(), 0);
-      }
-      for (size_t i = 0; i < other.bits.size(); ++i) {
-        bits[i] |= other.bits[i];
-      }
-    }
-    void Add(int64_t index) {
-      const size_t word = index / 64;
-      if (bits.size() <= word) {
-        bits.resize(word + 1, 0);
-      }
-      bits[word] |= uint64_t{1} << (index % 64);
-    }
-    // Calls fn(index) for every index in the set, in increasing order.
-    void ForEachIndex(absl::FunctionRef<void(int64_t)> fn) const {
-      for (size_t word = 0; word < bits.size(); ++word) {
-        uint64_t value = bits[word];
-        while (value != 0) {
-          const int bit = absl::countr_zero(value);
-          fn(static_cast<int64_t>(word * 64 + bit));
-          value &= ~(uint64_t{1} << bit);
-        }
-      }
-    }
-    absl::InlinedVector<uint64_t, 4> bits;
-  };
-  absl::flat_hash_map<HloInstruction*, InputIndicesSet> inst_input_deps;
+  // iteration). Used to find inputs affecting other outputs (case 1) and
+  // inputs affecting the condition or side effects (cases 1 & 2).
+  absl::flat_hash_map<HloInstruction*, InlinedBitSet<>> inst_input_deps;
   // Find disjoint sets of connected instruction groups. This helps finding a
   // group of inter-dependent indices that can be removed together. For case 2).
   absl::flat_hash_map<HloInstruction*, UnionFind<HloInstruction*>>
@@ -479,18 +437,18 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     }
   }
   // Track the dependencies and merge the disjoint sets.
-  absl::flat_hash_set<int64_t> side_effecting_indices;
+  InlinedBitSet<> side_effecting_indices(tuple_size);
   for (HloComputation* comp : {while_body, while_cond}) {
     HloInstruction* while_input = comp->parameter_instruction(0);
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       if (inst == while_input || inst == while_body_root) {
         continue;
       }
-      auto& deps = inst_input_deps[inst];
+      auto& deps = inst_input_deps.try_emplace(inst, tuple_size).first->second;
       auto& my_set = disjoint_sets[inst];
       if (inst->opcode() == HloOpcode::kGetTupleElement &&
           inst->operand(0) == while_input) {
-        deps.Add(inst->tuple_index());
+        deps.Set(inst->tuple_index());
         HloInstruction* output =
             while_body_root->mutable_operand(inst->tuple_index());
         if (output != inst) {
@@ -504,29 +462,32 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
             continue;
           }
           disjoint_sets[operand].Merge(&my_set);
-          deps.Merge(inst_input_deps[operand]);
+          auto it = inst_input_deps.find(operand);
+          if (it != inst_input_deps.end()) {
+            deps |= it->second;
+          }
         }
       }
       if (inst->HasSideEffect() || inst == while_cond->root_instruction()) {
-        deps.ForEachIndex(
-            [&](int64_t index) { side_effecting_indices.insert(index); });
+        side_effecting_indices |= deps;
       }
     }
   }
   // Find inputs that can be removed because they don't affect others.
-  absl::flat_hash_set<int64_t> indices_affecting_others;
+  InlinedBitSet<> indices_affecting_others(tuple_size);
   for (int64_t i = 0; i < tuple_size; ++i) {
     HloInstruction* output = while_body_root->mutable_operand(i);
-    inst_input_deps[output].ForEachIndex([&](int64_t index) {
-      if (index != i) {
-        indices_affecting_others.insert(index);
-      }
-    });
+    auto it = inst_input_deps.find(output);
+    if (it != inst_input_deps.end()) {
+      InlinedBitSet<> deps = it->second;
+      // Ignore self-updates.
+      deps.Clear(i);
+      indices_affecting_others |= deps;
+    }
   }
   for (int64_t i = 0; i < tuple_size; ++i) {
-    if (!indices_affecting_others.contains(i) &&
-        !used_indices_after_loop.contains(i) &&
-        !side_effecting_indices.contains(i)) {
+    if (!indices_affecting_others.Test(i) && !used_indices_after_loop.Test(i) &&
+        !side_effecting_indices.Test(i)) {
       VLOG(2) << "Remove with dependencies " << i;
       used_tuple_indices.erase(i);
     }
@@ -548,8 +509,8 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
           // We cannot remove this index causes side effects, or if its output
           // is not passed through from input and it is used after the while op.
           const HloInstruction* output = while_body_root->operand(index);
-          return side_effecting_indices.contains(index) ||
-                 (used_indices_after_loop.contains(index) &&
+          return side_effecting_indices.Test(index) ||
+                 (used_indices_after_loop.Test(index) &&
                   !(output->opcode() == HloOpcode::kGetTupleElement &&
                     output->operand(0) ==
                         while_body->parameter_instruction(0) &&
