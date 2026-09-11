@@ -95,8 +95,10 @@ absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
           se::ClusterDim{entry.cluster_dim().x(), entry.cluster_dim().y(),
                          entry.cluster_dim().z()};
     }
-    std::vector<uint8_t> binary(entry.binary().data(),
-                                entry.binary().data() + entry.binary().size());
+    std::shared_ptr<const std::vector<uint8_t>> binary =
+        std::make_shared<const std::vector<uint8_t>>(
+            entry.binary().data(),
+            entry.binary().data() + entry.binary().size());
     TF_RET_CHECK(
         cache_
             .insert(
@@ -147,9 +149,11 @@ CompilationCacheProto KernelReuseCache::Export() const {
       *proto_entry.mutable_cluster_dim() = cluster_dim_proto;
     }
     proto_entry.set_shmem_bytes(cache_entry->shmem_bytes);
-    proto_entry.set_binary(absl::string_view(
-        reinterpret_cast<const char*>(cache_entry->binary.data()),
-        cache_entry->binary.size()));
+    if (cache_entry->binary != nullptr) {
+      proto_entry.set_binary(absl::string_view(
+          reinterpret_cast<const char*>(cache_entry->binary->data()),
+          cache_entry->binary->size()));
+    }
   }
   return proto;
 }

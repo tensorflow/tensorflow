@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -64,6 +65,15 @@ KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
                           std::move(kernel_name), arity, kernel_args_packing};
 }
 
+KernelLoaderSpec KernelLoaderSpec::CreateSharedCudaCubinInMemorySpec(
+    std::shared_ptr<const std::vector<uint8_t>> cubin_bytes,
+    std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  CHECK(cubin_bytes != nullptr);
+  return KernelLoaderSpec{SharedCudaCubinInMemory{std::move(cubin_bytes)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
 KernelLoaderSpec KernelLoaderSpec::CreateCudaPtxInMemorySpec(
     absl::string_view ptx, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
@@ -75,6 +85,14 @@ KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
     std::string ptx, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
   return KernelLoaderSpec{OwningCudaPtxInMemory{std::move(ptx)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
+KernelLoaderSpec KernelLoaderSpec::CreateSharedCudaPtxInMemorySpec(
+    std::shared_ptr<const std::string> ptx, std::string kernel_name,
+    size_t arity, KernelArgsPacking kernel_args_packing) {
+  CHECK(ptx != nullptr);
+  return KernelLoaderSpec{SharedCudaPtxInMemory{std::move(ptx)},
                           std::move(kernel_name), arity, kernel_args_packing};
 }
 
