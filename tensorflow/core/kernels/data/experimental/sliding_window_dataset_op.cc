@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <deque>
 #include <memory>
 #include <string>
@@ -23,7 +24,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -31,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/batch_util.h"
+#include "tensorflow/core/util/overflow.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -186,7 +191,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           batch_elements.reserve(window_size);
 
           // Fill up buffer if not entire data was consumed.
-          size_t target_size = TargetBufferSize(window_size, window_stride);
+          TF_ASSIGN_OR_RETURN(const size_t target_size,
+                              TargetBufferSize(window_size, window_stride));
           for (size_t i = buffer_.size(); i < target_size && input_impl_; ++i) {
             bool end_of_input;
             std::vector<Tensor> element;
@@ -318,8 +324,19 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      size_t TargetBufferSize(int64_t window_size, int64_t window_stride) {
-        return (window_size - 1) * window_stride + 1;
+      absl::StatusOr<size_t> TargetBufferSize(int64_t window_size,
+                                              int64_t window_stride) {
+        int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
+        if (result >= 0) result = AddWithoutOverflow(result, 1);
+        if (result < 0 || static_cast<uint64_t>(result) >
+                              std::numeric_limits<size_t>::max()) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "Window target buffer size overflow: (window_size=%lld - 1) * "
+              "window_stride=%lld + 1 is not representable.",
+              static_cast<long long>(window_size),
+              static_cast<long long>(window_stride)));
+        }
+        return static_cast<size_t>(result);
       }
 
       mutex mu_;
