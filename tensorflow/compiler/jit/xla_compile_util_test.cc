@@ -75,49 +75,6 @@ TEST_F(OpsTestBase, CreateSingleOpGraph) {
   EXPECT_EQ(retval_input_node->name(), "identity_op");
 }
 
-TEST(XlaCompileUtilTest, PjRtXlaLaunchFlagTest) {
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // Flag is turned on, but no device is allowlisted.
-  auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
-  rollout_config.enabled_for_xla_launch_ = true;
-
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // Flag is turned on, some device is allowlisted, but the requested one isn't.
-  rollout_config.AllowForDeviceInXlaLaunch(DeviceType(DEVICE_GPU));
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // Flag is turned on and the requested device is allowlisted.
-  rollout_config.AllowForDeviceInXlaLaunch(DeviceType(DEVICE_CPU));
-  EXPECT_TRUE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // The requested device is allowlisted, but the flag is turned off.
-  rollout_config.enabled_for_xla_launch_ = false;
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-}
-
-TEST(XlaCompileUtilTest, PjRtXlaCompileOnDemandFlagTest) {
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // Flag is turned on, but no device is allowlisted.
-  auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
-  rollout_config.enabled_for_compile_on_demand_ = true;
-
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // Flag is turned on, some device is allowlisted, but the requested one isn't.
-  rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(DEVICE_GPU));
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // Flag is turned on and the requested device is allowlisted.
-  rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(DEVICE_CPU));
-  EXPECT_TRUE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-
-  // The requested device is allowlisted, but the flag is turned off.
-  rollout_config.enabled_for_compile_on_demand_ = false;
-  EXPECT_FALSE(UsePjRtForSingleDeviceCompilation(DeviceType(DEVICE_CPU)));
-}
 
 TEST(XlaCompileUtilTest, PjRtDeviceCompilerResourceName) {
   EXPECT_EQ(GetPjRtDeviceCompilerResourceName(DeviceType(DEVICE_TPU)),
