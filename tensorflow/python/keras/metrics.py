@@ -2372,6 +2372,36 @@ class AUC(Metric):
       by_label_auc = math_ops.reduce_sum(
           riemann_terms, name=self.name + '_by_label', axis=0)
 
+      if self.curve == metrics_utils.AUCCurve.ROC:
+        # ROC-AUC is undefined for a label whose y_true holds a single class.
+        # TP+FN and FP+TN give the per-label class totals at index 0 (invariant
+        # across thresholds), so such labels are dropped from the average rather
+        # than contributing a spurious 0. The result is NaN when no label
+        # contributes, i.e. the effective weights sum to zero.
+        total_positives = self.true_positives[0] + self.false_negatives[0]
+        total_negatives = self.false_positives[0] + self.true_negatives[0]
+        label_defined = math_ops.logical_and(
+            math_ops.greater(total_positives, 0),
+            math_ops.greater(total_negatives, 0))
+        defined_mask = math_ops.cast(label_defined, by_label_auc.dtype)
+        by_label_auc = math_ops.multiply(by_label_auc, defined_mask)
+        if self.label_weights is None:
+          effective_weights = defined_mask
+        else:
+          effective_weights = math_ops.multiply(
+              math_ops.cast(self.label_weights, dtype=by_label_auc.dtype),
+              defined_mask)
+        weight_sum = math_ops.reduce_sum(effective_weights)
+        mean_auc = math_ops.div_no_nan(
+            math_ops.reduce_sum(
+                math_ops.multiply(by_label_auc, effective_weights)),
+            weight_sum)
+        return array_ops.where(
+            math_ops.equal(weight_sum, 0),
+            constant_op.constant(float('nan'), dtype=by_label_auc.dtype),
+            mean_auc,
+            name=self.name)
+
       if self.label_weights is None:
         # Unweighted average of the label AUCs.
         return math_ops.reduce_mean(by_label_auc, name=self.name)
@@ -2383,9 +2413,22 @@ class AUC(Metric):
             math_ops.reduce_sum(self.label_weights),
             name=self.name)
     else:
-      return math_ops.reduce_sum(
+      auc = math_ops.reduce_sum(
           math_ops.multiply(x[:self.num_thresholds - 1] - x[1:], heights),
           name=self.name)
+      if self.curve == metrics_utils.AUCCurve.ROC:
+        # ROC-AUC is undefined when only one class is present in y_true.
+        # TP+FN == total positives and FP+TN == total negatives at any threshold,
+        # so summing at index 0 gives true class counts independent of thresholds.
+        total_positives = self.true_positives[0] + self.false_negatives[0]
+        total_negatives = self.false_positives[0] + self.true_negatives[0]
+        no_positives = math_ops.less_equal(total_positives, 0)
+        no_negatives = math_ops.less_equal(total_negatives, 0)
+        return array_ops.where(
+            math_ops.logical_or(no_positives, no_negatives),
+            constant_op.constant(float('nan'), dtype=auc.dtype),
+            auc)
+      return auc
 
   def reset_state(self):
     if self._built:
