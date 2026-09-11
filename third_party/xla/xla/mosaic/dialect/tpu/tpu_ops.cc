@@ -368,8 +368,6 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
   MemRefType result_type = getResult().getType();
   int64_t dynamic_dim_idx = llvm::count(
       result_type.getShape().take_front(untiled_dims), ShapedType::kDynamic);
-  const int64_t sublane_count = tc_target_shape[0];
-  const int64_t lane_count = tc_target_shape[1];
   for (int64_t i = 0; i < tile_rank; ++i) {
     int64_t tile_dim = first_tile.dimension(i);
     const int64_t dim = untiled_dims + i;
@@ -379,15 +377,6 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
           "to verify that the index at dimension ",
           dim, " is divisible by the tile dimension ", tile_dim,
           ". If it is, use tpu.assume_multiple to suppress this error.");
-    }
-    // We only require alignment to compact 2nd minor for large 2nd minor.
-    if (tile_rank == 2 && i == 0) {
-      int64_t packing = tile_dim / sublane_count;
-      if (tile_dim == sublane_count * packing &&
-          first_tile.dimension(1) == lane_count && packing > 1 &&
-          packing <= sublane_count) {
-        tile_dim = sublane_count;
-      }
     }
     bool size_is_aligned;
     if (result_type.getShape()[dim] == ShapedType::kDynamic) {
