@@ -1,387 +1,658 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 301c44fd..654c5290 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -44,7 +44,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Analysis/LifetimeSafety/Checker.cpp b/
-      if (!SemaHelper)
-        return;
-      for (const auto &[LID, Warning] : FinalWarningsMap) {
--@@ -433,6 +438,7 @@
-+@@ -436,6 +441,7 @@
-    }
-  
-    void reportNoescapeViolations() {
-@@ -52,7 +52,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Analysis/LifetimeSafety/Checker.cpp b/
-      for (auto [PVD, EscapeTarget] : NoescapeWarningsMap) {
-        if (const auto *E = EscapeTarget.dyn_cast<const Expr *>())
-          SemaHelper->reportNoescapeViolation(PVD, E);
--@@ -446,6 +452,7 @@
-+@@ -449,6 +455,7 @@
-    }
-  
-    void reportLifetimeboundViolations() {
-@@ -60,7 +60,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Analysis/LifetimeSafety/Checker.cpp b/
-      if (!isa<FunctionDecl>(FD))
-        return;
-      if (const auto *MD = dyn_cast<CXXMethodDecl>(FD);
--@@ -468,6 +475,7 @@
-+@@ -471,6 +478,7 @@
-    // Reports lifetimebound attributes that are placed on a function definition
-    // but not on the corresponding declaration.
-    void reportMisplacedLifetimebound() {
-@@ -68,7 +68,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Analysis/LifetimeSafety/Checker.cpp b/
-      const FunctionDecl *FDef = dyn_cast<FunctionDecl>(FD);
-      if (!FDef)
-        return;
--@@ -498,6 +506,7 @@
-+@@ -501,6 +509,7 @@
-    }
-  
-    void reportInapplicableLifetimebound() {
-@@ -224,10 +224,22 @@ diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/LifetimeSafetyTest.cpp
-      Analysis =
-          std::make_unique<LifetimeSafetyAnalysis>(*AnalysisCtx, nullptr, LSOpts);
-      Analysis->run();
-+diff -ruN --strip-trailing-cr a/clang/unittests/AST/AttrTest.cpp b/clang/unittests/AST/AttrTest.cpp
-+--- a/clang/unittests/AST/AttrTest.cpp
-++++ b/clang/unittests/AST/AttrTest.cpp
-+@@ -315,7 +315,7 @@
-+             body(i);
-+         }
-+       )cpp",
-+-      {"-fopenmp"});
-++      {"-fopenmp=libomp"});
-+   ASSERT_TRUE(AST);
-+ 
-+   auto GetHint = [&AST](const char *FuncName) {
- diff -ruN --strip-trailing-cr a/libcxx/include/tuple b/libcxx/include/tuple
- --- a/libcxx/include/tuple
- +++ b/libcxx/include/tuple
--@@ -1396,7 +1396,7 @@
-+@@ -1398,7 +1398,7 @@
-                    "Attempted construction of reference element binds to a temporary whose lifetime has ended");
-    }
-  #      endif // _LIBCPP_STD_VER >= 23
-@@ -250,20 +262,6 @@ diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/tuple/tuple.tuple/tupl
- +
-    return 0;
-  }
--diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp
----- a/llvm/lib/Target/X86/X86InstrInfo.cpp
--+++ b/llvm/lib/Target/X86/X86InstrInfo.cpp
--@@ -8607,7 +8607,9 @@
--       break;
--     case X86::AVX512_512_SETALLONES:
--       IsAllOnes = true;
---      [[fallthrough]];
--+      Ty = FixedVectorType::get(Type::getInt32Ty(MF.getFunction().getContext()),
--+                                16);
--+      break;
--     case X86::AVX1_SETALLONES:
--     case X86::AVX2_SETALLONES:
--     case X86::AVX512_256_SETALLONES:
- diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
- --- a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
- +++ b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
-@@ -281,219 +279,6 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemorySaniti
-    void visitIntToPtrInst(IntToPtrInst &I) {
-      IRBuilder<> IRB(&I);
-      setShadow(&I, IRB.CreateIntCast(getShadow(&I, 0), getShadowTy(&I), false,
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
----- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
--+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
--@@ -949,6 +949,7 @@
--     ExternalUses.clear();
--     ExternalUsesAsOriginalScalar.clear();
--     ExternalUsesWithNonUsers.clear();
--+    ExternalUseReplacements.clear();
--     RTChecks.clear();
--     HasRuntimeCheckableBlockers = false;
--     HasNonCheckableMemBlocker = false;
--@@ -2504,6 +2505,7 @@
--         if (auto *OpI = dyn_cast_if_present<Instruction>(U.get());
--             OpI && !DeletedInstructions.contains(OpI) && OpI->hasOneUser() &&
--             wouldInstructionBeTriviallyDead(OpI, TLI) &&
--+            !ExternalUseReplacements.contains(OpI) &&
--             (Entries.empty() || none_of(Entries, [&](const TreeEntry *Entry) {
--                return Entry->VectorizedValue == OpI;
--              })))
--@@ -2553,6 +2555,7 @@
--         // loop iteration.
--         if (auto *OpI = dyn_cast<Instruction>(OpV))
--           if (!DeletedInstructions.contains(OpI) &&
--+              !ExternalUseReplacements.contains(OpI) &&
--               (!OpI->getType()->isVectorTy() ||
--                none_of(
--                    VectorValuesAndScales,
--@@ -3960,6 +3963,11 @@
--   /// uses.
--   SmallPtrSet<Value *, 4> ExternalUsesWithNonUsers;
-- 
--+  /// Replacements emitted for the external uses without users, consumed after
--+  /// the tree vectorization; must not be collected as dead operands of the
--+  /// erased scalars.
--+  SmallPtrSet<Value *, 4> ExternalUseReplacements;
--+
--   /// Values used only by @llvm.assume calls.
--   SmallPtrSet<const Value *, 32> EphValues;
-- 
--@@ -25883,7 +25891,17 @@
--         assert((!isa<ExtractElementInst>(Scalar) ||
--                 !IgnoredExtracts.contains(cast<ExtractElementInst>(Scalar))) &&
--                "Extractelements should not be replaced.");
--+        // Reduced values that are not operands of the reduction ops (e.g.
--+        // narrowed reduction leaves) lose all users once the tree scalars are
--+        // erased; keep the replacement alive for the reduction epilogue.
--+        bool NeedsProtection =
--+            UserIgnoreList && none_of(Scalar->users(), [&](llvm::User *U) {
--+              return UserIgnoreList->contains(U);
--+            });
--         Scalar->replaceAllUsesWith(NewInst);
--+        if (NeedsProtection)
--+          if (auto *I = dyn_cast<Instruction>(NewInst))
--+            ExternalUseReplacements.insert(I);
--       }
--       continue;
--     }
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-setallones-512.ll b/llvm/test/CodeGen/X86/fold-setallones-512.ll
----- a/llvm/test/CodeGen/X86/fold-setallones-512.ll
--+++ b/llvm/test/CodeGen/X86/fold-setallones-512.ll
--@@ -0,0 +1,152 @@
--+; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
--+; RUN: llc < %s -mtriple=x86_64-- -mattr=+avx512bw -regalloc=basic | FileCheck %s
--+
--+; The all-ones value is live across a region where all 32 ZMM registers are in
--+; use, so the register allocator folds AVX512_512_SETALLONES into the users as a
--+; constant pool load. Make sure the constant pool entry is 512 bits wide.
--+
--+declare <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16>, <32 x i16>)
--+
--+define void @fold_512_setallones(ptr %p) nounwind {
--+; CHECK-LABEL: fold_512_setallones:
--+; CHECK:       # %bb.0: # %entry
--+; CHECK-NEXT:    vmovdqa64 (%rdi), %zmm0
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm31
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm30
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm29
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm28
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm27
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm26
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm25
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm24
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm23
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm22
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm21
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm20
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm19
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm18
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm17
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm16
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm15
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm14
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm13
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm12
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm11
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm10
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm9
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm8
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm7
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm6
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm5
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm4
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm3
--+; CHECK-NEXT:    vmovaps (%rdi), %zmm2
--+; CHECK-NEXT:    vmovdqa64 (%rdi), %zmm1
--+; CHECK-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm0, %zmm0 # [4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]
--+; CHECK-NEXT:    vmovdqa64 %zmm0, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm31, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm30, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm29, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm28, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm27, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm26, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm25, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm24, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm23, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm22, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm21, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm20, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm19, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm18, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm17, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm16, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm15, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm14, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm13, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm12, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm11, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm10, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm9, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm8, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm7, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm6, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm5, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm4, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm3, (%rdi)
--+; CHECK-NEXT:    vmovaps %zmm2, (%rdi)
--+; CHECK-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm1, %zmm0 # [4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295]
--+; CHECK-NEXT:    vmovdqa64 %zmm0, (%rdi)
--+; CHECK-NEXT:    vzeroupper
--+; CHECK-NEXT:    retq
--+entry:
--+  %v0 = load volatile <32 x i16>, ptr %p
--+  %v1 = load volatile <32 x i16>, ptr %p
--+  %v2 = load volatile <32 x i16>, ptr %p
--+  %v3 = load volatile <32 x i16>, ptr %p
--+  %v4 = load volatile <32 x i16>, ptr %p
--+  %v5 = load volatile <32 x i16>, ptr %p
--+  %v6 = load volatile <32 x i16>, ptr %p
--+  %v7 = load volatile <32 x i16>, ptr %p
--+  %v8 = load volatile <32 x i16>, ptr %p
--+  %v9 = load volatile <32 x i16>, ptr %p
--+  %v10 = load volatile <32 x i16>, ptr %p
--+  %v11 = load volatile <32 x i16>, ptr %p
--+  %v12 = load volatile <32 x i16>, ptr %p
--+  %v13 = load volatile <32 x i16>, ptr %p
--+  %v14 = load volatile <32 x i16>, ptr %p
--+  %v15 = load volatile <32 x i16>, ptr %p
--+  %v16 = load volatile <32 x i16>, ptr %p
--+  %v17 = load volatile <32 x i16>, ptr %p
--+  %v18 = load volatile <32 x i16>, ptr %p
--+  %v19 = load volatile <32 x i16>, ptr %p
--+  %v20 = load volatile <32 x i16>, ptr %p
--+  %v21 = load volatile <32 x i16>, ptr %p
--+  %v22 = load volatile <32 x i16>, ptr %p
--+  %v23 = load volatile <32 x i16>, ptr %p
--+  %v24 = load volatile <32 x i16>, ptr %p
--+  %v25 = load volatile <32 x i16>, ptr %p
--+  %v26 = load volatile <32 x i16>, ptr %p
--+  %v27 = load volatile <32 x i16>, ptr %p
--+  %v28 = load volatile <32 x i16>, ptr %p
--+  %v29 = load volatile <32 x i16>, ptr %p
--+  %v30 = load volatile <32 x i16>, ptr %p
--+  %v31 = load volatile <32 x i16>, ptr %p
--+  br label %bb1
--+
--+bb1:
--+  %n0 = call <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16> %v0, <32 x i16> splat (i16 -1))
--+  store volatile <16 x i32> %n0, ptr %p
--+  store volatile <32 x i16> %v1, ptr %p
--+  store volatile <32 x i16> %v2, ptr %p
--+  store volatile <32 x i16> %v3, ptr %p
--+  store volatile <32 x i16> %v4, ptr %p
--+  store volatile <32 x i16> %v5, ptr %p
--+  store volatile <32 x i16> %v6, ptr %p
--+  store volatile <32 x i16> %v7, ptr %p
--+  store volatile <32 x i16> %v8, ptr %p
--+  store volatile <32 x i16> %v9, ptr %p
--+  store volatile <32 x i16> %v10, ptr %p
--+  store volatile <32 x i16> %v11, ptr %p
--+  store volatile <32 x i16> %v12, ptr %p
--+  store volatile <32 x i16> %v13, ptr %p
--+  store volatile <32 x i16> %v14, ptr %p
--+  store volatile <32 x i16> %v15, ptr %p
--+  store volatile <32 x i16> %v16, ptr %p
--+  store volatile <32 x i16> %v17, ptr %p
--+  store volatile <32 x i16> %v18, ptr %p
--+  store volatile <32 x i16> %v19, ptr %p
--+  store volatile <32 x i16> %v20, ptr %p
--+  store volatile <32 x i16> %v21, ptr %p
--+  store volatile <32 x i16> %v22, ptr %p
--+  store volatile <32 x i16> %v23, ptr %p
--+  store volatile <32 x i16> %v24, ptr %p
--+  store volatile <32 x i16> %v25, ptr %p
--+  store volatile <32 x i16> %v26, ptr %p
--+  store volatile <32 x i16> %v27, ptr %p
--+  store volatile <32 x i16> %v28, ptr %p
--+  store volatile <32 x i16> %v29, ptr %p
--+  store volatile <32 x i16> %v30, ptr %p
--+  %n1 = call <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16> %v31, <32 x i16> splat (i16 -1))
--+  store volatile <16 x i32> %n1, ptr %p
--+  ret void
--+}
- diff -ruN --strip-trailing-cr a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
- --- a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
- +++ b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
-@@ -512,66 +297,3 @@ diff -ruN --strip-trailing-cr a/llvm/test/Instrumentation/MemorySanitizer/ptrtoa
- +  %addr = ptrtoaddr ptr %p to i64
- +  ret i64 %addr
- +}
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll b/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll
----- a/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll
--+++ b/llvm/test/Transforms/SLPVectorizer/X86/narrowed-reduction-leftover-leaf.ll
--@@ -0,0 +1,59 @@
--+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
--+; RUN: opt -passes=slp-vectorizer -S -mtriple=x86_64-unknown-linux-gnu -mcpu=x86-64-v2 < %s | FileCheck %s
--+
--+define void @test() {
--+; CHECK-LABEL: define void @test(
--+; CHECK-SAME: ) #[[ATTR0:[0-9]+]] {
--+; CHECK-NEXT:  [[ENTRY:.*]]:
--+; CHECK-NEXT:    [[T2:%.*]] = trunc i32 0 to i8
--+; CHECK-NEXT:    br label %[[LOOP:.*]]
--+; CHECK:       [[LOOP]]:
--+; CHECK-NEXT:    [[TMP0:%.*]] = phi <4 x i8> [ [[TMP4:%.*]], %[[LOOP]] ], [ zeroinitializer, %[[ENTRY]] ]
--+; CHECK-NEXT:    [[LD:%.*]] = load i32, ptr null, align 1
--+; CHECK-NEXT:    [[SH:%.*]] = lshr i32 [[LD]], 0
--+; CHECK-NEXT:    [[TMP1:%.*]] = insertelement <4 x i32> <i32 poison, i32 0, i32 0, i32 0>, i32 [[LD]], i64 0
--+; CHECK-NEXT:    [[TMP2:%.*]] = lshr <4 x i32> [[TMP1]], zeroinitializer
--+; CHECK-NEXT:    [[TMP3:%.*]] = trunc <4 x i32> [[TMP2]] to <4 x i8>
--+; CHECK-NEXT:    [[T3:%.*]] = trunc i32 [[SH]] to i8
--+; CHECK-NEXT:    [[TMP4]] = or <4 x i8> [[TMP0]], [[TMP3]]
--+; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i32>
--+; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
--+; CHECK-NEXT:    [[TMP7:%.*]] = zext i8 [[T2]] to i32
--+; CHECK-NEXT:    [[OP_RDX:%.*]] = or i32 [[TMP6]], [[TMP7]]
--+; CHECK-NEXT:    [[TMP8:%.*]] = zext i8 [[T2]] to i32
--+; CHECK-NEXT:    [[TMP9:%.*]] = zext i8 [[T3]] to i32
--+; CHECK-NEXT:    [[OP_RDX1:%.*]] = or i32 [[TMP8]], [[TMP9]]
--+; CHECK-NEXT:    [[OP_RDX2:%.*]] = or i32 [[OP_RDX]], [[OP_RDX1]]
--+; CHECK-NEXT:    store i32 [[OP_RDX2]], ptr null, align 1
--+; CHECK-NEXT:    br label %[[LOOP]]
--+;
--+entry:
--+  br label %loop
--+
--+loop:
--+  %p3 = phi i8 [ %o3, %loop ], [ 0, %entry ]
--+  %p2 = phi i8 [ %o2, %loop ], [ 0, %entry ]
--+  %p1 = phi i8 [ %o1, %loop ], [ 0, %entry ]
--+  %p0 = phi i8 [ %o0, %loop ], [ 0, %entry ]
--+  %t0 = trunc i32 0 to i8
--+  %o0 = or i8 %p0, %t0
--+  %t1 = trunc i32 0 to i8
--+  %o1 = or i8 %p1, %t1
--+  %t2 = trunc i32 0 to i8
--+  %o2 = or i8 %p2, %t2
--+  %ld = load i32, ptr null, align 1
--+  %sh = lshr i32 %ld, 0
--+  %t3 = trunc i32 %sh to i8
--+  %o3 = or i8 %p3, %t3
--+  %z3 = zext i8 %o3 to i32
--+  %s3 = shl i32 %z3, 0
--+  %z2 = zext i8 %o2 to i32
--+  %a1 = or i32 %s3, %z2
--+  %z1 = zext i8 %p1 to i32
--+  %s1 = shl i32 %z1, 0
--+  %a2 = or i32 %a1, %s1
--+  %z0 = zext i8 %o0 to i32
--+  %a3 = or i32 %a2, %z0
--+  store i32 %a3, ptr null, align 1
--+  br label %loop
--+}
-diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index c29bacf7..ba91b46c 100644
---- a/third_party/llvm/workspace.bzl
-+++ b/third_party/llvm/workspace.bzl
-@@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+index e6a41ca8..bd2b7219 100644
+--- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
++++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+@@ -203,7 +203,6 @@ void insertExplicitReshards(Operation* op,
+ namespace {
+ struct FactorAxesPair {
+   constexpr static int64_t kEmptyFactorIndex = -1;
+-  constexpr static int64_t kTombstoneFactorIndex = -2;
  
- def repo(name):
-     """Imports LLVM."""
--    LLVM_COMMIT = "979b722373384babff6ea2befe17c5c1c93b64bd"
--    LLVM_SHA256 = "7636cec02212fd0a0bb80b9a66d7582704126fe5ae21bd4dbe16a666e601603f"
-+    LLVM_COMMIT = "e30271b35d8de51d9f398b0b4ae9d103c156a4a8"
-+    LLVM_SHA256 = "25ce51dde3b32f64d0a6fdbd4f775b555af8be5530134c476d6aac171c1aec58"
+   int64_t factorIndex = kEmptyFactorIndex;
+   AxisListRef axes;
+@@ -213,7 +212,7 @@ struct FactorAxesPair {
  
-     tf_http_archive(
-         name = name,
+   // TODO(enver): Define EmptyFactorAxesPair class with overloaded methods and
+   // use it when the axes is empty.
+-  FactorAxesPair(int64_t factorIndex) : factorIndex(factorIndex) {}
++  explicit FactorAxesPair(int64_t factorIndex) : factorIndex(factorIndex) {}
+   FactorAxesPair() = default;
+ 
+   bool operator<(const FactorAxesPair& rhs) const {
+@@ -243,7 +242,7 @@ struct FactorAxesPairInfo : public llvm::DenseMapInfo<FactorAxesPair> {
+     return lhs == rhs;
+   }
+ 
+-  static inline FactorAxesPair getEmptyKey() { return FactorAxesPair(); }
++  static FactorAxesPair getEmptyKey() { return FactorAxesPair(); }
+ };
+ 
+ struct FactorAxesCandidate {
+@@ -848,12 +847,17 @@ void insertAllReducesForReductionFactors(
+   }
+ 
+   // The first result unreduced axes is also the common one.
+-  SmallVector<AxisRefAttr> allReduceAxes = getAxisSetDiff(
+-      reductionAxes, getUnreducedAxes(op->getResult(0)), meshOp.getMesh());
++  ArrayRef<AxisRefAttr> firstResultUnreducedAxes =
++      getUnreducedAxes(op->getResult(0));
++  SmallVector<AxisRefAttr> allReduceAxes =
++      getAxisSetDiff(reductionAxes, firstResultUnreducedAxes, meshOp.getMesh());
+   if (allReduceAxes.empty()) {
+     return;
+   }
+ 
++  SmallVector<AxisRefAttr> unreducedAxes = allReduceAxes;
++  llvm::append_range(unreducedAxes, firstResultUnreducedAxes);
++  sortAndMergeAxes(unreducedAxes, meshOp.getMesh());
+   sortAndMergeAxes(allReduceAxes, meshOp.getMesh());
+ 
+   std::optional<ReductionOp> reductionOp = getReductionType(op);
+@@ -864,6 +868,13 @@ void insertAllReducesForReductionFactors(
+     TensorShardingAttr resultSharding =
+         getOrCreateSharding(result, meshOp.getName(),
+                             /*closedIfMissing=*/true);
++    if (reductionOp) {
++      TensorShardingAttr unreducedSharding = TensorShardingAttr::get(
++          resultSharding.getContext(), resultSharding.getMeshOrRef(),
++          resultSharding.getDimShardings(), resultSharding.getReplicatedAxes(),
++          unreducedAxes, *reductionOp);
++      setSharding(result, unreducedSharding);
++    }
+     auto allReduceOp = AllReduceOp::create(
+         rewriter, result.getLoc(), result, allReduceAxes,
+         reductionOp.value_or(ReductionOp::SUM), resultSharding);
+diff --git a/shardy/dialect/sdy/transforms/export/test/export_pipeline_explicit_collectives.mlir b/shardy/dialect/sdy/transforms/export/test/export_pipeline_explicit_collectives.mlir
+index 69f69073..b29623e2 100644
+--- a/shardy/dialect/sdy/transforms/export/test/export_pipeline_explicit_collectives.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/export_pipeline_explicit_collectives.mlir
+@@ -4,7 +4,7 @@ sdy.mesh @mesh = <["x"=2, "y"=2, "z"=2]>
+ 
+ // CHECK-LABEL: func @reduce_scatter_fusion
+ func.func @reduce_scatter_fusion(%arg0: tensor<16x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}]>}) -> (tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
+-  // CHECK: %0 = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] : (tensor<16x8x8xf32>, tensor<f32>) -> tensor<16x8xf32>
++  // CHECK: %0 = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=2, "z"=2]>, [{}, {}], unreduced={"x"}>]>} : (tensor<16x8x8xf32>, tensor<f32>) -> tensor<16x8xf32>
+   // CHECK-NEXT: %1 = sdy.reduce_scatter [{"x"}, {}] %0 out_sharding=<mesh<["x"=2, "y"=2, "z"=2]>, [{"x"}, {}]> : tensor<16x8xf32>
+   // CHECK-NEXT: %2 = sdy.all_slice [{}, {"y"}] %1 out_sharding=<mesh<["x"=2, "y"=2, "z"=2]>, [{"x"}, {"y"}]> : tensor<16x8xf32>
+   // CHECK-NEXT: return %2 : tensor<16x8xf32>
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
+index 1cda60d9..a7250381 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
+@@ -41,7 +41,7 @@ func.func @all_reduce_fully_delayed_until_return(%arg0: tensor<2x64x13xf32> {sdy
+ 
+ // CHECK-LABEL: func @all_reduce_partially_delayed_until_return
+ func.func @all_reduce_partially_delayed_until_return(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x", "y"}, {}]>}) -> tensor<2x13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE_0:.*]] = sdy.all_reduce {"y"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}], unreduced={"x"}> : tensor<2x13xf32>
+   // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[ALL_REDUCE_0]], %[[ALL_REDUCE_0]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE_1:.*]] = sdy.all_reduce {"x"} %[[ADD]] out_sharding=<@mesh, [{}, {}]>
+@@ -98,7 +98,7 @@ func.func @reduce_multiple_results(
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+   %1 = stablehlo.constant dense<0> : tensor<i32>
+   // CHECK:      %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %cst), (%arg1 init: %c) across dimensions = [0, 2]
+-  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"y"}>, <@mesh, [{}], unreduced={"y"}>]>}
++  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x", "y"}>, <@mesh, [{}], unreduced={"x", "y"}>]>}
+   // CHECK:      %[[ALL_REDUCE0:.*]] = sdy.all_reduce {"x"} %[[REDUCE]]#0 out_sharding=<@mesh, [{}], unreduced={"y"}> : tensor<64xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE1:.*]] = sdy.all_reduce {"x"} %[[REDUCE]]#1 out_sharding=<@mesh, [{}], unreduced={"y"}> : tensor<64xi32>
+   // CHECK-NEXT: return %[[ALL_REDUCE0]], %[[ALL_REDUCE1]] : tensor<64xf32>, tensor<64xi32>
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
+index 4d389050..42144586 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
+@@ -21,7 +21,7 @@ func.func @dot_compatible_contracting_dim_sharded(
+     %arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>},
+     %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>})
+     -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]>
+   // CHECK: return %[[ALL_REDUCE]]
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+@@ -34,7 +34,7 @@ func.func @dot_contracting_dim_and_result_dim_sharded_same_axis(
+     %arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>},
+     %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>})
+     -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x"}, {"y"}]>
+   // CHECK: return %[[RESHARD]]
+@@ -48,7 +48,7 @@ func.func @dot_contracting_dim_and_result_dim_sharded_same_axis_2(
+     %arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>},
+     %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>})
+     -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", "y"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x", "y"}, {}]>
+   // CHECK: return %[[RESHARD]]
+@@ -61,7 +61,7 @@ func.func @dot_contracting_dim_and_result_dim_sharded_same_axis_incompatible_ord
+     %arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>},
+     %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>})
+     -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y", "x"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"y", "x"}, {}]>
+   // CHECK: return %[[RESHARD]]
+@@ -84,7 +84,7 @@ func.func @dot_incompatible_lhs_contracting_and_rhs_non_contracting_dims(
+ // CHECK-LABEL: func @dot_incompatible_subaxis_no_overlap
+ func.func @dot_incompatible_subaxis_no_overlap(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x":(2)2}]>}) {
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh, [{"y"}, {"x":(2)2}]> : tensor<32x16xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}, {"x":(2)2}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}, {"x":(2)2}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x":(1)2}, {"x":(2)2}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{}, {"x":(2)2}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x16xf32>
+@@ -94,7 +94,7 @@ func.func @dot_incompatible_subaxis_no_overlap(%arg0: tensor<8x32xf32> {sdy.shar
+ 
+ // CHECK-LABEL: func @dot_compatible_jk
+ func.func @dot_compatible_jk(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
+-  // CHECK: stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>
++  // CHECK: stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>}
+   // CHECK-NOT: sdy.reshard
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   return %0 : tensor<8x16xf32>
+@@ -102,7 +102,7 @@ func.func @dot_compatible_jk(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.shardi
+ 
+ // CHECK-LABEL: func @dot_compatible_k
+ func.func @dot_compatible_k(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> tensor<8x16xf32> {
+-  // CHECK: stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>
++  // CHECK: stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"y"}>]>}
+   // CHECK-NOT: sdy.reshard
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   return %0 : tensor<8x16xf32>
+@@ -127,7 +127,7 @@ func.func @dot_compatible_contracting_dim_empty(%arg0: tensor<8x32xf32> {sdy.sha
+ // CHECK-LABEL: func @dot_incompatible_same_non_contracting_dims_out_empty
+ func.func @dot_incompatible_same_non_contracting_dims_out_empty(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<8x16xf32> {
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}]> : tensor<8x32xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x16xf32>
+@@ -148,7 +148,7 @@ func.func @dot_incompatible_a_times_a(%arg0: tensor<16x16xf32> {sdy.sharding = #
+ // CHECK-LABEL: func @dot_incompatible_all_same_shardings
+ func.func @dot_incompatible_all_same_shardings(%arg0: tensor<4x4096xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}, %arg1: tensor<4096x4096xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> (tensor<4x4096xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"x"}]>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>}
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x"} %[[DOT]] out_sharding=<@mesh, [{}, {}]> : tensor<4x4096xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x"}, {}]>
+   // CHECK-NEXT return %[[DOT]]
+@@ -159,7 +159,7 @@ func.func @dot_incompatible_all_same_shardings(%arg0: tensor<4x4096xf32> {sdy.sh
+ // CHECK-LABEL: func @dot_incompatible_same_non_contracting_dims_out_i
+ func.func @dot_incompatible_same_non_contracting_dims_out_i(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}]> : tensor<8x32xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x16xf32>
+@@ -170,7 +170,7 @@ func.func @dot_incompatible_same_non_contracting_dims_out_i(%arg0: tensor<8x32xf
+ // CHECK-LABEL: func @dot_incompatible_same_non_contracting_dims_out_j
+ func.func @dot_incompatible_same_non_contracting_dims_out_j(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}]> : tensor<8x32xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+@@ -179,7 +179,7 @@ func.func @dot_incompatible_same_non_contracting_dims_out_j(%arg0: tensor<8x32xf
+ 
+ // CHECK-LABEL: func @dot_incompatible_out_empty
+ func.func @dot_incompatible_out_empty(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> tensor<8x16xf32> {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD]] : tensor<8x16xf32>
+@@ -190,7 +190,7 @@ func.func @dot_incompatible_out_empty(%arg0: tensor<8x32xf32> {sdy.sharding = #s
+ // CHECK-LABEL: func @dot_incompatible_i_empty
+ func.func @dot_incompatible_i_empty(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {"y"}]> : tensor<8x32xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+@@ -199,7 +199,7 @@ func.func @dot_incompatible_i_empty(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy
+ 
+ // CHECK-LABEL: func @dot_incompatible_same_factor_for_contracting_dim_and_output_i
+ func.func @dot_incompatible_same_factor_for_contracting_dim_and_output_i(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"y"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD]] : tensor<8x16xf32>
+@@ -209,7 +209,7 @@ func.func @dot_incompatible_same_factor_for_contracting_dim_and_output_i(%arg0:
+ 
+ // CHECK-LABEL: func @dot_incompatible_same_factor_for_contracting_dim_and_output_j
+ func.func @dot_incompatible_same_factor_for_contracting_dim_and_output_j(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{}, {"y"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD]] : tensor<8x16xf32>
+@@ -219,7 +219,7 @@ func.func @dot_incompatible_same_factor_for_contracting_dim_and_output_j(%arg0:
+ 
+ // CHECK-LABEL: func @dot_incompatible_i_mismatch
+ func.func @dot_incompatible_i_mismatch(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"y"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD]] : tensor<8x16xf32>
+@@ -231,7 +231,7 @@ func.func @dot_incompatible_i_mismatch(%arg0: tensor<8x32xf32> {sdy.sharding = #
+ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_non_contracting_dim_is_sharded_small_lhs(%arg0: tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<4x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}]> : tensor<8x4xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh, [{"y"}, {"x"}]> : tensor<4x16xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x4xf32>, tensor<4x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>} : (tensor<8x4xf32>, tensor<4x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x4xf32>, tensor<4x16xf32>) -> tensor<8x16xf32>
+@@ -240,7 +240,7 @@ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_n
+ 
+ // CHECK-LABEL: func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_non_contracting_dim_is_sharded_large_lhs
+ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_non_contracting_dim_is_sharded_large_lhs(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
+-  // CHECK: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD]] : tensor<8x16xf32>
+@@ -253,7 +253,7 @@ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_n
+ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_non_contracting_dim_is_sharded_smaller_local_contracting_dim(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<16x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh, [{"y"}, {"x"}]> : tensor<16x16xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>} : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+@@ -262,7 +262,7 @@ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_n
+ 
+ // CHECK-LABEL: func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_rhs_non_contracting_dim_is_sharded
+ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_rhs_non_contracting_dim_is_sharded(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD]] : tensor<8x16xf32>
+@@ -311,7 +311,7 @@ func.func @dot_incompatible_in_out_mismatch_i_j_swapped_large_k(%arg0: tensor<8x
+ // CHECK-LABEL: func @dot_incompatible_sub_axis_overlaps
+ func.func @dot_incompatible_sub_axis_overlaps(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(2)2}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh, [{"y"}, {"x":(1)2}]> : tensor<32x16xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(2)2}, {"x":(1)2}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(2)2}, {"x":(1)2}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x":(2)2}, {"x":(1)2}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x16xf32>
+@@ -322,7 +322,7 @@ func.func @dot_incompatible_sub_axis_overlaps(%arg0: tensor<8x32xf32> {sdy.shard
+ // CHECK-LABEL: func @dot_incompatible_all_factors_mismatch
+ func.func @dot_incompatible_all_factors_mismatch(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) {
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"x"}]> : tensor<8x32xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}], unreduced={"x"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x"} %[[DOT]] out_sharding=<@mesh, [{}, {"y"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"y"}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x16xf32>
+@@ -343,7 +343,7 @@ func.func @dot_incompatible_all_factors_mismatch_small_k(%arg0: tensor<8x4xf32>
+ // CHECK-LABEL: func @dot_reshard_is_local
+ func.func @dot_reshard_is_local(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+   %0 = stablehlo.negate %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>} : tensor<32x16xf32>
+-  // CHECK: %[[DOT:.*]] = stablehlo.dot %arg0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK: %[[DOT:.*]] = stablehlo.dot %arg0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[NEGATE:.*]] = stablehlo.negate %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x16xf32>
+@@ -356,7 +356,7 @@ func.func @dot_reshard_is_local(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sha
+ // CHECK-LABEL: func @dot_reshard_does_not_change_input_sharding
+ func.func @dot_reshard_does_not_change_input_sharding(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {"y"}]> : tensor<8x32xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x16xf32>
+@@ -365,7 +365,7 @@ func.func @dot_reshard_does_not_change_input_sharding(%arg0: tensor<8x32xf32> {s
+ 
+ // CHECK-LABEL: func @dot_with_sharding_rule
+ func.func @dot_with_sharding_rule(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k], [k, j])->([i, j]) {i=8, j=16, k=32} reduction={k}>}
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k], [k, j])->([i, j]) {i=8, j=16, k=32} reduction={k}>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x"}, {}]>
+   // CHECK-NEXT: return %[[RESHARD]]
+@@ -376,7 +376,7 @@ func.func @dot_with_sharding_rule(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.s
+ // CHECK-LABEL: func @dot_multiple_axes
+ func.func @dot_multiple_axes(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"z"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x", "y"}]>}) {
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg1 <@mesh_xyz, [{"z"}, {"x", "y"}]> : tensor<32x16xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y"}], unreduced={"z"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"z"} %[[DOT]] out_sharding=<@mesh_xyz, [{}, {"x", "y"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+@@ -387,7 +387,7 @@ func.func @dot_multiple_axes(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.shardi
+ func.func @dot_multiple_axes_with_overlap(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"z", "x":(2)2}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x", "y"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x", "y"}]>}) {
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{}, {"z"}]> : tensor<8x32xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh_xyz, [{"z"}, {"x", "y"}]> : tensor<32x16xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y"}], unreduced={"z"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"z"} %[[DOT]] out_sharding=<@mesh_xyz, [{}, {"x", "y"}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y"}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+@@ -398,7 +398,7 @@ func.func @dot_multiple_axes_with_overlap(%arg0: tensor<8x32xf32> {sdy.sharding
+ func.func @dot_multiple_axes_with_overlap_on_suffix(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"z", "x":(2)2}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>}) {
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{}, {"z":(1)2}]> : tensor<8x32xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh_xyz, [{"z":(1)2}, {"x", "y", "z":(2)2}]> : tensor<32x16xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y", "z":(2)2}], unreduced={"z":(1)2}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"z":(1)2} %[[DOT]] out_sharding=<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+@@ -408,7 +408,7 @@ func.func @dot_multiple_axes_with_overlap_on_suffix(%arg0: tensor<8x32xf32> {sdy
+ // CHECK-LABEL: func @dot_lhs_sharding_has_subaxes_and_is_strict_prefix_of_rhs_sharding_and_rhs_is_large
+ func.func @dot_lhs_sharding_has_subaxes_and_is_strict_prefix_of_rhs_sharding_and_rhs_is_large(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x":(1)2}, {"x":(2)2}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x"}, {}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{}, {"x"}]> : tensor<8x32xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {}], unreduced={"x"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x"} %[[DOT]] out_sharding=<@mesh_xyz, [{}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyz, [{"x"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x16xf32>
+@@ -441,7 +441,7 @@ func.func @dot_general_contracting_dim_sharded_multiple_axes(
+     %arg0: tensor<4x8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {}, {"x", "z"}]>},
+     %arg1: tensor<4x32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {"x", "z"}, {}]>})
+     -> (tensor<4x8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {}, {}]>}) {
+-  // CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}]>]>} : (tensor<4x8x32xf32>, tensor<4x32x16xf32>) -> tensor<4x8x16xf32>
++  // CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}], unreduced={"x", "z"}>]>} : (tensor<4x8x32xf32>, tensor<4x32x16xf32>) -> tensor<4x8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x", "z"} %[[DOTGENERAL]] out_sharding=<@mesh_xyz, [{"y"}, {}, {}]> : tensor<4x8x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<4x8x16xf32>
+   %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}]>]>} : (tensor<4x8x32xf32>, tensor<4x32x16xf32>) -> tensor<4x8x16xf32>
+@@ -453,7 +453,7 @@ func.func @dot_general_multiple_contracting_dims_sharded(
+     %arg0: tensor<4x8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"y"}, {"x", "z"}]>},
+     %arg1: tensor<8x32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {"x", "z"}, {}]>})
+     -> (tensor<4x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {}]>}) {
+-  // CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1, 2] x [0, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {}]>]>} : (tensor<4x8x32xf32>, tensor<8x32x16xf32>) -> tensor<4x16xf32>
++  // CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1, 2] x [0, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {}], unreduced={"x", "y", "z"}>]>} : (tensor<4x8x32xf32>, tensor<8x32x16xf32>) -> tensor<4x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x", "y", "z"} %[[DOTGENERAL]] out_sharding=<@mesh_xyz, [{}, {}]> : tensor<4x16xf32>
+   // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<4x16xf32>
+   %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1, 2] x [0, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {}]>]>} : (tensor<4x8x32xf32>, tensor<8x32x16xf32>) -> tensor<4x16xf32>
+@@ -467,7 +467,7 @@ func.func @dot_general_multiple_contracting_dims_conflicts(
+   %arg1: tensor<32x64x128xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"z"}, {"t"}, {"x", "y"}]>})
+   ->(tensor<16x128xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"x"}, {"z", "t"}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{}, {"z"}, {"t"}]> : tensor<16x32x64xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot_general %[[RESHARD1]], %arg1, contracting_dims = [1, 2] x [0, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x", "y"}]>]>} : (tensor<16x32x64xf32>, tensor<32x64x128xf32>) -> tensor<16x128xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot_general %[[RESHARD1]], %arg1, contracting_dims = [1, 2] x [0, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x", "y"}], unreduced={"z", "t"}>]>} : (tensor<16x32x64xf32>, tensor<32x64x128xf32>) -> tensor<16x128xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"z", "t"} %[[DOT]] out_sharding=<@mesh_xyzt, [{}, {"x", "y"}]> : tensor<16x128xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyzt, [{"x"}, {"z", "t"}]> : tensor<16x128xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<16x128xf32>
+@@ -700,7 +700,7 @@ func.func @dot_on_rectangular_inputs_square_output_large_contracting_dim_lhs_2nd
+     %arg1: tensor<16x8xf32>)
+     -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) {
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh, [{"y"}, {}]>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>}
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {}]>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{}, {"y"}]>
+   // CHECK-NEXT: return %[[RESHARD2]]
+@@ -727,7 +727,7 @@ func.func @dot_general_sharded_contracting_dim_with_axes_redistribution(
+     %arg0: tensor<64x1024x8192xf32> {sdy.sharding = #sdy.sharding<@mesh_x16_y4_z2, [{}, {"y", "z"}, {"x"}]>},
+     %arg1: tensor<256x8192xf32> {sdy.sharding = #sdy.sharding<@mesh_x16_y4_z2, [{}, {"x"}]>})
+     -> (tensor<64x1024x256xf32> {sdy.sharding = #sdy.sharding<@mesh_x16_y4_z2, [{"y"}, {"x", "z"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_x16_y4_z2, [{}, {"y", "z"}, {}]>]>}
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_x16_y4_z2, [{}, {"y", "z"}, {}], unreduced={"x"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x"} %[[DOT]] out_sharding=<@mesh_x16_y4_z2, [{}, {"y", "z"}, {}]>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_x16_y4_z2, [{"y"}, {"x", "z"}, {}]>
+   // CHECK-NEXT: return %[[RESHARD]]
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/func_inputs_outputs.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/func_inputs_outputs.mlir
+index 5f9b2f5c..4737e01d 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/func_inputs_outputs.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/func_inputs_outputs.mlir
+@@ -99,7 +99,7 @@ func.func @funcop_result_sharding_does_not_match_multiple_results_different_mesh
+ 
+ // CHECK-LABEL: func @funcop_result_sharding_does_not_match_and_reshard_result_twice
+ func.func @funcop_result_sharding_does_not_match_and_reshard_result_twice(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"y"}>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"y"}, {}]> : tensor<8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[RESHARD1]] <@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir
+index a604a61c..60a0e6ce 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir
+@@ -14,7 +14,7 @@ func.func @gather(
+   // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh_xyzt, [{}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
+   // CHECK-NEXT: %[[GATHER:.*]] = "stablehlo.gather"(%[[RESHARD0]], %[[RESHARD1]])
+-  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]>]>}
++  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}], unreduced={"y":(1)2}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y":(1)2} %[[GATHER]] out_sharding=<@mesh_xyzt, [{}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
+   // CHECK-NEXT: %[[RESHARD_RET:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyzt, [{"x":(1)2}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
+   // CHECK-NEXT: return %[[RESHARD_RET]] : tensor
+@@ -42,7 +42,7 @@ func.func @gather_implicit_dimension(
+ 
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{"x":(1)2}, {}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]>
+   // CHECK-NEXT: %[[GATHER:.*]] = "stablehlo.gather"(%[[RESHARD1]], %arg1)
+-  // CHECK-SAME: #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]>]>}
++  // CHECK-SAME: #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}], unreduced={"x":(1)2, "y":(1)2}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x":(1)2, "y":(1)2} %[[GATHER]] out_sharding=<@mesh_xyzt, [{}, {}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = "stablehlo.gather"(%arg0, %arg1) {
+@@ -73,7 +73,7 @@ func.func @scatter(
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh_xyztp, [{"y":(2)2}, {"z":(2)2}, {"x":(2)2}, {}, {"t":(2)2}]> : tensor
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg2 <@mesh_xyztp, [{"y":(2)2}, {"z":(2)2}, {}, {"x":(2)2}, {"t":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: %[[SCATTER:.*]] = "stablehlo.scatter"(%[[RESHARD0]], %[[RESHARD1]], %[[RESHARD2]])
+-  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]>]>}
++  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}], unreduced={"z":(2)2, "t":(2)2}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"z":(2)2, "t":(2)2} %[[SCATTER]] out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]>
+   // CHECK-NEXT: %[[RESHARD_RET:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyztp, [{"x":(1)2}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: return %[[RESHARD_RET]] : tensor
+@@ -113,7 +113,8 @@ func.func @scatter_multi_inputs(
+   // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %arg3 <@mesh_xyztp, [{"y":(2)2}, {"z":(2)2}, {}, {"x":(2)2}, {"t":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[RESHARD4:.*]] = sdy.reshard %arg4 <@mesh_xyztp, [{"y":(2)2}, {"z":(2)2}, {}, {"x":(2)2}, {"t":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[SCATTER:.*]]:2 = "stablehlo.scatter"(%[[RESHARD0]], %[[RESHARD1]], %[[RESHARD2]], %[[RESHARD3]], %[[RESHARD4]])
+-  // CHECK: %[[ALL_REDUCE1:.*]] = sdy.all_reduce {"z":(2)2, "t":(2)2} %[[SCATTER]]#0 out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}]>
++  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}], unreduced={"z":(2)2, "t":(2)2}>, <@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}], unreduced={"z":(2)2, "t":(2)2}>]>}
++  // CHECK-NEXT: %[[ALL_REDUCE1:.*]] = sdy.all_reduce {"z":(2)2, "t":(2)2} %[[SCATTER]]#0 out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}]>
+   // CHECK-NEXT: %[[ALL_REDUCE2:.*]] = sdy.all_reduce {"z":(2)2, "t":(2)2} %[[SCATTER]]#1 out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}]>
+   // CHECK-NEXT: %[[RESHARD_RET1:.*]] = sdy.reshard %[[ALL_REDUCE1]] <@mesh_xyztp, [{"x":(1)2}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: %[[RESHARD_RET2:.*]] = sdy.reshard %[[ALL_REDUCE2]] <@mesh_xyztp, [{"x":(1)2}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+@@ -149,7 +150,8 @@ func.func @scatter_implicit_dimension(
+   // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg2 <@mesh_xyztp, [{"y":(2)2}, {"z":(2)2}, {}, {"x":(2)2}, {"t":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[SCATTER:.*]] = "stablehlo.scatter"(%[[RESHARD0]], %arg1, %[[RESHARD1]])
+-  // CHECK: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"z":(2)2, "t":(2)2} %[[SCATTER]] out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}]>
++  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}], unreduced={"z":(2)2, "t":(2)2}>]>}
++  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"z":(2)2, "t":(2)2} %[[SCATTER]] out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {}]>
+   // CHECK-NEXT: %[[RESHARD_RET:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyztp, [{"x":(1)2}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: return %[[RESHARD_RET]] : tensor
+   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) ({
+@@ -182,7 +184,7 @@ func.func @scatter_max(
+   // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg2 <@mesh_xyztp, [{"y":(2)2}, {"t":(1)2}, {}, {"x":(2)2}, {"z":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[SCATTER:.*]] = "stablehlo.scatter"(%[[RESHARD0]], %arg1, %[[RESHARD1]])
+-  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}]>]>}
++  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}], unreduced=max{"z":(2)2, "t":(1)2}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce max {"z":(2)2, "t":(1)2} %[[SCATTER]] out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[RESHARD_RET:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyztp, [{"x":(1)2}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: return %[[RESHARD_RET]] : tensor
+@@ -216,7 +218,7 @@ func.func @scatter_min(
+   // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg2 <@mesh_xyztp, [{"y":(2)2}, {"t":(1)2}, {}, {"x":(2)2}, {"z":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[SCATTER:.*]] = "stablehlo.scatter"(%[[RESHARD0]], %arg1, %[[RESHARD1]])
+-  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}]>]>}
++  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}], unreduced=min{"z":(2)2, "t":(1)2}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce min {"z":(2)2, "t":(1)2} %[[SCATTER]] out_sharding=<@mesh_xyztp, [{}, {"x":(2)2}, {}, {"y":(2)2}, {}]> : tensor
+   // CHECK-NEXT: %[[RESHARD_RET:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyztp, [{"x":(1)2}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: return %[[RESHARD_RET]] : tensor
+@@ -238,7 +240,6 @@ func.func @scatter_min(
+   } : (tensor<6x4x10x12x14xf32>, tensor<12x22x4x26xi64>, tensor<12x22x2x4x26x10xf32>) -> tensor<6x4x10x12x14xf32>
+   return %0 : tensor<6x4x10x12x14xf32>
+ }
+-
+ // CHECK-LABEL: @scatter_no_reduction
+ func.func @scatter_no_reduction(
+   %arg0: tensor<6x4x10x12x14xf32>     {sdy.sharding = #sdy.sharding<@mesh_xyztp, [{"x":(1)2}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]>},
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir
+index 35c76f3d..8020f39d 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir
+@@ -14,8 +14,7 @@ func.func @reduce_single_result_reduction_dim_not_sharded(%arg0: tensor<2x64x13x
+ 
+ // CHECK-LABEL: func @reduce_single_result_reduction_dim_sharded
+ func.func @reduce_single_result_reduction_dim_sharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}]>}) -> tensor<2x13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1]
+-  // CHECK-NOT:  sdy.sharding
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}]>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -25,8 +24,7 @@ func.func @reduce_single_result_reduction_dim_sharded(%arg0: tensor<2x64x13xf32>
+ 
+ // CHECK-LABEL: func @reduce_single_result_multiple_reduction_dims_sharded
+ func.func @reduce_single_result_multiple_reduction_dims_sharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}, {}]>}) -> tensor<13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [0, 1]
+-  // CHECK-NOT:  sdy.sharding
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [0, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x", "y"} %[[REDUCE]] out_sharding=<@mesh, [{}]>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -36,8 +34,7 @@ func.func @reduce_single_result_multiple_reduction_dims_sharded(%arg0: tensor<2x
+ 
+ // CHECK-LABEL: func @reduce_single_result_multiple_reduction_dims_sharded_sub_axis
+ func.func @reduce_single_result_multiple_reduction_dims_sharded_sub_axis(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(2)2}, {"y", "x":(1)2}, {}]>}) -> tensor<13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [0, 1]
+-  // CHECK-NOT:  sdy.sharding
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [0, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x", "y"} %[[REDUCE]] out_sharding=<@mesh, [{}]>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -45,31 +42,9 @@ func.func @reduce_single_result_multiple_reduction_dims_sharded_sub_axis(%arg0:
+   return %1 : tensor<13xf32>
+ }
+ 
+-// CHECK-LABEL: func @reduce_multiple_results
+-func.func @reduce_multiple_results(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<2x64x13xi32>)
+-    -> (tensor<64xf32>, tensor<64xi32>) {
+-  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+-  %1 = stablehlo.constant dense<0> : tensor<i32>
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg1 <@mesh, [{"x"}, {}, {}]> : tensor<2x64x13xi32>
+-  // CHECK-NEXT: %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %cst), (%[[RESHARD]] init: %c) across dimensions = [0, 2]
+-  // CHECK-NOT:  sdy.sharding
+-  // CHECK:      %[[ALL_REDUCE1:.*]] = sdy.all_reduce {"x"} %[[REDUCE]]#0 out_sharding=<@mesh, [{}]> : tensor<64xf32>
+-  // CHECK-NEXT: %[[ALL_REDUCE2:.*]] = sdy.all_reduce {"x"} %[[REDUCE]]#1 out_sharding=<@mesh, [{}]> : tensor<64xi32>
+-  // CHECK-NEXT: return %[[ALL_REDUCE1]], %[[ALL_REDUCE2]] : tensor<64xf32>, tensor<64xi32>
+-  %2:2 = stablehlo.reduce(%arg0 init: %0), (%arg1 init: %1) across dimensions = [0, 2] :
+-    (tensor<2x64x13xf32>, tensor<2x64x13xi32>, tensor<f32>, tensor<i32>) -> (tensor<64xf32>, tensor<64xi32>)
+-    reducer(%arg2: tensor<f32>, %arg4: tensor<f32>) (%arg3: tensor<i32>, %arg5: tensor<i32>)  {
+-      %3 = stablehlo.add %arg2, %arg4 : tensor<f32>
+-      %4 = stablehlo.add %arg3, %arg5 : tensor<i32>
+-      stablehlo.return %3, %4 : tensor<f32>, tensor<i32>
+-    }
+-  return %2#0, %2#1 : tensor<64xf32>, tensor<64xi32>
+-}
+-
+ // CHECK-LABEL: func @reduce_min_sharded
+ func.func @reduce_min_sharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}]>}) -> tensor<2x13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.minimum across dimensions = [1]
+-  // CHECK-NOT:  sdy.sharding
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.minimum across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced=min{"x"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce min {"x"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}]>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -79,8 +54,7 @@ func.func @reduce_min_sharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sh
+ 
+ // CHECK-LABEL: func @reduce_max_sharded
+ func.func @reduce_max_sharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}]>}) -> tensor<2x13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.maximum across dimensions = [1]
+-  // CHECK-NOT:  sdy.sharding
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.maximum across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced=max{"x"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce max {"x"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}]>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -102,3 +76,23 @@ func.func @reduce_custom_combiner_without_unreduced(%arg0: tensor<2x64x13xf32> {
+   : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<2x13xf32>
+   return %1 : tensor<2x13xf32>
+ }
++
++// CHECK-LABEL: func @reduce_multiple_results
++func.func @reduce_multiple_results(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<2x64x13xi32>)
++    -> (tensor<64xf32>, tensor<64xi32>) {
++  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
++  %1 = stablehlo.constant dense<0> : tensor<i32>
++  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg1 <@mesh, [{"x"}, {}, {}]> : tensor<2x64x13xi32>
++  // CHECK-NEXT: %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %{{.*}}), (%[[RESHARD]] init: %{{.*}}) across dimensions = [0, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x"}>, <@mesh, [{?}], unreduced={"x"}>]>}
++  // CHECK:      %[[ALL_REDUCE1:.*]] = sdy.all_reduce {"x"} %[[REDUCE]]#0 out_sharding=<@mesh, [{}]> : tensor<64xf32>
++  // CHECK-NEXT: %[[ALL_REDUCE2:.*]] = sdy.all_reduce {"x"} %[[REDUCE]]#1 out_sharding=<@mesh, [{?}]> : tensor<64xi32>
++  // CHECK-NEXT: return %[[ALL_REDUCE1]], %[[ALL_REDUCE2]] : tensor<64xf32>, tensor<64xi32>
++  %2:2 = stablehlo.reduce(%arg0 init: %0), (%arg1 init: %1) across dimensions = [0, 2] :
++    (tensor<2x64x13xf32>, tensor<2x64x13xi32>, tensor<f32>, tensor<i32>) -> (tensor<64xf32>, tensor<64xi32>)
++    reducer(%arg2: tensor<f32>, %arg4: tensor<f32>) (%arg3: tensor<i32>, %arg5: tensor<i32>)  {
++      %3 = stablehlo.add %arg2, %arg4 : tensor<f32>
++      %4 = stablehlo.add %arg3, %arg5 : tensor<i32>
++      stablehlo.return %3, %4 : tensor<f32>, tensor<i32>
++    }
++  return %2#0, %2#1 : tensor<64xf32>, tensor<64xi32>
++}
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
+index 01b34bb1..2e4bbd0f 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
+@@ -56,7 +56,7 @@ func.func @all_reduce_delayed_to_call_site(%arg0: tensor<2x64x13xf32> {sdy.shard
+ 
+ // CHECK-LABEL: func @all_reduce_partially_delayed_until_return
+ func.func @all_reduce_partially_delayed_until_return(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x", "y"}, {}]>}) -> tensor<2x13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE_Y:.*]] = sdy.all_reduce {"y"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}], unreduced={"x"}>
+   // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[ALL_REDUCE_Y]], %[[ALL_REDUCE_Y]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE_X:.*]] = sdy.all_reduce {"x"} %[[ADD]] out_sharding=<@mesh, [{}, {}]>
+@@ -99,7 +99,7 @@ func.func @reduce_single_result_fully_unreduced(%arg0: tensor<2x64x13xf32> {sdy.
+ // CHECK-LABEL: func @reduce_single_result_partially_unreduced
+ func.func @reduce_single_result_partially_unreduced(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y", "x"}, {}]>})
+     -> (tensor<2x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}], unreduced={"x"}>}) {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}], unreduced={"x"}>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -110,7 +110,7 @@ func.func @reduce_single_result_partially_unreduced(%arg0: tensor<2x64x13xf32> {
+ // CHECK-LABEL: func @reduce_single_result_unreduced_full_axis
+ func.func @reduce_single_result_unreduced_full_axis(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x":(1)2, "y"}, {}]>})
+     -> (tensor<2x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}], unreduced={"x"}>}) {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}], unreduced={"x"}>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -121,7 +121,7 @@ func.func @reduce_single_result_unreduced_full_axis(%arg0: tensor<2x64x13xf32> {
+ // CHECK-LABEL: func @reduce_single_result_unreduced_sub_axis
+ func.func @reduce_single_result_unreduced_sub_axis(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x", "y"}, {}]>})
+     -> (tensor<2x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}], unreduced={"x":(1)2}>}) {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x":(1)2}>]>}
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x":(2)2, "y"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}], unreduced={"x":(1)2}>
+   // CHECK-NEXT: return %[[ALL_REDUCE]]
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+@@ -132,7 +132,7 @@ func.func @reduce_single_result_unreduced_sub_axis(%arg0: tensor<2x64x13xf32> {s
+ // CHECK-LABEL: func @reduce_single_result_unreduced_resharded
+ func.func @reduce_single_result_unreduced_resharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x", "y"}, {}]>})
+     -> (tensor<2x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}], unreduced={"x"}>}) {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
++  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+   // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[REDUCE]] out_sharding=<@mesh, [{}, {}], unreduced={"x"}>
+   // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"y"}, {}], unreduced={"x"}>
+   // CHECK-NEXT: return %[[RESHARD]]
+@@ -150,7 +150,7 @@ func.func @reduce_multiple_results_unreduced(
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+   %1 = stablehlo.constant dense<0> : tensor<i32>
+   // CHECK:      %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %cst), (%arg1 init: %c) across dimensions = [0, 2]
+-  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x"}>, <@mesh, [{}], unreduced={"x"}>]>}
++  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x", "y"}>, <@mesh, [{}], unreduced={"x", "y"}>]>}
+   // CHECK:      %[[ALL_REDUCE1:.*]] = sdy.all_reduce {"y"} %[[REDUCE]]#0 out_sharding=<@mesh, [{}], unreduced={"x"}> : tensor<64xf32>
+   // CHECK-NEXT: %[[ALL_REDUCE2:.*]] = sdy.all_reduce {"y"} %[[REDUCE]]#1 out_sharding=<@mesh, [{}], unreduced={"x"}> : tensor<64xi32>
+   // CHECK-NEXT: %[[ALL_REDUCE3:.*]] = sdy.all_reduce {"x":(2)2} %[[ALL_REDUCE2]] out_sharding=<@mesh, [{}], unreduced={"x":(1)2}> : tensor<64xi32>
