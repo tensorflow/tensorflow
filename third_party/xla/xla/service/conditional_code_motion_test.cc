@@ -2680,6 +2680,74 @@ ENTRY main {
   EXPECT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_F(ConditionalCodeMotionTest, OriginalValuePreservedOnMoveOperandIn) {
+  absl::string_view hlo_string = R"(
+HloModule TestModule
+
+%branch_0_comp.11 (parameter.12: (u32[])) -> (s8[]) {
+  %parameter.12 = (u32[], u32[]) parameter(0)
+  %get-tuple-element.13 = u32[] get-tuple-element(%parameter.12), index=1
+  %convert.15 = s8[] convert(u32[] %get-tuple-element.13)
+  ROOT %tuple.18 = (s8[]) tuple(s8[] %convert.15)
+}
+
+%branch_0_comp__1.19 (parameter.20: (pred[])) -> (s8[]) {
+  %parameter.20 = (pred[],s8[]) parameter(0)
+  %get-tuple-element.21 = pred[] get-tuple-element(%parameter.20), index=0
+  %convert.23 = s8[] convert(pred[] %get-tuple-element.21)
+  ROOT %tuple.24 = (s8[]) tuple(s8[] %convert.23)
+}
+
+%branch_1_comp__1.25 (parameter.26: (pred[])) -> (s8[]) {
+  %parameter.26 = (pred[],s8[]) parameter(0)
+  %get-tuple-element.27 = s8[] get-tuple-element(%parameter.26), index=1
+  ROOT %tuple.30 = (s8[]) tuple(s8[] %get-tuple-element.27)
+}
+
+%branch_1_comp.31 (parameter.32: (u32[])) -> (s8[]) {
+  %parameter.32 = (u32[], u32[]) parameter(0)
+  %get-tuple-element.33 = u32[] get-tuple-element(%parameter.32), index=0
+  %convert.35 = pred[] convert(%get-tuple-element.33)
+  %convert.36 = s32[] convert(%get-tuple-element.33)
+  %constant.37 = s8[] constant(1)
+  %add.0 = s8[] add(constant.37, constant.37)
+  %tuple.38 = (pred[], s8[]) tuple(pred[] %convert.35, s8[] add.0)
+  ROOT %conditional.39 = (s8[]) conditional(%convert.36, %tuple.38, %tuple.38), branch_computations={%branch_0_comp__1.19, %branch_1_comp__1.25}
+}
+
+%scalar_add_computation.1 (scalar_lhs.1: u32[], scalar_rhs.1: u32[]) -> u32[] {
+  %scalar_lhs.1 = u32[] parameter(0)
+  %scalar_rhs.1 = u32[] parameter(1)
+  ROOT %add.1 = u32[] add(u32[] %scalar_lhs.1, u32[] %scalar_rhs.1)
+}
+
+ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], parameter.5: u32[15,14]) -> (s8[]) {
+  %parameter.3 = u8[] parameter(0)
+  %parameter.4 = u8[] parameter(1)
+  %compare.7 = pred[] compare(u8[] %parameter.3, u8[] %parameter.4), direction=LT
+  %convert.9 = s32[] convert(pred[] %compare.7)
+  %parameter.5 = u32[15,14]{1,0} parameter(2)
+  %constant.2 = u32[] constant(0)
+  %reduce.1 = u32[] reduce(u32[15,14]{1,0} %parameter.5, u32[] %constant.2), dimensions={1,0}, to_apply=%scalar_add_computation.1
+  %tuple.10 = (u32[], u32[]) tuple(%reduce.1, constant.2)
+  ROOT %conditional.42 = (s8[]) conditional(s32[] %convert.9, %tuple.10, %tuple.10), branch_computations={%branch_0_comp.11, %branch_1_comp.31}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      inst->set_original_value(OriginalValue::CreateFromInstruction(inst));
+    }
+  }
+
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
 }  // namespace conditional_opt
 
 }  // namespace xla
