@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -86,6 +88,23 @@ TEST_F(RaggedTensorToSparseTest, EmptyRows) {
                                test::AsTensor<int>({1, 2, 3, 4, 5, 6}));
   test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
                                    test::AsTensor<int64_t>({5, 4}));
+}
+
+TEST_F(RaggedTensorToSparseTest, EmptyValuesWithLargeDenseSuffix) {
+  constexpr int64_t kSuffixSize = std::numeric_limits<int32_t>::max();
+  BuildRaggedTensorToSparseGraph<int>(
+      {{0}},                           // splits
+      TensorShape({0, kSuffixSize}),  // values.shape
+      {});                            // values
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(kSparseIndicesOutput),
+      test::AsTensor<int64_t>({}, TensorShape({0, 3})));
+  test::ExpectTensorEqual<int>(*GetOutput(kSparseValuesOutput),
+                               test::AsTensor<int>({}));
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(kSparseDenseShapeOutput),
+      test::AsTensor<int64_t>({0, 0, kSuffixSize}));
 }
 
 TEST_F(RaggedTensorToSparseTest, OneSplits_Values2D) {

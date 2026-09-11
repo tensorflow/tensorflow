@@ -60,8 +60,10 @@ class RaggedTensorToSparseOp : public OpKernel {
     // - `index_middle` is the index in the last ragged dimension.
     // - `index_suffix` is the index in the dense value dimensions.
     std::vector<int64_t> index_prefix(rt_nested_splits_len);
-    std::vector<std::vector<int64_t>> index_suffixes =
-        MakeIndexSuffixes(rt_dense_values_in.shape());
+    std::vector<std::vector<int64_t>> index_suffixes;
+    if (rt_dense_values_in.NumElements() != 0) {
+      index_suffixes = MakeIndexSuffixes(rt_dense_values_in.shape());
+    }
 
     // Allocate the `sparse_indices` output tensor.
     const int64_t nvals =
