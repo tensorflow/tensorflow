@@ -62,7 +62,9 @@ class LibCurlProxy : public LibCurl {
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             uint64_t param) override {
-    return ::curl_easy_setopt(curl, option, param);
+    // libcurl integer options take `long` (32-bit on Windows). Newer libcurl
+    // type-checks the C API, so convert at this boundary.
+    return ::curl_easy_setopt(curl, option, static_cast<long>(param));
   }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
@@ -100,7 +102,12 @@ class LibCurlProxy : public LibCurl {
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              uint64_t* value) override {
-    return ::curl_easy_getinfo(curl, info, value);
+    long v = 0;
+    const CURLcode result = ::curl_easy_getinfo(curl, info, &v);
+    if (result == CURLE_OK) {
+      *value = static_cast<uint64_t>(v);
+    }
+    return result;
   }
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
@@ -267,7 +274,7 @@ absl::Status CurlHttpRequest::SetPutFromFile(const std::string& body_filepath,
 
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_UPLOAD, uint64_t{1}));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(put_body_)));
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
@@ -280,7 +287,7 @@ void CurlHttpRequest::SetPutEmptyBody() {
   CheckMethodNotSet();
   is_method_set_ = true;
   method_ = RequestMethod::kPut;
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_UPLOAD, uint64_t{1}));
   AddHeader("Content-Length", "0");
   AddHeader("Transfer-Encoding", "identity");
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
@@ -461,10 +468,6 @@ absl::Status CurlHttpRequest::Send() {
 
   const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
   ABSL_RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
-
-  double written_size = 0;
-  CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD,
-                                            &written_size));
 
   CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE,
                                             &response_code_));
