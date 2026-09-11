@@ -1453,9 +1453,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
       << "Expect only 1 operand for TopK custom call.";
   TF_RET_CHECK(shape.IsTuple())
       << "Expect TopK custom call to have tuple shape.";
-  TF_RET_CHECK(shape.tuple_shapes().size() == 2)
-      << "Expect TopK custom call shape to have exactly 2 "
-         "sub-shapes.";
+  TF_RET_CHECK(shape.tuple_shapes().size() == 2 ||
+               shape.tuple_shapes().size() == 3)
+      << "Expect TopK custom call shape to have 2 or 3 sub-shapes.";
 
   auto data_shape = operands[0]->shape();
   auto top_elements_shape = shape.tuple_shapes()[0];

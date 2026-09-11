@@ -246,7 +246,10 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
   Shape k_shape =
       ShapeUtil::ChangeElementType(topk->shape().tuple_shapes(0), U64);
   Shape idx_shape = topk->shape().tuple_shapes(1);
-  Shape new_cc_shape = ShapeUtil::MakeTupleShape({k_shape, idx_shape});
+  constexpr size_t scratch_size = 32 * 1024 * 1024;
+  Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_size});
+  Shape new_cc_shape =
+      ShapeUtil::MakeTupleShape({k_shape, idx_shape, scratch_shape});
 
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
@@ -338,10 +341,18 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   if (n < min_n) {
     return InvalidArgument("Input too small (n=%d, min_n=%d)", n, min_n);
   }
+  Shape cc_shape = topk->shape();
+  if (is_cuda && use_raft) {
+    constexpr size_t scratch_size = 32 * 1024 * 1024;
+    Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_size});
+    cc_shape = ShapeUtil::MakeTupleShape({topk->shape().tuple_shapes(0),
+                                          topk->shape().tuple_shapes(1),
+                                          scratch_shape});
+  }
   HloComputation* comp = topk->parent();
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
-          topk->shape(), topk->operands(),
+          cc_shape, topk->operands(),
           // We don't need the original to_apply, but keeping it around allows
           // us to round-trip this CustomCall on tests.
           topk->to_apply(), "__gpu$TopK",

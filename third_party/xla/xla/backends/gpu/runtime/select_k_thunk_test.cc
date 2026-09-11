@@ -136,5 +136,54 @@ TEST(SelectKThunkTest, BufferUses) {
                           BufferUse::Write(slice2, shape2)));
 }
 
+TEST(SelectKThunkTest, BufferUsesWithScratch) {
+  auto c1 = HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{.125f, 0.875f, .5f, .25f, 0.75f}}));
+  auto topKInst = HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 3}),
+                                 ShapeUtil::MakeShape(S32, {1, 3}),
+                                 ShapeUtil::MakeShape(U8, {1024})}),
+      {c1.get()}, "__gpu$TopK");
+
+  Thunk::ThunkInfo thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(topKInst.get(), ThunkId{456});
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      {/*index=*/0, /*size=*/20, /*color=*/0},
+      {/*index=*/1, /*size=*/12, /*color=*/0},
+      {/*index=*/2, /*size=*/12, /*color=*/0},
+      {/*index=*/3, /*size=*/1024, /*color=*/0}};
+
+  BufferAllocation::Slice slice0(&buffer_allocations[0], /*offset=*/0,
+                                 /*size=*/20);
+  BufferAllocation::Slice slice1(&buffer_allocations[1], /*offset=*/0,
+                                 /*size=*/12);
+  BufferAllocation::Slice slice2(&buffer_allocations[2], /*offset=*/0,
+                                 /*size=*/12);
+  BufferAllocation::Slice slice3(&buffer_allocations[3], /*offset=*/0,
+                                 /*size=*/1024);
+
+  Shape shape0 = ShapeUtil::MakeShape(F32, {1, 5});
+  Shape shape1 = ShapeUtil::MakeShape(F32, {1, 3});
+  Shape shape2 = ShapeUtil::MakeShape(S32, {1, 3});
+  Shape shape3 = ShapeUtil::MakeShape(U8, {1024});
+
+  emitters::KernelArgument arg0(shape0, slice0);
+  emitters::KernelArgument arg1(shape1, slice1);
+  emitters::KernelArgument arg2(shape2, slice2);
+  emitters::KernelArgument arg3(shape3, slice3);
+  emitters::KernelArguments kernel_arguments({arg0, arg1, arg2, arg3});
+
+  SelectKThunk thunk(std::move(thunk_info), /*batch_size=*/1,
+                     /*num_elements=*/5, /*k=*/3, /*dtype=*/F32,
+                     kernel_arguments);
+
+  EXPECT_THAT(thunk.buffer_uses(),
+              ElementsAre(BufferUse::Read(slice0, shape0),
+                          BufferUse::Write(slice1, shape1),
+                          BufferUse::Write(slice2, shape2),
+                          BufferUse::Write(slice3, shape3)));
+}
+
 }  // namespace
 }  // namespace xla::gpu
