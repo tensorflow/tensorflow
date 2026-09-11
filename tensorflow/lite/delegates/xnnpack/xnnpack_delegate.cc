@@ -84,6 +84,15 @@ const float kConstantClampData = 0.f;
 
 constexpr char kOdmlSDPA[] = "odml.scaled_dot_product_attention";
 
+// The lock serializing every operation on a delegate's shared XNNPACK
+// workspace.
+//
+// This is `std::mutex` rather than `absl::Mutex` because this file is part of
+// the open-source TFLite build, which does not depend on absl -- the same
+// reason the `<mutex>` include above is annotated.
+using WorkspaceMutex = std::mutex;  // NOLINT: We don't have `absl::Mutex`.
+using WorkspaceLock = std::lock_guard<WorkspaceMutex>;
+
 // Use this to create a maybe unique_ptr that owns its data.
 auto kOwned = [](auto* v) { delete v; };
 // Use this to create a maybe unique_ptr that doesn't its data.
@@ -935,7 +944,19 @@ class Delegate {
       nullptr, &xnn_release_workspace};
 
   TfLiteXNNPackDelegateOptions options_{};
-  std::mutex workspace_mutex_;
+  // Serialises every operation on `workspace_`: creating a runtime on it,
+  // destroying one, reshaping, and invoking.
+  //
+  // Held by shared pointer rather than by value because the workspace outlives
+  // this delegate. `xnn_workspace` is reference counted by XNNPACK and each
+  // runtime holds a reference, so releasing it here only drops the delegate's
+  // own reference. Callers routinely destroy the delegate before the
+  // interpreter that owns the delegated kernels -- deleting the delegate at
+  // the end of a scope in which the interpreter was declared first does
+  // exactly that -- and those kernels still have to take this lock on their
+  // way out. A plain member would already have been destroyed by then.
+  std::shared_ptr<WorkspaceMutex> workspace_mutex_ =
+      std::make_shared<WorkspaceMutex>();
 
   // If no weight cache is provided and a cache is set in the delegate options,
   // this will be used as a weight cache.
@@ -1492,9 +1513,28 @@ class Subgraph {
         return nullptr;
       }
     }
-    status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
-                                   delegate.workspace(), delegate.threadpool(),
-                                   flags, &runtime_ptr);
+    {
+      // `xnn_create_runtime_v4` does more than build a runtime: it attaches
+      // the new runtime to this delegate's shared workspace by pushing it onto
+      // an intrusive list of users, and bumps that workspace's reference
+      // count. Neither is synchronised inside XNNPACK.
+      //
+      // The same list is walked by `xnn_reshape_runtime`, which after growing
+      // the workspace has to visit every attached runtime and shift its value
+      // pointers by however far the block moved. That adjustment is relative,
+      // so it must be applied exactly once to each runtime: a runtime the walk
+      // misses keeps pointers into the block the growth already freed, and a
+      // walk that follows a half-linked entry can wander off the list
+      // entirely.
+      //
+      // Prepare and Invoke already serialise themselves on
+      // `workspace_mutex_`. Creation did not, and a mutex held by only one of
+      // two parties excludes nothing, so take it here too.
+      WorkspaceLock lock(*delegate.workspace_mutex_);
+      status = xnn_create_runtime_v4(
+          subgraph.get(), delegate.weights_cache(), delegate.workspace(),
+          delegate.threadpool(), flags, &runtime_ptr);
+    }
     if (delegate.weight_cache_provider_->IsActive() &&
         delegate.weight_cache_provider_->CanStartBuildStep()) {
       if (!delegate.weight_cache_provider_->StopBuildStep()) {
@@ -1519,7 +1559,7 @@ class Subgraph {
       return moe_kernel_->Prepare(context);
     }
 
-    std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+    WorkspaceLock lock(*delegate->workspace_mutex_);
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
 
@@ -1600,7 +1640,7 @@ class Subgraph {
       return moe_kernel_->Invoke(context);
     }
 
-    std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+    WorkspaceLock lock(*delegate->workspace_mutex_);
 
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
@@ -7151,12 +7191,43 @@ class Subgraph {
 
   inline Delegate* GetDelegate() const { return delegate_; }
 
+  // Destroys the XNNPACK runtime while holding the workspace lock.
+  //
+  // `xnn_delete_runtime` unlinks this runtime from the intrusive list of users
+  // of the shared workspace and drops that workspace's reference count. The
+  // unlink is an ordinary singly-linked-list removal with no synchronisation
+  // and, notably, no bound on its search loop: if the list has been disturbed
+  // concurrently it walks past the end.
+  //
+  // The same list is pushed onto by `xnn_create_runtime_v4` and walked by
+  // `xnn_reshape_runtime` when the workspace has to move. Taking the mutex
+  // that Create, Prepare and Invoke take makes every operation on this
+  // workspace mutually exclusive -- the invariant XNNPACK assumes but does not
+  // enforce.
+  //
+  // The lock is reached through this object's own handle rather than through
+  // `delegate_`, because by the time a delegated kernel is destroyed the
+  // delegate itself is frequently already gone: the usual TFLite arrangement
+  // declares the interpreter first and the delegate second, so the delegate is
+  // destroyed first and the kernels follow.
+  //
+  // Resetting `runtime_` here rather than letting the member be destroyed
+  // implicitly also preserves the existing ordering requirement that the
+  // runtime goes away before `allocated_scales_`.
+  ~Subgraph() {
+    if (workspace_mutex_ != nullptr) {
+      WorkspaceLock lock(*workspace_mutex_);
+      runtime_.reset();
+    }
+  }
+
  private:
   Subgraph(Delegate& delegate, xnn_runtime_t runtime,
            const std::unordered_set<int>& externals, std::vector<int> inputs,
            std::vector<int> outputs,
            std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack)
-      : allocated_scales_(delegate.TransferTempAllocatedScales()),
+      : workspace_mutex_(delegate.workspace_mutex_),
+        allocated_scales_(delegate.TransferTempAllocatedScales()),
         runtime_(runtime, &xnn_delete_runtime),
         inputs_(std::move(inputs)),
         outputs_(std::move(outputs)),
@@ -7171,12 +7242,20 @@ class Subgraph {
 
   Subgraph(Delegate& delegate,
            std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel)
-      : runtime_(nullptr, &xnn_delete_runtime),
+      : workspace_mutex_(delegate.workspace_mutex_),
+        runtime_(nullptr, &xnn_delete_runtime),
         moe_kernel_(std::move(moe_kernel)) {
     enable_subgraph_reshaping_ = delegate.enable_subgraph_reshaping();
     delegate_ = &delegate;
   }
 
+  // A handle on the lock guarding the workspace this runtime draws its
+  // intermediate tensors from.
+  //
+  // This is the delegate's mutex, held here by shared pointer so that it stays
+  // alive for as long as any delegated kernel does. Declared before `runtime_`
+  // so that it is still valid while `runtime_` is being destroyed.
+  std::shared_ptr<WorkspaceMutex> workspace_mutex_;
   // Keep track of expanded scales for shared tensors to manage their lifetime.
   // Must be declared before runtime_ so it outlives runtime_ during
   // destruction.
