@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -125,6 +130,23 @@ TEST_F(RangeOpTest, Range_Size_Overflow) {
   EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
                          std::numeric_limits<int64_t>::max()),
             RunOpKernel().message());
+}
+
+// Regression test for https://github.com/tensorflow/tensorflow/issues/122746:
+// extreme float64 Range args must fail with InvalidArgument before allocation.
+TEST_F(RangeOpTest, Range_Excessive_Float_Allocation) {
+  MakeOp(DT_DOUBLE);
+
+  AddInputFromArray<double>(TensorShape({}), {-0.5});
+  AddInputFromArray<double>(TensorShape({}), {2.6623919835808085e+307});
+  AddInputFromArray<double>(TensorShape({}), {1.0162754537078317e+295});
+
+  absl::Status status = RunOpKernel();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_NE(std::string::npos,
+            std::string(status.message())
+                .find("Requires Range output size in bytes"));
 }
 
 TEST_F(LinSpaceOpTest, Simple_D32) {

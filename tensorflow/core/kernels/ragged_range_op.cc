@@ -20,15 +20,38 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "xla/tsl/platform/errors.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/util/overflow.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace tensorflow {
 
 using errors::InvalidArgument;
+
+namespace {
+
+// Keep in sync with kMaxRangeOutputBytes in
+// tensorflow/core/kernels/sequence_ops.cc.
+constexpr int64_t kMaxRangeOutputBytes = 1LL << 40;  // 1 TiB
+
+template <typename T>
+absl::Status CheckRangeOutputSize(int64_t size) {
+  const int64_t num_bytes = MultiplyWithoutOverflow(size, sizeof(T));
+  if (num_bytes < 0 || num_bytes >= kMaxRangeOutputBytes) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires Range output size in bytes to be less than ",
+                     kMaxRangeOutputBytes, ", but got size ", size,
+                     " with element size ", sizeof(T)));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 template <typename T, typename SPLITS_TYPE>
 class RaggedRangeOp : public OpKernel {
@@ -116,6 +139,10 @@ class RaggedRangeOp : public OpKernel {
         // The following is copied from tensorflow::RangeOp::Compute().
         auto size_auto =
             Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+        // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so
+        // casting NaN to an integer is undefined behavior without this check.
+        OP_REQUIRES(context, !Eigen::numext::isnan(size_auto),
+                    absl::InvalidArgumentError("Requires non-NaN Range size"));
         OP_REQUIRES(
             context, size_auto <= std::numeric_limits<SPLITS_TYPE>::max(),
             errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
@@ -133,6 +160,7 @@ class RaggedRangeOp : public OpKernel {
       rt_nested_splits(row + 1) = rt_nested_splits(row) + size;
     }
     SPLITS_TYPE nvals = rt_nested_splits(nrows);
+    OP_REQUIRES_OK(context, CheckRangeOutputSize<T>(nvals));
 
     // Construct the rt_dense_values tensor.
     Tensor* rt_dense_values_out = nullptr;
