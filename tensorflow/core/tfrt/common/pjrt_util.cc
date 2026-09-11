@@ -92,4 +92,18 @@ absl::StatusOr<PjRtGpuClientCreationInfo*> GetPjRtGpuClientCreationInfo() {
   core::ScopedUnref pjrt_state_ref(pjrt_state);
   return pjrt_state->GetPjRtGpuClientCreationInfo();
 }
+
+absl::Status ResetPjRtClientInTFGlobalResourceManager(
+    const DeviceType& device_type) {
+  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
+  PjRtState* pjrt_state;
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<PjRtState>(
+      rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
+      [&](PjRtState** ret) {
+        *ret = PjRtState::Create();
+        return absl::OkStatus();
+      }));
+  core::ScopedUnref pjrt_state_ref(pjrt_state);
+  return pjrt_state->ResetPjRtClient(device_type);
+}
 }  // namespace tensorflow
