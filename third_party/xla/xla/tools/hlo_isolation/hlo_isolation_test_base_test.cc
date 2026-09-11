@@ -762,10 +762,10 @@ ENTRY main.1 {
                          RunIsolationPipeline(*module, &test_runner,
                                               &reference_runner, options));
   }
-  // We expect 2 failures:
-  // 1. TPU_VS_DEFUSED_TPU mismatch.
-  // 2. TPU_VS_INTERPRETER mismatch.
-  EXPECT_EQ(failures.size(), 2);
+  // Both TPU_VS_DEFUSED_TPU and TPU_VS_INTERPRETER mismatch, but they are
+  // reported together in a single failure at the final verdict rather than one
+  // failure per check.
+  EXPECT_EQ(failures.size(), 1);
   EXPECT_GT(test_runner.last_hlo_output_callbacks_size_, 0);
 
   // Check the pipeline results contains our mismatch results.
