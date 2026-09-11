@@ -390,6 +390,62 @@ ENTRY main {
   EXPECT_EQ(tuple->original_value()->ToString(), "({\"p0\"}, {})");
 }
 
+TEST_F(OriginalValueHloTest, CreateFromInstructionConditional) {
+  const char* hlo_string = R"(
+HloModule test
+
+branch_0 {
+  p0 = f32[] parameter(0), origin={{"p0"}}
+  ROOT neg = f32[] negate(p0), origin={{"neg"}}
+}
+
+branch_1 {
+  p1 = f32[] parameter(0), origin={{"p1"}}
+  ROOT abs = f32[] abs(p1), origin={{"abs"}}
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  arg = f32[] parameter(1)
+  ROOT conditional = f32[] conditional(pred_param, arg, arg),
+    true_computation=branch_0, false_computation=branch_1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* conditional = module->entry_computation()->root_instruction();
+  auto created = OriginalValue::CreateFromInstruction(conditional);
+  ASSERT_NE(created, nullptr);
+  EXPECT_EQ(created->ToString(), "{\"neg\"}");
+}
+
+TEST_F(OriginalValueHloTest, CreateFromInstructionConditionalTuple) {
+  const char* hlo_string = R"(
+HloModule test
+
+branch_0 {
+  ROOT root0 = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+}
+
+branch_1 {
+  ROOT root1 = (f32[], f32[]) parameter(0), origin={({"q0"}, {"q1"})}
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  arg = (f32[], f32[]) parameter(1)
+  ROOT conditional = (f32[], f32[]) conditional(pred_param, arg, arg),
+    true_computation=branch_0, false_computation=branch_1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* conditional = module->entry_computation()->root_instruction();
+  auto created = OriginalValue::CreateFromInstruction(conditional);
+  ASSERT_NE(created, nullptr);
+  EXPECT_EQ(created->ToString(), "({\"p0\"}, {\"p1\"})");
+}
+
 TEST_F(OriginalValueHloTest, CopyOriginalValue) {
   const char* hlo_string = R"(
 HloModule test
