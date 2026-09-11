@@ -15,6 +15,6 @@
 -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 absl-py
 immutabledict
-jax[tpu]
+jax[tpu]>=0.11.1
 numpy
 pandas

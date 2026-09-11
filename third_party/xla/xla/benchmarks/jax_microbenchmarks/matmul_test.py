@@ -16,8 +16,8 @@
 
 from absl import app
 from absl import flags
-import jax.numpy as jnp
 
+from xla.benchmarks.core import benchmark
 from xla.benchmarks.jax_microbenchmarks import matmul_lib
 
 _DIM = flags.DEFINE_list(
@@ -51,18 +51,12 @@ _RUNS = flags.DEFINE_integer(
 )
 
 
-def parse_dtype(dtype_str: str) -> jnp.dtype:
-  if dtype_str not in matmul_lib.DTYPE_MAPPING:
-    raise ValueError(f"Unsupported dtype: {dtype_str}")
-  return matmul_lib.DTYPE_MAPPING[dtype_str]
-
-
 def main(_):
   if len(_FMT.value) != 3:
     raise ValueError(f"Expected 3 formats, got {len(_FMT.value)}")
-  lhs_dtype = parse_dtype(_FMT.value[0])
-  rhs_dtype = parse_dtype(_FMT.value[1])
-  out_dtype = parse_dtype(_FMT.value[2])
+  lhs_dtype = benchmark.str_to_dtype(_FMT.value[0])
+  rhs_dtype = benchmark.str_to_dtype(_FMT.value[1])
+  out_dtype = benchmark.str_to_dtype(_FMT.value[2])
 
   if len(_DIM.value) != 4:
     raise ValueError(f"Expected 4 dims, got {len(_DIM.value)}")
