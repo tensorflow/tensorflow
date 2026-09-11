@@ -104,10 +104,16 @@ void GrpcDataServerBase::Stop() {
 }
 
 void GrpcDataServerBase::Join() {
-  if (!server_) {
-    return;
+  ::grpc::Server* server = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(ExternalMutex());
+    if (!server_) {
+      return;
+    }
+    server = server_.get();
   }
-  server_->Wait();
+
+  server->Wait();
 }
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
