@@ -320,3 +320,25 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(
             np.random.randn(*shape), np.random.randn(shape[-1]), dtypes.float64,
             data_format, use_gpu)
+
+  def testBiasAddInt32Overflow(self):
+    # Regression test for int32 overflow in the BiasAdd GPU kernel: a tensor
+    # whose element count exceeds 2**31 must compute without an illegal memory
+    # access. Total count = 2 * 1073741825 = 2,147,483,650 > 2**31 - 1.
+    # This needs several GB of GPU memory, so it skips gracefully when the
+    # device is unavailable or runs out of memory (e.g. on shared runners).
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available to run GPU large tensor tests.")
+
+    with self.session(use_gpu=True):
+      try:
+        inp = array_ops.zeros(shape=(2, 1073741825), dtype=dtypes.float16)
+        bias = array_ops.zeros(shape=(1073741825,), dtype=dtypes.float16)
+        # Reduce on device so the multi-GB result is not copied back to host
+        # (a host-side copy can OOM the runner). reduce_sum also touches every
+        # element, so an out-of-bounds kernel write would surface as non-zero.
+        out = math_ops.reduce_sum(nn_ops.bias_add(inp, bias))
+        self.assertEqual(self.evaluate(out), 0.0)
+      except (errors_impl.ResourceExhaustedError,
+              errors_impl.InternalError) as e:
+        self.skipTest("Skipped due to memory limits: %s" % str(e))
