@@ -233,11 +233,13 @@ def _fftn_wrapper(fft_n, default_name):
     with _ops.name_scope(
         name, default_name, [input_tensor, fft_length, axes]
     ) as name:
-      axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      # Convert first: inferring the axes reads `input_tensor.shape`,
+      # which a list or a scalar does not have.
       input_tensor = _ops.convert_to_tensor(
           input_tensor, preferred_dtype=_dtypes.complex64
       )
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
       input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
         fft_length = _infer_fft_length_for_fftn(input_tensor)
@@ -273,11 +275,13 @@ def _ifftn_wrapper(ifft_n, default_name):
     with _ops.name_scope(
         name, default_name, [input_tensor, fft_length, axes]
     ) as name:
-      axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      # Convert first: inferring the axes reads `input_tensor.shape`,
+      # which a list or a scalar does not have.
       input_tensor = _ops.convert_to_tensor(
           input_tensor, preferred_dtype=_dtypes.complex64
       )
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
       input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
         fft_length = _infer_fft_length_for_fftn(input_tensor)
@@ -313,11 +317,13 @@ def _rfftn_wrapper(rfft_n, default_name):
     with _ops.name_scope(
         name, default_name, [input_tensor, fft_length, axes]
     ) as name:
-      axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      # Convert first: inferring the axes reads `input_tensor.shape`,
+      # which a list or a scalar does not have.
       input_tensor = _ops.convert_to_tensor(
           input_tensor, preferred_dtype=_dtypes.float32
       )
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
       if input_tensor.dtype not in (_dtypes.float32, _dtypes.float64):
         raise ValueError(
             "RFFT requires tf.float32 or tf.float64 inputs, got: %s"
@@ -370,11 +376,13 @@ def _irfftn_wrapper(irfft_n, default_name):
     with _ops.name_scope(
         name, default_name, [input_tensor, fft_length]
     ) as name:
-      axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      # Convert first: inferring the axes reads `input_tensor.shape`,
+      # which a list or a scalar does not have.
       input_tensor = _ops.convert_to_tensor(
           input_tensor, preferred_dtype=_dtypes.complex64
       )
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
       input_tensor.shape.with_rank_at_least(fft_rank)
       if input_tensor.dtype not in (_dtypes.complex64, _dtypes.complex128):
         raise ValueError(

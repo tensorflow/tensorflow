@@ -144,6 +144,13 @@ class HeapSimulator {
     // If 'buffers_to_assign' is provided, only those buffers are assigned
     // offsets, otherwise all buffers defined by the instructions are assigned.
     const absl::flat_hash_set<const HloValue*>* buffers_to_assign;
+    // Memory space color marking "view" values (address stand-ins aliasing
+    // into their first operand's buffer, see
+    // BufferAssigner::Options::dus_view_color). When set, a value used as a
+    // view's base is kept live until the view's last transitive reader: those
+    // readers read the value's buffer through the view, so it must not be
+    // recycled before them.
+    std::optional<int64_t> view_color;
   };
 
   // Returns the minimum memory required to compute an HLO module where all
@@ -214,7 +221,10 @@ class HeapSimulator {
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
       HloLiveRange* live_range);
 
-  bool IgnoreBuffer(const HloValue* buffer) const;
+  // Returns whether the buffer should be allocated space in the heap simulation
+  // (excludes constants unless alloc_constants is set, and respects the
+  // buffers_to_assign filter).
+  bool IsHeapPressureImpacting(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
   void Free(const HloValue* buffer, const HloInstruction* instruction);
   // ShareBuffer indicates that a new buffer is defined and it has to be the

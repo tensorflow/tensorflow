@@ -334,15 +334,11 @@ class MatmulInterpolatorDefaultTableTest
   }
 
   std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorGfx942() {
-    se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-    device_info.set_rocm_compute_capability("gfx942");
-    return GetMatmulInterpolator(device_info);
+    return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI300DeviceInfo());
   }
 
   std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorGfx950() {
-    se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-    device_info.set_rocm_compute_capability("gfx950");
-    return GetMatmulInterpolator(device_info);
+    return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI350DeviceInfo());
   }
 };
 
@@ -739,8 +735,7 @@ INSTANTIATE_TEST_SUITE_P(
            info) { return info.param.test_name; });
 
 TEST(DefaultMatmulPerfTableTest, Gfx942InterpolatesBetweenGridPoints) {
-  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-  device_info.set_rocm_compute_capability("gfx942");
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI300DeviceInfo();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MatmulInterpolator> interpolator,
                        MatmulInterpolator::Create(device_info));
   ASSERT_OK_AND_ASSIGN(
@@ -838,8 +833,7 @@ INSTANTIATE_TEST_SUITE_P(
            info) { return info.param.test_name; });
 
 TEST(DefaultMatmulPerfTableTest, Gfx950InterpolatesBetweenGridPoints) {
-  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-  device_info.set_rocm_compute_capability("gfx950");
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI350DeviceInfo();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MatmulInterpolator> interpolator,
                        MatmulInterpolator::Create(device_info));
   ASSERT_OK_AND_ASSIGN(

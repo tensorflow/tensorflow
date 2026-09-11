@@ -402,23 +402,13 @@ bool GetDeviceProperties(hipDeviceProp_t* device_properties,
 }
 
 // Allocates memory on the GPU device.
-absl::StatusOr<void*> DeviceAllocate(Context* context, uint64_t bytes,
-                                     bool is_fine_grained = false) {
+absl::StatusOr<void*> DeviceAllocate(Context* context, uint64_t bytes) {
   if (bytes == 0) {
     return nullptr;
   }
   ScopedActivateContext activated(context);
   hipDeviceptr_t device_mem = nullptr;
-  hipError_t res;
-  if (is_fine_grained) {
-    // Fine-grained memory, which has better coherence during the kernel
-    // execution. This type of memory is only used in P2P communication to solve
-    // the cache coherence issue for some archs (e.g., MI200); most of the time,
-    // you don't have to use it.
-    res = hipExtMallocWithFlags(&device_mem, bytes, hipDeviceMallocFinegrained);
-  } else {
-    res = hipMalloc(&device_mem, bytes);
-  }
+  hipError_t res = hipMalloc(&device_mem, bytes);
   if (res != hipSuccess) {
     return absl::InternalError(absl::StrFormat(
         "failed to allocate %d bytes from device: %s", bytes, ToString(res)));
@@ -787,7 +777,7 @@ DeviceAddressBase RocmExecutor::Allocate(uint64_t size, int64_t mem_space_id) {
       result = CollectiveMemoryAllocate(&rocm_context_, size);
       break;
     case MemorySpace::kDevice:
-      result = DeviceAllocate(&rocm_context_, size, /*is_fine_grained*/ false);
+      result = DeviceAllocate(&rocm_context_, size);
       break;
     case MemorySpace::kHost:
       result = HostAllocate(&rocm_context_, size);
@@ -803,7 +793,7 @@ DeviceAddressBase RocmExecutor::Allocate(uint64_t size, int64_t mem_space_id) {
   // Do not track allocations in device memory since they are the default case.
   if (*result != nullptr && (memory_space == MemorySpace::kCollective ||
                              memory_space == MemorySpace::kHost)) {
-    absl::MutexLock lock{&mu_};
+    absl::MutexLock lock{mu_};
     tracked_allocations_[*result] = memory_space;
   }
   return DeviceAddressBase(*result, size);
@@ -815,7 +805,7 @@ void RocmExecutor::Deallocate(DeviceAddressBase* mem) {
   }
   MemorySpace space = MemorySpace::kDevice;
   {
-    absl::MutexLock lock{&mu_};
+    absl::MutexLock lock{mu_};
     auto it = tracked_allocations_.find(mem->opaque());
     if (it != tracked_allocations_.end()) {
       space = it->second;
@@ -1191,26 +1181,31 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    std::optional<int64_t> pcie_bw = gpu::GetRocmPcieBandwidth(pci_bus_id);
-    if (pcie_bw.has_value()) {
+    absl::StatusOr<int64_t> pcie_bw = gpu::GetRocmPcieBandwidth(pci_bus_id);
+    if (pcie_bw.ok()) {
       desc.set_pcie_bandwidth(*pcie_bw);
     } else {
       LOG(WARNING) << "Could not determine PCIe bandwidth for device "
-                   << device_ordinal
-                   << " via rocm_smi. Assuming PCIe Gen4 x16.";
+                   << device_ordinal << " via SMI ("
+                   << pcie_bw.status().message()
+                   << "). Assuming PCIe Gen4 x16.";
       desc.set_pcie_bandwidth(32LL * 1024 * 1024 * 1024);
     }
   }
 
   {
-    gpu::XgmiTopologyInfo xgmi = gpu::GetRocmXgmiTopology(pci_bus_id);
-    if (xgmi.active_links > 0) {
+    absl::StatusOr<gpu::XgmiTopologyInfo> xgmi =
+        gpu::GetRocmXgmiTopology(pci_bus_id);
+    if (!xgmi.ok()) {
+      LOG(WARNING) << "Could not determine xGMI topology for device "
+                   << device_ordinal << " via SMI: " << xgmi.status().message();
+    } else if (xgmi->active_links > 0) {
       DeviceInterconnectInfo info;
-      info.active_links = xgmi.active_links;
+      info.active_links = xgmi->active_links;
       desc.set_device_interconnect_info(info);
       VLOG(1) << "Device " << device_ordinal << ": detected "
-              << xgmi.active_links << " active xGMI links"
-              << " (hive_id=" << xgmi.hive_id << ")";
+              << xgmi->active_links << " active xGMI links"
+              << " (hive_id=" << xgmi->hive_id << ")";
     }
   }
 

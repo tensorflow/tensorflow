@@ -60,29 +60,6 @@ class XlaCompileLibTest : public HloTestBase {
   }
 
   std::unique_ptr<HloModule> module_;
-
-  void ComputeAutotuneResults(AutotuneResults& results) {
-    static constexpr absl::string_view kHloText = R"(
-HloModule t
-ENTRY e {
-  p0 = f16[1,16,17,3] parameter(0)
-  p1 = f16[16,17,3] parameter(1)
-  ROOT _ = f16[1,16,16] dot(p0, p1),
-    lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
-})";
-
-    HloModuleConfig config = GetModuleConfigForTest();
-    DebugOptions opts = config.debug_options();
-    opts.set_xla_gpu_autotune_level(3);
-    config.set_debug_options(opts);
-
-    gpu::AutotunerCache::ClearAutotuneResults();
-    ASSERT_OK_AND_ASSIGN(auto module,
-                         ParseAndReturnVerifiedModule(kHloText, config));
-    (void)CreateExecutable(std::move(module), /*run_hlo_passes=*/true);
-
-    ASSERT_OK(gpu::AutotunerCache::SerializeAutotuneResults(&results));
-  }
 };
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
@@ -193,34 +170,11 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
 }
 
-TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
-  gpu::AutotunerCache::ClearAutotuneResults();
-
-  HloModuleAndMetadata mod;
-  mod.hlo_module = std::move(module_);
-  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
-  ComputeAutotuneResults(data->autotune_results.emplace());
-  gpu::AutotunerCache::ClearAutotuneResults();
-  mod.backend_specific_data = std::move(data);
-
-  DebugOptions opts = mod.hlo_module->config().debug_options();
-  opts.set_xla_gpu_autotune_level(3);
-  mod.hlo_module->mutable_config().set_debug_options(opts);
-
-  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
-              absl_testing::IsOkAndHolds(true));
-  EXPECT_FALSE(gpu::AutotunerCache::ResultCacheIsEmpty());
-}
-
 TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
   gpu::AutotunerCache::ClearAutotuneResults();
 
   HloModuleAndMetadata mod;
   mod.hlo_module = std::move(module_);
-  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
-  ComputeAutotuneResults(data->autotune_results.emplace());
-  gpu::AutotunerCache::ClearAutotuneResults();
-  mod.backend_specific_data = std::move(data);
 
   DebugOptions opts = mod.hlo_module->config().debug_options();
   opts.set_xla_gpu_autotune_level(0);

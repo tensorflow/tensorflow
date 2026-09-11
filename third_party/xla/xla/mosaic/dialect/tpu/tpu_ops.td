@@ -85,13 +85,13 @@ def TPU_TiledLayoutAttr
 
     // Returns the smallest tile that can be used to divide the first tile of
     // `tiles` into contiguous subtiles.
-    // NOTE: For tiles (T1, T2, ..., Tn), let Ts be the subtile unit. Then,
+    // NOTE: For tiles (T1, T2, ..., Tn), let Ts be the unit subtile. Then,
     //   (T1, T2, ..., Tn) is equivalent to (T1, Ts, T2, ..., Tn). Furthermore,
     //   tiles (T2, ..., Tn) permute data within each Ts tile, but never across
     //   Ts tiles.
-    static ::llvm::SmallVector<int64_t> getSubtileUnit(::llvm::ArrayRef<::xla::Tile> tiles);
-    ::llvm::SmallVector<int64_t> getSubtileUnit() const {
-      return getSubtileUnit(getTiles());
+    static ::llvm::SmallVector<int64_t> getUnitSubtile(::llvm::ArrayRef<::xla::Tile> tiles);
+    ::llvm::SmallVector<int64_t> getUnitSubtile() const {
+      return getUnitSubtile(getTiles());
     }
 
     int64_t getRank() const {
@@ -335,6 +335,7 @@ def TPU_StridedLoadOp : TPU_Op<"strided_load", [DefaultMemRead]> {
     $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TPU_StridedStoreOp : TPU_Op<"strided_store", [DefaultMemWrite]> {
@@ -908,6 +909,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     - `rhs_dilation`: Dilation factor for the kernel/filter (defaults to 1).
     - `window_reversal`: Boolean flags indicating whether to reverse the kernel
       window along each spatial dimension.
+    - `feature_group_count`: Number of feature groups for grouped convolution.
+    - `batch_group_count`: Number of batch groups for grouped convolution.
     - `precision`: Optional contraction precision mode for TPU matrix multiplication.
   }];
   let arguments = (ins
@@ -920,6 +923,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     DenseI64ArrayAttr:$lhs_dilation,
     DenseI64ArrayAttr:$rhs_dilation,
     DenseBoolArrayAttr:$window_reversal,
+    DefaultValuedAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedAttr<I64Attr, "1">:$batch_group_count,
     OptionalAttr<TPU_ContractPrecisionEnum>:$precision
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);

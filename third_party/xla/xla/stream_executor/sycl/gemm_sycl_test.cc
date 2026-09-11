@@ -33,7 +33,8 @@ class GemmSyclTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   void TestGemmWithTypeVariations(absl::string_view hlo_template) {
     std::vector<std::tuple<absl::string_view, absl::string_view>>
-        type_combinations = {{"f32", "f32"}, {"f16", "f16"}, {"bf16", "bf16"}};
+        type_combinations = {
+            {"f32", "f32"}, {"f16", "f16"}, {"bf16", "bf16"}, {"f64", "f64"}};
 
     for (const auto& type_combination : type_combinations) {
       VLOG(3) << "Testing type combination: " << std::get<0>(type_combination)

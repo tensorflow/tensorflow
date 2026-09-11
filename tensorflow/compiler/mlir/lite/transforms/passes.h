@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project

@@ -22,20 +22,19 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def workspace():
     tf_http_archive(
         name = "rules_proto",
-        sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
-        strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
+        sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
+        strip_prefix = "rules_proto-7.1.0",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+            "https://github.com/bazelbuild/rules_proto/archive/refs/tags/7.1.0.tar.gz",
         ),
-        patch_file = ["//third_party:rules_proto.patch"],
     )
 
     # https://github.com/bazelbuild/bazel-skylib/releases
     tf_http_archive(
         name = "bazel_skylib",
-        sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
+        sha256 = "3b5b49006181f5f8ff626ef8ddceaa95e9bb8ad294f7b5d7b11ea9f7ddaf8c59",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.9.0/bazel-skylib-1.9.0.tar.gz",
         ),
     )
 
@@ -64,22 +63,21 @@ def workspace():
 
     tf_http_archive(
         name = "rules_cc",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_cc/releases/download/0.2.0/rules_cc-0.2.0.tar.gz"),
-        strip_prefix = "rules_cc-0.2.0",
-        sha256 = "ae244f400218f4a12ee81658ff246c0be5cb02c5ca2de5519ed505a6795431e9",
-        patch_file = [
-            "@xla//third_party/py:rules_cc_protobuf.patch",
-        ],
+        sha256 = "69e05df29f0010ba248ef8dafc1f084c8fd2f5c553da634422d8167f5c4b277b",
+        strip_prefix = "rules_cc-0.2.20",
+        urls = tf_mirror_urls(
+            "https://github.com/bazelbuild/rules_cc/releases/download/0.2.20/rules_cc-0.2.20.tar.gz",
+        ),
     )
 
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "75ccb7c4dc699343f02d02f0b5baa6dac09c013d46b92b60f18563448ea59e77",
-        strip_prefix = "rules_ml_toolchain-73cb731fed3ccf7551beac710bf1c5dbeb8be298",
+        sha256 = "66d823b6c6b4ea6f09d79ef6fe49e181e5301759ee07d176a6c82a01e1227d6b",
+        strip_prefix = "rules_ml_toolchain-e8709f15382e4da1de5ca15672cb4412da3d989d",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/73cb731fed3ccf7551beac710bf1c5dbeb8be298.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/e8709f15382e4da1de5ca15672cb4412da3d989d.tar.gz",
         ),
     )
 

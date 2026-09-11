@@ -78,6 +78,7 @@ xla_cc_test(
         ":hlo_lexer",
         ":hlo_parser",
         "//xla:array",
+        "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",

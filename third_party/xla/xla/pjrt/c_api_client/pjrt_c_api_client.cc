@@ -176,17 +176,17 @@ PjRtCApiClient::PjRtCApiClient(
       extensions_(InitExtensions(c_api)),
       host_memory_allocator_(InitHostMemoryAllocator(c_api, c_client)),
       // Example platform version string:
-      //   PJRT C API
       //   TFRT TPU v2
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_client, c_api)),
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();
   InitAttributes();
   LOG(INFO) << "PjRtCApiClient created.";
 }
+
+bool PjRtCApiClient::IsCApi() const { return true; }
 
 void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   // Initialize devices.
@@ -746,6 +746,15 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
 }
 
 }  // namespace
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tsl::profiler::TraceMe traceme("PjRtCApiClient::Compile(XlaComputation)");
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* const topology,
+                   GetTopologyDescription());
+  return InitializeArgsAndCompileAot(c_api_, this, &computation, options,
+                                     *topology);
+}
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
     MaybeOwningMlirModule module, CompileOptions options) {

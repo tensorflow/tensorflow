@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/dynamic_shapes.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <new>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -155,7 +158,8 @@ absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
 
 void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
                       tsl::AsyncValueRef<xla::Shape> output_shape,
-                      xla::Shape shape, PjRtDynamicShapeKind kind) {
+                      xla::Shape shape, PjRtDynamicShapeKind kind,
+                      size_t host_alignment_bytes) {
   auto requirements =
       PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
   if (requirements.metadata_size == 0) {
@@ -180,7 +184,8 @@ void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
 
   void* scratch = tsl::port::AlignedMalloc(
       requirements.metadata_size,
-      static_cast<std::align_val_t>(requirements.metadata_alignment));
+      static_cast<std::align_val_t>(
+          std::max(requirements.metadata_alignment, host_alignment_bytes)));
   if (scratch == nullptr) {
     output_shape.SetError(absl::ResourceExhaustedError("AlignedMalloc failed"));
     return;

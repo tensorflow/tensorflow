@@ -371,7 +371,7 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
 
   let arguments = (ins
     // Pointers of signal buffers (one from each participating GPU).
-    TT_PtrOf<[TT_PtrOf<[I32]>]>:$signal_buffers,
+    TT_PtrOf<[I64]>:$signal_buffers,
     // The rank of the current device.
     I32:$device_rank,
     // The signal value to write/wait for.

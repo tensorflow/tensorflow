@@ -15,30 +15,45 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 //===----------------------------------------------------------------------===//
@@ -360,6 +375,27 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
+static bool MatchElementsAttr(Value val, ElementsAttr& attr) {
+  if (matchPattern(val, m_Constant(&attr))) {
+    return true;
+  }
+  if (Operation* op = val.getDefiningOp()) {
+    if (auto const_op = llvm::dyn_cast<TFL::ConstOp>(op)) {
+      attr = const_op.getValue();
+      return true;
+    }
+    if (auto qconst_op = llvm::dyn_cast<TFL::QConstOp>(op)) {
+      attr = qconst_op.getValue();
+      return true;
+    }
+    if (auto arith_const = llvm::dyn_cast<arith::ConstantOp>(op)) {
+      attr = mlir::dyn_cast<ElementsAttr>(arith_const.getValue());
+      return attr != nullptr;
+    }
+  }
+  return false;
+}
+
 // Fold the constant quantized Transpose ops.
 struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
   explicit FoldTransposeOp(MLIRContext* context)
@@ -400,10 +436,13 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
     if (qconst_op == nullptr) return failure();
 
-    DenseIntElementsAttr perm_tensor;
-    if (!matchPattern(op.getPerm(), m_Constant(&perm_tensor))) return failure();
+    ElementsAttr perm_attr;
+    if (!MatchElementsAttr(op.getPerm(), perm_attr)) return failure();
+    auto int_perm_attr = mlir::dyn_cast<DenseIntElementsAttr>(perm_attr);
+    if (!int_perm_attr) return failure();
 
-    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
+    auto result_type = mlir::cast<RankedTensorType>(op.getOutput().getType());
+    auto output_element_type = result_type.getElementType();
     if (!mlir::isa<quant::UniformQuantizedType>(output_element_type) &&
         !mlir::isa<quant::UniformQuantizedPerAxisType>(output_element_type)) {
       return failure();
@@ -411,48 +450,90 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
 
     ElementsAttr input_tensor = qconst_op.getValue();
 
-    assert(perm_tensor.getType().getRank() == 1);
     const int num_dimensions = input_tensor.getShapedType().getRank();
-    assert(perm_tensor.getType().getNumElements() == num_dimensions);
-
     ArrayRef<int64_t> input_shape = input_tensor.getShapedType().getShape();
-    auto output_type = mlir::cast<ShapedType>(op.getOutput().getType());
 
     SmallVector<int32_t, 4> perm;
+    for (const APInt& it : int_perm_attr.getValues<APInt>()) {
+      perm.push_back(it.getSExtValue());
+    }
+    if (perm.size() != num_dimensions) return failure();
+
     SmallVector<int64_t, 4> output_shape;
     for (int i = 0; i < num_dimensions; ++i) {
-      perm.push_back(perm_tensor.getValues<IntegerAttr>()[i].getInt());
       output_shape.push_back(input_shape[perm[i]]);
-
-      // Check that the derived output shape matches the static shape.
-      assert(!output_type.hasStaticShape() ||
-             output_type.getShape()[i] == output_shape[i]);
+      assert(!result_type.hasStaticShape() ||
+             result_type.getShape()[i] == output_shape[i]);
     }
 
-    std::vector<Attribute> new_values;
-    new_values.reserve(input_tensor.getShapedType().getNumElements());
-    std::vector<uint64_t> input_indices(num_dimensions);
-    ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
-                       /*output_axis=*/0, &input_indices, &new_values);
-    auto result_type =
-        RankedTensorType::get(output_shape, output_type.getElementType());
-    RankedTensorType values_type;
-    if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
-      values_type = RankedTensorType::get(
-          output_shape,
-          mlir::cast<quant::UniformQuantizedType>(output_type.getElementType())
-              .getStorageType());
-    } else {
-      values_type = RankedTensorType::get(
-          output_shape, mlir::cast<quant::UniformQuantizedPerAxisType>(
-                            output_type.getElementType())
-                            .getStorageType());
+    if (auto dense_input = mlir::dyn_cast<DenseElementsAttr>(input_tensor)) {
+      std::vector<Attribute> new_values;
+      new_values.reserve(input_tensor.getShapedType().getNumElements());
+      std::vector<uint64_t> input_indices(num_dimensions);
+      ComputePermutation(dense_input, perm, output_shape, num_dimensions,
+                         /*output_axis=*/0, &input_indices, &new_values);
+      RankedTensorType values_type;
+      if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
+        values_type = RankedTensorType::get(
+            output_shape,
+            mlir::cast<quant::UniformQuantizedType>(output_element_type)
+                .getStorageType());
+      } else {
+        values_type = RankedTensorType::get(
+            output_shape,
+            mlir::cast<quant::UniformQuantizedPerAxisType>(output_element_type)
+                .getStorageType());
+      }
+
+      rewriter.replaceOpWithNewOp<QConstOp>(
+          op, TypeAttr::get(result_type),
+          DenseIntElementsAttr::get(values_type, new_values));
+      return success();
     }
 
-    rewriter.replaceOpWithNewOp<QConstOp>(
-        op, TypeAttr::get(result_type),
-        DenseIntElementsAttr::get(values_type, new_values));
-    return success();
+    if (auto dense_res =
+            mlir::dyn_cast<DenseResourceElementsAttr>(input_tensor)) {
+      AsmResourceBlob* blob = dense_res.getRawHandle().getBlob();
+      if (!blob && dense_res.getRawHandle().getResource()) {
+        blob = dense_res.getRawHandle().getResource()->getBlob();
+      }
+      if (!blob || blob->getData().empty()) return failure();
+
+      uint32_t storage_bit_width = 8;
+      if (auto u = mlir::dyn_cast<quant::UniformQuantizedType>(
+              output_element_type)) {
+        storage_bit_width = u.getStorageTypeIntegralWidth();
+      } else if (auto p = mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+                     output_element_type)) {
+        storage_bit_width = p.getStorageTypeIntegralWidth();
+      }
+
+      size_t num_elements = result_type.getNumElements();
+      size_t out_byte_size = storage_bit_width < 8
+                                 ? (num_elements * storage_bit_width + 7) / 8
+                                 : num_elements * (storage_bit_width / 8);
+      auto raw_output_blob = mlir::HeapAsmResourceBlob::allocate(
+          out_byte_size, /*align=*/64, /*dataIsMutable=*/true);
+      char* raw_output =
+          const_cast<char*>(raw_output_blob.getDataAs<char>().data());
+      std::memset(raw_output, 0, out_byte_size);
+      const char* raw_input = blob->getData().data();
+
+      SmallVector<int64_t, 4> perms_i64(perm.begin(), perm.end());
+      if (!TransposeBuffer(raw_input, raw_output, input_shape, perms_i64,
+                           storage_bit_width)) {
+        return failure();
+      }
+
+      DenseResourceElementsAttr new_res_attr = DenseResourceElementsAttr::get(
+          result_type, dense_res.getRawHandle().getKey(),
+          std::move(raw_output_blob));
+      rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
+                                            new_res_attr);
+      return success();
+    }
+
+    return failure();
   }
 };
 
@@ -471,10 +552,6 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
       return rewriter.notifyMatchFailure(op, "input is not a QConstOp.");
     }
 
-    auto dense_elements =
-        mlir::dyn_cast_or_null<DenseElementsAttr>(qconst_op.getValue());
-    if (dense_elements == nullptr) return failure();
-
     auto output_element_type = getElementTypeOrSelf(op.getType());
     if (!mlir::isa<quant::QuantizedType>(output_element_type)) {
       return rewriter.notifyMatchFailure(op, "output type is not quantized.");
@@ -488,9 +565,10 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
     // If the result type isn't static, tries to derive the result type from
     // the #2 operand.
     if (!result_type.hasStaticShape()) {
-      DenseIntElementsAttr shape_elements;
-      if (!matchPattern(op.getShape(), m_Constant(&shape_elements)))
-        return failure();
+      ElementsAttr shape_attr;
+      if (!MatchElementsAttr(op.getShape(), shape_attr)) return failure();
+      auto shape_elements = mlir::dyn_cast<DenseIntElementsAttr>(shape_attr);
+      if (!shape_elements) return failure();
 
       SmallVector<int64_t, 4> shape_data;
       for (const APInt& it : shape_elements.getValues<APInt>()) {
@@ -499,24 +577,55 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
       result_type =
           RankedTensorType::get(shape_data, input_type.getElementType());
     }
+
     RankedTensorType values_type;
-    if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
+    if (auto uniform_qtype =
+            mlir::dyn_cast<quant::UniformQuantizedType>(output_element_type)) {
+      values_type = RankedTensorType::get(result_type.getShape(),
+                                          uniform_qtype.getStorageType());
+    } else {
       values_type = RankedTensorType::get(
           result_type.getShape(),
-          mlir::cast<quant::UniformQuantizedType>(result_type.getElementType())
+          mlir::cast<quant::UniformQuantizedPerAxisType>(output_element_type)
               .getStorageType());
-    } else {
-      values_type =
-          RankedTensorType::get(result_type.getShape(),
-                                mlir::cast<quant::UniformQuantizedPerAxisType>(
-                                    result_type.getElementType())
-                                    .getStorageType());
     }
 
-    DenseElementsAttr reshaped_elements = dense_elements.reshape(values_type);
-    rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
-                                          reshaped_elements);
-    return success();
+    ElementsAttr value_attr = qconst_op.getValue();
+    if (auto dense_elements = mlir::dyn_cast<DenseElementsAttr>(value_attr)) {
+      DenseElementsAttr reshaped_elements = dense_elements.reshape(values_type);
+      rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
+                                            reshaped_elements);
+      return success();
+    }
+
+    if (auto dense_resource_elements =
+            mlir::dyn_cast<DenseResourceElementsAttr>(value_attr)) {
+      AsmResourceBlob* blob = dense_resource_elements.getRawHandle().getBlob();
+      if (!blob && dense_resource_elements.getRawHandle().getResource()) {
+        blob = dense_resource_elements.getRawHandle().getResource()->getBlob();
+      }
+      if (!blob || blob->getData().empty()) return failure();
+
+      DenseResourceElementsAttr new_res_attr;
+      if (qconst_op.getOutput().hasOneUse()) {
+        new_res_attr = DenseResourceElementsAttr::get(
+            result_type, dense_resource_elements.getRawHandle().getKey(),
+            std::move(*blob));
+      } else {
+        auto new_blob = mlir::HeapAsmResourceBlob::allocate(
+            blob->getData().size(), /*align=*/64, true);
+        memcpy(const_cast<char*>(new_blob.getData().data()),
+               blob->getData().data(), blob->getData().size());
+        new_res_attr = DenseResourceElementsAttr::get(
+            result_type, dense_resource_elements.getRawHandle().getKey(),
+            std::move(new_blob));
+      }
+      rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
+                                            new_res_attr);
+      return success();
+    }
+
+    return failure();
   }
 };
 

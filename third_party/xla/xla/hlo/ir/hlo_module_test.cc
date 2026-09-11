@@ -776,6 +776,22 @@ TEST(HloModuleTest, CheckToStringHonorsDebugOptions) {
   EXPECT_TRUE(filecheck_matched);
 }
 
+TEST(HloModuleTest, CheckToStringSortsBackendConfig) {
+  const char* hlo = R"(
+  HloModule test
+
+  ENTRY main {
+    ROOT custom-call = () custom-call(), custom_call_target="test", backend_config={"tuning_knobs":{"3":"0","2":"2"}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(
+      module->ToString(),
+      ::testing::HasSubstr(
+          R"json(backend_config={"tuning_knobs":{"2":"2","3":"0"}})json"));
+}
+
 TEST(HloModuleTest, TestCallersAndCallees) {
   const char* hlo = R"(
     HloModule jit_h
@@ -2043,6 +2059,64 @@ TEST(HloModuleTest, BackendConfigDeduplicationRespectsMinSize) {
   EXPECT_EQ(large->backend_config_payload().id(), 0);
 }
 
+TEST(HloModuleTest, BackendConfigDeduplicationViaDebugOptionsFlag) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->GetInstructionWithName("p0");
+  HloInstruction* p1 = m->entry_computation()->GetInstructionWithName("p1");
+
+  std::string small_config = "short";                // 5 bytes
+  std::string large_config = std::string(200, 'x');  // 200 bytes
+
+  p0->set_raw_backend_config_string(small_config);
+  p1->set_raw_backend_config_string(large_config);
+
+  // By default (min_size == MAX_INT), ToProto() does NOT deduplicate configs.
+  HloModuleProto default_proto = m->ToProto();
+  EXPECT_EQ(default_proto.payloads_size(), 0);
+
+  // Enable via DebugOptions flag with min size threshold = 128.
+  m->mutable_config()
+      .mutable_debug_options()
+      .set_xla_deduplicate_backend_configs_min_size(128);
+
+  // Default ToProto() should now deduplicate large_config.
+  HloModuleProto proto = m->ToProto();
+
+  ASSERT_EQ(proto.payloads_size(), 1);
+  EXPECT_EQ(proto.payloads(0), large_config);
+
+  const auto& instructions = proto.computations(0).instructions();
+  const auto* small = &instructions[0];
+  const auto* large = &instructions[1];
+  if (small->name() != "p0") {
+    std::swap(small, large);
+  }
+
+  // Small config stays inline.
+  EXPECT_EQ(small->backend_config(), small_config);
+  EXPECT_FALSE(small->has_backend_config_payload());
+
+  // Large config is deduplicated into a payload.
+  EXPECT_EQ(large->backend_config(), "");
+  EXPECT_TRUE(large->has_backend_config_payload());
+  EXPECT_EQ(large->backend_config_payload().id(), 0);
+
+  // Verify that explicit HloProtoOptions overrides are preserved:
+  // e.g. caller explicitly sets min_backend_config_size to 256, so large_config
+  // (200 bytes) is kept inline.
+  HloModuleProto proto_manual = m->ToProto(HloProtoOptions{
+      /*deduplicate_backend_config=*/true, /*deduplicate_metadata=*/false,
+      /*min_backend_config_size=*/256});
+  EXPECT_EQ(proto_manual.payloads_size(), 0);
+}
+
 TEST(HloModuleTest, BackendConfigNoInternByDefault) {
   const char* hlo_text = R"(
     HloModule test_module
@@ -2406,6 +2480,33 @@ TEST(HloModuleTest, CombinedDeduplicationSharesPayloadId) {
   EXPECT_TRUE(inst_proto.has_metadata());
   EXPECT_TRUE(inst_proto.metadata().has_metadata_payload());
   EXPECT_EQ(inst_proto.metadata().metadata_payload().id(), 0);
+}
+
+TEST(HloModuleTest, RemoveComputationAndCleanupPreservesPostOrder) {
+  HloModule m("test_module", HloModuleConfig());
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  // Create 3 computations: entry -> sub2, and unused sub1 in between.
+  HloComputation::Builder b1("sub1");
+  b1.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  HloComputation* sub1 = m.AddEmbeddedComputation(b1.Build());
+
+  HloComputation::Builder b2("sub2");
+  b2.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  HloComputation* sub2 = m.AddEmbeddedComputation(b2.Build());
+
+  HloComputation::Builder b_entry("entry");
+  auto* p =
+      b_entry.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  b_entry.AddInstruction(HloInstruction::CreateCall(shape, {p}, sub2));
+  HloComputation* entry = m.AddEntryComputation(b_entry.Build());
+
+  // Remove sub1 (which is at index 0 in computations_), then compact.
+  TF_ASSERT_OK(m.RemoveEmbeddedComputation(sub1));
+  m.CleanupComputations();
+
+  std::vector<HloComputation*> post_order = m.MakeComputationPostOrder();
+  EXPECT_THAT(post_order, ElementsAre(sub2, entry));
 }
 
 }  // namespace

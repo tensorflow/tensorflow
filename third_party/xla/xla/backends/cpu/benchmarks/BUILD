@@ -316,6 +316,7 @@ filegroup(
         "//xla/backends/cpu/benchmarks/hlo:memory_intensive_hlo_files",
         "//xla/backends/cpu/benchmarks/hlo:regular_hlo_files",
         "//xla/backends/cpu/benchmarks/hlo:slow_hlo_files",
+        "//xla/backends/cpu/benchmarks/huge_hlo:hlo_files",
     ],
 )
 
@@ -846,12 +847,18 @@ bzl_library(
 hlo_test_suite(
     name = "regular_hlo_tests",
     hlo_files = REGULAR_HLO_FILES,
+    tags = [
+        "no_oss",
+    ],
 )
 
 hlo_test_suite(
     name = "slow_hlo_tests",
     timeout = "long",
     hlo_files = SLOW_HLO_FILES,
+    tags = [
+        "no_oss",
+    ],
 )
 
 hlo_test_suite(

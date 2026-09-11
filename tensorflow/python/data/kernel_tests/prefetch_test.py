@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import prefetch_op
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import script_ops
@@ -38,6 +39,20 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
                          combinations.combine(buffer_size=[-1, None, 0, 42])))
   def testBufferSize(self, buffer_size):
     dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
+    self.assertDatasetProduces(dataset, expected_output=range(10))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTensorBufferSize(self):
+    # `buffer_size` is documented as an int64 scalar `tf.Tensor`.
+    dataset = dataset_ops.Dataset.range(10).prefetch(
+        buffer_size=constant_op.constant(2, dtypes.int64)
+    )
+    self.assertDatasetProduces(dataset, expected_output=range(10))
+
+    # A tensor holding the AUTOTUNE value keeps autotuning enabled.
+    dataset = dataset_ops.Dataset.range(10).prefetch(
+        buffer_size=constant_op.constant(-1, dtypes.int64)
+    )
     self.assertDatasetProduces(dataset, expected_output=range(10))
 
   @combinations.generate(

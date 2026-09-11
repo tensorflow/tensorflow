@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_runner.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
@@ -47,6 +48,7 @@ class Autotuner {
  public:
   struct Options {
     int scratch_bytes_window_size_us = 2;
+    std::vector<autotuner::Backend> excluded_backends;
     ConfigRunner::CorrectnessCheckOptions correctness_check_options;
     // File path to dump the profiles for all configs profiled for each HLO
     // instruction.

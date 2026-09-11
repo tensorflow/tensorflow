@@ -303,6 +303,9 @@ class HloParserImpl : public HloParser {
   ParseCollectiveDeviceListBaseOnly();
   bool ParseSparsityConfig(SparsityConfig* result);
   bool ParseTensorSparsityConfig(SparsityConfig::TensorSparsityConfig* result);
+  bool ParseBlockScalingConfig(BlockScalingConfig* result);
+  bool ParseTensorBlockScalingConfig(
+      BlockScalingConfig::TensorBlockScalingConfig* result);
 
  private:
   // Types of attributes.
@@ -320,6 +323,7 @@ class HloParserImpl : public HloParser {
     kFftType,
     kPaddingType,
     kComparisonDirection,
+    kComparisonOrder,
     kComparisonType,
     kWindow,
     kConvolutionDimensionNumbers,
@@ -359,6 +363,7 @@ class HloParserImpl : public HloParser {
     kMode,
     kConvKind,
     kSparsityConfig,
+    kBlockScalingConfig,
     kDebugAttributesTable,
   };
 
@@ -625,6 +630,7 @@ class HloParserImpl : public HloParser {
   bool ParsePaddingType(PaddingType* result);
   bool ParsePrimitiveType(PrimitiveType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
+  bool ParseComparisonOrder(Comparison::Order* result);
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
@@ -2758,6 +2764,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<SparsityConfig> parsed_sparsity_config;
       attrs["sparsity_config"] = {/*required=*/false, AttrTy::kSparsityConfig,
                                   &parsed_sparsity_config};
+      optional<BlockScalingConfig> parsed_block_scaling_config;
+      attrs["block_scaling_config"] = {/*required=*/false,
+                                       AttrTy::kBlockScalingConfig,
+                                       &parsed_block_scaling_config};
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
@@ -2788,6 +2798,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       SparsityConfig sparsity_config =
           parsed_sparsity_config.value_or(SparsityConfig());
+      BlockScalingConfig block_scaling_config =
+          parsed_block_scaling_config.value_or(BlockScalingConfig());
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferConvolveShape(
                 operands[0]->shape(), operands[1]->shape(),
@@ -2800,7 +2812,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       return builder->AddInstruction(HloInstruction::CreateConvolve(
           *shape, operands, feature_group_count.value(),
           batch_group_count.value(), *window, *dnums, precision_config,
-          sparsity_config, kind));
+          sparsity_config, block_scaling_config, kind));
     }
     case HloOpcode::kFft: {
       optional<FftType> fft_type;
@@ -2841,9 +2853,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
+      optional<ComparisonOrder> order;
       optional<Comparison::Type> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
+      attrs["order"] = {/*required=*/false, AttrTy::kComparisonOrder, &order};
       attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
@@ -2856,8 +2870,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
+      if (order.has_value() && type.has_value()) {
+        TokenError(
+            "Cannot specify both 'type' and 'order' attributes on compare");
+        return nullptr;
+      }
+      if (order.has_value()) {
+        return builder->AddInstruction(HloInstruction::CreateCompare(
+            *shape, operands[0], operands[1], *direction, *order));
+      }
+      if (type.has_value()) {
+        return builder->AddInstruction(HloInstruction::CreateCompare(
+            *shape, operands[0], operands[1], *direction,
+            Comparison::DefaultOrdering(*type)));
+      }
       return builder->AddInstruction(HloInstruction::CreateCompare(
-          *shape, operands[0], operands[1], *direction, type));
+          *shape, operands[0], operands[1], *direction));
     }
     case HloOpcode::kCholesky: {
       CholeskyOptions options;
@@ -6014,6 +6042,7 @@ bool HloParserImpl::ParseAttributeHelper(
   AttrTy attr_type = attr_it->second.attr_type;
   void* attr_out_ptr = attr_it->second.result;
   bool success = [&] {
+    // Dispatch parsing logic based on the attribute type.
     LocTy attr_loc = lexer_.GetLoc();
     switch (attr_type) {
       case AttrTy::kBool: {
@@ -6103,6 +6132,15 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<ComparisonDirection>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
+      case AttrTy::kComparisonOrder: {
+        Comparison::Order result;
+        if (!ParseComparisonOrder(&result)) {
+          return false;
+        }
+        static_cast<optional<Comparison::Order>*>(attr_out_ptr)
             ->emplace(result);
         return true;
       }
@@ -6473,13 +6511,22 @@ bool HloParserImpl::ParseAttributeHelper(
         static_cast<optional<SparsityConfig>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kBlockScalingConfig: {
+        BlockScalingConfig result;
+        if (!ParseBlockScalingConfig(&result)) {
+          return false;
+        }
+        static_cast<optional<BlockScalingConfig>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
     }
   }();
   if (!success) {
     return Error(loc, StrFormat("error parsing attribute %s", name));
   }
   return true;
-}
+}  // NOLINT(readability/fn_size)
 
 bool HloParserImpl::CopyAttributeToProtoMessage(
     absl::flat_hash_set<std::string> non_proto_attrs,
@@ -7688,6 +7735,92 @@ bool HloParserImpl::ParseTensorSparsityConfig(
                     "expects '}' at the end of TensorSparsityConfig");
 }
 
+bool HloParserImpl::ParseBlockScalingConfig(BlockScalingConfig* result) {
+  VLOG(kDebugLevel) << "ParseBlockScalingConfig";
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start BlockScalingConfig")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+  } else {
+    do {
+      std::string attribute;
+      if (!ParseAttributeName(&attribute)) {
+        return false;
+      }
+      if (attribute == "lhs" || attribute == "rhs") {
+        BlockScalingConfig::TensorBlockScalingConfig* tensor_config;
+        if (attribute == "lhs") {
+          tensor_config = result->mutable_lhs();
+        } else {
+          tensor_config = result->mutable_rhs();
+        }
+        if (!ParseTensorBlockScalingConfig(tensor_config)) {
+          return false;
+        }
+      } else {
+        return Error(lexer_.GetLoc(), "unknown attribute");
+      }
+    } while (lexer_.GetKind() != TokKind::kRbrace);
+  }
+  return ParseToken(TokKind::kRbrace,
+                    "expects '}' at the end of BlockScalingConfig");
+}
+
+bool HloParserImpl::ParseTensorBlockScalingConfig(
+    BlockScalingConfig::TensorBlockScalingConfig* result) {
+  VLOG(kDebugLevel) << "ParseTensorBlockScalingConfig";
+  CHECK(result != nullptr);
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start TensorBlockScalingConfig")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+  } else {
+    do {
+      std::string attribute;
+      if (!ParseAttributeName(&attribute)) {
+        return false;
+      }
+      if (attribute == "scale_idx") {
+        int64_t scale_idx;
+        if (!ParseInt64(&scale_idx)) {
+          return Error(lexer_.GetLoc(), "expects int64_t");
+        }
+        result->set_scale_idx(scale_idx);
+      } else if (attribute == "zero_idx") {
+        int64_t zero_idx;
+        if (!ParseInt64(&zero_idx)) {
+          return Error(lexer_.GetLoc(), "expects int64_t");
+        }
+        result->set_zero_idx(zero_idx);
+      } else if (attribute == "strides") {
+        std::vector<int64_t> strides;
+        if (!ParseDxD("strides", &strides)) {
+          return Error(lexer_.GetLoc(), "expects strides in form NxMxK");
+        }
+        for (int64_t s : strides) {
+          result->add_strides(s);
+        }
+      } else if (attribute == "steps") {
+        std::vector<int64_t> steps;
+        if (!ParseDxD("steps", &steps)) {
+          return Error(lexer_.GetLoc(), "expects steps in form NxMxK");
+        }
+        for (int64_t s : steps) {
+          result->add_steps(s);
+        }
+      } else {
+        return Error(lexer_.GetLoc(), "unknown attribute");
+      }
+    } while (lexer_.GetKind() != TokKind::kRbrace);
+  }
+  return ParseToken(TokKind::kRbrace,
+                    "expects '}' at the end of TensorBlockScalingConfig");
+}
+
 bool HloParserImpl::ParseDxD(const std::string& name,
                              std::vector<int64_t>* result) {
   LocTy loc = lexer_.GetLoc();
@@ -7810,8 +7943,11 @@ bool HloParserImpl::ParseAndAddOriginalArray(
   return true;
 }
 
-// original_value ::= '{' '<synthetic_call>' | ( '('* original_array [','] ')'*
-// | original_value ) '}'
+// original_value ::= '{' node [ ',' call_hierarchy ] '}'
+// call_hierarchy ::= '[' '"' string '"' ']'
+// node           ::= '{' [ original_array ] '}'
+//                  | '(' [ node { ',' node } ] ')'
+// original_array ::= '"' instruction_name '"' [ ' ' shape_index ]
 bool HloParserImpl::ParseOriginalValueImpl(
     std::optional<OriginalValue>& original_value) {
   VLOG(kDebugLevel) << "ParseOriginalValue";
@@ -7834,7 +7970,8 @@ bool HloParserImpl::ParseOriginalValueImpl(
     if (!ParseToken(TokKind::kRbrace, "Expects '}' to end original value")) {
       return false;
     }
-    original_value.emplace(OriginalValue::SyntheticCall());
+    original_value.emplace(TupleTree<std::optional<OriginalArray>>(),
+                           /*call_hierarchy=*/"");
     return true;
   }
 
@@ -7842,6 +7979,7 @@ bool HloParserImpl::ParseOriginalValueImpl(
       original_value_arrays;
 
   ShapeIndex leaf_shape_index;
+  std::optional<std::string> call_hierarchy;
   while (lexer_.GetKind() != TokKind::kRbrace) {
     switch (lexer_.GetKind()) {
       case TokKind::kLparen:
@@ -7854,7 +7992,23 @@ bool HloParserImpl::ParseOriginalValueImpl(
         break;
       case TokKind::kComma:
         lexer_.Lex();
-        ++leaf_shape_index.back();
+        if (lexer_.GetKind() == TokKind::kLsquare) {
+          if (call_hierarchy.has_value()) {
+            return TokenError("Duplicate call_hierarchy in original_value.");
+          }
+          lexer_.Lex();  // Eat '['.
+          std::string call_hierarchy_str;
+          if (!ParseString(&call_hierarchy_str)) {
+            return TokenError("Expects a string for call_hierarchy.");
+          }
+          call_hierarchy = std::move(call_hierarchy_str);
+          if (!ParseToken(TokKind::kRsquare,
+                          "Expects ']' to end call_hierarchy")) {
+            return false;
+          }
+        } else if (!leaf_shape_index.empty()) {
+          ++leaf_shape_index.back();
+        }
         break;
       case TokKind::kLbrace:
         if (!ParseAndAddOriginalArray(leaf_shape_index,
@@ -7864,14 +8018,18 @@ bool HloParserImpl::ParseOriginalValueImpl(
         break;
       default:
         return TokenError(
-            "Expects '[synthetic]' or a tuple tree of original arrays in "
-            "original_value field.");
+            "Expects a tuple tree of original arrays in original_value "
+            "field.");
     }
   }
 
-  lexer_.Lex();
+  if (!ParseToken(TokKind::kRbrace, "Expects '}' to end original value")) {
+    return false;
+  }
+
   original_value.emplace(TupleTree<std::optional<OriginalArray>>(
-      absl::MakeSpan(original_value_arrays)));
+                             absl::MakeSpan(original_value_arrays)),
+                         std::move(call_hierarchy));
   return true;
 }
 
@@ -8259,6 +8417,21 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseComparisonOrder(Comparison::Order* result) {
+  VLOG(kDebugLevel) << "ParseComparisonOrder";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison order");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = ShortStringToComparisonOrder(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects comparison order but sees: %s", val));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -9065,7 +9238,7 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
     if (i < async_wrapped_computation->num_parameters()) {
       Shape* param_shape =
           async_wrapped_computation->parameter_instruction(i)->mutable_shape();
-      if (!ShapeUtil::Compatible(
+      if (!ShapeUtil::Equal(
               *param_shape,
               called_computation->parameter_instruction(i)->shape())) {
         *param_shape = called_computation->parameter_instruction(i)->shape();
@@ -9082,7 +9255,7 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
   Shape* root_shape =
       async_wrapped_computation->root_instruction()->mutable_shape();
   const Shape& result_shape = called_computation->root_instruction()->shape();
-  if (!ShapeUtil::Compatible(*root_shape, result_shape)) {
+  if (!ShapeUtil::Equal(*root_shape, result_shape)) {
     *root_shape = result_shape;
   }
 }

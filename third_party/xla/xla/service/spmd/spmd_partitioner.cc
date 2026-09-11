@@ -6587,6 +6587,9 @@ absl::Status SpmdPartitioningVisitor::HandleRaggedDot(HloInstruction* hlo) {
     phlo = b_.AddInstruction(hlo->CloneWithNewOperands(
         pshape, {lhs.hlo(), rhs.hlo(), group_sizes.hlo()}));
   }
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   if (!sharded_lhs_contracting_dims.empty()) {
     phlo = lhs.state().partitioner->AllReduceAlongShardingDims(

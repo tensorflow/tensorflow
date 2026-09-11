@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/conv_utils.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -544,6 +543,15 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       LayoutUtil::SetToDefaultLayout(&output_shape);
       ABSL_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       ABSL_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
+      ABSL_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
+    } else if (IsCudnnFusion(*instruction)) {
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        Shape operand_shape = instruction->operand(i)->shape();
+        LayoutUtil::SetToDefaultLayout(&operand_shape);
+        ABSL_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, i));
+      }
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if (HloPredicateIsOp<HloOpcode::kTranspose>(instruction)) {
       const HloInstruction* operand = instruction->operand(0);

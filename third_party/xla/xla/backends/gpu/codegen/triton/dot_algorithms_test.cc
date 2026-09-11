@@ -1960,12 +1960,10 @@ TEST_P(PrecisionTests, PrecisionCheck) {
       std::unique_ptr<HloModule> test_module,
       GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim, algorithm,
                          backend));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> fake_arguments,
-      MakeFakeArguments(test_module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/23));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 23;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> fake_arguments,
+                       MakeFakeArguments(test_module.get(), options));
   // Ensure there are no negative arguments to avoid unbounded relative errors
   // due to subtracting two similarly large numbers.
   MakeNonNegative(fake_arguments);
@@ -2030,13 +2028,10 @@ TEST_P(PrecisionTests, CheckPrecisionDegradationAlongKDimension) {
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<HloModule> test_module,
         GetSimpleDotModule(kMSize, kNSize, k, algorithm, backend));
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> fake_arguments,
-        MakeFakeArguments(test_module.get(), /*pseudo_random=*/
-                          true,
-                          /*use_large_range=*/false,
-                          /*treat_gte_as_data_formatting=*/false,
-                          /*max_bits_of_precision=*/23));
+    FakeArgumentsOptions options;
+    options.max_bits_of_precision = 23;
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> fake_arguments,
+                         MakeFakeArguments(test_module.get(), options));
     // Ensure there are no negative arguments to avoid unbounded relative errors
     // due to subtracting two similarly large numbers.
     MakeNonNegative(fake_arguments);

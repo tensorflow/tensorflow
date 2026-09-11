@@ -32,13 +32,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
-#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -2811,20 +2809,8 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   } else if (auto dense_resource_elements =
                  mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
                      operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      auto key = dense_resource_elements.getRawHandle().getKey();
-      if (getInput().hasOneUse()) {
-        return DenseResourceElementsAttr::get(result_type, key,
-                                              std::move(*blob));
-      }
-      auto new_blob = mlir::HeapAsmResourceBlob::allocate(
-          blob->getData().size(), /*align=*/64, true);
-      memcpy(const_cast<char*>(new_blob.getData().data()),
-             blob->getData().data(), blob->getData().size());
-      return DenseResourceElementsAttr::get(result_type, key,
-                                            std::move(new_blob));
-    }
+    return DenseResourceElementsAttr::get(
+        result_type, dense_resource_elements.getRawHandle());
   }
 
   return nullptr;
@@ -5179,7 +5165,6 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
     }
   }
 }
-
 }  // namespace
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -5222,6 +5207,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     output_shape.push_back(input_shape[perms[i]]);
   }
 
+  const int bit_width = input_tensor.getElementType().getIntOrFloatBitWidth();
+
   if (auto dense_elements =
           mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0])) {
     // If the input tensor values are splat, then it has exactly one value.
@@ -5232,10 +5219,9 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     }
 
     // MLIR implementation pads elements < 8 bits to 8 bits and pads non byte
-    // aligned to the nearest byte. So this is allowed.
+    // aligned to the nearest byte.
     const char* raw_input = dense_elements.getRawData().data();
-    const int element_byte_size =
-        dense_elements.getElementType().getIntOrFloatBitWidth() / 8;
+    const int element_byte_size = std::max(1, bit_width / 8);
 
     // Hold current ND index in input tensor when computing
     // permutation.
@@ -5260,43 +5246,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
         RankedTensorType::get(output_shape, input_tensor.getElementType());
     return DenseElementsAttr::getFromRawBuffer(result_type, raw_output_arr);
 
-  } else if (auto dense_resource_elements =
-                 mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
-                     operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      const int element_byte_size =
-          input_tensor.getElementType().getIntOrFloatBitWidth() / 8;
-
-      // Hold current ND index in input tensor when computing
-      // permutation.
-      llvm::SmallVector<uint64_t> current_input_index(input_type.getRank());
-
-      // Allocate raw data and retrieve address of the first char in its raw
-      // buffer.
-      auto result_type =
-          RankedTensorType::get(output_shape, input_tensor.getElementType());
-      auto raw_output_blob =
-          mlir::HeapAsmResourceBlob::allocate(GetSizeInBytes(result_type),
-                                              /*align=*/64,
-                                              /*dataIsMutable=*/true);
-      ArrayRef<char> data = raw_output_blob.getDataAs<char>();
-      llvm::MutableArrayRef<char> raw_output_arr = mlir::MutableArrayRef<char>(
-          const_cast<char*>(data.data()), data.size());
-      char* raw_output = (char*)raw_output_arr.data();
-      const char* raw_input = blob->getData().data();
-      if (raw_input != nullptr) {
-        static absl::Mutex compute_permutation_mutex(absl::kConstInit);
-        absl::MutexLock lock(compute_permutation_mutex);
-        // Compute the result and write to `raw_output`.
-        ComputePermutation(perms, output_shape, raw_input, element_byte_size,
-                           /*current_axis=*/0, raw_output, current_input_index,
-                           input_type);
-        return DenseResourceElementsAttr::get(result_type,
-                                              "tfl_transpose_op_fold_result",
-                                              std::move(raw_output_blob));
-      }
-    }
+  } else if (mlir::isa<DenseResourceElementsAttr>(operands[0])) {
+    return nullptr;
   }
 
   return nullptr;

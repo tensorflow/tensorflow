@@ -232,6 +232,26 @@ class CommandBuffer {
                                        const DeviceAddressBase& src,
                                        uint64_t size) = 0;
 
+  // Creates a device-to-host memory copy.
+  virtual absl::StatusOr<const Command*> CreateMemcpyD2H(
+      void* dst, const DeviceAddressBase& src, uint64_t size,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a device-to-host memory copy.
+  virtual absl::Status UpdateMemcpyD2H(const Command* command, void* dst,
+                                       const DeviceAddressBase& src,
+                                       uint64_t size) = 0;
+
+  // Creates a host-to-device memory copy.
+  virtual absl::StatusOr<const Command*> CreateMemcpyH2D(
+      DeviceAddressBase* dst, const void* src, uint64_t size,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a host-to-device memory copy.
+  virtual absl::Status UpdateMemcpyH2D(const Command* command,
+                                       DeviceAddressBase* dst, const void* src,
+                                       uint64_t size) = 0;
+
   // Creates a memset command.
   virtual absl::StatusOr<const Command*> CreateMemset(
       DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
@@ -307,6 +327,13 @@ class CommandBuffer {
                                    DeviceAddress<bool> pred,
                                    UpdateCommands update_cond,
                                    UpdateCommands update_body) = 0;
+
+  // Adds a host node (callback) to the command buffer.
+  // The `callback` will be executed on the CPU (host) when this node is
+  // processed during command buffer execution.
+  virtual absl::StatusOr<const Command*> CreateHost(
+      absl::AnyInvocable<void()> callback,
+      absl::Span<const Command* const> dependencies) = 0;
 
   // Set the priority of all nodes in the command buffer.
   virtual absl::Status SetPriority(StreamPriority priority) = 0;

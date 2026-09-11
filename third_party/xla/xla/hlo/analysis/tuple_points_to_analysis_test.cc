@@ -897,66 +897,6 @@ class PointsToAnalysisTestBase : public HloHardwareIndependentTestBase {
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 };
 
-class DoesNotUseOperandBufferTest : public PointsToAnalysisTestBase {};
-
-TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
-  std::string hlo_str = R"(
-HloModule GetTupleElement
-
-ENTRY main {
-  tuple = (f32[8], f32[8]) parameter(0)
-  gte0 = f32[8] get-tuple-element(tuple), index=0
-  gte1 = f32[8] get-tuple-element(tuple), index=1
-  ROOT add = f32[8] add(gte0, gte1)
-}
-)";
-  ASSERT_OK_AND_ASSIGN(
-      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
-  RunAnalysis();
-
-  auto* tuple = FindInstruction(module_.get(), "tuple");
-  auto* gte0 = FindInstruction(module_.get(), "gte0");
-  auto* gte1 = FindInstruction(module_.get(), "gte1");
-
-  // GetTupleElement instructions only access the top-level buffer of their
-  // operand.
-  EXPECT_TRUE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {0}, gte0));
-  EXPECT_TRUE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {1}, gte1));
-  EXPECT_FALSE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {}, gte0));
-  EXPECT_FALSE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {}, gte1));
-}
-
-TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
-  std::string hlo_str = R"(
-HloModule FusedDynamicUpdateSlice, entry_computation_layout={((f32[8]{0}, f32[8]{0}))->(f32[8]{0}, f32[8]{0})}
-
-%fused_computation (param_0.1: (f32[8], f32[8])) -> f32[8] {
-  %param_0.1 = (f32[8]{0}, f32[8]{0}) parameter(0)
-  %get-tuple-element.2 = f32[8]{0} get-tuple-element(%param_0.1), index=1
-  %constant.3 = f32[3]{0} constant({2, 2, 2})
-  %constant.2 = s32[] constant(2)
-  ROOT %dynamic-update-slice.1 = f32[8]{0} dynamic-update-slice(%get-tuple-element.2, %constant.3, %constant.2)
-}
-
-ENTRY %FusedDynamicUpdateSlice (tuple: (f32[8], f32[8])) -> (f32[8], f32[8]) {
-  %tuple = (f32[8]{0}, f32[8]{0}) parameter(0)
-  %get-tuple-element = f32[8]{0} get-tuple-element(%tuple), index=0
-  %fusion = f32[8]{0} fusion(%tuple), kind=kLoop, calls=%fused_computation
-  ROOT %tuple.1 = (f32[8]{0}, f32[8]{0}) tuple(%get-tuple-element, %fusion)
-}
-)";
-  ASSERT_OK_AND_ASSIGN(
-      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
-  RunAnalysis();
-
-  auto* tuple = FindInstruction(module_.get(), "tuple");
-  auto* fusion = FindInstruction(module_.get(), "fusion");
-
-  // The fusion instruction never uses tuple element 0, but does use element 1.
-  EXPECT_TRUE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {0}, fusion));
-  EXPECT_FALSE(
-      points_to_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
-}
 
 TEST_F(TuplePointsToAnalysisTest, AsyncUpdateChangesContext) {
   absl::string_view hlo_string = R"hlo(

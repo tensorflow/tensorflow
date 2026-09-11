@@ -892,6 +892,24 @@ message SparsityConfig {
   TensorSparsityConfig rhs = 2;
 }
 
+// Describes the block scaling configuration for a convolution's operands.
+message BlockScalingConfig {
+  message TensorBlockScalingConfig {
+    // The operand index for the scale argument.
+    int32 scale_idx = 1;
+    // The operand index for the zero point argument.
+    optional int32 zero_idx = 2;
+    // The strides for the block scaling.
+    repeated int64 strides = 3;
+    // The steps for the block scaling.
+    repeated int64 steps = 4;
+  }
+  // Block scaling config for the LHS operand.
+  TensorBlockScalingConfig lhs = 1;
+  // Block scaling config for the RHS operand.
+  TensorBlockScalingConfig rhs = 2;
+}
+
 enum PaddingType {
   PADDING_INVALID = 0;
   PADDING_VALID = 1;  // Only valid portion of the base are covered.
@@ -1497,7 +1515,12 @@ message OriginalValueProto {
   repeated OriginalValueElementProto elements = 1;
   // If true, the annotated instruction is a synthetic call and elements should
   // be ignored.
-  bool is_synthetic_call = 2;
+  // Deprecated: Use an empty string in call_hierarchy instead.
+  bool is_synthetic_call = 2 [deprecated = true];
+  // The call hierarchy of the original call instructions that produced this
+  // value. Format: "<call_instruction_name>#$" where "#$" is a placeholder
+  // for loop unrolling iteration count.
+  optional string call_hierarchy = 3;
 }
 
 message GemmPerfTableEntry {

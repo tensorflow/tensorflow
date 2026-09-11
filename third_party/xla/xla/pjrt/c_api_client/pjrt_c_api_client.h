@@ -372,6 +372,8 @@ class PjRtCApiClient : public PjRtClient {
       const PJRT_Api* c_api, PJRT_Client* c_client,
       std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data);
 
+  bool IsCApi() const override;
+
   int process_index() const override;
 
   int device_count() const override;
@@ -421,6 +423,9 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;

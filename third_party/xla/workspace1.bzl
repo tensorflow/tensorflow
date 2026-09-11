@@ -27,7 +27,8 @@ def workspace():
     llvm_setup(name = "llvm-project")
     native.register_toolchains("@local_config_python//:py_toolchain")
     rules_pkg_dependencies()
-    compatibility_proxy_repo()
+    if "cc_compatibility_proxy" not in native.existing_rules():
+        compatibility_proxy_repo()
 
     tf_http_archive(
         name = "bazel_toolchains",

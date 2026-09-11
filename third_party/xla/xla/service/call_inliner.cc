@@ -135,13 +135,19 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     // We must relay the control dependencies from this call instruction to
     // the successors too after inlining. The will now depend on the newly
     // inlined root.
+    // If new_root is an operand of call_ (e.g. an identity function call(x) ->
+    // x), do not propagate call-level frontend attributes backward onto
+    // existing caller operands. Otherwise, newly cloned instructions inherit
+    // the call's frontend attributes.
     auto result =
         outer_
             ->ReplaceInstruction(
                 /*old_instruction=*/call_, /*new_instruction=*/new_root,
                 /*preserve_sharding=*/false,
                 /*relay_control_dependency=*/true,
-                /*remove_unused_operands=*/false)
+                /*remove_unused_operands=*/false,
+                /*preserve_frontend_attributes=*/
+                !absl::c_linear_search(call_->operands(), new_root))
             .status();
     // Restores the original value of the new root, which gets overwritten
     // when it's used to replace the call instruction.
@@ -192,19 +198,19 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
       new_hlo_pointer->set_original_value(nullptr);
       return;
     }
-    std::optional<std::string> call_instructions =
-        call_original_value->GetOriginalCallLikeInstructions();
-    if (!call_instructions.has_value()) {
-      // If the call instruction is lost, we must drop the original values
-      // on the inlined instructions because the call hierarchy is lost.
+    std::optional<std::string> call_hierarchy =
+        call_original_value->call_hierarchy();
+    if (!call_hierarchy.has_value()) {
+      // If the call hierarchy is not present, we must drop the original values
+      // on the inlined instructions.
       new_hlo_pointer->set_original_value(nullptr);
       return;
     }
     new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true,
                                        /*issue_warning=*/true);
-    if (call_instructions->empty()) {
-      // Empty call instructions means the call is synthetic and hence the
-      // inlined instruction do not need to be prefixed with the call
+    if (call_hierarchy->empty()) {
+      // Empty string in the call hierarchy means the call is synthetic and
+      // hence the inlined instruction do not need to be prefixed with the call
       // instructions. Hence we can just return here to have the copied original
       // value to be used.
       return;
@@ -218,7 +224,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
       std::optional<OriginalArray>& original_array = pair.second;
       if (original_array.has_value()) {
         original_array->instruction_name = absl::StrCat(
-            *call_instructions, "/", original_array->instruction_name);
+            *call_hierarchy, "/", original_array->instruction_name);
       }
     }
   }

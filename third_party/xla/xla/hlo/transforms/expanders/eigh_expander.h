@@ -41,6 +41,14 @@ class EighExpander : public OpExpanderPass {
   virtual XlaOp BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
                           bool sort_eigenvalues);
 
+  struct ScaledInput {
+    XlaOp scaled_matrix;
+    XlaOp scale;
+  };
+
+  static absl::StatusOr<ScaledInput> ScaleInputMatrix(XlaOp a);
+  static absl::StatusOr<XlaOp> RescaleEigenvalues(XlaOp w, XlaOp scale);
+
   absl::Status SortByEigenvalues(XlaOp& v, XlaOp& w);
 
  private:

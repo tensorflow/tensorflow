@@ -460,17 +460,14 @@ absl::StatusOr<ThunkProto> HostExecuteStartThunk::ToProto() const {
   *host_execute_start_thunk_proto->mutable_executable_proto() =
       executable_proto_;
 
-  for (const auto& [slice, shape] : args_) {
-    ShapedSliceProto* arg_proto = host_execute_start_thunk_proto->add_args();
-    ABSL_ASSIGN_OR_RETURN(*arg_proto->mutable_slice(), slice.ToProto());
-    *arg_proto->mutable_shape() = shape.ToProto();
+  for (const ShapedSlice& slice : args_) {
+    ABSL_ASSIGN_OR_RETURN(*host_execute_start_thunk_proto->add_args(),
+                     slice.ToProto());
   }
 
-  for (const auto& [slice, shape] : results_) {
-    ShapedSliceProto* result_proto =
-        host_execute_start_thunk_proto->add_results();
-    ABSL_ASSIGN_OR_RETURN(*result_proto->mutable_slice(), slice.ToProto());
-    *result_proto->mutable_shape() = shape.ToProto();
+  for (const ShapedSlice& slice : results_) {
+    ABSL_ASSIGN_OR_RETURN(*host_execute_start_thunk_proto->add_results(),
+                     slice.ToProto());
   }
 
   auto async_events_unique_id = GetAsyncEventsUniqueId();
@@ -490,23 +487,17 @@ HostExecuteStartThunk::FromProto(
     absl::Span<const BufferAllocation> buffer_allocations,
     HostExecuteAsyncEventsMap& async_events_map) {
   absl::InlinedVector<ShapedSlice, 4> args, results;
-  auto shaped_slice_from_proto =
-      [&](const auto& shaped_slice_protos,
-          absl::InlinedVector<ShapedSlice, 4>& slices_and_shapes)
-      -> absl::Status {
-    for (const auto& shaped_slice_proto : shaped_slice_protos) {
-      ABSL_ASSIGN_OR_RETURN(auto slice,
-                       BufferAllocation::Slice::FromProto(
-                           shaped_slice_proto.slice(), buffer_allocations));
-      ABSL_ASSIGN_OR_RETURN(auto shape,
-                       Shape::FromProto(shaped_slice_proto.shape()));
-      slices_and_shapes.push_back({slice, shape});
-    }
-    return absl::OkStatus();
-  };
 
-  ABSL_RETURN_IF_ERROR(shaped_slice_from_proto(proto.args(), args));
-  ABSL_RETURN_IF_ERROR(shaped_slice_from_proto(proto.results(), results));
+  for (const ShapedSliceProto& proto : proto.args()) {
+    ABSL_ASSIGN_OR_RETURN(ShapedSlice slice,
+                     ShapedSlice::FromProto(proto, buffer_allocations));
+    args.push_back(slice);
+  }
+  for (const ShapedSliceProto& proto : proto.results()) {
+    ABSL_ASSIGN_OR_RETURN(ShapedSlice slice,
+                     ShapedSlice::FromProto(proto, buffer_allocations));
+    results.push_back(slice);
+  }
 
   // If async_events_map already contains an entry for the given unique id,
   // that means that the pairing done thunk is already serialized and we reuse
@@ -648,9 +639,11 @@ HostExecuteStartThunk::GetAsyncEventsUniqueId() const {
 
 HostExecuteDoneThunk::HostExecuteDoneThunk(
     Thunk::ThunkInfo thunk_info,
-    std::shared_ptr<HostExecuteAsyncEvents> async_events)
+    std::shared_ptr<HostExecuteAsyncEvents> async_events,
+    absl::InlinedVector<ShapedSlice, 4> results)
     : HostAsyncThunk(Thunk::Kind::kHostExecuteDone, std::move(thunk_info)),
-      async_events_(std::move(async_events)) {
+      async_events_(std::move(async_events)),
+      results_(std::move(results)) {
   CHECK(async_events_) << "async_events must not be null";
 }
 
@@ -670,6 +663,11 @@ absl::StatusOr<ThunkProto> HostExecuteDoneThunk::ToProto() const {
   host_execute_done_thunk_proto->set_async_events_unique_id(
       async_events_unique_id.value().value());
 
+  for (const ShapedSlice& slice : results_) {
+    ShapedSliceProto* proto = host_execute_done_thunk_proto->add_results();
+    ABSL_ASSIGN_OR_RETURN(*proto, slice.ToProto());
+  }
+
   return proto;
 }
 
@@ -684,8 +682,17 @@ HostExecuteDoneThunk::FromProto(
   auto [async_event_it, _] = async_events_map.try_emplace(
       AsyncEventsUniqueId(proto.async_events_unique_id()),
       std::make_shared<HostExecuteAsyncEvents>());
-  return std::make_unique<HostExecuteDoneThunk>(thunk_info,
-                                                async_event_it->second);
+
+  absl::InlinedVector<ShapedSlice, 4> results;
+  results.reserve(proto.results().size());
+  for (const ShapedSliceProto& proto : proto.results()) {
+    ABSL_ASSIGN_OR_RETURN(ShapedSlice slice,
+                     ShapedSlice::FromProto(proto, buffer_allocations));
+    results.push_back(slice);
+  }
+
+  return std::make_unique<HostExecuteDoneThunk>(
+      thunk_info, async_event_it->second, std::move(results));
 }
 
 absl::Status HostExecuteDoneThunk::Initialize(const InitializeParams& params) {

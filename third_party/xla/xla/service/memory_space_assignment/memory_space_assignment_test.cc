@@ -102,8 +102,6 @@ using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
 constexpr float kBytesPerSecond = 100;
-constexpr absl::string_view kTestModeLabel =
-    "xla::memory_space_assignment::test_mode";
 
 const auto& ShapeSize = HloCostAnalysis::DefaultShapeSize;
 
@@ -708,6 +706,51 @@ TEST_F(MemorySpaceAssignmentTest, ViewExtendedUseTimeWalksTransitiveReaders) {
   EXPECT_EQ(
       ViewExtendedTransitiveUseTime(viewbc, /*view_color=*/5, only_viewbc),
       schedule.at(viewbc));
+}
+
+TEST_F(MemorySpaceAssignmentTest, ViewUsePrefetchDeadlineClampedToViewTime) {
+  // A view use extends the allocation end time through the view's transitive
+  // readers (`consumer` below), but a prefetched copy is materialized right
+  // before the view instruction itself. The prefetch deadline must therefore
+  // be the view's own time, not the extended reader time: with the extended
+  // deadline the picker may place the copy interval entirely after the
+  // c0/c1/c2 chain below has freed the heap, while the copy instructions
+  // actually run before `view`, inside the chain's live range, and the
+  // verifier fails with a chunk overlap.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[8]{0} parameter(0)
+    p1 = f32[32]{0} parameter(1)
+    c0 = f32[32]{0} negate(p1)
+    view = f32[8]{0:S(5)} custom-call(p0), custom_call_target="tpu_get_view"
+    viewbc = f32[8]{0:S(5)} bitcast(view)
+    c1 = f32[32]{0} negate(c0)
+    c2 = f32[32]{0} negate(c1)
+    cs = f32[8]{0} slice(c2), slice={[0:8]}
+    d0 = f32[8]{0} negate(cs)
+    d1 = f32[8]{0} negate(d0)
+    d2 = f32[8]{0} negate(d1)
+    consumer = f32[8]{0} add(viewbc, d2)
+    ROOT t = (f32[8]{0}, f32[8]{0}) tuple(consumer, d2)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.dus_view_color = 5;
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+      /*min_overlap_count=*/2, /*max_overlap_count=*/10);
+  ASSERT_OK(AssignMemorySpaceAndReturnStatus(module.get(), std::move(options),
+                                             /*buffer_interval_compare=*/{},
+                                             &prefetch_interval_picker)
+                .status());
+  // The c0/c1/c2 chain keeps the whole heap busy across `view`, so no legal
+  // prefetch window exists: the base must stay in default memory.
+  HloInstruction* view = FindInstruction(module.get(), "view");
+  ASSERT_NE(view, nullptr);
+  EXPECT_THAT(view->operand(0), op::Parameter(0));
 }
 
 TEST_F(MemorySpaceAssignmentTest,
@@ -1505,8 +1548,8 @@ ENTRY entry {
   options_result_modifier.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value_to_update->defining_instruction()
-                    ->name() == "p0" &&
+        if (request.allocation_value_to_update->position()
+                    .instruction->name() == "p0" &&
             request.use->hlo_use.instruction->name() == "add0") {
           result = AllocationResult::kFailRequiresUncommit;
         }
@@ -1528,7 +1571,7 @@ ENTRY entry {
   options_request_modifier.max_retries = 1;
   options_request_modifier
       .allocation_request_modifier_testing_fn = [](AllocationRequest& request) {
-    if (request.allocation_value_to_update->defining_instruction()->name() ==
+    if (request.allocation_value_to_update->position().instruction->name() ==
             "p0" &&
         request.use->hlo_use.instruction->name() == "add0") {
       // Schedule the copy-done before negate4 (scheduled at 6).
@@ -1602,7 +1645,7 @@ ENTRY entry {
   options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "p0_copy" &&
             request.use->hlo_use.instruction->name() == "concat") {
           result = AllocationResult::kFailRequiresUncommit;
@@ -8337,11 +8380,11 @@ TEST_F(MemorySpaceAssignmentTest,
   // default memory, and creates a new one which is wrong.
   bool marked_inefficient = false;
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
+    if (absl::c_find(positions,
                      HloPosition{FindInstruction(module.get(), "while1"),
-                                 {1}}) != defining_positions.end() &&
+                                 {1}}) != positions.end() &&
         !marked_inefficient) {
       LOG(INFO) << "Marking the use inefficient.";
       marked_inefficient = true;
@@ -8378,11 +8421,10 @@ TEST_F(MemorySpaceAssignmentTest, InefficientAllocationRetryWithoutProgress) {
   Options options = DefaultMemorySpaceOptions();
   // The hook flags the add instruction's use of p0 as inefficient.
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
-                     HloPosition{FindInstruction(module.get(), "p0"), {}}) !=
-        defining_positions.end()) {
+    if (absl::c_find(positions, HloPosition{FindInstruction(module.get(), "p0"),
+                                            {}}) != positions.end()) {
       return {HloUse{FindInstruction(module.get(), "add"), 1}};
     }
     return {};
@@ -17806,7 +17848,7 @@ ENTRY entry {
   memory_space_options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "negate0" &&
             retry_number <= 0 && result == AllocationResult::kSuccess) {
           result = AllocationResult::kFailOutOfMemory;
@@ -19517,6 +19559,191 @@ ENTRY main {
       },
       preset_assignments.get(), alias_analysis.get()));
 }
+
+TEST_F(MemorySpaceAssignmentTest, AsyncBarrierAliasingCycle) {
+  absl::string_view hlo_string = R"hlo(
+HloModule sc_async_barrier_aliasing, is_scheduled=true
+
+  sc_custom_call_comp {
+    ROOT %custom_call = (f32[32,128,8]{1,2,0}, u32[], u32[]) custom-call(),
+      custom_call_target="SparseCoreBarrierStart",
+      custom_call_has_side_effect=true
+  }
+
+  sc_main {
+    %input = f32[32,128,8]{1,2,0} parameter(0)
+    %output = f32[32,128,8]{1,2,0} parameter(1)
+    %send_sflag = u32[] parameter(2)
+    %recv_sflag = u32[] parameter(3)
+    ROOT %a2a-result = f32[32,128,8]{1,2,0} custom-call(%input, %output, %send_sflag, %recv_sflag),
+      custom_call_target="SparseCoreBarrierDoneAndCollective",
+      output_to_operand_aliasing={{}: (1, {})}
+  }
+
+ENTRY %Comp_spmd {
+  %p0 = f32[32,128,8]{1,2,0} parameter(0)
+  %p1 = f32[32,128,8]{1,2,0} parameter(1)
+
+  %sc_custom_call_start = ((), (f32[32,128,8]{1,2,0}, u32[], u32[]), s32[]) call-start(),
+    to_apply=%sc_custom_call_comp
+  %sc_custom_call_done = (f32[32,128,8]{1,2,0}, u32[], u32[]) call-done(%sc_custom_call_start)
+  %send_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=1
+  %recv_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=2
+
+  %sc_start = ((f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}, u32[], u32[]), f32[32,128,8]{1,2,0}, s32[])
+    call-start(%p0, %p1, %send_sflag, %recv_sflag),
+      to_apply=%sc_main,
+      output_to_operand_aliasing={
+        {0,1}: (1, {}), // update output buffer at {0,0}
+        {0,2}: (2, {}), // update send_sflag
+        {0,3}: (3, {}), // update recv_sflag
+        {1}: (1, {})}   // update output buffer at {1}
+  %sc_output = f32[32,128,8]{1,2,0} call-done(%sc_start)
+  %neg = f32[32,128,8]{1,2,0} negate(%sc_output)
+
+  ROOT %root = (f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}) tuple(%neg, %p0)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncPipelinedWhileAlternateMemoryPositionSplashAttention) {
+  // Realistic HLO pattern from Splash Attention forward pass with async
+  // pipelining enabled (xla_disable_while_loop_copies="true").
+  // DynamicSlice prefetches Key/Value slices from large HBM base buffers into
+  // alternate memory (VMEM).
+  // DynamicUpdateSlice writes Output accumulator slices from VMEM into a large
+  // HBM base buffer.
+  const absl::string_view hlo_string = R"hlo(
+HloModule SplashAttentionPipelinedWhile, is_scheduled=true
+
+%async_ds_comp (base: bf16[4,384,128], i0: s32[], i1: s32[], i2: s32[]) -> bf16[1,128,128] {
+  %base = bf16[4,384,128]{2,1,0} parameter(0)
+  %i0 = s32[] parameter(1)
+  %i1 = s32[] parameter(2)
+  %i2 = s32[] parameter(3)
+  ROOT %ds = bf16[1,128,128]{2,1,0} dynamic-slice(%base, %i0, %i1, %i2), dynamic_slice_sizes={1,128,128}
+}
+
+%async_dus_comp (base: bf16[4,384,128], update: bf16[1,128,128], i0: s32[], i1: s32[], i2: s32[]) -> bf16[4,384,128] {
+  %base = bf16[4,384,128]{2,1,0} parameter(0)
+  %update = bf16[1,128,128]{2,1,0} parameter(1)
+  %i0 = s32[] parameter(2)
+  %i1 = s32[] parameter(3)
+  %i2 = s32[] parameter(4)
+  ROOT %dus = bf16[4,384,128]{2,1,0} dynamic-update-slice(%base, %update, %i0, %i1, %i2)
+}
+
+%WhileBody (body_param: (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[]))) -> (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[])) {
+  %body_param = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) parameter(0)
+  %iter = s32[] get-tuple-element(%body_param), index=0
+  %c1 = s32[] constant(1)
+  %next_iter = s32[] add(%iter, %c1)
+  %ds_state = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) get-tuple-element(%body_param), index=1
+  %slice_data = bf16[1,128,128]{2,1,0} async-done(%ds_state), calls=%async_ds_comp
+  %dus_state = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) get-tuple-element(%body_param), index=2
+  %dus_done = bf16[4,384,128]{2,1,0} async-done(%dus_state), calls=%async_dus_comp
+  %ds_contexts = (bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]) get-tuple-element(%ds_state), index=0
+  %k_base = bf16[4,384,128]{2,1,0} get-tuple-element(%ds_contexts), index=0
+  %c0 = s32[] constant(0)
+  %next_ds = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) async-start(%k_base, %c0, %c0, %c0), calls=%async_ds_comp
+  %next_dus = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) async-start(%dus_done, %slice_data, %c0, %c0, %c0), output_to_operand_aliasing={{1}: (0, {})}, calls=%async_dus_comp
+  ROOT %root_tuple = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) tuple(%next_iter, %next_ds, %next_dus)
+}
+
+%WhileCond (cond_param: (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[]))) -> pred[] {
+  %cond_param = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) parameter(0)
+  %iter = s32[] get-tuple-element(%cond_param), index=0
+  %limit = s32[] constant(16)
+  ROOT %cmp = pred[] compare(%iter, %limit), direction=LT
+}
+
+ENTRY %Entry (k_base: bf16[4,384,128], o_base: bf16[4,384,128], update_slice: bf16[1,128,128]) -> (bf16[1,128,128], bf16[4,384,128]) {
+  %k_base = bf16[4,384,128]{2,1,0} parameter(0)
+  %o_base = bf16[4,384,128]{2,1,0} parameter(1)
+  %update_slice = bf16[1,128,128]{2,1,0} parameter(2)
+  %c0 = s32[] constant(0)
+  %init_ds = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) async-start(%k_base, %c0, %c0, %c0), calls=%async_ds_comp
+  %init_dus = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) async-start(%o_base, %update_slice, %c0, %c0, %c0), output_to_operand_aliasing={{1}: (0, {})}, calls=%async_dus_comp
+  %init_tuple = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) tuple(%c0, %init_ds, %init_dus)
+  %while = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) while(%init_tuple), condition=%WhileCond, body=%WhileBody, frontend_attributes={xla_disable_while_loop_copies="true"}
+  %final_ds_state = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) get-tuple-element(%while), index=1
+  %final_slice = bf16[1,128,128]{2,1,0} async-done(%final_ds_state), calls=%async_ds_comp
+  %final_dus_state = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) get-tuple-element(%while), index=2
+  %final_dus = bf16[4,384,128]{2,1,0} async-done(%final_dus_state), calls=%async_dus_comp
+  ROOT %out_tuple = (bf16[1,128,128]{2,1,0}, bf16[4,384,128]{2,1,0}) tuple(%final_slice, %final_dus)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HloInstruction* while_inst =
+      module->entry_computation()->GetInstructionWithName("while");
+  ASSERT_NE(while_inst, nullptr);
+  HloInstruction* body_param =
+      while_inst->while_body()->parameter_instruction(0);
+  ASSERT_NE(body_param, nullptr);
+  HloInstruction* root_tuple = while_inst->while_body()->root_instruction();
+  ASSERT_NE(root_tuple, nullptr);
+
+  // 1. Verify wrapped opcode inspection for the pipelined while loop:
+  EXPECT_EQ(GetAsyncPipelinedWhileWrappedOpcode(while_inst, /*tuple_idx=*/1,
+                                                *alias_analysis),
+            HloOpcode::kDynamicSlice);
+  EXPECT_EQ(GetAsyncPipelinedWhileWrappedOpcode(while_inst, /*tuple_idx=*/2,
+                                                *alias_analysis),
+            HloOpcode::kDynamicUpdateSlice);
+
+  // 2. DynamicSlice tuple index 1:
+  // Base tensor {1, 0, 0} must remain in default memory (false).
+  // Prefetched slice output {1, 1} resides in alternate memory (true).
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {1, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {1, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {1, 1}}, *alias_analysis));
+
+  // 3. DynamicUpdateSlice tuple index 2:
+  // Base tensor {2, 0, 0} and dynamic-update-slice output {2, 1} must remain
+  // in default memory (false). Update slice {2, 0, 1} resides in alternate
+  // memory (true).
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 1}}, *alias_analysis));
+}
+
 }  // namespace
 
 }  // namespace memory_space_assignment

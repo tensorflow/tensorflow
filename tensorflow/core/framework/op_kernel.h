@@ -865,9 +865,9 @@ class OpKernelContext {
   // its type does not match the expected output type of output[output_index],
   // or the number of elements in input[input_index] does not equal the number
   // of elements in output_shape.
-  bool forward_input_to_output_with_shape(int input_index, int output_index,
-                                          const TensorShape& output_shape,
-                                          Tensor** output) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool forward_input_to_output_with_shape(
+      int input_index, int output_index, const TensorShape& output_shape,
+      Tensor** output);
   absl::Status forward_input_to_output_with_shape(
       absl::string_view input_name, absl::string_view output_name,
       const TensorShape& output_shape, Tensor** output);
@@ -900,10 +900,10 @@ class OpKernelContext {
   // NOTE: For Cuda kernels that read inputs using the __ldg() intrinsic,
   // forwarding is only safe if there are no reads via __ldg() after writes
   // to the same address.
-  std::unique_ptr<Tensor> forward_input(
+  TF_MUST_USE_RESULT std::unique_ptr<Tensor> forward_input(
       int input_index, int output_index, DataType output_dtype,
       const TensorShape& output_shape, MemoryType output_memory_type,
-      const AllocatorAttributes& output_attr) TF_MUST_USE_RESULT;
+      const AllocatorAttributes& output_attr);
 
   // Tries to forward one of the inputs given in input_indices to
   // output[output_index]. If none of the given inputs can be forwarded, calls

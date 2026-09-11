@@ -34,12 +34,20 @@ namespace ynnpack {
 
 using TensorToValueIdMap = absl::flat_hash_map<int, uint32_t>;
 
+enum class CompositeOpType {
+  kNone = 0,
+  kRuntimeBmm,
+  kSdpa,
+  kMoe,
+};
+
 struct NodeInfo {
   int node_index;
   int builtin_code;
   std::vector<int> inputs;
   std::vector<int> outputs;
   TfLiteFusedActivation activation;
+  CompositeOpType composite_op_type = CompositeOpType::kNone;
 };
 
 struct DummyInputInfo {

@@ -21460,7 +21460,8 @@ values. These keys should be in byte format.}]>:$keys,
     StrArrayAttr:$prediction_names,
     BoolAttr:$training,
     StrAttr:$file_path,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$write_vector_predictions
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$write_vector_predictions,
+    DefaultValuedOptionalAttr<F32Attr, "1.0f">:$sample_rate
   );
 
   let results = (outs);

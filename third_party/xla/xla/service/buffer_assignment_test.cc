@@ -67,8 +67,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -235,6 +233,35 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
         BufferAssigner::Run(
             module, std::make_unique<DependencyHloOrdering>(module),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts));
+    CHECK_OK(assignment.status());
+    return std::move(assignment).value();
+  }
+
+  // Like RunBufferAssignmentWithDusViewColor, but with the module's own
+  // sequential schedule, so temp buffers are packed by the heap simulator
+  // (which is where view base live range extension matters).
+  std::unique_ptr<BufferAssignment>
+  RunSequentialBufferAssignmentWithDusViewColor(
+      HloModule* module, absl::string_view view_instruction_name,
+      BufferValue::Color view_color,
+      std::optional<BufferValue::Color> dus_view_color) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.dus_view_color = dus_view_color;
+    opts.colorer = [name = std::string(view_instruction_name), view_color](
+                       HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+      for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
+        value->set_color(value->instruction()->name() == name
+                             ? view_color
+                             : BufferValue::Color(0));
+      }
+      return absl::OkStatus();
+    };
+    absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+        BufferAssigner::Run(
+            module, std::make_unique<SequentialHloOrdering>(module->schedule()),
             &BufferSizeBytes, &alias_info_,
             [](LogicalBuffer::Color) { return 1; }, std::move(opts));
     CHECK_OK(assignment.status());
@@ -3027,6 +3054,52 @@ ENTRY e {
   EXPECT_TRUE(assignment->HasTopLevelAllocation(view));
 }
 
+// A view is an address into its base's buffer, so consumers of the view read
+// the BASE's storage at their own (later) schedule times. The heap simulator
+// must keep the base buffer reserved until the view's last transitive reader;
+// without that extension the base's slot is recycled for an unrelated temp
+// defined between the view and the reader, and the reader loads the temp's
+// bytes.
+TEST_F(BufferAssignmentTest, DusViewBaseLiveRangeExtendsToViewReaders) {
+  const char* const kHlo = R"(
+HloModule DusViewBaseLiveRange, is_scheduled=true
+
+ENTRY e {
+  p0 = f32[64]{0} parameter(0)
+  base = f32[64]{0} negate(p0)
+  view = f32[64]{0:S(7)} custom-call(base), custom_call_target="view"
+  filler = f32[64]{0} exponential(p0)
+  ROOT out = f32[64]{0} add(view, filler)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* base = FindInstruction(module.get(), "base");
+  const HloInstruction* filler = FindInstruction(module.get(), "filler");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunSequentialBufferAssignmentWithDusViewColor(module.get(), "view",
+                                                    kViewColor, kViewColor);
+
+  // `base` is only directly used by the view, while `out` reads base's
+  // storage through the view two schedule steps later. `filler`, live in
+  // between, must not be packed on top of base's bytes.
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice base_slice,
+                       assignment->GetUniqueTopLevelSlice(base));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice filler_slice,
+                       assignment->GetUniqueTopLevelSlice(filler));
+  const bool same_allocation =
+      base_slice.allocation() == filler_slice.allocation();
+  const bool bytes_overlap =
+      same_allocation &&
+      base_slice.offset() < filler_slice.offset() + filler_slice.size() &&
+      filler_slice.offset() < base_slice.offset() + base_slice.size();
+  EXPECT_FALSE(bytes_overlap)
+      << "view base was recycled while still read through the view: base "
+      << base_slice.ToString() << " vs filler " << filler_slice.ToString();
+}
+
 class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
@@ -3389,7 +3462,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   schedule.set_sequence(
       module->entry_computation(),
       {token, infeed, infeed_data, while0, while1, zero, add, while2, tuple});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -4123,7 +4196,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   // If this ASSERT fails, we constructed a bogus sequence above and this test
   // itself is buggy.
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -5386,7 +5459,7 @@ TEST_F(BufferAssignmentTest, LiveRangeStartOrder) {
     opts.assignment_algorithm_for_computations_without_ordering =
         buffer_assignment::
             AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto assignment,
         BufferAssigner::Run(
             module.get(), std::make_unique<SequentialHloOrdering>(schedule),

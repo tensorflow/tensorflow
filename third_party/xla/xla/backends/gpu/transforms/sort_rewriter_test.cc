@@ -24,7 +24,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -73,7 +72,7 @@ std::string GetNumpyOrderComparator(
   rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
   rhs_no_neg_zero = $0[] select(rhs_is_zero, c_zero, rhs)
   rhs_no_neg_zero_or_nan = $0[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
-  ROOT compare = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=$1, type=TOTALORDER
+  ROOT compare = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=$1, order=TOTAL
 )";
 
   return absl::StrCat("numpy_order_comparator {\n", params,

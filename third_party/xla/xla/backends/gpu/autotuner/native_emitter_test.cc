@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 

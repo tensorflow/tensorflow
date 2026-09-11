@@ -37,6 +37,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
@@ -44,6 +45,7 @@ limitations under the License.*/
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
 
@@ -132,6 +134,7 @@ class CollectiveKernelThunk : public TracedCommand {
   // Per-executor scratch memory.
   struct StreamMemory {
     std::vector<se::DeviceAddressHandle> scratch_allocations;
+    std::vector<tsl::TiedRef<SymmetricMemory>> scratch_symmetric_memories;
   };
 
   // Per-executor state that needs to be synchronized for access.

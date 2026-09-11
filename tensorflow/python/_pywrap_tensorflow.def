@@ -256,6 +256,7 @@ EXPORTS
  ?ComputeGradient@Tape@gradients@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@PEAVAbstractContext@3@V?$Span@QEAVAbstractTensorHandle@tensorflow@@@56@11V?$Span@PEAVAbstractTensorHandle@tensorflow@@@56@@Z
  ?Convert@PythonTensorConverter@tensorflow@@QEBA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@AEAW4DataType@2@PEA_N@Z
  ?Convert@tflite@@YAPEAU_object@@PEAU2@00_N0PEBVPyFunctionLibrary@quantization@tensorflow@@@Z
+ ?ConvertMlirBytecode@tflite@@YAPEAU_object@@PEAU2@00@Z
  ?ConvertPyObjectToAttributeType@tensorflow@@YA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@W4AttributeType@1@@Z
  ?ConvertPythonAPIParameters@tensorflow@@YA_NAEBVPythonAPIInfo@1@AEBVPythonTensorConverter@1@V?$Span@PEAU_object@@@lts_20260526@absl@@PEAUInferredAttributes@21@@Z
  ?ConvertToEagerTensor@tensorflow@@YAPEAUTFE_TensorHandle@@PEAUTFE_Context@@PEAU_object@@W4DataType@1@PEBD@Z
@@ -346,7 +347,7 @@ EXPORTS
  ?FileName@EventsWriter@tensorflow@@QEAA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
  ?Find@ByChar@lts_20260526@absl@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@V45@_K@Z
  ?FindKernelDef@tensorflow@@YA?AVStatus@lts_20260526@absl@@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAPEBVKernelDef@1@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
- ?FlatBufferFileToMlir@tflite@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@_N@Z
+ ?FlatBufferFileToMlir@tflite@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@_N1AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@3@@Z
  ?Flatten@swig@tensorflow@@YAPEAU_object@@PEAU3@_N@Z
  ?FlattenDictItems@tensorflow@@YAPEAU_object@@PEAU2@@Z
  ?FlattenForData@swig@tensorflow@@YAPEAU_object@@PEAU3@@Z
@@ -540,6 +541,7 @@ EXPORTS
  ?MeshDimNames@Mesh@dtensor@tensorflow@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
  ?MlirQuantizeModel@tflite@@YAPEAU_object@@PEAU2@_N1HHH1100110@Z
  ?MlirSparsifyModel@tflite@@YAPEAU_object@@PEAU2@@Z
+ ?MlirToFlatBufferFile@tflite@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@_N1111@Z
  ?Mul@ops@tensorflow@@YA?AVStatus@lts_20260526@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
  ?MulRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
  ?Multiply@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z

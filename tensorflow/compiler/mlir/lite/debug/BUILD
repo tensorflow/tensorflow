@@ -25,7 +25,7 @@ cc_library(
     deps = [
         ":debug_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
-        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -40,7 +40,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:stringpiece",
         "@xla//xla/tsl/lib/io:buffered_file",
         "@xla//xla/tsl/platform:env",
     ],

@@ -25,15 +25,36 @@ package(
     licenses = ["notice"],
 )
 
+_FILECHECK_ONLY_TESTS = [
+    "reduce_column_small/f32_32_v2.hlo",
+    "reduce_column_small/s8_f32_32_v4.hlo",
+    "scatter/sorted_indices_large.hlo",
+]
+
 lit_test_suite(
     name = "tests",
-    srcs = glob(["**/*.hlo"]),
+    srcs = glob(
+        ["**/*.hlo"],
+        exclude = _FILECHECK_ONLY_TESTS,
+    ),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     tools = [
         "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
         "//xla/backends/gpu/codegen/tools:gpu_test_correctness",
+        "//xla/codegen/tools:emitters_opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+lit_test_suite(
+    name = "filecheck_only_tests",
+    srcs = _FILECHECK_ONLY_TESTS,
+    cfg = "//xla:lit.cfg.py",
+    default_tags = ["gpu"],
+    tools = [
+        "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],

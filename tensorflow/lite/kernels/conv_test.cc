@@ -350,6 +350,26 @@ TEST(ConvolutionPrepareSecurityTest, RejectsInvalidGroupedOutputChannels) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(ConvolutionPrepareSecurityTest, RejectsGroupedHybridUint8Filter) {
+  PrepareOnlyConvolutionOpModel<uint8_t> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 2, 2, 4}},
+      {TensorType_UINT8, {2, 1, 1, 2}, 0, 0, 1.0f, 0}, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsGroupedHybridPerTensorFilter) {
+  PrepareOnlyConvolutionOpModel<int8_t> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 2, 2, 4}},
+      {TensorType_INT8, {2, 1, 1, 2}, 0, 0, 1.0f, 0}, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST(ConvolutionPrepareSecurityTest, RejectsPaddingOverflow) {
   PrepareOnlyConvolutionOpModel<float> m(
       ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
@@ -2486,6 +2506,65 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridPerChannelGrouped) {
                                      37, 4, 3, 4,  //
                                  },
                                  0.16)));
+}
+
+TEST_P(ConvolutionOpTest, HybridGroupedWithEqualChannelScales) {
+  float scale = 4.0 / 127.0;
+  HybridPerChannelConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 2, 2, 4}},
+      {TensorType_INT8,
+       {2, 1, 1, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{scale, scale},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput({
+      1,
+      2,
+      3,
+      4,  // y=0, x=0
+      2,
+      3,
+      4,
+      5,  // y=0, x=1
+      3,
+      4,
+      5,
+      6,  // y=1, x=0
+      4,
+      5,
+      6,
+      7,  // y=1, x=1
+  });
+  m.SetSignedFilter({
+      1,
+      2,  // out_channel 0
+      3,
+      4,  // out_channel 1
+  });
+  m.SetBias({0, 0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     5,
+                                     25,  //
+                                     8,
+                                     32,  //
+                                     11,
+                                     39,  //
+                                     14,
+                                     46,  //
+                                 },
+                                 0.2)));
 }
 
 TEST_P(ConvolutionOpTest, SimpleTestHybridWithPaddingPerChannel) {

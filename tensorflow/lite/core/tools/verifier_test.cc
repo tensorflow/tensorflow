@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/tools/verifier.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -105,6 +107,40 @@ class TfLiteFlatbufferModelBuilder {
                                           is_variable));
   }
 
+  void AddExternalBufferTensor(const std::vector<int>& shape,
+                               tflite::TensorType type,
+                               uint32_t external_buffer, const char* name) {
+    if (shape.empty()) {
+      tensors_.push_back(CreateTensorDirect(
+          builder_, /*shape=*/nullptr, type, /*buffer=*/0, name,
+          /*quantization=*/0, /*is_variable=*/false, /*sparsity=*/0,
+          /*shape_signature=*/nullptr, /*has_rank=*/false,
+          /*variant_tensors=*/nullptr, external_buffer));
+      return;
+    }
+    tensors_.push_back(CreateTensorDirect(
+        builder_, &shape, type, /*buffer=*/0, name, /*quantization=*/0,
+        /*is_variable=*/false, /*sparsity=*/0, /*shape_signature=*/nullptr,
+        /*has_rank=*/false, /*variant_tensors=*/nullptr, external_buffer));
+  }
+
+  int AddBufferOffsetTensor(const std::vector<int>& shape,
+                            tflite::TensorType type, uint64_t offset,
+                            uint64_t size, const char* name) {
+    int buffer_index = buffers_.size();
+    buffers_.push_back(CreateBuffer(builder_, /*data=*/0, offset, size));
+    if (shape.empty()) {
+      tensors_.push_back(CreateTensorDirect(
+          builder_, /*shape=*/nullptr, type, buffer_index, name,
+          /*quantization=*/0, /*is_variable=*/false));
+    } else {
+      tensors_.push_back(
+          CreateTensorDirect(builder_, &shape, type, buffer_index, name,
+                             /*quantization=*/0, /*is_variable=*/false));
+    }
+    return buffer_index;
+  }
+
   void AddOperator(const std::vector<int32_t>& inputs,
                    const std::vector<int32_t>& outputs,
                    tflite::BuiltinOperator builtin_op, const char* custom_op) {
@@ -136,12 +172,37 @@ class TfLiteFlatbufferModelBuilder {
     tflite::FinishModelBuffer(builder_, result);
   }
 
+  void FinishModelWithAppendedBuffer(const std::vector<int32_t>& inputs,
+                                     const std::vector<int32_t>& outputs,
+                                     uint64_t offset,
+                                     const std::vector<uint8_t>& payload) {
+    FinishModel(inputs, outputs, kBuilderModeDefault);
+    size_t fb_size = builder_.GetSize();
+    size_t required_size = static_cast<size_t>(offset) + payload.size();
+    size_t final_size = std::max(fb_size, required_size);
+    model_data_.assign(final_size, 0);
+    std::memcpy(model_data_.data(), builder_.GetBufferPointer(), fb_size);
+    if (offset < final_size) {
+      size_t copy_size =
+          std::min(payload.size(), final_size - static_cast<size_t>(offset));
+      std::memcpy(model_data_.data() + offset, payload.data(), copy_size);
+    }
+  }
+
   bool Verify() {
+    if (!model_data_.empty()) {
+      return tflite::Verify(model_data_.data(), model_data_.size(),
+                            &mock_reporter_);
+    }
     return tflite::Verify(builder_.GetBufferPointer(), builder_.GetSize(),
                           &mock_reporter_);
   }
 
   bool VerifyWithOpResolver() {
+    if (!model_data_.empty()) {
+      return tflite::Verify(model_data_.data(), model_data_.size(), resolver_,
+                            &mock_reporter_);
+    }
     return tflite::Verify(builder_.GetBufferPointer(), builder_.GetSize(),
                           resolver_, &mock_reporter_);
   }
@@ -166,6 +227,7 @@ class TfLiteFlatbufferModelBuilder {
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
+  std::vector<uint8_t> model_data_;
 };
 
 TEST(VerifyModel, TestEmptyModel) {
@@ -579,6 +641,38 @@ TEST(VerifyModel, OpWithOptionalTensor) {
   EXPECT_EQ("", builder.GetErrorString());
 }
 
+TEST(VerifyModel, InputIsExternalBuffer) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  // External buffer tensor (external_buffer > 0) is treated as a constant.
+  builder.AddExternalBufferTensor({2, 3}, TensorType_UINT8,
+                                  /*external_buffer=*/1, "external_weight");
+  builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
+  // Tensor 1 is an operator input but not a subgraph input; it should pass
+  // because external buffer tensors are recognized as constant tensors.
+  builder.FinishModel({0}, {2});
+  ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
+  EXPECT_EQ("", builder.GetErrorString());
+}
+
+TEST(VerifyModel, InputIsBufferOffset) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+  // Buffer offset tensor (offset > 1) with appended payload.
+  const uint64_t kOffset = 1024;
+  builder.AddBufferOffsetTensor({2, 2}, TensorType_UINT8, /*offset=*/kOffset,
+                                /*size=*/4, "offset_weight");
+  builder.AddTensor({2, 2}, TensorType_INT32, {}, "output");
+  // Tensor 1 is an operator input but not a subgraph input; it should pass
+  // because buffer offset tensors are recognized as constant tensors.
+  builder.FinishModelWithAppendedBuffer({0}, {2}, kOffset, {5, 6, 7, 8});
+  ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
+  EXPECT_EQ("", builder.GetErrorString());
+}
 TEST(VerifyModel, TypedTensorShapeMismatchWithTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;

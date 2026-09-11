@@ -324,6 +324,11 @@ class NcclSymmetricBuffersSpec {
 bool IsNcclSymmetricBuffersEnabledForCollective(
     const HloInstruction* instruction, const DebugOptions& opts);
 
+// Returns the CollectiveOpType corresponding to the given instruction, or
+// std::nullopt if the instruction is not a recognized collective operation.
+std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
+    const HloInstruction* instruction);
+
 //===----------------------------------------------------------------------===//
 // Async collective configuration.
 //===----------------------------------------------------------------------===//

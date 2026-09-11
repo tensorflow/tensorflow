@@ -1005,6 +1005,8 @@ class HloComputation {
   // provided permutation.
   absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
 
+  bool IsEntryInstUnboundedDynamic() const;
+
  private:
   friend class HloModule;
 
@@ -1201,19 +1203,9 @@ class HloComputation {
                             callee_computations_.end());
   }
 
-  template <typename S, typename Index, TopologicalSortNode<S> S::* Link,
-            Index S::* IndexInParent, typename PredecessorIterator,
-            PredecessorIterator (S::*PredecessorsBegin)() const,
-            PredecessorIterator (S::*PredecessorsEnd)() const,
-            typename SuccessorIterator,
-            SuccessorIterator (S::*SuccessorsBegin)() const,
-            SuccessorIterator (S::*SuccessorsEnd)() const>
-  friend class TopologicalSort;
-
-  template <typename S, TopologicalSortNode<S> S::* Link>
-  friend class TopologicalSortIterator;
-
-  TopologicalSortNode<HloComputation> topological_sort_node_;
+  // Dense index of this computation within its parent HloModule, used as the
+  // node index in the module's TopologicalSort.
+  int32_t index_in_module_ = -1;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;

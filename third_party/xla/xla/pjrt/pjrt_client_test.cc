@@ -799,6 +799,11 @@ ENTRY RuntimeDonationDenialMustAliasFails() -> f32[2, 2] {
 
 TEST(PjRtClientTest, GetDefaultLayout) {}
 
+TEST(PjRtClientTest, IsCApiTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  EXPECT_FALSE(client->IsCApi());
+}
+
 TEST(PjRtClientTest, ClearPeakMemory) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   PjRtDevice* device = client->addressable_devices()[0];

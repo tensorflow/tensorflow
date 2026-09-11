@@ -50,6 +50,8 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -571,6 +573,38 @@ TEST_F(ConvFusionRewriterUnitTest, Test1DBiasBroadcastFusedF16) {
               m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
                   .WithShape(F16, {1, 9, 9, 32}));
+}
+
+TEST_F(ConvFusionRewriterUnitTest, Test1DBiasBroadcastSharedWithMultipleConvs) {
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input1 = f16[1,9,9,17] parameter(0)
+      filter1 = f16[32,3,3,17] parameter(1)
+      filter2 = f16[32,3,3,32] parameter(2)
+      bias = f16[32] parameter(3)
+      bias_broadcast = f16[1,9,9,32] broadcast(bias), dimensions={3}
+      zero = f16[] constant(0)
+      zeros = f16[1,9,9,32] broadcast(zero), dimensions={}
+
+      conv1 = f16[1,9,9,32] convolution(input1, filter1),
+                window={size=3x3 pad=1_1x1_1},
+                dim_labels=b01f_o01i->b01f
+      sum1 = add(conv1, bias_broadcast)
+      relu1 = maximum(sum1, zeros)
+
+      conv2 = f16[1,9,9,32] convolution(relu1, filter2),
+                window={size=3x3 pad=1_1x1_1},
+                dim_labels=b01f_o01i->b01f
+      sum2 = add(conv2, bias_broadcast)
+      ROOT relu2 = maximum(sum2, zeros)
+    })",
+      m::Fusion(m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(3)),
+                m::Parameter(2), m::Parameter(3))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F16, {1, 9, 9, 32}));
 }
 
 TEST_F(ConvFusionRewriterUnitTest, FuseAlpha) {

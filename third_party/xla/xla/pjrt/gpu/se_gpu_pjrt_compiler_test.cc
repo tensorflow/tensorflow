@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -382,11 +384,14 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                        GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_gpu_client = dynamic_cast<StreamExecutorGpuClient*>(client.get());
-  ASSERT_NE(se_gpu_client, nullptr);
+  auto common_client = dynamic_cast<CommonPjRtClient*>(client.get());
+  ASSERT_NE(common_client, nullptr);
 
   se::StreamExecutor* stream_executor =
-      se_gpu_client->client()->backend().default_stream_executor();
+      absl::down_cast<PjRtStreamExecutorRawClient*>(common_client->raw_client())
+          ->client()
+          ->backend()
+          .default_stream_executor();
 
   auto hlo_module = std::make_shared<HloModule>("name", HloModuleConfig());
 

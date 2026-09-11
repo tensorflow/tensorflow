@@ -45,7 +45,6 @@ namespace xla {
 
 IdentityElementType GetReductionIdentityElementType(
     const HloComputation& computation) {
-  // TODO(b/77635120): Add init values, for min, max, and their arg variants.
   const HloInstruction* const root = computation.root_instruction();
   if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
@@ -56,9 +55,15 @@ IdentityElementType GetReductionIdentityElementType(
 
   switch (root->opcode()) {
     case HloOpcode::kAdd:
+    case HloOpcode::kOr:
       return IdentityElementType::kZero;
     case HloOpcode::kMultiply:
+    case HloOpcode::kAnd:
       return IdentityElementType::kOne;
+    case HloOpcode::kMaximum:
+      return IdentityElementType::kMinimum;
+    case HloOpcode::kMinimum:
+      return IdentityElementType::kMaximum;
     default:
       return IdentityElementType::kUnknown;
   }
@@ -374,17 +379,27 @@ ConstraintPropagator::Run(
         get_index_known_zeroes) {
   ConstraintPropagator propagator(get_index_known_zeroes);
   auto computations = module.MakeComputationPostOrder();
+
+  // Phase 1: Seed constraints and ML patterns across all computations in the
+  // module.
   for (HloComputation* computation : computations) {
-    ABSL_RETURN_IF_ERROR(propagator.Propagate(computation));
+    ABSL_RETURN_IF_ERROR(propagator.SeedConstraints(computation));
+    ABSL_RETURN_IF_ERROR(propagator.SeedMLPatternsConstraints(computation));
+    ABSL_RETURN_IF_ERROR(propagator.PropagateSeedConstraints(computation));
   }
 
-  // Extract only the parameters
-  absl::flat_hash_map<const HloInstruction*, ConstraintState> result;
-  for (const HloInstruction* param :
-       module.entry_computation()->parameter_instructions()) {
-    result[param] = propagator.states_[param];
-  }
-  return result;
+  // Phase 2: Inter-procedural fixed-point propagation across all computations
+  // in the module. Post-order iteration ensures constraints propagate backward
+  // across fusion boundaries in each iteration until convergence.
+  absl::flat_hash_map<const HloInstruction*, ConstraintState> before;
+  do {
+    before = propagator.states_;
+    for (HloComputation* computation : computations) {
+      ABSL_RETURN_IF_ERROR(propagator.PropagateConstraints(computation));
+    }
+  } while (before != propagator.states_);
+
+  return propagator.states_;
 }
 
 // Accurately modeling full relational semantics across multi-branch graphs
@@ -425,7 +440,8 @@ void ConstraintPropagator::ComputeMaxAddReductionElementsPerExp(
       consumer_add_reduction_elements = it->second;
     }
 
-    if (instruction->opcode() == HloOpcode::kExp) {
+    if (instruction->opcode() == HloOpcode::kExp ||
+        instruction->opcode() == HloOpcode::kExpm1) {
       max_add_reduction_elements_per_exp_[instruction] =
           consumer_add_reduction_elements;
     }
@@ -509,7 +525,8 @@ absl::Status ConstraintPropagator::SeedConstraints(
         // Output is guaranteed to be non-negative.
         states_[inst].AddConstraint(ConstraintInterval::Positive());
         break;
-      case HloOpcode::kExp: {
+      case HloOpcode::kExp:
+      case HloOpcode::kExpm1: {
         // Safe domain [-max_log, max_log] prevents floating point overflow.
         int64_t reduction_elements = GetMaxAddReductionElementsForExp(inst);
         double max_log =
@@ -647,19 +664,29 @@ absl::Status ConstraintPropagator::SeedConstraints(
 
       case HloOpcode::kReduce:
       case HloOpcode::kReduceWindow: {
-        int64_t first_init = inst->operand_count() / 2;
-        if (inst->opcode() == HloOpcode::kReduceWindow) {
-          first_init = 1;
-        }
+        int64_t first_init = inst->opcode() == HloOpcode::kReduce
+                                 ? inst->operand_count() / 2
+                                 : inst->operand_count() - 1;
         IdentityElementType etype =
             GetReductionIdentityElementType(*inst->to_apply());
         for (int64_t i = first_init; i < inst->operand_count(); ++i) {
+          PrimitiveType elem_type = inst->operand(i)->shape().element_type();
           if (etype == IdentityElementType::kZero) {
             states_[inst->operand(i)].AddConstraint(
                 ConstraintInterval{0.0, 0.0, false});
           } else if (etype == IdentityElementType::kOne) {
             states_[inst->operand(i)].AddConstraint(
                 ConstraintInterval{1.0, 1.0, true});
+          } else if (etype == IdentityElementType::kMinimum) {
+            if (auto domain = GetTypeFiniteDomain(elem_type)) {
+              states_[inst->operand(i)].AddConstraint(
+                  ConstraintInterval{domain->min, domain->min, false});
+            }
+          } else if (etype == IdentityElementType::kMaximum) {
+            if (auto domain = GetTypeFiniteDomain(elem_type)) {
+              states_[inst->operand(i)].AddConstraint(
+                  ConstraintInterval{domain->max, domain->max, false});
+            }
           }
         }
         break;
@@ -668,12 +695,23 @@ absl::Status ConstraintPropagator::SeedConstraints(
       case HloOpcode::kSelectAndScatter: {
         IdentityElementType etype =
             GetReductionIdentityElementType(*inst->scatter());
+        PrimitiveType elem_type = inst->operand(2)->shape().element_type();
         if (etype == IdentityElementType::kZero) {
           states_[inst->operand(2)].AddConstraint(
               ConstraintInterval{0.0, 0.0, false});
         } else if (etype == IdentityElementType::kOne) {
           states_[inst->operand(2)].AddConstraint(
               ConstraintInterval{1.0, 1.0, true});
+        } else if (etype == IdentityElementType::kMinimum) {
+          if (auto domain = GetTypeFiniteDomain(elem_type)) {
+            states_[inst->operand(2)].AddConstraint(
+                ConstraintInterval{domain->min, domain->min, false});
+          }
+        } else if (etype == IdentityElementType::kMaximum) {
+          if (auto domain = GetTypeFiniteDomain(elem_type)) {
+            states_[inst->operand(2)].AddConstraint(
+                ConstraintInterval{domain->max, domain->max, false});
+          }
         }
         break;
       }
@@ -689,6 +727,15 @@ absl::Status ConstraintPropagator::SeedConstraints(
         ConstraintState source_state =
             states_[fused_computation->parameter_instruction(i)];
         states_[inst->operand(i)].Merge(source_state);
+      }
+    } else if (inst->opcode() == HloOpcode::kCall) {
+      const HloComputation* called_computation = inst->to_apply();
+      if (called_computation != nullptr) {
+        for (int i = 0; i < inst->operand_count(); ++i) {
+          ConstraintState source_state =
+              states_[called_computation->parameter_instruction(i)];
+          states_[inst->operand(i)].Merge(source_state);
+        }
       }
     }
   }
@@ -848,6 +895,14 @@ absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
 
 absl::Status ConstraintPropagator::PropagateConstraintsExact(
     const HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    return PropagateComputationBoundary(
+        instruction, instruction->fused_instructions_computation());
+  }
+  if (instruction->opcode() == HloOpcode::kCall) {
+    return PropagateComputationBoundary(instruction, instruction->to_apply());
+  }
+
   ConstraintState output_state = states_[instruction];
   ConstraintInterval output_interval = output_state.GetConstraintInterval();
   StructuralConstraints output_structural =
@@ -966,6 +1021,45 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
     default:
       break;
   }
+  return absl::OkStatus();
+}
+
+absl::Status ConstraintPropagator::PropagateComputationBoundary(
+    const HloInstruction* caller_instruction,
+    const HloComputation* callee_computation) {
+  if (callee_computation == nullptr) {
+    return absl::OkStatus();
+  }
+
+  // 1. Output / Root binding:
+  const HloInstruction* callee_root = callee_computation->root_instruction();
+  if (callee_root != nullptr) {
+    ConstraintState caller_state = states_[caller_instruction];
+    ConstraintState root_state = states_[callee_root];
+    // Backward: outer constraint on caller result flows into inner root.
+    states_[callee_root].Merge(caller_state);
+    // Forward: internal constraint computed on root flows out to caller result.
+    states_[caller_instruction].Merge(root_state);
+  }
+
+  // 2. Operands / Parameters binding:
+  for (int64_t i = 0; i < caller_instruction->operand_count(); ++i) {
+    const HloInstruction* operand = caller_instruction->operand(i);
+    const HloInstruction* callee_param =
+        callee_computation->parameter_instruction(i);
+    if (callee_param == nullptr) {
+      continue;
+    }
+    ConstraintState operand_state = states_[operand];
+    ConstraintState param_state = states_[callee_param];
+    // Backward: constraints accumulated on the internal parameter flow out
+    // to the caller operand.
+    states_[operand].Merge(param_state);
+    // Forward: constraints established on the caller operand flow into the
+    // internal parameter.
+    states_[callee_param].Merge(operand_state);
+  }
+
   return absl::OkStatus();
 }
 
@@ -1199,8 +1293,19 @@ void ConstraintPropagator::PropagateReduceApprox(
     int64_t num_inputs = instruction->operand_count() / 2;
     int64_t num_elements = 1;
     const Shape& operand_shape = instruction->operand(0)->shape();
-    for (int64_t dim : instruction->dimensions()) {
-      num_elements *= operand_shape.dimensions(dim);
+    if (instruction->opcode() == HloOpcode::kReduce) {
+      for (int64_t dim : instruction->dimensions()) {
+        num_elements *= operand_shape.dimensions(dim);
+      }
+    } else if (instruction->opcode() == HloOpcode::kReduceWindow) {
+      const Window& window = instruction->window();
+      for (int64_t d = 0;
+           d < window.dimensions_size() && d < operand_shape.dimensions_size();
+           ++d) {
+        int64_t win_size = window.dimensions(d).size();
+        int64_t op_dim = operand_shape.dimensions(d);
+        num_elements *= std::max<int64_t>(1, std::min(win_size, op_dim));
+      }
     }
     if (num_elements > 1) {
       std::optional<HloOpcode> root_op =
@@ -1496,6 +1601,33 @@ void ConstraintPropagator::PropagateExpApprox(
       ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
 }
 
+void ConstraintPropagator::PropagateExpm1Approx(
+    const HloInstruction* instruction,
+    const ConstraintInterval& output_interval) {
+  // For Y = expm1(X) = exp(X) - 1 with Y in [y_min, y_max]:
+  // Since expm1(X) is monotonically strictly increasing on real numbers:
+  //   y_min <= expm1(X) <= y_max <=> ln(y_min + 1) <= X <= ln(y_max + 1).
+  //
+  // Since expm1(X) > -1 for all real X:
+  // If y_max <= -1.0, expm1(X) <= y_max is impossible for real numbers.
+  if (output_interval.max <= -1.0) {
+    states_[instruction->operand(0)].AddConstraint(
+        ConstraintInterval{1.0, -1.0, /*exclude_zero=*/false});
+    return;
+  }
+
+  double x_min = output_interval.min > -1.0 ? std::log1p(output_interval.min)
+                                            : ConstraintInterval::kMin;
+  double x_max = output_interval.max < ConstraintInterval::kMax &&
+                         output_interval.max > -1.0
+                     ? std::log1p(output_interval.max)
+                     : ConstraintInterval::kMax;
+  bool exclude_zero = output_interval.exclude_zero &&
+                      output_interval.min <= 0.0 && output_interval.max >= 0.0;
+  states_[instruction->operand(0)].AddConstraint(
+      ConstraintInterval{x_min, x_max, exclude_zero});
+}
+
 void ConstraintPropagator::PropagatePowerApprox(
     const HloInstruction* instruction,
     const ConstraintInterval& output_interval) {
@@ -1541,8 +1673,11 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     const HloInstruction* instruction) {
   ConstraintInterval output_interval =
       states_[instruction].GetConstraintInterval();
+  // Exempt reductions: tuple-shaped outputs have no top-level interval and
+  // resolve bounds from downstream GTE users.
   if ((output_interval.IsEmpty() || output_interval.IsUnconstrained()) &&
-      instruction->opcode() != HloOpcode::kReduce) {
+      instruction->opcode() != HloOpcode::kReduce &&
+      instruction->opcode() != HloOpcode::kReduceWindow) {
     return absl::OkStatus();
   }
   switch (instruction->opcode()) {
@@ -1556,6 +1691,7 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
       PropagateMultiplyApprox(instruction, output_interval);
       break;
     case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
       PropagateReduceApprox(instruction, output_interval);
       break;
     case HloOpcode::kConvolution:
@@ -1571,6 +1707,9 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
       break;
     case HloOpcode::kExp:
       PropagateExpApprox(instruction, output_interval);
+      break;
+    case HloOpcode::kExpm1:
+      PropagateExpm1Approx(instruction, output_interval);
       break;
     case HloOpcode::kPower:
       PropagatePowerApprox(instruction, output_interval);

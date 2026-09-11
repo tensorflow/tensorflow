@@ -94,7 +94,7 @@ def select_window(
   return int(block_m), int(block_k), int(block_n)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True, repr=False)
 class DenseMatmulConfig(benchmark.BenchmarkConfig):
   """Config for Pallas dense matmul benchmark.
 

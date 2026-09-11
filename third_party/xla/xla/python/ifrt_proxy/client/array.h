@@ -187,7 +187,7 @@ class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
   absl::StatusOr<xla::ifrt::ArrayRef> FullyReplicatedShard(
       xla::ifrt::ArrayCopySemantics semantics) override;
 
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;

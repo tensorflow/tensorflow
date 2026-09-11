@@ -59,7 +59,9 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName(name));
-  bool all_skipped = false;
+  ASSERT_GT(platform->VisibleDeviceCount(), 0)
+      << "No visible GPU devices found (cuInit may have failed).";
+  bool all_skipped = true;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
     TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                             platform->ExecutorForDevice(i));

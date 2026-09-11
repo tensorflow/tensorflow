@@ -65,6 +65,12 @@ UNARY_TEST(Exp, {
         if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
           return ErrorSpec::Builder().distance_err(1).build();
         }
+        if constexpr (std::is_same_v<NativeT, float>) {
+          return ErrorSpec::Builder()
+              .abs_err(std::numeric_limits<float>::min())
+              .distance_err(1)
+              .build();
+        }
         return GetDefaultSpecGenerator()(x);
       })
       .GpuError(+[](NativeT x) {

@@ -279,18 +279,18 @@ module {
 // CHECK-LABEL: @tanh_f32_vector_64
 // CHECK-NOT: math.tanh
 // CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : vector<64xf32>
-// CHECK: %[[S0:.*]] = vector.extract_strided_slice %arg0 {offsets = [0], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[S0:.*]] = vector.extract_strided_slice %arg0 offsets = [0], sizes = [16], strides = [1] : vector<64xf32> to vector<16xf32>
 // CHECK: %[[C0:.*]] = call @xla.tanh.v16f32(%[[S0]])
-// CHECK: %[[I0:.*]] = vector.insert_strided_slice %[[C0]], %[[INIT]] {offsets = [0], strides = [1]} : vector<16xf32> into vector<64xf32>
-// CHECK: %[[S1:.*]] = vector.extract_strided_slice %arg0 {offsets = [16], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[I0:.*]] = vector.insert_strided_slice %[[C0]], %[[INIT]] offsets = [0], strides = [1] : vector<16xf32> into vector<64xf32>
+// CHECK: %[[S1:.*]] = vector.extract_strided_slice %arg0 offsets = [16], sizes = [16], strides = [1] : vector<64xf32> to vector<16xf32>
 // CHECK: %[[C1:.*]] = call @xla.tanh.v16f32(%[[S1]])
-// CHECK: %[[I1:.*]] = vector.insert_strided_slice %[[C1]], %[[I0]] {offsets = [16], strides = [1]} : vector<16xf32> into vector<64xf32>
-// CHECK: %[[S2:.*]] = vector.extract_strided_slice %arg0 {offsets = [32], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[I1:.*]] = vector.insert_strided_slice %[[C1]], %[[I0]] offsets = [16], strides = [1] : vector<16xf32> into vector<64xf32>
+// CHECK: %[[S2:.*]] = vector.extract_strided_slice %arg0 offsets = [32], sizes = [16], strides = [1] : vector<64xf32> to vector<16xf32>
 // CHECK: %[[C2:.*]] = call @xla.tanh.v16f32(%[[S2]])
-// CHECK: %[[I2:.*]] = vector.insert_strided_slice %[[C2]], %[[I1]] {offsets = [32], strides = [1]} : vector<16xf32> into vector<64xf32>
-// CHECK: %[[S3:.*]] = vector.extract_strided_slice %arg0 {offsets = [48], sizes = [16], strides = [1]} : vector<64xf32> to vector<16xf32>
+// CHECK: %[[I2:.*]] = vector.insert_strided_slice %[[C2]], %[[I1]] offsets = [32], strides = [1] : vector<16xf32> into vector<64xf32>
+// CHECK: %[[S3:.*]] = vector.extract_strided_slice %arg0 offsets = [48], sizes = [16], strides = [1] : vector<64xf32> to vector<16xf32>
 // CHECK: %[[C3:.*]] = call @xla.tanh.v16f32(%[[S3]])
-// CHECK: %[[I3:.*]] = vector.insert_strided_slice %[[C3]], %[[I2]] {offsets = [48], strides = [1]} : vector<16xf32> into vector<64xf32>
+// CHECK: %[[I3:.*]] = vector.insert_strided_slice %[[C3]], %[[I2]] offsets = [48], strides = [1] : vector<16xf32> into vector<64xf32>
 // CHECK: return %[[I3]] : vector<64xf32>
 
 // -----
@@ -304,11 +304,11 @@ module {
 
 // CHECK-LABEL: @tanh_bf16_vector_32
 // CHECK-NOT: math.tanh
-// CHECK: %[[S0:.*]] = vector.extract_strided_slice %arg0 {offsets = [0], sizes = [16], strides = [1]} : vector<32xbf16> to vector<16xbf16>
+// CHECK: %[[S0:.*]] = vector.extract_strided_slice %arg0 offsets = [0], sizes = [16], strides = [1] : vector<32xbf16> to vector<16xbf16>
 // CHECK: %[[EXT0:.*]] = arith.extf %[[S0]] : vector<16xbf16> to vector<16xf32>
 // CHECK: %[[C0:.*]] = call @xla.tanh.v16f32(%[[EXT0]])
 // CHECK: %[[TR0:.*]] = call @xla.fptrunc.v8f32.to.v8bf16
-// CHECK: %[[S1:.*]] = vector.extract_strided_slice %arg0 {offsets = [16], sizes = [16], strides = [1]} : vector<32xbf16> to vector<16xbf16>
+// CHECK: %[[S1:.*]] = vector.extract_strided_slice %arg0 offsets = [16], sizes = [16], strides = [1] : vector<32xbf16> to vector<16xbf16>
 // CHECK: %[[EXT1:.*]] = arith.extf %[[S1]] : vector<16xbf16> to vector<16xf32>
 // CHECK: %[[C1:.*]] = call @xla.tanh.v16f32(%[[EXT1]])
 // CHECK: %[[TR1:.*]] = call @xla.fptrunc.v8f32.to.v8bf16

@@ -572,6 +572,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/service:call_graph",
         "//xla/service:tuple_util",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -591,6 +592,7 @@ xla_cc_test(
     srcs = ["infeed_token_propagation_test.cc"],
     deps = [
         ":infeed_token_propagation",
+        "//xla:shape_util",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

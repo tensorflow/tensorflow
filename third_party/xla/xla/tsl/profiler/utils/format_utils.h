@@ -57,6 +57,10 @@ inline std::string MaxPrecision(double d) {
   return internal::FormatDouble("%.17g", d);
 }
 
+inline std::string FourSigFigs(double d) {
+  return internal::FormatDouble("%.4g", d);
+}
+
 }  // namespace profiler
 }  // namespace tsl
 

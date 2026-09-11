@@ -312,10 +312,10 @@ TEST(StreamExecutorGpuClientTest,
           return;
         }
         std::unique_ptr<PjRtClient>& client = *client_status;
-        auto* gpu_client =
-            absl::down_cast<StreamExecutorGpuClient*>(client.get());
         const gpu::GpuExecutableRunOptions* run_options =
-            gpu_client->gpu_run_options();
+            absl::down_cast<PjRtStreamExecutorRawClient*>(
+                absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+                ->gpu_run_options();
         if (run_options == nullptr ||
             !run_options->execution_timeout_handler()) {
           statuses[i] = absl::InternalError(
@@ -345,9 +345,10 @@ TEST(StreamExecutorGpuClientTest,
   options.abort_collectives_on_failure = true;
   ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
-  auto* gpu_client = absl::down_cast<StreamExecutorGpuClient*>(client.get());
   const gpu::GpuExecutableRunOptions* run_options =
-      gpu_client->gpu_run_options();
+      absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+          ->gpu_run_options();
   ASSERT_NE(run_options, nullptr);
   ASSERT_TRUE(run_options->execution_timeout_handler());
 
@@ -414,10 +415,11 @@ TEST(StreamExecutorGpuClientTest,
     ASSERT_OK(status);
   }
 
-  auto* gpu_client0 =
-      absl::down_cast<StreamExecutorGpuClient*>(pjrt_clients[0].get());
   const gpu::GpuExecutableRunOptions* run_options =
-      gpu_client0->gpu_run_options();
+      absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(pjrt_clients[0].get())
+              ->raw_client())
+          ->gpu_run_options();
   ASSERT_NE(run_options, nullptr);
   ASSERT_TRUE(run_options->execution_timeout_handler());
 
@@ -1676,11 +1678,11 @@ absl::Status InterProcessCollectiveInitTestBody(int rank_id) {
   // executor's collective memory allocator into the selected collectives
   // backend (e.g. MORI ShmemMalloc). With inert backend stubs the allocation
   // may return null; we only log the outcome and do not fail the test.
-  auto* se_device = absl::down_cast<PjRtStreamExecutorDevice*>(
-      client->addressable_devices()[0]);
-  TF_RET_CHECK(se_device != nullptr);
-  LocalDeviceState* local_device_state = se_device->local_device_state();
-  TF_RET_CHECK(local_device_state != nullptr);
+  auto* se_client = absl::down_cast<PjRtStreamExecutorClient*>(client.get());
+  TF_RET_CHECK(se_client != nullptr);
+  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device_state,
+                   se_client->raw_client()->GetLocalDeviceState(
+                       client->addressable_devices()[0]->local_device_id()));
   se::StreamExecutor* executor = local_device_state->executor();
 
   constexpr uint64_t kCollectiveBytes = 1024;

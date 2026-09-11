@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -310,7 +311,7 @@ R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module, entry_computation_l
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
   %v2 = f32[4]{0} parameter(1), sharding={maximal device=1}
-  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, type=TOTALORDER, sharding={replicated}
+  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, order=TOTAL, sharding={replicated}
   ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={replicated}
 }
 
@@ -797,7 +798,7 @@ R"(HloModule R4F32OverlapSmall_module, entry_computation_layout={()->f32[4,5,1,1
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, type=TOTALORDER
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, order=TOTAL
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -1578,8 +1579,21 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 R"(HloModule test, entry_computation_layout={(f32[])->f32[]}
 
 ENTRY %test (v1: f32[]) -> f32[] {
-  %v1 = f32[] parameter(0), origin={[synthetic_call]}
-  ROOT %add = f32[] add(f32[] %v1, f32[] %v1), origin={[synthetic_call]}
+  %v1 = f32[] parameter(0), origin={(),[""]}
+  ROOT %add = f32[] add(f32[] %v1, f32[] %v1), origin={(),[""]}
+}
+
+)"
+},
+
+{
+"OriginalValueWithCallHierarchy",
+R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0})->(f32[], f32[3]{0})}
+
+ENTRY %test (v1: f32[], v2: f32[3]) -> (f32[], f32[3]) {
+  %v1 = f32[] parameter(0), origin={{"v1"},["call_result#$"]}
+  %v2 = f32[3]{0} parameter(1), origin={{"v2"},["w1#0/w2#1"]}
+  ROOT %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), origin={({"v1"}, {"v2"}),["w1#$"]}
 }
 
 )"
@@ -3726,6 +3740,50 @@ ENTRY %configuration_test() -> s32[] {
                            ->entry_computation()
                            ->root_instruction()
                            ->raw_backend_config_string());
+}
+
+TEST_F(HloParserTest, CompareWithOrder) {
+  const std::string original = R"(HloModule CompareWithOrder
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, order=TOTAL
+})";
+  auto result = ParseAndReturnVerifiedModule(original);
+  ASSERT_OK(result.status());
+  const HloInstruction* root =
+      result.value()->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  const auto* compare = static_cast<const HloCompareInstruction*>(root);
+  EXPECT_EQ(compare->direction(), ComparisonDirection::kGt);
+  EXPECT_EQ(compare->order(), ComparisonOrder::kTotal);
+}
+
+TEST_F(HloParserTest, CompareBothTypeAndOrderFails) {
+  const std::string original = R"(HloModule CompareBothTypeAndOrderFails
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, type=FLOAT, order=TOTAL
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(
+      result.status().message(),
+      "Cannot specify both 'type' and 'order' attributes on compare");
+}
+
+TEST_F(HloParserTest, CompareTotalOrderRejected) {
+  const std::string original = R"(HloModule CompareTotalOrderRejected
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=GT, order=TOTALORDER
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "expects comparison order but sees: TOTALORDER");
 }
 
 TEST_F(HloParserTest, LiteralDimensionsError) {
@@ -6709,8 +6767,8 @@ ENTRY AsyncDoneWithTransparentIntermediaries {
   ROOT async-done = f32[3,2] async-done(copy)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* done = module->entry_computation()->root_instruction();
   EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
   const HloInstruction* producer =
@@ -7003,6 +7061,33 @@ ENTRY %test {
 
   ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
                   "origin={(({}, {\"v2\"}), {\"v3\"})}");
+}
+
+TEST_F(HloParserTest, OriginalValueWithCallHierarchy) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  %a = f32[2,10]{1,0} parameter(0), origin={{"a"},["call_result#$"]}
+  ROOT %v = abs(%a), origin={{"v"},["w1#*/w2#$"]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={{\"a\"},[\"call_result#$\"]}");
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={{\"v\"},[\"w1#*/w2#$\"]}");
+
+  const HloInstruction* a =
+      module->entry_computation()->parameter_instruction(0);
+  ASSERT_NE(a->original_value(), nullptr);
+  ASSERT_TRUE(a->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*a->original_value()->call_hierarchy(), "call_result#$");
+
+  const HloInstruction* v = module->entry_computation()->root_instruction();
+  ASSERT_NE(v->original_value(), nullptr);
+  ASSERT_TRUE(v->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*v->original_value()->call_hierarchy(), "w1#*/w2#$");
 }
 
 TEST_F(HloParserTest, DeduplicateOriginalValues) {
@@ -7313,6 +7398,71 @@ TEST_F(HloParserTest, SparsityConfig_Both) {
   EXPECT_EQ(config.rhs().num_non_zero(), 3);
   EXPECT_EQ(config.rhs().dimension(), 0);
   EXPECT_EQ(config.rhs().stride(), 1);
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_RHSOnly) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %scale = f32[2,1] parameter(2)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %scale), dim_labels=bf_io->bf,
+      block_scaling_config={rhs={scale_idx=2 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.rhs().scale_idx(), 2);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_Both) {
+  const char* const hlo_string = R"(
+  HloModule BlockScalingConfigModule
+  ENTRY BlockScalingConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    %lhs_scale = f32[1,1] parameter(2)
+    %rhs_scale = f32[2,1] parameter(3)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), dim_labels=bf_io->bf,
+      block_scaling_config={lhs={scale_idx=2 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->block_scaling_config();
+  EXPECT_EQ(config.lhs().scale_idx(), 2);
+  EXPECT_THAT(config.lhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.lhs().steps(), ::testing::ElementsAre(1, 1));
+  EXPECT_EQ(config.rhs().scale_idx(), 3);
+  EXPECT_THAT(config.rhs().strides(), ::testing::ElementsAre(1, 4));
+  EXPECT_THAT(config.rhs().steps(), ::testing::ElementsAre(1, 1));
+}
+
+TEST_F(HloParserTest, BlockScalingConfig_RoundTrip) {
+  const char* const hlo_string = R"(
+HloModule BlockScalingConfigModule
+ENTRY BlockScalingConfig {
+  %input = f32[1,2] parameter(0)
+  %filter = f32[2,2] parameter(1)
+  %lhs_scale = f32[1,1] parameter(2)
+  %rhs_scale = f32[2,1] parameter(3)
+  ROOT %convolution = f32[1,2] convolution(%input, %filter, %lhs_scale, %rhs_scale), window={size=1x1}, dim_labels=bf_io->bf, block_scaling_config={lhs={scale_idx=2 zero_idx=3 strides=1x4 steps=1x1} rhs={scale_idx=3 strides=1x4 steps=1x1}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto config_before =
+      module->entry_computation()->root_instruction()->block_scaling_config();
+  std::string printed = module->ToString();
+  ASSERT_OK_AND_ASSIGN(auto parsed_module,
+                       ParseAndReturnUnverifiedModule(printed));
+  auto config_after = parsed_module->entry_computation()
+                          ->root_instruction()
+                          ->block_scaling_config();
+  EXPECT_EQ(config_after.DebugString(), config_before.DebugString());
 }
 
 TEST_F(HloParserTest, DesugarParsingTest_DotStart) {
@@ -7816,6 +7966,64 @@ ENTRY main {
   // shape of async-done.
   EXPECT_EQ(async_wrapped_computation->root_instruction()->shape().ToString(),
             "f32[64]");
+}
+
+TEST_F(HloParserTest,
+       DesugarParsingTest_CallStart_LayoutSyncFromCalledComputation) {
+  const char* const hlo = R"(
+HloModule main
+
+comp {
+  ROOT root = f32[16,8]{1,0} parameter(0)
+}
+
+ENTRY main {
+  arg.0 = f32[16,8]{0,1} parameter(0)
+  call-start = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) call-start(arg.0), async_execution_thread="thread", to_apply=comp
+  call-update = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) call-update(call-start)
+  ROOT call-done = f32[16,8]{0,1} call-done(call-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* async_done = module->entry_computation()->root_instruction();
+  HloComputation* async_wrapped = async_done->async_wrapped_computation();
+  ASSERT_NE(async_wrapped, nullptr);
+  // Parameters and root of the async-wrapped computation must synchronize their
+  // layouts with the called computation `comp` ({1,0}), even if call-start
+  // initially specified a different layout ({0,1}).
+  EXPECT_EQ(async_wrapped->parameter_instruction(0)->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
+  EXPECT_EQ(async_wrapped->root_instruction()->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
+}
+
+TEST_F(HloParserTest,
+       DesugarParsingTest_FusionStart_LayoutSyncFromFusedComputation) {
+  const char* const hlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[16,8]{0,1} parameter(0)
+  fusion-start = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) fusion-start(arg.0), kind=kLoop, calls={
+    p0 = f32[16,8]{1,0} parameter(0)
+    ROOT root = f32[16,8]{1,0} negate(p0)
+  }
+  fusion-update = ((f32[16,8]{0,1}), f32[16,8]{0,1}, s32[]) fusion-update(fusion-start)
+  ROOT fusion-done = f32[16,8]{0,1} fusion-done(fusion-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* async_done = module->entry_computation()->root_instruction();
+  HloComputation* async_wrapped = async_done->async_wrapped_computation();
+  ASSERT_NE(async_wrapped, nullptr);
+  EXPECT_EQ(async_wrapped->parameter_instruction(0)->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
+  EXPECT_EQ(async_wrapped->root_instruction()->shape().ToString(
+                /*print_layout=*/true),
+            "f32[16,8]{1,0}");
 }
 
 TEST_F(HloParserTest, DeeplyNestedOperandsExceedsRecursionLimit) {

@@ -35,9 +35,9 @@ namespace memory_space_assignment {
 // (trivial positions are considered Tuple, GetTupleElement, and Bitcast). An
 // HloValue may include positions and uses that alias with each other across
 // multiple computations. We use this class to break these HloValues such that
-// every AllocationValue has one defining position (that may alias with other
+// every AllocationValue has one position (that may alias with other
 // AllocationValues). The uses field of the AllocationValue contains only the
-// direct uses of the AllocationValue's defining position.
+// direct uses of the AllocationValue's position.
 //
 // For example, consider the following HLO snippet:
 //
@@ -129,22 +129,19 @@ class AllocationValue {
   AllocationValue(const HloValue* value, const HloPosition& position,
                   int64_t size)
       : value_(value),
-        defining_position_(position),
+        position_(position),
         size_(size),
         requires_contiguous_allocation_(false),
         split_shape_(std::nullopt) {}
 
-  const HloPosition& defining_position() const { return defining_position_; }
-  const HloInstruction* defining_instruction() const {
-    return defining_position().instruction;
-  }
+  const HloPosition& position() const { return position_; }
   int64_t size() const { return size_; }
   void set_size(int64_t size) { size_ = size; }
   const std::vector<Use>& uses() const { return uses_; }
   std::vector<Use>& uses() { return uses_; }
   const HloValue* value() const { return value_; }
   const HloComputation* computation() const {
-    return defining_instruction()->parent();
+    return position().instruction->parent();
   }
   AllocationSequence* mutable_allocation_sequence() {
     return &allocation_sequence_;
@@ -174,7 +171,7 @@ class AllocationValue {
 
  private:
   const HloValue* value_;
-  HloPosition defining_position_;
+  HloPosition position_;
   int64_t size_;
   // If true, there must be a contiguous allocation for this buffer without
   // any copies.

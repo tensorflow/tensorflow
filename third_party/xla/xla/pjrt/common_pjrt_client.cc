@@ -53,6 +53,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "riegeli/bytes/cord_reader.h"
 #include "riegeli/bytes/string_reader.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/error/error_codes.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/c/pjrt_c_api_device_event.h"
@@ -72,6 +74,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/staging_buffer.h"
@@ -98,6 +101,63 @@ limitations under the License.
 
 namespace xla {
 
+PjRtDynamicShapeKind CommonPjRtClient::GetDynamicShapeKind(
+    int memory_space_kind_id) const {
+  if (!IsTpuId(platform_id()) ||
+      UnpinnedHostMemorySpace::kKindId == memory_space_kind_id) {
+    return PjRtDynamicShapeKind::kSuffix;
+  }
+  return PjRtDynamicShapeKind::kPrefix;
+}
+
+absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
+CommonPjRtClient::GetHloCostAnalysis() const {
+  return std::make_unique<HloCostAnalysis>(
+      [](const xla::Shape& shape) -> int64_t {
+        if (shape.IsTuple()) {
+          return ShapeUtil::TupleElementCount(shape) * sizeof(uint32_t);
+        }
+        auto result = PjRtGetOnDeviceBytesCount(shape);
+        CHECK_OK(result.status()) << shape.ToString(true);
+        return *result;
+      });
+}
+
+bool CommonPjRtClient::IsOnCpu(PjRtMemorySpace* memory_space) {
+  auto topology = GetTopologyDescription();
+  CHECK_OK(topology.status());
+  return (*topology)->IsMemorySpaceOnCpu(memory_space->kind_id());
+}
+
+bool CommonPjRtClient::BufferFromHostBufferSupportsZeroCopy(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
+    PjRtMemorySpace* memory_space, const Layout* device_layout) const {
+  if (!IsCpuId(platform_id()) &&
+      memory_space->kind_id() != UnpinnedHostMemorySpace::kKindId) {
+    return false;
+  }
+  if (byte_strides && !HasMajorToMinorLayout(type, dims, *byte_strides)) {
+    return false;
+  }
+  // Packed arrays are unpacked on host and packed on device.
+  if (primitive_util::IsSubByteNonPredType(type)) {
+    return false;
+  }
+  if (shape.has_layout() &&
+      !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return false;
+  }
+
+  // If the input buffer has a default layout and is sufficiently aligned, we
+  // can simply point to the input array's data without any further copies. At
+  // the time of writing we require a 16-byte alignment because XLA may generate
+  // code which requires it.
+  if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
+    return false;
+  }
+  return true;
+}
 void CommonPjRtClient::TrackFuture(PjRtMemorySpace* memory_space,
                                    absl::string_view debug_info,
                                    const Future<>& future) {}
@@ -396,10 +456,15 @@ CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
     addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
-        int64_t device_id = (*device_assignment)(replica, partition);
-        GlobalDeviceId global_device_id(device_id);
+        GlobalDeviceId device_id((*device_assignment)(replica, partition));
+        // TODO(parkers): remove this dependence on CPU's UnpackCpuProcessIndex.
+        if (IsCpuId(platform_id()) &&
+            UnpackCpuProcessIndex(device_id) != process_index()) {
+          VLOG(3) << "Non-local device: " << device_id;
+          continue;
+        }
 
-        ABSL_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(global_device_id));
+        ABSL_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
         if (device->process_index() != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
@@ -428,7 +493,14 @@ CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
         *hlo_module, kAfterOptimizationsDumpName,
         ex_options.has_debug_options() ? &ex_options.debug_options() : nullptr);
   }
-  xla::Shape result_shape = hlo_module->result_shape();
+  xla::Shape result_shape;
+  if (IsGpuId(platform_id())) {
+    // TODO(parkers): GPU isn't properly setting entry_computation_layout?
+    result_shape = hlo_module->result_shape();
+  } else {
+    result_shape =
+        hlo_module->entry_computation_layout().result_layout().shape();
+  }
   absl::Span<const Shape> result_shapes =
       result_shape.IsTuple() ? absl::MakeSpan(result_shape.tuple_shapes())
                              : absl::MakeSpan(&result_shape, 1);
@@ -475,7 +547,12 @@ CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
           std::move(addressable_devices), nullptr,
           compile_options.parameter_is_tupled_arguments,
           std::move(input_hlo_snapshot_bits)));
-
+  // TODO(parkers): Clear cpu memory spaces because CPU previously would
+  // accept inputs on any memory space. If this is fixed at some point, remove
+  // this.
+  if (IsCpuId(platform_id())) {
+    dispatch_info.parameter_memory_space_kind_ids.clear();
+  }
   auto load_state = raw_client()->MakeLoadState();
   ABSL_RETURN_IF_ERROR(load_state->Preload(executable.get()));
   auto loaded_executable = std::make_unique<CommonPjRtLoadedExecutable>(
@@ -2666,11 +2743,113 @@ CommonPjRtLoadedExecutable::ExecutePortable(
   return std::move(result.buffers);
 }
 
+static void MaybeDumpHloSnapshot(
+    const HloModule& module, RunId run_id,
+    const std::vector<PjRtBuffer*>& arguments,
+    const std::vector<std::unique_ptr<PjRtBuffer>>& results,
+    absl::string_view file_name_prefix = "") {
+  if (!DumpingEnabledForHloModule(module)) {
+    return;
+  }
+  if (!module.config().debug_options().xla_dump_hlo_snapshots()) {
+    return;
+  }
+  xla::HloSnapshot hlo_snapshot;
+  *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = module.ToProto();
+
+  for (auto* argument : arguments) {
+    auto literal_or = argument->ToLiteral().Await();
+    if (!literal_or.ok()) {
+      LOG(ERROR) << "Failed to get literal for argument: "
+                 << literal_or.status();
+      return;
+    }
+    *hlo_snapshot.add_arguments() = (*literal_or)->ToProto();
+  }
+
+  // If there are multiple results, wrap them in a tuple.
+  if (results.size() == 1) {
+    auto literal_or = results[0]->ToLiteral().Await();
+    if (!literal_or.ok()) {
+      LOG(ERROR) << "Failed to get literal for result: " << literal_or.status();
+      return;
+    }
+    *hlo_snapshot.mutable_result() = (*literal_or)->ToProto();
+  } else {
+    std::vector<Literal> result_literals;
+    result_literals.reserve(results.size());
+    for (auto& result : results) {
+      auto literal_or = result->ToLiteral().Await();
+      if (!literal_or.ok()) {
+        LOG(ERROR) << "Failed to get literal for result: "
+                   << literal_or.status();
+        return;
+      }
+      result_literals.push_back(std::move(**literal_or));
+    }
+    *hlo_snapshot.mutable_result() =
+        LiteralUtil::MakeTupleOwned(std::move(result_literals)).ToProto();
+  }
+
+  DumpToFileInDir(
+      module, "",
+      absl::StrCat(file_name_prefix, "snapshot.", run_id.ToInt(), ".pb"),
+      hlo_snapshot.SerializeAsString());
+}
+
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 CommonPjRtLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<tsl::Future<void>>>& returned_futures) const {
+  if (addressable_devices_.size() == 1 && argument_handles.size() == 1 &&
+      IsCpuId(client()->platform_id())) {
+    std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(1);
+    RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
+                                          : RunId::CreateUniqueId();
+    // Fast-path if there is only one device — run the computation on the
+    // current thread.
+    const int replica = addressable_device_logical_ids_[0].replica;
+    const int partition = addressable_device_logical_ids_[0].partition;
+
+    ABSL_ASSIGN_OR_RETURN(auto hlo_module, GetExecutable()->GetHloModule());
+
+    // Dump once before running, in case there's a crash.
+    MaybeDumpHloSnapshot(*hlo_module, run_id, argument_handles[0], {});
+    if (auto unoptimized_hlo_module =
+            GetExecutable()->GetUnoptimizedHloModule()) {
+      HloUnoptimizedSnapshot hlo_snapshot;
+      *hlo_snapshot.mutable_hlo_module() = *std::move(unoptimized_hlo_module);
+      for (const auto& argument_handle : argument_handles) {
+        HloInputs hlo_inputs;
+        for (const auto& buffer : argument_handle) {
+          ABSL_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteral().Await());
+          *hlo_inputs.add_arguments() = literal->ToProto();
+        }
+        *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
+      }
+
+      DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot,
+                                          hlo_module->config().debug_options());
+    }
+    auto statusor = ExecuteHelperOnSingleDevice(argument_handles[0], run_id,
+                                                replica, partition, options,
+                                                returned_futures.has_value());
+
+    if (!statusor.ok()) {
+      return std::move(statusor).status();
+    }
+
+    wrapped_results[0] = std::move(statusor->buffers);
+    if (returned_futures.has_value()) {
+      returned_futures->push_back(std::move(*statusor->future));
+    }
+
+    MaybeDumpHloSnapshot(*hlo_module, run_id, argument_handles[0],
+                         wrapped_results[0]);
+    return wrapped_results;
+  }
+
   if (input_hlo_snapshot_bits()) {
     HloUnoptimizedSnapshot hlo_snapshot;
     *hlo_snapshot.mutable_hlo_module() = input_hlo_snapshot_bits()->hlo_module;
@@ -3867,12 +4046,15 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
           PjRtDeviceEventRefVector definition_events)
           -> absl::StatusOr<PjRtDeviceEventRef> {
         auto ds_kind = client()->GetDynamicShapeKind(memory_space()->kind_id());
+        size_t host_alignment_bytes =
+            buf_client->raw_client()->GetDmaHostAlignment();
         PjRtDeviceEventSpan deps_span(definition_events);
         xla::ExecuteWhenReady(
             deps_span, buf_client->async_work_runner(),
             [definition_events = std::move(definition_events),
              raw_buffer = raw_buffer, output_shape = output_shape,
-             device_shape = std::move(device_shape), ds_kind]() mutable {
+             device_shape = std::move(device_shape), ds_kind,
+             host_alignment_bytes]() mutable {
               tsl::profiler::TraceMe traceme("D2H Read Shape Metadata");
               absl::Status status = xla::GetErrors(definition_events);
               if (!status.ok()) {
@@ -3883,7 +4065,7 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
                 return;
               }
               xla::ReadDynamicShape(raw_buffer, output_shape, device_shape,
-                                    ds_kind);
+                                    ds_kind, host_alignment_bytes);
             });
         tsl::BlockUntilReady(output_shape.CopyRCRef().get());
         if (auto* error = output_shape.GetErrorIfPresent()) {
@@ -4042,6 +4224,23 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
       kv_store_(std::move(kv_store)),
       raw_client_(std::move(raw_client)) {
   CHECK(topology_) << " topology is required.";
+  auto set_bool_attr_from_plugin_attrs = [&](absl::string_view key, bool& out) {
+    if (!plugin_attributes_) {
+      return;
+    }
+    auto it = plugin_attributes_->attributes.find(key);
+    if (it != plugin_attributes_->attributes.end()) {
+      if (const bool* b = std::get_if<bool>(&it->second)) {
+        out = *b;
+      }
+    }
+  };
+  set_bool_attr_from_plugin_attrs("allow_fallback_for_donation",
+                                  allow_fallback_for_donation_);
+  set_bool_attr_from_plugin_attrs("supports_two_phase_launch",
+                                  supports_two_phase_launch_);
+  set_bool_attr_from_plugin_attrs("supports_predetermined_error",
+                                  supports_predetermined_error_);
 }
 
 void CommonPjRtClientImpl::AttachDevices(
@@ -4092,6 +4291,96 @@ absl::Span<PjRtMemorySpace* const> CommonPjRtClientImpl::memory_spaces() const {
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
 CommonPjRtClientImpl::RuntimeAbiVersion() const {
   return raw_client_->RuntimeAbiVersion();
+}
+
+void CommonPjRtDevice::SetClient(PjRtClient* client) {
+  CHECK(client_ == nullptr);
+  CHECK(client != nullptr);
+  client_ = absl::down_cast<CommonPjRtClient*>(client);
+}
+
+PjRtPlatformId CommonPjRtDevice::platform_id() const {
+  CHECK(client_ != nullptr);
+  return client_->platform_id();
+}
+
+absl::string_view CommonPjRtDevice::platform_name() const {
+  CHECK(client_ != nullptr);
+  return client_->platform_name();
+}
+
+absl::Status CommonPjRtDevice::TransferToInfeed(const LiteralSlice& literal) {
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->TransferToInfeed(local_device_id(), literal);
+}
+
+absl::Status CommonPjRtDevice::TransferFromOutfeed(
+    MutableBorrowingLiteral literal) {
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->TransferFromOutfeed(local_device_id(), literal);
+}
+
+void CommonPjRtDevice::AttachMemorySpace(PjRtMemorySpace* memory_space,
+                                         bool is_default) {
+  CHECK(memory_space != nullptr);
+  CHECK(client_ == memory_space->client()) << absl::StrFormat(
+      "Could not attach a device to a PjRtMemorySpace owned by a different "
+      "client, the device's client: %s, the memory space's client: %s.",
+      client_->platform_name(), memory_space->client()->platform_name());
+
+  memory_spaces_.push_back(memory_space);
+  memory_spaces_by_id_.emplace(memory_space->kind_id(), memory_space);
+  if (is_default) {
+    CHECK(default_memory_space_ == nullptr)
+        << "Default memory space already set to "
+        << default_memory_space_->DebugString() << ".";
+    default_memory_space_ = memory_space;
+  }
+}
+
+absl::Span<PjRtMemorySpace* const> CommonPjRtDevice::memory_spaces() const {
+  return memory_spaces_;
+}
+
+absl::StatusOr<PjRtMemorySpace*> CommonPjRtDevice::default_memory_space()
+    const {
+  if (default_memory_space_ != nullptr) {
+    return default_memory_space_;
+  }
+  if (!memory_spaces_.empty()) {
+    return memory_spaces_.front();
+  }
+  return absl::InternalError("No default memory space is set for this device.");
+}
+
+absl::StatusOr<PjRtMemorySpace*> CommonPjRtDevice::memory_space_by_kind(
+    absl::string_view memory_space_kind) const {
+  auto it =
+      absl::c_find_if(memory_spaces_, [memory_space_kind](PjRtMemorySpace* ms) {
+        return ms->kind() == memory_space_kind;
+      });
+  if (it != memory_spaces_.end()) {
+    return *it;
+  }
+  return absl::InternalError(
+      absl::StrCat("No memory space found (kind: ", memory_space_kind, ")"));
+}
+
+absl::StatusOr<PjRtMemorySpace*> CommonPjRtDevice::memory_space_by_kind_id(
+    int id) const {
+  auto it = memory_spaces_by_id_.find(id);
+  if (it == memory_spaces_by_id_.end()) {
+    return absl::InternalError(
+        absl::StrCat("No memory space found (kind_id: ", id, ")"));
+  }
+  return it->second;
+}
+
+absl::StatusOr<bool> CommonPjRtDevice::PoisonExecution(int32_t launch_id,
+                                                       absl::Status error) {
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->PoisonExecution(local_device_id(), launch_id,
+                                                std::move(error));
 }
 
 }  // namespace xla

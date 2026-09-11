@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -629,7 +630,7 @@ TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
   }
   module->AddEntryComputation(main.Build());
   HloComputationDeduplicator dedup;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, dedup.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, dedup.Run(module.get()));
   EXPECT_FALSE(changed);
   std::vector<HloComputation *> computations = module->MakeComputationSorted();
   EXPECT_EQ(computations.size(), (total_regions + 1));
@@ -665,8 +666,8 @@ TEST_F(HloComputationDeduplicatorTest, DontDeduplicateReduceAllReduce) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, DeduplicateChain) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 fusion0 {
@@ -696,8 +697,13 @@ ENTRY entry {
   ROOT add = f32[] add(fusion.0, p1)
 }
 )"));
+  HloComputationDeduplicator dedup_do_not_mark(
+      /*mark_fusion_duplications=*/false);
+  ASSERT_OK_AND_ASSIGN(bool changed, dedup_do_not_mark.Run(module.get()));
+  EXPECT_FALSE(changed);
+
   HloComputationDeduplicator dedup(/*mark_fusion_duplications=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, dedup.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, dedup.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(module->computation_count(), 4);
   HloInstruction* fusion0 =

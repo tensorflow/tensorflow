@@ -1912,8 +1912,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
         [batch, height, width, out_channels].
 
   Raises:
-    ValueError: If input/output depth does not match `filters`' shape, or if
-      padding is other than `'VALID'` or `'SAME'`.
+    ValueError: If input/output depth does not match `filters`' shape, if
+      `value` or `filters` is not rank 4, or if padding is other than
+      `'VALID'` or `'SAME'`.
 
   References:
     Multi-Scale Context Aggregation by Dilated Convolutions:
@@ -1932,6 +1933,10 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       (https://ieeexplore.ieee.org/abstract/document/6738831)
       ([pdf](https://arxiv.org/pdf/1302.1700.pdf))
   """
+  value = ops.convert_to_tensor(value, name="value")
+  filters = ops.convert_to_tensor(filters, name="filters")
+  value.shape.assert_has_rank(4)
+  filters.shape.assert_has_rank(4)
   return convolution(
       input=value,
       filter=filters,

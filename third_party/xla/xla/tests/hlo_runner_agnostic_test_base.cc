@@ -295,11 +295,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const bool run_hlo_passes, const bool use_threads,
     const std::optional<ErrorSpec>& error) {
-  const absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
-      /*module=*/module_0.get(), /*pseudo_random=*/true,
-      /*use_large_range=*/false,
-      /*treat_gte_as_data_formatting=*/false,
-      /*max_bits_of_precision=*/std::nullopt);
+  const absl::StatusOr<std::vector<Literal>> fake_arguments =
+      MakeFakeArguments(module_0.get());
   if (!fake_arguments.ok()) {
     return ::testing::AssertionFailure() << fake_arguments.status();
   }
@@ -372,9 +369,10 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
            << absl::StrJoin(mismatches, ", ");
   }
 
-  const absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
-      module_0.get(), /*pseudo_random=*/true, /*use_large_range=*/false,
-      /*treat_gte_as_data_formatting=*/false, args_max_bits_of_precision);
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = args_max_bits_of_precision;
+  const absl::StatusOr<std::vector<Literal>> fake_arguments =
+      MakeFakeArguments(module_0.get(), options);
   if (!fake_arguments.ok()) {
     return ::testing::AssertionFailure() << fake_arguments.status();
   }
@@ -483,11 +481,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoExecutables(
            << "Error : mismatching parameter shapes for parameters "
            << absl::StrJoin(mismatches, ", ");
   }
-  absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
-      /*module=*/module_0.value(), /*pseudo_random=*/true,
-      /*use_large_range=*/false,
-      /*treat_gte_as_data_formatting=*/false,
-      /*max_bits_of_precision=*/std::nullopt);
+  absl::StatusOr<std::vector<Literal>> fake_arguments =
+      MakeFakeArguments(module_0.value());
   if (!fake_arguments.ok()) {
     return ::testing::AssertionFailure() << fake_arguments.status();
   }
@@ -516,11 +511,18 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoExecutables(
            << "Error while parsing HLO text format: "
            << module.status().ToString();
   }
-  const std::vector<Literal> fake_arguments =
-      MakeFakeArguments(module->get(), use_random_data).value();
+  FakeArgumentsOptions options;
+  options.pseudo_random = use_random_data;
+  const absl::StatusOr<std::vector<Literal>> fake_arguments =
+      MakeFakeArguments(module->get(), options);
+  if (!fake_arguments.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while generating fake arguments: "
+           << fake_arguments.status().ToString();
+  }
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
-      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      *fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
   if (backend_config) {

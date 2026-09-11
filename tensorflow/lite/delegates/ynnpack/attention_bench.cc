@@ -147,7 +147,7 @@ void FullSequenceAttentionDecode(benchmark::State& state) {
                  AttentionImpl::kFullSequence);
 }
 
-void AttentionArguments(benchmark::Benchmark* b) {
+void AttentionArguments(benchmark::internal::Benchmark* b) {
   b->ArgNames({"seq", "head", "heads", "threads", "seq_active"});
   b->UseRealTime();
   b->MeasureProcessCPUTime();

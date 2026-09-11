@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/side_effect_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -331,6 +332,20 @@ bool IsSpmdGenerated(const HloInstruction& instr) {
   return backend_config->collective_backend_config().is_spmd_generated();
 }
 
+bool IsCrossHostOneShotKernelEnabled(
+    const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type) {
+  if (!op_type.has_value()) {
+    return false;
+  }
+  return absl::c_linear_search(
+             debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(),
+             *op_type) ||
+         absl::c_linear_search(
+             debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(),
+             DebugOptions::ALLCOLLECTIVES);
+}
+
 bool IsAllReplicasLocal(int64_t gpus_per_host,
                         absl::Span<const ReplicaGroup> replica_groups,
                         CollectiveOpGroupMode group_mode,
@@ -342,7 +357,7 @@ bool IsAllReplicasLocal(int64_t gpus_per_host,
             << (device_assignment != nullptr ? device_assignment->ToString()
                                              : "nullptr");
   }
-  // functional_hlo_runner assigns 0 for device assigments for multi-host
+  // functional_hlo_runner assigns 0 for device assignments for multi-host
   // cases. In this case we ignore the assignment.
   // See LoadAndCompile in functional_hlo_runner.cc for more details.
   const bool has_device_assignment =
@@ -368,6 +383,50 @@ bool IsAllReplicasLocal(int64_t gpus_per_host,
   return absl::c_all_of(replica_groups, [&](const auto& group) {
     return IsLocalReplicaGroup(gpus_per_host, group.replica_ids());
   });
+}
+
+bool IsAllReplicasLocal(const GpuTopology& gpu_topology,
+                        const DebugOptions& debug_options,
+                        std::optional<DebugOptions::CollectiveOpType> op_type,
+                        absl::Span<const ReplicaGroup> replica_groups,
+                        CollectiveOpGroupMode group_mode,
+                        const DeviceAssignment* device_assignment) {
+  int64_t gpus_per_host =
+      IsCrossHostOneShotKernelEnabled(debug_options, op_type)
+          ? gpu_topology.slice_size()
+          : gpu_topology.num_devices_per_process();
+  return IsAllReplicasLocal(gpus_per_host, replica_groups, group_mode,
+                            device_assignment);
+}
+
+absl::StatusOr<bool> IsAllReplicasLocal(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment) {
+  auto collective = DynCast<HloCollectiveInstruction>(&instruction);
+  CHECK(collective != nullptr)
+      << "Instruction is not a collective instruction: " << instruction.name();
+  auto group_mode_status = GetCollectiveOpGroupMode(collective);
+  if (!group_mode_status.ok()) {
+    LOG(WARNING) << "Failed to get collective op group mode for "
+                 << instruction.name() << ": " << group_mode_status.status();
+    return false;
+  }
+  const DebugOptions& debug_options =
+      instruction.GetModule() != nullptr
+          ? instruction.GetModule()->config().debug_options()
+          : DebugOptions::default_instance();
+  auto op_type = GetCollectiveOpType(&instruction);
+  return IsAllReplicasLocal(gpu_topology, debug_options, op_type,
+                            collective->replica_groups(), *group_mode_status,
+                            device_assignment);
+}
+
+bool IsAllReplicasLocal(const GpuTopology& gpu_topology,
+                        absl::Span<const ReplicaGroup> replica_groups,
+                        CollectiveOpGroupMode group_mode,
+                        const DeviceAssignment* device_assignment) {
+  return IsAllReplicasLocal(gpu_topology.num_devices_per_process(),
+                            replica_groups, group_mode, device_assignment);
 }
 
 bool IsTritonCollectiveKernel(

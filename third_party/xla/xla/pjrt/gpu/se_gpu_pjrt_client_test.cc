@@ -229,13 +229,13 @@ TEST(StreamExecutorGpuClientTest, AsyncResultDefinitionEventUsesAsyncStream) {
 
   ASSERT_OK_AND_ASSIGN(auto definition,
                        GetDefinitionStreamInfo(results[0][0].get()));
-  auto* se_device = absl::down_cast<PjRtStreamExecutorDevice*>(
-      client->addressable_devices().front());
-  intptr_t compute_stream =
-      reinterpret_cast<intptr_t>(se_device->local_device_state()
-                                     ->compute_stream()
-                                     ->platform_specific_handle()
-                                     .stream);
+  auto* se_client = absl::down_cast<PjRtStreamExecutorClient*>(client.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      se_client->raw_client()->GetLocalDeviceState(
+          client->addressable_devices().front()->local_device_id()));
+  intptr_t compute_stream = reinterpret_cast<intptr_t>(
+      local_device_state->compute_stream()->platform_specific_handle().stream);
   EXPECT_NE(definition.stream, compute_stream);
 
   ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
@@ -1487,11 +1487,10 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   std::vector<float> data(1024, 1.0f);
   Shape shape = ShapeUtil::MakeShape(F32, {1024});
 
-  // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
-  [[deprecated("remove after absl upgrade")]] auto* staging_client =
-      absl::down_cast<StreamExecutorGpuClient*>(client_staging.get());
+  auto* staging_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client_staging.get())->raw_client());
 
-  EXPECT_TRUE(staging_client->raw_client()->ShouldStageHostToDeviceTransfers(
+  EXPECT_TRUE(staging_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1518,13 +1517,12 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   std::vector<float> data(1024, 1.0f);
   Shape shape = ShapeUtil::MakeShape(F32, {1024});
 
-  // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
-  [[deprecated("remove after absl upgrade")]] auto* no_staging_client =
-      absl::down_cast<StreamExecutorGpuClient*>(client_no_staging.get());
+  auto* no_staging_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client_no_staging.get())
+          ->raw_client());
 
-  EXPECT_FALSE(
-      no_staging_client->raw_client()->ShouldStageHostToDeviceTransfers(
-          data.data(), sizeof(float) * data.size()));
+  EXPECT_FALSE(no_staging_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(float) * data.size()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
@@ -2570,12 +2568,11 @@ TEST(StreamExecutorGpuClientTest, EventCaching) {
       absl::down_cast<PjRtStreamExecutorClient*>(client.get())
           ->async_work_runner();
   const auto& device = client->addressable_devices()[0];
-  // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
-  [[deprecated(
-      "remove after absl upgrade")]] LocalDeviceState* local_device_state =
-      absl::down_cast<const PjRtStreamExecutorDevice*>(device)
-          ->local_device_state();
-  ASSERT_TRUE(local_device_state != nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      absl::down_cast<PjRtStreamExecutorClient*>(client.get())
+          ->raw_client()
+          ->GetLocalDeviceState(device->local_device_id()));
   size_t sync_point0 = local_device_state->GetNextComputeStreamSyncPoint();
   TF_ASSERT_OK_AND_ASSIGN(auto event0,
                           local_device_state->GetEventForComputeStreamSyncPoint(

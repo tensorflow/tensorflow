@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_ORIGINAL_VALUE_UTIL_H_
 #define XLA_HLO_IR_HLO_ORIGINAL_VALUE_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <type_traits>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,8 +30,12 @@ limitations under the License.
 namespace xla {
 
 // Checks if the type of the map is a matching integer map.
+template <typename T, typename = void>
+struct is_matching_integer_map : std::false_type {};
+
 template <typename T>
-struct is_matching_integer_map {
+struct is_matching_integer_map<
+    T, std::void_t<typename T::key_type, typename T::mapped_type>> {
   static constexpr bool value =
       std::is_integral<typename T::key_type>::value &&
       std::is_same<typename T::key_type, typename T::mapped_type>::value;
@@ -79,6 +85,26 @@ CopyOriginalValue(const HloInstruction* src_instruction,
     return;
   }
   dest_instruction->set_original_value(new_original_value);
+}
+
+// Copies the original value of the source to the destination instruction.
+// Original arrays in the source original value are rearranged in the new
+// original value according to the given vector of old to new tuple indices.
+// Elements with negative values in the vector are treated as pruned/unused.
+template <typename IntType>
+std::enable_if_t<std::is_integral_v<IntType>> CopyOriginalValue(
+    const HloInstruction* src_instruction, HloInstruction* dest_instruction,
+    const std::vector<IntType>& old_to_new_tuple_idx) {
+  absl::flat_hash_map<IntType, IntType> mapping;
+  for (size_t old_idx = 0; old_idx < old_to_new_tuple_idx.size(); ++old_idx) {
+    if constexpr (std::is_signed_v<IntType>) {
+      if (old_to_new_tuple_idx[old_idx] < 0) {
+        continue;
+      }
+    }
+    mapping[static_cast<IntType>(old_idx)] = old_to_new_tuple_idx[old_idx];
+  }
+  CopyOriginalValue(src_instruction, dest_instruction, mapping);
 }
 
 // Copies the original value of the source to the destination instruction if the

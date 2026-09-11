@@ -23,8 +23,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
@@ -79,7 +82,15 @@ class HloShardingSpec final
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
+  absl::StatusOr<absl::InlinedVector<IndexDomainAndShardIndices, 1>>
+  UniqueIndexDomains(const Shape& shape) const override;
+
+  absl::StatusOr<absl::Span<const int>> ShardToUniqueIndexDomainIndex()
+      const override;
+
   static char ID;  // NOLINT
+
+  HloShardingSpec(const HloShardingSpec& other);
 
  private:
   HloShardingSpec(int num_shards, xla::HloSharding xla_hlo_sharding);
@@ -94,6 +105,11 @@ class HloShardingSpec final
   // May be written multiple times with the same non-zero value.
   static constexpr uint64_t kUnsetHash = 0;
   mutable std::atomic<uint64_t> hash_ = kUnsetHash;
+
+  mutable absl::once_flag unique_shard_indices_once_;
+  mutable std::vector<int> cached_shard_indices_;
+  mutable absl::once_flag shard_to_unique_index_domain_index_once_;
+  mutable std::vector<int> cached_shard_to_unique_index_domain_index_;
 };
 
 // Test only: returns `HloShardingSpec::IndexDomains()`, using

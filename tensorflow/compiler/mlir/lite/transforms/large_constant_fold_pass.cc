@@ -22,33 +22,26 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
@@ -56,35 +49,7 @@ limitations under the License.
 namespace mlir::TFL {
 namespace {
 
-template <typename Functor>
-LogicalResult DispatchElementType(Type elem_type, Functor&& func) {
-  if (elem_type.isF32()) {
-    func.template operator()<float>();
-    return success();
-  } else if (elem_type.isBF16()) {
-    func.template operator()<Eigen::bfloat16>();
-    return success();
-  } else if (elem_type.isF16()) {
-    func.template operator()<Eigen::half>();
-    return success();
-  } else if (elem_type.isInteger(32)) {
-    func.template operator()<int32_t>();
-    return success();
-  } else if (elem_type.isInteger(64)) {
-    func.template operator()<int64_t>();
-    return success();
-  } else if (elem_type.isInteger(8)) {
-    func.template operator()<int8_t>();
-    return success();
-  } else if (elem_type.isInteger(16)) {
-    func.template operator()<int16_t>();
-    return success();
-  }
-  return failure();
-}
-
-// Retrieves the underlying AsmResourceBlob from a resource attribute via direct
-// handle lookup or resolved resource fallback.
+// Retrieves the underlying AsmResourceBlob from a resource attribute.
 static AsmResourceBlob* GetBlob(DenseResourceElementsAttr attr) {
   if (AsmResourceBlob* blob = attr.getRawHandle().getBlob()) return blob;
   if (auto* resource = attr.getRawHandle().getResource())
@@ -92,520 +57,420 @@ static AsmResourceBlob* GetBlob(DenseResourceElementsAttr attr) {
   return nullptr;
 }
 
-template <typename T>
-static MutableArrayRef<T> GetMutableBlobData(AsmResourceBlob& blob) {
-  return MutableArrayRef<T>(reinterpret_cast<T*>(blob.getMutableData().data()),
-                            blob.getData().size() / sizeof(T));
-}
-
-static std::string GetResourceUniqueKey(DenseResourceElementsAttr attr) {
-  std::string key = attr.getRawHandle().getKey().str();
-  constexpr absl::string_view kPrefix = "dense_resource_off_";
-  if (absl::StartsWith(key, kPrefix)) {
-    absl::string_view suffix = absl::string_view(key).substr(kPrefix.size());
-    size_t end_pos = suffix.find_first_not_of("0123456789");
-    if (end_pos != 0) {
-      return std::string(suffix.substr(0, end_pos));
-    }
-  }
+static std::string GetResourceKey(DenseResourceElementsAttr attr) {
   AsmResourceBlob* blob = GetBlob(attr);
   if (blob && !blob->getData().empty()) {
     return absl::StrCat("ptr_",
                         reinterpret_cast<uintptr_t>(blob->getData().data()));
   }
-  return key;
+  return attr.getRawHandle().getKey().str();
 }
 
-struct FoldResourceCast : public OpRewritePattern<CastOp> {
-  explicit FoldResourceCast(MLIRContext* ctx, bool fold_fp16_resource_casts)
-      : OpRewritePattern<CastOp>(ctx),
-        fold_fp16_resource_casts(fold_fp16_resource_casts) {}
+template <typename OpT>
+struct ResourceOpFolder;
 
-  LogicalResult matchAndRewrite(CastOp op,
-                                PatternRewriter& rewriter) const override {
+template <>
+struct ResourceOpFolder<TFL::TransposeOp> {
+  using OpType = TFL::TransposeOp;
+
+  static bool Match(OpType op, Operation*& const_op,
+                    DenseResourceElementsAttr& resource_attr) {
+    Value input = op.getInput();
     ElementsAttr input_attr;
-    if (!matchPattern(op.getInput(), m_Constant(&input_attr))) {
-      return failure();
-    }
-
-    if (auto dense_attr =
-            mlir::dyn_cast_or_null<DenseElementsAttr>(input_attr)) {
-      auto in_type = dense_attr.getElementType();
-      auto out_type = op.getType().getElementType();
-      auto result_type = mlir::cast<ShapedType>(op.getType());
-      if (in_type == out_type) {
-        rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, dense_attr);
-        return success();
-      }
-      size_t num_elements = result_type.getNumElements();
-      if (in_type.isBF16() && out_type.isF32()) {
-        auto src_data = mlir::TFL::GetValues<Eigen::bfloat16>(dense_attr);
-        if (src_data.empty()) return failure();
-        bool is_splat = dense_attr.isSplat() || (src_data.size() == 1);
-        if (is_splat) {
-          float val = static_cast<float>(src_data[0]);
-          auto new_attr =
-              DenseElementsAttr::get(result_type, llvm::ArrayRef<float>(val));
-          rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-          return success();
-        }
-        SmallVector<float, 8> dst_data(num_elements);
-        for (size_t i = 0; i < num_elements; ++i)
-          dst_data[i] = static_cast<float>(src_data[i]);
-        auto new_attr =
-            DenseElementsAttr::get(result_type, llvm::ArrayRef(dst_data));
-        rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-        return success();
-      } else if (in_type.isF16() && out_type.isF32()) {
-        auto src_data = mlir::TFL::GetValues<Eigen::half>(dense_attr);
-        if (src_data.empty()) return failure();
-        bool is_splat = dense_attr.isSplat() || (src_data.size() == 1);
-        if (is_splat) {
-          float val = static_cast<float>(src_data[0]);
-          auto new_attr =
-              DenseElementsAttr::get(result_type, llvm::ArrayRef<float>(val));
-          rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-          return success();
-        }
-        SmallVector<float, 8> dst_data(num_elements);
-        for (size_t i = 0; i < num_elements; ++i)
-          dst_data[i] = static_cast<float>(src_data[i]);
-        auto new_attr =
-            DenseElementsAttr::get(result_type, llvm::ArrayRef(dst_data));
-        rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-        return success();
-      } else if (in_type.isF32() && out_type.isBF16()) {
-        auto src_data = mlir::TFL::GetValues<float>(dense_attr);
-        if (src_data.empty()) return failure();
-        bool is_splat = dense_attr.isSplat() || (src_data.size() == 1);
-        if (is_splat) {
-          Eigen::bfloat16 val = static_cast<Eigen::bfloat16>(src_data[0]);
-          auto new_attr = DenseElementsAttr::get(
-              result_type, llvm::ArrayRef<Eigen::bfloat16>(val));
-          rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-          return success();
-        }
-        SmallVector<Eigen::bfloat16, 8> dst_data(num_elements);
-        for (size_t i = 0; i < num_elements; ++i)
-          dst_data[i] = static_cast<Eigen::bfloat16>(src_data[i]);
-        auto new_attr =
-            DenseElementsAttr::get(result_type, llvm::ArrayRef(dst_data));
-        rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-        return success();
-      }
-      return failure();
-    }
-
-    auto resource_attr =
+    if (!matchPattern(input, m_Constant(&input_attr))) return false;
+    resource_attr =
         mlir::dyn_cast_or_null<DenseResourceElementsAttr>(input_attr);
-    if (!resource_attr) return failure();
+    if (!resource_attr) return false;
 
-    auto in_type = resource_attr.getElementType();
-    auto out_type = op.getType().getElementType();
-    auto result_type = mlir::cast<ShapedType>(op.getType());
+    ElementsAttr perm_attr;
+    if (!matchPattern(op.getPerm(), m_Constant(&perm_attr))) return false;
+    Type perm_elem = perm_attr.getElementType();
+    if (!perm_elem.isInteger(32) && !perm_elem.isInteger(64)) return false;
 
-    if (!fold_fp16_resource_casts && (in_type.isBF16() || in_type.isF16()) &&
-        out_type.isF32()) {
-      return failure();
-    }
-
-    if (in_type == out_type) {
-      rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, resource_attr);
-      return success();
-    }
+    const_op = input.getDefiningOp();
+    if (!const_op) return false;
 
     AsmResourceBlob* blob = GetBlob(resource_attr);
-    if (!blob) return failure();
+    if (!blob || !blob->isMutable()) return false;
 
-    size_t out_elem_size = (out_type.getIntOrFloatBitWidth() + 7) / 8;
+    auto input_type = mlir::cast<ShapedType>(resource_attr.getType());
+    if (!input_type.hasStaticShape()) return false;
+    if (!input_type.getElementType().isIntOrIndexOrFloat()) return false;
 
-    bool is_splat = resource_attr.isSplat();
-    if (!is_splat) {
-      if (in_type.isBF16() && blob->getDataAs<Eigen::bfloat16>().size() == 1)
-        is_splat = true;
-      else if (in_type.isF16() && blob->getDataAs<Eigen::half>().size() == 1)
-        is_splat = true;
-      else if (in_type.isF32() && blob->getDataAs<float>().size() == 1)
-        is_splat = true;
-    }
+    return true;
+  }
 
-    if (!is_splat) {
-      auto new_attr = DenseResourceElementsAttr::get(
-          result_type, resource_attr.getRawHandle());
-      Operation* orig_op = op.getInput().getDefiningOp();
-      auto new_const_op =
-          rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-      new_const_op->setAttr("litert.target_element_type",
-                            TypeAttr::get(out_type));
-      if (orig_op) {
-        if (auto perm_attr = orig_op->getAttrOfType<ArrayAttr>(
-                "litert.layout_permutation")) {
-          new_const_op->setAttr("litert.layout_permutation", perm_attr);
-        }
+  static std::string GetSignature(OpType op) {
+    ElementsAttr perm_attr;
+    if (!matchPattern(op.getPerm(), m_Constant(&perm_attr))) return "";
+    std::string sig = "transpose";
+    if (perm_attr.getElementType().isInteger(32)) {
+      for (int32_t val : GetValues<int32_t>(perm_attr)) {
+        absl::StrAppend(&sig, "_", val);
       }
-      return success();
+    } else if (perm_attr.getElementType().isInteger(64)) {
+      for (int64_t val : GetValues<int64_t>(perm_attr)) {
+        absl::StrAppend(&sig, "_", val);
+      }
     }
+    return sig;
+  }
 
-    auto new_blob = mlir::HeapAsmResourceBlob::allocate(
-        out_elem_size, /*align=*/64, /*dataIsMutable=*/true);
+  static LogicalResult Fold(OpType op, DenseResourceElementsAttr resource_attr,
+                            AsmResourceBlob* blob,
+                            DenseResourceElementsAttr& new_attr,
+                            bool in_place) {
+    auto input_type = mlir::cast<ShapedType>(resource_attr.getType());
+    ElementsAttr perm_attr;
+    if (!matchPattern(op.getPerm(), m_Constant(&perm_attr))) return failure();
 
-    if (in_type.isBF16() && out_type.isF32()) {
-      auto src_data = blob->getDataAs<Eigen::bfloat16>();
-      if (src_data.empty()) return failure();
-      GetMutableBlobData<float>(new_blob)[0] = static_cast<float>(src_data[0]);
-    } else if (in_type.isF32() && out_type.isBF16()) {
-      auto src_data = blob->getDataAs<float>();
-      if (src_data.empty()) return failure();
-      GetMutableBlobData<Eigen::bfloat16>(new_blob)[0] =
-          static_cast<Eigen::bfloat16>(src_data[0]);
-    } else if (in_type.isF16() && out_type.isF32()) {
-      auto src_data = blob->getDataAs<Eigen::half>();
-      if (src_data.empty()) return failure();
-      GetMutableBlobData<float>(new_blob)[0] = static_cast<float>(src_data[0]);
-    } else if (in_type.isF32() && out_type.isF16()) {
-      auto src_data = blob->getDataAs<float>();
-      if (src_data.empty()) return failure();
-      GetMutableBlobData<Eigen::half>(new_blob)[0] =
-          static_cast<Eigen::half>(src_data[0]);
-    } else if (in_type.isBF16() && out_type.isF16()) {
-      auto src_data = blob->getDataAs<Eigen::bfloat16>();
-      if (src_data.empty()) return failure();
-      GetMutableBlobData<Eigen::half>(new_blob)[0] =
-          static_cast<Eigen::half>(static_cast<float>(src_data[0]));
-    } else if (in_type.isF16() && out_type.isBF16()) {
-      auto src_data = blob->getDataAs<Eigen::half>();
-      if (src_data.empty()) return failure();
-      GetMutableBlobData<Eigen::bfloat16>(new_blob)[0] =
-          static_cast<Eigen::bfloat16>(static_cast<float>(src_data[0]));
+    SmallVector<int64_t> perms;
+    if (perm_attr.getElementType().isInteger(32)) {
+      auto perm_values = GetValues<int32_t>(perm_attr);
+      perms.assign(perm_values.begin(), perm_values.end());
+    } else if (perm_attr.getElementType().isInteger(64)) {
+      auto perm_values = GetValues<int64_t>(perm_attr);
+      perms.assign(perm_values.begin(), perm_values.end());
     } else {
       return failure();
     }
 
-    std::string res_key = GetResourceUniqueKey(resource_attr);
-    absl::string_view out_type_str = out_type.isF32()    ? "f32"
-                                     : out_type.isBF16() ? "bf16"
-                                     : out_type.isF16()  ? "f16"
-                                                         : "int";
-    std::string new_key = absl::StrCat("cast_", res_key, "_", out_type_str);
-    auto new_attr = DenseResourceElementsAttr::get(result_type, new_key,
-                                                   std::move(new_blob));
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
+    int bit_width = input_type.getElementType().getIntOrFloatBitWidth();
+    ArrayRef<int64_t> input_shape = input_type.getShape();
+    ShapedType new_type = GetResultType(op);
+
+    if (in_place) {
+      void* raw_data = blob->getMutableData().data();
+      if (!raw_data) return failure();
+
+      if (!InPlaceTranspose(raw_data, input_shape, perms, bit_width)) {
+        return failure();
+      }
+      new_attr = DenseResourceElementsAttr::get(new_type,
+                                                resource_attr.getRawHandle());
+      return success();
+    }
+
+    ArrayRef<char> src_bytes = blob->getData();
+    auto new_blob = mlir::HeapAsmResourceBlob::allocate(
+        src_bytes.size(), /*align=*/64, /*dataIsMutable=*/true);
+    void* dst_data = new_blob.getMutableData().data();
+    if (!dst_data) return failure();
+
+    if (!TransposeBuffer(src_bytes.data(), dst_data, input_shape, perms,
+                         bit_width)) {
+      return failure();
+    }
+    std::string new_key = absl::StrCat(
+        resource_attr.getRawHandle().getKey().str(), "_", GetSignature(op));
+    new_attr =
+        DenseResourceElementsAttr::get(new_type, new_key, std::move(new_blob));
     return success();
   }
 
-  bool fold_fp16_resource_casts = true;
+  static ShapedType GetResultType(OpType op) {
+    return mlir::cast<ShapedType>(op.getType());
+  }
 };
 
-template <typename T, typename OpFn>
-void RunBroadcastBinary(ArrayRef<T> lhs, ArrayRef<T> rhs,
-                        MutableArrayRef<T> dst, ArrayRef<int64_t> lhs_shape,
-                        ArrayRef<int64_t> rhs_shape,
-                        ArrayRef<int64_t> dst_shape, bool lhs_splat,
-                        bool rhs_splat, OpFn&& op_fn) {
-  size_t num_elements = dst.size();
-  if (lhs_splat && rhs_splat) {
-    T val = op_fn(lhs[0], rhs[0]);
-    for (size_t i = 0; i < num_elements; ++i) dst[i] = val;
-    return;
-  }
-  if (lhs_splat) {
-    T val = lhs[0];
-    for (size_t i = 0; i < num_elements; ++i) dst[i] = op_fn(val, rhs[i]);
-    return;
-  }
-  if (rhs_splat) {
-    T val = rhs[0];
-    for (size_t i = 0; i < num_elements; ++i) dst[i] = op_fn(lhs[i], val);
-    return;
-  }
-  if (lhs_shape == rhs_shape) {
-    for (size_t i = 0; i < num_elements; ++i) dst[i] = op_fn(lhs[i], rhs[i]);
-    return;
-  }
-  int rank = dst_shape.size();
-  SmallVector<int64_t, 4> padded_lhs(rank, 1), padded_rhs(rank, 1);
-  for (int i = 0; i < lhs_shape.size(); ++i)
-    padded_lhs[rank - lhs_shape.size() + i] = lhs_shape[i];
-  for (int i = 0; i < rhs_shape.size(); ++i)
-    padded_rhs[rank - rhs_shape.size() + i] = rhs_shape[i];
+template <>
+struct ResourceOpFolder<TFL::CastOp> {
+  using OpType = TFL::CastOp;
 
-  SmallVector<int64_t, 4> coord(rank, 0);
-  for (size_t i = 0; i < num_elements; ++i) {
-    size_t lhs_idx = 0, rhs_idx = 0;
-    size_t lhs_stride = 1, rhs_stride = 1;
-    for (int r = rank - 1; r >= 0; --r) {
-      lhs_idx += (coord[r] % padded_lhs[r]) * lhs_stride;
-      rhs_idx += (coord[r] % padded_rhs[r]) * rhs_stride;
-      lhs_stride *= padded_lhs[r];
-      rhs_stride *= padded_rhs[r];
+  static bool Match(OpType op, Operation*& const_op,
+                    DenseResourceElementsAttr& resource_attr) {
+    Value input = op.getInput();
+    ElementsAttr input_attr;
+    if (!matchPattern(input, m_Constant(&input_attr))) return false;
+    resource_attr =
+        mlir::dyn_cast_or_null<DenseResourceElementsAttr>(input_attr);
+    if (!resource_attr) return false;
+
+    const_op = input.getDefiningOp();
+    if (!const_op) return false;
+
+    AsmResourceBlob* blob = GetBlob(resource_attr);
+    if (!blob) return false;
+
+    auto input_type = mlir::dyn_cast<ShapedType>(resource_attr.getType());
+    auto output_type = mlir::dyn_cast<ShapedType>(op.getType());
+    if (!input_type || !output_type || !input_type.hasStaticShape() ||
+        !output_type.hasStaticShape()) {
+      return false;
     }
-    dst[i] = op_fn(lhs[lhs_idx], rhs[rhs_idx]);
-    for (int r = rank - 1; r >= 0; --r) {
-      if (++coord[r] < dst_shape[r]) break;
-      coord[r] = 0;
+
+    Type in_elem = input_type.getElementType();
+    Type out_elem = output_type.getElementType();
+
+    if ((in_elem.isBF16() || in_elem.isF16() || in_elem.isF32()) &&
+        (out_elem.isBF16() || out_elem.isF16() || out_elem.isF32())) {
+      return true;
     }
+
+    return false;
   }
-}
 
-template <typename OpType, typename BinaryFunctor>
-struct FoldResourceBinaryOp : public OpRewritePattern<OpType> {
-  explicit FoldResourceBinaryOp(
-      MLIRContext* ctx,
-      absl::flat_hash_map<std::string, DenseResourceElementsAttr>& cache)
-      : OpRewritePattern<OpType>(ctx), cache(cache) {}
+  static std::string GetSignature(OpType op) {
+    auto output_type = mlir::dyn_cast<ShapedType>(op.getType());
+    if (!output_type) return "";
+    Type out_elem = output_type.getElementType();
+    if (out_elem.isF32()) return "cast_f32";
+    if (out_elem.isF16()) return "cast_f16";
+    if (out_elem.isBF16()) return "cast_bf16";
+    return "cast_unknown";
+  }
 
-  LogicalResult matchAndRewrite(OpType op,
-                                PatternRewriter& rewriter) const override {
-    if (op.getFusedActivationFunction() != "NONE") return failure();
+  static LogicalResult Fold(OpType op, DenseResourceElementsAttr resource_attr,
+                            AsmResourceBlob* blob,
+                            DenseResourceElementsAttr& new_attr,
+                            bool /*in_place*/) {
+    auto input_type = mlir::cast<ShapedType>(resource_attr.getType());
+    auto output_type = mlir::cast<ShapedType>(op.getType());
+    Type in_elem = input_type.getElementType();
+    Type out_elem = output_type.getElementType();
 
-    if ((op.getLhs().getDefiningOp() &&
-         op.getLhs().getDefiningOp()->hasAttr("litert.layout_permutation")) ||
-        (op.getRhs().getDefiningOp() &&
-         op.getRhs().getDefiningOp()->hasAttr("litert.layout_permutation"))) {
+    size_t num_elements = input_type.getNumElements();
+    if (num_elements == 0) return success();
+
+    const void* src_data = blob->getData().data();
+    if (!src_data) return failure();
+
+    size_t out_elem_size = (out_elem.getIntOrFloatBitWidth() + 7) / 8;
+    size_t new_size_bytes = num_elements * out_elem_size;
+
+    auto new_blob = mlir::HeapAsmResourceBlob::allocate(
+        new_size_bytes, /*align=*/64, /*dataIsMutable=*/true);
+    void* dst_data = new_blob.getMutableData().data();
+    if (!dst_data) return failure();
+
+    if (in_elem.isBF16() && out_elem.isF32()) {
+      const uint16_t* in = reinterpret_cast<const uint16_t*>(src_data);
+      uint32_t* out = reinterpret_cast<uint32_t*>(dst_data);
+      for (size_t i = 0; i < num_elements; ++i) {
+        out[i] = static_cast<uint32_t>(in[i]) << 16;
+      }
+    } else if (in_elem.isF16() && out_elem.isF32()) {
+      const uint16_t* in = reinterpret_cast<const uint16_t*>(src_data);
+      float* out = reinterpret_cast<float*>(dst_data);
+      for (size_t i = 0; i < num_elements; ++i) {
+        Eigen::half h = Eigen::numext::bit_cast<Eigen::half>(in[i]);
+        out[i] = static_cast<float>(h);
+      }
+    } else if (in_elem.isF32() && out_elem.isBF16()) {
+      const uint32_t* in = reinterpret_cast<const uint32_t*>(src_data);
+      uint16_t* out = reinterpret_cast<uint16_t*>(dst_data);
+      for (size_t i = 0; i < num_elements; ++i) {
+        uint32_t val = in[i];
+        uint32_t lsb = (val >> 16) & 1;
+        uint32_t rounding_bias = 0x7FFF + lsb;
+        out[i] = static_cast<uint16_t>((val + rounding_bias) >> 16);
+      }
+    } else if (in_elem.isF32() && out_elem.isF16()) {
+      const float* in = reinterpret_cast<const float*>(src_data);
+      uint16_t* out = reinterpret_cast<uint16_t*>(dst_data);
+      for (size_t i = 0; i < num_elements; ++i) {
+        Eigen::half h(in[i]);
+        out[i] = Eigen::numext::bit_cast<uint16_t>(h);
+      }
+    } else if (in_elem.isBF16() && out_elem.isF16()) {
+      const uint16_t* in = reinterpret_cast<const uint16_t*>(src_data);
+      uint16_t* out = reinterpret_cast<uint16_t*>(dst_data);
+      for (size_t i = 0; i < num_elements; ++i) {
+        uint32_t val = static_cast<uint32_t>(in[i]) << 16;
+        float f = *reinterpret_cast<float*>(&val);
+        Eigen::half h(f);
+        out[i] = Eigen::numext::bit_cast<uint16_t>(h);
+      }
+    } else if (in_elem.isF16() && out_elem.isBF16()) {
+      const uint16_t* in = reinterpret_cast<const uint16_t*>(src_data);
+      uint16_t* out = reinterpret_cast<uint16_t*>(dst_data);
+      for (size_t i = 0; i < num_elements; ++i) {
+        Eigen::half h = Eigen::numext::bit_cast<Eigen::half>(in[i]);
+        float f = static_cast<float>(h);
+        uint32_t val = *reinterpret_cast<uint32_t*>(&f);
+        uint32_t lsb = (val >> 16) & 1;
+        uint32_t rounding_bias = 0x7FFF + lsb;
+        out[i] = static_cast<uint16_t>((val + rounding_bias) >> 16);
+      }
+    } else {
       return failure();
     }
 
-    ElementsAttr lhs_attr, rhs_attr;
-    if (!matchPattern(op.getLhs(), m_Constant(&lhs_attr)) ||
-        !matchPattern(op.getRhs(), m_Constant(&rhs_attr))) {
-      return failure();
+    std::string new_key = absl::StrCat(
+        resource_attr.getRawHandle().getKey().str(), "_", GetSignature(op));
+    new_attr = DenseResourceElementsAttr::get(output_type, new_key,
+                                              std::move(new_blob));
+    return success();
+  }
+
+  static ShapedType GetResultType(OpType op) {
+    return mlir::cast<ShapedType>(op.getType());
+  }
+};
+
+template <typename OpT, typename Folder = ResourceOpFolder<OpT>>
+LogicalResult FoldResourceOpPattern(ModuleOp module) {
+  struct Candidate {
+    OpT op;
+    Operation* const_op;
+    DenseResourceElementsAttr resource_attr;
+    std::string resource_key;
+    std::string signature;
+  };
+
+  llvm::SmallVector<Candidate> candidates;
+  absl::flat_hash_map<std::string, llvm::SmallVector<size_t>>
+      resource_to_candidate_indices;
+
+  module.walk([&](OpT op) {
+    Operation* const_op = nullptr;
+    DenseResourceElementsAttr resource_attr;
+    if (Folder::Match(op, const_op, resource_attr)) {
+      std::string key = GetResourceKey(resource_attr);
+      std::string sig = Folder::GetSignature(op);
+      size_t idx = candidates.size();
+      candidates.push_back({op, const_op, resource_attr, key, sig});
+      resource_to_candidate_indices[key].push_back(idx);
     }
-    bool lhs_is_res = mlir::isa<DenseResourceElementsAttr>(lhs_attr);
-    bool rhs_is_res = mlir::isa<DenseResourceElementsAttr>(rhs_attr);
-    if (!lhs_is_res && !rhs_is_res) return failure();
+  });
 
-    auto result_type = mlir::cast<ShapedType>(op.getType());
-    auto elem_type = result_type.getElementType();
+  if (candidates.empty()) return success();
 
-    if (std::is_same_v<OpType, DivOp> && mlir::isa<IntegerType>(elem_type)) {
-      bool has_zero = false;
-      (void)DispatchElementType(elem_type, [&]<typename T>() {
-        ArrayRef<T> rhs_data = mlir::TFL::GetValues<T>(rhs_attr);
-        for (T val : rhs_data) {
-          if (val == 0) {
-            has_zero = true;
+  absl::flat_hash_map<std::string, llvm::SmallPtrSet<Operation*, 4>>
+      resource_to_all_const_ops;
+  module.walk([&](Operation* op) {
+    ElementsAttr attr;
+    if (matchPattern(op, m_Constant(&attr))) {
+      if (auto res_attr = mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
+        resource_to_all_const_ops[GetResourceKey(res_attr)].insert(op);
+      }
+    }
+  });
+
+  llvm::SmallVector<Operation*> ops_to_erase;
+  llvm::SmallVector<Operation*> const_ops_to_erase;
+
+  for (auto& [key, indices] : resource_to_candidate_indices) {
+    if (indices.empty()) continue;
+
+    AsmResourceBlob* blob = GetBlob(candidates[indices[0]].resource_attr);
+    if (!blob) continue;
+
+    llvm::DenseSet<Operation*> candidate_ops;
+    llvm::DenseSet<Operation*> unique_candidate_const_ops;
+    for (size_t idx : indices) {
+      candidate_ops.insert(candidates[idx].op.getOperation());
+      unique_candidate_const_ops.insert(candidates[idx].const_op);
+    }
+
+    absl::flat_hash_map<std::string, llvm::SmallVector<size_t>>
+        sig_to_candidate_indices;
+    for (size_t idx : indices) {
+      sig_to_candidate_indices[candidates[idx].signature].push_back(idx);
+    }
+
+    const auto& all_module_const_ops = resource_to_all_const_ops[key];
+    bool all_users_are_candidates =
+        (unique_candidate_const_ops.size() == all_module_const_ops.size());
+    if (all_users_are_candidates) {
+      for (Operation* const_op : unique_candidate_const_ops) {
+        for (Operation* user : const_op->getUsers()) {
+          if (!candidate_ops.contains(user)) {
+            all_users_are_candidates = false;
             break;
           }
         }
-      });
-      if (has_zero) return failure();
-    }
-
-    llvm::StringRef op_name = op.getOperationName();
-    op_name.consume_front("tfl.");
-    absl::string_view op_name_sv(op_name.data(), op_name.size());
-
-    // Hash raw data for non-resource attributes to prevent cache collisions
-    // across different dense attributes of the same size.
-    auto get_operand_key = [](ElementsAttr attr) -> std::string {
-      if (auto res_attr = mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
-        return res_attr.getRawHandle().getKey().str();
+        if (!all_users_are_candidates) break;
       }
-      if (auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(attr)) {
-        llvm::StringRef raw_data(dense_attr.getRawData().data(),
-                                 dense_attr.getRawData().size());
-        return absl::StrCat("dense_", dense_attr.getNumElements(), "_",
-                            static_cast<uint64_t>(llvm::hash_value(raw_data)));
+    }
+
+    bool is_single_signature = (sig_to_candidate_indices.size() == 1);
+    bool can_fold_in_place = all_users_are_candidates && is_single_signature;
+
+    if (can_fold_in_place) {
+      const auto& first_cand = candidates[indices[0]];
+      DenseResourceElementsAttr new_attr;
+      if (failed(Folder::Fold(first_cand.op, first_cand.resource_attr, blob,
+                              new_attr, /*in_place=*/true))) {
+        continue;
       }
-      return absl::StrCat("attr_", attr.getNumElements());
-    };
 
-    std::string lhs_key = get_operand_key(lhs_attr);
-    std::string rhs_key = get_operand_key(rhs_attr);
-    std::string cache_key =
-        absl::StrCat(op_name_sv, ":", lhs_key, ":", rhs_key);
-
-    auto it = cache.find(cache_key);
-    if (it != cache.end()) {
-      rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, it->second);
-      return success();
-    }
-
-    size_t num_elements = result_type.getNumElements();
-    size_t elem_size = (elem_type.getIntOrFloatBitWidth() + 7) / 8;
-
-    auto new_blob = mlir::HeapAsmResourceBlob::allocate(
-        num_elements * elem_size, /*align=*/64, /*dataIsMutable=*/true);
-
-    auto lhs_type = mlir::cast<ShapedType>(lhs_attr.getType());
-    auto rhs_type = mlir::cast<ShapedType>(rhs_attr.getType());
-
-    LogicalResult status = DispatchElementType(elem_type, [&]<typename T>() {
-      ArrayRef<T> lhs_data = mlir::TFL::GetValues<T>(lhs_attr);
-      ArrayRef<T> rhs_data = mlir::TFL::GetValues<T>(rhs_attr);
-      if (lhs_data.empty() || rhs_data.empty()) return;
-      bool lhs_splat = lhs_attr.isSplat() || (lhs_data.size() == 1);
-      bool rhs_splat = rhs_attr.isSplat() || (rhs_data.size() == 1);
-      MutableArrayRef<T> dst_data = GetMutableBlobData<T>(new_blob);
-      RunBroadcastBinary<T>(lhs_data, rhs_data, dst_data, lhs_type.getShape(),
-                            rhs_type.getShape(), result_type.getShape(),
-                            lhs_splat, rhs_splat, BinaryFunctor{});
-    });
-    if (failed(status)) return failure();
-
-    std::string new_key = absl::StrCat(op_name_sv, "_", lhs_key, "_", rhs_key);
-    auto new_attr = DenseResourceElementsAttr::get(result_type, new_key,
-                                                   std::move(new_blob));
-    cache[cache_key] = new_attr;
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-    return success();
-  }
-
-  absl::flat_hash_map<std::string, DenseResourceElementsAttr>& cache;
-};
-
-struct AddFunctor {
-  template <typename T>
-  T operator()(T a, T b) const {
-    return a + b;
-  }
-};
-struct SubFunctor {
-  template <typename T>
-  T operator()(T a, T b) const {
-    return a - b;
-  }
-};
-struct MulFunctor {
-  template <typename T>
-  T operator()(T a, T b) const {
-    return a * b;
-  }
-};
-struct DivFunctor {
-  template <typename T>
-  T operator()(T a, T b) const {
-    if constexpr (std::is_integral_v<T>) {
-      if (b == 0) return T(0);
-    }
-    return a / b;
-  }
-};
-
-using FoldResourceAdd = FoldResourceBinaryOp<AddOp, AddFunctor>;
-using FoldResourceSub = FoldResourceBinaryOp<SubOp, SubFunctor>;
-using FoldResourceMul = FoldResourceBinaryOp<MulOp, MulFunctor>;
-using FoldResourceDiv = FoldResourceBinaryOp<DivOp, DivFunctor>;
-
-struct FoldResourceTranspose : public OpRewritePattern<TransposeOp> {
-  explicit FoldResourceTranspose(MLIRContext* ctx)
-      : OpRewritePattern<TransposeOp>(ctx) {}
-
-  LogicalResult matchAndRewrite(TransposeOp op,
-                                PatternRewriter& rewriter) const override {
-    ElementsAttr input_attr, perm_attr;
-    if (!matchPattern(op.getOperand(0), m_Constant(&input_attr)) ||
-        !matchPattern(op.getOperand(1), m_Constant(&perm_attr))) {
-      return failure();
-    }
-    auto resource_attr =
-        mlir::dyn_cast_or_null<DenseResourceElementsAttr>(input_attr);
-    if (!resource_attr) return failure();
-
-    auto input_type = mlir::cast<ShapedType>(input_attr.getType());
-    auto result_type = mlir::cast<ShapedType>(op.getType());
-    int rank = input_type.getRank();
-
-    if (rank <= 1 || resource_attr.isSplat()) {
-      auto new_attr = DenseResourceElementsAttr::get(
-          result_type, resource_attr.getRawHandle());
-      rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-      return success();
-    }
-
-    auto int_perm_attr = mlir::dyn_cast<DenseIntElementsAttr>(perm_attr);
-    if (!int_perm_attr) return failure();
-
-    auto perms = llvm::to_vector<4>(
-        llvm::map_range(int_perm_attr.getValues<APInt>(),
-                        [](const APInt& val) { return val.getSExtValue(); }));
-    if (perms.size() != rank) return failure();
-
-    Operation* const_op = op.getOperand(0).getDefiningOp();
-    if (!const_op) return failure();
-
-    SmallVector<int64_t, 4> final_perms = perms;
-    if (auto existing_attr =
-            const_op->getAttrOfType<ArrayAttr>("litert.layout_permutation")) {
-      SmallVector<int64_t, 4> old_perms;
-      for (auto attr : existing_attr.getValue()) {
-        old_perms.push_back(mlir::cast<IntegerAttr>(attr).getInt());
+      ShapedType new_type = Folder::GetResultType(first_cand.op);
+      for (Operation* const_op : unique_candidate_const_ops) {
+        const_op->setAttr("value", new_attr);
+        const_op->getResult(0).setType(new_type);
       }
-      if (old_perms.size() == perms.size()) {
-        for (size_t i = 0; i < perms.size(); ++i) {
-          final_perms[i] = old_perms[perms[i]];
+
+      for (size_t idx : indices) {
+        candidates[idx].op->replaceAllUsesWith(candidates[idx].const_op);
+        ops_to_erase.push_back(candidates[idx].op.getOperation());
+      }
+
+      if (!(new_attr.getRawHandle() ==
+            first_cand.resource_attr.getRawHandle())) {
+        *blob = mlir::AsmResourceBlob();
+      }
+    } else {
+      bool all_signatures_folded = true;
+      for (auto& [sig, sig_indices] : sig_to_candidate_indices) {
+        if (sig_indices.empty()) continue;
+        const auto& first_cand = candidates[sig_indices[0]];
+
+        DenseResourceElementsAttr new_attr;
+        if (failed(Folder::Fold(first_cand.op, first_cand.resource_attr, blob,
+                                new_attr, /*in_place=*/false))) {
+          all_signatures_folded = false;
+          continue;
+        }
+
+        ShapedType new_type = Folder::GetResultType(first_cand.op);
+        absl::flat_hash_map<Operation*, Operation*> orig_const_to_new_const;
+
+        for (size_t idx : sig_indices) {
+          auto& cand = candidates[idx];
+          Operation*& new_cst_op = orig_const_to_new_const[cand.const_op];
+          if (!new_cst_op) {
+            OpBuilder builder(cand.const_op);
+            new_cst_op = builder.create<arith::ConstantOp>(
+                cand.const_op->getLoc(), new_type, new_attr);
+          }
+          cand.op->replaceAllUsesWith(new_cst_op);
+          ops_to_erase.push_back(cand.op.getOperation());
         }
       }
+
+      if (all_users_are_candidates && all_signatures_folded) {
+        for (Operation* const_op : unique_candidate_const_ops) {
+          const_ops_to_erase.push_back(const_op);
+        }
+        *blob = mlir::AsmResourceBlob();
+      }
     }
-    const_op->setAttr("litert.layout_permutation",
-                      rewriter.getI64ArrayAttr(final_perms));
-    if (auto res_attr =
-            const_op->getAttrOfType<DenseResourceElementsAttr>("value")) {
-      const_op->setAttr("value", DenseResourceElementsAttr::get(
-                                     result_type, res_attr.getRawHandle()));
-    }
-    const_op->getResult(0).setType(result_type);
-    rewriter.replaceOp(op, const_op->getResult(0));
-    return success();
   }
-};
 
-struct FoldResourceReshape : public OpRewritePattern<ReshapeOp> {
-  explicit FoldResourceReshape(MLIRContext* ctx)
-      : OpRewritePattern<ReshapeOp>(ctx) {}
-
-  LogicalResult matchAndRewrite(ReshapeOp op,
-                                PatternRewriter& rewriter) const override {
-    if (op.getInput().getDefiningOp() &&
-        op.getInput().getDefiningOp()->hasAttr("litert.layout_permutation")) {
-      return failure();
-    }
-
-    ElementsAttr input_attr;
-    if (!matchPattern(op.getInput(), m_Constant(&input_attr))) {
-      return failure();
-    }
-    auto resource_attr =
-        mlir::dyn_cast_or_null<DenseResourceElementsAttr>(input_attr);
-    if (!resource_attr) return failure();
-
-    auto result_type = mlir::cast<ShapedType>(op.getType());
-    auto input_type = mlir::cast<ShapedType>(op.getInput().getType());
-    if (result_type.getNumElements() != input_type.getNumElements()) {
-      return failure();
-    }
-
-    auto new_attr = DenseResourceElementsAttr::get(
-        result_type, resource_attr.getRawHandle());
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_attr);
-    return success();
+  for (Operation* op : ops_to_erase) {
+    op->erase();
   }
-};
+  for (Operation* op : const_ops_to_erase) {
+    if (op->use_empty()) {
+      op->erase();
+    }
+  }
+
+  return success();
+}
 
 }  // namespace
 
 void LargeConstantFoldPass::runOnOperation() {
-  MLIRContext* ctx = &getContext();
-  RewritePatternSet patterns(ctx);
   ModuleOp module = getOperation();
-  absl::flat_hash_map<std::string, DenseResourceElementsAttr> cache;
-
-  patterns.add<FoldResourceCast>(ctx, GetOptions().fold_fp16_resource_casts);
-  if (GetOptions().fold_elementwise_ops) {
-    patterns.add<FoldResourceAdd>(ctx, cache);
-    patterns.add<FoldResourceSub>(ctx, cache);
-    patterns.add<FoldResourceMul>(ctx, cache);
-    patterns.add<FoldResourceDiv>(ctx, cache);
-  }
-  patterns.add<FoldResourceTranspose>(ctx);
-  patterns.add<FoldResourceReshape>(ctx);
-
-  GreedyRewriteConfig config;
-  config.enableFolding(false);
-
-  if (failed(applyPatternsGreedily(module, std::move(patterns), config))) {
-    module.emitError() << "large-constant-fold failed.";
+  if (failed(FoldResourceOpPattern<TFL::TransposeOp>(module))) {
     signalPassFailure();
+  }
+  if (GetOptions().fold_fp16_resource_casts) {
+    if (failed(FoldResourceOpPattern<TFL::CastOp>(module))) {
+      signalPassFailure();
+    }
   }
 }
 

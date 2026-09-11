@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -74,9 +73,7 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace ifrt {
@@ -333,15 +330,6 @@ absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
     }
   }
   return expanded_platform_names;
-}
-
-uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
-  std::string s;
-  llvm::raw_string_ostream os(s);
-  mlir::OpPrintingFlags flags;
-  flags.enableDebugInfo(false);
-  module.print(os, flags);
-  return tsl::Fingerprint64(os.str());
 }
 
 absl::StatusOr<XlaCompileOptions*> GetModuleXlaCompileOverrides(
