@@ -130,9 +130,9 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
         MultiplyWithoutOverflow(ksize_rows,
                                 MultiplyWithoutOverflow(ksize_cols, depth)));
     OP_REQUIRES(context, patch_size >= 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Output size would overflow: ", ksize_planes, " x ",
-                    ksize_rows, " x ", ksize_cols, " x ", depth));
+                    ksize_rows, " x ", ksize_cols, " x ", depth)));
 
     const std::vector<int64_t> out_sizes = {batch, out_planes, out_rows,
                                             out_cols, patch_size};
