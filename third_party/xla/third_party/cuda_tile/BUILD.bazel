@@ -1,0 +1,4 @@
+exports_files(
+    glob(["patches/**"]),
+    visibility = ["//visibility:public"],
+)

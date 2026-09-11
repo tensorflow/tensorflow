@@ -2001,7 +2001,7 @@ GetAllowlistTable() {
             "Log1p", "Invert", "LogicalNot", "Ndtri", "Neg", "Rint", "Round",
             "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
             "Square", "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Erfinv",
-            "Lgamma", "Digamma",
+            "Lgamma", "Digamma", "BesselI0", "BesselI1",
             // Binary
             "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
             "MulNoNan", "FloorDiv", "Xlogy", "Xlog1py", "Xdivy", "FloorMod",
@@ -2023,7 +2023,7 @@ GetAllowlistTable() {
             "Snapshot", "_EagerConst"}},
           // clang-format off
     {"RED",
-     {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
+     {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum", "EuclideanNorm"}},
           // clang-format on
           {"PWRED",
            {"ArgMax", "ArgMin", "DiagPart", "Softmax",

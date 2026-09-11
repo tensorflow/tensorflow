@@ -510,23 +510,17 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s32[]) -> s8[131072,2048] {
 }
 )"));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        [](const HloInstruction* use,
-                           int64_t sliced_dim) -> std::optional<uint64_t> {
-                          if (use->opcode() == HloOpcode::kDynamicSlice &&
-                              sliced_dim == 0) {
-                            return 131071;
-                          }
-                          return std::nullopt;
-                        }));
+  FakeArgumentsOptions options;
+  options.get_index_known_zeroes =
+      [](const HloInstruction* use,
+         int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() == HloOpcode::kDynamicSlice && sliced_dim == 0) {
+      return 131071;
+    }
+    return std::nullopt;
+  };
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 2);
 
   int32_t index = args[1].Get<int32_t>({});
@@ -548,23 +542,17 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[])
 }
 )"));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        [](const HloInstruction* use,
-                           int64_t sliced_dim) -> std::optional<uint64_t> {
-                          if (use->opcode() == HloOpcode::kDynamicUpdateSlice &&
-                              sliced_dim == 0) {
-                            return 131071;
-                          }
-                          return std::nullopt;
-                        }));
+  FakeArgumentsOptions options_dus;
+  options_dus.get_index_known_zeroes =
+      [](const HloInstruction* use,
+         int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() == HloOpcode::kDynamicUpdateSlice && sliced_dim == 0) {
+      return 131071;
+    }
+    return std::nullopt;
+  };
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get(), options_dus));
   ASSERT_EQ(args.size(), 3);
 
   int32_t index = args[2].Get<int32_t>({});

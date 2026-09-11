@@ -1897,7 +1897,7 @@ module {
 // CHECK:       %[[$region_0_4:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_5:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  %[[Arg_1_6:[^ ]+]] = f32[] parameter(1)
-// CHECK-NEXT:  ROOT %[[compare_7:[^ ]+]] = pred[] compare(%[[Arg_0_5]], %[[Arg_1_6]]), direction=GE, type=TOTALORDER, metadata=
+// CHECK-NEXT:  ROOT %[[compare_7:[^ ]+]] = pred[] compare(%[[Arg_0_5]], %[[Arg_1_6]]), direction=GE, order=TOTAL, metadata=
 
 // CHECK:       %[[$region_1_8:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_9:[^ ]+]] = f32[] parameter(0)

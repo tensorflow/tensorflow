@@ -522,6 +522,7 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1381,6 +1382,26 @@ cc_library(
 )
 
 cc_library(
+    name = "inlined_bit_set",
+    hdrs = ["inlined_bit_set.h"],
+    deps = [
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_cc_test(
+    name = "inlined_bit_set_test",
+    srcs = ["inlined_bit_set_test.cc"],
+    deps = [
+        ":inlined_bit_set",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
     name = "side_effect_util",
     srcs = ["side_effect_util.cc"],
     hdrs = ["side_effect_util.h"],
@@ -1562,6 +1583,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1571,6 +1593,7 @@ xla_cc_test(
     deps = [
         ":online_topsort",
         "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

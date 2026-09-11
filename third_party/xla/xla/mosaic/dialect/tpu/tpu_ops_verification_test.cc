@@ -60,7 +60,7 @@ class TpuOpsVerificationTest : public ::testing::Test {
     context_.loadAllAvailableDialects();
     context_.printOpOnDiagnostic(true);
   }
-  ~TpuOpsVerificationTest() {
+  ~TpuOpsVerificationTest() override {
     for (int i = ops_.size() - 1; i >= 0; --i) {
       ops_[i]->erase();
     }
@@ -730,36 +730,37 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationInvalidDimension) {
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest, DmaElementTypeMismatch) {
-  auto dma = Create<EnqueueDMAOp>(
-      /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
-      /*source_semaphore=*/AllocaSemaphore(),
-      /*target=*/
-      Create<memref::AllocaOp>(GetMemRefType({1024, 256, 128},
-                                             builder().getI64Type(),
-                                             MemorySpace::kHbm))
-          .getMemref(),
-      /*target_semaphore=*/AllocaSemaphore(),
-      /*device_id=*/nullptr,
-      /*core_id=*/nullptr);
+  auto src = AllocaI32({1024, 256, 128}, MemorySpace::kHbm);
+  auto dst = Create<memref::AllocaOp>(GetMemRefType({1024, 256, 128},
+                                                    builder().getI64Type(),
+                                                    MemorySpace::kHbm))
+                 .getMemref();
+  auto sem = AllocaSemaphore();
 
   ASSERT_THAT(
-      VerifyOp(dma),
+      VerifyOp(Create<EnqueueDMAOp>(src, sem, dst, sem, nullptr, nullptr)),
+      StatusIs(_, HasSubstr("DMA source and target element type mismatch")));
+
+  ASSERT_THAT(
+      VerifyOp(Create<WaitDMAOp>(src, nullptr, dst, sem, nullptr, nullptr,
+                                 nullptr, 0, false, /*wait_target=*/true)),
       StatusIs(_, HasSubstr("DMA source and target element type mismatch")));
 }
 
-TEST_F(TpuOpsVectorSubcoreVerificationTest, DmaDynamicRankMismatch) {
-  auto dma = Create<EnqueueDMAOp>(
-      /*source=*/AllocaI32({ShapedType::kDynamic, 256, 128}, MemorySpace::kHbm),
-      /*source_semaphore=*/AllocaSemaphore(),
-      /*target=*/
-      AllocaI32({ShapedType::kDynamic, ShapedType::kDynamic, 128},
-                MemorySpace::kHbm),
-      /*target_semaphore=*/AllocaSemaphore(),
-      /*device_id=*/nullptr,
-      /*core_id=*/nullptr);
+TEST_F(TpuOpsVectorSubcoreVerificationTest, DmaShapeMismatch) {
+  auto src = AllocaI32({ShapedType::kDynamic, 256, 128}, MemorySpace::kHbm);
+  auto dst = AllocaI32({ShapedType::kDynamic, ShapedType::kDynamic, 128},
+                       MemorySpace::kHbm);
+  auto sem = AllocaSemaphore();
 
-  ASSERT_THAT(VerifyOp(dma),
-              StatusIs(_, HasSubstr("DMA source and target shape mismatch.")));
+  ASSERT_THAT(
+      VerifyOp(Create<EnqueueDMAOp>(src, sem, dst, sem, nullptr, nullptr)),
+      StatusIs(_, HasSubstr("DMA source and target shape mismatch.")));
+
+  ASSERT_THAT(
+      VerifyOp(Create<WaitDMAOp>(src, nullptr, dst, sem, nullptr, nullptr,
+                                 nullptr, 0, false, /*wait_target=*/true)),
+      StatusIs(_, HasSubstr("DMA source and target shape mismatch.")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest, DmaStrictOrderingSupported) {
@@ -774,6 +775,82 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, DmaStrictOrderingSupported) {
       /*strict_ordering=*/true);
 
   ASSERT_OK(VerifyOp(dma));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest, DmaVectorSubcoreValidStreams) {
+  auto vmem = AllocaI32({1024, 256, 128}, MemorySpace::kVmem);
+  auto hbm = AllocaI32({1024, 256, 128}, MemorySpace::kHbm);
+  auto sem = AllocaSemaphore();
+
+  // Push stream (VMEM -> HBM): supports target sem, source sem, or no sem.
+  ASSERT_OK(VerifyOp(
+      Create<EnqueueDMAOp>(vmem, nullptr, hbm, sem, nullptr, nullptr)));
+  ASSERT_OK(VerifyOp(
+      Create<EnqueueDMAOp>(vmem, sem, hbm, nullptr, nullptr, nullptr)));
+  ASSERT_OK(VerifyOp(
+      Create<EnqueueDMAOp>(vmem, nullptr, hbm, nullptr, nullptr, nullptr)));
+  ASSERT_OK(VerifyOp(Create<WaitDMAOp>(vmem, nullptr, hbm, sem, nullptr,
+                                       nullptr, nullptr, 0, false,
+                                       /*wait_target=*/true)));
+  ASSERT_OK(VerifyOp(Create<WaitDMAOp>(vmem, sem, hbm, nullptr, nullptr,
+                                       nullptr, nullptr, 0, false,
+                                       /*wait_target=*/false)));
+
+  // Pull stream (HBM -> VMEM): supports no sem.
+  ASSERT_OK(VerifyOp(
+      Create<EnqueueDMAOp>(hbm, nullptr, vmem, nullptr, nullptr, nullptr)));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       DmaPullStreamSourceSemaphoreNotSupported) {
+  auto vmem = AllocaI32({1024, 256, 128}, MemorySpace::kVmem);
+  auto hbm = AllocaI32({1024, 256, 128}, MemorySpace::kHbm);
+  auto smem = AllocaI32({1024, 256, 128}, MemorySpace::kSmem);
+  auto sem = AllocaSemaphore();
+
+  const char* err_msg =
+      "Source semaphores are unsupported for transfers from a "
+      "non-local memory to local memory on SparseCore";
+
+  // HBM -> VMEM pull stream with source semaphore.
+  ASSERT_THAT(
+      VerifyOp(Create<EnqueueDMAOp>(hbm, sem, vmem, nullptr, nullptr, nullptr)),
+      StatusIs(_, HasSubstr(err_msg)));
+
+  // SMEM -> VMEM pull stream with source semaphore.
+  ASSERT_THAT(VerifyOp(Create<EnqueueDMAOp>(smem, sem, vmem, nullptr, nullptr,
+                                            nullptr)),
+              StatusIs(_, HasSubstr(err_msg)));
+
+  // Awaiting source on pull stream without semaphore.
+  ASSERT_THAT(
+      VerifyOp(Create<WaitDMAOp>(hbm, nullptr, vmem, nullptr, nullptr, nullptr,
+                                 nullptr, 0, false, /*wait_target=*/false)),
+      StatusIs(_, HasSubstr("Awaiting source read completion is unsupported")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest, DmaMissingMemorySpaceOnSparseCore) {
+  auto vmem = AllocaI32({1024, 256, 128}, MemorySpace::kVmem);
+  auto unannotated = AllocaI32({1024, 256, 128}, std::nullopt);
+  auto sem = AllocaSemaphore();
+
+  const char* src_err_msg =
+      "Source memory space must be provided for SparseCore DMA";
+  const char* tgt_err_msg =
+      "Target memory space must be provided for SparseCore DMA";
+
+  ASSERT_THAT(VerifyOp(Create<EnqueueDMAOp>(unannotated, nullptr, vmem, sem,
+                                            nullptr, nullptr)),
+              StatusIs(_, HasSubstr(src_err_msg)));
+
+  ASSERT_THAT(VerifyOp(Create<EnqueueDMAOp>(vmem, sem, unannotated, nullptr,
+                                            nullptr, nullptr)),
+              StatusIs(_, HasSubstr(tgt_err_msg)));
+
+  ASSERT_THAT(VerifyOp(Create<WaitDMAOp>(unannotated, nullptr, vmem, sem,
+                                         nullptr, nullptr, nullptr, 0, false,
+                                         /*wait_target=*/true)),
+              StatusIs(_, HasSubstr(src_err_msg)));
 }
 
 TEST_F(TpuOpsVerificationTest, DmaStrictOrderingNotSupportedOnTc) {
@@ -796,6 +873,89 @@ TEST_F(TpuOpsVerificationTest, DmaStrictOrderingNotSupportedOnTc) {
   ASSERT_THAT(VerifyOp(dma),
               StatusIs(_, HasSubstr("Strict ordering is only supported on the "
                                     "SC scalar and vector subcores")));
+
+  auto wait = Create<WaitDMAOp>(
+      /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
+      /*source_semaphore=*/nullptr,
+      /*target=*/AllocaI32({1024, 256, 128}, MemorySpace::kVmem),
+      /*target_semaphore=*/AllocaSemaphore(),
+      /*device_id=*/nullptr,
+      /*core_id=*/nullptr,
+      /*subcore_id=*/nullptr,
+      /*priority=*/0,
+      /*strict_ordering=*/true,
+      /*wait_target=*/true);
+
+  ASSERT_THAT(VerifyOp(wait),
+              StatusIs(_, HasSubstr("Strict ordering is only supported on the "
+                                    "SC scalar and vector subcores")));
+}
+
+TEST_F(TpuOpsVerificationTest, DmaTargetSemaphoreRequiredOnTc) {
+  auto func_op =
+      Create<func::FuncOp>("tc_kernel", builder().getFunctionType({}, {}));
+  func_op->setAttr(TPUDialect::GetCoreTypeKey(),
+                   CoreTypeAttr::get(builder().getContext(), CoreType::kTc));
+  builder().setInsertionPointToStart(func_op.addEntryBlock());
+
+  auto src = AllocaI32({1024, 256, 128}, MemorySpace::kHbm);
+  auto dst = AllocaI32({1024, 256, 128}, MemorySpace::kVmem);
+
+  auto dma = Create<EnqueueDMAOp>(src, /*source_semaphore=*/nullptr, dst,
+                                  /*target_semaphore=*/nullptr,
+                                  /*device_id=*/nullptr, /*core_id=*/nullptr);
+  ASSERT_THAT(VerifyOp(dma),
+              StatusIs(_, HasSubstr("DMA target semaphore must be specified")));
+
+  auto wait = Create<WaitDMAOp>(
+      src, /*source_semaphore=*/nullptr, dst, /*target_semaphore=*/nullptr,
+      /*device_id=*/nullptr, /*core_id=*/nullptr, /*subcore_id=*/nullptr,
+      /*priority=*/0, /*strict_ordering=*/false, /*wait_target=*/true);
+  ASSERT_THAT(VerifyOp(wait),
+              StatusIs(_, HasSubstr("DMA target semaphore must be specified")));
+}
+
+TEST_F(TpuOpsVerificationTest, DmaLocalSourceSemaphoreRejectedOnTc) {
+  auto func_op =
+      Create<func::FuncOp>("tc_kernel", builder().getFunctionType({}, {}));
+  func_op->setAttr(TPUDialect::GetCoreTypeKey(),
+                   CoreTypeAttr::get(builder().getContext(), CoreType::kTc));
+  builder().setInsertionPointToStart(func_op.addEntryBlock());
+
+  auto src = AllocaI32({1024, 256, 128}, MemorySpace::kHbm);
+  auto dst = AllocaI32({1024, 256, 128}, MemorySpace::kVmem);
+  auto sem = AllocaSemaphore();
+
+  auto dma = Create<EnqueueDMAOp>(src, /*source_semaphore=*/sem, dst,
+                                  /*target_semaphore=*/sem,
+                                  /*device_id=*/nullptr, /*core_id=*/nullptr);
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_, HasSubstr("DMA destination device_id or core_id must be "
+                            "specified when source semaphore is specified")));
+
+  auto wait = Create<WaitDMAOp>(
+      src, /*source_semaphore=*/sem, dst, /*target_semaphore=*/sem,
+      /*device_id=*/nullptr, /*core_id=*/nullptr, /*subcore_id=*/nullptr,
+      /*priority=*/0, /*strict_ordering=*/false, /*wait_target=*/true);
+  ASSERT_THAT(
+      VerifyOp(wait),
+      StatusIs(_, HasSubstr("DMA destination device_id or core_id must be "
+                            "specified when source semaphore is specified")));
+}
+
+TEST_F(TpuOpsVerificationTest, DmaRemoteTargetWaitAllowsNullSourceSemaphore) {
+  auto src = AllocaI32({1024, 256, 128}, MemorySpace::kHbm);
+  auto dst = AllocaI32({1024, 256, 128}, MemorySpace::kVmem);
+  auto sem = AllocaSemaphore();
+  auto device_id = Create<arith::ConstantIntOp>(0, 32).getResult();
+  auto core_id = Create<arith::ConstantIntOp>(0, 32).getResult();
+
+  auto wait = Create<WaitDMAOp>(
+      src, /*source_semaphore=*/nullptr, dst, /*target_semaphore=*/sem,
+      /*device_id=*/device_id, /*core_id=*/core_id, /*subcore_id=*/nullptr,
+      /*priority=*/0, /*strict_ordering=*/false, /*wait_target=*/true);
+  ASSERT_OK(VerifyOp(wait));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,

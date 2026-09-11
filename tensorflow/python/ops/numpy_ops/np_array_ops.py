@@ -328,6 +328,11 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
       [v_rank],
   )
 
+  if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
+    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
+  elif not isscalar(k):
+    raise ValueError(f'k must be an integer scalar, got {k}')
+
   def _diag(v, k):
     return np_utils.cond(
         math_ops.equal(array_ops.size(v), 0),
@@ -1660,12 +1665,14 @@ def broadcast_arrays(*args, **kwargs):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.sign', v1=[])
 @np_utils.np_doc_only('sign')
 def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstring,redefined-outer-name
-  if out:
-    raise ValueError('tf.numpy doesnt support setting out.')
-  if where:
-    raise ValueError('tf.numpy doesnt support setting where.')
+  if out is not None:
+    raise ValueError("tf.numpy doesn't support setting out.")
+  if where is not None:
+    raise ValueError("tf.numpy doesn't support setting where.")
   if kwargs:
-    raise ValueError('tf.numpy doesnt support setting {}'.format(kwargs.keys()))
+    raise ValueError(
+        "tf.numpy doesn't support setting {}".format(kwargs.keys())
+    )
 
   x = asarray(x)
 

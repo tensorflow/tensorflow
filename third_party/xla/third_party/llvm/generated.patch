@@ -1,73 +1,299 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/include/lldb/Symbol/Symbol.h b/lldb/include/lldb/Symbol/Symbol.h
---- a/lldb/include/lldb/Symbol/Symbol.h
-+++ b/lldb/include/lldb/Symbol/Symbol.h
-@@ -53,11 +53,7 @@
+diff -ruN --strip-trailing-cr a/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h b/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
+--- a/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
++++ b/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
+@@ -41,6 +41,11 @@
  
-   Symbol(const Symbol &rhs);
- 
--  ~Symbol() {
--    if (m_type != lldb::eSymbolTypeReExported &&
--        m_type != lldb::eSymbolTypeInvalid)
--      m_addr_or_reexport.GetAddressRange(*this).Clear();
--  }
-+  ~Symbol() { m_addr_or_reexport.Clear(*this); }
- 
-   const Symbol &operator=(const Symbol &rhs);
- 
-@@ -419,6 +415,13 @@
-     // impl to let the compiler know it's handled.
-     ~AddrRangeOrReExport() {}
- 
-+    void Clear(const Symbol &sym) {
-+      if (sym.GetType() == lldb::eSymbolTypeReExported)
-+        m_reexport_info.Clear();
-+      else
-+        m_addr_range.Clear();
-+    }
+   /// Whether to suggest lifetime annotations.
+   bool SuggestAnnotations;
 +
-   private:
-     union {
-       // Contains the value, or the section offset address when the value is an
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
---- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-@@ -5964,6 +5964,8 @@
-                                 ISD::matchUnaryPredicate(
-                                     Y,
-                                     [&](auto *C) {
-+                                      if (!C)
-+                                        return true;
-                                       const APInt &YConst = C->getAsAPIntVal();
-                                       return (Opcode == ISD::ABDS)
-                                                  ? YConst.isSignedIntN(Bits)
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/abd-combine.ll b/llvm/test/CodeGen/AArch64/abd-combine.ll
---- a/llvm/test/CodeGen/AArch64/abd-combine.ll
-+++ b/llvm/test/CodeGen/AArch64/abd-combine.ll
-@@ -523,9 +523,26 @@
-   ret <1 x i64> %10
- }
++  bool CheckNoescapeViolations;
++  bool CheckLifetimeboundViolations;
++  bool CheckMisplacedLifetimebound;
++  bool CheckInapplicableLifetimebound;
+ };
  
-+; Poison elements in the constant operand pass a null ConstantSDNode to the
-+; matchUnaryPredicate lambda in visitABD; make sure that does not crash.
-+define <4 x i32> @abdu_const_poison(<4 x i8> %x) {
-+; CHECK-LABEL: abdu_const_poison:
-+; CHECK:       // %bb.0:
-+; CHECK-NEXT:    mov w8, #8388736 // =0x800080
-+; CHECK-NEXT:    bic v0.4h, #255, lsl #8
-+; CHECK-NEXT:    fmov d1, x8
-+; CHECK-NEXT:    uabdl v0.4s, v0.4h, v1.4h
-+; CHECK-NEXT:    ret
-+  %ext = zext <4 x i8> %x to <4 x i32>
-+  %sub = sub <4 x i32> <i32 128, i32 128, i32 poison, i32 poison>, %ext
-+  %abs = call <4 x i32> @llvm.abs.v4i32(<4 x i32> %sub, i1 false)
-+  ret <4 x i32> %abs
+ /// Enum to track functions visible across or within TU.
+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/LifetimeSafety/Checker.cpp b/clang/lib/Analysis/LifetimeSafety/Checker.cpp
+--- a/clang/lib/Analysis/LifetimeSafety/Checker.cpp
++++ b/clang/lib/Analysis/LifetimeSafety/Checker.cpp
+@@ -105,10 +105,14 @@
+           checkAnnotations(OEF);
+     issuePendingWarnings();
+     suggestAnnotations();
+-    reportNoescapeViolations();
+-    reportLifetimeboundViolations();
+-    reportMisplacedLifetimebound();
+-    reportInapplicableLifetimebound();
++    if (LSOpts.CheckNoescapeViolations)
++      reportNoescapeViolations();
++    if (LSOpts.CheckLifetimeboundViolations)
++      reportLifetimeboundViolations();
++    if (LSOpts.CheckMisplacedLifetimebound)
++      reportMisplacedLifetimebound();
++    if (LSOpts.CheckInapplicableLifetimebound)
++      reportInapplicableLifetimebound();
+     //  Annotation inference is currently guarded by a frontend flag. In the
+     //  future, this might be replaced by a design that differentiates between
+     //  explicit and inferred findings with separate warning groups.
+@@ -254,6 +258,7 @@
+   }
+ 
+   void issuePendingWarnings() {
++    llvm::TimeTraceScope TimeTrace("IssuePendingWarnings");
+     if (!SemaHelper)
+       return;
+     for (const auto &[LID, Warning] : FinalWarningsMap) {
+@@ -436,6 +441,7 @@
+   }
+ 
+   void reportNoescapeViolations() {
++    llvm::TimeTraceScope TimeTrace("ReportNoescapeViolations");
+     for (auto [PVD, EscapeTarget] : NoescapeWarningsMap) {
+       if (const auto *E = EscapeTarget.dyn_cast<const Expr *>())
+         SemaHelper->reportNoescapeViolation(PVD, E);
+@@ -449,6 +455,7 @@
+   }
+ 
+   void reportLifetimeboundViolations() {
++    llvm::TimeTraceScope TimeTrace("ReportLifetimeboundViolations");
+     if (!isa<FunctionDecl>(FD))
+       return;
+     if (const auto *MD = dyn_cast<CXXMethodDecl>(FD);
+@@ -471,6 +478,7 @@
+   // Reports lifetimebound attributes that are placed on a function definition
+   // but not on the corresponding declaration.
+   void reportMisplacedLifetimebound() {
++    llvm::TimeTraceScope TimeTrace("ReportMisplacedLifetimebound");
+     const FunctionDecl *FDef = dyn_cast<FunctionDecl>(FD);
+     if (!FDef)
+       return;
+@@ -501,6 +509,7 @@
+   }
+ 
+   void reportInapplicableLifetimebound() {
++    llvm::TimeTraceScope TimeTrace("ReportInapplicableLifetimebound");
+     const auto *FDef = dyn_cast<FunctionDecl>(FD);
+     if (!FDef)
+       return;
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaLifetimeSafety.h b/clang/lib/Sema/SemaLifetimeSafety.h
+--- a/clang/lib/Sema/SemaLifetimeSafety.h
++++ b/clang/lib/Sema/SemaLifetimeSafety.h
+@@ -25,28 +25,7 @@
+ 
+ namespace clang::lifetimes {
+ 
+-inline bool IsLifetimeSafetyEnabled(Sema &S, const Decl *D) {
+-  // TODO: Enable ObjectiveC later when we know it's stable enough.
+-  if (S.getLangOpts().ObjC)
+-    return false;
+-
+-  // TODO: Default this flag to on in the future.
+-  if (!S.getLangOpts().CPlusPlus && !S.getLangOpts().EnableLifetimeSafetyInC)
+-    return false;
+-
+-  // Translation-unit mode: whole-program analysis runs once on TU.
+-  // Individual function analysis is disabled when TU mode is enabled.
+-  if (S.getLangOpts().EnableLifetimeSafetyTUAnalysis)
+-    return isa<TranslationUnitDecl>(D);
+-
+-  // Per-function mode: analysis runs on each function/method individually.
+-  // Skip TU-level calls when per-function mode is enabled.
+-  if (isa<TranslationUnitDecl>(D))
+-    return false;
+-
+-  // Enable per-function mode via debug flag or specific diagnostics.
+-  if (S.getLangOpts().DebugRunLifetimeSafety)
+-    return true;
++inline bool ShouldCheckSafety(Sema &S, const Decl *D) {
+   DiagnosticsEngine &Diags = S.getDiagnostics();
+   constexpr unsigned DiagIDs[] = {
+       diag::warn_lifetime_safety_use_after_scope,
+@@ -59,25 +38,40 @@
+       diag::warn_lifetime_safety_dangling_field_moved,
+       diag::warn_lifetime_safety_dangling_global,
+       diag::warn_lifetime_safety_dangling_global_moved,
+-      diag::warn_lifetime_safety_noescape_escapes,
+-      diag::warn_lifetime_safety_lifetimebound_violation,
+-      diag::warn_lifetime_safety_cross_tu_misplaced_lifetimebound,
+-      diag::warn_lifetime_safety_intra_tu_misplaced_lifetimebound,
+       diag::warn_lifetime_safety_invalidated_field,
+-      diag::warn_lifetime_safety_invalidated_global,
+-      diag::warn_lifetime_safety_cross_tu_param_suggestion,
+-      diag::warn_lifetime_safety_intra_tu_param_suggestion,
+-      diag::warn_lifetime_safety_cross_tu_ctor_param_suggestion,
+-      diag::warn_lifetime_safety_intra_tu_ctor_param_suggestion,
+-      diag::warn_lifetime_safety_cross_tu_this_suggestion,
+-      diag::warn_lifetime_safety_intra_tu_this_suggestion,
+-      diag::warn_lifetime_safety_inapplicable_lifetimebound};
++      diag::warn_lifetime_safety_invalidated_global};
++  for (unsigned DiagID : DiagIDs)
++    if (!Diags.isIgnored(DiagID, D->getBeginLoc()))
++      return true;
++  return false;
 +}
 +
- declare <8 x i8> @llvm.aarch64.neon.umax.v8i8(<8 x i8>, <8 x i8>)
- declare <1 x i64> @llvm.aarch64.neon.saddlp.v1i64.v2i32(<2 x i32>)
- declare <8 x i8> @llvm.aarch64.neon.uabd.v8i8(<8 x i8>, <8 x i8>)
- declare <8 x i16> @llvm.aarch64.neon.uabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i16> @llvm.aarch64.neon.sabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i32> @llvm.abs.v8i32(<8 x i32>, i1)
-+declare <4 x i32> @llvm.abs.v4i32(<4 x i32>, i1)
++inline bool ShouldCheckNoescapeViolations(Sema &S, const Decl *D) {
++  return !S.getDiagnostics().isIgnored(
++      diag::warn_lifetime_safety_noescape_escapes, D->getBeginLoc());
++}
++
++inline bool ShouldCheckLifetimeboundViolations(Sema &S, const Decl *D) {
++  return !S.getDiagnostics().isIgnored(
++      diag::warn_lifetime_safety_lifetimebound_violation, D->getBeginLoc());
++}
++
++inline bool ShouldCheckMisplacedLifetimebound(Sema &S, const Decl *D) {
++  DiagnosticsEngine &Diags = S.getDiagnostics();
++  constexpr unsigned DiagIDs[] = {
++      diag::warn_lifetime_safety_cross_tu_misplaced_lifetimebound,
++      diag::warn_lifetime_safety_intra_tu_misplaced_lifetimebound};
+   for (unsigned DiagID : DiagIDs)
+     if (!Diags.isIgnored(DiagID, D->getBeginLoc()))
+       return true;
+   return false;
+ }
+ 
++inline bool ShouldCheckInapplicableLifetimebound(Sema &S, const Decl *D) {
++  return !S.getDiagnostics().isIgnored(
++      diag::warn_lifetime_safety_inapplicable_lifetimebound, D->getBeginLoc());
++}
++
+ inline bool ShouldSuggestLifetimeAnnotations(Sema &S, const Decl *D) {
+   DiagnosticsEngine &Diags = S.getDiagnostics();
+   constexpr unsigned DiagIDs[] = {
+@@ -93,10 +87,46 @@
+   return false;
+ }
+ 
++inline bool IsLifetimeSafetyEnabled(Sema &S, const Decl *D) {
++  // TODO: Enable ObjectiveC later when we know it's stable enough.
++  if (S.getLangOpts().ObjC)
++    return false;
++
++  // TODO: Default this flag to on in the future.
++  if (!S.getLangOpts().CPlusPlus && !S.getLangOpts().EnableLifetimeSafetyInC)
++    return false;
++
++  // Translation-unit mode: whole-program analysis runs once on TU.
++  // Individual function analysis is disabled when TU mode is enabled.
++  if (S.getLangOpts().EnableLifetimeSafetyTUAnalysis)
++    return isa<TranslationUnitDecl>(D);
++
++  // Per-function mode: analysis runs on each function/method individually.
++  // Skip TU-level calls when per-function mode is enabled.
++  if (isa<TranslationUnitDecl>(D))
++    return false;
++
++  // Enable per-function mode via debug flag or specific diagnostics.
++  if (S.getLangOpts().DebugRunLifetimeSafety)
++    return true;
++
++  return ShouldCheckSafety(S, D) || ShouldCheckNoescapeViolations(S, D) ||
++         ShouldCheckLifetimeboundViolations(S, D) ||
++         ShouldCheckMisplacedLifetimebound(S, D) ||
++         ShouldCheckInapplicableLifetimebound(S, D) ||
++         ShouldSuggestLifetimeAnnotations(S, D);
++}
++
+ inline LifetimeSafetyOpts GetLifetimeSafetyOpts(Sema &S, const Decl *D) {
+   LifetimeSafetyOpts LSOpts;
+   LSOpts.MaxCFGBlocks = S.getLangOpts().LifetimeSafetyMaxCFGBlocks;
+   LSOpts.SuggestAnnotations = ShouldSuggestLifetimeAnnotations(S, D);
++  LSOpts.CheckNoescapeViolations = ShouldCheckNoescapeViolations(S, D);
++  LSOpts.CheckLifetimeboundViolations =
++      ShouldCheckLifetimeboundViolations(S, D);
++  LSOpts.CheckMisplacedLifetimebound = ShouldCheckMisplacedLifetimebound(S, D);
++  LSOpts.CheckInapplicableLifetimebound =
++      ShouldCheckInapplicableLifetimebound(S, D);
+   return LSOpts;
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/LifetimeSafetyTest.cpp b/clang/unittests/Analysis/LifetimeSafetyTest.cpp
+--- a/clang/unittests/Analysis/LifetimeSafetyTest.cpp
++++ b/clang/unittests/Analysis/LifetimeSafetyTest.cpp
+@@ -66,6 +66,11 @@
+     // Run the main analysis.
+     LifetimeSafetyOpts LSOpts;
+     LSOpts.MaxCFGBlocks = 0;
++    LSOpts.SuggestAnnotations = true;
++    LSOpts.CheckNoescapeViolations = true;
++    LSOpts.CheckLifetimeboundViolations = true;
++    LSOpts.CheckMisplacedLifetimebound = true;
++    LSOpts.CheckInapplicableLifetimebound = true;
+     Analysis =
+         std::make_unique<LifetimeSafetyAnalysis>(*AnalysisCtx, nullptr, LSOpts);
+     Analysis->run();
+diff -ruN --strip-trailing-cr a/clang/unittests/AST/AttrTest.cpp b/clang/unittests/AST/AttrTest.cpp
+--- a/clang/unittests/AST/AttrTest.cpp
++++ b/clang/unittests/AST/AttrTest.cpp
+@@ -315,7 +315,7 @@
+             body(i);
+         }
+       )cpp",
+-      {"-fopenmp"});
++      {"-fopenmp=libomp"});
+   ASSERT_TRUE(AST);
+ 
+   auto GetHint = [&AST](const char *FuncName) {
+diff -ruN --strip-trailing-cr a/libcxx/include/tuple b/libcxx/include/tuple
+--- a/libcxx/include/tuple
++++ b/libcxx/include/tuple
+@@ -1398,7 +1398,7 @@
+                   "Attempted construction of reference element binds to a temporary whose lifetime has ended");
+   }
+ #      endif // _LIBCPP_STD_VER >= 23
+-  return std::apply([]<class... _Args>(_Args&&... __args) { return _Tp(std::forward<_Args>(__args)...); },
++  return std::apply([]<class... _Args>(_Args&&... __args) -> _Tp { return _Tp(std::forward<_Args>(__args)...); },
+                     std::forward<_Tuple>(__tuple));
+ }
+ 
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp b/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp
+--- a/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp
++++ b/libcxx/test/std/utilities/tuple/tuple.tuple/tuple.apply/make_from_tuple.pass.cpp
+@@ -255,5 +255,10 @@
+     test_perfect_forwarding();
+     test_noexcept();
+ 
++  { // Test that constructing a T& returns the same object
++    int i;
++    assert(&std::make_from_tuple<const int&>(std::tuple<int&>(i)) == &i);
++  }
++
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
+--- a/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
++++ b/llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp
+@@ -2609,6 +2609,13 @@
+     setOrigin(&I, getOrigin(&I, 0));
+   }
+ 
++  void visitPtrToAddrInst(PtrToAddrInst &I) {
++    IRBuilder<> IRB(&I);
++    setShadow(&I, IRB.CreateIntCast(getShadow(&I, 0), getShadowTy(&I), false,
++                                    "_msprop_ptrtoaddr"));
++    setOrigin(&I, getOrigin(&I, 0));
++  }
++
+   void visitIntToPtrInst(IntToPtrInst &I) {
+     IRBuilder<> IRB(&I);
+     setShadow(&I, IRB.CreateIntCast(getShadow(&I, 0), getShadowTy(&I), false,
+diff -ruN --strip-trailing-cr a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
+--- a/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
++++ b/llvm/test/Instrumentation/MemorySanitizer/ptrtoaddr.ll
+@@ -0,0 +1,14 @@
++; RUN: opt < %s -S -passes=msan 2>&1 | FileCheck %s
++
++target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
++target triple = "x86_64-unknown-linux-gnu"
++
++; CHECK-LABEL: @ptrtoaddr_propagate(
++; CHECK:       %[[SHADOW:.*]] = load i64, ptr @__msan_param_tls
++; CHECK-NOT:   __msan_warning
++; CHECK:       store i64 %[[SHADOW]], ptr @__msan_retval_tls
++; CHECK:       ret i64
++define i64 @ptrtoaddr_propagate(ptr %p) sanitize_memory {
++  %addr = ptrtoaddr ptr %p to i64
++  ret i64 %addr
++}

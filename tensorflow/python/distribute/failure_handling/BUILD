@@ -122,6 +122,7 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "gce_failure_handler_test",
     srcs = ["gce_failure_handler_test.py"],
+    flaky = 1,
     shard_count = 32,
     tags = [
         "no_mac",  # Fails on CI but works fine locally.

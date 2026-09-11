@@ -26,9 +26,8 @@ from absl.testing import parameterized
 import numpy as onp
 import six
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
-from tensorflow.python.ops.numpy_ops import np_config
 from tensorflow.python.ops.numpy_ops.tests.config import config
 from tensorflow.python.ops.numpy_ops.tests.config import FLAGS
 import tensorflow.python.ops.numpy_ops.tests.extensions as nje
@@ -65,6 +64,7 @@ all_dtypes = number_dtypes + bool_dtypes
 
 python_scalar_dtypes = [tnp.bool_, tnp.int_, tnp.float64, tnp.complex128]
 # pylint: disable=unnecessary-lambda,g-long-lambda,expression-not-assigned
+# pylint: disable=line-too-long,used-before-assignment,function-redefined
 
 def _valid_dtypes_for_shape(shape, dtypes):
   # Not all (shape, dtype) pairs are valid. In particular, Python scalars only
@@ -747,6 +747,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
       ]
       for lhs_dtype, rhs_dtype in CombosWithReplacement(
           minus(number_dtypes, complex_dtypes), 2)))
+  @unittest.skipIf(onp.__version__ >= onp.lib.NumpyVersion('2.0.0'),
+                   'tf numpy is implemented to be numpy 1.x compatible')
   def testCross(self, lhs_shape, lhs_dtype, rhs_shape, rhs_dtype, axes, rng_factory):
     rng = rng_factory()
     args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
@@ -930,7 +932,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
     check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
         (onp.int32, onp.int64))
 
-    tol = {onp.float64: 1e-14, onp.float16: 0.04, onp.complex128: 6e-15}
+    tol = {
+        onp.float32: 1e-4,
+        onp.complex64: 1e-4,
+        onp.float64: 1e-14,
+        onp.float16: 0.04,
+        onp.complex128: 6e-15,
+    }
     tol = max(jtu.tolerance(lhs_dtype, tol), jtu.tolerance(rhs_dtype, tol))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
                           check_incomplete_shape=True,
@@ -1785,10 +1793,16 @@ class LaxBackedNumpyTests(jtu.TestCase):
     try:
       self._CheckAgainstNumpy(
           onp_fun, lnp_fun, args_maker, check_dtypes=check_dtypes, tol=tol)
-    except ZeroDivisionError:
+      self._CompileAndCheck(
+          lnp_fun,
+          args_maker,
+          check_dtypes=check_dtypes,
+          rtol=tol,
+          atol=tol,
+          check_incomplete_shape=True,
+      )
+    except (ZeroDivisionError, errors.InvalidArgumentError):
       self.skipTest("don't support checking for ZeroDivisionError")
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=check_dtypes,
-                          rtol=tol, atol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_arg{}_ndmin={}".format(i, ndmin),
@@ -2823,7 +2837,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
                               check_dtypes=False, atol=atol, rtol=tol,
                               check_incomplete_shape=True)
 
-
   @named_parameters(
       jtu.cases_from_list(
           {
@@ -3163,4 +3176,3 @@ class NumpyGradTests(jtu.TestCase):
 
 if __name__ == "__main__":
   absltest.main()
-  

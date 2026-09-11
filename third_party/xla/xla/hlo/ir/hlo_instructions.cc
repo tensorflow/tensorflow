@@ -972,10 +972,10 @@ void HloCompareInstruction::PrintExtraAttributesImpl(
   // We might want to print a HloInstruction which has been cleand up and has no
   // operands anymore. This should not result in a crash.
   if (operand_count() == 0 || operand(0) == nullptr ||
-      compare_.GetType() != Comparison::DefaultComparisonType(
-                                operand(0)->shape().element_type())) {
+      order() !=
+          Comparison::DefaultOrdering(operand(0)->shape().element_type())) {
     printer.Next([this](Printer* printer) {
-      AppendCat(printer, "type=", ComparisonTypeToString(compare_.GetType()));
+      AppendCat(printer, "order=", ComparisonOrderToShortString(order()));
     });
   }
 }

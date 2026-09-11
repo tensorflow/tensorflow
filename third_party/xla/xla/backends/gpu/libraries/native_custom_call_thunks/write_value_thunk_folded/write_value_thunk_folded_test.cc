@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/resource_loader.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {

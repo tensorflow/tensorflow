@@ -222,9 +222,12 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
-      if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding), funcOp.getContext())) {
-        funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+      HloSharding hloSharding = parseShardingFromString(oldSharding);
+      if (!hloSharding.IsSingleDevice()) {
+        if (auto sdySharding =
+                convertToSdyShardingAttr(hloSharding, funcOp.getContext())) {
+          funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+        }
       }
     }
     funcOp.removeResultAttr(resNum, kXlaShardingAttr);

@@ -127,6 +127,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Check input channels matching filter.
   TF_LITE_ENSURE_EQ(context, input->dims->data[4], filter->dims->data[3]);
+  TF_LITE_ENSURE(context, input->dims->data[0] >= 0);
   TF_LITE_ENSURE(context, input->dims->data[1] > 0);
   TF_LITE_ENSURE(context, input->dims->data[2] > 0);
   TF_LITE_ENSURE(context, input->dims->data[3] > 0);
@@ -174,18 +175,24 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Matching GetWindowedOutputSize in TensorFlow.
   int out_width, out_height, out_depth;
-  opdata->padding = ComputePadding3DValues(
+  TF_LITE_ENSURE_STATUS(ComputePadding3DValuesChecked(
       params->stride_height, params->stride_width, params->stride_depth,
       params->dilation_height_factor, params->dilation_width_factor,
       params->dilation_depth_factor, height, width, depth, filter_height,
       filter_width, filter_depth, params->padding, &out_height, &out_width,
-      &out_depth);
+      &out_depth, &opdata->padding));
 
   int output_spatial_elements = 0;
   TF_LITE_ENSURE_MSG(context,
                      CheckedNumElements({out_depth, out_height, out_width},
                                         output_spatial_elements) == kTfLiteOk,
                      "%s", "Conv3D output spatial dimensions overflow.");
+  int total_output_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements({batches, out_depth, out_height,
+                                         out_width, channels_out},
+                                        total_output_elements) == kTfLiteOk,
+                     "%s", "Conv3D output dimensions overflow.");
 
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> output_size(
       TfLiteIntArrayCreate(5), TfLiteIntArrayFree);
@@ -306,6 +313,9 @@ TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  if (NumElements(output) == 0) {
+    return kTfLiteOk;
+  }
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   const TfLiteTensor* filter;

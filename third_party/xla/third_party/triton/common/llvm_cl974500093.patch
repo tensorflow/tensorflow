@@ -25,7 +25,7 @@
 +    // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}} <{alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
      // Check that store for 'other' has alias information set
      // COMMON: llvm.store {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}, noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
-     %65 = amdg.buffer_load_to_local %arg1[%arg2] mask=%mask other=%other into %arg3 : <f32>[tensor<8x64xi32, #blocked>] tensor<8x64xf32, #blocked> -> <8x64xf32, #shared, #smem, mutable>
+     %65 = amdg.buffer_load_to_local %arg1[%arg2] mask=%mask other=%other into %arg3 : !tt.ptr<f32>[tensor<8x64xi32, #blocked>] tensor<8x64xf32, #blocked> -> <8x64xf32, #shared, #smem, mutable>
 @@ -75,7 +76,7 @@
  
      // Test lowering path in AMD's MemoryOpToLLVM pattern

@@ -79,10 +79,45 @@ all_link_actions = [
     ACTION_NAMES.cpp_link_nodeps_dynamic_library,
 ]
 
+def _normalize_win_path(path):
+    if not path:
+        return path
+    if path.startswith("C:") or path.startswith("c:") or path.startswith("/"):
+        return path
+
+    win_path = path.replace("/", "\\")
+    return win_path
+
+def _get_tool(path, target, with_features = []):
+    if target:
+        return tool(tool = target, with_features = with_features)
+
+    # Prefer path if available, to avoid forward slash issues with target resolution
+    if path:
+        return tool(path = _normalize_win_path(path), with_features = with_features)
+    return None
+
 def _use_msvc_toolchain(ctx):
     return ctx.attr.cpu in ["x64_windows", "arm64_windows"] and (ctx.attr.compiler == "msvc-cl" or ctx.attr.compiler == "clang-cl")
 
 def _impl(ctx):
+    with_wrapper_feature = feature(name = "with_wrapper")
+
+    if ctx.attr.compiler == "clang-cl":
+        wrapper_cl = _get_tool(ctx.attr.msvc_cl_path, ctx.executable.msvc_cl_target, with_features = [with_feature_set(features = ["with_wrapper"])])
+        direct_cl = tool(path = "C:\\tools\\LLVM\\bin\\clang-cl.exe")
+        cl_tools = [wrapper_cl, direct_cl]
+
+        wrapper_ml = _get_tool(ctx.attr.msvc_ml_path, ctx.executable.msvc_ml_target, with_features = [with_feature_set(features = ["with_wrapper"])])
+        direct_ml = tool(path = "C:\\tools\\LLVM\\bin\\clang-cl.exe")
+        ml_tools = [wrapper_ml, direct_ml]
+    else:
+        cl_tools = [_get_tool(ctx.attr.msvc_cl_path, ctx.executable.msvc_cl_target)]
+        ml_tools = [_get_tool(ctx.attr.msvc_ml_path, ctx.executable.msvc_ml_target)]
+
+    link_tool = _get_tool(ctx.attr.msvc_link_path, None)
+    lib_tool = _get_tool(ctx.attr.msvc_lib_path, None)
+
     if _use_msvc_toolchain(ctx):
         artifact_name_patterns = [
             artifact_name_pattern(
@@ -142,7 +177,7 @@ def _impl(ctx):
                 "has_configured_linker_path",
                 "def_file",
             ],
-            tools = [tool(path = ctx.attr.msvc_link_path)],
+            tools = [link_tool],
         )
 
         cpp_link_static_library_action = action_config(
@@ -154,7 +189,7 @@ def _impl(ctx):
                 "linker_param_file",
                 "msvc_env",
             ],
-            tools = [tool(path = ctx.attr.msvc_lib_path)],
+            tools = [lib_tool],
         )
 
         assemble_action = action_config(
@@ -166,7 +201,7 @@ def _impl(ctx):
                 "msvc_env",
                 "sysroot",
             ],
-            tools = [tool(path = ctx.attr.msvc_ml_path)],
+            tools = ml_tools,
         )
 
         preprocess_assemble_action = action_config(
@@ -178,7 +213,7 @@ def _impl(ctx):
                 "msvc_env",
                 "sysroot",
             ],
-            tools = [tool(path = ctx.attr.msvc_ml_path)],
+            tools = ml_tools,
         )
 
         c_compile_action = action_config(
@@ -191,7 +226,7 @@ def _impl(ctx):
                 "user_compile_flags",
                 "sysroot",
             ],
-            tools = [tool(path = ctx.attr.msvc_cl_path)],
+            tools = cl_tools,
         )
 
         linkstamp_compile_action = action_config(
@@ -206,7 +241,7 @@ def _impl(ctx):
                 "sysroot",
                 "unfiltered_compile_flags",
             ],
-            tools = [tool(path = ctx.attr.msvc_cl_path)],
+            tools = cl_tools,
         )
 
         cpp_compile_action = action_config(
@@ -219,7 +254,7 @@ def _impl(ctx):
                 "user_compile_flags",
                 "sysroot",
             ],
-            tools = [tool(path = ctx.attr.msvc_cl_path)],
+            tools = cl_tools,
         )
 
         cpp_link_executable_action = action_config(
@@ -235,7 +270,7 @@ def _impl(ctx):
                 "msvc_env",
                 "no_stripping",
             ],
-            tools = [tool(path = ctx.attr.msvc_link_path)],
+            tools = [link_tool],
         )
 
         cpp_link_dynamic_library_action = action_config(
@@ -254,7 +289,7 @@ def _impl(ctx):
                 "has_configured_linker_path",
                 "def_file",
             ],
-            tools = [tool(path = ctx.attr.msvc_link_path)],
+            tools = [link_tool],
         )
 
         action_configs = [
@@ -376,6 +411,7 @@ def _impl(ctx):
 
         compiler_param_file_feature = feature(
             name = "compiler_param_file",
+            enabled = True,
         )
 
         copy_dynamic_libraries_to_binary_feature = feature(
@@ -1129,6 +1165,7 @@ def _impl(ctx):
             ],
             implies = ["msvc_compile_env", "msvc_link_env"],
         )
+
         features = [
             no_legacy_features_feature,
             nologo_feature,
@@ -1179,6 +1216,7 @@ def _impl(ctx):
             no_windows_export_all_symbols_feature,
             supports_dynamic_linker_feature,
             supports_interface_shared_libraries_feature,
+            with_wrapper_feature,
         ]
     else:
         targets_windows_feature = feature(
@@ -1414,8 +1452,11 @@ def _impl(ctx):
                 sysroot_feature,
             ]
 
-    tool_paths = [
-        tool_path(name = name, path = path)
+    tool_paths_attr = [
+        tool_path(
+            name = name,
+            path = _normalize_win_path(path),
+        )
         for name, path in ctx.attr.tool_paths.items()
     ]
 
@@ -1433,7 +1474,7 @@ def _impl(ctx):
         compiler = ctx.attr.compiler,
         abi_version = ctx.attr.abi_version,
         abi_libc_version = ctx.attr.abi_libc_version,
-        tool_paths = tool_paths,
+        tool_paths = tool_paths_attr,
     )
 
 cc_toolchain_config = rule(
@@ -1456,7 +1497,9 @@ cc_toolchain_config = rule(
         "msvc_env_include": attr.string(default = "msvc_not_found"),
         "msvc_env_lib": attr.string(default = "msvc_not_found"),
         "msvc_cl_path": attr.string(default = "vc_installation_error.bat"),
+        "msvc_cl_target": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
         "msvc_ml_path": attr.string(default = "vc_installation_error.bat"),
+        "msvc_ml_target": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
         "msvc_link_path": attr.string(default = "vc_installation_error.bat"),
         "msvc_lib_path": attr.string(default = "vc_installation_error.bat"),
         "dbg_mode_debug_flag": attr.string(),

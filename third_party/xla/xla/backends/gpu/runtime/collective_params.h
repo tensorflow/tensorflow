@@ -158,21 +158,34 @@ struct KernelArgDescriptor {
   std::optional<int32_t> index = std::nullopt;
 };
 
-// This structure contains the information required to configure and launch a
-// custom collective kernel.
-struct CollectiveKernelSpec {
+// Lightweight codegen-time configuration for collective kernels.
+// Built from HLO instruction properties alone, without launch dimensions.
+struct CollectiveCodegenConfig {
+  // If true, the runtime copies the input buffer to the local rank's scratch
+  // buffer before kernel launch. The kernel receives the scratch buffer as
+  // its input argument.
+  bool copy_input_to_scratch = false;
+  // If true, a cross-rank barrier is emitted before the tile loop. The barrier
+  // waits until all ranks have populated the symmetric scratch buffers.
+  bool emit_entry_barrier = false;
   // Specs for input operand buffers.
   std::vector<IoBufferSpec> input_buffer_specs;
   // Specs for output result buffers.
   std::vector<IoBufferSpec> output_buffer_specs;
-  // Specs for scratch buffers these are allocated by the thunk.
-  std::vector<ScratchBufferSpec> scratch_buffers;
   // Argument descriptors that determine how the kernel is invoked.
   std::vector<KernelArgDescriptor> argument_descriptors;
   // Each time ExecuteOnStream is called, the invocation count is incremented by
   // this amount. For one-shot collectives, this is 1. For two-shot collectives,
   // this is 2 and so on.
   uint32_t sync_count_increment = 1;
+};
+
+// This structure contains the information required to configure and launch a
+// custom collective kernel.
+struct CollectiveKernelSpec {
+  CollectiveCodegenConfig codegen_config;
+  // Specs for scratch buffers these are allocated by the thunk.
+  std::vector<ScratchBufferSpec> scratch_buffers;
 };
 
 }  // namespace xla::gpu

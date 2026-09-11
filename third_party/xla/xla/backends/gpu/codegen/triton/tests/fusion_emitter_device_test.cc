@@ -2177,9 +2177,6 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(TritonEmitterTestWithTilingParam,
        ScaledDotIsSupportedByReferencePlatform) {
-  if (GpuComputeCapability().IsRocm()) {
-    GTEST_SKIP() << "Scaled dot is not supported on AMD.";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule ScaledDotIsSupportedByReferencePlatform
 
@@ -2571,8 +2568,10 @@ class TritonScaledDotTestBase : public TritonEmitterTest {
   absl::StatusOr<std::vector<Literal>> MakeScaledDotArguments(
       const HloModule* module) {
     std::minstd_rand0 engine;
+    FakeArgumentsOptions options;
+    options.engine = &engine;
     ABSL_ASSIGN_OR_RETURN(std::vector<Literal> arguments,
-                     MakeFakeArguments(module, &engine));
+                     MakeFakeArguments(module, options));
     if (arguments.size() != 4) {
       return absl::InternalError(absl::StrCat(
           "Expected 4 scaled-dot arguments, got ", arguments.size()));

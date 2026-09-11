@@ -187,10 +187,21 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(
           ? SymmetricMemoryType::kLoadStoreAccessible
           : SymmetricMemoryType::kXlaRendezvous;
   return {
-      /*operand_buffer_specs=*/{
-          {/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-      /*result_buffer_specs=*/
-      {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+      /*codegen_config=*/{
+          /*copy_input_to_scratch=*/false,
+          /*emit_entry_barrier=*/false,
+          /*input_buffer_specs=*/
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /*output_buffer_specs=*/
+          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
+          /*argument_descriptors=*/
+          {{KernelArgType::kInputBuffer, 0},
+           {KernelArgType::kOutputBuffer, 0},
+           {KernelArgType::kRuntimeRank},
+           {KernelArgType::kInvocationCount},
+           {KernelArgType::kScratchBuffer, 0},
+           {KernelArgType::kScratchBuffer, 1}},
+      },
       /*scratch_buffers=*/
       {{signal_size, /*requires_multimem=*/false, sym_mem_type,
         /*should_memzero=*/true,
@@ -199,13 +210,6 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(
         /*requires_multimem=*/is_multimem_enabled, sym_mem_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}},
-      /*argument_descriptors=*/
-      {{KernelArgType::kInputBuffer, 0},
-       {KernelArgType::kOutputBuffer, 0},
-       {KernelArgType::kRuntimeRank},
-       {KernelArgType::kInvocationCount},
-       {KernelArgType::kScratchBuffer, 0},
-       {KernelArgType::kScratchBuffer, 1}},
   };
 }
 

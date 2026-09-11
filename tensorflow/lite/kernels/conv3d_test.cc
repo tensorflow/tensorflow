@@ -451,6 +451,44 @@ TEST(Conv3dOpModel, NoIm2ColTensorTest) {
                         708, 794, 632, 734, 836, 938, 728, 846, 964, 1082}));
 }
 
+TEST(Conv3dOpModel, HandlesZeroBatch) {
+  Conv3dOpModel m({TensorType_FLOAT32, {0, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  m.SetFilter({1.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(0, 1, 1, 1, 1));
+}
+
+TEST(Conv3dOpModel, HandlesEmptyOutputSpatialDimension) {
+  Conv3dOpModel m({TensorType_FLOAT32, {1, 1, 8, 4, 1}},
+                  {TensorType_FLOAT32, {2, 3, 2, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID,
+                  /*stride_depth=*/1, /*stride_width=*/1, /*stride_height=*/1,
+                  ActivationFunctionType_NONE,
+                  /*dilation_depth=*/1, /*dilation_width=*/3,
+                  /*dilation_height=*/1);
+
+  m.SetInput(CreateRangeVector<float>(32));
+  m.SetFilter(CreateRangeVector<float>(12));
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 0, 6, 1, 1));
+}
+
+TEST(Conv3dPrepareSecurityTest, RejectsTotalOutputDimensionsOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
+                    "on 32-bit.";
+  }
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyConv3dOpModel m({TensorType_FLOAT32, {kHugeDim, 1, 1, 1, 1}},
+                             {TensorType_FLOAT32, {1, 1, 1, 1, kHugeDim}},
+                             {TensorType_FLOAT32, {}}, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST(Conv3dPrepareSecurityTest, RejectsShapeOverflow) {
   constexpr int kHugeDim = 46341;
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
 
@@ -522,21 +523,30 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
 
   std::string platform_name =
       xla::PlatformUtil::CanonicalPlatformName("gpu").value();
-  if (platform_name == "rocm") {
-    EXPECT_THAT(
-        status.message(),
-        ::testing::ContainsRegex(
-            "Kernel '.*' launch needs more blocks [(]4294967296, 65536[)] "
-            "than allowed by hardware [(]2147483647, 65536[)]"));
-  } else if (platform_name == "sycl") {
-    // oneAPI has a higher block-count limit than CUDA/ROCm, so this should
-    // compile successfully.
+  if (platform_name == "sycl") {
     EXPECT_OK(status);
   } else {
-    EXPECT_THAT(status.message(),
-                ::testing::ContainsRegex(
-                    "Kernel '.*' launch needs more blocks [(].*, 65535[)] "
-                    "than allowed by hardware [(]2147483647, 65535[)]"));
+    auto* platform =
+        se::PlatformManager::PlatformWithName(platform_name).value();
+    auto* se = platform->ExecutorForDevice(0).value();
+    const auto& device_description = se->GetDeviceDescription();
+    const auto* rocm_cc =
+        device_description.gpu_compute_capability().rocm_compute_capability();
+    const bool isRocm713AndBelow =
+        rocm_cc != nullptr && device_description.runtime_version() <
+                                  stream_executor::SemanticVersion(7, 13, 0);
+    if (isRocm713AndBelow) {
+      EXPECT_THAT(
+          status.message(),
+          ::testing::ContainsRegex(
+              "Kernel '.*' launch needs more blocks [(]4294967296, 65536[)] "
+              "than allowed by hardware [(]2147483647, 65536[)]"));
+    } else {
+      EXPECT_THAT(status.message(),
+                  ::testing::ContainsRegex(
+                      "Kernel '.*' launch needs more blocks [(].*, 65535[)] "
+                      "than allowed by hardware [(]2147483647, 65535[)]"));
+    }
   }
 }
 

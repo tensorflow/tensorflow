@@ -328,6 +328,13 @@ std::optional<bool> CompareSize(
   const int64_t a_size = size_of(*a);
   const int64_t b_size = size_of(*b);
   if (a_size != b_size) {
+    // Unbounded size is considered larger than any bounded size.
+    if (a_size == Shape::kUnboundedSize) {
+      return true;
+    }
+    if (b_size == Shape::kUnboundedSize) {
+      return false;
+    }
     return a_size > b_size;  // use ">" for decreasing size.
   }
   return std::nullopt;
@@ -621,9 +628,9 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   // offset, since -1 <= size_ is true for any non-negative allocation size.
   TF_RET_CHECK(offset >= 0)
       << "LogicalBuffer " << buffer << " has a negative offset: " << offset;
-  TF_RET_CHECK(size >= 0) << "LogicalBuffer " << buffer
-                          << " has a negative size: " << size;
-  TF_RET_CHECK(offset <= size_)
+  TF_RET_CHECK(size >= 0 || size == Shape::kUnboundedSize)
+      << "LogicalBuffer " << buffer << " has a negative size: " << size;
+  TF_RET_CHECK(offset <= size_ || size == Shape::kUnboundedSize)
       << "LogicalBuffer " << buffer << " offset out of range";
   TF_RET_CHECK(offset + size <= size_)
       << "LogicalBuffer " << buffer
@@ -2862,6 +2869,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
       options.alloc_constants = opts_.allocate_buffers_for_constants;
+      options.view_color = opts_.dus_view_color;
       auto private_stacks_it = private_stacks.find(color);
       if (private_stacks_it != private_stacks.end()) {
         // For private stack colors, we collect all of the buffers that are
@@ -2925,6 +2933,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         int64_t alignment = assignment->color_alignment_(color);
         HeapSimulator::Options options;
         options.buffers_to_assign = &color_map[color];
+        options.view_color = opts_.dus_view_color;
         HeapSimulator::Result<HloValue> result;
         ABSL_ASSIGN_OR_RETURN(
             result, HeapSimulator::Run(
@@ -3190,6 +3199,15 @@ BufferAssigner::CreateAssignment(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                    HloLiveRange::Run(schedule, *alias_analysis,
                                      module->entry_computation(), true));
+
+  // A view base's storage is read through the view by the view's consumers,
+  // so its live range must reach the last transitive reader; allocation reuse
+  // decisions below consult these live ranges.
+  if (opts_.dus_view_color.has_value()) {
+    ExtendViewBaseLiveRanges(hlo_live_range.get(),
+                             alias_analysis->dataflow_analysis(),
+                             *opts_.dus_view_color);
+  }
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(3, module->ToString());

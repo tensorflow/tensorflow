@@ -1029,8 +1029,6 @@ bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts) {
   return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
 }
 
-namespace {
-
 std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
     const HloInstruction* instruction) {
   if (!IsNonFusionCollective(instruction)) {
@@ -1067,8 +1065,6 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
       return std::nullopt;
   }
 }
-
-}  // namespace
 
 NcclSymmetricBuffersSpec::NcclSymmetricBuffersSpec(
     const DebugOptions& debug_options) {

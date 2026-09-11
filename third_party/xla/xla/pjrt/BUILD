@@ -1,15 +1,6 @@
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_cuda_or_rocm_is_configured",
-)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -209,6 +200,7 @@ cc_library(
         ":infer_dispatch_info",
         ":pjrt_client",
         ":pjrt_compiler",
+        ":pjrt_device_description",
         ":pjrt_executable",
         ":raw_buffer",
         ":raw_pjrt_client",
@@ -218,6 +210,7 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:future",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -225,6 +218,7 @@ cc_library(
         "//xla/error:error_codes",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/c:pjrt_c_api_device_event_hdrs",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology",
         "//xla/runtime:device_id",
         "//xla/service:dump",
         "//xla/tsl/concurrency:async_value",
@@ -1138,164 +1132,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:macros",
-    ],
-)
-
-cc_library(
-    name = "triton_stub",
-    srcs = [
-        "triton.h",
-        "triton_stub.cc",
-    ],
-    tags = ["manual"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:path",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "triton_cuda",
-    srcs = [
-        "triton.h",
-        "triton_cuda.cc",
-    ],
-    compatible_with = [],
-    tags = [
-        "cuda-only",
-        "gpu",
-        "manual",
-    ],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/backends/gpu/codegen/triton:compilation_pipeline",
-        "//xla/service/gpu/llvm_gpu_backend",
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:IRReader",
-        "@llvm-project//llvm:Linker",
-        "@llvm-project//llvm:MC",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithToLLVM",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-        "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:IndexToLLVM",
-        "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMIRTransforms",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:NVVMToLLVMIRTranslation",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@triton//:TritonDialects",
-        "@triton//:TritonTransforms",
-        "@triton//third_party/nvidia:NVGPUToLLVM",
-        "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
-        "@tsl//tsl/platform:path",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "triton_rocm",
-    srcs = [
-        "triton.h",
-        "triton_rocm.cc",
-    ],
-    compatible_with = [],
-    tags = [
-        "gpu",
-        "manual",
-        "rocm-only",
-    ],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "//xla:debug_options_flags",
-        "//xla:xla_proto_cc",
-        "//xla/backends/gpu/codegen/triton:compilation_pipeline",
-        "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/rocm:rocm_compute_capability",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMIRTransforms",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@llvm-project//mlir:Transforms",
-        "@triton//:TritonDialects",
-        "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:random",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "triton",
-    srcs = [],
-    hdrs = ["triton.h"],
-    visibility = internal_visibility([":friends"]),
-    deps = if_cuda_or_rocm_is_configured(
-        [],
-        [":triton_stub"],
-    ) + if_rocm_is_configured(
-        [":triton_rocm"],
-    ) + if_cuda_is_configured(
-        [":triton_cuda"],
-    ) + [
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "triton_test",
-    srcs = ["triton_test.cc"],
-    deps = [
-        ":triton",
-        "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

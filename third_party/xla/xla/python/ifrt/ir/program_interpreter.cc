@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -552,6 +553,104 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 
 namespace {
 
+absl::StatusOr<DeviceListRef> ComputeDeviceListFromIntervals(
+    Client* client, const DeviceListRef& device_list, int64_t count,
+    absl::Span<const IfrtIntervalAttr> intervals) {
+  TF_RET_CHECK(count >= 0);
+  std::vector<Device*> devices;
+  devices.reserve(count);
+  for (const IfrtIntervalAttr& interval : intervals) {
+    TF_RET_CHECK(interval.getStep() > 0);
+    int64_t index = interval.getStart();
+    while (index < interval.getEnd()) {
+      TF_RET_CHECK(index >= 0 && index < device_list->size());
+      devices.push_back(device_list->devices()[index]);
+      index += interval.getStep();
+    }
+  }
+  TF_RET_CHECK(devices.size() == count);
+  return client->MakeDeviceList(devices);
+}
+
+absl::StatusOr<
+    absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>>
+ComputeInputDevicesForOutputMap(Client* client,
+                                absl::Span<const ArraySpec> input_specs,
+                                absl::Span<const ArraySpec> output_specs,
+                                RemapArraysOp remap_op) {
+  // A list of intervals along with the sum of entries across all the intervals.
+  struct IntervalsAndCount {
+    std::vector<IfrtIntervalAttr> intervals;
+    int64_t count = 0;
+  };
+
+  // Map from output array index to all its input contributors.
+  //
+  // The value is a map from input array index to the intervals of that input
+  // array that contribute to the given output.
+  // Using btree_map ensures deterministic iteration order across compiler runs.
+  absl::btree_map<int, absl::btree_map<int, IntervalsAndCount>>
+      output_to_inputs_and_intervals;
+  for (const auto& array_mapping : remap_op.getMappings()) {
+    const auto array_mapping_attr =
+        llvm::cast<IfrtArrayMappingAttr>(array_mapping);
+    int in_array = array_mapping_attr.getInArrayIndex();
+    int out_array = array_mapping_attr.getOutArrayIndex();
+    TF_RET_CHECK(in_array >= 0 && in_array < input_specs.size());
+    TF_RET_CHECK(out_array >= 0 && out_array < output_specs.size());
+
+    IntervalsAndCount& intervals =
+        output_to_inputs_and_intervals[out_array][in_array];
+    for (const auto& m : array_mapping_attr.getMappings()) {
+      const auto mapping_attr = llvm::cast<IfrtMappingAttr>(m);
+      IfrtIntervalAttr from_shards = mapping_attr.getFromShards();
+      intervals.intervals.push_back(from_shards);
+      intervals.count += from_shards.size();
+    }
+  }
+
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map.reserve(output_specs.size());
+  for (int out_array = 0; out_array < output_specs.size(); ++out_array) {
+    input_devices_for_output_map.insert({out_array, {}});
+  }
+
+  for (const auto& [out_array, input_intervals] :
+       output_to_inputs_and_intervals) {
+    TF_RET_CHECK(out_array >= 0 && out_array < output_specs.size());
+    const DeviceListRef& out_devices =
+        output_specs[out_array].sharding->devices();
+    std::vector<RemapPlan::InputDeviceRange>& out_input_devices =
+        input_devices_for_output_map[out_array];
+    for (const auto& [in_array, intervals] : input_intervals) {
+      TF_RET_CHECK(in_array >= 0 && in_array < input_specs.size());
+      const DeviceListRef& in_devices =
+          input_specs[in_array].sharding->devices();
+      TF_RET_CHECK(intervals.count >= 0 &&
+                   intervals.count <= out_devices->size());
+      TF_RET_CHECK(intervals.count >= 0 &&
+                   intervals.count <= in_devices->size());
+      DeviceListRef interval_device_list;
+      if (intervals.count == in_devices->size() &&
+          intervals.intervals.size() == 1 &&
+          intervals.intervals[0].getStart() == 0 &&
+          intervals.intervals[0].getStep() == 1) {
+        interval_device_list = in_devices;
+      } else {
+        ABSL_ASSIGN_OR_RETURN(
+            interval_device_list,
+            ComputeDeviceListFromIntervals(client, in_devices, intervals.count,
+                                           intervals.intervals));
+      }
+      out_input_devices.push_back(RemapPlan::InputDeviceRange{
+          /*in_array=*/in_array,
+          /*input_devices=*/std::move(interval_device_list)});
+    }
+  }
+  return input_devices_for_output_map;
+}
+
 struct RemapArraysOpState {
   std::string pretty_print;
 
@@ -664,28 +763,6 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   RemapArraysOpState state;
   state.pretty_print = PrettyPrint(remap_op);
 
-  // Construct the mappings of the remap plan.
-  std::vector<RemapPlan::Mapping> mappings;
-  mappings.reserve(remap_op.getMappings().size());
-  for (const auto& array_mapping : remap_op.getMappings()) {
-    const auto array_mapping_attr =
-        llvm::cast<IfrtArrayMappingAttr>(array_mapping);
-    auto& mapping = mappings.emplace_back();
-    mapping.in_array = array_mapping_attr.getInArrayIndex();
-    mapping.out_array = array_mapping_attr.getOutArrayIndex();
-    mapping.from.reserve(array_mapping_attr.getMappings().size());
-    mapping.to.reserve(array_mapping_attr.getMappings().size());
-    for (const auto& m : array_mapping_attr.getMappings()) {
-      const auto mapping_attr = llvm::cast<IfrtMappingAttr>(m);
-      auto from_shards = mapping_attr.getFromShards();
-      auto to_shards = mapping_attr.getToShards();
-      mapping.from.push_back(RemapPlan::Interval{
-          from_shards.getStart(), from_shards.getEnd(), from_shards.getStep()});
-      mapping.to.push_back(RemapPlan::Interval{
-          to_shards.getStart(), to_shards.getEnd(), to_shards.getStep()});
-    }
-  };
-
   // Get the input specs of the remap plan and the input arrays.
   std::vector<ArraySpec> input_specs;
   input_specs.reserve(remap_op.getInputs().size());
@@ -708,10 +785,13 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     output_specs.push_back(std::move(spec));
   }
 
-  ABSL_ASSIGN_OR_RETURN(
-      state.remap_plan,
-      RemapPlan::CreateOptimized(client_, std::move(input_specs),
-                                 std::move(output_specs), std::move(mappings)));
+  ABSL_ASSIGN_OR_RETURN(auto input_devices_for_output_map,
+                   ComputeInputDevicesForOutputMap(client_, input_specs,
+                                                   output_specs, remap_op));
+
+  state.remap_plan = RemapPlan(std::move(input_specs), std::move(output_specs),
+                               std::move(input_devices_for_output_map));
+  ABSL_RETURN_IF_ERROR(state.remap_plan.Validate());
   state.remap_is_donated = remap_op.getDonated();
 
   for (const auto output : remap_op.getOutputs()) {

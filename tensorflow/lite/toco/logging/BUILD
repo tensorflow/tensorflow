@@ -26,6 +26,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow/lite/toco:api_visibility.bzl", "TOCO_API_VISIBILITY")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -44,7 +45,7 @@ cc_library(
     srcs = ["conversion_log_util.cc"],
     hdrs = ["conversion_log_util.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":toco_conversion_log_proto_cc",
         "//tensorflow/core:protos_all_cc",
@@ -88,7 +89,7 @@ py_library(
         "html_template",
     ],
     strict_deps = True,
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":toco_conversion_log_proto_py",
         "//tensorflow/python/lib/io:file_io",

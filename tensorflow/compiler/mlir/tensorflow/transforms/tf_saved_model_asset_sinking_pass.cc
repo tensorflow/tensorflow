@@ -162,7 +162,8 @@ absl::Status AddSessionInitializerAndInlineCheckpoint(
       /*sym_name=*/
       builder.getStringAttr("__tf_saved_model_variables"),  // Val unimportant.
       /*filename=*/
-      builder.getStringAttr(checkpoint_path));
+      builder.getStringAttr(checkpoint_path),
+      /*sym_visibility=*/nullptr);
   // Marks the input to be inlined.
   main_func.setArgAttr(
       0, "tf_saved_model.bound_input",

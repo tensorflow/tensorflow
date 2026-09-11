@@ -922,6 +922,50 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const int64_t feature_group_count = conv->feature_group_count();
     const int64_t batch_group_count = conv->batch_group_count();
 
+    if constexpr (std::is_same_v<ElementwiseT, float>) {
+      auto is_row_major_r2 = [](const Shape& s) {
+        return s.dimensions_size() == 2 &&
+               (!s.has_layout() ||
+                LayoutUtil::IsMonotonicWithDim0Major(s.layout()));
+      };
+
+      if (parent_->trace_mac_handler_ == nullptr && feature_group_count == 1 &&
+          batch_group_count == 1 && num_spatial_dims == 0 &&
+          dnums.input_batch_dimension() == 0 &&
+          dnums.input_feature_dimension() == 1 &&
+          dnums.kernel_input_feature_dimension() == 0 &&
+          dnums.kernel_output_feature_dimension() == 1 &&
+          dnums.output_batch_dimension() == 0 &&
+          dnums.output_feature_dimension() == 1 && is_row_major_r2(lhs_shape) &&
+          is_row_major_r2(rhs_shape) && is_row_major_r2(result_shape)) {
+        const int64_t m = lhs_shape.dimensions(0);
+        const int64_t k = lhs_shape.dimensions(1);
+        const int64_t n = rhs_shape.dimensions(1);
+
+        if (m > 0 && k > 0 && n > 0) {
+          Literal lhs_f32 = lhs_literal.Convert(F32).value();
+          Literal rhs_f32 = rhs_literal.Convert(F32).value();
+
+          Array2D<float> lhs_array(m, k);
+          lhs_array.SetValues(lhs_f32.data<float>());
+          Array2D<float> rhs_array(k, n);
+          rhs_array.SetValues(rhs_f32.data<float>());
+
+          std::unique_ptr<Array2D<float>> result_array =
+              HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+
+          Literal result_f32(ShapeUtil::MakeShape(F32, {m, n}));
+          result_f32.PopulateR2FromArray2D(*result_array);
+
+          parent_->SetEvaluatedLiteralFor(
+              conv, std::move(result_f32)
+                        .Convert(result_shape.element_type())
+                        .value());
+          return absl::OkStatus();
+        }
+      }
+    }
+
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data, feature_group_count, batch_group_count,

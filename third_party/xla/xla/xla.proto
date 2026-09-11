@@ -1837,7 +1837,20 @@ message DebugOptions {
   // kept inline. Default is MAX_INT (deduplication disabled).
   optional int64 xla_deduplicate_backend_configs_min_size = 542;
 
-  // Next id: 543
+  // Single serialized config to override config of all instructions, bypassing
+  // cache and autotuning. Accepts textproto of autotuner.Config.
+  optional string xla_force_config = 543;
+
+  // File containing a list of serialized configs to override candidate configs
+  // for all instructions. Accepts textproto of autotuner.CandidateConfigs.
+  optional string xla_candidate_configs_file = 544;
+
+  // If true, allows skipping defensive copy insertion for S(1) collective
+  // memory parameters that have input-output aliasing and execute on all
+  // available devices in the topology.
+  optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
+
+  // Next id: 546
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

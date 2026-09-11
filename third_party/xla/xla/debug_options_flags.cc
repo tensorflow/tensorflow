@@ -486,10 +486,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_deduplicate_backend_configs_min_size(
       std::numeric_limits<int64_t>::max());
 
+  opts.set_xla_force_config("");
+
+  opts.set_xla_candidate_configs_file("");
+
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
-  opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
+  opts.set_xla_gpu_autotune_gemm_rtol(0.01f);
 
   // TODO(b/355487968): Remove this flag once all data will be presented in
   // xprof with command buffers.
@@ -582,7 +586,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_collective_timeout_seconds(30 * 60 * kSanitizerMultiplier);
 
   opts.set_xla_keep_shardings_after_spmd(false);
-  opts.set_xla_enable_hlo_sharding_v3(false);
+  opts.set_xla_enable_hlo_sharding_v3(true);
   opts.set_xla_enable_rgv3_materialization(true);
   opts.set_xla_spmd_enable_dynamic_slice_collective_broadcast(false);
   opts.set_xla_sdy_export_all_reduce_scatter(false);
@@ -591,6 +595,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(false);
   opts.set_xla_gpu_enable_gxl_ragged_all_to_all(false);
   opts.set_xla_gpu_gxl_scratch_size_bytes(64 * 1024 * 1024);
+  opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -3061,6 +3066,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "into payloads during serialization. Configs smaller than this threshold "
       "are kept inline. Default is MAX_INT (feature disabled)."));
   flag_list->push_back(tsl::Flag(
+      "xla_force_config",
+      string_setter_for(&DebugOptions::set_xla_force_config),
+      debug_options->xla_force_config(),
+      "Single serialized config to override config of all instructions, "
+      "bypassing cache and autotuning."));
+  flag_list->push_back(tsl::Flag(
+      "xla_candidate_configs_file",
+      string_setter_for(&DebugOptions::set_xla_candidate_configs_file),
+      debug_options->xla_candidate_configs_file(),
+      "File containing a list of serialized configs to override supported "
+      "configs for all instructions."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_autotune_backends",
       SetterForRepeatedEnum<autotuner::Backend>(
           "xla_gpu_experimental_autotune_backends",
@@ -3592,6 +3609,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int64_setter_for(&DebugOptions::set_xla_gpu_gxl_scratch_size_bytes),
       debug_options->xla_gpu_gxl_scratch_size_bytes(),
       "Size in bytes of the scratch buffer for GXL collectives."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_persistent_symmetric_memory",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_persistent_symmetric_memory),
+      debug_options->xla_gpu_enable_persistent_symmetric_memory(),
+      "If true, allows skipping defensive copy insertion for S(1) collective "
+      "memory parameters that have input-output aliasing and execute on all "
+      "available devices in the topology."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
       bool_setter_for(

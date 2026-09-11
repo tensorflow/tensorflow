@@ -97,7 +97,8 @@ WidenComputation(HloComputation* narrow_comp, const Shape& wide_shape) {
       HloInstruction::CreateCall(narrow_comp->root_instruction()->shape(),
                                  {truncated_parameter}, narrow_comp));
   call_narrow_comp->set_original_value(
-      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+      std::make_shared<OriginalValue>(call_narrow_comp->shape(),
+                                      /*call_hierarchy=*/""));
   wide_comp->set_root_instruction(call_narrow_comp,
                                   /*accept_different_shape=*/true);
   ABSL_ASSIGN_OR_RETURN(auto inline_map, CallInliner::Inline(call_narrow_comp));

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,10 +26,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,8 +40,10 @@ limitations under the License.
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -48,6 +54,49 @@ absl::Status MakeCombinedConfigError(absl::Span<const absl::Status> errors) {
     absl::StrAppend(&combined_error, "\n - ", err.ToString());
   }
   return absl::InternalError(combined_error);
+}
+
+absl::StatusOr<std::vector<autotuner::Config>> LoadCandidateConfigs(
+    absl::string_view candidate_configs_file,
+    absl::Span<const std::unique_ptr<CodegenBackend>> codegen_backends) {
+  if (candidate_configs_file.empty()) {
+    return std::vector<autotuner::Config>{};
+  }
+  std::string content;
+  absl::Status read_status = tsl::ReadFileToString(
+      tsl::Env::Default(), std::string(candidate_configs_file), &content);
+  if (!read_status.ok()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to read candidate configs file '",
+                     candidate_configs_file, "': ", read_status.message()));
+  }
+  autotuner::CandidateConfigs candidate_configs_proto;
+  bool parsed = tsl::protobuf::TextFormat::ParseFromString(
+      content, &candidate_configs_proto);
+  if (!parsed) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse candidate configs file '", candidate_configs_file,
+        "' as textproto or binary proto."));
+  }
+  std::vector<autotuner::Config> candidate_configs;
+  candidate_configs.reserve(candidate_configs_proto.configs_size());
+  for (const auto& config : candidate_configs_proto.configs()) {
+    bool backend_found = false;
+    for (const auto& backend : codegen_backends) {
+      if (backend->backend() == config.backend()) {
+        backend_found = true;
+        break;
+      }
+    }
+    if (!backend_found) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Backend ", Backend_Name(config.backend()),
+                       " in candidate configs is not registered with the "
+                       "orchestrator."));
+    }
+    candidate_configs.push_back(config);
+  }
+  return candidate_configs;
 }
 
 }  // namespace
@@ -61,12 +110,31 @@ CodegenOrchestrator::Create(
         "CodegenOrchestrator initialization failed. No codegen backends "
         "provided.");
   }
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<autotuner::Config> candidate_configs,
+      LoadCandidateConfigs(options.candidate_configs_file, codegen_backends));
   return absl::WrapUnique(
-      new CodegenOrchestrator(std::move(codegen_backends), std::move(options)));
+      new CodegenOrchestrator(std::move(codegen_backends), std::move(options),
+                              std::move(candidate_configs)));
 }
 
 absl::StatusOr<std::vector<CodegenOrchestrator::Config>>
 CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
+  if (!candidate_configs_.empty()) {
+    std::vector<Config> configs;
+    configs.reserve(candidate_configs_.size());
+    for (const auto& candidate : candidate_configs_) {
+      for (const auto& codegen_backend : codegen_backends_) {
+        if (codegen_backend->backend() == candidate.backend()) {
+          configs.push_back(Config{
+              codegen_backend.get(),
+              std::make_unique<BackendConfig>(candidate.backend_config())});
+          break;
+        }
+      }
+    }
+    return configs;
+  }
   std::vector<Config> configs;
   std::vector<absl::Status> errors;
   for (auto& codegen_backend : codegen_backends_) {
@@ -94,6 +162,16 @@ CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
 absl::StatusOr<std::vector<CodegenOrchestrator::EstimatedConfig>>
 CodegenOrchestrator::GetSupportedConfigsWithEstimates(
     const HloInstruction& instr) const {
+  if (!candidate_configs_.empty()) {
+    ABSL_ASSIGN_OR_RETURN(std::vector<Config> configs, GetSupportedConfigs(instr));
+    std::vector<EstimatedConfig> estimated_configs;
+    estimated_configs.reserve(configs.size());
+    for (auto& config : configs) {
+      estimated_configs.push_back(
+          EstimatedConfig{std::move(config), std::nullopt});
+    }
+    return estimated_configs;
+  }
   std::vector<EstimatedConfig> configs;
   std::vector<absl::Status> errors;
   for (auto& codegen_backend : codegen_backends_) {

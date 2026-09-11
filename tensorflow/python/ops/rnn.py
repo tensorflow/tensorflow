@@ -731,7 +731,7 @@ def dynamic_rnn(cell,
 
     def _assert_has_shape(x, shape):
       x_shape = array_ops.shape(x)
-      packed_shape = array_ops_stack.stack(shape)
+      packed_shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
       return control_flow_assert.Assert(
           math_ops.reduce_all(math_ops.equal(x_shape, packed_shape)), [
               "Expected shape for Tensor %s is " % x.name, packed_shape,
@@ -845,8 +845,7 @@ def _dynamic_rnn_loop(cell,
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
     size = _concat(batch_size, size)
-    return array_ops.zeros(
-        array_ops_stack.stack(size), _infer_state_dtype(dtype, state))
+    return array_ops.zeros(size, _infer_state_dtype(dtype, state))
 
   flat_zero_output = tuple(
       _create_zero_arrays(output) for output in flat_output_size)
@@ -1445,8 +1444,7 @@ def static_rnn(cell,
       def _create_zero_output(output_size):
         # convert int to TensorShape if necessary
         size = _concat(batch_size, output_size)
-        output = array_ops.zeros(
-            array_ops_stack.stack(size), _infer_state_dtype(dtype, state))
+        output = array_ops.zeros(size, _infer_state_dtype(dtype, state))
         shape = _concat(
             tensor_shape.dimension_value(fixed_batch_size),
             output_size,

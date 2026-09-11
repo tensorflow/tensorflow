@@ -67,6 +67,16 @@ class UtilTest(test.TestCase):
     self.assertEqual(True, ret[3].map_key.boolean)
     self.assertEqual(3, ret[4].field)
 
+  def test_get_field_tag_accepts_tuple(self):
+    proto = test_message_pb2.ManyFields()
+
+    ret = util.get_field_tag(proto, ("field_one", "repeated_field", 15))
+
+    self.assertLen(ret, 3)
+    self.assertEqual(1, ret[0].field)
+    self.assertEqual(2, ret[1].field)
+    self.assertEqual(15, ret[2].index)
+
   def test_get_field_tag_invalid(self):
     proto = test_message_pb2.ManyFields()
     with self.assertRaisesRegex(KeyError, "Unable to find field 'not_a_field'"):
@@ -129,6 +139,28 @@ class UtilTest(test.TestCase):
 
     field, _ = util.get_field(proto, ["nested_map_bool", True, "string_field"])
     self.assertEqual("string_true", field)
+
+  def test_get_field_empty_tuple(self):
+    proto = test_message_pb2.ManyFields()
+
+    field, field_desc = util.get_field(proto, ())
+
+    self.assertIs(proto, field)
+    self.assertIsNone(field_desc)
+
+  def test_get_field_accepts_tuple(self):
+    proto = test_message_pb2.ManyFields(
+        field_one=test_message_pb2.ManyFields(
+            repeated_field=[test_message_pb2.ManyFields()]
+        )
+    )
+
+    field, field_desc = util.get_field(proto, ("field_one", "repeated_field"))
+
+    self.assertIsInstance(field, Iterable)
+    self.assertLen(field, 1)
+    self.assertEqual("repeated_field", field_desc.name)
+    self.assertProtoEquals(proto.field_one.repeated_field, field)
 
 
 if __name__ == "__main__":

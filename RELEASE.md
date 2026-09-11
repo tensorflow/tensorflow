@@ -46,6 +46,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         previously failed with a lookup error because the `SoftsignGrad`
         backward op had no registered Python gradient.
 
+*   `tf.math.reciprocal`
+
+    *   Constrains the XLA registration of `Reciprocal` and `Inv` to the types
+        that have a device kernel, so `jit_compile=True` no longer silently
+        accepts the integer inputs that eager execution and autoclustering
+        reject. Fixes
+        [#126414](https://github.com/tensorflow/tensorflow/issues/126414).
+
 
 *   `tf.experimental.numpy`
 

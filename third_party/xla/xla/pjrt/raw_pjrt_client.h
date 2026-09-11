@@ -208,6 +208,22 @@ class PjRtRawClient {
     LOG(FATAL) << "Implement MakeLoadState()";
   }
 
+  virtual absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
+                                               int32_t launch_id,
+                                               absl::Status error) {
+    return absl::UnimplementedError("PoisonExecution is not supported");
+  }
+
+  virtual absl::Status TransferToInfeed(LocalDeviceId local_device_id,
+                                        const LiteralSlice& literal) {
+    return absl::UnimplementedError("TransferToInfeed is not supported");
+  }
+
+  virtual absl::Status TransferFromOutfeed(LocalDeviceId local_device_id,
+                                           MutableBorrowingLiteral literal) {
+    return absl::UnimplementedError("TransferToOutfeed is not supported");
+  }
+
   virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
                                   PjRtRawBufferRef raw_buffer,
                                   PjRtDeviceEventRefVector definition_events,

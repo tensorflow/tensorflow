@@ -236,10 +236,6 @@ absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
   std::vector<tsl::Future<>> result;
   result.reserve(specs.size());
   for (Client::CopyArraysToHostBufferShardsSpec& spec : specs) {
-    if (spec.buffers.empty()) {  // Nothing to copy.
-      result.push_back(absl::OkStatus());
-      continue;
-    }
     if (spec.array == nullptr) {
       return absl::InvalidArgumentError(
           "CopyArraysToHostBufferShards called with a null array.");
@@ -249,6 +245,21 @@ absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
           "CopyArraysToHostBufferShards called with an array with some "
           "non-addressable devices.");
     }
+    using UniqueIndexDomains =
+        absl::InlinedVector<xla::ifrt::Sharding::IndexDomainAndShardIndices, 1>;
+    ABSL_ASSIGN_OR_RETURN(
+        UniqueIndexDomains unique_index_domains,
+        spec.array->sharding().UniqueIndexDomains(spec.array->shape()));
+    if (spec.buffers.size() != unique_index_domains.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "The number of buffers (", spec.buffers.size(),
+          ") does not match the number of unique index domains (",
+          unique_index_domains.size(), ") in CopyArraysToHostBufferShards."));
+    }
+    if (spec.buffers.empty()) {  // Nothing to copy.
+      result.push_back(absl::OkStatus());
+      continue;
+    }
     // Split the array into single-device arrays.
     ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> single_device_arrays,
                      spec.array->DisassembleIntoSingleDeviceArrays(
@@ -256,18 +267,18 @@ absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
 
     absl::InlinedVector<tsl::Future<>, 4> buffer_futures;
     buffer_futures.reserve(spec.buffers.size());
-    for (auto& buffer : spec.buffers) {
-      Client::CopyArraysToHostBufferShardsSpec::ShardIndices& shard_indices =
-          buffer.first;
-      Client::MutableHostBuffer& host_buffer = buffer.second;
+    for (int i = 0; i < spec.buffers.size(); ++i) {
+      Client::MutableHostBuffer& host_buffer = spec.buffers[i];
+      absl::Span<const int> shard_indices =
+          unique_index_domains[i].shard_indices;
       if (shard_indices.empty()) {
-        return absl::InvalidArgumentError(
-            "No source shard indices specified for a host buffer in "
+        return absl::InternalError(
+            "No source shard indices found for a unique index domain in "
             "CopyArraysToHostBufferShards.");
       }
-      // If multiple array source shards are specified, pick the first one to
+      // If multiple array source shards are available, pick the first one to
       // copy from.
-      const int64_t shard_idx = shard_indices.front();
+      const int shard_idx = shard_indices.front();
       if (shard_idx < 0 || shard_idx >= single_device_arrays.size()) {
         return absl::OutOfRangeError(
             absl::StrCat("Shard index ", shard_idx, " out of range [0, ",

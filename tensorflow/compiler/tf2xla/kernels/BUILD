@@ -883,6 +883,7 @@ tf_kernel_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -1043,6 +1044,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
         "@xla//xla/hlo/builder/lib:logdet",
@@ -1587,6 +1589,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
@@ -1873,6 +1876,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status:statusor",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",

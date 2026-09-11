@@ -89,7 +89,8 @@ Softmax1x1::Softmax1x1(const OperationDef& definition, const GpuInfo& gpu_info,
                        const BHWC& shape)
     : GPUOperation(definition) {
   // work_group_size_.x must be power of 2 up to 1024
-  if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno7xx()) {
+  if (gpu_info.IsAdreno() && (gpu_info.adreno_info.IsAdreno7xx() ||
+                              gpu_info.adreno_info.IsAdreno8xx())) {
     work_group_size_ = int3(512, 1, 1);
   } else if (gpu_info.IsMali()) {
     work_group_size_ = int3(1024, 1, 1);

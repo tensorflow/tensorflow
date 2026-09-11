@@ -22,7 +22,7 @@ def repo_v1():
         name = "oneccl_v1",
         build_file = "//third_party/oneccl:oneccl_v1.BUILD",
         patch_file = [
-            "//third_party/oneccl:ze_loader.patch",
+            "//third_party/oneccl:oneccl_v1.patch",
         ],
         sha256 = "016b190557c3a5ee585fe38ce3bf8d6a0c99d7b1a55272083db455b2eff92013",
         strip_prefix = "oneCCL-4ceafd15c03ce46f11eeaf91781a92afebd3cecf",

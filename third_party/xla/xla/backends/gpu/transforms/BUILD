@@ -274,6 +274,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:ir_emission_utils",
@@ -1974,6 +1975,7 @@ cc_library(
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/hlo/analysis:shape_tracker",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
@@ -2274,7 +2276,6 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service:matmul_indexing_utils",
         "//xla/service:memory_annotations_hdr",
-        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:conv_utils",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:ir_emission_utils",
@@ -2315,6 +2316,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:computation_layout",
+        "//xla/service:hlo_verifier",
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -3635,6 +3637,8 @@ cc_library(
     srcs = ["topk_specializer.cc"],
     hdrs = ["topk_specializer.h"],
     deps = [
+        "//xla:comparison_util",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -3650,6 +3654,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -3658,6 +3663,9 @@ cc_library(
 xla_test(
     name = "topk_specializer_test",
     srcs = ["topk_specializer_test.cc"],
+    backend_tags = {
+        "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
+    },
     backends = ["gpu"],
     shard_count = 10,
     deps = [
@@ -3666,6 +3674,7 @@ xla_test(
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/testlib:filecheck",
         "//xla/service:topk_rewriter",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",

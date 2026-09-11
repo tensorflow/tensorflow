@@ -45,6 +45,9 @@ namespace {
 // innermost dimension and reducing all leading dimensions to 1.
 static std::optional<llvm::SmallVector<int64_t>> GetNativeShape(
     mlir::Operation* op) {
+  if (mlir::isa<mlir::vector::TransposeOp>(op)) {
+    return std::nullopt;
+  }
   auto unrollable = mlir::dyn_cast<mlir::VectorUnrollOpInterface>(op);
   if (!unrollable) {
     return std::nullopt;

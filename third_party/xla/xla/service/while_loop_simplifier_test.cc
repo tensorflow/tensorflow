@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -37,8 +38,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -221,7 +220,7 @@ TEST_F(WhileLoopSimplifierTest,
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* true_op = while_op->while_body()->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-  TF_ASSERT_OK(true_op->AddControlDependencyTo(
+  ASSERT_OK(true_op->AddControlDependencyTo(
       while_op->while_body()->root_instruction()));
   ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction()->control_predecessors(),
@@ -1165,6 +1164,94 @@ TEST_F(WhileLoopSimplifierTest, LoopWithUnusedNonPassthroughElementSimplified) {
               AllOf(op::While(), op::Shape("(s32[], s32[])")));
 }
 
+// Index 65 lives in the second 64 bit word of the dependency bitset. The
+// parameter at that index has no use after the loop and is kept only because a
+// live output depends on it, so the test fails if Add, Merge, or ForEachIndex
+// mishandles bits beyond the first word.
+TEST_F(WhileLoopSimplifierTest, RemoveDeadParamsAcrossBitsetWordBoundary) {
+  constexpr int64_t kTupleSize = 70;
+  constexpr int64_t kHighIndex = 65;
+  std::string tuple_shape = "(s32[]";
+  for (int64_t i = 1; i < kTupleSize; ++i) {
+    absl::StrAppend(&tuple_shape, ", s32[]");
+  }
+  absl::StrAppend(&tuple_shape, ")");
+  std::string body_gtes;
+  for (int64_t i = 2; i < kTupleSize; ++i) {
+    absl::StrAppend(&body_gtes, "    gte.", i,
+                    " = s32[] get-tuple-element(loop_var), index=", i, "\n");
+  }
+  std::string body_outputs = "counter, sum";
+  for (int64_t i = 2; i < kTupleSize; ++i) {
+    absl::StrAppend(&body_outputs, ", gte.", i);
+  }
+  std::string entry_params;
+  std::string init_elements = "p0";
+  absl::StrAppend(&entry_params, "    p0 = s32[] parameter(0)\n");
+  for (int64_t i = 1; i < kTupleSize; ++i) {
+    absl::StrAppend(&entry_params, "    p", i, " = s32[] parameter(", i, ")\n");
+    absl::StrAppend(&init_elements, ", p", i);
+  }
+  const std::string hlo_string = absl::StrCat(
+      R"(
+  HloModule BitsetWordBoundary
+  BitsetWordBoundary.body {
+    loop_var = )",
+      tuple_shape, R"( parameter(0)
+    gte.0 = s32[] get-tuple-element(loop_var), index=0
+    gte.1 = s32[] get-tuple-element(loop_var), index=1
+)",
+      body_gtes,
+      R"(    one = s32[] constant(1)
+    counter = s32[] add(gte.0, one)
+    sum = s32[] add(gte.1, gte.)",
+      kHighIndex, R"()
+    ROOT tuple = )",
+      tuple_shape, " tuple(", body_outputs, R"()
+  }
+  BitsetWordBoundary.cond {
+    cond_param = )",
+      tuple_shape, R"( parameter(0)
+    cond_counter = s32[] get-tuple-element(cond_param), index=0
+    limit = s32[] constant(100)
+    ROOT lt = pred[] compare(cond_counter, limit), direction=LT
+  }
+  ENTRY BitsetWordBoundary {
+)",
+      entry_params, "    init = ", tuple_shape, " tuple(", init_elements, R"()
+    while = )",
+      tuple_shape,
+      R"( while(init), condition=BitsetWordBoundary.cond, body=BitsetWordBoundary.body
+    ROOT result = s32[] get-tuple-element(while), index=1
+  }
+  )");
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(m.get()));
+  ASSERT_TRUE(changed);
+
+  // Kept: index 0 feeds the condition, index 1 is used after the loop, and
+  // index 65 feeds output 1. Everything else is dead.
+  const auto& instrs = m->entry_computation()->instructions();
+  auto it = absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kWhile && instr->name() != "while";
+  });
+  ASSERT_NE(it, instrs.end());
+  HloInstruction* new_while_op = *it;
+  EXPECT_EQ(ShapeUtil::TupleElementCount(new_while_op->shape()), 3);
+  EXPECT_THAT(
+      new_while_op->while_init(),
+      op::Tuple(op::Parameter(0), op::Parameter(1), op::Parameter(kHighIndex)));
+  EXPECT_THAT(
+      new_while_op->while_body()->root_instruction(),
+      op::Tuple(
+          op::Add(op::GetTupleElement(op::Parameter(0), /*tuple_index=*/0),
+                  op::Constant()),
+          op::Add(op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1),
+                  op::GetTupleElement(op::Parameter(0), /*tuple_index=*/2)),
+          op::GetTupleElement(op::Parameter(0), /*tuple_index=*/2)));
+}
+
 // Check that we can remove unused loop params even if the loop contains
 // sends/recvs.
 TEST_F(WhileLoopSimplifierTest, RemoveUnusedParamsDespiteSendRecv) {
@@ -1442,8 +1529,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[3]) -> (f32[3], f32[3], f32[3], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* new_while = FindFirstWhile(module.get());
   Shape new_while_shape = ParseShape("(f32[3], f32[3], s32[])").value();
@@ -1505,8 +1591,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* new_while = FindFirstWhile(module.get());
   Shape new_while_shape = ParseShape("(f32[3], f32[2], s32[])").value();
@@ -1553,7 +1638,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarryWithOriginalValue) {
       condition=Cond, body=Body, origin={({"w0"},{"w1"},{"w2"})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   HloInstruction* while_instr = FindFirstWhile(m.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1594,7 +1679,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarryWithOriginalValue2) {
       condition=Cond, body=Body, origin={({"w0"},{"w1"},{"w2"})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   HloInstruction* while_instr = FindFirstWhile(m.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1649,8 +1734,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1692,10 +1776,8 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
       {"while.116" {1}}, {"while.116" {2}}, ({"while.116" {3}})))}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1750,10 +1832,8 @@ const char* const kSimpleMergeInductionVariablesModuleWithOriginalValue = R"(
 TEST_F(WhileLoopSimplifierTest, MergeInductionVariablesWithOriginalValue) {
   std::string hlo_string = absl::StrReplaceAll(
       kSimpleMergeInductionVariablesModuleWithOriginalValue, {{"TYPE", "s32"}});
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1815,10 +1895,8 @@ TEST_F(WhileLoopSimplifierTest, WhileBodyCallsFoo) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
               absl_testing::IsOkAndHolds(true));
@@ -1866,10 +1944,8 @@ TEST_F(WhileLoopSimplifierTest, EntryAndWhileBodyCallFoo) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
               absl_testing::IsOkAndHolds(true));
@@ -1943,10 +2019,8 @@ TEST_F(WhileLoopSimplifierTest, TwoWhileBodiesCallFoo) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
               absl_testing::IsOkAndHolds(true));
@@ -1995,10 +2069,8 @@ TEST_F(WhileLoopSimplifierTest, WhileBodyCallsFooWithSideEffectsNotSimplified) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
               absl_testing::IsOkAndHolds(true));
@@ -2057,10 +2129,8 @@ TEST_F(WhileLoopSimplifierTest, WhileBodyCallsFooConstantParameterRemoval) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
               absl_testing::IsOkAndHolds(true));
@@ -2134,10 +2204,8 @@ TEST_F(WhileLoopSimplifierTest, TwoWhileBodiesCallFooOneBailsOneNot) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
               absl_testing::IsOkAndHolds(true));
@@ -2173,10 +2241,8 @@ TEST_F(WhileLoopSimplifierTest, SimplifierWithDisabledWhileLoopDceAttr) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 

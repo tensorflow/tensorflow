@@ -92,6 +92,7 @@ xla_cc_binary(
         "//xla/service:gpu_topology",
         "//xla/service/gpu:nvptx_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",  # buildcleaner: keep
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor/cuda:all_runtime",
         "//xla/stream_executor/cuda:cuda_platform",
         "//xla/stream_executor/cuda:cuda_platform_id",
@@ -133,6 +134,7 @@ xla_test(
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:xla_proto_cc",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",

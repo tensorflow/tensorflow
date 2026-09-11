@@ -1086,7 +1086,11 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
         if (subshape.is_dynamic()) {
           size += sizeof(DynamicSizeType) * subshape.dimensions().size();
         }
-        if (primitive_util::IsSubByteNonPredType(subshape.element_type())) {
+        if (subshape.element_type() == PRED) {
+          // PRED is packed 8 elements per byte.
+          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
+        } else if (primitive_util::IsSubByteNonPredType(
+                       subshape.element_type())) {
           // 4-bit types are packed 2 elements per byte.
           size += CeilOfRatio<int64_t>(
               ElementsIn(subshape),
@@ -2325,6 +2329,9 @@ ShapeUtil::ByteStrides(const Shape& shape) {
   CHECK(shape.IsArray());
   if (shape.layout().tiles().empty()) {
     return ByteSizeOfElements(shape);
+  }
+  if (shape.is_unbounded_dynamic()) {
+    return Shape::kUnboundedSize;
   }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();

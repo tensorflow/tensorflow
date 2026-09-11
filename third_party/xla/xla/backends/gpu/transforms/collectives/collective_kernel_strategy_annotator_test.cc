@@ -249,6 +249,34 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
   EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
 }
 
+// 2 * 1024 * 1024 F32 elements per replica = 8 MB > 4 MB limit
+// → ineligible → KERNEL_STRATEGY_DEFAULT (falls back to NCCL).
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       LargeAllGatherKeepsDefaultStrategy) {
+  constexpr int kNumReplicas = 8;
+  constexpr int64_t kInputElements = 2 * 1024 * 1024;
+  constexpr int64_t kOutputElements = kInputElements * kNumReplicas;
+  std::string replica_groups_str = "0,1,2,3,4,5,6,7";
+  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, kInputElements,
+                                    kOutputElements, replica_groups_str);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK(annotator.Run(module.get()).status());
+
+  ASSERT_OK_AND_ASSIGN(auto strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
+  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
+}
+
 // Module with both AllReduce and AllGather: both should be annotated in a
 // single pass.
 TEST_F(CollectiveKernelStrategyAnnotatorTest,

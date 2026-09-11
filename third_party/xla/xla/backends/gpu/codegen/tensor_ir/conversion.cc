@@ -983,8 +983,9 @@ absl::StatusOr<mlir::nv_tensor_ir::GraphOp> ConvertFusionComputation(
       mlir::FunctionType::get(context, input_types, output_types);
   VLOG(3) << "Function type: " << llvm_ir::DumpToString(function_type);
 
-  auto graph_op = tir::GraphOp::create(builder, source.name(), function_type,
-                                       arg_attrs, res_attrs);
+  auto graph_op = tir::GraphOp::create(builder, source.name(),
+                                       /*sym_visibility=*/nullptr,
+                                       function_type, arg_attrs, res_attrs);
 
   absl::Cleanup cleanup = [&] { graph_op.erase(); };
 

@@ -86,7 +86,7 @@ bool IsTriangularSolve(const HloInstruction& hlo) {
          hlo.custom_call_target() == kTriangularSolveCallTarget;
 }
 
-bool IsConvFusion(const HloInstruction& hlo) {
+bool IsCudnnFusion(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kFusion) {
     return false;
   }

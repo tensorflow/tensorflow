@@ -3765,6 +3765,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["nn_test.py"],
     main = "nn_test.py",
+    shard_count = 20,
     tags = [
         "no_windows",
         "notap",  # TODO(b/290819913)

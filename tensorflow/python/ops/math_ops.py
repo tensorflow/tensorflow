@@ -977,14 +977,35 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   tf.round(x)  # [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
   ```
 
+  Note: This operation does not support complex dtypes. If you need to round
+  complex numbers, apply this operation separately to the real and imaginary
+  components:
+
+  ```python
+  x = tf.constant([1.4 + 2.6j, 3.2 + 4.8j])
+  rounded = tf.complex(
+      tf.math.round(tf.math.real(x)), tf.math.round(tf.math.imag(x)))
+  ```
+
   Args:
-    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
+    x: A `Tensor` of type `bfloat16`, `float16`, `float32`, `float64`, `int32`,
+      or `int64`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of same shape and type as `x`.
+
+  Raises:
+    TypeError: If `x` is a complex dtype (`complex64`, `complex128`).
   """
   x = ops.convert_to_tensor(x, name="x")
+  if x.dtype.is_complex:
+    raise TypeError(
+        "tf.math.round does not support complex dtypes (received"
+        f" {x.dtype.name}). To round complex numbers, apply tf.math.round"
+        " separately to the real and imaginary components using tf.math.real()"
+        " and tf.math.imag()."
+    )
   if x.dtype.is_integer:
     return x
   else:
@@ -6000,6 +6021,59 @@ def floor(x, name=None):
   return gen_math_ops.floor(x, name)
 
 
+@tf_export("math.tanh", "nn.tanh", "tanh")
+@dispatch.register_unary_elementwise_api
+@dispatch.add_dispatch_support
+def tanh(x, name=None):
+  r"""Computes hyperbolic tangent of `x` element-wise.
+
+  Given an input tensor, this function computes hyperbolic tangent of every
+  element in the tensor. Input range is `[-inf, inf]` and output range is
+  `[-1, 1]`.
+
+  For example:
+
+  >>> x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
+  >>> tf.math.tanh(x)
+  <tf.Tensor: shape=(8,), dtype=float32,
+  numpy=array([-1.        , -0.9999092 , -0.46211717,  0.7615942 ,  0.8336546 ,
+                0.9640276 ,  0.9950547 ,  1.        ], dtype=float32)>
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`, `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `x`.
+  """
+  x = ops.convert_to_tensor(x, name="x")
+  if x.dtype.base_dtype == dtypes.float64:
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.python.ops import custom_gradient
+    # pylint: enable=g-import-not-at-top
+
+    @custom_gradient.custom_gradient
+    def _tanh_float64(x_val):
+      y = gen_math_ops.tanh(x_val, name=name)
+
+      def grad(dy):
+        with ops.control_dependencies([dy]):
+          two_abs_x = gen_math_ops._abs(x_val) * constant_op.constant(
+              2.0, dtype=x_val.dtype
+          )
+          e = gen_math_ops.exp(-two_abs_x)
+          one = constant_op.constant(1.0, dtype=x_val.dtype)
+          four = constant_op.constant(4.0, dtype=x_val.dtype)
+          deriv = four * e / gen_math_ops.square(one + e)
+          return dy * deriv
+
+      return y, grad
+
+    return _tanh_float64(x)
+  return gen_math_ops.tanh(x, name=name)
+
+
 # Register elementwise ops that don't have Python wrappers.
 # Binary elementwise ops.
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_and)
@@ -6053,4 +6127,3 @@ dispatch.register_unary_elementwise_api(gen_math_ops.sin)
 dispatch.register_unary_elementwise_api(gen_math_ops.sinh)
 dispatch.register_unary_elementwise_api(gen_math_ops.square)
 dispatch.register_unary_elementwise_api(gen_math_ops.tan)
-dispatch.register_unary_elementwise_api(gen_math_ops.tanh)

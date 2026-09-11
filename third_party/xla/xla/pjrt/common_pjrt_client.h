@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/infer_dispatch_info.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/transpose.h"
@@ -1129,6 +1131,103 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool allow_fallback_for_donation_ = false;
   bool supports_two_phase_launch_ = true;
   bool supports_predetermined_error_ = true;
+};
+
+// A common base class for PjRtDevice implementations that delegate to
+// CommonPjRtClient.
+class CommonPjRtDevice : public PjRtDevice {
+ public:
+  CommonPjRtDevice() = default;
+  CommonPjRtDevice(std::unique_ptr<PjRtDeviceDescription> description,
+                   LocalDeviceId local_device_id = LocalDeviceId(-1),
+                   LocalChipId local_hardware_id = LocalChipId(-1),
+                   bool is_addressable = true,
+                   CommonPjRtClient* client = nullptr)
+      : client_(client),
+        description_(std::move(description)),
+        local_device_id_(local_device_id),
+        local_hardware_id_(local_hardware_id),
+        is_addressable_(is_addressable) {}
+
+  explicit CommonPjRtDevice(CommonPjRtClient* client) : client_(client) {}
+  ~CommonPjRtDevice() override = default;
+
+  // Must set client exactly once.
+  virtual void SetClient(PjRtClient* client);
+
+  CommonPjRtClient* client() const override { return client_; }
+
+  const PjRtDeviceDescription& description() const override {
+    CHECK(description_ != nullptr);
+    return *description_;
+  }
+
+  bool IsAddressable() const override { return is_addressable_; }
+
+  LocalDeviceId local_device_id() const override { return local_device_id_; }
+
+  LocalChipId local_hardware_id() const override { return local_hardware_id_; }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    if (!attributes_.empty()) {
+      return attributes_;
+    }
+    return description().Attributes();
+  }
+
+  void SetAttributes(
+      absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes) {
+    attributes_ = std::move(attributes);
+  }
+
+  // Return `platform_id` from client.
+  PjRtPlatformId platform_id() const;
+
+  // Return `platform_name` from client.
+  absl::string_view platform_name() const;
+
+  absl::Status TransferToInfeed(const LiteralSlice& literal) override;
+
+  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
+
+  void AttachMemorySpace(PjRtMemorySpace* memory_space,
+                         bool is_default = false);
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
+  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
+  absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
+      absl::string_view memory_space_kind) const override;
+
+  absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
+  absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
+                                       absl::Status error) override;
+
+ protected:
+  PjRtDeviceDescription* description_ptr() { return description_.get(); }
+  const PjRtDeviceDescription* description_ptr() const {
+    return description_.get();
+  }
+
+ private:
+  CommonPjRtClient* client_ = nullptr;
+  std::unique_ptr<PjRtDeviceDescription> description_;
+  LocalDeviceId local_device_id_ = LocalDeviceId(-1);
+  LocalChipId local_hardware_id_ = LocalChipId(-1);
+  bool is_addressable_ = false;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
+
+  absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
+  absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_id_;
+  PjRtMemorySpace* default_memory_space_ = nullptr;
 };
 
 }  // namespace xla

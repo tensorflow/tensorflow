@@ -5701,8 +5701,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleCompare(
   HloInstruction* rhs;
   CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
 
-  if (Cast<HloCompareInstruction>(compare)->type() ==
-      Comparison::Type::kUnsigned) {
+  if (primitive_util::IsUnsignedIntegralType(lhs->shape().element_type())) {
     // X u<  0 -> false
     if (compare->comparison_direction() == ComparisonDirection::kLt &&
         IsAll(rhs, 0)) {
@@ -7406,6 +7405,71 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     }
   }
 
+  // A slice of a dynamic update slice can be replaced by a slice of the update
+  // if the slice is entirely within the update.
+  //
+  // Slice(DynamicUpdateSlice(base, update, $indices), $indices) -> update
+  HloInstruction* dynamic_update_slice;
+  if (Match(slice, m::Slice(m::DynamicUpdateSlice(&dynamic_update_slice)))) {
+    HloInstruction* dus_update = dynamic_update_slice->mutable_operand(1);
+    const int64_t rank = slice->shape().dimensions().size();
+    if (dynamic_update_slice->operand_count() == 2 + rank) {
+      bool all_indices_constant = true;
+      std::vector<int64_t> start_indices(rank);
+      for (int64_t i = 0; i < rank; ++i) {
+        HloInstruction* index = dynamic_update_slice->mutable_operand(2 + i);
+        if (!Match(index, m::ConstantScalar())) {
+          all_indices_constant = false;
+          break;
+        }
+        std::optional<int64_t> val = index->literal().GetFirstInteger();
+        if (!val.has_value()) {
+          all_indices_constant = false;
+          break;
+        }
+        start_indices[i] = *val;
+      }
+      if (all_indices_constant) {
+        bool slice_matches_dus = true;
+        bool slice_inside_dus = true;
+        std::vector<int64_t> new_starts(rank);
+        std::vector<int64_t> new_limits(rank);
+        for (int64_t i = 0; i < rank; ++i) {
+          const int64_t operand_dim =
+              dynamic_update_slice->shape().dimensions(i);
+          const int64_t update_dim = dus_update->shape().dimensions(i);
+          const int64_t clamped_start = std::min(
+              std::max<int64_t>(0, start_indices[i]), operand_dim - update_dim);
+          const int64_t clamped_limit = clamped_start + update_dim;
+          if (slice->slice_starts(i) != clamped_start ||
+              slice->slice_limits(i) != clamped_limit) {
+            slice_matches_dus = false;
+          }
+          if (slice->slice_starts(i) < clamped_start ||
+              slice->slice_limits(i) > clamped_limit) {
+            slice_inside_dus = false;
+          }
+          new_starts[i] = slice->slice_starts(i) - clamped_start;
+          new_limits[i] = slice->slice_limits(i) - clamped_start;
+        }
+        if (slice_matches_dus &&
+            hlo_instruction_utils::IsUnstridedSlice(slice) &&
+            ReplaceInstructionIfCompatible(slice, dus_update)) {
+          return absl::OkStatus();
+        }
+        if (slice_inside_dus &&
+            (!options_.is_layout_sensitive() ||
+             slice->shape().layout() == dus_update->shape().layout())) {
+          ABSL_ASSIGN_OR_RETURN(HloInstruction * new_slice,
+                           MakeSliceHlo(dus_update, new_starts, new_limits,
+                                        slice->slice_strides()));
+          *(new_slice->mutable_shape()) = slice->shape();
+          return ReplaceInstruction(slice, new_slice);
+        }
+      }
+    }
+  }
+
   if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
       hlo_instruction_utils::IsUnstridedSlice(slice) &&
       hlo_instruction_utils::IsUnstridedSlice(slice->operand(0))) {
@@ -8138,6 +8202,98 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // equal to dus_update.
   if (SameShape(dynamic_update_slice, dus_update)) {
     return ReplaceInstruction(dynamic_update_slice, dus_update);
+  }
+
+  // Rewriting dynamic_update_slice(pad(x), y) to concat(x, y) if y overwrites
+  // the padded region.
+  HloInstruction* pad;
+  HloInstruction* pad_operand;
+  if (Match(updated, m::Pad(&pad, m::Op(&pad_operand), m::Op()))) {
+    const Shape& pad_shape = pad->shape();
+    const Shape& x_shape = pad_operand->shape();
+    const Shape& update_shape = dus_update->shape();
+    const int64_t rank = pad_shape.dimensions().size();
+    CHECK_EQ(x_shape.dimensions().size(), rank);
+    CHECK_EQ(update_shape.dimensions().size(), rank);
+    // We skip the variadic form of DUS for now.
+    if (dynamic_update_slice->operand_count() == 2 + rank) {
+      int64_t padded_dim;
+      const PaddingConfig& padding_config = pad->padding_config();
+      enum class PaddingType { kLow, kHigh };
+      std::optional<PaddingType> padding_type;
+      for (int64_t i = 0; i < rank; ++i) {
+        const auto& dim_config = padding_config.dimensions(i);
+        const int64_t low = dim_config.edge_padding_low();
+        const int64_t high = dim_config.edge_padding_high();
+        if (dim_config.interior_padding() != 0 || low < 0 || high < 0) {
+          padding_type = std::nullopt;
+          break;
+        }
+
+        HloInstruction* index = dynamic_update_slice->mutable_operand(2 + i);
+        if (!Match(index, m::ConstantScalar())) {
+          padding_type = std::nullopt;
+          break;
+        }
+        std::optional<int64_t> val = index->literal().GetFirstInteger();
+        if (!val.has_value()) {
+          padding_type = std::nullopt;
+          break;
+        }
+
+        const int64_t operand_dim = pad_shape.dimensions(i);
+        const int64_t update_dim = update_shape.dimensions(i);
+        const int64_t clamped_start =
+            std::min(std::max<int64_t>(0, *val), operand_dim - update_dim);
+
+        if (low != 0 || high != 0) {
+          if (padding_type.has_value()) {
+            // More than one dimension is padded.
+            padding_type = std::nullopt;
+            break;
+          }
+          const int64_t x_dim = x_shape.dimensions(i);
+          if (x_dim <= 0) {
+            padding_type = std::nullopt;
+            break;
+          }
+          if (low == 0 && high > 0 && update_dim == high &&
+              clamped_start == x_dim) {
+            padded_dim = i;
+            padding_type = PaddingType::kHigh;
+          } else if (low > 0 && high == 0 && update_dim == low &&
+                     clamped_start == 0) {
+            padded_dim = i;
+            padding_type = PaddingType::kLow;
+          } else {
+            padding_type = std::nullopt;
+            break;
+          }
+        } else {
+          if (x_shape.dimensions(i) != update_dim || clamped_start != 0) {
+            padding_type = std::nullopt;
+            break;
+          }
+        }
+      }
+
+      if (padding_type.has_value()) {
+        std::vector<HloInstruction*> concat_operands =
+            *padding_type == PaddingType::kHigh
+                ? std::vector<HloInstruction*>{pad_operand, dus_update}
+                : std::vector<HloInstruction*>{dus_update, pad_operand};
+
+        if (!options_.is_layout_sensitive() ||
+            (pad_operand->shape().layout() == dus_update->shape().layout() &&
+             pad_operand->shape().layout() ==
+                 dynamic_update_slice->shape().layout())) {
+          ABSL_ASSIGN_OR_RETURN(HloInstruction * concat,
+                           MakeConcatHlo(concat_operands, padded_dim));
+          *(concat->mutable_shape()) = dynamic_update_slice->shape();
+          return ReplaceInstruction(dynamic_update_slice, concat);
+        }
+      }
+    }
   }
 
   // DynamicUpdateSlice clamps the offset. If the slice size has the same size

@@ -530,6 +530,28 @@ class ArrayCreationTest(test.TestCase):
     # 3-d arrays
     run_test(np.arange(8).reshape((2, 2, 2)).tolist())
 
+  def testDiagInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diag(v, k=k)
+
+  def testDiagFlatInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diagflat(v, k=k)
+
   def match_shape(self, actual, expected, msg=None):
     if msg:
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
@@ -1198,6 +1220,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(out, out_expected)
 
   def testTakeAlongAxisJitCompile(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # Regression test for GitHub issue 62391: the axis-swapping branch was
     # emitted as a real conditional whose branches have different shapes, so
     # the result shape XLA computed disagreed with the shape set on the
@@ -1218,6 +1242,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllClose(expected, actual)
 
   def testTakeAlongAxisUnknownRank(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # The tensor predicate is still used when the rank is not known
     # statically.
     @def_function.function(
@@ -1397,6 +1423,11 @@ class ArrayMethodsTest(test.TestCase):
         else:
           arr = np.asarray(state.randn(*shape) * 100, dtype=dtype)
         self.match(np_array_ops.sign(arr), np.sign(arr))
+
+    with self.assertRaisesRegex(ValueError, "doesn't support setting out"):
+      np_array_ops.sign([1], out=[])
+    with self.assertRaisesRegex(ValueError, "doesn't support setting where"):
+      np_array_ops.sign([1], where=False)
 
 
 class ArrayManipulationTest(test.TestCase):
