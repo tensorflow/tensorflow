@@ -79,6 +79,20 @@ cc_library_with_tflite_with_c_headers_test(
     ],
 )
 
+# Same as ":c_api_without_op_resolver", but does not include
+# TfLiteInterpreterCreate(). Targets depending on this do not take any
+# dependency (defined or undefined) on CreateOpResolver().
+cc_library_with_tflite_with_c_headers_test(
+    name = "c_api_nocreate",
+    hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":c_api_types",
+        "//tensorflow/lite/core/c:c_api_nocreate",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "c_api_for_testing",
     testonly = True,
@@ -201,6 +215,21 @@ cc_library_with_tflite_with_c_headers_test(
     generate_opaque_delegate_target = True,
     tflite_deps = [":c_api"],
     deps = ["//tensorflow/lite/core/c:c_api_opaque"],
+)
+
+# Same as ":c_api_opaque_without_op_resolver", but depends on
+# ":c_api_nocreate" rather than on ":c_api_without_op_resolver".
+# Targets depending on this do not take any dependency (defined or undefined)
+# on CreateOpResolver().
+cc_library_with_tflite_with_c_headers_test(
+    name = "c_api_opaque_nocreate",
+    hdrs = [
+        "c_api_opaque.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings(),
+    tflite_deps = [":c_api_nocreate"],
+    deps = ["//tensorflow/lite/core/c:c_api_opaque_nocreate"],
 )
 
 cc_library_with_tflite_with_c_headers_test(

@@ -165,15 +165,6 @@ static void InitTfLiteRegistration(TfLiteRegistration* registration,
   registration->registration_external = registration_external;
 }
 
-TfLiteInterpreter* TfLiteInterpreterCreate(
-    const TfLiteModel* model,
-    const TfLiteInterpreterOptions* optional_options) {
-  std::unique_ptr<tflite::MutableOpResolver> resolver =
-      tflite::CreateOpResolver();
-  return tflite::internal::InterpreterCreateWithOpResolver(
-      model, optional_options, resolver.get());
-}
-
 void TfLiteInterpreterDelete(TfLiteInterpreter* interpreter) {
   delete interpreter;
 }

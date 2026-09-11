@@ -278,6 +278,10 @@ xla_test(
 xla_test(
     name = "gpu_cliques_test",
     srcs = ["gpu_cliques_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -389,6 +393,10 @@ cc_library(
 xla_test(
     name = "gpu_collectives_test",
     srcs = ["gpu_collectives_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -439,6 +447,10 @@ xla_test(
 xla_test(
     name = "nccl_communicator_test",
     srcs = ["nccl_communicator_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "h100": [
             "full",
