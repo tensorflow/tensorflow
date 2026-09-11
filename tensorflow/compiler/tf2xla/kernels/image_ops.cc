@@ -696,5 +696,511 @@ REGISTER_XLA_OP(
     Name("NonMaxSuppressionV3").CompileTimeConstantInput("max_output_size"),
     NonMaxSuppressionV3Op);
 
+// ---------------------------------------------------------------------------
+// ImageProjectiveTransformV2 / V3 XLA kernels
+// ---------------------------------------------------------------------------
+//
+// These kernels lower the projective image transform to pure XLA HLO
+// operations, enabling jit_compile=True (XLA GPU JIT) for Keras layers such
+// as RandomRotation that depend on tf.image.affine_transform →
+// ImageProjectiveTransformV3.
+//
+// Algorithm (per output pixel):
+//   projection = t[6]*out_x + t[7]*out_y + 1
+//   src_x = (t[0]*out_x + t[1]*out_y + t[2]) / projection
+//   src_y = (t[3]*out_x + t[4]*out_y + t[5]) / projection
+//   Apply fill_mode coordinate mapping, then sample with interpolation.
+
+// Apply the REFLECT fill-mode coordinate mapping.
+// Mirrors scipy's MapCoordinate<FILL_REFLECT> from image_ops.h.
+//
+// The logic converts an arbitrary float coordinate into the valid [0, len-1]
+// range by reflecting at the boundaries.  Because XLA does not have
+// element-wise conditionals we express the entire mapping as a sequence of
+// Select / arithmetic ops.
+xla::XlaOp MapCoordReflect(xla::XlaBuilder* b, xla::XlaOp coord,
+                           int64_t len) {
+  auto zero = xla::ConstantR0<float>(b, 0.0f);
+  auto len_f = xla::ConstantR0<float>(b, static_cast<float>(len));
+  auto len_minus_one = xla::ConstantR0<float>(b, static_cast<float>(len - 1));
+
+  if (len <= 1) {
+    return xla::Broadcast(zero, {});
+  }
+
+  // sz2 = 2 * len
+  auto sz2 = xla::ConstantR0<float>(b, static_cast<float>(2 * len));
+
+  // --- Handle negative coordinates ---
+  // Match the CPU implementation's static_cast<DenseIndex>, which truncates
+  // toward zero (rather than floor/ceil) before reflecting the coordinate.
+  auto neg_coord = xla::Neg(coord);
+  auto periods_neg = xla::ConvertElementType(
+      xla::ConvertElementType(xla::Div(neg_coord, sz2), xla::S64), xla::F32);
+  auto coord_shifted_neg = xla::Add(coord, xla::Mul(sz2, periods_neg));
+  // After shifting: if it was < -len, add sz2 once more; else negate and sub 1
+  auto still_neg = xla::Lt(coord_shifted_neg, xla::Neg(len_f));
+  auto branch_a = xla::Add(coord_shifted_neg, sz2);
+  auto branch_b = xla::Sub(xla::Neg(coord_shifted_neg),
+                           xla::ConstantR0<float>(b, 1.0f));
+  auto neg_result = xla::Select(still_neg, branch_a, branch_b);
+
+  // --- Handle coordinates >= len ---
+  // in_coord -= sz2 * floor(in_coord / sz2)
+  auto periods_pos = xla::Floor(xla::Div(coord, sz2));
+  auto coord_shifted_pos = xla::Sub(coord, xla::Mul(sz2, periods_pos));
+  // If still >= len, reflect: sz2 - in_coord - 1
+  auto ge_len = xla::Ge(coord_shifted_pos, len_f);
+  auto pos_result = xla::Select(
+      ge_len,
+      xla::Sub(xla::Sub(sz2, coord_shifted_pos),
+               xla::ConstantR0<float>(b, 1.0f)),
+      coord_shifted_pos);
+
+  // Select branch based on original coord sign and range
+  auto is_neg = xla::Lt(coord, zero);
+  auto is_ge = xla::Gt(coord, len_minus_one);
+  auto result = xla::Select(is_neg, neg_result,
+                            xla::Select(is_ge, pos_result, coord));
+
+  return xla::Clamp(zero, result, len_minus_one);
+}
+
+// Apply the WRAP fill-mode coordinate mapping.
+// Mirrors scipy's MapCoordinate<FILL_WRAP> from image_ops.h.
+xla::XlaOp MapCoordWrap(xla::XlaBuilder* b, xla::XlaOp coord, int64_t len) {
+  auto zero = xla::ConstantR0<float>(b, 0.0f);
+  auto len_f = xla::ConstantR0<float>(b, static_cast<float>(len));
+  auto len_minus_one = xla::ConstantR0<float>(b, static_cast<float>(len - 1));
+
+  if (len <= 1) {
+    return xla::Broadcast(zero, {});
+  }
+
+  auto sz = xla::ConstantR0<float>(b, static_cast<float>(len - 1));
+
+  // --- Handle negative ---
+  auto neg_periods = xla::Add(
+      xla::ConvertElementType(
+          xla::ConvertElementType(xla::Div(xla::Neg(coord), sz), xla::S64),
+          xla::F32),
+      xla::ConstantR0<float>(b, 1.0f));
+  auto neg_result = xla::Add(coord, xla::Mul(len_f, neg_periods));
+
+  // --- Handle >= len ---
+  auto pos_periods = xla::ConvertElementType(
+      xla::ConvertElementType(xla::Div(coord, sz), xla::S64), xla::F32);
+  auto pos_result = xla::Sub(coord, xla::Mul(len_f, pos_periods));
+
+  auto is_neg = xla::Lt(coord, zero);
+  auto is_ge = xla::Gt(coord, len_minus_one);
+  auto result = xla::Select(is_neg, neg_result,
+                            xla::Select(is_ge, pos_result, coord));
+
+  return xla::Clamp(zero, result, len_minus_one);
+}
+
+// Apply the fill-mode coordinate mapping.  CONSTANT mode returns the
+// coordinate unchanged (out-of-bounds pixels are handled separately via a
+// mask).  NEAREST mode simply clamps.
+xla::XlaOp ApplyFillMode(xla::XlaBuilder* b, xla::XlaOp coord,
+                          int64_t len, const std::string& fill_mode) {
+  if (fill_mode == "REFLECT") {
+    return MapCoordReflect(b, coord, len);
+  } else if (fill_mode == "WRAP") {
+    return MapCoordWrap(b, coord, len);
+  } else if (fill_mode == "NEAREST") {
+    auto zero = xla::ConstantR0<float>(b, 0.0f);
+    auto max_val = xla::ConstantR0<float>(b, static_cast<float>(len - 1));
+    return xla::Clamp(zero, coord, max_val);
+  }
+  // CONSTANT – return unchanged; out-of-bounds masked later.
+  return coord;
+}
+
+class ImageProjectiveTransformV2Op : public XlaOpKernel {
+ public:
+  explicit ImageProjectiveTransformV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("interpolation", &interpolation_));
+    OP_REQUIRES(
+        ctx, interpolation_ == "NEAREST" || interpolation_ == "BILINEAR",
+        absl::InvalidArgumentError(
+            absl::StrCat("Invalid interpolation: ", interpolation_,
+                         ". Supported: NEAREST, BILINEAR")));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("fill_mode", &fill_mode_));
+    OP_REQUIRES(
+        ctx,
+        fill_mode_ == "CONSTANT" || fill_mode_ == "REFLECT" ||
+            fill_mode_ == "WRAP" || fill_mode_ == "NEAREST",
+        absl::InvalidArgumentError(
+            absl::StrCat("Invalid fill_mode: ", fill_mode_,
+                         ". Supported: CONSTANT, REFLECT, WRAP, NEAREST")));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    // fill_value: V2 defaults to 0, V3 reads from input(3).
+    CompileWithFillValue(ctx, /*fill_value_input=*/-1);
+  }
+
+ protected:
+  void CompileWithFillValue(XlaOpKernelContext* ctx,
+                            int fill_value_input) {
+    // ---- Validate inputs ----
+    const TensorShape images_shape = ctx->InputShape(0);
+    OP_REQUIRES(ctx, images_shape.dims() == 4,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "images must be 4-D, got ", images_shape.DebugString())));
+
+    const TensorShape transforms_shape = ctx->InputShape(1);
+    OP_REQUIRES(
+        ctx,
+        TensorShapeUtils::IsMatrix(transforms_shape) &&
+            (transforms_shape.dim_size(0) == images_shape.dim_size(0) ||
+             transforms_shape.dim_size(0) == 1) &&
+            transforms_shape.dim_size(1) == 8,
+        absl::InvalidArgumentError(
+            "transforms must be num_images x 8 or 1 x 8"));
+
+    if (fill_value_input >= 0) {
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->InputShape(
+                           fill_value_input)),
+                  absl::InvalidArgumentError("fill_value must be a scalar"));
+    }
+
+    std::vector<int64_t> out_size;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &out_size));
+    OP_REQUIRES(ctx, out_size.size() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("output_shape must have 2 elements, got ",
+                                 out_size.size())));
+    const int64_t out_height = out_size[0];
+    const int64_t out_width = out_size[1];
+    OP_REQUIRES(ctx, out_height > 0 && out_width > 0,
+                absl::InvalidArgumentError(
+                    "output dimensions must be positive"));
+
+    const int64_t batch = images_shape.dim_size(0);
+    const int64_t in_height = images_shape.dim_size(1);
+    const int64_t in_width = images_shape.dim_size(2);
+    const int64_t channels = images_shape.dim_size(3);
+    const int64_t num_transforms = transforms_shape.dim_size(0);
+
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp images = ctx->Input(0);
+    xla::XlaOp transforms = ctx->Input(1);
+
+    // ---- Determine fill_value ----
+    xla::XlaOp fill_value_op;
+    if (fill_value_input >= 0) {
+      fill_value_op = ctx->Input(fill_value_input);  // scalar float32
+    } else {
+      fill_value_op = xla::ConstantR0<float>(b, 0.0f);
+    }
+
+    // Convert images to F32 for coordinate arithmetic.
+    xla::PrimitiveType original_type = ctx->input_xla_type(0);
+    xla::XlaOp images_f32 = images;
+    if (original_type != xla::F32) {
+      images_f32 = xla::ConvertElementType(images, xla::F32);
+    }
+
+    // ---- Build coordinate grids ----
+    // out_y: [out_height]  out_x: [out_width]
+    xla::XlaOp out_y = xla::Iota(b, xla::F32, out_height);
+    xla::XlaOp out_x = xla::Iota(b, xla::F32, out_width);
+
+    // Broadcast to [out_height, out_width]
+    xla::XlaOp out_y_2d = xla::BroadcastInDim(
+        out_y, {out_height, out_width}, {0});
+    xla::XlaOp out_x_2d = xla::BroadcastInDim(
+        out_x, {out_height, out_width}, {1});
+
+    // ---- Extract transform components ----
+    // transforms shape: [num_transforms, 8]
+    // Slice each component to [num_transforms, 1], then reshape to
+    // [num_transforms].
+    auto slice_transform = [&](int64_t idx) -> xla::XlaOp {
+      xla::XlaOp s = xla::SliceInDim(transforms, idx, idx + 1, 1, /*dim=*/1);
+      return xla::Reshape(s, {num_transforms});
+    };
+
+    xla::XlaOp t0 = slice_transform(0);  // a
+    xla::XlaOp t1 = slice_transform(1);  // b
+    xla::XlaOp t2 = slice_transform(2);  // c
+    xla::XlaOp t3 = slice_transform(3);  // d
+    xla::XlaOp t4 = slice_transform(4);  // e
+    xla::XlaOp t5 = slice_transform(5);  // f
+    xla::XlaOp t6 = slice_transform(6);  // g
+    xla::XlaOp t7 = slice_transform(7);  // h
+
+    // Broadcast transforms to [batch, out_height, out_width].
+    // If num_transforms == 1, broadcast along batch; otherwise they match
+    // batch.
+    auto bcast_t = [&](xla::XlaOp t_comp) -> xla::XlaOp {
+      // t_comp: [num_transforms] -> [batch, out_height, out_width]
+      if (num_transforms == 1) {
+        // Broadcast scalar to [batch, out_height, out_width]
+        xla::XlaOp t_scalar = xla::Reshape(t_comp, {});
+        return xla::Broadcast(t_scalar, {batch, out_height, out_width});
+      }
+      // [batch] -> [batch, out_height, out_width]
+      return xla::BroadcastInDim(t_comp, {batch, out_height, out_width}, {0});
+    };
+
+    xla::XlaOp a = bcast_t(t0);
+    xla::XlaOp bb = bcast_t(t1);  // 'b' shadows; use 'bb'
+    xla::XlaOp c = bcast_t(t2);
+    xla::XlaOp d = bcast_t(t3);
+    xla::XlaOp e = bcast_t(t4);
+    xla::XlaOp f = bcast_t(t5);
+    xla::XlaOp g = bcast_t(t6);
+    xla::XlaOp h = bcast_t(t7);
+
+    // Broadcast coordinate grids to [batch, out_height, out_width]
+    xla::XlaOp ox = xla::BroadcastInDim(
+        out_x_2d, {batch, out_height, out_width}, {1, 2});
+    xla::XlaOp oy = xla::BroadcastInDim(
+        out_y_2d, {batch, out_height, out_width}, {1, 2});
+
+    // ---- Compute projective transform ----
+    // projection = g*out_x + h*out_y + 1
+    xla::XlaOp one = xla::ConstantR0<float>(b, 1.0f);
+    xla::XlaOp projection = xla::Add(xla::Add(xla::Mul(g, ox),
+                                               xla::Mul(h, oy)),
+                                     one);
+
+    // Guard against division by zero: where projection == 0, set to 1 and
+    // mark those pixels as out-of-bounds later.
+    xla::XlaOp proj_zero = xla::Eq(projection,
+                                   xla::ConstantR0<float>(b, 0.0f));
+    xla::XlaOp safe_proj = xla::Select(proj_zero, xla::Broadcast(one, {}),
+                                       projection);
+
+    // src_x = (a*out_x + b*out_y + c) / projection
+    // src_y = (d*out_x + e*out_y + f) / projection
+    xla::XlaOp src_x = xla::Div(
+        xla::Add(xla::Add(xla::Mul(a, ox), xla::Mul(bb, oy)), c),
+        safe_proj);
+    xla::XlaOp src_y = xla::Div(
+        xla::Add(xla::Add(xla::Mul(d, ox), xla::Mul(e, oy)), f),
+        safe_proj);
+
+    // ---- Apply fill_mode coordinate mapping ----
+    xla::XlaOp mapped_x = ApplyFillMode(b, src_x, in_width, fill_mode_);
+    xla::XlaOp mapped_y = ApplyFillMode(b, src_y, in_height, fill_mode_);
+
+    // Out-of-bounds mask for nearest-neighbor CONSTANT mode (also catches
+    // projection == 0). Bilinear interpolation applies the fill value to each
+    // out-of-bounds corner independently below.
+    xla::XlaOp oob_mask;  // true = use fill_value
+    auto fzero = xla::ConstantR0<float>(b, 0.0f);
+    auto max_x = xla::ConstantR0<float>(b,
+                                        static_cast<float>(in_width - 1));
+    auto max_y = xla::ConstantR0<float>(b,
+                                        static_cast<float>(in_height - 1));
+    if (fill_mode_ == "CONSTANT" && interpolation_ == "NEAREST") {
+      oob_mask = xla::Or(
+          proj_zero,
+          xla::Or(xla::Or(xla::Lt(src_x, fzero), xla::Gt(src_x, max_x)),
+                  xla::Or(xla::Lt(src_y, fzero), xla::Gt(src_y, max_y))));
+    } else {
+      // For non-CONSTANT modes, only projection==0 is invalid.
+      oob_mask = proj_zero;
+    }
+
+    // ---- Sample pixels ----
+    xla::XlaOp result;
+    if (interpolation_ == "NEAREST") {
+      // Round to nearest integer coordinate.
+      xla::XlaOp ix = xla::ConvertElementType(
+          xla::Clamp(fzero, xla::Round(mapped_x), max_x), xla::S32);
+      xla::XlaOp iy = xla::ConvertElementType(
+          xla::Clamp(fzero, xla::Round(mapped_y), max_y), xla::S32);
+
+      // Build gather indices: [batch, out_height, out_width, 3], where the
+      // last dim is (batch, y, x). Including the batch index is essential:
+      // otherwise Gather returns a full batch for every output coordinate.
+      xla::XlaOp batch_iota = xla::Iota(b, xla::S32, batch);
+      xla::XlaOp batch_indices = xla::BroadcastInDim(
+          batch_iota, {batch, out_height, out_width}, {0});
+      xla::XlaOp batch_expanded = xla::Reshape(
+          batch_indices, {batch, out_height, out_width, 1});
+      xla::XlaOp iy_expanded = xla::Reshape(iy, {batch, out_height,
+                                                   out_width, 1});
+      xla::XlaOp ix_expanded = xla::Reshape(ix, {batch, out_height,
+                                                   out_width, 1});
+      xla::XlaOp indices = xla::ConcatInDim(
+          b, {batch_expanded, iy_expanded, ix_expanded}, 3);
+
+      // Gather from images: [batch, in_h, in_w, channels]. Keep the original
+      // dtype for nearest-neighbor interpolation, matching the CPU kernel.
+      xla::GatherDimensionNumbers dim_numbers;
+      dim_numbers.add_offset_dims(3);      // channels
+      dim_numbers.add_collapsed_slice_dims(0);  // batch
+      dim_numbers.add_collapsed_slice_dims(1);  // height
+      dim_numbers.add_collapsed_slice_dims(2);  // width
+      dim_numbers.add_start_index_map(0);  // batch -> dim 0
+      dim_numbers.add_start_index_map(1);  // y -> dim 1
+      dim_numbers.add_start_index_map(2);  // x -> dim 2
+      dim_numbers.set_index_vector_dim(3);
+
+      result = xla::Gather(images, indices, dim_numbers,
+                           {1, 1, 1, channels},
+                           /*indices_are_sorted=*/false);
+    } else {
+      // BILINEAR interpolation.
+      // Get the four surrounding integer coordinates.
+      xla::XlaOp floor_x = xla::Floor(mapped_x);
+      xla::XlaOp floor_y = xla::Floor(mapped_y);
+      xla::XlaOp ceil_x = xla::Add(floor_x, one);
+      xla::XlaOp ceil_y = xla::Add(floor_y, one);
+
+      // Lerp weights.
+      xla::XlaOp wx = xla::Sub(mapped_x, floor_x);  // fractional x
+      xla::XlaOp wy = xla::Sub(mapped_y, floor_y);  // fractional y
+
+      // Clamp integer coordinates to valid range for gathering.
+      auto clamp_and_int = [&](xla::XlaOp v, float max_val) -> xla::XlaOp {
+        return xla::ConvertElementType(
+            xla::Clamp(fzero, v,
+                       xla::ConstantR0<float>(b, max_val)),
+            xla::S32);
+      };
+
+      xla::XlaOp ix0 = clamp_and_int(floor_x,
+                                      static_cast<float>(in_width - 1));
+      xla::XlaOp ix1 = clamp_and_int(ceil_x,
+                                      static_cast<float>(in_width - 1));
+      xla::XlaOp iy0 = clamp_and_int(floor_y,
+                                      static_cast<float>(in_height - 1));
+      xla::XlaOp iy1 = clamp_and_int(ceil_y,
+                                      static_cast<float>(in_height - 1));
+
+      // Helper to build gather indices and gather.
+      auto gather_at = [&](xla::XlaOp gy, xla::XlaOp gx) -> xla::XlaOp {
+        xla::XlaOp batch_iota = xla::Iota(b, xla::S32, batch);
+        xla::XlaOp batch_indices = xla::BroadcastInDim(
+            batch_iota, {batch, out_height, out_width}, {0});
+        xla::XlaOp batch_e = xla::Reshape(
+            batch_indices, {batch, out_height, out_width, 1});
+        xla::XlaOp gy_e = xla::Reshape(gy, {batch, out_height,
+                                              out_width, 1});
+        xla::XlaOp gx_e = xla::Reshape(gx, {batch, out_height,
+                                              out_width, 1});
+        xla::XlaOp idx = xla::ConcatInDim(b, {batch_e, gy_e, gx_e}, 3);
+
+        xla::GatherDimensionNumbers dn;
+        dn.add_offset_dims(3);
+        dn.add_collapsed_slice_dims(0);
+        dn.add_collapsed_slice_dims(1);
+        dn.add_collapsed_slice_dims(2);
+        dn.add_start_index_map(0);
+        dn.add_start_index_map(1);
+        dn.add_start_index_map(2);
+        dn.set_index_vector_dim(3);
+
+        return xla::Gather(images_f32, idx, dn,
+                           {1, 1, 1, channels},
+                           /*indices_are_sorted=*/false);
+      };
+
+      // Gather the four corner values.
+      xla::XlaOp top_left = gather_at(iy0, ix0);
+      xla::XlaOp top_right = gather_at(iy0, ix1);
+      xla::XlaOp bottom_left = gather_at(iy1, ix0);
+      xla::XlaOp bottom_right = gather_at(iy1, ix1);
+
+      if (fill_mode_ == "CONSTANT") {
+        // CPU uses fill_value for each out-of-bounds bilinear corner rather
+        // than discarding the whole output pixel. Gather from clamped
+        // coordinates, then replace precisely those invalid corners.
+        xla::XlaOp fill_bcast = xla::Broadcast(
+            fill_value_op, {batch, out_height, out_width, channels});
+        auto select_fill_for_invalid = [&](xla::XlaOp value,
+                                           xla::XlaOp valid) -> xla::XlaOp {
+          xla::XlaOp valid_bcast = xla::BroadcastInDim(
+              valid, {batch, out_height, out_width, channels}, {0, 1, 2});
+          return xla::Select(valid_bcast, value, fill_bcast);
+        };
+        auto in_bounds = [&](xla::XlaOp y, xla::XlaOp x) -> xla::XlaOp {
+          return xla::And(
+              xla::And(xla::Ge(x, fzero), xla::Le(x, max_x)),
+              xla::And(xla::Ge(y, fzero), xla::Le(y, max_y)));
+        };
+        top_left = select_fill_for_invalid(
+            top_left, in_bounds(floor_y, floor_x));
+        top_right = select_fill_for_invalid(
+            top_right, in_bounds(floor_y, ceil_x));
+        bottom_left = select_fill_for_invalid(
+            bottom_left, in_bounds(ceil_y, floor_x));
+        bottom_right = select_fill_for_invalid(
+            bottom_right, in_bounds(ceil_y, ceil_x));
+      }
+
+      // Broadcast weights to [batch, out_height, out_width, channels].
+      xla::XlaOp wx_b = xla::BroadcastInDim(
+          wx, {batch, out_height, out_width, channels}, {0, 1, 2});
+      xla::XlaOp wy_b = xla::BroadcastInDim(
+          wy, {batch, out_height, out_width, channels}, {0, 1, 2});
+      xla::XlaOp one_minus_wx = xla::Sub(
+          xla::ConstantR0<float>(b, 1.0f), wx_b);
+      xla::XlaOp one_minus_wy = xla::Sub(
+          xla::ConstantR0<float>(b, 1.0f), wy_b);
+
+      // Bilinear interpolation.
+      xla::XlaOp top = xla::Add(xla::Mul(top_left, one_minus_wx),
+                                xla::Mul(top_right, wx_b));
+      xla::XlaOp bottom = xla::Add(xla::Mul(bottom_left, one_minus_wx),
+                                   xla::Mul(bottom_right, wx_b));
+      result = xla::Add(xla::Mul(top, one_minus_wy),
+                        xla::Mul(bottom, wy_b));
+    }
+
+    // ---- Apply out-of-bounds mask ----
+    // Broadcast fill_value to [batch, out_height, out_width, channels].
+    xla::XlaOp fill_for_result = fill_value_op;
+    if (interpolation_ == "NEAREST" && original_type != xla::F32) {
+      fill_for_result =
+          xla::ConvertElementType(fill_for_result, original_type);
+    }
+    xla::XlaOp fill_bcast = xla::Broadcast(fill_for_result,
+                                           {batch, out_height, out_width,
+                                            channels});
+    xla::XlaOp oob_bcast = xla::BroadcastInDim(
+        oob_mask, {batch, out_height, out_width, channels}, {0, 1, 2});
+    result = xla::Select(oob_bcast, fill_bcast, result);
+
+    // Convert back to the original dtype if needed.
+    if (interpolation_ == "BILINEAR" && original_type != xla::F32) {
+      result = xla::ConvertElementType(result, original_type);
+    }
+    ctx->SetOutput(0, result);
+  }
+
+ private:
+  std::string interpolation_;
+  std::string fill_mode_;
+};
+
+REGISTER_XLA_OP(Name("ImageProjectiveTransformV2")
+                    .CompileTimeConstantInput("output_shape"),
+                ImageProjectiveTransformV2Op);
+
+class ImageProjectiveTransformV3Op : public ImageProjectiveTransformV2Op {
+ public:
+  explicit ImageProjectiveTransformV3Op(OpKernelConstruction* ctx)
+      : ImageProjectiveTransformV2Op(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    // V3 reads fill_value from input 3.
+    CompileWithFillValue(ctx, /*fill_value_input=*/3);
+  }
+};
+
+REGISTER_XLA_OP(Name("ImageProjectiveTransformV3")
+                    .CompileTimeConstantInput("output_shape"),
+                ImageProjectiveTransformV3Op);
+
 }  // namespace
 }  // namespace tensorflow

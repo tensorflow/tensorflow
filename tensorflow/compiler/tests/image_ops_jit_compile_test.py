@@ -20,6 +20,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -27,6 +28,43 @@ from tensorflow.python.platform import test
 
 
 class ImageOpsTest(xla_test.XLATestCase):
+
+  def _assertProjectiveTransformMatchesEager(self, images, transforms,
+                                             output_shape, interpolation,
+                                             fill_mode, fill_value):
+    def transform_fn(images, transforms):
+      return gen_image_ops.image_projective_transform_v3(
+          images,
+          transforms,
+          output_shape,
+          fill_value,
+          interpolation=interpolation,
+          fill_mode=fill_mode)
+
+    compiled_transform = def_function.function(transform_fn, jit_compile=True)
+    expected = transform_fn(images, transforms)
+    actual = compiled_transform(images, transforms)
+    self.assertAllClose(expected, actual)
+
+  def testProjectiveTransformUsesPerImageCoordinates(self):
+    with ops.device("device:{}:0".format(self.device)):
+      images = array_ops.constant([[[[1.], [2.]]], [[[10.], [20.]]]])
+      transforms = array_ops.constant([
+          [1., 0., 0., 0., 1., 0., 0., 0.],
+          [1., 0., 1., 0., 1., 0., 0., 0.],
+      ])
+      self._assertProjectiveTransformMatchesEager(
+          images, transforms, array_ops.constant([1, 2]), "NEAREST",
+          "CONSTANT", array_ops.constant(0.))
+
+  def testProjectiveTransformBilinearConstantUsesCornerFill(self):
+    with ops.device("device:{}:0".format(self.device)):
+      images = array_ops.constant([[[[1.], [2.]], [[3.], [4.]]]])
+      transforms = array_ops.constant(
+          [[1., 0., .5, 0., 1., 0., 0., 0.]])
+      self._assertProjectiveTransformMatchesEager(
+          images, transforms, array_ops.constant([2, 2]), "BILINEAR",
+          "CONSTANT", array_ops.constant(-1.))
 
   def testGradImageResize(self):
     """Tests that the gradient of image.resize is compilable."""

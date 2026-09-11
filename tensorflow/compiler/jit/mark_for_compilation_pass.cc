@@ -2143,6 +2143,8 @@ absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp() {
       "IRFFT2D",
       "IRFFT3D",
       "If",
+      "ImageProjectiveTransformV2",
+      "ImageProjectiveTransformV3",
       "InTopKV2",
       "L2Loss",
       "LeakyRelu",
