@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <type_traits>
+
 #include "tensorflow/core/kernels/xent_op.h"
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -32,6 +34,47 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+namespace functor {
+
+// Applies backend-independent corrections to a functor's output. Most types
+// and devices do not require any correction.
+template <typename Device, typename T>
+struct XentGradientCorrector {
+  static void Correct(
+      const Device&, const Eigen::DSizes<Eigen::DenseIndex, 2>&,
+      const Eigen::array<Eigen::DenseIndex, 2>&,
+      typename TTypes<T>::ConstMatrix, typename TTypes<T>::Matrix,
+      typename TTypes<T>::Matrix) {}
+};
+
+template <>
+struct XentGradientCorrector<CPUDevice, double> {
+  static void Correct(
+      const CPUDevice& d, const Eigen::DSizes<Eigen::DenseIndex, 2>& shape,
+      const Eigen::array<Eigen::DenseIndex, 2>& labels_bcast,
+      TTypes<double>::ConstMatrix labels, TTypes<double>::Matrix scratch,
+      TTypes<double>::Matrix backprop) {
+    const int kClassDim = 1;
+    const int batch_size = shape[0];
+    const int num_classes = shape[1];
+    Eigen::IndexList<Eigen::type2index<kClassDim>> along_class;
+    Eigen::IndexList<int> batch_only;
+    batch_only.set(0, batch_size);
+    Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
+    one_by_class.set(1, num_classes);
+
+    auto probabilities = (backprop + labels.broadcast(labels_bcast)).eval();
+    scratch.reshape(batch_only).device(d) = backprop.sum(along_class);
+    // Remove the row-sum residual that can remain when a probability rounds
+    // to one. Running after the selected functor keeps fallback and optimized
+    // CPU implementations consistent.
+    backprop.device(d) =
+        backprop - scratch.broadcast(one_by_class) * probabilities;
+  }
+};
+
+}  // namespace functor
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
@@ -90,13 +133,19 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                 {0}, 1, shape_in, &back_out));
 
     if (shape_in.dim_size(0) > 0) {
+      const Device& d = context->eigen_device<Device>();
       functor::XentFunctor<Device, T> functor;
-      functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
+      functor(d, shape_in.AsEigenDSizes<2>(),
               BCast::ToIndexArray<2>(bcast.x_bcast()),
               BCast::ToIndexArray<2>(bcast.y_bcast()),
               logits_in.template shaped<T, 2>(bcast.x_reshape()),
               labels_in.template shaped<T, 2>(bcast.y_reshape()),
               scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
+      functor::XentGradientCorrector<Device, T>::Correct(
+          d, shape_in.AsEigenDSizes<2>(),
+          BCast::ToIndexArray<2>(bcast.y_bcast()),
+          labels_in.template shaped<T, 2>(bcast.y_reshape()),
+          scratch.matrix<T>(), back_out->matrix<T>());
     }
   }
 };
