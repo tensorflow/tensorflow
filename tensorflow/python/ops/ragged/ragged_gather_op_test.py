@@ -26,6 +26,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
@@ -221,6 +222,23 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 r'indices\[1\] = 3 is not in \[0, 2\)'):
       self.evaluate(ragged_gather_ops.gather(ragged_params, ragged_indices))
+
+  def testValueCountOverflowError(self):
+    # The gathered value count (num_indices * gathered_row_length) overflows an
+    # int32 Tsplits: 65537 * 65536 = 2**32 + 65536. Before the fix this wrapped
+    # to 65536, drove an undersized output allocation, and the copy loop then
+    # wrote past it (heap-buffer-overflow). The raw op pins Tsplits=int32; the
+    # high-level gather defaults to int64 splits and cannot reproduce.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'exceeds limits of Tsplits'):
+      self.evaluate(
+          gen_ragged_array_ops.ragged_gather(
+              params_nested_splits=[
+                  constant_op.constant([0, 65536], dtype=dtypes.int32)
+              ],
+              params_dense_values=array_ops.zeros([65536], dtype=dtypes.uint8),
+              indices=array_ops.zeros([65537], dtype=dtypes.int32),
+              OUTPUT_RAGGED_RANK=1))
 
   def testUnknownIndicesRankError(self):
     if context.executing_eagerly():

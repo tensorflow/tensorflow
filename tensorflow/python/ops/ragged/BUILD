@@ -965,6 +965,7 @@ py_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradients_impl",
+        "//tensorflow/python/ops:ragged_array_ops_gen",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
