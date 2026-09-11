@@ -1,0 +1,137 @@
+diff -ruN include/service/kdnn_service.hpp include_bak/service/kdnn_service.hpp
+--- include/service/kdnn_service.hpp	2025-10-25 18:55:04.018830570 +0800
++++ include_bak/service/kdnn_service.hpp	2025-10-25 18:23:18.074830570 +0800
+@@ -107,7 +107,7 @@
+     T *allocate(SizeType n) const noexcept(false)
+     {
+         if (n > std::numeric_limits<SizeType>::max() / sizeof(T)) {
+-            throw BadArrayNewLength();
++            return nullptr;
+         }
+         return static_cast<T*>(AlignedAlloc(n * sizeof(T), alignment));
+     }
+diff -ruN include/types/kdnn_data_type.hpp include_bak/types/kdnn_data_type.hpp
+--- include/types/kdnn_data_type.hpp	2025-10-25 18:55:04.018830570 +0800
++++ include_bak/types/kdnn_data_type.hpp	2025-10-25 18:23:18.066830570 +0800
+@@ -65,9 +65,6 @@
+             }
+             default: {}
+         }
+-        if (type == TypeT::UNDEFINED) {
+-            throw Service::LogicError {"Type: unsupported data type"};
+-        }
+     }
+     SizeType GetSize() const noexcept
+     {
+diff -ruN include/types/kdnn_shape.hpp include_bak/types/kdnn_shape.hpp
+--- include/types/kdnn_shape.hpp	2025-10-25 18:55:04.018830570 +0800
++++ include_bak/types/kdnn_shape.hpp	2025-10-25 18:23:18.070830570 +0800
+@@ -36,7 +36,7 @@
+     Shape(T *ptr, const SizeType size) noexcept(false) : numDims(size)
+     {
+         if (ptr == nullptr) {
+-            throw Service::LogicError("Shape: ptr is nullptr");
++            return;
+         }
+         CheckNumDims(numDims);
+         for (SizeType i = 0; i < numDims; ++i) {
+@@ -83,7 +83,7 @@
+     Shape& ResetShape(T *ptr, const SizeType size) noexcept(false)
+     {
+         if (ptr == nullptr) {
+-            throw Service::LogicError("Shape: ptr is nullptr");
++            return *this;
+         }
+         CheckNumDims(size);
+         numDims = size;
+@@ -99,7 +99,7 @@
+     Shape& operator+=(const Shape &adder) noexcept(false)
+     {
+         if (adder.GetNumDims() !=  this->GetNumDims()) {
+-            throw Service::LogicError("Shape: different size of base and adder shapes");
++            return *this;
+         }
+         for (SizeType i = 0; i < adder.GetNumDims(); ++i) {
+             this->operator[](i) += adder[i];
+@@ -109,9 +109,6 @@
+
+     Shape operator+(const Shape &adder) const noexcept(false)
+     {
+-        if (adder.GetNumDims() != this->GetNumDims()) {
+-            throw Service::LogicError("Shape: different size of base and adder shapes");
+-        }
+         std::array<SizeType, NUM_MAX_DIMENSIONS> tmp;
+         for (SizeType i = 0; i < adder.GetNumDims(); ++i) {
+             tmp[i] = this->operator[](i) + adder[i];
+@@ -121,17 +118,11 @@
+
+     SizeType operator[](SizeType id) const noexcept(false)
+     {
+-        if (id >= numDims) {
+-            throw Service::LogicError("Shape: index >= num_dims");
+-        }
+         return dimsArray[id];
+     }
+
+     SizeType& operator[](SizeType id) noexcept(false)
+     {
+-        if (id >= numDims) {
+-            throw Service::LogicError("Shape: index >= num_dims");
+-        }
+         return dimsArray[id];
+     }
+
+@@ -142,9 +133,6 @@
+
+     SizeType GetTotalDimsSize() const noexcept(false)
+     {
+-        if (Service::WillIntMultOverflow(dimsArray.begin(), dimsArray.begin() + numDims)) {
+-            throw Service::LogicError("Shape: computing total size will cause overflow");
+-        }
+         SizeType accum = 1;
+         for (SizeType i = 0; i < numDims; ++i) {
+             accum *= dimsArray[i];
+@@ -153,12 +141,7 @@
+     }
+
+ private:
+-    void CheckNumDims(SizeType nDims) const noexcept(false)
+-    {
+-        if (nDims > NUM_MAX_DIMENSIONS) {
+-            throw Service::LogicError("Shape: dims is greater than NUM_MAX_DIMENSIONS");
+-        }
+-    }
++    void CheckNumDims(SizeType nDims) const noexcept(false) {}
+     std::array<SizeType, NUM_MAX_DIMENSIONS> dimsArray;
+     SizeType numDims;
+ };
+diff -ruN include/types/kdnn_tensor_info.hpp include_bak/types/kdnn_tensor_info.hpp
+--- include/types/kdnn_tensor_info.hpp	2025-10-25 18:55:04.018830570 +0800
++++ include_bak/types/kdnn_tensor_info.hpp	2025-10-25 18:23:18.070830570 +0800
+@@ -214,7 +214,7 @@
+                 return Layout::ABCDE;
+             }
+             default: {
+-                throw Service::LogicError {"Tensor Info: tensor dimensionality is incorrect"};
++                return Layout::UNDEFINED;
+             }
+         }
+     }
+@@ -238,7 +238,7 @@
+                 return Layout::ACDEB;
+             }
+             default: {
+-                throw Service::LogicError {"Tensor Info: tensor dimensionality is incorrect"};
++                return Layout::UNDEFINED;
+             }
+         }
+     }
+@@ -262,7 +262,7 @@
+                 return Layout::BCDEA;
+             }
+             default: {
+-                throw Service::LogicError {"Tensor Info: tensor dimensionality is incorrect"};
++                return Layout::UNDEFINED;
+             }
+         }
+     }
