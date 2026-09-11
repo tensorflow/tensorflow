@@ -4341,8 +4341,6 @@ cc_library(
         "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
