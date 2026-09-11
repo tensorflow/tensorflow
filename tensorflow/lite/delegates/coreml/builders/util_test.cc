@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 
 using tflite::delegates::coreml::IsBinaryOpSupported;
+using tflite::delegates::coreml::TensorHasRank;
 
 namespace {
 
@@ -151,6 +152,30 @@ TEST(UtilTest, GetScalarFloatFromTensorTest) {
   tensor.data.data = float32.data();
   EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
               testing::FloatNear(-535.54f, 0.f));
+}
+
+TEST(UtilTest, TensorHasRankTest) {
+  TfLiteTensor tensor = {};
+
+  // A null `dims` (as happens for uninitialized or scalar tensors in malformed
+  // models) is rejected for any rank, without dereferencing `dims`.
+  tensor.dims = nullptr;
+  EXPECT_FALSE(TensorHasRank(&tensor, 4));
+
+  // The rank must match exactly.
+  tensor.dims = TfLiteIntArrayCreate(4);
+  EXPECT_TRUE(TensorHasRank(&tensor, 4));
+  EXPECT_FALSE(TensorHasRank(&tensor, 2));
+  EXPECT_FALSE(TensorHasRank(&tensor, 0));
+  TfLiteIntArrayFree(tensor.dims);
+
+  tensor.dims = TfLiteIntArrayCreate(2);
+  EXPECT_TRUE(TensorHasRank(&tensor, 2));
+  EXPECT_FALSE(TensorHasRank(&tensor, 4));
+  TfLiteIntArrayFree(tensor.dims);
+
+  // A null tensor is rejected.
+  EXPECT_FALSE(TensorHasRank(nullptr, 4));
 }
 
 }  // namespace
