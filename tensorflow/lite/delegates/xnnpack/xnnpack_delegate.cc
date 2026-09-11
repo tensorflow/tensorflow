@@ -39,6 +39,7 @@ limitations under the License.
 #include "Eigen/Core"  // from @eigen_archive
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "pthreadpool.h"  // from @pthreadpool
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/lite/array.h"
@@ -632,6 +633,51 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
       break;
   }
   return kTfLiteOk;
+}
+
+// Maximum value of XNN_EXTRA_BYTES across all architectures (e.g. 128 bytes on
+// Qualcomm Hexagon DSP).
+constexpr size_t kXnnMaxExtraBytes = 128;
+static_assert(kXnnMaxExtraBytes >= XNN_EXTRA_BYTES,
+              "kXnnMaxExtraBytes must be at least XNN_EXTRA_BYTES");
+
+void CheckMMapBufferPadding(const TfLiteTensor& tensor, int tensor_index) {
+  if (tensor.allocation_type != kTfLiteMmapRo || tensor.data.data == nullptr ||
+      tensor.allocation == nullptr) {
+    return;
+  }
+  const auto* alloc = static_cast<const Allocation*>(tensor.allocation);
+  if (!alloc->valid() || alloc->base() == nullptr) {
+    return;
+  }
+  const uintptr_t alloc_start = reinterpret_cast<uintptr_t>(alloc->base());
+  const uintptr_t alloc_end = alloc_start + alloc->bytes();
+  const uintptr_t tensor_start = reinterpret_cast<uintptr_t>(tensor.data.data);
+  const uintptr_t tensor_end = tensor_start + tensor.bytes;
+
+  if (tensor_start >= alloc_start && tensor_end <= alloc_end) {
+    const size_t trailing_bytes = alloc_end - tensor_end;
+    if (trailing_bytes < XNN_EXTRA_BYTES) {
+      TFLITE_LOG_PROD_ONCE(
+          tflite::TFLITE_LOG_ERROR,
+          "Tensor %d (%s) ends within %zu bytes of allocation boundary "
+          "(requires at least %d bytes padding on the current architecture). "
+          "This may trigger out-of-bounds reads in SIMD kernels on mmap "
+          "allocations (b/550218542).",
+          tensor_index, tensor.name ? tensor.name : "unnamed", trailing_bytes,
+          XNN_EXTRA_BYTES);
+    } else if (trailing_bytes < kXnnMaxExtraBytes) {
+      TFLITE_LOG_PROD_ONCE(
+          tflite::TFLITE_LOG_WARNING,
+          "Tensor %d (%s) ends within %zu bytes of allocation boundary "
+          "(safe for current architecture, but requires at least %zu bytes "
+          "padding on other architectures such as Qualcomm Hexagon DSP). "
+          "This may trigger out-of-bounds reads in SIMD kernels on mmap "
+          "allocations (b/550218542).",
+          tensor_index, tensor.name ? tensor.name : "unnamed", trailing_bytes,
+          kXnnMaxExtraBytes);
+    }
+  }
 }
 
 class Subgraph;
@@ -1283,6 +1329,7 @@ class Subgraph {
       } else {
         if (tensor->allocation_type == kTfLiteMmapRo) {
           data = tensor->data.raw_const;
+          CheckMMapBufferPadding(*tensor, t);
         } else {
           // Check for quasi-static data.
           const auto it = static_unpacked_data.find(t);
