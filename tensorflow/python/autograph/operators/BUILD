@@ -118,6 +118,8 @@ py_library(
         ":control_flow",
         "//tensorflow/python/autograph/utils:tensors",
         "//tensorflow/python/ops:cond",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:variable_utils",
     ],
 )
 
