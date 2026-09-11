@@ -6041,8 +6041,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           }
         }
         if (allocate_segment_result == AllocationResult::kSuccess &&
-            NeedsMirroredAllocation(allocation_value_to_update, use,
-                                    previous_use)) {
+            CanBeMirroredByNestedComputations(allocation_value_to_update, use,
+                                              previous_use)) {
           CreateMirroredAllocations(
               allocation_value_to_update, use, previous_use, allocation_values,
               already_processed_allocation_values_inside_a_conditional);
@@ -6772,13 +6772,16 @@ void MsaAlgorithm::SynchronizeAliasedWhileLoopOffsets(
       {hlo_use.instruction, hlo_use.operand_index}, offset);
 }
 
-bool MsaAlgorithm::NeedsMirroredAllocation(
+// Returns true if an outer allocation value is in alternate memory and spans
+// the live range of a kConditional instruction, qualifying its conditional
+// branch uses to mirror the outer allocation.
+bool MsaAlgorithm::CanBeMirroredByConditional(
     const AllocationValue& allocation_value,
     const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use) const {
-  // We create mirrored allocations for allocation values, inside
-  // conditional branches, by verifying that all of the following conditions
-  // are met:
+  // We check whether an allocation value qualifies to be mirrored by
+  // allocations inside nested/called computations (such as conditionals) by
+  // verifying that all of the following conditions are met:
   // 1. The previous use is a conditional and the current use is strictly after
   //    the conditional.
   // 2. The last allocation in the AllocationSequence is in the alternate
@@ -6813,7 +6816,31 @@ bool MsaAlgorithm::NeedsMirroredAllocation(
   return last_allocation_covers_conditional_live_range;
 }
 
+// Returns true if an outer allocation value qualifies to serve as the source
+// for mirrored allocations inside nested computations.
+bool MsaAlgorithm::CanBeMirroredByNestedComputations(
+    const AllocationValue& allocation_value,
+    const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use) const {
+  return CanBeMirroredByConditional(allocation_value, current_use,
+                                    previous_use);
+}
+
+// Dispatches creation of mirrored allocations for nested computations.
 void MsaAlgorithm::CreateMirroredAllocations(
+    AllocationValue& allocation_value, const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use,
+    absl::Span<AllocationValue> allocation_values,
+    absl::flat_hash_set<AllocationValue*>&
+        already_processed_allocation_values_inside_a_conditional) {
+  CreateMirroredAllocationsForConditional(
+      allocation_value, current_use, previous_use, allocation_values,
+      already_processed_allocation_values_inside_a_conditional);
+}
+
+// Creates MirroredAllocations in alternate memory for allocation values inside
+// a kConditional instruction that alias the outer buffer in alternate memory.
+void MsaAlgorithm::CreateMirroredAllocationsForConditional(
     AllocationValue& allocation_value, const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use,
     absl::Span<AllocationValue> allocation_values,
