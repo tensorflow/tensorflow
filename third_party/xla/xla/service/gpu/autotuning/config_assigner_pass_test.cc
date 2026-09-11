@@ -1023,6 +1023,14 @@ TEST_F(ConfigAssignerPassTest,
   EXPECT_EQ(options.candidate_configs_file, "/tmp/candidates.pbtxt");
 }
 
+TEST_F(ConfigAssignerPassTest, PreferredBackendPropagatesToAutotunerOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_autotuner_preferred_backend(autotuner::Backend::CUDNN);
+  auto options = GetAutotunerOptions(debug_options,
+                                     /*is_buffer_check_supported=*/false);
+  EXPECT_EQ(options.preferred_backend, autotuner::Backend::CUDNN);
+}
+
 TEST_F(ConfigAssignerPassTest, CustomFusionForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
