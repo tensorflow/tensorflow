@@ -77,12 +77,9 @@ constexpr char kIncompleteCacheErrorMessage[] =
     "order to avoid unexpected truncation of the dataset, the partially cached "
     "contents of the dataset will be discarded. This can happen if you have "
     "an input pipeline similar to `dataset.cache().take(k).repeat()`, or if "
-    "downstream operations drop elements (e.g. `batch(drop_remainder=True)`). "
-    "You should use `dataset.take(k).cache().repeat()` instead, or ensure the "
-    "dataset size is a multiple of the batch size before caching. Another "
-    "common workaround is to place the `.cache()` operation after the "
-    "operation that drops elements (like `.batch(...)`), if caching the "
-    "transformed data is acceptable.";
+    "downstream operations drop elements (e.g., `batch(drop_remainder=True)`). "
+    "You should use `dataset.take(k).cache().repeat()` instead, or place the "
+    "cache after the batching operation (e.g., `dataset.batch(...).cache()`).";
 constexpr size_t kMaxItems = 10000000;  // 10 million
 }  // namespace
 
@@ -357,8 +354,15 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
             iteration_completed_(false) {}
 
       ~FileWriterIterator() override {
-        if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
+        mutex_lock l(mu_);
+        if (!iteration_completed_ &&
+            !dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
           LOG(WARNING) << kIncompleteCacheErrorMessage;
+
+          // Close any open file handles before attempting deletion.
+          // This is required on Windows to avoid PermissionDenied errors.
+          writer_.reset();
+
           std::vector<std::string> cache_files;
           absl::Status s = dataset()->env_->GetMatchingPaths(
               absl::StrCat(filename_, "*"), &cache_files);
@@ -368,7 +372,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           }
           for (const std::string& path : cache_files) {
             s = dataset()->env_->DeleteFile(path);
-            if (!s.ok()) {
+            if (!s.ok() && !absl::IsNotFound(s)) {
               LOG(WARNING) << "Failed to delete " << path << " : "
                            << s.ToString();
             }
@@ -574,7 +578,6 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       }
 
       absl::Status Finish() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        iteration_completed_ = true;
         // Flush the current bundle.
         TF_RETURN_IF_ERROR(writer_->Finish());
         // Merge all the bundles.
@@ -598,6 +601,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(dataset()->env_->DeleteFile(
               absl::StrCat(dataset()->filename_, "_", i, kLockFileSuffix)));
         }
+        iteration_completed_ = true;
         return absl::OkStatus();
       }
 
