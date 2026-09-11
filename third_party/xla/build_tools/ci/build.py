@@ -118,7 +118,7 @@ class BuildType(enum.Enum):
 
   JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
   JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
   @classmethod
   def from_str(cls, s):
@@ -843,7 +843,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
+    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64_cuda13",),
     target_patterns=(
@@ -875,7 +875,6 @@ Build(
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
-    extra_setup_commands=(["nvidia-smi"],),
 )
 
 
