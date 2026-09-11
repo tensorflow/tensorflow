@@ -80,6 +80,59 @@ class DecodeCompressedOpTest(test.TestCase):
         self.assertAllEqual(
             [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
 
+  def testDecompressZlibAtLimitIsAccepted(self):
+    # A ZLIB stream that decompresses to EXACTLY 1GB must be accepted,
+    # not rejected - the boundary case dmiltr3 flagged in review.
+    kOneGb = 1024 * 1024 * 1024
+    chunk = b"\x00" * (1024 * 1024)  # 1 MB
+    compressor = zlib.compressobj()
+    compressed = b"".join(
+        compressor.compress(chunk) for _ in range(1024)  # 1024 * 1MB = 1GB
+    )
+    compressed += compressor.flush()
+
+    with self.cached_session():
+      result = self.evaluate(
+          parsing_ops.decode_compressed(compressed, compression_type="ZLIB")
+      )
+      self.assertLen(result, kOneGb)
+
+  def testDecompressLargeZlibSize(self):
+    # A ZLIB stream that decompresses to > 1GB must be rejected.
+    chunk = b"\x00" * (1024 * 1024)  # 1 MB
+    compressor = zlib.compressobj()
+    compressed = b"".join(
+        compressor.compress(chunk) for _ in range(1024)  # 1024 * 1MB = 1GB
+    )
+    compressed += compressor.compress(b"\x00")  # +1 byte over the limit
+    compressed += compressor.flush()
+
+    with self.cached_session():
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Decompressed size exceeds 1GB limit"
+      ):
+        self.evaluate(
+            parsing_ops.decode_compressed(compressed, compression_type="ZLIB")
+        )
+
+  def testDecompressLargeGzipSize(self):
+    # Same as testDecompressLargeZlibSize but for GZIP framing.
+    chunk = b"\x00" * (1024 * 1024)  # 1 MB
+    out = io.BytesIO()
+    with gzip.GzipFile(fileobj=out, mode="wb") as f:
+      for _ in range(1024):  # 1024 * 1MB = 1GB
+        f.write(chunk)
+      f.write(b"\x00")  # +1 byte over the limit
+    compressed = out.getvalue()
+
+    with self.cached_session():
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Decompressed size exceeds 1GB limit"
+      ):
+        self.evaluate(
+            parsing_ops.decode_compressed(compressed, compression_type="GZIP")
+        )
+
   def testDecompressLargeZstdSize(self):
     # Construct a ZSTD frame header specifying a 2GB uncompressed size.
     # Magic Number (4 bytes): \x28\xb5\x2f\xfd
