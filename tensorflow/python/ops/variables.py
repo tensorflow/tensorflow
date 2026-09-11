@@ -1129,6 +1129,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     # instead)
     # pylint: disable=protected-access
     setattr(cls, "__getitem__", tensor_getitem_override._slice_helper_var)
+    setattr(cls, "__setitem__", tensor_getitem_override._setitem_helper_var)
 
   @classmethod
   def _OverloadOperator(cls, operator):  # pylint: disable=invalid-name
