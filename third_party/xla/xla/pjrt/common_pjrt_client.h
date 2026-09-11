@@ -79,6 +79,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool allows_execute_recursion() const { return allows_recursion(); }
   virtual bool allow_fallback_for_donation() const { return false; }
   virtual bool supports_two_phase_launch() const { return true; }
+  virtual bool dump_on_deserialize() const { return false; }
   // Returns true if we should skip the staging buffer during ToLiteral.
   virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
                                       const Shape& shape,
@@ -115,7 +116,8 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual void LaunchOnDevice(PjRtDevice* device,
                               absl::AnyInvocable<void()> execute_fn) const {
-    async_work_runner()->Execute(std::move(execute_fn));
+    raw_client()->LaunchOnDevice(device->local_device_id(),
+                                 std::move(execute_fn));
   }
 
   virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
@@ -151,6 +153,12 @@ class CommonPjRtClient : public PjRtClient {
     return raw_client()->AllocateRawBuffer(memory_space, on_device_bytes_count,
                                            retry_on_oom, allocate_after);
   }
+
+  HostMemoryAllocator* GetHostMemoryAllocator() const override;
+
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
 
   // Allocates a raw buffer of a particular size. Backends may support retrying
   // allocation on oom which can be controlled via retry_on_oom.
@@ -492,10 +500,6 @@ class CommonPjRtClient : public PjRtClient {
   virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
                                         PjRtDeviceEventPtr device_event,
                                         absl::string_view description) {}
-
-  virtual absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
-                                    PjRtDeviceEventRef event,
-                                    std::intptr_t stream);
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -1101,6 +1105,14 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool supports_predetermined_error() const override {
     return supports_predetermined_error_;
   }
+  bool allows_recursion() const override { return allows_recursion_; }
+  bool allows_execute_recursion() const override {
+    return allows_execute_recursion_;
+  }
+  bool use_stream_based_compaction() const override {
+    return use_stream_based_compaction_;
+  }
+  bool dump_on_deserialize() const override { return dump_on_deserialize_; }
 
  private:
   const PjRtPlatformId platform_id_;
@@ -1131,6 +1143,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool allow_fallback_for_donation_ = false;
   bool supports_two_phase_launch_ = true;
   bool supports_predetermined_error_ = true;
+  bool allows_recursion_ = true;
+  bool allows_execute_recursion_;
+  bool use_stream_based_compaction_ = false;
+  bool dump_on_deserialize_ = false;
 };
 
 // A common base class for PjRtDevice implementations that delegate to

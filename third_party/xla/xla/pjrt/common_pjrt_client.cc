@@ -156,17 +156,26 @@ bool CommonPjRtClient::BufferFromHostBufferSupportsZeroCopy(
   if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
     return false;
   }
+  // TODO(parkers): remove this special case.
+  if (IsGpuId(platform_id())) {
+    return false;
+  }
   return true;
 }
 void CommonPjRtClient::TrackFuture(PjRtMemorySpace* memory_space,
                                    absl::string_view debug_info,
                                    const Future<>& future) {}
 
-absl::Status CommonPjRtClient::WaitOnStream(PjRtMemorySpace* memory_space,
-                                            PjRtDeviceEventRef event,
-                                            std::intptr_t stream) {
-  return absl::UnimplementedError(
-      "WaitUntilBufferReadyOnStream is only implemented for GPU.");
+HostMemoryAllocator* CommonPjRtClient::GetHostMemoryAllocator() const {
+  return raw_client()->GetHostMemoryAllocator();
+}
+
+absl::Status CommonPjRtClient::DmaMap(void* data, size_t buffer_size) {
+  return raw_client()->DmaMap(data, buffer_size);
+}
+
+absl::Status CommonPjRtClient::DmaUnmap(void* data) {
+  return raw_client()->DmaUnmap(data);
 }
 
 tsl::AsyncValueRef<PjRtStagingBuffer>
@@ -385,7 +394,8 @@ CommonPjRtClient::LoadSerializedExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
   ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
-  return Load(std::move(executable), load_options);
+  return LoadInternal(std::move(executable), load_options,
+                      dump_on_deserialize());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -393,13 +403,17 @@ CommonPjRtClient::LoadSerializedExecutable(
     const absl::Cord& serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
   ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
-  return Load(std::move(executable), load_options);
+  return LoadInternal(std::move(executable), load_options,
+                      dump_on_deserialize());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CommonPjRtClient::Load(
     std::shared_ptr<PjRtExecutable> executable,
     const LoadOptions& load_options) {
-  return LoadInternal(std::move(executable), load_options, /*dump=*/false);
+  auto loaded_executable =
+      LoadInternal(std::move(executable), load_options, /*dump=*/false);
+  raw_client()->RecordMemoryStats();
+  return loaded_executable;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -4241,6 +4255,13 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
                                   supports_two_phase_launch_);
   set_bool_attr_from_plugin_attrs("supports_predetermined_error",
                                   supports_predetermined_error_);
+  set_bool_attr_from_plugin_attrs("allows_recursion", allows_recursion_);
+  allows_execute_recursion_ = allows_recursion_;
+  set_bool_attr_from_plugin_attrs("allows_execute_recursion",
+                                  allows_execute_recursion_);
+  set_bool_attr_from_plugin_attrs("use_stream_based_compaction",
+                                  use_stream_based_compaction_);
+  set_bool_attr_from_plugin_attrs("dump_on_deserialize", dump_on_deserialize_);
 }
 
 void CommonPjRtClientImpl::AttachDevices(

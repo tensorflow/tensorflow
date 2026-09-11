@@ -330,12 +330,6 @@ PjRtStreamExecutorRawClient::~PjRtStreamExecutorRawClient() {
   }
 }
 
-absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
-PjRtStreamExecutorClient::GetHloCostAnalysis() const {
-  return std::make_unique<HloCostAnalysis>(
-      raw_client()->client()->backend().compiler()->ShapeSizeBytesFunction());
-}
-
 namespace {
 
 // Ensures that it is safe to deallocate any buffers that have been enqueued in
@@ -669,14 +663,6 @@ absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
   return absl::OkStatus();
 }
 
-absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
-  return raw_client()->DmaMap(data, buffer_size);
-}
-
-absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
-  return raw_client()->DmaUnmap(data);
-}
-
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::ImportForeignMemory(
     PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
@@ -793,12 +779,6 @@ bool IsAllZeros(const DeviceAssignment& assignment) {
 }
 
 }  // namespace
-
-const HloInputOutputAliasConfig&
-PjRtStreamExecutorLoadedExecutable::input_output_alias_config() const {
-  auto se_exec = static_cast<StreamExecutorExecutable*>(GetExecutable());
-  return se_exec->hlo_module()->input_output_alias_config();
-}
 
 template <typename T>
 static const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
@@ -1712,11 +1692,16 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   return execute_results;
 }
 
-void PjRtStreamExecutorClient::LaunchOnDevice(
-    PjRtDevice* device, absl::AnyInvocable<void()> execute_fn) const {
-  const LocalDeviceState& device_state =
-      this->device_state(device->local_device_id().value());
-  device_state.execute_thread()->Schedule(
+void PjRtStreamExecutorRawClient::RecordMemoryStats() {
+  for (const std::unique_ptr<LocalDeviceState>& local_device_state :
+       local_device_states_) {
+    RecordMemoryStats(local_device_state.get());
+  }
+}
+
+void PjRtStreamExecutorRawClient::LaunchOnDevice(
+    LocalDeviceId device_id, absl::AnyInvocable<void()> execute_fn) const {
+  device_state(device_id)->execute_thread()->Schedule(
       tsl::WithCurrentContext(std::move(execute_fn)));
 }
 
@@ -2057,22 +2042,6 @@ PjRtStreamExecutorRawClient::CrossCompile(
                          topology, target_topology, options);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::LoadSerializedExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
-  ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
-  return LoadInternal(std::move(executable), load_options, /*dump=*/true);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::LoadSerializedExecutable(
-    const absl::Cord& serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
-  ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
-  return LoadInternal(std::move(executable), load_options, /*dump=*/true);
-}
-
 absl::Status PjRtStreamExecutorExecutableLoadState::Preload(
     PjRtExecutable* executable) {
   return absl::down_cast<StreamExecutorExecutable*>(executable)
@@ -2092,36 +2061,12 @@ PjRtStreamExecutorRawClient::ToAsyncExecutable(
       std::static_pointer_cast<StreamExecutorExecutable>(executable));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::Load(std::shared_ptr<PjRtExecutable> executable,
-                               const LoadOptions& load_options) {
-  auto loaded_executable =
-      LoadInternal(std::move(executable), load_options, /*dump=*/false);
-  for (const PjRtDevice* device : addressable_devices()) {
-    LocalDeviceState* local_device_state =
-        raw_client()->device_state(device->local_device_id());
-    raw_client()->RecordMemoryStats(local_device_state);
-  }
-  return loaded_executable;
+bool PjRtStreamExecutorRawClient::IsHostMemoryPinned(const void* ptr,
+                                                     uint64_t size) const {
+  return executor_->IsHostMemoryPinned(ptr, size);
 }
 
-bool PjRtStreamExecutorClient::IsHostMemoryPinned(const void* ptr,
-                                                  uint64_t size) const {
-  if (addressable_devices().empty()) {
-    return false;
-  }
-  auto local_device_state = raw_client()->GetLocalDeviceState(
-      addressable_devices()[0]->local_device_id());
-  if (!local_device_state.ok()) {
-    return false;
-  }
-  return local_device_state.value()
-      ->compute_stream()
-      ->parent()
-      ->IsHostMemoryPinned(ptr, size);
-}
-
-absl::Status PjRtStreamExecutorClient::WaitOnStream(
+absl::Status PjRtStreamExecutorRawClient::WaitOnStream(
     PjRtMemorySpace* memory_space, PjRtDeviceEventRef event,
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
