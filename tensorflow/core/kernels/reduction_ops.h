@@ -57,8 +57,11 @@ struct ReduceEigenImpl {
   }
 };
 
-// Specialization for BF16 Reducer to fix accuracy.
-// TODO: All BF16 reducers should have specializations to fix accuracy.
+// Specializations for reduced-precision reducers to fix accuracy: without
+// these, the sum is accumulated in the (narrow) input type and loses
+// precision well before the result type does.
+// TODO: All BF16 and FP16 reducers should have specializations to fix
+// accuracy.
 #define CASTING_SPECIALIZATION(Reducer, ScalarType, IntermediateType)        \
   template <typename Device, typename OUT_T, typename IN_T,                  \
             typename ReductionAxes>                                          \
@@ -78,6 +81,7 @@ struct ReduceEigenImpl {
   };
 
 CASTING_SPECIALIZATION(Eigen::internal::SumReducer, bfloat16, float);
+CASTING_SPECIALIZATION(Eigen::internal::SumReducer, Eigen::half, float);
 #undef CASTING_SPECIALIZATION
 
 template <typename Device, typename OUT_T, typename IN_T,
@@ -121,6 +125,7 @@ CASTING_SPECIALIZATION(int8_t, int64_t);
 CASTING_SPECIALIZATION(int16_t, int64_t);
 CASTING_SPECIALIZATION(int32_t, int64_t);
 CASTING_SPECIALIZATION(bfloat16, float);
+CASTING_SPECIALIZATION(Eigen::half, float);
 #undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
