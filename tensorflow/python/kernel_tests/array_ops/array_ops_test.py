@@ -146,6 +146,18 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
           self.assertAllEqual(expected_transposed, transposed)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class TransposeTest(test_util.TensorFlowTestCase):
+
+  def testScalarStringConjugateTranspose(self):
+    value = constant_op.constant("hello")
+
+    transposed = gen_array_ops.conjugate_transpose(value, perm=[])
+
+    self.assertEqual((), transposed.shape)
+    self.assertAllEqual(b"hello", transposed)
+
+
 class BooleanMaskTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
