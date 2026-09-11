@@ -25,6 +25,10 @@ xla_test(
     srcs = ["collective_ops_aot_test.cc"],
     backends = _GPU_TARGETS,
     data = glob(["executables/collective_ops_aot_test_2gpu/**/*.pbtxt"]),
+    disabled_backends = [
+        # TODO(b/491194726): Serialized executable compute capability 6.0 does not match sm_10.3a.
+        "gb300",
+    ],
     tags = [
         "manual",
         "multi_gpu",
