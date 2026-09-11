@@ -126,6 +126,8 @@ void RunSelectKTest() {
       stream_executor->AllocateArray<T>(batch * k, 0);
   se::DeviceAddress<uint32_t> d_indices_out =
       stream_executor->AllocateArray<uint32_t>(batch * k, 0);
+  se::DeviceAddress<uint8_t> d_scratch =
+      stream_executor->AllocateArray<uint8_t>(32 * 1024 * 1024, 0);
 
   // Copy host to device
   TF_ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
@@ -133,7 +135,7 @@ void RunSelectKTest() {
   // Run raft select_k
   TF_ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
                                 d_data_in, d_data_out, d_indices_out, batch, n,
-                                k));
+                                k, d_scratch));
 
   // Copy results back to host
   std::vector<T> h_data_out(batch * k);
