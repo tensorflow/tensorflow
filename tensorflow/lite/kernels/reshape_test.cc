@@ -266,6 +266,39 @@ TYPED_TEST(ReshapeOpTest, Strings) {
   }
 }
 
+// A constant tensor's raw FlatBuffer buffer may legally be larger than
+// its logical shape requires; the model loader only validates
+// required_bytes <= buffer_size. The copy into the output must be
+// bounded by the output allocation, not by the raw buffer length.
+TYPED_TEST(ReshapeOpTest, ConstantInputWithOversizedBuffer) {
+  std::vector<TypeParam> logical{1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<TypeParam> input_data(1 << 12);
+  for (int i = 0; i < 8; ++i) {
+    input_data[i] = logical[i];
+  }
+  ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 2, 2},
+                              ShapeSpecificationType::kAsReshapeOption,
+                              &input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(logical));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
+// Same oversized constant input, but with the new shape supplied as a
+// non-constant tensor, so the copy happens in Eval() instead of Prepare().
+TYPED_TEST(ReshapeOpTest, ConstantInputWithOversizedBufferDynamicShape) {
+  std::vector<TypeParam> logical{1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<TypeParam> input_data(1 << 12);
+  for (int i = 0; i < 8; ++i) {
+    input_data[i] = logical[i];
+  }
+  ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {1}, {8},
+                              ShapeSpecificationType::kAsTensor, &input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(logical));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({8}));
+}
+
 TEST(ReshapeShapeResolverTest, ResolvesInferredDimension) {
   TfLiteContext context = MakeSilentContext();
   RuntimeShape input_shape = MakeRuntimeShape({2, 3, 4});

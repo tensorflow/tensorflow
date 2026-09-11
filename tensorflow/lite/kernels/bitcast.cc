@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
 
@@ -90,7 +91,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Only copy data if input and output do not share a buffer.
   if (output->data.data != input->data.data) {
-    memcpy(output->data.data, input->data.data, input->bytes);
+    // Clamp the copy length to the destination size. `input->bytes` is
+    // derived from the raw FlatBuffer buffer size for constant tensors
+    // and may be inflated relative to the logical shape, so it must be
+    // bounded by `output->bytes` to avoid an out-of-bounds write.
+    memcpy(output->data.data, input->data.data,
+           std::min(input->bytes, output->bytes));
   }
   return kTfLiteOk;
 }

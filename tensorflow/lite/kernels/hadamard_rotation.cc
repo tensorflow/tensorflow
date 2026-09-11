@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -174,7 +175,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     input_feature_size = input_tensor->dims->data[2];
   }
 
-  memcpy(output->data.f, input_tensor->data.f, input_tensor->bytes);
+    // Clamp the copy length to the destination size. `input_tensor->bytes` is
+    // derived from the raw FlatBuffer buffer size for constant tensors
+    // and may be inflated relative to the logical shape, so it must be
+    // bounded by `output->bytes` to avoid an out-of-bounds write.
+  memcpy(output->data.f, input_tensor->data.f,
+         std::min(input_tensor->bytes, output->bytes));
 
   const int num_hadamards_per_feature = input_feature_size / hadamard_size;
   const int total_transforms =

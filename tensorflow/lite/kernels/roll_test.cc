@@ -31,15 +31,22 @@ using ::testing::ElementsAreArray;
 class BaseRollOpModel : public SingleOpModel {
  public:
   BaseRollOpModel(TensorData input, const std::vector<int32_t>& shift,
-                  const std::vector<int64_t>& axis, TensorData output) {
+                  const std::vector<int64_t>& axis, TensorData output,
+                  const std::vector<int32_t>* const_shift = nullptr) {
     if (input.type == TensorType_FLOAT32 || input.type == TensorType_INT64) {
       // Clear quantization params.
       input.min = input.max = 0.f;
       output.min = output.max = 0.f;
     }
     input_ = AddInput(input);
-    shift_ = AddInput(
-        TensorData(TensorType_INT32, {static_cast<int>(shift.size())}));
+    if (const_shift != nullptr) {
+      shift_ = AddConstInput(
+          TensorData(TensorType_INT32, {static_cast<int>(shift.size())}),
+          *const_shift);
+    } else {
+      shift_ = AddInput(
+          TensorData(TensorType_INT32, {static_cast<int>(shift.size())}));
+    }
     axis_ =
         AddInput(TensorData(TensorType_INT64, {static_cast<int>(axis.size())}));
     output_ = AddOutput(output);
@@ -47,7 +54,9 @@ class BaseRollOpModel : public SingleOpModel {
     SetCustomOp("Roll", {}, ops::custom::Register_ROLL);
     BuildInterpreter({GetShape(input_), GetShape(shift_), GetShape(axis_)});
 
-    PopulateTensor(shift_, shift);
+    if (const_shift == nullptr) {
+      PopulateTensor(shift_, shift);
+    }
     PopulateTensor(axis_, axis);
   }
 
@@ -192,6 +201,22 @@ TEST(RollOpTest, BoolRoll3D) {
                                 true,  true,  true,  true,  false, false, true,
                                 false, false, false, false, true,  false, false,
                                 false, true,  false, false}));
+}
+
+// A constant tensor's raw FlatBuffer buffer may legally be larger than
+// its logical shape requires; the model loader only validates
+// required_bytes <= buffer_size. The copy into the output must be
+// bounded by the output allocation, not by the raw buffer length.
+TEST(RollOpTest, ConstShiftWithOversizedBuffer) {
+  std::vector<int32_t> shift(1 << 12, 3);
+  BaseRollOpModel m(
+      /*input=*/{TensorType_FLOAT32, {10}, 0, 31.875},
+      /*shift=*/{3}, /*axis=*/{0},
+      /*output=*/{TensorType_FLOAT32, {}, 0, 31.875}, &shift);
+  m.SetInput<float>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray({7, 8, 9, 0, 1, 2, 3, 4, 5, 6}));
 }
 
 }  // namespace tflite
