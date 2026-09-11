@@ -138,8 +138,21 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
                   in_depth, " vs ", patch_depth)));
 
   // The last dimension for filter is out_depth.
-  const int out_depth =
-      static_cast<int>(GetFilterDim(filter, filter_format, 'O'));
+  const int64_t out_depth_raw = GetFilterDim(filter, filter_format, 'O');
+  TF_REQUIRES(FastBoundsCheck(out_depth_raw, std::numeric_limits<int>::max()),
+              absl::InvalidArgumentError("Output depth too large"));
+  const int out_depth = static_cast<int>(out_depth_raw);
+
+  const int num_groups = in_depth / patch_depth;
+  if (in_depth != patch_depth) {
+    TF_REQUIRES(num_groups != 0,
+                absl::InvalidArgumentError("Number of groups must not be 0"));
+    TF_REQUIRES(out_depth >= num_groups && out_depth % num_groups == 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Depth of output (", out_depth,
+                    ") is not a multiple of the number of groups (", num_groups,
+                    ")")));
+  }
 
   // The second dimension for input is rows/height.
   // The first dimension for filter is rows/height.
