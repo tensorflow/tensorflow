@@ -670,12 +670,16 @@ class XdivyTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      x = constant_op.constant(0., dtype=dtype)
-      y = constant_op.constant(3.1, dtype=dtype)
-      xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
-      zero = self.evaluate(x)
-      self.assertAllClose(zero, xdivy_xgrad)
-      self.assertAllClose(zero, xdivy_ygrad)
+      for y_val in [3.1, 0.0]:
+        x = constant_op.constant(0.0, dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+        # Gradient w.r.t. x at x=0 should be 1 / y, not 0.
+        # d/dx (x / y) = 1 / y for all x including x=0.
+        expected_xgrad = self.evaluate(1 / y)
+        zero = self.evaluate(x)
+        self.assertAllClose(expected_xgrad, xdivy_xgrad)
+        self.assertAllClose(zero, xdivy_ygrad)
 
   @test_util.run_deprecated_v1
   def testZeroYGrad(self):
@@ -692,9 +696,19 @@ class XdivyTest(test.TestCase):
       x = constant_op.constant(0., dtype=dtype)
       y = constant_op.constant(0., dtype=dtype)
       xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+      # Gradient w.r.t. x at x=0, y=0 is 1 / 0 = inf.
+      self.assertAllClose(np.inf, xdivy_xgrad)
       zero = self.evaluate(x)
-      self.assertAllClose(zero, xdivy_xgrad)
       self.assertAllClose(zero, xdivy_ygrad)
+
+  def testZeroNumeratorTapeGrad(self):
+    x = constant_op.constant(0.0, dtype=dtypes.float64)
+    y = constant_op.constant(2.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      z = math_ops.xdivy(x, y)
+    grad = tape.gradient(z, x)
+    self.assertAllClose(0.5, self.evaluate(grad))
 
 
 @test_util.run_all_in_graph_and_eager_modes
