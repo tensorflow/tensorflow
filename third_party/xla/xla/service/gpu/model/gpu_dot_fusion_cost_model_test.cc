@@ -823,17 +823,24 @@ TEST_F(GpuDotFusionCostModelTest, BlackwellTileMDerate) {
   EXPECT_NEAR(flops_small / flops_full, 0.63, 1e-4);
 }
 
-DotProblemInfo CreateDotInfo(PrimitiveType output_type) {
+DotProblemInfo CreateDotInfo(PrimitiveType operand_type,
+                             PrimitiveType output_type, int64_t k = 1024) {
   DotProblemInfo dot_info;
-  dot_info.lhs_element_type = output_type;
-  dot_info.rhs_element_type = output_type;
+  dot_info.lhs_element_type = operand_type;
+  dot_info.rhs_element_type = operand_type;
   dot_info.output_element_type = output_type;
+  dot_info.k = k;
   return dot_info;
 }
 
-BlockLevelParameters CreateBlockParams(int64_t num_warps) {
+DotProblemInfo CreateDotInfo(PrimitiveType element_type, int64_t k = 1024) {
+  return CreateDotInfo(element_type, element_type, k);
+}
+
+BlockLevelParameters CreateBlockParams(int64_t num_warps, int num_stages = 1) {
   BlockLevelParameters params;
   params.num_warps = num_warps;
+  params.num_stages = num_stages;
   return params;
 }
 
@@ -885,35 +892,141 @@ TEST_F(GpuDotFusionCostModelTest,
 }
 
 TEST_F(GpuDotFusionCostModelTest,
-       CalculateRegistersPerThreadIncreasesWithOutputBitWidth) {
-  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/32, /*b=*/1};
+       CalculateRegistersPerThreadReturnsZeroForInvalidInputs) {
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+  const DotTileSize tile{/*m=*/64, /*n=*/64, /*k=*/64};
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::BF16);
+
+  // Non-positive problem K dimension.
+  EXPECT_EQ(0, CalculateRegistersPerThread(
+                   CreateDotInfo(PrimitiveType::BF16, /*k=*/0), tile,
+                   block_params, ddh100_));
+
+  // Non-positive tile dimensions.
+  EXPECT_EQ(0, CalculateRegistersPerThread(
+                   dot_info, DotTileSize{/*m=*/0, /*n=*/64, /*k=*/64},
+                   block_params, ddh100_));
+  EXPECT_EQ(0, CalculateRegistersPerThread(
+                   dot_info, DotTileSize{/*m=*/64, /*n=*/0, /*k=*/64},
+                   block_params, ddh100_));
+  EXPECT_EQ(0, CalculateRegistersPerThread(
+                   dot_info, DotTileSize{/*m=*/64, /*n=*/64, /*k=*/0},
+                   block_params, ddh100_));
+
+  // Non-positive warps or threads.
+  EXPECT_EQ(0,
+            CalculateRegistersPerThread(
+                dot_info, tile, CreateBlockParams(/*num_warps=*/0), ddh100_));
+
+  // Non-positive pipeline stages.
+  EXPECT_EQ(0,
+            CalculateRegistersPerThread(
+                dot_info, tile,
+                CreateBlockParams(/*num_warps=*/4, /*num_stages=*/0), ddh100_));
+  EXPECT_EQ(
+      0, CalculateRegistersPerThread(
+             dot_info, tile,
+             CreateBlockParams(/*num_warps=*/4, /*num_stages=*/-1), ddh100_));
+
+  se::DeviceDescription device_zero_threads;
+  device_zero_threads.set_threads_per_warp(0);
+  EXPECT_EQ(0, CalculateRegistersPerThread(dot_info, tile, block_params,
+                                           device_zero_threads));
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadScalesWithPureOperandBitWidth) {
+  // Tile k is set to 8 to prevent the F64 unroll cap (max 8 steps for >=64-bit
+  // types vs 16 steps for standard types) from equalizing F32 and F64
+  // footprints.
+  const DotTileSize tile{/*m=*/64, /*n=*/64, /*k=*/8};
   const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
 
-  const int regs_f16 = CalculateRegistersPerThread(
-      CreateDotInfo(PrimitiveType::F16), tile, block_params, ddh100_);
-  const int regs_f32 = CalculateRegistersPerThread(
-      CreateDotInfo(PrimitiveType::F32), tile, block_params, ddh100_);
-  const int regs_f64 = CalculateRegistersPerThread(
-      CreateDotInfo(PrimitiveType::F64), tile, block_params, ddh100_);
+  const DotProblemInfo dot_f16 =
+      CreateDotInfo(PrimitiveType::F16, PrimitiveType::F64);
+  const DotProblemInfo dot_f32 =
+      CreateDotInfo(PrimitiveType::F32, PrimitiveType::F64);
+  const DotProblemInfo dot_f64 =
+      CreateDotInfo(PrimitiveType::F64, PrimitiveType::F64);
 
-  // F16 and F32 use 32-bit hardware accumulators, while F64 uses 64-bit.
-  EXPECT_EQ(regs_f16, regs_f32);
-  EXPECT_GT(regs_f64, regs_f32);
+  const int regs_f16 =
+      CalculateRegistersPerThread(dot_f16, tile, block_params, ddh100_);
+  const int regs_f32 =
+      CalculateRegistersPerThread(dot_f32, tile, block_params, ddh100_);
+  const int regs_f64 =
+      CalculateRegistersPerThread(dot_f64, tile, block_params, ddh100_);
+
+  EXPECT_LT(regs_f16, regs_f32);
+  EXPECT_LT(regs_f32, regs_f64);
 }
 
 TEST_F(GpuDotFusionCostModelTest,
        CalculateRegistersPerThreadWithinRealisticBounds) {
   const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
   const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
-  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/64, /*b=*/1};
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/64};
 
   const int regs =
       CalculateRegistersPerThread(dot_info, tile, block_params, ddh100_);
 
-  // Estimates must be strictly above base overhead (24) and within GPU hardware
+  // Estimates must be strictly above base overhead (22) and within GPU hardware
   // max (255).
-  EXPECT_GT(regs, 24);
+  EXPECT_GT(regs, 22);
   EXPECT_LE(regs, 255);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadIncreasesWithPipelining) {
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::BF16);
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/64};
+
+  const BlockLevelParameters single_stage =
+      CreateBlockParams(/*num_warps=*/4, /*num_stages=*/1);
+  const BlockLevelParameters double_stage =
+      CreateBlockParams(/*num_warps=*/4, /*num_stages=*/2);
+  const BlockLevelParameters triple_stage =
+      CreateBlockParams(/*num_warps=*/4, /*num_stages=*/3);
+
+  const int regs_stage1 =
+      CalculateRegistersPerThread(dot_info, tile, single_stage, ddh100_);
+  const int regs_stage2 =
+      CalculateRegistersPerThread(dot_info, tile, double_stage, ddh100_);
+  const int regs_stage3 =
+      CalculateRegistersPerThread(dot_info, tile, triple_stage, ddh100_);
+
+  // Single-stage uses 1 buffer; multi-stage uses 2 buffers (double-buffered).
+  EXPECT_GT(regs_stage2, regs_stage1);
+  EXPECT_EQ(regs_stage3, regs_stage2);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadCapsKUnrollingByPrecision) {
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+
+  // Standard precision (F32) caps unroll step at 16.
+  const DotProblemInfo dot_f32 = CreateDotInfo(PrimitiveType::F32);
+  const int regs_f32_k8 = CalculateRegistersPerThread(
+      dot_f32, DotTileSize{/*m=*/64, /*n=*/64, /*k=*/8}, block_params, ddh100_);
+  const int regs_f32_k16 = CalculateRegistersPerThread(
+      dot_f32, DotTileSize{/*m=*/64, /*n=*/64, /*k=*/16}, block_params,
+      ddh100_);
+  const int regs_f32_k64 = CalculateRegistersPerThread(
+      dot_f32, DotTileSize{/*m=*/64, /*n=*/64, /*k=*/64}, block_params,
+      ddh100_);
+  EXPECT_LT(regs_f32_k8, regs_f32_k16);
+  EXPECT_EQ(regs_f32_k16, regs_f32_k64);
+
+  // 64-bit precision (F64) caps unroll step at 8.
+  const DotProblemInfo dot_f64 = CreateDotInfo(PrimitiveType::F64);
+  const int regs_f64_k4 = CalculateRegistersPerThread(
+      dot_f64, DotTileSize{/*m=*/32, /*n=*/32, /*k=*/4}, block_params, ddh100_);
+  const int regs_f64_k8 = CalculateRegistersPerThread(
+      dot_f64, DotTileSize{/*m=*/32, /*n=*/32, /*k=*/8}, block_params, ddh100_);
+  const int regs_f64_k32 = CalculateRegistersPerThread(
+      dot_f64, DotTileSize{/*m=*/32, /*n=*/32, /*k=*/32}, block_params,
+      ddh100_);
+  EXPECT_LT(regs_f64_k4, regs_f64_k8);
+  EXPECT_EQ(regs_f64_k8, regs_f64_k32);
 }
 
 }  // namespace
