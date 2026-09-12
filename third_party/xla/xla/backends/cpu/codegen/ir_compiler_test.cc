@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -90,7 +91,8 @@ constexpr absl::string_view kUnoptimizedIr = R"(
 
 // Parses the LLVM IR into a ThreadSafeModule.
 static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
-    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name) {
+    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name,
+    absl::string_view memory_region_name = "ir_compiler_test") {
   llvm::SMDiagnostic diagnostic;
   llvm::MemoryBufferRef ir_buffer(ir, name);
 
@@ -100,7 +102,7 @@ static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
                     diagnostic.getMessage().str());
   }
 
-  SetModuleMemoryRegionName(*m, "ir_compiler_test");
+  SetModuleMemoryRegionName(*m, memory_region_name);
 
   return m;
 }
@@ -352,6 +354,57 @@ INSTANTIATE_TEST_SUITE_P(IrCompilerParameterizedTestInstantiation,
                          IrCompilerParameterizedTest,
                          ::testing::Values("x86_64-grtev4-linux-gnu",
                                            "aarch64-unknown-linux-gnu"));
+
+TEST(IrCompilerTest, EmitsBufferIdentifierWithCoarseAndUniqueNames) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  TargetMachineOptions target_machine_options(kTargetTripleForHost,
+                                              kTargetCpuForHost,
+                                              /*features=*/"");
+
+  IrCompiler::Options options{
+      /*opt_level=*/llvm::CodeGenOptLevel::None,
+      /*optimize_for_size=*/false,
+      target_machine_options,
+  };
+  options.msan_enabled = false;
+
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), options, compilation_hooks);
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module, ParseModule(*context, kUnoptimizedIr,
+                                                   "unique_kernel_module_name",
+                                                   "coarse_emitter_fusion"));
+
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+
+  auto memory_buffer = cantFail((*ir_compiler)(*ir_module));
+  ASSERT_NE(memory_buffer, nullptr);
+
+  absl::string_view buffer_identifier = memory_buffer->getBufferIdentifier();
+  EXPECT_EQ(ExtractMemoryRegionName(buffer_identifier),
+            "coarse_emitter_fusion");
+  EXPECT_EQ(ExtractModuleIdentifier(buffer_identifier),
+            "unique_kernel_module_name");
+}
+
+TEST(ObjectBufferIdentifierTest, EncodeAndExtract) {
+  std::string encoded =
+      EncodeBufferIdentifier("my_region", "unique_module_123");
+  EXPECT_EQ(ExtractMemoryRegionName(encoded), "my_region");
+  EXPECT_EQ(ExtractModuleIdentifier(encoded), "unique_module_123");
+
+  // Backward compatibility with raw / un-delimited identifiers.
+  EXPECT_EQ(ExtractMemoryRegionName("legacy_region"), "legacy_region");
+  EXPECT_EQ(ExtractModuleIdentifier("legacy_region"), "legacy_region");
+  EXPECT_EQ(ExtractMemoryRegionName(""), "");
+  EXPECT_EQ(ExtractModuleIdentifier(""), "");
+}
 
 }  // namespace
 
