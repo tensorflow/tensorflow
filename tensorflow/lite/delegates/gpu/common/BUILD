@@ -287,12 +287,15 @@ cc_test(
     srcs = ["model_builder_test.cc"],
     deps = [
         ":data_type",
+        ":model",
         ":model_builder",
+        ":object_reader",
         ":shape",
         ":tensor",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
@@ -366,6 +369,18 @@ cc_library(
         "@FP16",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "object_reader_test",
+    srcs = ["object_reader_test.cc"],
+    deps = [
+        ":model",
+        ":object_reader",
+        "//tensorflow/lite/core/c:private_common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

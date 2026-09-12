@@ -257,12 +257,45 @@ void ConvertFloat16ToFloat32(size_t num_elements, const uint16_t* src,
 
 template <>
 absl::Status CreateVectorCopyData<float>(const TfLiteTensor& src, float* dst) {
+  // Every branch below consumes exactly NumElements() source elements (`dst` is
+  // allocated by the caller from NumElements() as well), so the source buffer
+  // must be large enough for the shape the tensor declares. A malformed model
+  // can declare a shape that disagrees with `bytes`, which would make the
+  // copies/dequantizations below read out of bounds.
+  int64_t element_size = 0;
   switch (src.type) {
     case kTfLiteFloat32:
-      std::memcpy(dst, src.data.f, src.bytes);
+      element_size = sizeof(float);
+      break;
+    case kTfLiteInt32:
+      element_size = sizeof(int32_t);
+      break;
+    case kTfLiteFloat16:
+      element_size = sizeof(uint16_t);
+      break;
+    case kTfLiteInt8:
+      element_size = sizeof(int8_t);
+      break;
+    case kTfLiteUInt8:
+      element_size = sizeof(uint8_t);
+      break;
+    default:
+      return absl::InvalidArgumentError(
+          "Unsupported data type for float32 tensor");
+  }
+  const int64_t num_elements = NumElements(&src);
+  const int64_t required_bytes = num_elements * element_size;
+  if (static_cast<int64_t>(src.bytes) < required_bytes) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input data size ", src.bytes, " is smaller than the ",
+                     required_bytes, " bytes required by the tensor shape"));
+  }
+  switch (src.type) {
+    case kTfLiteFloat32:
+      std::memcpy(dst, src.data.f, static_cast<size_t>(required_bytes));
       return absl::OkStatus();
     case kTfLiteFloat16:
-      ConvertFloat16ToFloat32(NumElements(&src),
+      ConvertFloat16ToFloat32(static_cast<size_t>(num_elements),
                               reinterpret_cast<uint16_t const*>(src.data.f16),
                               dst);
       return absl::OkStatus();
