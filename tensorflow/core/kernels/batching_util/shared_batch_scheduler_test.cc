@@ -1196,6 +1196,168 @@ TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
   stop_teardown.Notify();
 }
 
+TEST_P(SharedBatchSchedulerTest, EarlierDeadlinePreemptsLongerWait) {
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification queue_0_processed, queue_1_processed;
+    auto queue_0_callback =
+        [&queue_0_processed](std::unique_ptr<Batch<FakeTask>> batch) {
+          queue_0_processed.Notify();
+        };
+    auto queue_1_callback =
+        [&queue_1_processed](std::unique_ptr<Batch<FakeTask>> batch) {
+          queue_1_processed.Notify();
+        };
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+    const size_t input_batch_size_limit = 10;
+    const size_t queue_0_timeout_micros = 500 * 1000;
+    const size_t queue_1_timeout_micros = 20 * 1000;
+    const size_t max_enqueued_batches = 2;
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Queue> queue_0,
+        CreateQueue(
+            scheduler,
+            CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                               queue_0_timeout_micros, max_enqueued_batches),
+            queue_0_callback));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Queue> queue_1,
+        CreateQueue(
+            scheduler,
+            CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                               queue_1_timeout_micros, max_enqueued_batches),
+            queue_1_callback));
+
+    // Schedule a task on queue 0 at t=0. The worker thread will sleep waiting
+    // for t=500ms.
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_0.get()));
+    env.AdvanceByMicroseconds(10 * 1000);  // Advance to t=10ms.
+
+    // Schedule a task on queue 1 at t=10ms with deadline t=30ms.
+    // Adding to the empty queue should wake up the worker thread to rearm
+    // its timer with the earlier deadline.
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_1.get()));
+
+    // Advance to t=29ms (queue 1 timeout is at t=30ms).
+    env.AdvanceByMicroseconds(19 * 1000);
+    Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
+    EXPECT_FALSE(queue_1_processed.HasBeenNotified());
+    EXPECT_FALSE(queue_0_processed.HasBeenNotified());
+
+    // Advance past t=30ms -> queue 1 batch should fire.
+    env.AdvanceByMicroseconds(2 * 1000);
+    queue_1_processed.WaitForNotification();
+    EXPECT_FALSE(queue_0_processed.HasBeenNotified());
+
+    // Advance to t=501ms -> queue 0 batch should fire.
+    env.AdvanceByMicroseconds(470 * 1000);
+    queue_0_processed.WaitForNotification();
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerTest, CloseEmptyQueueUnblocksImmediately) {
+  test_util::FakeClockEnv env(Env::Default());
+  // Note: No FakeClockAdvancerThread is created here.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<Scheduler> scheduler,
+      CreateSharedBatchScheduler(/*num_batch_threads=*/2, &env));
+
+  const size_t input_batch_size_limit = 10;
+  const size_t batch_timeout_micros = 1000 * 1000;
+  const size_t max_enqueued_batches = 2;
+  QueueOptions options =
+      CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                         batch_timeout_micros, max_enqueued_batches);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                          CreateQueue(scheduler, options, [](auto) {}));
+
+  // Closing the empty queue should signal waiting threads to erase it and
+  // return promptly.
+  queue.reset();
+  SUCCEED();
+}
+
+TEST_P(SharedBatchSchedulerTest, WorkerThreadHandoffOnBatchProcessing) {
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification queue_0_processing, queue_0_proceed;
+    auto queue_0_callback = [&queue_0_processing,
+                             &queue_0_proceed](auto batch) {
+      queue_0_processing.Notify();
+      queue_0_proceed.WaitForNotification();
+    };
+
+    absl::Notification queue_1_processed;
+    auto queue_1_callback = [&queue_1_processed](auto batch) {
+      queue_1_processed.Notify();
+    };
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(/*num_batch_threads=*/2, &env));
+
+    const size_t input_batch_size_limit = 10;
+    const size_t queue_0_timeout_micros = 50 * 1000;   // 50ms
+    const size_t queue_1_timeout_micros = 100 * 1000;  // 100ms
+    const size_t max_enqueued_batches = 2;
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Queue> queue_0,
+        CreateQueue(
+            scheduler,
+            CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                               queue_0_timeout_micros, max_enqueued_batches),
+            queue_0_callback));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Queue> queue_1,
+        CreateQueue(
+            scheduler,
+            CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                               queue_1_timeout_micros, max_enqueued_batches),
+            queue_1_callback));
+
+    // Schedule task on queue 0 at t=0 (timeout t=50ms).
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_0.get()));
+    env.AdvanceByMicroseconds(10 * 1000);  // Advance to t=10ms.
+
+    // Schedule task on queue 1 at t=10ms (timeout t=110ms).
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_1.get()));
+
+    // Advance to t=51ms -> queue 0 timeout fires and thread 0 enters callback.
+    env.AdvanceByMicroseconds(41 * 1000);
+    queue_0_processing.WaitForNotification();
+
+    // Advance to t=111ms -> thread 1 should pick up queue 1's timed-out batch
+    // concurrently, even while thread 0 is still blocked in queue 0 callback.
+    env.AdvanceByMicroseconds(60 * 1000);
+    queue_1_processed.WaitForNotification();
+
+    // Unblock thread 0.
+    queue_0_proceed.Notify();
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
 // TODO(b/161857471):
 // Add test coverage when input-split and no-split returns differently.
 INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerTest,
@@ -1447,6 +1609,92 @@ TEST_P(SharedBatchSchedulerPriorityTest,
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
+}
+
+TEST_P(SharedBatchSchedulerPriorityTest,
+       LowPriorityQueueObeysEarliestTimeoutDeadline) {
+  const bool is_priority_merge = (mixed_priority_batching_policy() ==
+                                  MixedPriorityBatchingPolicy::kPriorityMerge);
+
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification low_batch_processed;
+    auto queue_callback = [&low_batch_processed](
+                              std::unique_ptr<Batch<FakeTask>> batch,
+                              std::vector<std::unique_ptr<FakeTask>> tasks) {
+      ASSERT_TRUE(batch->IsClosed());
+      EXPECT_EQ(1, batch->num_tasks());
+      EXPECT_EQ(1, batch->task(0).size());
+      EXPECT_EQ(tsl::criticality::Criticality::kSheddable,
+                batch->task(0).criticality());
+      low_batch_processed.Notify();
+    };
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+    const size_t high_priority_timeout_micros = 100 * 1000;
+    const size_t low_priority_timeout_micros = 10 * 1000;
+
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/high_priority_timeout_micros,
+        /*max_enqueued_batches=*/2, /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        low_priority_timeout_micros;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        mixed_priority_batching_policy();
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Queue> queue,
+        CreateQueue(scheduler, queue_options, queue_callback));
+
+    // Submit a single low-priority task (size 1 < max 10).
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+
+    // Advance clock to 9ms (less than low_priority_timeout_micros = 10ms).
+    env.AdvanceByMicroseconds(9 * 1000);
+    Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
+    EXPECT_FALSE(low_batch_processed.HasBeenNotified());
+
+    // Advance clock past 10ms.
+    env.AdvanceByMicroseconds(1 * 1000);
+
+    if (!is_priority_merge) {
+      // Non-merge policies form and schedule a standalone low-priority batch
+      // immediately after low_priority_timeout_micros expires.
+      EXPECT_TRUE(
+          low_batch_processed.WaitForNotificationWithTimeout(absl::Seconds(5)));
+    } else {
+      // Under kPriorityMerge, reaching low_priority_timeout_micros merges the
+      // task into the high-priority open batch, where it now waits for the
+      // high_priority_timeout_micros (100ms) before firing.
+      Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
+      EXPECT_FALSE(low_batch_processed.HasBeenNotified());
+
+      // Advance clock to 99ms (total time 99ms).
+      env.AdvanceByMicroseconds(89 * 1000);
+      Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
+      EXPECT_FALSE(low_batch_processed.HasBeenNotified());
+
+      // Advance clock past 100ms -> merged batch should fire.
+      env.AdvanceByMicroseconds(2 * 1000);
+      EXPECT_TRUE(
+          low_batch_processed.WaitForNotificationWithTimeout(absl::Seconds(5)));
+    }
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
 }
 
 // Lazy split is to be removed. The mixed priority batching is only supported
