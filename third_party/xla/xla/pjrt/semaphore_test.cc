@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "xla/hlo/testlib/test.h"
@@ -54,6 +56,42 @@ TEST(SemaphoreTest, UnthreadedTests) {
     auto d = semaphore.ScopedAcquire(2);
     EXPECT_EQ(d.amount(), 2);
   }
+}
+
+TEST(SemaphoreTest, ScopedReservationMoveAssignment) {
+  Semaphore sem(10);
+  ASSERT_EQ(sem.value(), 10);
+
+  // Test overwrite move-assignment.
+  {
+    auto r1 = sem.ScopedAcquire(5);
+    ASSERT_EQ(sem.value(), 5);
+    {
+      auto r2 = sem.ScopedAcquire(3);
+      ASSERT_EQ(sem.value(), 2);
+      r1 = std::move(r2);
+      // r1's previous 5 units should be released immediately upon move assignment.
+      ASSERT_EQ(sem.value(), 7);
+      ASSERT_EQ(r1.amount(), 3);
+    }
+    // r2 was moved-from, so destroying r2 changes nothing.
+    ASSERT_EQ(sem.value(), 7);
+  }
+  // r1 destroyed, releasing 3 units.
+  ASSERT_EQ(sem.value(), 10);
+
+  // Test self-move-assignment.
+  {
+    auto r1 = sem.ScopedAcquire(4);
+    ASSERT_EQ(sem.value(), 6);
+    Semaphore::ScopedReservation* r1_ptr = &r1;
+    r1 = std::move(*r1_ptr);
+    // Reservation should be preserved, value remains 6.
+    ASSERT_EQ(sem.value(), 6);
+    ASSERT_EQ(r1.amount(), 4);
+  }
+  // r1 destroyed, value returns to 10.
+  ASSERT_EQ(sem.value(), 10);
 }
 
 TEST(SemaphoreTest, ConcurrentTest) {
