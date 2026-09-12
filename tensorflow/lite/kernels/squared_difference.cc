@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"

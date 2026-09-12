@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "fixedpoint/fixedpoint.h"
-#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
