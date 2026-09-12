@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "xla/hlo/testlib/test.h"
@@ -80,5 +82,23 @@ TEST(SemaphoreTest, ConcurrentTest) {
   a_done.WaitForNotification();
 }
 
+TEST(SemaphoreTest, ScopedReservationMoveAssignment) {
+  Semaphore sem(10);
+  {
+    auto r1 = sem.ScopedAcquire(5);
+    auto r2 = sem.ScopedAcquire(3);
+    ASSERT_EQ(sem.value(), 2);
+
+    r1 = std::move(r2);
+    // After moving r2 into r1, the original 5 units should have been returned.
+    ASSERT_EQ(sem.value(), 7);
+
+    // Self-assignment
+    auto* p = &r1;
+    r1 = std::move(*p);
+    ASSERT_EQ(sem.value(), 7);
+  }
+  ASSERT_EQ(sem.value(), 10);
+}
 }  // namespace
 }  // namespace xla
