@@ -33,9 +33,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -115,8 +115,8 @@ LogicalResult NormalizeIndexVector(Operation* parent_op, Value& indices,
     new_start_indices_shape.push_back(1);
     indices_type = RankedTensorType::get(new_start_indices_shape,
                                          indices_type.getElementType());
-    indices = mhlo::ReshapeOp::create(rewriter, parent_op->getLoc(),
-                                      indices_type, indices);
+    indices = stablehlo::ReshapeOp::create(rewriter, parent_op->getLoc(),
+                                           indices_type, indices);
   } else if (index_vector_dim != indices_type.getRank() - 1) {
     // If index_vector_dim isn't the last dimension in indices then it isn't
     // supported yet.
@@ -136,7 +136,7 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function) {
   Block& body = function.front();
   if (body.getNumArguments() != 2) return failure();
 
-  mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
+  stablehlo::ReturnOp return_op = dyn_cast<stablehlo::ReturnOp>(body.back());
   if (!return_op) return failure();
   if (return_op.getNumOperands() != 1) return failure();
   if (return_op.getOperands().front() != body.getArgument(1)) return failure();
@@ -197,8 +197,10 @@ Value InsertTranspose(Value value, int batch_dim, int feature_dim,
                                     default_batch_dim, default_feature_dim,
                                     default_spatial_dim_start, num_spatial_dims,
                                     type, rewriter);
-  return mhlo::TransposeOp::create(rewriter, value.getLoc(), type, value,
-                                   permutation);
+  return stablehlo::TransposeOp::create(
+      rewriter, value.getLoc(), type, value,
+      rewriter.getDenseI64ArrayAttr(
+          llvm::to_vector(permutation.getValues<int64_t>())));
 }
 
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {

@@ -20,11 +20,11 @@ limitations under the License.
 
 namespace mlir::odml {
 
-// Patterns to legalize mhlo.reduce_window to TFL.
+// Patterns to legalize stablehlo.reduce_window to TFL.
 //
-// Maps the following representations of AvgPool in MHLO into a tfl.avg_pool
-// operation when they cleanly map to 2D or 3D average pool with VALID or SAME
-// padding:
+// Maps the following representations of AvgPool in StableHLO into a
+// tfl.avg_pool operation when they cleanly map to 2D or 3D average pool with
+// VALID or SAME padding:
 // * div(reduce_sum_window(x), constant(sizeof(window)))
 // * div(reduce_sum_window(x), reduce_sum_window(constant(1)))
 //
@@ -33,7 +33,7 @@ void PopulateLegalizeReduceWindowPatterns(MLIRContext* ctx,
                                           RewritePatternSet& patterns,
                                           ConversionTarget& target);
 
-// Patterns to prepare mhlo.reduce_window for legalization.
+// Patterns to prepare stablehlo.reduce_window for legalization.
 // Transposes reduce_windows to be NHWC.
 //
 // Emits: tfl.transpose

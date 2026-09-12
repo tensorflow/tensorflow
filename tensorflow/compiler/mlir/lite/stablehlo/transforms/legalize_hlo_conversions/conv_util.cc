@@ -28,26 +28,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 
-llvm::SmallVector<bool, 2> ResolveWindowReversal(
-    const int64_t num_spatials,
-    std::optional<mlir::DenseElementsAttr> opt_reversals) {
-  if (!opt_reversals.has_value()) {
-    return llvm::SmallVector<bool, 2>(num_spatials, false);
-  }
-  auto reversals = opt_reversals.value();
-  if (reversals.isSplat()) {
-    return llvm::SmallVector<bool, 2>(num_spatials,
-                                      reversals.getSplatValue<bool>());
-  }
-  return llvm::SmallVector<bool, 2>(reversals.getValues<bool>());
-}
-
-ConvView::ConvView(mhlo::ConvolutionOp op)
+ConvView::ConvView(stablehlo::ConvolutionOp op)
     : input_layout_(
           Layout{op.getDimensionNumbers().getInputBatchDimension(),
                  op.getDimensionNumbers().getInputFeatureDimension(),
@@ -84,7 +70,7 @@ ConvView::ConvView(mhlo::ConvolutionOp op)
       ResolveWindowReversal(num_spatials, op.getWindowReversal());
 }
 
-Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op) {
+Value CreatePadOpFromConvPadding(OpBuilder& b, stablehlo::ConvolutionOp op) {
   const ConvView data(op);
   const auto rank = data.InputLayout().Rank();
   auto input_spatials = data.InputLayout().Spatials();
@@ -100,22 +86,16 @@ Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op) {
 
   const llvm::SmallVector<int64_t, 4> interior_padding(rank, 0);
 
-  auto padding_attr_type = RankedTensorType::get({rank}, b.getI64Type());
-  auto hi_padding_attr =
-      DenseIntElementsAttr::get(padding_attr_type, hi_padding);
-  auto lo_padding_attr =
-      DenseIntElementsAttr::get(padding_attr_type, lo_padding);
-  auto interior_padding_attr =
-      DenseIntElementsAttr::get(padding_attr_type, interior_padding);
-
   auto padding_value_type = RankedTensorType::get({}, data.ElementType());
   auto padding_value_attr = b.getZeroAttr(padding_value_type);
   auto padding_value_op =
       arith::ConstantOp::create(b, op->getLoc(), padding_value_attr);
 
-  auto pad_op = mhlo::PadOp::create(b, padding_value_op->getLoc(), op.getLhs(),
-                                    padding_value_op, lo_padding_attr,
-                                    hi_padding_attr, interior_padding_attr);
+  auto pad_op = stablehlo::PadOp::create(
+      b, padding_value_op->getLoc(), op.getLhs(), padding_value_op,
+      /*edge_padding_low=*/b.getDenseI64ArrayAttr(lo_padding),
+      /*edge_padding_high=*/b.getDenseI64ArrayAttr(hi_padding),
+      /*interior_padding=*/b.getDenseI64ArrayAttr(interior_padding));
 
   return pad_op;
 }
@@ -189,7 +169,7 @@ bool MatchWithResizeBilinearOp(const ConvView& data, bool& align_corners) {
   return false;
 }
 
-bool IsTransposeConvPaddingValid(mhlo::ConvolutionOp conv_op,
+bool IsTransposeConvPaddingValid(stablehlo::ConvolutionOp conv_op,
                                  size_t num_spatial_dims,
                                  const ArrayRef<int64_t>& strides,
                                  const ArrayRef<int64_t>& padding) {
@@ -230,7 +210,7 @@ bool IsTransposeConvPaddingValid(mhlo::ConvolutionOp conv_op,
   return true;
 }
 
-bool IsTransposeConvPaddingSame(mhlo::ConvolutionOp conv_op,
+bool IsTransposeConvPaddingSame(stablehlo::ConvolutionOp conv_op,
                                 size_t num_spatial_dims,
                                 const ArrayRef<int64_t>& strides,
                                 const ArrayRef<int64_t>& padding) {

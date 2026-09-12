@@ -22,17 +22,17 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
-// Helpers for working with mhlo.reduce_window attrs in the mlir api as
+// Helpers for working with stablehlo.reduce_window attrs in the mlir api as
 // native cc types.
 
 namespace mlir::odml {
 
 class ReduceWindowView {
  public:
-  explicit ReduceWindowView(mhlo::ReduceWindowOp op);
+  explicit ReduceWindowView(stablehlo::ReduceWindowOp op);
 
   llvm::ArrayRef<int64_t> WindowDims() const { return window_dims_; }
   int64_t WindowSize() const { return window_size_; }
