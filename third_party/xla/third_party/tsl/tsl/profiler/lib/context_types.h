@@ -25,7 +25,7 @@ enum class ContextType : int {
   kGeneric = 0,
   kLegacy,
   kTfExecutor,
-  kTfrtExecutor,
+  kTfrtExecutor [[deprecated]],
   kSharedBatchScheduler,
   kPjRt,
   kAdaptiveSharedBatchScheduler,
@@ -35,12 +35,13 @@ enum class ContextType : int {
   kBatcher,
   kTpuStream,
   kTpuLaunch,
-  kPathwaysExecutor,
+  kPathwaysExecutor [[deprecated]],
   kPjrtLibraryCall,
   kThreadpoolEvent,
   kJaxServingExecutor,
   kScOffload,
-  kLastContextType = ContextType::kScOffload,
+  kGenericModelExecutor,
+  kLastContextType = ContextType::kGenericModelExecutor,
 };
 
 // In XFlow we encode context type as flow category as 6 bits.
