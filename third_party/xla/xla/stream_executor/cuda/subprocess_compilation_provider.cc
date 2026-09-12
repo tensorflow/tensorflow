@@ -92,6 +92,11 @@ absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(
     const CudaComputeCapability& cc,
     absl::Span<const RelocatableModuleOrPtx> inputs,
     const CompilationOptions& options) const {
+  if (path_to_nvlink_.empty()) {
+    return absl::FailedPreconditionError(
+        "Can't link PTX because no nvlink binary was found.");
+  }
+
   std::vector<std::vector<uint8_t>> images;
   for (const auto& input : inputs) {
     if (std::holds_alternative<RelocatableModule>(input)) {
