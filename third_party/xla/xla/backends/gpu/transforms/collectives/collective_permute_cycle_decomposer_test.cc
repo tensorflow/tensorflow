@@ -172,6 +172,10 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleMultipleCycles) {
   // For a forward cycle, this checks:
   // 1. Split collectives should not have channel-id
   // 2. Split collectives are combined based on replica-id.
+  // With two disjoint cycles there are two back edges, so the select must be
+  // driven by the disjunction of both back-edge targets: device 0 receives on
+  // {6,0} and device 1 on {7,1}, and neither is a target of the forward
+  // collective-permute.
   absl::string_view hlo = R"(
     HloModule test
     ENTRY test_computation {
@@ -186,8 +190,11 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleMultipleCycles) {
   EXPECT_TRUE(*RunFileCheck(module->ToString(PrintOptions()), R"(
     // CHECK:     ENTRY %test_computation (p: u32[8,8]) -> u32[8,8] {
     // CHECK-DAG:   %[[replica_id:.+]] = u32[] replica-id()
+    // CHECK-DAG:   %[[c0:.+]] = u32[] constant(0)
+    // CHECK-DAG:   %[[cmp0:.+]] = pred[] compare(%[[replica_id]], %[[c0]]), direction=EQ
     // CHECK-DAG:   %[[c1:.+]] = u32[] constant(1)
-    // CHECK-DAG:   %[[compare:.+]] = pred[] compare(%[[replica_id]], %[[c1]]), direction=EQ
+    // CHECK-DAG:   %[[cmp1:.+]] = pred[] compare(%[[replica_id]], %[[c1]]), direction=EQ
+    // CHECK-DAG:   %[[compare:.+]] = pred[] or(%[[cmp0]], %[[cmp1]])
     // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
 
     // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
