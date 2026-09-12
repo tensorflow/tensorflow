@@ -5825,6 +5825,9 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    local_reduce->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
@@ -7369,6 +7372,19 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
   XLA_VLOG_LINES(1, SpmdLogger::ReportAfterPartition(
                         *module, options_.report_instruction_count));
   XLA_VLOG_LINES(1, logger.MakeReport());
+
+  // Remove boundary copies inserted for SPMDFullToShardShape and
+  // SPMDShardToFullShape.
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+      if (hlo->opcode() == HloOpcode::kCopy &&
+          hlo->frontend_attributes().map().contains(kSpmdBoundaryCopyAttr)) {
+        ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(hlo->mutable_operand(0)));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
+        changed = true;
+      }
+    }
+  }
 
   if (changed) {
     HloPassPipeline pass("spmd-cleanup");

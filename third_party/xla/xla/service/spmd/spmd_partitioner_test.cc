@@ -10958,11 +10958,11 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   auto p0 = op::GetTupleElement(op::Parameter(0));
-  auto to_shard = op::Copy(p0);
+  auto to_shard = p0;
   auto p1 = op::GetTupleElement(op::Parameter(0));
-  auto mul = AllOf(op::Shape("f32[4,2]"),
-                   op::Multiply(op::Copy(op::Add(to_shard, p1)), p0));
-  EXPECT_THAT(root, op::Tuple(op::Copy(mul)));
+  auto mul =
+      AllOf(op::Shape("f32[4,2]"), op::Multiply(op::Add(to_shard, p1), p0));
+  EXPECT_THAT(root, op::Tuple(mul));
 }
 
 TEST_P(SpmdPartitioningTest, NestedManual) {
@@ -10981,9 +10981,7 @@ ENTRY entry {
                        PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              AllOf(op::Shape("s32[8,8,8]"),
-                    op::Copy(op::Copy(op::Copy(op::Copy(op::Parameter(0)))))));
+  EXPECT_THAT(root, AllOf(op::Shape("s32[8,8,8]"), op::Parameter(0)));
 }
 
 TEST_P(SpmdPartitioningTest, SubgroupAllToAllReshard) {
@@ -18221,12 +18219,16 @@ ENTRY entry {
   dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={unreduced}
   ROOT copy = f32[8,256]{1,0} copy(dot), sharding={unreduced}
 })";
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       PartitionComputation(hlo_string, /*num_devices=*/2));
-  VLOG(1) << module->ToString();
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(op::Dot()));
-  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Copy(op::Dot()));
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
 }
 
 TEST_P(SpmdPartitioningTest, UnreducedParam) {
@@ -18273,11 +18275,15 @@ ENTRY entry {
   b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,2,2]<=[2,2,2]T(1,2,0) last_tile_dim_replicate}
   ROOT dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[2,2,2]<=[2,2,2]T(0,2,1) last_tile_dims={unreduced}}
 })";
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       PartitionComputation(hlo_string, /*num_devices=*/8));
-  VLOG(1) << module->ToString();
-  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
-  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/8, options));
+    EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
 }
 
 TEST_P(SpmdPartitioningTest, SubgroupUnreducedAndReplicated) {
@@ -18289,11 +18295,83 @@ ENTRY entry {
   b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,2,4]<=[2,2,4]T(1,2,0) last_tile_dim_replicate}
   ROOT dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[2,2,2,2]<=[2,2,2,2]T(0,2,1,3) last_tile_dims={unreduced,replicated}}
 })";
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       PartitionComputation(hlo_string, /*num_devices=*/16));
-  VLOG(1) << module->ToString();
-  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
-  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/16, options));
+    EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
+TEST_P(SpmdPartitioningTest, UnreducedReduce) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+%add {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY entry {
+  %input = f32[8,1024] parameter(0), sharding={devices=[2,1]<=[2]}
+  %zero = f32[] constant(0)
+  ROOT %reduce = f32[1024] reduce(%input, %zero), dimensions={0}, to_apply=%add, sharding={unreduced}
+})";
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
+TEST_P(SpmdPartitioningTest, UnreducedConvolutionContractingDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[128,56,56,64] parameter(0), sharding={devices=[2,1,1,1]<=[2]}
+  %rhs = f32[128,56,56,256] parameter(1), sharding={devices=[2,1,1,1]<=[2]}
+  ROOT %conv = f32[1,1,64,256] convolution(%lhs, %rhs),
+    window={size=56x56}, dim_labels=f01b_i01o->01bf, sharding={unreduced}
+})";
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
+TEST_P(SpmdPartitioningTest, UnreducedConvolutionSpatialDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[128,56,56,64] parameter(0), sharding={devices=[1,2,1,1]<=[2]}
+  %rhs = f32[128,56,56,256] parameter(1), sharding={devices=[1,2,1,1]<=[2]}
+  ROOT %conv = f32[1,1,64,256] convolution(%lhs, %rhs),
+    window={size=56x56}, dim_labels=f01b_i01o->01bf, sharding={unreduced}
+})";
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
 }
 
 TEST_P(SpmdPartitioningTest, OriginalValueWithTrivialShardingAnnotation) {
