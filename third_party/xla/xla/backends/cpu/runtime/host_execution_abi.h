@@ -28,7 +28,7 @@ namespace xla::cpu {
 // - A breaking change to the behavior of a thunk
 // - The addition or deletion of a thunk type
 // - A library upgrade that can change numerics (e.g. Eigen)
-constexpr int32_t kHostExecutionAbiVersion = 1;
+constexpr int32_t kHostExecutionAbiVersion = 2;
 
 }  // namespace xla::cpu
 
