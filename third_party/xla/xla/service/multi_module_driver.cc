@@ -80,16 +80,35 @@ absl::StatusOr<std::unique_ptr<HloModule>> MultiModuleDriver::Compile(
 
   if (executor == nullptr) {
     // Sequential compilation.
+
+    // When delegating sub-module compilation to worker threads, do not reuse
+    // the caller thread pool, since such reuse can cause deadlocks.
+    Compiler::CompileOptions sub_options = options;
+    if (sub_options.thread_pool != nullptr &&
+        sub_options.thread_pool->CurrentThreadId() != -1) {
+      sub_options.thread_pool = nullptr;
+    }
+
     for (size_t i = 0; i < all_modules.size(); ++i) {
-      results[i] = compile_fn_(std::move(all_modules[i]), options);
+      results[i] = compile_fn_(std::move(all_modules[i]), sub_options);
     }
   } else {
     // Parallel compilation.
+
     tsl::BlockingCounter counter(all_modules.size());
     for (size_t i = 0; i < all_modules.size(); ++i) {
       executor->Execute(
           [this, &all_modules, &options, &results, &counter, i]() {
-            results[i] = compile_fn_(std::move(all_modules[i]), options);
+            // When delegating sub-module compilation to worker threads, do not
+            // reuse the caller thread pool, since such reuse can cause
+            // deadlocks.
+            Compiler::CompileOptions sub_options = options;
+            if (sub_options.thread_pool != nullptr &&
+                sub_options.thread_pool->CurrentThreadId() != -1) {
+              sub_options.thread_pool = nullptr;
+            }
+
+            results[i] = compile_fn_(std::move(all_modules[i]), sub_options);
             counter.DecrementCount();
           });
     }
