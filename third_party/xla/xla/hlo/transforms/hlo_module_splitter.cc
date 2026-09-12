@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/hlo_module_stitcher.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape_tree.h"
