@@ -3197,6 +3197,56 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
             dilations=[1, 1, 1, 1])
         self.evaluate(t)
 
+  @test_util.run_v2_only
+  def testConv2DBackpropInputInvalidInputSizesRaiseError(self):
+    # The oneDNN kernel validated input_sizes only when it held two values.
+    # Any other count reached MakeInputTfShape unchecked and aborted the
+    # process on a CHECK instead of raising. Eager only: in graph mode the
+    # shape function rejects these before the kernel is reached.
+    filters = constant_op.constant(
+        0.1, shape=[3, 3, 3, 3], dtype=dtypes.float32)
+    out_backprop = constant_op.constant(
+        0.1, shape=[1, 4, 4, 3], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "input_sizes to contain 4 values or 2 values"):
+      self.evaluate(
+          gen_nn_ops.conv2d_backprop_input(
+              input_sizes=constant_op.constant(
+                  [8, 8, 3], shape=[3], dtype=dtypes.int32),
+              filter=filters,
+              out_backprop=out_backprop,
+              strides=[1, 2, 2, 1],
+              padding="SAME"))
+
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "input_sizes input must be 1-dim"):
+      self.evaluate(
+          gen_nn_ops.conv2d_backprop_input(
+              input_sizes=constant_op.constant(8, dtype=dtypes.int32),
+              filter=filters,
+              out_backprop=out_backprop,
+              strides=[1, 2, 2, 1],
+              padding="SAME"))
+
+    # Control case. The same kernel class also backs Conv3DBackpropInputV2,
+    # whose input_sizes holds five values, so the guard has to follow the rank
+    # of out_backprop rather than assume four.
+    filters_3d = constant_op.constant(
+        0.1, shape=[3, 3, 3, 3, 3], dtype=dtypes.float32)
+    out_backprop_3d = constant_op.constant(
+        0.1, shape=[1, 4, 4, 4, 3], dtype=dtypes.float32)
+    self.assertAllEqual(
+        self.evaluate(
+            gen_nn_ops.conv3d_backprop_input_v2(
+                input_sizes=constant_op.constant(
+                    [1, 8, 8, 8, 3], shape=[5], dtype=dtypes.int32),
+                filter=filters_3d,
+                out_backprop=out_backprop_3d,
+                strides=[1, 2, 2, 2, 1],
+                padding="SAME")).shape, [1, 8, 8, 8, 3])
+
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class DepthwiseConv2DTest(test.TestCase):
