@@ -649,6 +649,10 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     // Input tensor is of the following dimensions:
     // [ batch, in_rows, in_cols, in_depth ]
     const Tensor& input = context->input(0);
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input must be 4-dimensional: ", input.shape().DebugString())));
     OP_REQUIRES(context, (input.shape().num_elements() > 0),
                 absl::InvalidArgumentError("Input tensor can't be empty"));
 
@@ -764,10 +768,6 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     const Tensor& filter = context->input(filter_index);
 
     // For 2D convolution, there should be 4 dimensions.
-    OP_REQUIRES(
-        context, padded_shape.dims() == 4,
-        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
-                                                padded_shape.DebugString())));
     OP_REQUIRES(
         context, filter.dims() == 4,
         absl::InvalidArgumentError(absl::StrCat(
