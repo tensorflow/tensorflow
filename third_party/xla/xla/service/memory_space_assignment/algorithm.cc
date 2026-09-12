@@ -6041,8 +6041,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           }
         }
         if (allocate_segment_result == AllocationResult::kSuccess &&
-            NeedsMirroredAllocation(allocation_value_to_update, use,
-                                    previous_use)) {
+            CanBeMirroredByNestedComputations(allocation_value_to_update, use,
+                                              previous_use)) {
           CreateMirroredAllocations(
               allocation_value_to_update, use, previous_use, allocation_values,
               already_processed_allocation_values_inside_a_conditional);
@@ -6772,13 +6772,13 @@ void MsaAlgorithm::SynchronizeAliasedWhileLoopOffsets(
       {hlo_use.instruction, hlo_use.operand_index}, offset);
 }
 
-bool MsaAlgorithm::NeedsMirroredAllocation(
+bool MsaAlgorithm::CanBeMirroredByNestedComputations(
     const AllocationValue& allocation_value,
     const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use) const {
-  // We create mirrored allocations for allocation values, inside
-  // conditional branches, by verifying that all of the following conditions
-  // are met:
+  // We check whether an allocation value qualifies to be mirrored by
+  // allocations inside nested/called computations (such as conditionals) by
+  // verifying that all of the following conditions are met:
   // 1. The previous use is a conditional and the current use is strictly after
   //    the conditional.
   // 2. The last allocation in the AllocationSequence is in the alternate
