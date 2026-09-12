@@ -33,6 +33,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+// Returns true if proto memory optimizations are enabled (default true, can be
+// disabled via environment variable TF_ENABLE_PROTO_MEMORY_OPTIMIZATIONS=0).
+bool ProtoMemoryOptimizationsEnabled();
+
 struct SessionOptions;
 
 namespace subgraph {
@@ -54,6 +59,12 @@ struct GraphExecutionStateOptions {
   // work for almost all models. Non default values should only applied to
   // selective models.
   bool enable_tf2xla_mlir_bridge = true;
+
+  // Optional pre-constructed FunctionLibraryDefinition. If provided,
+  // GraphExecutionState will copy this library definition (which performs
+  // an O(1) refcount increment on underlying FunctionRecords) rather than
+  // re-parsing or duplicating the library proto in GraphDef.
+  const FunctionLibraryDefinition* flib_def = nullptr;
 };
 
 // A ClientGraph is simply a sub-graph of the full graph as induced by

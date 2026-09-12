@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/util.h"
 
 #ifndef IS_MOBILE_PLATFORM
@@ -63,11 +64,34 @@ limitations under the License.
 
 namespace tensorflow {
 
+bool ProtoMemoryOptimizationsEnabled() {
+  static const bool enabled = [] {
+    bool val = true;
+    (void)ReadBoolFromEnvVar("TF_ENABLE_PROTO_MEMORY_OPTIMIZATIONS", true,
+                             &val);
+    return val;
+  }();
+  return enabled;
+}
+
 namespace {
 bool IsCollectiveV2(const std::string& op) {
   return op == "CollectiveReduceV2" || op == "CollectiveGatherV2" ||
          op == "CollectiveBcastRecvV2" || op == "CollectiveBcastSendV2" ||
          op == "ColectiveReduceScatterV2" || op == "ColectiveAllToAllV2";
+}
+
+// Returns true if `flib_def` is non-null and contains definitions for all
+// functions defined in `graph_def.library()`.
+bool LibraryContainsAllFunctions(const FunctionLibraryDefinition* flib_def,
+                                 const GraphDef& graph_def) {
+  if (flib_def == nullptr) return false;
+  for (const auto& fdef : graph_def.library().function()) {
+    if (!flib_def->Contains(fdef.signature().name())) {
+      return false;
+    }
+  }
+  return true;
 }
 }  // namespace
 
@@ -96,14 +120,23 @@ GraphExecutionState::~GraphExecutionState() {
   VLOG(4) << "Graph proto is \n" << graph_def.DebugString();
 #endif  // __ANDROID__
 
-  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
-      OpRegistry::Global(), graph_def);
+  std::unique_ptr<FunctionLibraryDefinition> flib_def;
+  if (ProtoMemoryOptimizationsEnabled() &&
+      LibraryContainsAllFunctions(options.flib_def, graph_def)) {
+    flib_def = std::make_unique<FunctionLibraryDefinition>(*options.flib_def);
+  } else {
+    flib_def = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+                                                           graph_def);
+  }
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
 
-  if (options.session_options->config.graph_options().place_pruned_graph() ||
+  const bool keep_original_graph_def =
+      options.session_options->config.graph_options().place_pruned_graph() ||
       options.session_options->config.experimental()
-          .disable_optimize_for_static_graph()) {
+          .disable_optimize_for_static_graph();
+
+  if (keep_original_graph_def) {
     auto ret = absl::WrapUnique(new GraphExecutionState(
         std::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
         options));
