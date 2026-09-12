@@ -3575,6 +3575,13 @@ TEST_P(LiteralSerializationTest, Test) {
   ASSERT_OK_AND_ASSIGN(Literal deserialized,
                        Literal::DeserializeFromString(serialized));
   EXPECT_EQ(literal, deserialized);
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized_unpacked,
+                       literal.SerializeAsString(/*pack_pred=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      Literal deserialized_unpacked,
+      Literal::DeserializeFromString(serialized_unpacked, /*pack_pred=*/false));
+  EXPECT_EQ(literal, deserialized_unpacked);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -3584,6 +3591,57 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     Tuples, LiteralSerializationTest,
     ::testing::ValuesIn(LiteralSerializationTest::GenerateTupleParams()));
+
+TEST(LiteralTest, PredSerializationPackVsUnpack) {
+  Literal pred_literal = LiteralUtil::CreateR1<bool>(
+      {true, false, true, true, false, false, true, false, true, true, false,
+       true, false, false, true, true});
+  ASSERT_OK_AND_ASSIGN(std::string packed,
+                       pred_literal.SerializeAsString(/*pack_pred=*/true));
+  ASSERT_OK_AND_ASSIGN(std::string unpacked,
+                       pred_literal.SerializeAsString(/*pack_pred=*/false));
+
+  EXPECT_EQ(unpacked.size() - packed.size(), 16 - 2);
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal deserialized_packed,
+      Literal::DeserializeFromString(packed, /*pack_pred=*/true));
+  EXPECT_EQ(pred_literal, deserialized_packed);
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal deserialized_unpacked,
+      Literal::DeserializeFromString(unpacked, /*pack_pred=*/false));
+  EXPECT_EQ(pred_literal, deserialized_unpacked);
+
+  // Bitcast-converted PRED literals with non-zero upper bits preserve those
+  // upper bits only when pack_pred = false.
+  Literal s8_literal = LiteralUtil::CreateR1<int8_t>({2, 4, 0});
+  ASSERT_OK_AND_ASSIGN(
+      Literal bitcast_pred,
+      s8_literal.BitcastConvert(ShapeUtil::MakeShape(PRED, {3})));
+
+  // When pack_pred = false, full 8-bit storage is preserved.
+  ASSERT_OK_AND_ASSIGN(std::string unpacked_s8_pred,
+                       bitcast_pred.SerializeAsString(/*pack_pred=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      Literal deserialized_unpacked_s8_pred,
+      Literal::DeserializeFromString(unpacked_s8_pred, /*pack_pred=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal recovered_s8,
+                       deserialized_unpacked_s8_pred.BitcastConvert(
+                           ShapeUtil::MakeShape(S8, {3})));
+  EXPECT_EQ(recovered_s8, s8_literal);
+
+  // When pack_pred = true, bit packing masks with & 1, clearing upper bits.
+  ASSERT_OK_AND_ASSIGN(std::string packed_s8_pred,
+                       bitcast_pred.SerializeAsString(/*pack_pred=*/true));
+  ASSERT_OK_AND_ASSIGN(
+      Literal deserialized_packed_s8_pred,
+      Literal::DeserializeFromString(packed_s8_pred, /*pack_pred=*/true));
+  ASSERT_OK_AND_ASSIGN(Literal masked_s8,
+                       deserialized_packed_s8_pred.BitcastConvert(
+                           ShapeUtil::MakeShape(S8, {3})));
+  EXPECT_EQ(masked_s8, LiteralUtil::CreateR1<int8_t>({0, 0, 0}));
+}
 
 TYPED_TEST(LiteralUtilFloatTest, MaxFiniteValue) {
   constexpr auto ptype = primitive_util::NativeToPrimitiveType<TypeParam>();
