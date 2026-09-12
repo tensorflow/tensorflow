@@ -2101,8 +2101,8 @@ class HloInstruction {
   const StatisticsViz& statistics_viz() const { return rare()->statistics_viz; }
 
   template <typename T>
-  using EnableIfProto = typename std::enable_if_t<
-      std::is_base_of<tsl::protobuf::Message, T>::value>;
+  using EnableIfProto =
+      typename std::enable_if_t<std::is_base_of_v<tsl::protobuf::Message, T>>;
 
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before

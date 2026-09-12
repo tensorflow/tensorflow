@@ -59,11 +59,10 @@ class HloInstruction;
 // DfsHloVisitor/ConstDfsHloVisitor instead.
 template <typename HloInstructionPtr>
 class DfsHloVisitorBase {
-  static_assert(
-      std::is_same<HloInstruction*, HloInstructionPtr>::value ||
-          std::is_same<const HloInstruction*, HloInstructionPtr>::value,
-      "Template argument expected to be HloInstruction* or const "
-      "HloInstruction*");
+  static_assert(std::is_same_v<HloInstruction*, HloInstructionPtr> ||
+                    std::is_same_v<const HloInstruction*, HloInstructionPtr>,
+                "Template argument expected to be HloInstruction* or const "
+                "HloInstruction*");
 
  public:
   DfsHloVisitorBase() = default;
