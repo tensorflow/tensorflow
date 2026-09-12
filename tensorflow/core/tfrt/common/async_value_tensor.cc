@@ -36,7 +36,8 @@ constexpr uintptr_t kTag = 0x1ULL;
     const Tensor* tensor) {
   if (tensor == nullptr) return nullptr;
   const TensorBuffer* buf = DMAHelper::buffer(tensor);
-  if (buf == nullptr || !buf->AllocatesOpaqueHandle()) {
+  if (buf == nullptr || !buf->AllocatesOpaqueHandle() ||
+      const_cast<TensorBuffer*>(buf)->root_buffer() != buf) {
     return nullptr;
   }
   AsyncValueTensor* av_tensor = FromOpaquePointer(buf->data());
