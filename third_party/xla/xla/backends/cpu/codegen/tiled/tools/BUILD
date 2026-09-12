@@ -48,6 +48,7 @@ xla_cc_binary(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:platform_port",
