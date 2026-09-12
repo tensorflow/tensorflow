@@ -86,6 +86,7 @@ cc_library(
     ]) + if_not_mobile([
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:protobuf",
     ]),
 )
 
