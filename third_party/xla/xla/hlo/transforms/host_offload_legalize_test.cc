@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -87,9 +87,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* custom_call =
       FindInstruction(module.get(), "custom-call.7832");
@@ -117,9 +116,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -157,9 +155,8 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
 
@@ -204,9 +201,8 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
 
@@ -248,9 +244,8 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
 
@@ -294,9 +289,8 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
 
@@ -412,10 +406,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
   HloInstruction* copy = FindInstruction(module.get(), HloOpcode::kCopy);
@@ -524,10 +517,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
   HloInstruction* copy_0 = FindInstruction(module.get(), "cp.2");
@@ -558,10 +550,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
@@ -588,10 +579,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
@@ -616,10 +606,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   ASSERT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
@@ -651,10 +640,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   ASSERT_FALSE(changed);
 }
@@ -672,10 +660,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
@@ -688,6 +675,43 @@ ENTRY main {
   EXPECT_EQ(
       copy->shape().layout(),
       LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {Tile{{8, 128}}, Tile{{2, 1}}}));
+}
+
+TEST_F(HostOffloadLegalizeTest, MoveCopyDownWithSort) {
+  const std::string& hlo_string = R"(
+HloModule test_module
+
+compare {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  p3 = f32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[16,256]{0,1} parameter(0)
+  p1 = f32[16,256]{0,1} parameter(1)
+  offload = f32[16,256]{0,1} custom-call(p0), custom_call_target="MoveToHost"
+  cp = f32[16,256]{1,0} copy(offload)
+  sort = (f32[16,256]{1,0}, f32[16,256]{0,1}) sort(cp, p1), dimensions={0}, to_apply=compare
+  gte0 = f32[16,256]{1,0} get-tuple-element(sort), index=0
+  gte1 = f32[16,256]{0,1} get-tuple-element(sort), index=1
+  load = f32[16,256]{1,0} custom-call(gte0), custom_call_target="MoveToDevice"
+  ROOT root = (f32[16,256]{1,0}, f32[16,256]{0,1}) tuple(load, gte1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  HloInstruction* offload = FindInstruction(module.get(), "offload");
+  ASSERT_NE(offload, nullptr);
+  EXPECT_EQ(sort->operand(0), offload);
+  EXPECT_EQ(FindInstruction(module.get(), "cp"), nullptr);
 }
 
 }  // namespace
