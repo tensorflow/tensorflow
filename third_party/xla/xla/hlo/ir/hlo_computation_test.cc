@@ -436,5 +436,40 @@ ENTRY entry {
       printed, "ROOT %gte0 = f32[10]{0} get-tuple-element(%p0), index=0"));
 }
 
+TEST_F(HLOComputationTest, CreateFromProtoPreservesCallerCalleeUniqueId) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+callee_b {
+  b_param = f32[10] parameter(0)
+  ROOT b_root = f32[10] negate(b_param)
+}
+
+callee_a {
+  a_param = f32[10] parameter(0)
+  called_b = f32[10] call(a_param), to_apply=callee_b
+  ROOT a_root = f32[10] add(a_param, called_b)
+}
+
+ENTRY entry {
+  p0 = f32[10] parameter(0)
+  called_a = f32[10] call(p0), to_apply=callee_a
+  ROOT out = f32[10] add(p0, called_a)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloModuleProto proto = module->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> from_proto,
+                          HloModule::CreateFromProto(proto, module->config()));
+
+  ASSERT_NE(from_proto, nullptr);
+  EXPECT_EQ(from_proto->computation_count(), 3);
+  for (const HloComputation* comp : from_proto->computations()) {
+    EXPECT_GE(comp->unique_id(), 0);
+  }
+}
+
 }  // namespace
 }  // namespace xla
