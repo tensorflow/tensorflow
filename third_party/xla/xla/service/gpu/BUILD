@@ -2867,7 +2867,6 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:pgle_accuracy_checker",
         "//xla/backends/gpu/transforms:scheduling_instruction_annotator",
-        "//xla/backends/gpu/transforms:stream_attribute_async_wrapper",
         "//xla/backends/gpu/transforms/collectives:async_collective_annotator",
         "//xla/backends/gpu/transforms/collectives:collective_domain",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",

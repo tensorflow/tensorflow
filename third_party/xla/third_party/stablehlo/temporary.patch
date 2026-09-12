@@ -3163,4 +3163,254 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
 +    return %0 : tensor<4xf32>
 +  }
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+@@ -1539,3 +1539,139 @@
+   %result = stablehlo.xor %operand_1, %operand_2 : tensor<4xi1>
+   return %result : tensor<4xi1>
+ }
++
++// -----
++
++////////
++// ShiftLeftOp
++
++// CHECK-LABEL: @shift_left_fold_cst
++func.func @shift_left_fold_cst() -> tensor<3xi32> {
++  // CHECK: stablehlo.constant dense<[4, 8, 16]> : tensor<3xi32>
++  // CHECK-NOT: stablehlo.shift_left
++  %operand_1 = stablehlo.constant dense<[1, 2, 2]> : tensor<3xi32>
++  %operand_2 = stablehlo.constant dense<[2, 2, 3]> : tensor<3xi32>
++  %result = stablehlo.shift_left %operand_1, %operand_2 : tensor<3xi32>
++  return %result : tensor<3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @shift_left_no_fold_out_of_bounds
++func.func @shift_left_no_fold_out_of_bounds() -> tensor<2xi32> {
++  // CHECK: stablehlo.shift_left
++  %operand_1 = stablehlo.constant dense<[1, 2]> : tensor<2xi32>
++  %operand_2 = stablehlo.constant dense<[32, -1]> : tensor<2xi32>
++  %result = stablehlo.shift_left %operand_1, %operand_2 : tensor<2xi32>
++  return %result : tensor<2xi32>
++}
++
++// -----
++
++////////
++// ShiftRightArithmeticOp
++
++// CHECK-LABEL: @shift_right_arithmetic_fold_cst
++func.func @shift_right_arithmetic_fold_cst() -> tensor<3xi32> {
++  // CHECK: stablehlo.constant dense<[-1, 0, 2]> : tensor<3xi32>
++  // CHECK-NOT: stablehlo.shift_right_arithmetic
++  %operand_1 = stablehlo.constant dense<[-4, 1, 8]> : tensor<3xi32>
++  %operand_2 = stablehlo.constant dense<[2, 1, 2]> : tensor<3xi32>
++  %result = stablehlo.shift_right_arithmetic %operand_1, %operand_2 : tensor<3xi32>
++  return %result : tensor<3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @shift_right_arithmetic_no_fold_out_of_bounds
++func.func @shift_right_arithmetic_no_fold_out_of_bounds() -> tensor<2xi32> {
++  // CHECK: stablehlo.shift_right_arithmetic
++  %operand_1 = stablehlo.constant dense<[-4, 8]> : tensor<2xi32>
++  %operand_2 = stablehlo.constant dense<[32, 1]> : tensor<2xi32>
++  %result = stablehlo.shift_right_arithmetic %operand_1, %operand_2 : tensor<2xi32>
++  return %result : tensor<2xi32>
++}
++
++// -----
++
++////////
++// ShiftRightLogicalOp
++
++// CHECK-LABEL: @shift_right_logical_fold_cst
++func.func @shift_right_logical_fold_cst() -> tensor<3xi32> {
++  // CHECK: stablehlo.constant dense<[2147483647, 0, 2]> : tensor<3xi32>
++  // CHECK-NOT: stablehlo.shift_right_logical
++  %operand_1 = stablehlo.constant dense<[-2, 1, 8]> : tensor<3xi32>
++  %operand_2 = stablehlo.constant dense<[1, 1, 2]> : tensor<3xi32>
++  %result = stablehlo.shift_right_logical %operand_1, %operand_2 : tensor<3xi32>
++  return %result : tensor<3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @shift_right_logical_no_fold_out_of_bounds
++func.func @shift_right_logical_no_fold_out_of_bounds() -> tensor<2xi32> {
++  // CHECK: stablehlo.shift_right_logical
++  %operand_1 = stablehlo.constant dense<[8, 16]> : tensor<2xi32>
++  %operand_2 = stablehlo.constant dense<[1, 35]> : tensor<2xi32>
++  %result = stablehlo.shift_right_logical %operand_1, %operand_2 : tensor<2xi32>
++  return %result : tensor<2xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @shift_chain_fold
++func.func @shift_chain_fold() -> tensor<i32> {
++  // CHECK: stablehlo.constant dense<0> : tensor<i32>
++  // CHECK-NOT: stablehlo.shift_left
++  // CHECK-NOT: stablehlo.shift_right_arithmetic
++  // CHECK-NOT: stablehlo.subtract
++  // CHECK-NOT: stablehlo.maximum
++  %c1 = stablehlo.constant dense<1> : tensor<i32>
++  %c0 = stablehlo.constant dense<0> : tensor<i32>
++  %9 = stablehlo.shift_left %c1, %c0 : tensor<i32>
++  %10 = stablehlo.shift_right_arithmetic %9, %c1 : tensor<i32>
++  %11 = stablehlo.subtract %10, %c1 : tensor<i32>
++  %12 = stablehlo.maximum %11, %c0 : tensor<i32>
++  return %12 : tensor<i32>
++}
++
++// -----
++
++// CHECK-LABEL: @shift_left_value_overflow
++func.func @shift_left_value_overflow() -> tensor<3xi32> {
++  // CHECK: stablehlo.constant dense<[-2147483648, -2, 0]> : tensor<3xi32>
++  // CHECK-NOT: stablehlo.shift_left
++  %operand_1 = stablehlo.constant dense<[1073741824, 2147483647, 1073741824]> : tensor<3xi32>
++  %operand_2 = stablehlo.constant dense<[1, 1, 2]> : tensor<3xi32>
++  %result = stablehlo.shift_left %operand_1, %operand_2 : tensor<3xi32>
++  return %result : tensor<3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @shift_left_i8_overflow_and_bounds
++func.func @shift_left_i8_overflow_and_bounds() -> (tensor<2xi8>, tensor<2xi8>) {
++  // CHECK: stablehlo.constant dense<[0, -128]> : tensor<2xi8>
++  // CHECK: stablehlo.shift_left
++  %operand_1 = stablehlo.constant dense<[64, 64]> : tensor<2xi8>
++  %operand_valid = stablehlo.constant dense<[2, 1]> : tensor<2xi8>
++  %operand_oob = stablehlo.constant dense<[8, -1]> : tensor<2xi8>
++  %res_valid = stablehlo.shift_left %operand_1, %operand_valid : tensor<2xi8>
++  %res_oob = stablehlo.shift_left %operand_1, %operand_oob : tensor<2xi8>
++  return %res_valid, %res_oob : tensor<2xi8>, tensor<2xi8>
++}
++
++// -----
++
++// CHECK-LABEL: @shift_right_logical_unsigned
++func.func @shift_right_logical_unsigned() -> tensor<2xui32> {
++  // CHECK: stablehlo.constant dense<[1073741824, 0]> : tensor<2xui32>
++  // CHECK-NOT: stablehlo.shift_right_logical
++  %operand_1 = stablehlo.constant dense<[2147483648, 1]> : tensor<2xui32>
++  %operand_2 = stablehlo.constant dense<[1, 1]> : tensor<2xui32>
++  %result = stablehlo.shift_right_logical %operand_1, %operand_2 : tensor<2xui32>
++  return %result : tensor<2xui32>
++}
++
++
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+@@ -1511,6 +1511,93 @@
+   }
+ };
+ 
++// Returns true if the shift amount (second operand) of `op` is a constant
++// integer tensor with any element that is negative or greater than or equal to
++// the bitwidth.
++// Out-of-bounds shift amounts would crash the constant folder (APInt asserts in
++// debug builds), and are implementation-defined in the StableHLO spec, so such
++// ops must not be folded.
++static bool integerShiftAmountOutOfBounds(Operation* op) {
++  TypedAttr rhsAttr;
++  matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
++  auto denseRhs = dyn_cast_or_null<DenseIntElementsAttr>(rhsAttr);
++  if (!denseRhs) return false;
++  auto shapedType = cast<ShapedType>(op->getResult(0).getType());
++  unsigned bitWidth = shapedType.getElementType().getIntOrFloatBitWidth();
++  bool isUnsigned = shapedType.getElementType().isUnsignedInteger();
++  for (const APInt& value : denseRhs.getValues<APInt>()) {
++    if (!isUnsigned && value.isNegative()) return true;
++    if (value.uge(bitWidth)) return true;
++  }
++  return false;
++}
++
++// Helper functor adapting APInt shift operations for foldBinaryOpIntOrFloat.
++template <typename ShiftFn>
++struct FoldShift {
++  ShiftFn shiftFn;
++  APInt operator()(APInt lhs, APInt rhs) const { return shiftFn(lhs, rhs); }
++  std::optional<APFloat> operator()(APFloat, APFloat) const {
++    return std::nullopt;
++  }
++};
++
++// Deduction guide for C++17 compatibility (aggregate CTAD requires C++20).
++template <typename ShiftFn>
++FoldShift(ShiftFn) -> FoldShift<ShiftFn>;
++
++// Shared implementation for shift_left / shift_right_arithmetic /
++// shift_right_logical constant folding.
++template <typename ShiftOp, typename ShiftFn>
++static LogicalResult foldShiftOp(ShiftOp op, PatternRewriter& rewriter,
++                                 ShiftFn shiftFn) {
++  if (!op.getType().getElementType().isInteger())
++    return rewriter.notifyMatchFailure(op, "expected integer element type");
++
++  if (integerShiftAmountOutOfBounds(op))
++    return rewriter.notifyMatchFailure(op, "out-of-bounds shift amount");
++
++  auto res = foldBinaryOpIntOrFloat(rewriter, op, FoldShift{shiftFn});
++  if (failed(res)) return failure();
++  rewriter.replaceOpWithNewOp<ConstantOp>(op, res.value());
++  return success();
++}
++
++// Pattern: shift_left(cst, cst) -> cst
++struct FoldShiftLeftOpPattern : public ShapeOpRewritePattern<ShiftLeftOp> {
++  using ShapeOpRewritePattern::ShapeOpRewritePattern;
++  LogicalResult matchAndRewrite(ShiftLeftOp op,
++                                PatternRewriter& rewriter) const override {
++    return foldShiftOp(op, rewriter, [](const APInt& a, const APInt& b) {
++      return a.shl(b);
++    });
++  }
++};
++
++// Pattern: shift_right_arithmetic(cst, cst) -> cst
++struct FoldShiftRightArithmeticOpPattern
++    : public ShapeOpRewritePattern<ShiftRightArithmeticOp> {
++  using ShapeOpRewritePattern::ShapeOpRewritePattern;
++  LogicalResult matchAndRewrite(ShiftRightArithmeticOp op,
++                                PatternRewriter& rewriter) const override {
++    return foldShiftOp(op, rewriter, [](const APInt& a, const APInt& b) {
++      return a.ashr(b);
++    });
++  }
++};
++
++// Pattern: shift_right_logical(cst, cst) -> cst
++struct FoldShiftRightLogicalOpPattern
++    : public ShapeOpRewritePattern<ShiftRightLogicalOp> {
++  using ShapeOpRewritePattern::ShapeOpRewritePattern;
++  LogicalResult matchAndRewrite(ShiftRightLogicalOp op,
++                                PatternRewriter& rewriter) const override {
++    return foldShiftOp(op, rewriter, [](const APInt& a, const APInt& b) {
++      return a.lshr(b);
++    });
++  }
++};
++
+ template <typename RangeType>
+ DenseElementsAttr sliceType(SliceOp& op, const RangeType& data) {
+   using ElementType = std::decay_t<decltype(*std::begin(data))>;
+@@ -2281,6 +2368,9 @@
+   patterns->add<FoldReshapeOpPattern>(context, options, benefit);
+   patterns->add<FoldSelectOpPattern>(context, options, benefit);
+   patterns->add<FoldSetDimensionSizeOpPattern>(context, options, benefit);
++  patterns->add<FoldShiftLeftOpPattern>(context, options, benefit);
++  patterns->add<FoldShiftRightArithmeticOpPattern>(context, options, benefit);
++  patterns->add<FoldShiftRightLogicalOpPattern>(context, options, benefit);
+   patterns->add<FoldSignOpPattern>(context, options, benefit);
+   patterns->add<FoldSliceOpPattern>(context, options, benefit);
+   patterns->add<FoldSubtractOpPattern>(context, options, benefit);
 
