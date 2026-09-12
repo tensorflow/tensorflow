@@ -134,6 +134,7 @@ FunctionDef StripSummary(const FunctionDef& fdef_with_summaries) {
 namespace internal {
 
 std::string NormalizeEdgeName(absl::string_view name) {
+  if (name.empty()) return "";
   // Control nodes begin with '^'.
   // If an edge_name is split by `:` it indicates which output of a node to
   // return. Since we only care about the node's name we can discard everything

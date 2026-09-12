@@ -31,7 +31,6 @@
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/function/runtime_client/runtime_client.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
