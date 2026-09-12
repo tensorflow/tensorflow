@@ -362,6 +362,26 @@ class MklConvCustomBackpropInputOp
       // Allow operator-specific sanity checking of shapes.
       ValidateMklShapes(src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape);
 
+      // This class backs Conv2D, Conv3D and depthwise backprop-input (see the
+      // registrations at the bottom of this file), so the expected element
+      // count follows the rank of out_backprop, already checked above. Only
+      // the two-value case is validated below; every other count would reach
+      // MakeInputTfShape unchecked and could build a shape of the wrong rank.
+      // IsVector is checked first because dim_size(0) is not defined on a
+      // rank-0 tensor.
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(src_tensor.shape()),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      this->type_string(),
+                      ": input_sizes input must be 1-dim, not ",
+                      src_tensor.dims())));
+      OP_REQUIRES(context,
+                  src_tensor.dim_size(0) == diff_dst_tensor.dims() ||
+                      src_tensor.dim_size(0) == 2,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      this->type_string(), " requires input_sizes to contain ",
+                      diff_dst_tensor.dims(), " values or 2 values, but got: ",
+                      src_tensor.dim_size(0))));
+
       // Allow operator-specific generation of shapes.
       // E.g., ConvBackpropFilter gets filter as filter_sizes. It is a
       // tensor containing shape of filter. So filter.shape() is not
