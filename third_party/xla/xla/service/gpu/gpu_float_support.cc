@@ -143,10 +143,10 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         if (compute_capability_.IsCuda()) {
           return true;
         }
-        // gfx1250 lowers bf16 exp as exp2(x * log2(e)) computed in f32, so
-        // there is no need to upcast bf16 exp to f32 in FloatNormalization.
-        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
-          return rocm_cc->has_bf16_transcendental_support();
+        // Every AMD GPU lowers bf16 exp as exp2(x * log2(e)) in f32 and rounds
+        // to bf16 once, so it never needs upcasting here.
+        if (compute_capability_.rocm_compute_capability() != nullptr) {
+          return true;
         }
       }
       return false;
@@ -155,10 +155,10 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         if (compute_capability_.IsCuda()) {
           return true;
         }
-        // gfx1250 has a native bf16 logarithm instruction, so there is no
-        // need to upcast bf16 log to f32.
-        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
-          return rocm_cc->has_bf16_transcendental_support();
+        // Every AMD GPU lowers bf16 log as log2(x) * ln(2) in f32 and rounds
+        // to bf16 once, so it never needs upcasting here.
+        if (compute_capability_.rocm_compute_capability() != nullptr) {
+          return true;
         }
       }
       return false;
