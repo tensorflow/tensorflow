@@ -410,6 +410,18 @@ TEST_F(MathTest, AtanhSmallValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
+TEST_F(MathTest, AtanValues) {
+  XlaBuilder builder(TestName());
+  std::vector<float> inputs = {-1.0, -0.5, 0.0, 0.5, 1.0};
+  auto x = ConstantR1<float>(&builder, inputs);
+  Atan(x);
+  std::vector<float> expected;
+  for (float f : inputs) {
+    expected.push_back(std::atan(f));
+  }
+  ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
+}
+
 TEST_F(MathTest, Lgamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.5,

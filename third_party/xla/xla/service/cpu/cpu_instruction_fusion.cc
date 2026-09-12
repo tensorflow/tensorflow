@@ -263,6 +263,7 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kSinh:
     case HloOpcode::kAsin:
     case HloOpcode::kAsinh:
+    case HloOpcode::kAtan:
     case HloOpcode::kAtan2:
     case HloOpcode::kAtanh:
     case HloOpcode::kCosh:

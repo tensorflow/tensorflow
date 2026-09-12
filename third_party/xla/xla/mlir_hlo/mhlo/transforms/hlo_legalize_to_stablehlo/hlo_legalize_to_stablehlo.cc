@@ -147,6 +147,11 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Version 1: Initial version for AsinhOp.
     return 1;
   }
+  // StableHLO doesn't support Atan yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AtanOp>::value) {
+    // Version 1: Initial version for AtanOp.
+    return 1;
+  }
   // StableHLO doesn't support Mulhi yet.
   if constexpr (std::is_same<HloOpTy, mhlo::MulhiOp>::value) {
     // Version 1: Initial version for MulhiOp.
@@ -535,6 +540,7 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
                   !std::is_same_v<HloOpTy, mhlo::SinhOp> &&
                   !std::is_same_v<HloOpTy, mhlo::AsinOp> &&
                   !std::is_same_v<HloOpTy, mhlo::AsinhOp> &&
+                  !std::is_same_v<HloOpTy, mhlo::AtanOp> &&
                   !std::is_same_v<HloOpTy, mhlo::ErfOp> &&
                   !std::is_same_v<HloOpTy, mhlo::TopKOp> &&
                   !std::is_same_v<HloOpTy, mhlo::MulhiOp> &&
@@ -831,9 +837,10 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
       allowXlaFeatures);
 
   populateHloToStablehloCustomCallPatterns<
-      mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp, mhlo::AtanhOp,
-      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp, mhlo::MulhiOp,
-      mhlo::ScanOp>(patterns, converter, context, allowExperimentalFeatures);
+      mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp, mhlo::AtanOp,
+      mhlo::AtanhOp, mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp,
+      mhlo::MulhiOp, mhlo::ScanOp>(patterns, converter, context,
+                                   allowExperimentalFeatures);
 }
 
 }  // namespace stablehlo
