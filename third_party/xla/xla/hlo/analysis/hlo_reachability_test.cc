@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/random/random.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "benchmark/benchmark.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -318,6 +319,142 @@ TEST_F(HloReachabilityTest, UpdateMultipleInstructions) {
   // a is still not reachable to d, f
   EXPECT_FALSE(reachability->IsReachable(a, d));
   EXPECT_FALSE(reachability->IsReachable(a, f));
+}
+
+// Expects `reachability` to answer every query among `instructions` like a
+// map built from scratch for the current graph of `computation`.
+void ExpectMatchesRebuiltMap(const HloReachabilityMap& reachability,
+                             const HloComputation* computation,
+                             absl::Span<HloInstruction* const> instructions) {
+  std::unique_ptr<HloReachabilityMap> rebuilt =
+      HloReachabilityMap::Build(computation);
+  for (const HloInstruction* a : instructions) {
+    for (const HloInstruction* b : instructions) {
+      EXPECT_EQ(reachability.IsReachable(a, b), rebuilt->IsReachable(a, b))
+          << a->name() << " -> " << b->name();
+    }
+  }
+}
+
+TEST_F(HloReachabilityTest, UpdateMultipleInstructionsMatchesRebuiltMap) {
+  // Two subgraphs joined only by the control edge c2 -> g, the first one a
+  // lattice of diamonds:
+  //
+  //   p -> a1, a2, a3;  a1, a2 -> b1;  a2, a3 -> b2;  b1 -> c1;  b2 -> c2;
+  //   c1, c2 -> d -> e;  q -> f1 -> f2;  q -> g;  c2 -> g (control)
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      p = f32[] parameter(0)
+      q = f32[] parameter(1)
+      a1 = f32[] negate(p)
+      a2 = f32[] exponential(p)
+      a3 = f32[] abs(p)
+      b1 = f32[] add(a1, a2)
+      b2 = f32[] multiply(a2, a3)
+      c1 = f32[] negate(b1)
+      c2 = f32[] exponential(b2)
+      d = f32[] add(c1, c2)
+      e = f32[] negate(d)
+      f1 = f32[] negate(q)
+      f2 = f32[] exponential(f1)
+      g = f32[] abs(q), control-predecessors={c2}
+      ROOT t = (f32[], f32[], f32[]) tuple(e, f2, g)
+    })"));
+  HloComputation* computation = module->entry_computation();
+  const std::vector<HloInstruction*> instructions =
+      computation->MakeInstructionPostOrder();
+  auto instruction = [&](absl::string_view name) {
+    return FindInstruction(module.get(), name);
+  };
+  auto reachability = HloReachabilityMap::Build(computation);
+
+  // Both branches into the join d change, so d has two changed predecessors,
+  // and g gains f1 only through the control edge from c2.
+  ASSERT_IS_OK(instruction("f1")->AddControlDependencyTo(instruction("a1")));
+  ASSERT_IS_OK(instruction("f1")->AddControlDependencyTo(instruction("a2")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("f1"), instruction("e")));
+  reachability->UpdateMultipleInstructions(
+      {{instruction("a1"), {instruction("f1")}},
+       {instruction("a2"), {instruction("f1")}}});
+  EXPECT_TRUE(reachability->IsReachable(instruction("q"), instruction("e")));
+  EXPECT_TRUE(reachability->IsReachable(instruction("f1"), instruction("g")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("f1"), instruction("a3")));
+  ExpectMatchesRebuiltMap(*reachability, computation, instructions);
+
+  // The updated f1 is upstream of the updated f2, and a3 reaches f2 only by
+  // way of f1: the row of f2's new predecessor c1 does not contain a3.
+  ASSERT_IS_OK(instruction("a3")->AddControlDependencyTo(instruction("f1")));
+  ASSERT_IS_OK(instruction("c1")->AddControlDependencyTo(instruction("f2")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("a3"), instruction("c1")));
+  reachability->UpdateMultipleInstructions(
+      {{instruction("f1"), {instruction("a3")}},
+       {instruction("f2"), {instruction("c1")}}});
+  EXPECT_TRUE(reachability->IsReachable(instruction("a3"), instruction("f2")));
+  EXPECT_TRUE(reachability->IsReachable(instruction("b1"), instruction("f2")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("d"), instruction("f2")));
+  ExpectMatchesRebuiltMap(*reachability, computation, instructions);
+}
+
+TEST_F(HloReachabilityTest,
+       UpdateMultipleInstructionsLooksThroughAbsentInstructions) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      p = f32[] parameter(0)
+      a = f32[] negate(p)
+      a0 = f32[] abs(p)
+      x = f32[] add(a, a0)
+      b = f32[] negate(x)
+      y = f32[] exponential(b)
+      c = f32[] negate(y)
+      c0 = f32[] abs(y)
+      d = f32[] abs(p)
+      e = f32[] negate(p)
+      z = f32[] negate(e)
+      w = f32[] abs(z)
+      ROOT t = (f32[], f32[], f32[], f32[]) tuple(c, c0, d, w)
+    })"));
+  HloComputation* computation = module->entry_computation();
+  auto instruction = [&](absl::string_view name) {
+    return FindInstruction(module.get(), name);
+  };
+  // A map over the graph without x, y and z, closed through them.
+  const std::vector<HloInstruction*> present = {
+      instruction("p"), instruction("a"), instruction("a0"),
+      instruction("b"), instruction("c"), instruction("c0"),
+      instruction("d"), instruction("e"), instruction("w")};
+  HloReachabilityMap reachability(present);
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("a"));
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("a0"));
+  reachability.SetReachabilityToUnion({instruction("a"), instruction("a0")},
+                                      instruction("b"));
+  reachability.SetReachabilityToUnion({instruction("b")}, instruction("c"));
+  reachability.SetReachabilityToUnion({instruction("b")}, instruction("c0"));
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("d"));
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("e"));
+  reachability.SetReachabilityToUnion({instruction("e")}, instruction("w"));
+  EXPECT_FALSE(reachability.IsPresent(instruction("x")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a0"), instruction("c0")));
+
+  // The updated instruction y (two present users) and the new predecessor x
+  // (two present predecessors) are absent: d reaches c and c0 through y, a and
+  // a0 reach e through x, and from there w through the absent z.
+  ASSERT_IS_OK(instruction("d")->AddControlDependencyTo(instruction("y")));
+  ASSERT_IS_OK(instruction("x")->AddControlDependencyTo(instruction("e")));
+  reachability.UpdateMultipleInstructions(
+      {{instruction("y"), {instruction("d")}},
+       {instruction("e"), {instruction("x")}}});
+  EXPECT_TRUE(reachability.IsReachable(instruction("d"), instruction("c")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("d"), instruction("c0")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a"), instruction("e")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a0"), instruction("e")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a"), instruction("w")));
+  EXPECT_FALSE(reachability.IsReachable(instruction("b"), instruction("e")));
+  EXPECT_FALSE(reachability.IsReachable(instruction("d"), instruction("w")));
+  ExpectMatchesRebuiltMap(reachability, computation, present);
 }
 
 }  // namespace

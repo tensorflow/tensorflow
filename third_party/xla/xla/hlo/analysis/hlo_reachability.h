@@ -115,12 +115,17 @@ class HloReachabilityMap {
   // (operands and control predecessors) of 'instruction' has changed.
   void UpdateReachabilityThroughInstruction(const HloInstruction* instruction);
 
-  // Bulk update reachabilities for multiple instructions. All works if new
-  // predecessors are added to the instructions, but not removed. to_update is a
-  // map from instruction to new predecessors.
+  // Bulk update after new predecessors (operands or control predecessors) were
+  // added to instructions, but none removed. `to_update` maps each instruction
+  // to its new predecessors. The new edges must already be in the graph, i.e.
+  // visible through users() and control_successors(), because the update
+  // follows them. Requires the map to be transitively closed for the graph
+  // without the new edges; on return it is closed for the graph with them.
+  // Instructions absent from the map (see IsPresent) have no row of their own
+  // but are looked through, so paths through them still count.
   void UpdateMultipleInstructions(
-      absl::flat_hash_map<const HloInstruction*,
-                          absl::flat_hash_set<const HloInstruction*>>
+      const absl::flat_hash_map<const HloInstruction*,
+                                absl::flat_hash_set<const HloInstruction*>>&
           to_update);
 
   // Update reachability map given left and right are going to be merged into a
@@ -221,32 +226,46 @@ class HloReachabilityMap {
       }
     }
 
-    // Same as operator|=, but returns whether the bitset changed.
-    bool OrUpdate(const BitSet& other) {
-      DCHECK(words_ == other.words_);
-      if (ptr_ == other.ptr_) {
-        return false;
-      }
-
-      // Ease the work of the auto-vectorizer.
-      Word* __restrict a = ptr_;
-      const Word* __restrict b = other.ptr_;
-      size_t num_words = NumWords();
-      Word changed_accumulator = 0;
-      for (size_t i = 0; i < num_words; ++i) {
-        Word ai = a[i];
-        Word bi = b[i];
-
-        a[i] = ai | bi;
-        changed_accumulator |= (~ai & bi);
-      }
-      return changed_accumulator;
-    }
-
     // Same as operator|=, but only updates the words in the given diff.
     void OrUpdatePartial(const std::vector<std::pair<size_t, Word>>& diff) {
       for (const auto& [index, value] : diff) {
         ptr_[index] |= value;
+      }
+    }
+
+    // Same as operator|=, but appends the index and new value of every word
+    // that gained bits to `changed`.
+    void OrUpdateCollectChanged(const BitSet& other,
+                                std::vector<std::pair<size_t, Word>>& changed) {
+      DCHECK(words_ == other.words_);
+      if (ptr_ == other.ptr_) {
+        return;
+      }
+      Word* __restrict a = ptr_;
+      const Word* __restrict b = other.ptr_;
+      const size_t num_words = NumWords();
+      for (size_t i = 0; i < num_words; ++i) {
+        const Word old_word = a[i];
+        const Word new_word = old_word | b[i];
+        if (new_word != old_word) {
+          a[i] = new_word;
+          changed.emplace_back(i, new_word);
+        }
+      }
+    }
+
+    // Same as OrUpdatePartial, but appends the index and new value of every
+    // word that gained bits to `changed`.
+    void OrUpdatePartialCollectChanged(
+        absl::Span<const std::pair<size_t, Word>> diff,
+        std::vector<std::pair<size_t, Word>>& changed) {
+      for (const auto& [index, value] : diff) {
+        const Word old_word = ptr_[index];
+        const Word new_word = old_word | value;
+        if (new_word != old_word) {
+          ptr_[index] = new_word;
+          changed.emplace_back(index, new_word);
+        }
       }
     }
 
@@ -363,11 +382,18 @@ class HloReachabilityMap {
   BitSet tmp_bit_set_;
   int64_t computation_id_;
 
-  // Used by UpdateReachabilityForMerge to avoid an allocation with each call
-  // to the method.
+  // Scratch for UpdateReachabilityForMerge and UpdateMultipleInstructions,
+  // kept to avoid an allocation per call.
   std::vector<std::pair<size_t, BitSet::Word>> tmp_changed_words_;
+  // Scratch for UpdateReachabilityForMerge, kept to avoid an allocation per
+  // call.
   std::vector<uintptr_t> tmp_worklist_;
   std::vector<Index> tmp_indices_to_update_;
+
+  // Used by UpdateMultipleInstructions: per instruction key, the words of its
+  // row that gained bits and have not been forwarded to its successors yet.
+  // Every list is empty between calls.
+  std::vector<std::vector<std::pair<size_t, BitSet::Word>>> tmp_pending_words_;
 };
 
 }  // namespace xla
