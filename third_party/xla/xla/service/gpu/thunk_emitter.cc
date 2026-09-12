@@ -1601,13 +1601,14 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                     tma_metadata = result.tma_metadata,
                     kernel_name = std::move(kernel_name)](
                        const std::vector<uint8_t>& cubin) mutable {
-                return KernelReuseCache::Entry{std::move(kernel_name),
-                                               launch_dimensions,
-                                               /*cluster_dim=*/std::nullopt,
-                                               shmem_bytes,
-                                               cubin,
-                                               tma_metadata,
-                                               use_pdl};
+                return KernelReuseCache::Entry{
+                    std::move(kernel_name),
+                    launch_dimensions,
+                    /*cluster_dim=*/std::nullopt,
+                    shmem_bytes,
+                    std::make_shared<const std::vector<uint8_t>>(cubin),
+                    tma_metadata,
+                    use_pdl};
               });
         });
   };
@@ -1629,7 +1630,7 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
           const KernelReuseCache::Entry* entry) mutable
           -> absl::StatusOr<ThunkSequence> {
         ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                         kernel::CreateOwnedCubinCustomKernel(
+                         kernel::CreateSharedCubinCustomKernel(
                              entry->kernel_name, entry->binary,
                              kernel_arguments.args().size(),
                              entry->launch_dimensions.block_counts(),

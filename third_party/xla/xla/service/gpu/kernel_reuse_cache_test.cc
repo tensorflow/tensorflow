@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -89,8 +92,10 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name,
-                                       .binary = {5, 6}};
+        return KernelReuseCache::Entry{
+            .kernel_name = kernel_name,
+            .binary = std::make_shared<const std::vector<uint8_t>>(
+                std::vector<uint8_t>{5, 6})};
       });
       return cache.Export();
     }("k1");
@@ -101,8 +106,10 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint1", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name,
-                                       .binary = {7, 8}};
+        return KernelReuseCache::Entry{
+            .kernel_name = kernel_name,
+            .binary = std::make_shared<const std::vector<uint8_t>>(
+                std::vector<uint8_t>{7, 8})};
       });
       return cache.Export();
     }("k2");
