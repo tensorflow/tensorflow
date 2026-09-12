@@ -26,6 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -203,7 +205,7 @@ void ReportError(TfLiteContext* context, const char* format, ...) {
   vsnprintf(temp_buffer, kBufferSize, format, args);
   va_end(args);
 
-  LOG(INFO) << temp_buffer;
+  ABSL_LOG(INFO) << temp_buffer;
 }
 
 class ArenaPlannerTest : public ::testing::Test {
@@ -214,31 +216,31 @@ class ArenaPlannerTest : public ::testing::Test {
     planner_ = std::make_unique<ArenaPlanner>(
         &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
         preserve_all_tensors, kTensorAlignment);
-    CHECK(planner_->ResetAllocations() == kTfLiteOk);
-    CHECK(planner_->PlanAllocations() == kTfLiteOk);
+    ABSL_CHECK(planner_->ResetAllocations() == kTfLiteOk);
+    ABSL_CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
 
   void SwapGraph(TestGraph* graph) {
     graph_->Swap(graph);
-    CHECK(planner_->PlanAllocations() == kTfLiteOk);
+    ABSL_CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
 
   void Execute(int start, int end) {
-    CHECK(planner_->ExecuteAllocations(start, end) == kTfLiteOk);
+    ABSL_CHECK(planner_->ExecuteAllocations(start, end) == kTfLiteOk);
   }
 
   void ReleaseNonPersistentMemory() {
-    CHECK(planner_->ReleaseNonPersistentMemory() == kTfLiteOk);
+    ABSL_CHECK(planner_->ReleaseNonPersistentMemory() == kTfLiteOk);
   }
 
   void AcquireNonPersistentMemory() {
-    CHECK(planner_->AcquireNonPersistentMemory() == kTfLiteOk);
+    ABSL_CHECK(planner_->AcquireNonPersistentMemory() == kTfLiteOk);
   }
 
-  void ResetAllocations() { CHECK(planner_->ResetAllocations() == kTfLiteOk); }
+  void ResetAllocations() { ABSL_CHECK(planner_->ResetAllocations() == kTfLiteOk); }
 
   void ResetAllocationsAfter(int node) {
-    CHECK(planner_->ResetAllocationsAfter(node) == kTfLiteOk);
+    ABSL_CHECK(planner_->ResetAllocationsAfter(node) == kTfLiteOk);
   }
 
   bool HasNonPersistentMemory() {
@@ -1112,6 +1114,30 @@ TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   EXPECT_EQ(gNumDealloc, 0);
   Destroy();
   EXPECT_EQ(gNumDealloc, 1);
+}
+
+TEST_F(ArenaPlannerTest, ResizingPersistentTensor) {
+  TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
+  (*graph.tensors())[1].allocation_type = kTfLiteArenaRwPersistent;
+  (*graph.tensors())[1].bytes = 10;
+  graph.SetVariables({1});
+
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  size_t initial_arena_size = 0;
+  size_t initial_persist_size = 0;
+  planner_->GetAllocInfo(&initial_arena_size, &initial_persist_size);
+  EXPECT_GE(initial_persist_size, 10);
+
+  // Resize persistent tensor to a larger size.
+  (*graph.tensors())[1].bytes = 1000;
+  Execute(0, graph.nodes().size() - 1);
+
+  size_t new_arena_size = 0;
+  size_t new_persist_size = 0;
+  planner_->GetAllocInfo(&new_arena_size, &new_persist_size);
+  EXPECT_GE(new_persist_size, 1000);
 }
 
 }  // namespace
