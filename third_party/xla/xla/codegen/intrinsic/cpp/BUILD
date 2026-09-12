@@ -107,6 +107,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "vector_ops_test",
+    srcs = ["vector_ops_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_ir_header(
     name = "tanh_ll",
     src = "tanh.cc",
@@ -214,6 +226,46 @@ cc_binary(
         "//xla/codegen/intrinsic",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "trig_lib",
+    srcs = ["trig.cc"],
+    hdrs = ["trig.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "trig_ll",
+    src = "trig.cc",
+    deps = [
+        ":cpp_context_provider",
+        ":trig_lib",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "trig_test",
+    srcs = ["trig_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":trig_lib",
+        ":trig_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )

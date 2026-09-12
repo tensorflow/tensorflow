@@ -43,6 +43,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
+#include "xla/codegen/intrinsic/cpp/trig_ll.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
@@ -131,6 +132,9 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
     auto eigen_lib = std::make_unique<CppGenIntrinsicLibrary>(
         GetCppGenIrString(options), "eigen");
     ir_libraries_.push_back(std::move(eigen_lib));
+    auto trig_lib =
+        std::make_unique<CppGenIntrinsicLibrary>(::llvm_ir::kTrigLlIr, "trig");
+    ir_libraries_.push_back(std::move(trig_lib));
   }
 
   intrinsic_functions_.push_back(
@@ -149,6 +153,8 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
       std::make_unique<IntrinsicAdapter<intrinsics::Tanh>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::EigenAtan>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Sinh>>());
 }
 
 namespace {
