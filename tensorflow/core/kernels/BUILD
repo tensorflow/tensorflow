@@ -826,6 +826,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:mutex",
     ],
 )
@@ -3711,6 +3712,10 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

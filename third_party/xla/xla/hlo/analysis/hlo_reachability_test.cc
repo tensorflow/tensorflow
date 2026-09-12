@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,7 +28,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/random/random.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "benchmark/benchmark.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -320,6 +325,265 @@ TEST_F(HloReachabilityTest, UpdateMultipleInstructions) {
   EXPECT_FALSE(reachability->IsReachable(a, f));
 }
 
+// Expects reachability to answer every query among instructions like a
+// map built from scratch for the current graph of computation.
+void ExpectMatchesRebuiltMap(const HloReachabilityMap& reachability,
+                             const HloComputation* computation,
+                             absl::Span<HloInstruction* const> instructions) {
+  std::unique_ptr<HloReachabilityMap> rebuilt =
+      HloReachabilityMap::Build(computation);
+  for (const HloInstruction* a : instructions) {
+    for (const HloInstruction* b : instructions) {
+      EXPECT_EQ(reachability.IsReachable(a, b), rebuilt->IsReachable(a, b))
+          << a->name() << " -> " << b->name();
+    }
+  }
+}
+
+TEST_F(HloReachabilityTest, UpdateMultipleInstructionsMatchesRebuiltMap) {
+  // Two subgraphs joined only by the control edge c2 -> g, the first one a
+  // lattice of diamonds:
+  //
+  //   p -> a1, a2, a3;  a1, a2 -> b1;  a2, a3 -> b2;  b1 -> c1;  b2 -> c2;
+  //   c1, c2 -> d -> e;  q -> f1 -> f2;  q -> g;  c2 -> g (control)
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      p = f32[] parameter(0)
+      q = f32[] parameter(1)
+      a1 = f32[] negate(p)
+      a2 = f32[] exponential(p)
+      a3 = f32[] abs(p)
+      b1 = f32[] add(a1, a2)
+      b2 = f32[] multiply(a2, a3)
+      c1 = f32[] negate(b1)
+      c2 = f32[] exponential(b2)
+      d = f32[] add(c1, c2)
+      e = f32[] negate(d)
+      f1 = f32[] negate(q)
+      f2 = f32[] exponential(f1)
+      g = f32[] abs(q), control-predecessors={c2}
+      ROOT t = (f32[], f32[], f32[]) tuple(e, f2, g)
+    })"));
+  HloComputation* computation = module->entry_computation();
+  const std::vector<HloInstruction*> instructions =
+      computation->MakeInstructionPostOrder();
+  auto instruction = [&](absl::string_view name) {
+    return FindInstruction(module.get(), name);
+  };
+  auto reachability = HloReachabilityMap::Build(computation);
+
+  // Both branches into the join d change, so d has two changed predecessors,
+  // and g gains f1 only through the control edge from c2.
+  ASSERT_IS_OK(instruction("f1")->AddControlDependencyTo(instruction("a1")));
+  ASSERT_IS_OK(instruction("f1")->AddControlDependencyTo(instruction("a2")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("f1"), instruction("e")));
+  reachability->UpdateMultipleInstructions(
+      {{instruction("a1"), {instruction("f1")}},
+       {instruction("a2"), {instruction("f1")}}});
+  EXPECT_TRUE(reachability->IsReachable(instruction("q"), instruction("e")));
+  EXPECT_TRUE(reachability->IsReachable(instruction("f1"), instruction("g")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("f1"), instruction("a3")));
+  ExpectMatchesRebuiltMap(*reachability, computation, instructions);
+
+  // The updated f1 is upstream of the updated f2, and a3 reaches f2 only by
+  // way of f1: the row of f2's new predecessor c1 does not contain a3.
+  ASSERT_IS_OK(instruction("a3")->AddControlDependencyTo(instruction("f1")));
+  ASSERT_IS_OK(instruction("c1")->AddControlDependencyTo(instruction("f2")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("a3"), instruction("c1")));
+  reachability->UpdateMultipleInstructions(
+      {{instruction("f1"), {instruction("a3")}},
+       {instruction("f2"), {instruction("c1")}}});
+  EXPECT_TRUE(reachability->IsReachable(instruction("a3"), instruction("f2")));
+  EXPECT_TRUE(reachability->IsReachable(instruction("b1"), instruction("f2")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("d"), instruction("f2")));
+  ExpectMatchesRebuiltMap(*reachability, computation, instructions);
+}
+
+TEST_F(HloReachabilityTest,
+       UpdateMultipleInstructionsLooksThroughAbsentInstructions) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      p = f32[] parameter(0)
+      a = f32[] negate(p)
+      a0 = f32[] abs(p)
+      x = f32[] add(a, a0)
+      b = f32[] negate(x)
+      y = f32[] exponential(b)
+      c = f32[] negate(y)
+      c0 = f32[] abs(y)
+      d = f32[] abs(p)
+      e = f32[] negate(p)
+      z = f32[] negate(e)
+      w = f32[] abs(z)
+      ROOT t = (f32[], f32[], f32[], f32[]) tuple(c, c0, d, w)
+    })"));
+  HloComputation* computation = module->entry_computation();
+  auto instruction = [&](absl::string_view name) {
+    return FindInstruction(module.get(), name);
+  };
+  // A map over the graph without x, y and z, closed through them.
+  const std::vector<HloInstruction*> present = {
+      instruction("p"), instruction("a"), instruction("a0"),
+      instruction("b"), instruction("c"), instruction("c0"),
+      instruction("d"), instruction("e"), instruction("w")};
+  HloReachabilityMap reachability(present);
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("a"));
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("a0"));
+  reachability.SetReachabilityToUnion({instruction("a"), instruction("a0")},
+                                      instruction("b"));
+  reachability.SetReachabilityToUnion({instruction("b")}, instruction("c"));
+  reachability.SetReachabilityToUnion({instruction("b")}, instruction("c0"));
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("d"));
+  reachability.SetReachabilityToUnion({instruction("p")}, instruction("e"));
+  reachability.SetReachabilityToUnion({instruction("e")}, instruction("w"));
+  EXPECT_FALSE(reachability.IsPresent(instruction("x")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a0"), instruction("c0")));
+
+  // The updated instruction y (two present users) and the new predecessor x
+  // (two present predecessors) are absent: d reaches c and c0 through y, a and
+  // a0 reach e through x, and from there w through the absent z.
+  ASSERT_IS_OK(instruction("d")->AddControlDependencyTo(instruction("y")));
+  ASSERT_IS_OK(instruction("x")->AddControlDependencyTo(instruction("e")));
+  reachability.UpdateMultipleInstructions(
+      {{instruction("y"), {instruction("d")}},
+       {instruction("e"), {instruction("x")}}});
+  EXPECT_TRUE(reachability.IsReachable(instruction("d"), instruction("c")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("d"), instruction("c0")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a"), instruction("e")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a0"), instruction("e")));
+  EXPECT_TRUE(reachability.IsReachable(instruction("a"), instruction("w")));
+  EXPECT_FALSE(reachability.IsReachable(instruction("b"), instruction("e")));
+  EXPECT_FALSE(reachability.IsReachable(instruction("d"), instruction("w")));
+  ExpectMatchesRebuiltMap(reachability, computation, present);
+}
+
+TEST_F(HloReachabilityTest, UpdateMultipleInstructionsForwardsAlongChains) {
+  // A chain m0 -> m1 -> a -> b -> t whose link m1 -> a is a control edge and
+  // whose m1 has no user: the update from x runs down the chain one row at a
+  // time. The second call, into a, must find no trace of the first.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      x = f32[] constant(1)
+      y = f32[] constant(2)
+      m0 = f32[] constant(3)
+      m1 = f32[] negate(m0)
+      p = f32[] parameter(0)
+      a = f32[] negate(p), control-predecessors={m1}
+      b = f32[] exponential(a)
+      ROOT t = (f32[]) tuple(b)
+    })"));
+  HloComputation* computation = module->entry_computation();
+  const std::vector<HloInstruction*> instructions =
+      computation->MakeInstructionPostOrder();
+  auto instruction = [&](absl::string_view name) {
+    return FindInstruction(module.get(), name);
+  };
+  auto reachability = HloReachabilityMap::Build(computation);
+
+  ASSERT_IS_OK(instruction("x")->AddControlDependencyTo(instruction("m0")));
+  reachability->UpdateMultipleInstructions(
+      {{instruction("m0"), {instruction("x")}}});
+  EXPECT_TRUE(reachability->IsReachable(instruction("x"), instruction("m1")));
+  EXPECT_TRUE(reachability->IsReachable(instruction("x"), instruction("t")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("x"), instruction("p")));
+  ExpectMatchesRebuiltMap(*reachability, computation, instructions);
+
+  ASSERT_IS_OK(instruction("y")->AddControlDependencyTo(instruction("a")));
+  reachability->UpdateMultipleInstructions(
+      {{instruction("a"), {instruction("y")}}});
+  EXPECT_TRUE(reachability->IsReachable(instruction("y"), instruction("t")));
+  EXPECT_FALSE(reachability->IsReachable(instruction("y"), instruction("m1")));
+  ExpectMatchesRebuiltMap(*reachability, computation, instructions);
+}
+
+TEST_F(HloReachabilityTest,
+       UpdateMultipleInstructionsMatchesRebuiltMapOnRandomGraphs) {
+  // Random acyclic graphs, chains and diamonds alike, with a few random new
+  // control edges from earlier to later instructions, in two rounds: after
+  // each, the updated map must agree with a map rebuilt from scratch on every
+  // pair. Every twentieth graph has rows of 25 to 33 words, so that its edges
+  // add whole rows, single words and everything in between, and short edges
+  // there change few words of long rows.
+  std::mt19937 rng(7);
+  const Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  for (int trial = 0; trial < 200; ++trial) {
+    const bool large = trial % 20 == 0;
+    const int num_instructions = large ? 1600 + static_cast<int>(rng() % 512)
+                                       : 2 + static_cast<int>(rng() % 40);
+    // Chain heavy graphs reuse the previous instruction as an operand most of
+    // the time; the others pick operands anywhere earlier.
+    const bool chain_heavy = rng() % 2 == 0;
+    auto builder = HloComputation::Builder(absl::StrCat(TestName(), trial));
+    std::vector<HloInstruction*> instructions;
+    instructions.push_back(
+        builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32, "p")));
+    auto pick_operand = [&]() {
+      if (chain_heavy && rng() % 10 != 0) {
+        return instructions.back();
+      }
+      return instructions[rng() % instructions.size()];
+    };
+    for (int i = 1; i < num_instructions; ++i) {
+      const int kind = rng() % 10;
+      if (kind == 0) {
+        instructions.push_back(builder.AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(i))));
+      } else if (kind < 7) {
+        instructions.push_back(
+            builder.AddInstruction(HloInstruction::CreateUnary(
+                r0f32, HloOpcode::kNegate, pick_operand())));
+      } else {
+        instructions.push_back(
+            builder.AddInstruction(HloInstruction::CreateBinary(
+                r0f32, HloOpcode::kAdd, pick_operand(), pick_operand())));
+      }
+    }
+    std::vector<HloInstruction*> sinks;
+    for (HloInstruction* instruction : instructions) {
+      if (instruction->user_count() == 0) {
+        sinks.push_back(instruction);
+      }
+    }
+    builder.AddInstruction(HloInstruction::CreateTuple(sinks));
+    auto module = CreateNewVerifiedModule();
+    HloComputation* computation = module->AddEntryComputation(builder.Build());
+    auto reachability = HloReachabilityMap::Build(computation);
+
+    // New control edges go from an earlier to a later instruction, so the
+    // graph stays acyclic; several may share an instruction. In large graphs
+    // every other edge spans at most 64 instructions.
+    for (int round = 0; round < 2; ++round) {
+      absl::flat_hash_map<const HloInstruction*,
+                          absl::flat_hash_set<const HloInstruction*>>
+          to_update;
+      const int num_edges = 1 + rng() % 4;
+      for (int e = 0; e < num_edges; ++e) {
+        const size_t from = rng() % (instructions.size() - 1);
+        size_t span = instructions.size() - from - 1;
+        if (large && e % 2 == 0) {
+          span = std::min<size_t>(span, 64);
+        }
+        const size_t to = from + 1 + rng() % span;
+        HloInstruction* predecessor = instructions[from];
+        HloInstruction* successor = instructions[to];
+        ASSERT_IS_OK(predecessor->AddControlDependencyTo(successor));
+        to_update[successor].insert(predecessor);
+      }
+      reachability->UpdateMultipleInstructions(to_update);
+      ExpectMatchesRebuiltMap(*reachability, computation, instructions);
+      if (HasFailure()) {
+        return;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 class HloReachabilityMapBitSetBenchmark {
@@ -513,6 +777,158 @@ void BM_HloReachabilityBuild(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_HloReachabilityBuild)->BM_ARGS;
+
+// Independent chains of unary ops, one per entry of chain_lengths, joined
+// by a tuple. A control edge from the end of chain first to the start of
+// chain second for every entry of edges is in the graph but not in the
+// map, so one UpdateMultipleInstructions call forwards the rows over those
+// edges and down the chains behind them. A chain of 64 instructions that
+// starts at a multiple of 64 covers exactly one word of every row.
+class HloReachabilityUpdateBenchmark {
+ public:
+  HloReachabilityUpdateBenchmark(absl::Span<const int> chain_lengths,
+                                 absl::Span<const std::pair<int, int>> edges,
+                                 absl::string_view name)
+      : name_(name) {
+    Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+    auto builder = HloComputation::Builder(name);
+    std::vector<HloInstruction*> starts;
+    std::vector<HloInstruction*> ends;
+    for (int c = 0; c < chain_lengths.size(); ++c) {
+      HloInstruction* prev = builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(c)));
+      for (int i = 1; i < std::max(2, chain_lengths[c]); ++i) {
+        prev = builder.AddInstruction(
+            HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, prev));
+        if (i == 1) {
+          starts.push_back(prev);
+        }
+      }
+      ends.push_back(prev);
+    }
+    HloInstruction* root =
+        builder.AddInstruction(HloInstruction::CreateTuple(ends));
+    HloModuleConfig hlo_config;
+    module_ = std::make_unique<HloModule>(name_, hlo_config);
+    computation_ =
+        module_->AddEntryComputation(builder.Build(/*root_instruction=*/root));
+    // The post order and the operand lists of the graph without the control
+    // edges, for Reset.
+    post_order_ = computation_->MakeInstructionPostOrder();
+    for (const HloInstruction* instruction : post_order_) {
+      operands_.emplace_back(instruction->operands().begin(),
+                             instruction->operands().end());
+    }
+    reachability_ = HloReachabilityMap::Build(computation_);
+    for (const auto& [from, to] : edges) {
+      CHECK_OK(ends[from]->AddControlDependencyTo(starts[to]));
+      to_update_[starts[to]].insert(ends[from]);
+    }
+  }
+
+  // Restores the closure of the graph without the control edges.
+  void Reset() {
+    for (size_t i = 0; i < post_order_.size(); ++i) {
+      reachability_->FastSetReachabilityToUnion(operands_[i], post_order_[i]);
+    }
+  }
+
+  void Update() { reachability_->UpdateMultipleInstructions(to_update_); }
+
+ private:
+  std::unique_ptr<HloModule> module_;
+  HloComputation* computation_;
+  std::vector<HloInstruction*> post_order_;
+  std::vector<std::vector<const HloInstruction*>> operands_;
+  std::unique_ptr<HloReachabilityMap> reachability_;
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<const HloInstruction*>>
+      to_update_;
+  const std::string name_;
+};
+
+void RunUpdateBenchmark(benchmark::State& state,
+                        HloReachabilityUpdateBenchmark& bm) {
+  for (auto s : state) {
+    bm.Reset();
+    const absl::Time start = absl::Now();
+    bm.Update();
+    state.SetIterationTime(absl::ToDoubleSeconds(absl::Now() - start));
+  }
+}
+
+// Control edges from the end of every chain to the start of the next one.
+std::vector<std::pair<int, int>> ConsecutiveChainEdges(int chains) {
+  std::vector<std::pair<int, int>> edges;
+  for (int c = 0; c + 1 < chains; ++c) {
+    edges.emplace_back(c, c + 1);
+  }
+  return edges;
+}
+
+// range(0) instructions in range(1) chains of equal length.
+void BM_HloReachabilityUpdateMultipleInstructions(benchmark::State& state) {
+  const int chains = state.range(1);
+  std::vector<int> chain_lengths(chains, state.range(0) / chains);
+  HloReachabilityUpdateBenchmark bm(
+      chain_lengths, ConsecutiveChainEdges(chains), state.name());
+  RunUpdateBenchmark(state, bm);
+}
+BENCHMARK(BM_HloReachabilityUpdateMultipleInstructions)
+    ->UseManualTime()
+    ->Args({256, 2})
+    ->Args({256, 8})
+    ->Args({1024, 2})
+    ->Args({1024, 8})
+    ->Args({4096, 8})
+    ->Args({16384, 2})
+    ->Args({16384, 8})
+    ->Args({16384, 64});
+
+// A side chain of range(1) instructions feeding the start of a main chain of
+// range(0) - range(1) instructions: every row of the main chain gains the
+// side chain's bits, few or many words of it.
+void BM_HloReachabilityUpdateMultipleInstructionsSideChain(
+    benchmark::State& state) {
+  const int side = state.range(1);
+  const int main = state.range(0) - side;
+  HloReachabilityUpdateBenchmark bm({side, main}, ConsecutiveChainEdges(2),
+                                    state.name());
+  RunUpdateBenchmark(state, bm);
+}
+BENCHMARK(BM_HloReachabilityUpdateMultipleInstructionsSideChain)
+    ->UseManualTime()
+    ->Args({4096, 8})
+    ->Args({4096, 512})
+    ->Args({16384, 8})
+    ->Args({16384, 256})
+    ->Args({16384, 1024})
+    ->Args({16384, 2048})
+    ->Args({16384, 4096});
+
+// range(1) side chains of 64 instructions, each followed by a spacer chain of
+// 64 that stays out of the update, all feeding the start of a main chain of
+// the remaining instructions: every row of the main chain gains range(1)
+// separate words, one per side chain.
+void BM_HloReachabilityUpdateMultipleInstructionsComb(benchmark::State& state) {
+  const int teeth = state.range(1);
+  std::vector<int> chain_lengths(2 * teeth, 64);
+  chain_lengths.push_back(state.range(0) - 128 * teeth);
+  std::vector<std::pair<int, int>> edges;
+  for (int tooth = 0; tooth < teeth; ++tooth) {
+    edges.emplace_back(2 * tooth, 2 * teeth);
+  }
+  HloReachabilityUpdateBenchmark bm(chain_lengths, edges, state.name());
+  RunUpdateBenchmark(state, bm);
+}
+BENCHMARK(BM_HloReachabilityUpdateMultipleInstructionsComb)
+    ->UseManualTime()
+    ->Args({16384, 1})
+    ->Args({16384, 4})
+    ->Args({16384, 8})
+    ->Args({16384, 16})
+    ->Args({16384, 32})
+    ->Args({16384, 64});
 
 }  // namespace
 

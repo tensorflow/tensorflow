@@ -332,7 +332,7 @@ bool ComputeRelativeLocation::AddControlDependenceForUnorderedOps() {
     // Adding all control dependencies and updating in one go is more efficient
     // than calling UpdateReachabilityThroughInstruction for each new
     // dependence.
-    reachability_map.UpdateMultipleInstructions(std::move(to_update));
+    reachability_map.UpdateMultipleInstructions(to_update);
     // NOLINTNEXTLINE the order has no effect on the correctness.
     for (const auto& instr_it : comp_it.second) {
       const HloInstruction* successor = instr_it.first;

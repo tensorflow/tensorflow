@@ -115,12 +115,17 @@ class HloReachabilityMap {
   // (operands and control predecessors) of 'instruction' has changed.
   void UpdateReachabilityThroughInstruction(const HloInstruction* instruction);
 
-  // Bulk update reachabilities for multiple instructions. All works if new
-  // predecessors are added to the instructions, but not removed. to_update is a
-  // map from instruction to new predecessors.
+  // Bulk update after new predecessors (operands or control predecessors) were
+  // added to instructions, but none removed. to_update maps each instruction
+  // to its new predecessors. The new edges must already be in the graph, i.e.
+  // visible through users() and control_successors(), because the update
+  // follows them. Requires the map to be transitively closed for the graph
+  // without the new edges; on return it is closed for the graph with them.
+  // Instructions absent from the map (see IsPresent) have no row of their own
+  // but are looked through, so paths through them still count.
   void UpdateMultipleInstructions(
-      absl::flat_hash_map<const HloInstruction*,
-                          absl::flat_hash_set<const HloInstruction*>>
+      const absl::flat_hash_map<const HloInstruction*,
+                                absl::flat_hash_set<const HloInstruction*>>&
           to_update);
 
   // Update reachability map given left and right are going to be merged into a
@@ -250,6 +255,55 @@ class HloReachabilityMap {
       }
     }
 
+    // Same as operator|=, but stores the bits each word gained in delta (as
+    // many words as this bit set has).
+    void OrUpdateDelta(const BitSet& other, Word* __restrict delta) {
+      DCHECK(words_ == other.words_);
+      DCHECK(ptr_ != other.ptr_);
+      Word* __restrict a = ptr_;
+      const Word* __restrict b = other.ptr_;
+      const size_t num_words = NumWords();
+      for (size_t i = 0; i < num_words; ++i) {
+        const Word gained = ~a[i] & b[i];
+        delta[i] = gained;
+        a[i] |= gained;
+      }
+    }
+
+    // Same as operator|=, but only for the words [begin, end).
+    void OrRange(const BitSet& other, size_t begin, size_t end) {
+      DCHECK(words_ == other.words_);
+      DCHECK(ptr_ != other.ptr_);
+      DCHECK_LE(end, NumWords());
+      Word* __restrict a = ptr_ + begin;
+      const Word* __restrict b = other.ptr_ + begin;
+      const size_t num_words = end - begin;
+      for (size_t i = 0; i < num_words; ++i) {
+        a[i] |= b[i];
+      }
+    }
+
+    // Same as OrUpdate, but only for the words [begin, end).
+    bool OrUpdateRange(const BitSet& other, size_t begin, size_t end) {
+      DCHECK(words_ == other.words_);
+      DCHECK(ptr_ != other.ptr_);
+      DCHECK_LE(end, NumWords());
+      Word* __restrict a = ptr_ + begin;
+      const Word* __restrict b = other.ptr_ + begin;
+      const size_t num_words = end - begin;
+      Word changed_accumulator = 0;
+      for (size_t i = 0; i < num_words; ++i) {
+        const Word ai = a[i];
+        const Word bi = b[i];
+        a[i] = ai | bi;
+        changed_accumulator |= ~ai & bi;
+      }
+      return changed_accumulator;
+    }
+
+    Word* data() { return ptr_; }
+    const Word* data() const { return ptr_; }
+
     // Useful for updating multiple instructions at once using smaller diff.
     // Used with OrUpdatePartial to identify different words and their unions.
     void GetDifferingWordUnions(
@@ -368,6 +422,21 @@ class HloReachabilityMap {
   std::vector<std::pair<size_t, BitSet::Word>> tmp_changed_words_;
   std::vector<uintptr_t> tmp_worklist_;
   std::vector<Index> tmp_indices_to_update_;
+
+  // Used by UpdateMultipleInstructions, sized on its first call and kept to
+  // avoid allocations per call. Per instruction key: whether the row has
+  // changes that are not forwarded to its successors yet, and if so whether
+  // the whole row is forwarded or only the words flagged in its dirty mask
+  // (one bit per word of the row). Between calls every state is kPendingNone
+  // and every mask is zero.
+  enum PendingState : uint8_t { kPendingNone, kPendingWords, kPendingRow };
+  std::vector<PendingState> tmp_pending_state_;
+  std::vector<BitSet::Word> tmp_dirty_masks_;
+  // The bits a row gained in the last union, one word per word of the row.
+  std::vector<BitSet::Word> tmp_delta_words_;
+  // The rows with pending changes, a min heap by row index; empty between
+  // calls.
+  std::vector<std::pair<Index, const HloInstruction*>> tmp_pending_rows_;
 };
 
 }  // namespace xla
