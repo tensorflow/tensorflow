@@ -86,6 +86,7 @@ cc_library(
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/service:executable",
+        "@xla//xla/service/gpu:gpu_executable_run_options",
         "@xla//xla/stream_executor/host:host_platform_id",
         "@xla//xla/tsl/concurrency:async_value",
         "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",

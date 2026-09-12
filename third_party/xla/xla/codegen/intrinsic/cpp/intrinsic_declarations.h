@@ -87,6 +87,30 @@ class EigenAtan : public Intrinsic<EigenAtan> {
     return GetCppGenFunction(module, Name(type));
   }
 };
+
+class Sinh : public Intrinsic<Sinh> {
+ public:
+  static constexpr absl::string_view kName = "sinh";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (!AreEigenIntrinsicsAvailable()) {
+      return {};
+    }
+    return {
+        {Type::S(xla::F32)},
+        {Type::V(xla::F32, 4)},
+        {Type::V(xla::F32, 8)},
+        {Type::V(xla::F32, 16)},
+    };
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type));
+  }
+};
+
 }  // namespace xla::codegen::intrinsics
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_INTRINSIC_DECLARATIONS_H_

@@ -85,6 +85,25 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "comparison_expander_test",
+    srcs = ["comparison_expander_test.cc"],
+    deps = [
+        ":comparison_expander",
+        "//xla:comparison_util",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cholesky_expander",
     srcs = ["cholesky_expander.cc"],
@@ -259,6 +278,45 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "elementary_function_expander",
+    srcs = ["elementary_function_expander.cc"],
+    hdrs = ["elementary_function_expander.h"],
+    deps = [
+        ":op_expander_pass",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/builder/lib:constants",
+        "//xla/hlo/builder/lib:math",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:call_inliner",
+        "//xla/service:hlo_creation_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "elementary_function_expander_test",
+    srcs = ["elementary_function_expander_test.cc"],
+    deps = [
+        ":elementary_function_expander",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

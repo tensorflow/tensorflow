@@ -60,7 +60,12 @@ class CholeskySolveTest(test.TestCase):
             with self.subTest(n=n, np_type=np_type, atol=atol, k=k):
               rhs = self.rng.randn(2, n, k).astype(np_type)
               x = linalg_ops.cholesky_solve(chol, rhs)
-              self.assertAllClose(rhs, math_ops.matmul(array, x), atol=atol)
+              rhs_pred = (
+                  test_util.matmul_without_tf32(array, x)
+                  if test.is_gpu_available()
+                  else math_ops.matmul(array, x)
+              )
+              self.assertAllClose(rhs, rhs_pred, atol=atol)
 
 
 class LogdetTest(test.TestCase):
@@ -435,7 +440,10 @@ class _PinvTest(object):
     expected_a_pinv_ = self.expected_pinv(a_, rcond)
     a_pinv = linalg.pinv(a, rcond, validate_args=True)
     a_pinv_ = self.evaluate(a_pinv)
-    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=2e-5, rtol=2e-5)
+    use_tf32_tol = self.dtype == np.float32 and test.is_gpu_available()
+    atol = 3e-3 if use_tf32_tol else 2e-5
+    rtol = 1e-3 if use_tf32_tol else 2e-5
+    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=atol, rtol=rtol)
     if not self.use_static_shape:
       return
     self.assertAllEqual(expected_a_pinv_.shape, a_pinv.shape)
@@ -453,7 +461,10 @@ class _PinvTest(object):
     expected_a_pinv_ = self.expected_pinv(a_, rcond)
     a_pinv = linalg.pinv(a, rcond, validate_args=True)
     a_pinv_ = self.evaluate(a_pinv)
-    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=1e-5, rtol=1e-4)
+    use_tf32_tol = self.dtype == np.float32 and test.is_gpu_available()
+    atol = 1e-3 if use_tf32_tol else 1e-5
+    rtol = 1e-3 if use_tf32_tol else 1e-4
+    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=atol, rtol=rtol)
     if not self.use_static_shape:
       return
     self.assertAllEqual(expected_a_pinv_.shape, a_pinv.shape)
