@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/object_reader.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -221,15 +222,27 @@ absl::Status ObjectReader::AddUpdate(const Node* node, uint32_t idx) {
 }
 
 TfLiteTensor* ObjectReader::GetInputTensor(int index) const {
-  return index >= 0 && index < node_->inputs->size
-             ? context_->tensors + node_->inputs->data[index]
-             : nullptr;
+  if (index < 0 || index >= node_->inputs->size) {
+    return nullptr;
+  }
+  const int tensor_id = node_->inputs->data[index];
+  if (tensor_id < 0 ||
+      static_cast<size_t>(tensor_id) >= context_->tensors_size) {
+    return nullptr;
+  }
+  return context_->tensors + tensor_id;
 }
 
 TfLiteTensor* ObjectReader::GetOutputTensor(int index) const {
-  return index >= 0 && index < node_->outputs->size
-             ? context_->tensors + node_->outputs->data[index]
-             : nullptr;
+  if (index < 0 || index >= node_->outputs->size) {
+    return nullptr;
+  }
+  const int tensor_id = node_->outputs->data[index];
+  if (tensor_id < 0 ||
+      static_cast<size_t>(tensor_id) >= context_->tensors_size) {
+    return nullptr;
+  }
+  return context_->tensors + tensor_id;
 }
 
 absl::Status ObjectReader::VerifyInputsConstsOutputs(const TfLiteNode* node,

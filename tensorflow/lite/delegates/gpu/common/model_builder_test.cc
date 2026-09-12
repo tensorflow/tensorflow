@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -33,7 +34,9 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_internal.h"
+#include "tensorflow/lite/delegates/gpu/common/object_reader.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
@@ -2903,6 +2906,73 @@ TEST(TileOperationParserTest, TestIsSupported) {
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
+}
+
+// Replaces a stub tensor with a constant INT32 tensor of the given shape.
+// `data` must outlive the parse call that reads the tensor.
+void SetConstInt32Tensor(TfLiteTensor* tensor, const std::vector<int>& dims,
+                         int32_t* data) {
+  TfLiteIntArrayFree(tensor->dims);
+  tensor->dims = TfLiteIntArrayCreate(static_cast<int>(dims.size()));
+  int num_elements = 1;
+  for (size_t i = 0; i < dims.size(); ++i) {
+    tensor->dims->data[i] = dims[i];
+    num_elements *= dims[i];
+  }
+  tensor->type = kTfLiteInt32;
+  tensor->data.i32 = data;
+  tensor->bytes = num_elements * sizeof(int32_t);
+  tensor->allocation_type = kTfLiteMmapRo;
+}
+
+// Parses the node of `context` with the parser registered for its op.
+absl::Status ParseNode(StubTfLiteContext* context) {
+  auto parser = NewOperationParser(context->registration());
+  GraphFloat32 graph;
+  absl::flat_hash_map<int, Value*> tensor_to_value;
+  ObjectReader reader(&graph, context, context->node(), &tensor_to_value);
+  return parser->Parse(context->node(), context->registration(), &graph,
+                       &reader);
+}
+
+TEST(TransposeOperationParserTest, ParseRejectsAxisOutOfRange) {
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTranspose,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/2);
+  int32_t perm_data[2] = {0, 2};
+  SetConstInt32Tensor(context->tensor(2), {2}, perm_data);
+
+  EXPECT_FALSE(ParseNode(context.get()).ok());
+}
+
+TEST(TransposeOperationParserTest, ParseRejectsNegativeAxis) {
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTranspose,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/2);
+  int32_t perm_data[3] = {0, -1, 2};
+  SetConstInt32Tensor(context->tensor(2), {3}, perm_data);
+
+  EXPECT_FALSE(ParseNode(context.get()).ok());
+}
+
+TEST(TransposeOperationParserTest, ParseRejectsAxisOutOfRangeForRank4) {
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTranspose,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/2);
+  int32_t perm_data[4] = {0, 1, 2, 4};
+  SetConstInt32Tensor(context->tensor(2), {4}, perm_data);
+
+  EXPECT_FALSE(ParseNode(context.get()).ok());
+}
+
+TEST(TransposeOperationParserTest, ParseAcceptsValidPermutation) {
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTranspose,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/2);
+  int32_t perm_data[3] = {0, 2, 1};
+  SetConstInt32Tensor(context->tensor(2), {3}, perm_data);
+
+  EXPECT_TRUE(ParseNode(context.get()).ok());
 }
 
 TEST(TransposeConvBuiltinOperationParserTest, TestIsSupported) {
