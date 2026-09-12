@@ -1086,15 +1086,36 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                                           const Allocation& aliased_allocation,
                                           AliasedOffset* offset);
 
-  // Returns true if a buffer is allocated in the alternate memory space
-  // throughout the live range of a conditional and used in the conditional.
-  // The uses inside the conditional read the buffer from mirrored
-  // allocation.
-  bool NeedsMirroredAllocation(
+  // Returns true if an outer allocation value satisfies the conditions
+  // (allocated in the alternate memory space and spanning the duration of the
+  // conditional) to serve as the source/anchor for mirrored allocations
+  // inside a kConditional instruction.
+  bool CanBeMirroredByConditional(
+      const AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      const AllocationValue::Use* previous_use) const;
+
+  // Returns true if an outer allocation value satisfies the conditions
+  // (allocated in the alternate memory space and spanning the duration of the
+  // nested computation) to serve as the source/anchor for mirrored allocations
+  // in nested computations (such as conditionals). The uses inside the nested
+  // computation read the buffer from the mirrored allocation.
+  bool CanBeMirroredByNestedComputations(
       const AllocationValue& allocation_value,
       const AllocationValue::Use& current_use,
       // We check if the previous use is a conditional operand.
       const AllocationValue::Use* previous_use) const;
+
+  // Creates mirrored allocations inside a kConditional instruction when an
+  // outer buffer is allocated in alternate memory throughout the conditional's
+  // live range.
+  void CreateMirroredAllocationsForConditional(
+      AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values,
+      absl::flat_hash_set<AllocationValue*>&
+          already_processed_allocation_values_inside_a_conditional);
 
   // If a buffer is allocated in the alternate memory space throughout the live
   // range of a conditional, the uses of the buffer inside the conditional
