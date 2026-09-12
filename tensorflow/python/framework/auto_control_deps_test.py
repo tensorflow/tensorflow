@@ -991,6 +991,20 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertIn(input2, writes3)
     self.assertNotIn(input0, writes3)
 
+  def testResourceReadWriteOverlap(self):
+    from unittest import mock
+    op = mock.MagicMock()
+    resource_tensor = mock.MagicMock()
+    with mock.patch.object(
+        acd.utils,
+        "get_read_write_resource_inputs",
+        return_value=({resource_tensor}, {resource_tensor}),
+    ):
+      resource_inputs = list(acd._get_resource_inputs(op))
+      self.assertEqual(
+          resource_inputs, [(resource_tensor, acd.ResourceType.READ_WRITE)]
+      )
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()
