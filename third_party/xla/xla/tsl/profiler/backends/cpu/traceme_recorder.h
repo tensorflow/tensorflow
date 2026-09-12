@@ -133,7 +133,7 @@ class TraceMeRecorder {
   static void Clear();
 
   // Gathers events from all active threads, and clears their buffers.
-  static TF_MUST_USE_RESULT Events Consume();
+  TF_MUST_USE_RESULT static Events Consume();
 };
 
 }  // namespace profiler

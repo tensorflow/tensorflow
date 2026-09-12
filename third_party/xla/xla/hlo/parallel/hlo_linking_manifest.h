@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_SEPARATE_COMPILATION_HLO_LINKING_MANIFEST_H_
-#define XLA_HLO_SEPARATE_COMPILATION_HLO_LINKING_MANIFEST_H_
+#ifndef XLA_HLO_PARALLEL_HLO_LINKING_MANIFEST_H_
+#define XLA_HLO_PARALLEL_HLO_LINKING_MANIFEST_H_
 
 #include <memory>
 
@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/service/compilation_environments.h"
 #include "xla/service/hlo_module_config.h"
 
-namespace xla::separate_compilation {
+namespace xla::parallel {
 
 // Metadata to guide linking process of HLO modules.
 //
@@ -46,5 +46,5 @@ struct HloLinkingManifest {
   std::unique_ptr<CompilationEnvironments> compilation_environment;
 };
 
-}  // namespace xla::separate_compilation
-#endif  // XLA_HLO_SEPARATE_COMPILATION_HLO_LINKING_MANIFEST_H_
+}  // namespace xla::parallel
+#endif  // XLA_HLO_PARALLEL_HLO_LINKING_MANIFEST_H_
