@@ -128,7 +128,6 @@ using mlir::func::FuncOp;
 using tflite::OperatorT;
 using tflite::TensorT;
 
-namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
 
 namespace {
