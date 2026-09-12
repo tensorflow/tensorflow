@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_VALIDATE_H_
 #define TENSORFLOW_CORE_GRAPH_VALIDATE_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 
