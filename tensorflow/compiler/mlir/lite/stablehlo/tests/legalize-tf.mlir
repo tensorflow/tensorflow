@@ -2563,3 +2563,42 @@ func.func @xla_scatter(%arg0: tensor<2x10xi1>, %arg1: tensor<1xi32>, %arg2: tens
 func.func private @scatter_update(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
   return %arg1 : tensor<i1>
 }
+
+// -----
+
+// CHECK-LABEL: func @unpack_dynamic
+func.func @unpack_dynamic(%arg0: tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+  // CHECK: %[[SLICE0:.*]] = stablehlo.real_dynamic_slice %arg0, {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE0:.*]] = stablehlo.dynamic_reshape %[[SLICE0]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: %[[SLICE1:.*]] = stablehlo.real_dynamic_slice %arg0, {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE1:.*]] = stablehlo.dynamic_reshape %[[SLICE1]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: return %[[RESHAPE0]], %[[RESHAPE1]]
+  %0:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @unpack_dynamic_negative_axis
+func.func @unpack_dynamic_negative_axis(%arg0: tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+  // CHECK: %[[SLICE0:.*]] = stablehlo.real_dynamic_slice %arg0, {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE0:.*]] = stablehlo.dynamic_reshape %[[SLICE0]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: %[[SLICE1:.*]] = stablehlo.real_dynamic_slice %arg0, {{.*}} : (tensor<2x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x?xf32>
+  // CHECK: %[[RESHAPE1:.*]] = stablehlo.dynamic_reshape %[[SLICE1]], {{.*}} : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // CHECK: return %[[RESHAPE0]], %[[RESHAPE1]]
+  %0:2 = "tf.Unpack"(%arg0) {axis = -2 : i64} : (tensor<2x?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @unpack_dynamic_axis
+func.func @unpack_dynamic_axis(%arg0: tensor<?x4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  // CHECK: %[[SLICE0:.*]] = stablehlo.slice %arg0 [0:1, 0:4] : (tensor<?x4xf32>) -> tensor<1x4xf32>
+  // CHECK: %[[RESHAPE0:.*]] = stablehlo.reshape %[[SLICE0]] : (tensor<1x4xf32>) -> tensor<4xf32>
+  // CHECK: %[[SLICE1:.*]] = stablehlo.slice %arg0 [1:2, 0:4] : (tensor<?x4xf32>) -> tensor<1x4xf32>
+  // CHECK: %[[RESHAPE1:.*]] = stablehlo.reshape %[[SLICE1]] : (tensor<1x4xf32>) -> tensor<4xf32>
+  // CHECK: return %[[RESHAPE0]], %[[RESHAPE1]]
+  %0:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<?x4xf32>) -> (tensor<4xf32>, tensor<4xf32>)
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+}
