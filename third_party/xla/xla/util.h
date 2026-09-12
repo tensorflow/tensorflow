@@ -891,17 +891,18 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
 // ceil(output.size()*8.0/kBitsPerElement) bytes. kBitsPerElement must be
-// 1, 2, or 4. The high-order bits in each output are zero.
-template <size_t kBitsPerElement>
+// 1, 2, or 4. If `kSigned` is true, the values are sign-extended to 8 bits;
+// otherwise, the high-order bits in each output are zero.
+template <size_t kBitsPerElement, bool kSigned = false>
 inline void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
-  UnpackIntNHwy<kBitsPerElement>(input, output);
+  UnpackIntNHwy<kBitsPerElement, kSigned>(input, output);
 }
 
 // Same as above, but takes the number of bits per element as an argument.
 // `bits_per_element` must be 1, 2, or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
-                       absl::Span<char> output) {
-  UnpackIntNHwy(bits_per_element, input, output);
+                       absl::Span<char> output, bool is_signed = false) {
+  UnpackIntNHwy(bits_per_element, input, output, is_signed);
 }
 
 // Returns a container with `sorted_ids_to_remove` elements removed.

@@ -436,6 +436,38 @@ TEST(UtilTest, UnpackInt4HexCheck) {
   EXPECT_EQ(output, expected_output);
 }
 
+TEST(UtilTest, UnpackInt4SignedHexCheck) {
+  std::vector<char> input = {static_cast<char>(0x10), static_cast<char>(0x32),
+                             static_cast<char>(0x54), static_cast<char>(0x76),
+                             static_cast<char>(0x98), static_cast<char>(0xba),
+                             static_cast<char>(0xdc), static_cast<char>(0xfe)};
+
+  std::vector<char> expected_output = {0x0,
+                                       0x1,
+                                       0x2,
+                                       0x3,
+                                       0x4,
+                                       0x5,
+                                       0x6,
+                                       0x7,
+                                       static_cast<char>(0xf8),
+                                       static_cast<char>(0xf9),
+                                       static_cast<char>(0xfa),
+                                       static_cast<char>(0xfb),
+                                       static_cast<char>(0xfc),
+                                       static_cast<char>(0xfd),
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(4, input, absl::MakeSpan(output), true);
+  EXPECT_EQ(output, expected_output);
+
+  std::vector<char> output_template(expected_output.size(), 0);
+  UnpackIntN<4, true>(input, absl::MakeSpan(output_template));
+  EXPECT_EQ(output_template, expected_output);
+}
+
 TEST(UtilTest, PackInt4HexCheckOdd) {
   std::vector<char> input = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8,
                              0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x9};
@@ -470,6 +502,37 @@ TEST(UtilTest, UnpackInt4HexCheckOdd) {
   EXPECT_EQ(output, expected_output);
 }
 
+TEST(UtilTest, UnpackInt4SignedHexCheckOdd) {
+  std::vector<char> input = {static_cast<char>(0x10), static_cast<char>(0x32),
+                             static_cast<char>(0x54), static_cast<char>(0x76),
+                             static_cast<char>(0x98), static_cast<char>(0xba),
+                             static_cast<char>(0xdc), static_cast<char>(0xfe),
+                             static_cast<char>(0xf9)};
+
+  std::vector<char> expected_output = {0x0,
+                                       0x1,
+                                       0x2,
+                                       0x3,
+                                       0x4,
+                                       0x5,
+                                       0x6,
+                                       0x7,
+                                       static_cast<char>(0xf8),
+                                       static_cast<char>(0xf9),
+                                       static_cast<char>(0xfa),
+                                       static_cast<char>(0xfb),
+                                       static_cast<char>(0xfc),
+                                       static_cast<char>(0xfd),
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff),
+                                       static_cast<char>(0xf9)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(4, input, absl::MakeSpan(output), true);
+
+  EXPECT_EQ(output, expected_output);
+}
+
 TEST(UtilTest, PackInt2HexCheck) {
   std::vector<char> input = {0x0, 0x1, 0x2, 0x3, 0x3, 0x2, 0x1, 0x0,
                              0x1, 0x2, 0x3, 0x0, 0x2, 0x3, 0x0, 0x1};
@@ -495,6 +558,36 @@ TEST(UtilTest, UnpackInt2HexCheck) {
   UnpackIntN(2, input, absl::MakeSpan(output));
 
   EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt2SignedHexCheck) {
+  std::vector<char> input = {static_cast<char>(0xe4), static_cast<char>(0x1b),
+                             static_cast<char>(0x39), static_cast<char>(0x4e)};
+
+  std::vector<char> expected_output = {0x0,
+                                       0x1,
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff),
+                                       static_cast<char>(0xff),
+                                       static_cast<char>(0xfe),
+                                       0x1,
+                                       0x0,
+                                       0x1,
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       0x1};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(2, input, absl::MakeSpan(output), true);
+  EXPECT_EQ(output, expected_output);
+
+  std::vector<char> output_template(expected_output.size(), 0);
+  UnpackIntN<2, true>(input, absl::MakeSpan(output_template));
+  EXPECT_EQ(output_template, expected_output);
 }
 
 TEST(UtilTest, PackInt2HexCheckOdd) {
@@ -526,6 +619,35 @@ TEST(UtilTest, UnpackInt2HexCheckOdd) {
   EXPECT_EQ(output, expected_output);
 }
 
+TEST(UtilTest, UnpackInt2SignedHexCheckOdd) {
+  std::vector<char> input = {static_cast<char>(0xe4), static_cast<char>(0x1b),
+                             static_cast<char>(0x39), static_cast<char>(0x4e),
+                             static_cast<char>(0xfa)};
+
+  std::vector<char> expected_output = {0x0,
+                                       0x1,
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff),
+                                       static_cast<char>(0xff),
+                                       static_cast<char>(0xfe),
+                                       0x1,
+                                       0x0,
+                                       0x1,
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xfe),
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       0x1,
+                                       static_cast<char>(0xfe)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(2, input, absl::MakeSpan(output), true);
+
+  EXPECT_EQ(output, expected_output);
+}
+
 TEST(UtilTest, PackInt1HexCheck) {
   std::vector<char> input = {0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1,
                              0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1};
@@ -549,6 +671,24 @@ TEST(UtilTest, UnpackInt1HexCheck) {
   UnpackIntN(1, input, absl::MakeSpan(output));
 
   EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt1SignedHexCheck) {
+  std::vector<char> input = {static_cast<char>(0xaa), static_cast<char>(0xaa)};
+
+  std::vector<char> expected_output = {
+      0x0, static_cast<char>(0xff), 0x0, static_cast<char>(0xff),
+      0x0, static_cast<char>(0xff), 0x0, static_cast<char>(0xff),
+      0x0, static_cast<char>(0xff), 0x0, static_cast<char>(0xff),
+      0x0, static_cast<char>(0xff), 0x0, static_cast<char>(0xff)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(1, input, absl::MakeSpan(output), true);
+  EXPECT_EQ(output, expected_output);
+
+  std::vector<char> output_template(expected_output.size(), 0);
+  UnpackIntN<1, true>(input, absl::MakeSpan(output_template));
+  EXPECT_EQ(output_template, expected_output);
 }
 
 TEST(UtilTest, PackInt1HexCheckOdd) {
@@ -579,6 +719,34 @@ TEST(UtilTest, UnpackInt1HexCheckOdd) {
   EXPECT_EQ(output, expected_output);
 }
 
+TEST(UtilTest, UnpackInt1SignedHexCheckOdd) {
+  std::vector<char> input = {static_cast<char>(0xaa), static_cast<char>(0xaa),
+                             static_cast<char>(0xff)};
+
+  std::vector<char> expected_output = {0x0,
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xff),
+                                       0x0,
+                                       static_cast<char>(0xff),
+                                       static_cast<char>(0xff)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(1, input, absl::MakeSpan(output), true);
+
+  EXPECT_EQ(output, expected_output);
+}
+
 class PackUnpackIntNTest : public testing::TestWithParam<int> {};
 
 TEST_P(PackUnpackIntNTest, RoundTrip) {
@@ -596,6 +764,30 @@ TEST_P(PackUnpackIntNTest, RoundTrip) {
     PackIntN(bitwidth, input, absl::MakeSpan(packed));
     std::vector<char> unpacked(input.size());
     UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
+    for (size_t i = 0; i < input.size(); ++i) {
+      EXPECT_EQ(unpacked[i], input[i])
+          << "Bitwidth: " << bitwidth << " Size: " << size << " i: " << i;
+    }
+  }
+}
+
+TEST_P(PackUnpackIntNTest, RoundTripSigned) {
+  const int bitwidth = GetParam();
+  for (int size : {0,   1,   2,   3,    5,    7,    8,    15,   16,   31,
+                   32,  63,  64,  65,   127,  128,  129,  255,  256,  257,
+                   511, 512, 513, 1023, 1024, 1025, 2048, 4096, 8192, 10000}) {
+    std::vector<char> input(size);
+
+    const int min_val = -(1 << (bitwidth - 1));
+    const int num_vals = 1 << bitwidth;
+    for (int i = 0; i < input.size(); ++i) {
+      input[i] = static_cast<char>(min_val + (i % num_vals));
+    }
+
+    std::vector<char> packed(CeilOfRatio<int64_t>(input.size(), 8 / bitwidth));
+    PackIntN(bitwidth, input, absl::MakeSpan(packed));
+    std::vector<char> unpacked(input.size());
+    UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked), true);
     for (size_t i = 0; i < input.size(); ++i) {
       EXPECT_EQ(unpacked[i], input[i])
           << "Bitwidth: " << bitwidth << " Size: " << size << " i: " << i;
