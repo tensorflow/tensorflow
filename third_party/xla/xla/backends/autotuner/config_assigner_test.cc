@@ -728,6 +728,57 @@ TEST_F(ConfigAssignerTest, ShardedAutotuningPropagatesNonRaceSetError) {
                        testing::HasSubstr("disk on fire")));
 }
 
+TEST_F(ConfigAssignerTest,
+       ShardedAutotuningSkipsLocalTuningWhenKeyExistsInKvStore) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  constexpr int kShardCount = 2;
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kAdd ||
+           instruction.opcode() == HloOpcode::kCopy;
+  };
+  auto kv_store = std::make_shared<MockKeyValueStore>();
+  auto cache = std::make_unique<MockAutotunerCache>();
+
+  // The KV store already has the local shard results.
+  EXPECT_CALL(*kv_store, TryGet(testing::HasSubstr("_0")))
+      .WillOnce(Return("kAdd_autotune_result"));
+  // Local results are deserialized into cache; no local autotuning,
+  // serialization, or KV store Set is performed.
+  EXPECT_CALL(*cache, Deserialize("kAdd_autotune_result"))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*cache, Insert(_, _)).Times(0);
+  EXPECT_CALL(*cache, Serialize(_)).Times(0);
+  EXPECT_CALL(*kv_store, Set(_, _)).Times(0);
+
+  // Shard 0 reads the KV store entry for shard 1 and updates the cache.
+  EXPECT_CALL(*kv_store, Get(testing::HasSubstr("_1"), _))
+      .WillOnce(Return("kCopy_autotune_result"));
+  EXPECT_CALL(*cache, Deserialize("kCopy_autotune_result"))
+      .WillOnce(Return(absl::OkStatus()));
+
+  // Config application looks up cached configs.
+  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kAdd)))
+      .WillRepeatedly(Return(GetCacheConfig("best_config")));
+  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kCopy)))
+      .WillRepeatedly(Return(GetCacheConfig("best_config")));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssigner> config_assigner,
+      SetupConfigAssignerWithExpectations(
+          /*instrs_to_autotune=*/{},
+          /*instrs_to_apply_config_and_count=*/
+          {{HloOpcode::kCopy, 1}, {HloOpcode::kAdd, 2}}, std::move(cache)));
+
+  MultiProcessKeyValueStore sharding_kv_store;
+  sharding_kv_store.key_value_store = kv_store;
+  sharding_kv_store.process_count = kShardCount;
+  sharding_kv_store.process_index = 0;
+  EXPECT_THAT(config_assigner->AssignConfigs(module.get(), should_autotune,
+                                             sharding_kv_store),
+              IsOk());
+}
+
 TEST_F(ConfigAssignerTest, DumpHlos) {
   ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_dir,
