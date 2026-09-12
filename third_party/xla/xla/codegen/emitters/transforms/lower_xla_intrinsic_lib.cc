@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
+#include "xla/codegen/intrinsic/expm1.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
 #include "xla/codegen/intrinsic/log1p.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
@@ -334,6 +335,7 @@ class LowerXlaIntrinsicLibPass
     mlir::ModuleOp module_op = getOperation();
     mlir::RewritePatternSet patterns(context);
     patterns.add(LowerIntrinsicPattern<ci::Exp, mm::ExpOp>);
+    patterns.add(LowerIntrinsicPattern<ci::Expm1, mm::ExpM1Op>);
     patterns.add(LowerIntrinsicPattern<ci::Log1p, mm::Log1pOp>);
     patterns.add(LowerIntrinsicPattern<ci::Rsqrt, mm::RsqrtOp>);
     patterns.add(LowerIntrinsicPattern<ci::Tanh, mm::TanhOp>);
