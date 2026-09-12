@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #if defined(INTEL_MKL)
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -687,11 +688,87 @@ TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, SpatialConvolutionAndElu) {
                                    {"BiasAdd", "Elu"});
 }
 
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, InvalidInputDims) {
+  DataType dtype = DataTypeToEnum<TypeParam>::v();
+  TF_EXPECT_OK(NodeDefBuilder("fused_depthwise_conv_op",
+                              "_MklNativeFusedDepthwiseConv2dNative")
+                   .Input(FakeInput(dtype))
+                   .Input(FakeInput(dtype))
+                   .Input(FakeInput(1, dtype))
+                   .Attr("T", dtype)
+                   .Attr("num_args", 1)
+                   .Attr("strides", {1, 1, 1, 1})
+                   .Attr("padding", "SAME")
+                   .Attr("fused_ops", std::vector<string>{"BiasAdd"})
+                   .Attr("_kernel", "MklNameChangeOp")
+                   .Finalize(this->node_def()));
+
+  TF_EXPECT_OK(this->InitOp());
+
+  Tensor image(dtype, {2, 3, 3});
+  image.template flat<TypeParam>().setZero();
+  Tensor filter(dtype, {1, 1, 3, 1});
+  filter.template flat<TypeParam>().setZero();
+  Tensor bias(dtype, {3});
+  bias.template flat<TypeParam>().setZero();
+
+  this->template AddInputFromArray<TypeParam>(image.shape(),
+                                               image.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(filter.shape(),
+                                               filter.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(bias.shape(),
+                                               bias.flat<TypeParam>());
+
+  absl::Status status = this->RunOpKernel();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(status.message(), "input must be 4-dimensional"))
+      << status.message();
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, InvalidFilterDims) {
+  DataType dtype = DataTypeToEnum<TypeParam>::v();
+  TF_EXPECT_OK(NodeDefBuilder("fused_depthwise_conv_op",
+                              "_MklNativeFusedDepthwiseConv2dNative")
+                   .Input(FakeInput(dtype))
+                   .Input(FakeInput(dtype))
+                   .Input(FakeInput(1, dtype))
+                   .Attr("T", dtype)
+                   .Attr("num_args", 1)
+                   .Attr("strides", {1, 1, 1, 1})
+                   .Attr("padding", "SAME")
+                   .Attr("fused_ops", std::vector<string>{"BiasAdd"})
+                   .Attr("_kernel", "MklNameChangeOp")
+                   .Finalize(this->node_def()));
+
+  TF_EXPECT_OK(this->InitOp());
+
+  Tensor image(dtype, {1, 3, 3, 3});
+  image.template flat<TypeParam>().setZero();
+  Tensor filter(dtype, {1, 3, 1});
+  filter.template flat<TypeParam>().setZero();
+  Tensor bias(dtype, {3});
+  bias.template flat<TypeParam>().setZero();
+
+  this->template AddInputFromArray<TypeParam>(image.shape(),
+                                               image.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(filter.shape(),
+                                               filter.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(bias.shape(),
+                                               bias.flat<TypeParam>());
+
+  absl::Status status = this->RunOpKernel();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "filter must be 4-dimensional"))
+      << status.message();
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     MklFusedDepthwiseConv2DWithBiasOpTest, OneByOneConvolution,
     SpatialConvolution, OneByOneConvolutionAndRelu, SpatialConvolutionAndRelu,
     OneByOneConvolutionAndRelu6, SpatialConvolutionAndRelu6,
-    OneByOneConvolutionAndElu, SpatialConvolutionAndElu);
+    OneByOneConvolutionAndElu, SpatialConvolutionAndElu, InvalidInputDims,
+    InvalidFilterDims);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedDepthwiseConv2DWithBiasOpTest,
