@@ -152,86 +152,121 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
     int64_t rhs_contracting_dim =
         dot_dimension_numbers.rhs_contracting_dimensions(0);
 
-    auto is_supported = [&](const HloInstruction* operand,
-                            const HloInstruction* scale,
-                            int64_t contracting_dim) {
-      auto op_type = operand->shape().element_type();
-      auto scale_type = scale->shape().element_type();
-      auto is_fp8 = [](PrimitiveType type) {
-        return type == F8E4M3FN || type == F8E5M2;
-      };
+    auto is_supported = [&]() {
+      auto lhs_type = lhs->shape().element_type();
+      auto rhs_type = rhs->shape().element_type();
+      auto lhs_scale_type = lhs_scale->shape().element_type();
+      auto rhs_scale_type = rhs_scale->shape().element_type();
 
-      if (op_type == BF16 && scale_type == BF16) {
-        if (scale->shape().dimensions().size() !=
-            operand->shape().dimensions().size()) {
-          VLOG(3) << "scale and operand rank mismatch for BF16";
+      if (lhs_type == BF16 && rhs_type == BF16) {
+        if (lhs_scale_type != BF16 || rhs_scale_type != BF16) {
+          VLOG(3) << "BF16 operands require BF16 scales";
           return false;
         }
-        for (int64_t dim : scale->shape().dimensions()) {
-          if (dim != 1) {
-            VLOG(3) << "scale dim != 1 for BF16";
+        auto is_valid_bf16_scale = [](const HloInstruction* operand,
+                                      const HloInstruction* scale) {
+          if (scale->shape().dimensions().size() !=
+              operand->shape().dimensions().size()) {
+            VLOG(3) << "scale and operand rank mismatch for BF16";
             return false;
           }
-        }
-        if (scale->opcode() != HloOpcode::kConstant) {
-          VLOG(3) << "scale is not constant for BF16";
-          return false;
-        }
-        bool supported = scale->literal().IsAllFloat(1.0);
-        if (!supported) {
-          VLOG(3) << "scale is not 1.0 for BF16";
-        }
-        return supported;
+          for (int64_t dim : scale->shape().dimensions()) {
+            if (dim != 1) {
+              VLOG(3) << "scale dim != 1 for BF16";
+              return false;
+            }
+          }
+          if (scale->opcode() != HloOpcode::kConstant) {
+            VLOG(3) << "scale is not constant for BF16";
+            return false;
+          }
+          bool supported = scale->literal().IsAllFloat(1.0);
+          if (!supported) {
+            VLOG(3) << "scale is not 1.0 for BF16";
+          }
+          return supported;
+        };
+        return is_valid_bf16_scale(lhs, lhs_scale) &&
+               is_valid_bf16_scale(rhs, rhs_scale);
       }
 
-      auto is_supported_scale_type = [](PrimitiveType type) {
-        return type == F8E8M0FNU;
+      auto is_supported_operand_type = [](PrimitiveType type) {
+        return type == F8E4M3FN || type == F8E5M2 || type == F4E2M1FN;
       };
 
-      if (!is_supported_scale_type(scale_type)) {
-        VLOG(3) << "Unsupported scale type: " << PrimitiveType_Name(scale_type);
+      if (!is_supported_operand_type(lhs_type) ||
+          !is_supported_operand_type(rhs_type)) {
+        VLOG(3) << "Unsupported operand types: LHS="
+                << PrimitiveType_Name(lhs_type)
+                << ", RHS=" << PrimitiveType_Name(rhs_type);
         return false;
       }
 
-      if (contracting_dim >= scale->shape().dimensions().size()) {
+      if (lhs_scale_type != rhs_scale_type) {
+        VLOG(3) << "Scale type mismatch: LHS="
+                << PrimitiveType_Name(lhs_scale_type)
+                << ", RHS=" << PrimitiveType_Name(rhs_scale_type);
+        return false;
+      }
+
+      if (lhs_scale_type != F8E8M0FNU && lhs_scale_type != F8E4M3FN) {
+        VLOG(3) << "Unsupported scale type: "
+                << PrimitiveType_Name(lhs_scale_type);
+        return false;
+      }
+
+      if (lhs_contracting_dim >= lhs_scale->shape().dimensions().size() ||
+          rhs_contracting_dim >= rhs_scale->shape().dimensions().size()) {
         VLOG(3) << "contracting_dim out of bounds for scale";
         return false;
       }
-      int64_t operand_dim_size = operand->shape().dimensions(contracting_dim);
-      int64_t scale_dim_size = scale->shape().dimensions(contracting_dim);
 
-      if (scale_dim_size == 0 || operand_dim_size % scale_dim_size != 0) {
-        VLOG(3) << "operand_dim_size not divisible by scale_dim_size";
+      int64_t lhs_operand_dim_size =
+          lhs->shape().dimensions(lhs_contracting_dim);
+      int64_t lhs_scale_dim_size =
+          lhs_scale->shape().dimensions(lhs_contracting_dim);
+      if (lhs_scale_dim_size == 0 ||
+          lhs_operand_dim_size % lhs_scale_dim_size != 0) {
+        VLOG(3) << "LHS operand dim not divisible by scale dim";
         return false;
       }
-      int64_t scale_factor = operand_dim_size / scale_dim_size;
+      int64_t lhs_scale_factor = lhs_operand_dim_size / lhs_scale_dim_size;
 
-      if (is_fp8(op_type)) {
-        bool supported = scale_factor % 16 == 0;
-        if (!supported) {
-          VLOG(3) << "scale_factor % 16 != 0: " << scale_factor;
-        }
-        return supported;
+      int64_t rhs_operand_dim_size =
+          rhs->shape().dimensions(rhs_contracting_dim);
+      int64_t rhs_scale_dim_size =
+          rhs_scale->shape().dimensions(rhs_contracting_dim);
+      if (rhs_scale_dim_size == 0 ||
+          rhs_operand_dim_size % rhs_scale_dim_size != 0) {
+        VLOG(3) << "RHS operand dim not divisible by scale dim";
+        return false;
+      }
+      int64_t rhs_scale_factor = rhs_operand_dim_size / rhs_scale_dim_size;
+
+      if (lhs_scale_factor != rhs_scale_factor) {
+        VLOG(3) << "Scale factor mismatch: LHS=" << lhs_scale_factor
+                << ", RHS=" << rhs_scale_factor;
+        return false;
       }
 
-      if (op_type == F4E2M1FN) {
-        bool supported = scale_factor % 16 == 0;
-        if (!supported) {
-          VLOG(3) << "scale_factor % 16 != 0: " << scale_factor;
+      int64_t scale_factor = lhs_scale_factor;
+      if (lhs_scale_type == F8E8M0FNU) {
+        if (scale_factor != 16 && scale_factor != 32) {
+          VLOG(3) << "E8M0 scale_factor must be 16 or 32: " << scale_factor;
+          return false;
         }
-        return supported;
+      } else if (lhs_scale_type == F8E4M3FN) {
+        if (scale_factor != 16) {
+          VLOG(3) << "E4M3 scale_factor must be 16: " << scale_factor;
+          return false;
+        }
       }
 
-      VLOG(3) << "Unsupported operand type: " << PrimitiveType_Name(op_type);
-      return false;
+      return true;
     };
 
-    if (!is_supported(lhs, lhs_scale, lhs_contracting_dim)) {
-      VLOG(3) << "LHS not supported";
-      continue;
-    }
-    if (!is_supported(rhs, rhs_scale, rhs_contracting_dim)) {
-      VLOG(3) << "RHS not supported";
+    if (!is_supported()) {
+      VLOG(3) << "Scaled dot composite operands not supported";
       continue;
     }
 
