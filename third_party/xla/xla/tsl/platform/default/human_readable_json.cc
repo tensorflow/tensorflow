@@ -28,7 +28,7 @@ limitations under the License.
 namespace tsl {
 
 absl::StatusOr<std::string> ProtoToHumanReadableJson(
-    const protobuf::Message& proto, bool ignore_accuracy_loss) {
+    const protobuf::Message& proto) {
   std::string result;
 
   protobuf::util::JsonPrintOptions json_options;
@@ -47,7 +47,7 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
 }
 
 absl::StatusOr<std::string> ProtoToHumanReadableJson(
-    const protobuf::MessageLite& proto, bool ignore_accuracy_loss) {
+    const protobuf::MessageLite& proto) {
   return std::string("[human readable output not available for lite protos]");
 }
 
