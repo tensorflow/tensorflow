@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/hlo_cse_constant_key.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
@@ -114,14 +115,37 @@ absl::StatusOr<bool> CombineConstants(
 
 // An instruction is considered to be equivalent to another only if they
 // share the exact same set of operands.
-struct CseKey {
+struct InstructionHashWrapper {
+  const HloInstruction* hlo;
+  bool is_layout_sensitive;
+
   template <typename H>
-  friend H AbslHashValue(H h, const CseKey& key) {
-    auto instruction = key.hlo;
-    h = instruction->shape().IsArray()
-            ? H::combine(std::move(h), instruction->opcode(),
-                         instruction->shape().dimensions())
-            : H::combine(std::move(h), instruction->opcode());
+  friend H AbslHashValue(H h, const InstructionHashWrapper& wrapper) {
+    const auto* instruction = wrapper.hlo;
+    const bool is_layout_sensitive = wrapper.is_layout_sensitive;
+
+    h = H::combine(std::move(h), instruction->opcode());
+    if (is_layout_sensitive) {
+      h = Shape::Hash<H, true>(std::move(h), instruction->shape());
+    } else {
+      h = Shape::Hash<H, false>(std::move(h), instruction->shape());
+    }
+
+    if (instruction->has_sharding()) {
+      h = H::combine(std::move(h), true, instruction->sharding());
+    } else {
+      h = H::combine(std::move(h), false);
+    }
+    const auto sdy_sharding = instruction->get_frontend_attribute(
+        HloSharding::kShardingFrontendAttrName);
+    if (sdy_sharding.has_value()) {
+      h = H::combine(std::move(h), true, *sdy_sharding);
+    } else {
+      h = H::combine(std::move(h), false);
+    }
+
+    h = H::combine(std::move(h), instruction->raw_backend_config_string());
+
     auto window_hash = [](H h, const Window& window) {
       const auto& window_dims = window.dimensions();
       for (const auto& window_dim : window_dims) {
@@ -187,13 +211,12 @@ struct CseKey {
       case HloOpcode::kDot: {
         const auto& dot_dimension_numbers =
             instruction->dot_dimension_numbers();
-        h = H::combine(
+        return H::combine(
             std::move(h),
             absl::MakeSpan(dot_dimension_numbers.lhs_contracting_dimensions()),
             absl::MakeSpan(dot_dimension_numbers.rhs_contracting_dimensions()),
             absl::MakeSpan(dot_dimension_numbers.lhs_batch_dimensions()),
             absl::MakeSpan(dot_dimension_numbers.rhs_batch_dimensions()));
-        return std::move(h);
       }
       case HloOpcode::kConvolution: {
         const auto& conv_dimension_numbers =
@@ -223,11 +246,61 @@ struct CseKey {
         return H::combine(
             std::move(h),
             Cast<HloCompareInstruction>(instruction)->direction());
+      case HloOpcode::kCustomCall: {
+        const auto* cc = Cast<HloCustomCallInstruction>(instruction);
+        h = H::combine(std::move(h), cc->custom_call_target(),
+                       static_cast<int>(cc->api_version()),
+                       static_cast<int>(cc->custom_call_schedule()),
+                       cc->custom_call_has_side_effect(),
+                       cc->layout_constrained());
+        if (cc->layout_constrained()) {
+          for (const auto& shape : cc->operand_shapes_with_layout()) {
+            h = Shape::Hash<H, true>(std::move(h), shape);
+          }
+        }
+        return std::move(h);
+      }
+      case HloOpcode::kDynamicSlice: {
+        const auto* ds = Cast<HloDynamicSliceInstruction>(instruction);
+        return H::combine(std::move(h), ds->dynamic_slice_sizes());
+      }
       default:
+        if (const auto* channel_inst =
+                DynCast<HloChannelInstruction>(instruction)) {
+          h = H::combine(std::move(h), channel_inst->channel_id().has_value(),
+                         channel_inst->channel_id().value_or(0));
+        }
+        if (const auto* collective =
+                DynCast<HloCollectiveInstruction>(instruction)) {
+          for (const auto& group : collective->replica_groups()) {
+            for (int64_t id : group.replica_ids()) {
+              h = H::combine(std::move(h), id);
+            }
+          }
+        }
         return std::move(h);
     }
   }
+};
+
+size_t ComputeCseHash(const HloInstruction* instruction,
+                      bool is_layout_sensitive) {
+  return absl::Hash<InstructionHashWrapper>{}(
+      InstructionHashWrapper{instruction, is_layout_sensitive});
+}
+
+struct CseKey {
+  template <typename H>
+  friend H AbslHashValue(H h, const CseKey& key) {
+    return H::combine(std::move(h), key.hash);
+  }
   HloInstruction* hlo;
+  size_t hash;
+};
+
+struct CseKeyHasher {
+  using is_transparent = void;
+  size_t operator()(const CseKey& key) const { return key.hash; }
 };
 
 }  // namespace
@@ -293,6 +366,9 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
   };
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
+    if (lhs.hash != rhs.hash) {
+      return false;
+    }
     return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
         *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
         /*sharding_sensitive=*/true);
@@ -301,9 +377,9 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
   // HLO instructions are grouped into equivalency classes by using the
   // cse_equal predicate defined above. This set holds a representative
   // instruction for each class.
-  absl::flat_hash_set<CseKey, absl::Hash<CseKey>, decltype(cse_equal)>
+  absl::flat_hash_set<CseKey, CseKeyHasher, decltype(cse_equal)>
       representatives(/*N=*/computation->instruction_count() + 1,
-                      absl::Hash<CseKey>{}, cse_equal);
+                      CseKeyHasher{}, cse_equal);
   for (auto instruction : computation->MakeInstructionPostOrder()) {
     if (should_eliminate_instruction_ != nullptr
             ? !should_eliminate_instruction_(instruction)
@@ -318,7 +394,8 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
       continue;
     }
 
-    auto pair = representatives.insert(CseKey{instruction});
+    auto pair = representatives.insert(
+        CseKey{instruction, ComputeCseHash(instruction, is_layout_sensitive_)});
     if (!pair.second) {
       HloInstruction* equivalent_instruction = pair.first->hlo;
       ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(equivalent_instruction));
