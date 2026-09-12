@@ -80,5 +80,41 @@ TEST(SemaphoreTest, ConcurrentTest) {
   a_done.WaitForNotification();
 }
 
+TEST(SemaphoreTest, MoveAssignment) {
+  Semaphore semaphore(10);
+  {
+    auto r1 = semaphore.ScopedAcquire(5);
+    auto r2 = semaphore.ScopedAcquire(3);
+    EXPECT_EQ(semaphore.value(), 2);
+
+    r1 = std::move(r2);
+    EXPECT_EQ(semaphore.value(), 7);
+    EXPECT_EQ(r1.amount(), 3);
+  }
+  EXPECT_EQ(semaphore.value(), 10);
+}
+
+TEST(SemaphoreTest, SelfMoveAssignment) {
+  Semaphore semaphore(10);
+  {
+    auto r1 = semaphore.ScopedAcquire(5);
+    EXPECT_EQ(semaphore.value(), 5);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wself-move"
+#endif
+    auto& r1_ref = r1;
+    r1 = std::move(r1_ref);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
+    EXPECT_EQ(semaphore.value(), 5);
+    EXPECT_EQ(r1.amount(), 5);
+  }
+  EXPECT_EQ(semaphore.value(), 10);
+}
+
 }  // namespace
 }  // namespace xla
