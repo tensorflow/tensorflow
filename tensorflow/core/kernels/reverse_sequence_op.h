@@ -39,9 +39,15 @@ class ReverseGenerator {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
   operator()(const Eigen::array<Eigen::DenseIndex, Dims>& coords) const {
     Eigen::array<Eigen::DenseIndex, Dims> new_coords = coords;
-    if (coords[seq_dim_] < seq_lengths_(coords[batch_dim_])) {
-      new_coords[seq_dim_] =
-          seq_lengths_(coords[batch_dim_]) - coords[seq_dim_] - 1;
+    Eigen::DenseIndex seq_len = seq_lengths_(coords[batch_dim_]);
+
+    // Cap seq_len to the maximum dimension size to prevent out-of-bounds reads.
+    if (seq_len > input_.dimension(seq_dim_)) {
+      seq_len = input_.dimension(seq_dim_);
+    }
+
+    if (coords[seq_dim_] < seq_len) {
+      new_coords[seq_dim_] = seq_len - coords[seq_dim_] - 1;
     }
 
     return input_(new_coords);
