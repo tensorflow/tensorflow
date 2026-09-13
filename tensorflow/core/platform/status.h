@@ -38,11 +38,6 @@ using tsl::StatusCallback;
 using tsl::StatusGroup;
 
 namespace errors {
-#ifdef SWIG
-using tsl::errors::Code;
-#else
-using Code ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusCode;
-#endif
 using tsl::errors::GetStackTrace;
 using tsl::errors::SetStackTrace;
 }  // namespace errors
