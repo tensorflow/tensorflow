@@ -87,6 +87,10 @@ absl::StatusOr<mlir::Operation*> ImportAsyncOpDone(
     mlir::Type result_type, mlir::OpBuilder* builder,
     std::optional<HloOpcode> consolidate_if_parent = std::nullopt);
 
+// Finds the defining MHLO AsyncStartOp for the given value, tracing backwards
+// across tuples, optimization barriers, and get-tuple-elements.
+mlir::mhlo::AsyncStartOp FindMhloAsyncStart(mlir::Value value);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_ASYNC_IMPORTER_H_
