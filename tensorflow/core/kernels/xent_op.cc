@@ -41,36 +41,45 @@ namespace functor {
 // and devices do not require any correction.
 template <typename Device, typename T>
 struct XentGradientCorrector {
-  static void Correct(
-      const Device&, const Eigen::DSizes<Eigen::DenseIndex, 2>&,
-      const Eigen::array<Eigen::DenseIndex, 2>&,
-      typename TTypes<T>::ConstMatrix, typename TTypes<T>::Matrix,
-      typename TTypes<T>::Matrix) {}
+  static void Correct(const Device&, const Eigen::DSizes<Eigen::DenseIndex, 2>&,
+                      typename TTypes<T>::ConstMatrix,
+                      typename TTypes<T>::Matrix) {}
 };
 
 template <>
 struct XentGradientCorrector<CPUDevice, double> {
-  static void Correct(
-      const CPUDevice& d, const Eigen::DSizes<Eigen::DenseIndex, 2>& shape,
-      const Eigen::array<Eigen::DenseIndex, 2>& labels_bcast,
-      TTypes<double>::ConstMatrix labels, TTypes<double>::Matrix scratch,
-      TTypes<double>::Matrix backprop) {
-    const int kClassDim = 1;
-    const int batch_size = shape[0];
-    const int num_classes = shape[1];
-    Eigen::IndexList<Eigen::type2index<kClassDim>> along_class;
-    Eigen::IndexList<int> batch_only;
-    batch_only.set(0, batch_size);
-    Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
-    one_by_class.set(1, num_classes);
+  static void Correct(const CPUDevice& d,
+                      const Eigen::DSizes<Eigen::DenseIndex, 2>& shape,
+                      TTypes<double>::ConstMatrix labels,
+                      TTypes<double>::Matrix backprop) {
+    const Eigen::Index num_classes = shape[1];
+    const bool broadcast_batch = labels.dimension(0) == 1;
+    const bool broadcast_class = labels.dimension(1) == 1;
 
-    auto probabilities = (backprop + labels.broadcast(labels_bcast)).eval();
-    scratch.reshape(batch_only).device(d) = backprop.sum(along_class);
-    // Remove the row-sum residual that can remain when a probability rounds
-    // to one. Running after the selected functor keeps fallback and optimized
-    // CPU implementations consistent.
-    backprop.device(d) =
-        backprop - scratch.broadcast(one_by_class) * probabilities;
+    // The CPU functor's device assignments complete before returning, and
+    // parallelFor waits for all rows to finish. Keep each row's reduction and
+    // update in the same worker so no deferred expression aliases backprop.
+    d.parallelFor(
+        shape[0],
+        Eigen::TensorOpCost(3 * sizeof(double) * num_classes,
+                            sizeof(double) * num_classes, 4 * num_classes),
+        [&](Eigen::Index begin, Eigen::Index end) {
+          for (Eigen::Index row = begin; row < end; ++row) {
+            double residual = 0.0;
+            for (Eigen::Index col = 0; col < num_classes; ++col) {
+              residual += backprop(row, col);
+            }
+            const Eigen::Index label_row = broadcast_batch ? 0 : row;
+            for (Eigen::Index col = 0; col < num_classes; ++col) {
+              const double gradient = backprop(row, col);
+              const double probability =
+                  gradient + labels(label_row, broadcast_class ? 0 : col);
+              // Remove the rounding residual along the probability vector to
+              // preserve small tail gradients when a probability rounds to one.
+              backprop(row, col) = gradient - residual * probability;
+            }
+          }
+        });
   }
 };
 
@@ -143,9 +152,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
               scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
       functor::XentGradientCorrector<Device, T>::Correct(
           d, shape_in.AsEigenDSizes<2>(),
-          BCast::ToIndexArray<2>(bcast.y_bcast()),
           labels_in.template shaped<T, 2>(bcast.y_reshape()),
-          scratch.matrix<T>(), back_out->matrix<T>());
+          back_out->matrix<T>());
     }
   }
 };

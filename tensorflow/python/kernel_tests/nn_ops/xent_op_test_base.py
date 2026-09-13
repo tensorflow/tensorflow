@@ -193,15 +193,24 @@ class XentOpTestBase(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testDoublePreservesSmallGradient(self):
     tail_probability = 5.551115123125776e-17
-    _, gradient = self._opFwdBwd(
-        labels=np.array([[1.0, 0.0]], dtype=np.float64),
-        logits=np.array([[37.42994775023705, 0.0]], dtype=np.float64))
-    gradient = self.evaluate(gradient)
+    for batch_size in (1, 4096):
+      for target_class in (0, 1):
+        for broadcast_labels in (False, True):
+          with self.subTest(batch_size=batch_size, target_class=target_class,
+                            broadcast_labels=broadcast_labels):
+            logits = np.zeros((batch_size, 2), dtype=np.float64)
+            logits[:, target_class] = 37.42994775023705
+            labels = np.zeros(
+                (1 if broadcast_labels else batch_size, 2), dtype=np.float64)
+            labels[:, target_class] = 1.0
+            expected = np.full_like(logits, tail_probability)
+            expected[:, target_class] = -tail_probability
 
-    self.assertAllClose(
-        [[-tail_probability, tail_probability]], gradient, rtol=1e-14,
-        atol=0)
-    self.assertEqual(gradient[0, 0], -gradient[0, 1])
+            _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+            gradient = self.evaluate(gradient)
+
+            self.assertAllClose(expected, gradient, rtol=1e-14, atol=0)
+            self.assertAllEqual(gradient[:, 0], -gradient[:, 1])
 
   @test_util.run_deprecated_v1
   def testGradient(self):
