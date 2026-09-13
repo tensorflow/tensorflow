@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -313,73 +312,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kBatchNormTraining:
       return EmitBatchNormTrainingThunk(instruction);
 
-    // Simple HLO instructions lowered to elemental host kernels (plain loops
-    // behind the HostKernel API).
-    case HloOpcode::kAbs:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAdd:
-    case HloOpcode::kAnd:
-    case HloOpcode::kAtan2:
-    case HloOpcode::kAtanh:
-    case HloOpcode::kBroadcast:
-    case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCbrt:
-    case HloOpcode::kCeil:
-    case HloOpcode::kClamp:
-    case HloOpcode::kClz:
-    case HloOpcode::kCompare:
-    case HloOpcode::kComplex:
-    case HloOpcode::kConvert:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
-    case HloOpcode::kDivide:
-    case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
-    case HloOpcode::kFloor:
-    case HloOpcode::kGather:
-    case HloOpcode::kImag:
-    case HloOpcode::kIota:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kLog:
-    case HloOpcode::kMap:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kMulhi:
-    case HloOpcode::kNegate:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
-    case HloOpcode::kPopulationCount:
-    case HloOpcode::kPower:
-    case HloOpcode::kReal:
-    case HloOpcode::kReducePrecision:
-    case HloOpcode::kRemainder:
-    case HloOpcode::kReshape:
-    case HloOpcode::kReverse:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kSelect:
-    case HloOpcode::kShiftLeft:
-    case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
-    case HloOpcode::kTranspose:
-    case HloOpcode::kXor:
-      return EmitElementalKernelThunk(instruction);
-
     // ReplicaId and PartitionId identify the location of the current device in
     // a logical grid of communicating devices.
     case HloOpcode::kReplicaId:
@@ -397,13 +329,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitAllToAllThunk(instruction);
     case HloOpcode::kCollectivePermute:
       return EmitCollectivePermuteThunk(instruction);
-
-    case HloOpcode::kPad:
-      return EmitPadKernelThunk(instruction);
-
-    case HloOpcode::kSlice:
-    case HloOpcode::kDynamicSlice:
-      return EmitSliceThunk(instruction);
 
     case HloOpcode::kConcatenate:
       return EmitConcatenateKernelThunk(instruction);
@@ -432,10 +357,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
                         backend_config.DebugString());
       }
       return EmitFusionKernelThunk(instruction);
-
-    case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
-      return EmitReductionKernelThunk(instruction);
 
     case HloOpcode::kRng:
       return EmitRngThunk(instruction);
@@ -680,8 +601,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
     const HloInstruction* instruction) {
-  ConcatenateKernelEmitter emitter(instruction, &buffer_assignment_,
-                                   &target_machine_features_);
+  ConcatenateKernelEmitter emitter(instruction, &buffer_assignment_);
   ABSL_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                    emitter.EmitKernelDefinition());
 
@@ -755,14 +675,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
         instruction->feature_group_count());
   }
 
-  // This is a completely un-optimized version of convolution just to
-  // have an early version that works. E.g. the input index and
-  // padding calculation is not hoisted out of the inner loop.
-  //
-  // See the description of convolution in the XLA documentation for the pseudo
-  // code for convolution.
-  VLOG(2) << "Falling back to unoptimized convolution: " << instruction->name();
-  return EmitElementalKernelThunk(instruction);
+  return Internal("Unsupported convolution: %s", instruction->ToString());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
@@ -775,38 +688,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
                                       instruction->shape());
 }
 
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
-    const HloInstruction* instruction) {
-  ElementalKernelEmitter emitter(instruction, &buffer_assignment_,
-                                 &target_machine_features_);
-  ABSL_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
-                   emitter.EmitKernelDefinition());
-
-  auto kernel_spec = kernel_definition.spec();
-  auto kernel_source = std::move(kernel_definition).TakeSource();
-
-  kernels_.push_back(
-      {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
-
-  return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                 /*min_alignment=*/MinAlign());
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
-    const HloInstruction* instruction) {
-  const HloPadInstruction* padInstr = Cast<HloPadInstruction>(instruction);
-  ABSL_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitPadHostKernel(padInstr));
-  ABSL_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(padInstr));
-
-  return MakeKernelThunkSequence(padInstr, buffers, kernel,
-                                 /*min_alignment=*/MinAlign());
-}
-
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
 
-  if (FusionRoutesToMlirEmitter(hlo_module_config_, fusion)) {
+  if (FusionRoutesToMlirEmitter(fusion)) {
     ABSL_ASSIGN_OR_RETURN(std::string fingerprint,
                      GetFusionFingerprint(*fusion, buffer_assignment_,
                                           GetDefaultBufferAlignment()));
@@ -840,19 +726,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
                                  /*min_alignment=*/MinAlign());
 }
 
-bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
-                               const HloFusionInstruction* fusion) {
+bool FusionRoutesToMlirEmitter(const HloFusionInstruction* fusion) {
   if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
     return true;
   }
-  return options::UseExperimentalLoopFusion(config) &&
-         fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
-    const HloInstruction* instruction) {
-  // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
-  return EmitElementalKernelThunk(instruction);
+  return fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngThunk(
@@ -1247,14 +1125,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
 
   return MakeKernelThunkSequence(instruction, buffers, kernel,
                                  /*min_alignment=*/MinAlign());
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
-    const HloInstruction* instruction) {
-  // TODO(ezhulenev): Consider implementing slice operations as separate
-  // Thunks because it might be easier to get peak performance from hand
-  // written code (Eigen slice expression for example).
-  return EmitElementalKernelThunk(instruction);
 }
 
 // Parse the sort comparator to determine the sort direction.

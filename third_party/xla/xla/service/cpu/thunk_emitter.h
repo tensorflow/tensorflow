@@ -133,18 +133,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCopyThunk(
       const HloInstruction* instruction);
 
-  absl::StatusOr<ThunkSequence> EmitElementalKernelThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitPadKernelThunk(
-      const HloInstruction* instruction);
-
   absl::StatusOr<ThunkSequence> EmitFftThunk(const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitFusionKernelThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitReductionKernelThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitRngThunk(const HloInstruction* instruction);
@@ -206,9 +197,6 @@ class ThunkEmitter {
       const HloCustomCallInstruction* custom_call);
 
   absl::StatusOr<ThunkSequence> EmitOneDnnOpThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitSliceThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitSortThunk(
@@ -276,8 +264,7 @@ class ThunkEmitter {
   ParallelFusionEmitter parallel_fusion_emitter_;
 };
 
-bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
-                               const HloFusionInstruction* fusion);
+bool FusionRoutesToMlirEmitter(const HloFusionInstruction* fusion);
 
 }  // namespace xla::cpu
 
