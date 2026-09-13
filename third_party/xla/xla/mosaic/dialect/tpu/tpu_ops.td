@@ -750,6 +750,35 @@ def TPU_UnpackElementwiseOp : TPU_Op<"unpack_elementwise", [Pure, ElementwiseMap
   let hasVerifier = 1;
 }
 
+def TPU_UnpackAndJoinOp : TPU_Op<"unpack_and_join", [Pure, SameTypeOperands]> {
+  let description = [{
+    Unpacks sublanes from two compressed vectors (`lower` and `upper`) and joins
+    them into a single vector bitwise.
+
+    Corresponds to the following TPU assembly instructions:
+      - `vdst = vunpack.c.join.l.b2.b4 vx, vy` (in_bitwidth=2, sublane_group_id=0)
+      - `vdst = vunpack.c.join.u.b2.b4 vx, vy` (in_bitwidth=2, sublane_group_id=1)
+      - `vdst = vunpack.c.join.l.b4.b8 vx, vy` (in_bitwidth=4, sublane_group_id=0)
+      - `vdst = vunpack.c.join.u.b4.b8 vx, vy` (in_bitwidth=4, sublane_group_id=1)
+
+    `sublane_group_id` specifies which sublanes to unpack:
+    - 0 corresponds to `.l` (lower half sublanes)
+    - 1 corresponds to `.u` (upper half sublanes)
+
+    `in_bitwidth` specifies the bitwidth of each source element to unpack:
+    - 2 for `b2.b4` (unpacks 2-bit values and joins them into 4-bit values)
+    - 4 for `b4.b8` (unpacks 4-bit values and joins them into 8-bit values)
+  }];
+  let arguments = (ins
+    VectorOfNonZeroRankOf<[AnyInteger]>:$lower,
+    VectorOfNonZeroRankOf<[AnyInteger]>:$upper,
+    I32Attr:$sublane_group_id,
+    I32Attr:$in_bitwidth
+  );
+  let results = (outs VectorOfNonZeroRankOf<[AnyInteger]>:$output);
+  let assemblyFormat = [{ $lower `,` $upper attr-dict `:` type($lower) `,` type($upper) `->` type($output) }];
+  let hasVerifier = 1;
+}
 
 def TPU_PackMaskOp : TPU_Op<"pack_vmsk", [Pure, SameTypeOperands]> {
   let description = [{
