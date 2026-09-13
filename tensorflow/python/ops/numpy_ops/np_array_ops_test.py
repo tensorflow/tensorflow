@@ -773,6 +773,17 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
 
+  def testCumProdAndSumOutOfBoundsAxis(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=-3)
+
   def testImag(self):
 
     def run_test(arr, *args, **kwargs):
