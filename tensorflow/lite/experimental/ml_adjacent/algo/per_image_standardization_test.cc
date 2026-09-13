@@ -126,6 +126,13 @@ TEST(PerImageStandardizationDeathTest, WrongInputTypeFails) {
 
   const Algo* per_image_standardization = Impl_PerImageStandardization();
   EXPECT_DEATH(per_image_standardization->process({&img}, {&output}), "");
+
+  // Non-4D input tensor should return early without resizing output.
+  OwningVectorRef img_3d(etype_t::f32);
+  img_3d.Resize({1, 2, 2});
+  OwningVectorRef output_3d(etype_t::f32);
+  per_image_standardization->process({&img_3d}, {&output_3d});
+  EXPECT_TRUE(output_3d.Dims().empty());
 }
 
 TEST(PerImageStandardizationDeathTest, WrongOutputTypeFails) {
@@ -135,6 +142,27 @@ TEST(PerImageStandardizationDeathTest, WrongOutputTypeFails) {
 
   const Algo* per_image_standardization = Impl_PerImageStandardization();
   EXPECT_DEATH(per_image_standardization->process({&img}, {&output}), "");
+}
+
+TEST(PerImageStandardizationTest, InvalidDimensionCountReturnsEarly) {
+  // Test that non-4D tensors return early without output allocation.
+  OwningVectorRef img(etype_t::f32);
+  img.Resize({1, 2, 2});
+  OwningVectorRef output(etype_t::f32);
+
+  const Algo* per_image_standardization = Impl_PerImageStandardization();
+  per_image_standardization->process({&img}, {&output});
+  EXPECT_TRUE(output.Dims().empty());
+}
+
+TEST(PerImageStandardizationTest, ZeroChannelsReturnsEarly) {
+  OwningVectorRef img(etype_t::f32);
+  img.Resize({1, 2, 2, 0});
+  OwningVectorRef output(etype_t::f32);
+
+  const Algo* per_image_standardization = Impl_PerImageStandardization();
+  per_image_standardization->process({&img}, {&output});
+  EXPECT_TRUE(output.Dims().empty());
 }
 }  // namespace
 }  // namespace per_image_standardization
