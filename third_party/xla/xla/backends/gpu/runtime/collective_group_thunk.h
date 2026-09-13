@@ -52,6 +52,7 @@ class CollectiveGroupThunk : public TracedCommand {
 
   BufferUses buffer_uses() const override;
 
+  ThunkSequence& thunks() { return executor_.thunks(); }
   const ThunkSequence& thunks() const { return executor_.thunks(); }
 
   absl::Status WalkNested(Walker pre_order, Walker post_order) override;
