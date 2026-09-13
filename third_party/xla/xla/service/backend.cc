@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/backend.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>

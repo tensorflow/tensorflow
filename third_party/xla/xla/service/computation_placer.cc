@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 
 #include <memory>
-#include <utility>
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
