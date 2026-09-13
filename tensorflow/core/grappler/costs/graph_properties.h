@@ -20,11 +20,16 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
