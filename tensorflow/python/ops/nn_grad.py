@@ -439,9 +439,12 @@ def _ReluGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("EluGrad")
 def _EluGradGrad(op: ops.Operation, grad):
   elu_x = op.inputs[1]
-  return (gen_nn_ops.elu_grad(grad, elu_x),
-          array_ops.where(
-              elu_x < 0, grad * op.inputs[0], array_ops.zeros_like(elu_x)))
+  return (
+      gen_nn_ops.elu_grad(grad, elu_x),
+      array_ops.where(
+          elu_x <= 0, grad * op.inputs[0], array_ops.zeros_like(elu_x)
+      ),
+  )
 
 
 @ops.RegisterGradient("SeluGrad")
