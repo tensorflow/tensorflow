@@ -632,19 +632,35 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
   return curr == single_reader || curr == param_gte;
 }
 
-absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
+// Only such a while makes AddCopiesForWhile read HloBuffers.
+bool HasWhileWithDisabledCopies(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kWhile &&
+          HasDisableWhileLoopCopiesAttr(instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// `alias_analysis` is only consulted for a while annotated with
+// xla_disable_while_loop_copies and may be null otherwise.
+absl::Status AddCopiesForWhile(const HloDataflowAnalysis& dataflow,
+                               const HloAliasAnalysis* alias_analysis,
                                HloInstruction* xla_while) {
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
 
   ShapeTree<bool> indices_to_copy(xla_while->shape());
-  IndicesToCopyForWhile(alias_analysis.dataflow_analysis(), xla_while,
-                        &indices_to_copy);
+  IndicesToCopyForWhile(dataflow, xla_while, &indices_to_copy);
 
   if (HasDisableWhileLoopCopiesAttr(xla_while)) {
     VLOG(2) << "While loop copy insertion partially disabled via frontend "
                "attribute for "
             << xla_while->name();
+    TF_RET_CHECK(alias_analysis != nullptr);
     // Clear copy requirement for scalars, async pipelined, and disjoint
     // in-place tuple indices.
     for (auto& pair : indices_to_copy) {
@@ -670,7 +686,7 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
               return;
             }
             std::vector<const HloBuffer*> buffers =
-                alias_analysis.ComputeBuffersAt(while_init, index);
+                alias_analysis->ComputeBuffersAt(while_init, index);
             for (const HloBuffer* buffer : buffers) {
               if (!seen_buffers.insert(buffer).second) {
                 *init_indices_to_copy.mutable_element(index) = true;
@@ -746,9 +762,8 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
 
 // Add copies for the operands of in-place operations. RemoveUnnecessaryCopies
 // will remove the unnecessary copies.
-absl::Status AddCopiesForInPlaceOperation(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* in_place_op,
-    int64_t operand_number) {
+absl::Status AddCopiesForInPlaceOperation(HloInstruction* in_place_op,
+                                          int64_t operand_number) {
   VLOG(2) << "Adding copies for in-place operation " << in_place_op->name();
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   ABSL_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
@@ -874,13 +889,12 @@ absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
 // roots, in order to resolve interference. We later rely on
 // RemoveUnnecessaryCopies to drop the unnecessary ones.
 absl::Status CopyInsertion::AddCopiesForConditional(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* conditional) {
+    const HloDataflowAnalysis& dataflow, HloInstruction* conditional) {
   VLOG(2) << "Adding copies for kConditional instruction "
           << conditional->name();
   ShapeTree<bool> indices_to_copy(conditional->shape());
   TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
-  if (!IndicesToCopyForConditional(alias_analysis.dataflow_analysis(),
-                                   conditional, &indices_to_copy)) {
+  if (!IndicesToCopyForConditional(dataflow, conditional, &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kConditional instruction "
             << conditional->name();
     return absl::OkStatus();
@@ -1236,7 +1250,7 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
 // `chain_start` is the beginning of a non-copyable chain, we add copies to
 // transition in and out of the chain.
 absl::Status CopyInsertion::AddCopiesForExplicitNonCopyableTransitions(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+    HloInstruction* chain_start) {
   VLOG(2) << "AddCopiesForExplicitNonCopyableTransitions: "
           << chain_start->ToString();
   HloComputation* parent = chain_start->parent();
@@ -1399,12 +1413,11 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
 //     (body root)               (body root)
 //
 absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+    HloInstruction* chain_start) {
   if (!IsImplicitNonCopyable(chain_start)) {
     if (chain_start->IsCustomCall(kPinCustomCallTarget) ||
         chain_start->IsCustomCall(kCreateBufferCustomCallTarget)) {
-      ABSL_RETURN_IF_ERROR(AddCopiesForExplicitNonCopyableTransitions(alias_analysis,
-                                                                 chain_start));
+      ABSL_RETURN_IF_ERROR(AddCopiesForExplicitNonCopyableTransitions(chain_start));
     }
     return absl::OkStatus();
   }
@@ -1467,8 +1480,27 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
 absl::Status CopyInsertion::AddCopiesToResolveInterference(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                   HloAliasAnalysis::Run(module, alias_info_));
+  // Only the xla_disable_while_loop_copies branch of AddCopiesForWhile reads
+  // HloBuffers; everything else reads the dataflow analysis.
+  // HloAliasAnalysis::Run calls HloDataflowAnalysis::Run(*module,
+  // /*ssa_form=*/true, /*bitcast_defines_value=*/false) and passes alias_info_
+  // only to CreateBuffers, so the same two booleans below yield the identical
+  // dataflow analysis. The analysis is built before the walk on purpose: copies
+  // inserted by earlier iterations would change the buffers a later build
+  // would see.
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
+  std::unique_ptr<HloDataflowAnalysis> owned_dataflow;
+  const HloDataflowAnalysis* dataflow = nullptr;
+  if (HasWhileWithDisabledCopies(*module)) {
+    ABSL_ASSIGN_OR_RETURN(alias_analysis,
+                     HloAliasAnalysis::Run(module, alias_info_));
+    dataflow = &alias_analysis->dataflow_analysis();
+  } else {
+    ABSL_ASSIGN_OR_RETURN(owned_dataflow,
+                     HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                                              /*bitcast_defines_value=*/false));
+    dataflow = owned_dataflow.get();
+  }
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     if (computation->IsAsyncComputation()) {
@@ -1477,14 +1509,14 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
-        ABSL_RETURN_IF_ERROR(AddCopiesForWhile(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(
+            AddCopiesForWhile(*dataflow, alias_analysis.get(), instruction));
       } else if (instruction->opcode() == HloOpcode::kConditional) {
-        ABSL_RETURN_IF_ERROR(AddCopiesForConditional(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(AddCopiesForConditional(*dataflow, instruction));
       } else if (IsNonCopyable(instruction)) {
         // We currently assume that we don't have a custom-call with
         // output-to-operand aliases for both buffers and non-buffers.
-        ABSL_RETURN_IF_ERROR(
-            AddCopiesForNonCopyableTransitions(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(AddCopiesForNonCopyableTransitions(instruction));
       } else {
         // When an operand is a tuple, we avoid copying the operand multiple
         // times by recording and checking the operand number of operands that
@@ -1583,7 +1615,7 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
           }
           copied_operands.insert(operand_index_in_this_intr);
           ABSL_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
-              *alias_analysis, instruction, operand_index_in_this_intr));
+              instruction, operand_index_in_this_intr));
         }
       }
     }
