@@ -71,14 +71,17 @@ bool IsEnvFlagEnabled(const char* name) {
 }
 
 // The undeclared-outputs directory exists only when the golden-update helper
+// (`third_party/tensorflow/compiler/xla/tests/aot_compatibility_experimental/google/update_goldens.py`)
 // drives the test. Shared so both callers enforce it with the same message.
 absl::StatusOr<std::string> GetUndeclaredOutputsDir() {
   const char* out_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
   if (out_dir == nullptr) {
     return absl::FailedPreconditionError(
         "TEST_UNDECLARED_OUTPUTS_DIR is unset. Golden updates must be driven "
-        "by the golden-update helper for this package, which sets it; running "
-        "the test target directly will not work.");
+        "by the golden-update helper for this package "
+        "(Google-internal: third_party/tensorflow/compiler/xla/tests/"
+        "aot_compatibility_experimental/google/update_goldens.py), which sets "
+        "it; running the test target directly will not work.");
   }
   return std::string(out_dir);
 }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -67,6 +68,17 @@ limitations under the License.
 namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
+
+// Reaches the private interference step so a test can run it on its own.
+class CopyInsertionTestPeer {
+ public:
+  static absl::Status AddCopiesToResolveInterference(
+      CopyInsertion& copy_insertion, HloModule* module) {
+    return copy_insertion.AddCopiesToResolveInterference(
+        module, /*execution_threads=*/{});
+  }
+};
+
 namespace {
 
 using ::testing::NotNull;
@@ -1165,6 +1177,125 @@ ENTRY %WhileEntry () -> (f32[16], f32[16]) {
   EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Negate(), op::Broadcast(),
                                                op::Copy(op::Broadcast())));
   EXPECT_EQ(CountCopies(*module), 1);
+}
+
+// %init_buf reaches the annotated loop twice: directly at index 2 and through
+// the output of %first at index 1, which aliases the init of %first. The
+// duplicate is only visible on the unmodified module: once %first has its init
+// copied, %init_buf no longer shares a buffer with the output of %first.
+constexpr absl::string_view kDuplicateInitBuffersThroughEarlierWhileHlo = R"(
+HloModule DuplicateInitBuffersThroughEarlierWhile
+
+%FirstBody (loop_state: (s32[], f32[16])) -> (s32[], f32[16]) {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %data = f32[16] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %c_add = f32[16] broadcast(%f1)
+  %next_data = f32[16] add(%data, %c_add)
+  ROOT %tuple = (s32[], f32[16]) tuple(%next_indvar, %next_data)
+}
+
+%FirstCondition (loop_state: (s32[], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+%Body (loop_state: (s32[], f32[16], f32[16])) -> (s32[], f32[16], f32[16]) {
+  %loop_state = (s32[], f32[16], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %acc1 = f32[16] get-tuple-element(%loop_state), index=1
+  %acc2 = f32[16] get-tuple-element(%loop_state), index=2
+  %f1 = f32[] constant(1.0)
+  %update = f32[4] broadcast(%f1)
+  %c0 = s32[] constant(0)
+  %dus1 = f32[16] dynamic-update-slice(%acc1, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  %dus2 = f32[16] dynamic-update-slice(%acc2, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT %tuple = (s32[], f32[16], f32[16]) tuple(%next_indvar, %dus1, %dus2)
+}
+
+%Condition (loop_state: (s32[], f32[16], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> (f32[16], f32[16], f32[16]) {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %init_buf = f32[16] broadcast(%zero)
+  %first_init = (s32[], f32[16]) tuple(%indvar_init, %init_buf)
+  %first = (s32[], f32[16]) while(%first_init),
+                condition=%FirstCondition, body=%FirstBody
+  %first_data = f32[16] get-tuple-element(%first), index=1
+  %init_tuple = (s32[], f32[16], f32[16]) tuple(%indvar_init, %first_data, %init_buf)
+  %while = (s32[], f32[16], f32[16]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  %out1 = f32[16] get-tuple-element(%while), index=1
+  %out2 = f32[16] get-tuple-element(%while), index=2
+  ROOT %root = (f32[16], f32[16], f32[16]) tuple(%out1, %out2, %init_buf)
+}
+)";
+
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesDuplicateInitBuffersThroughEarlierWhile) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           kDuplicateInitBuffersThroughEarlierWhileHlo));
+  InsertCopies(module.get());
+
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  // The duplicate at index 2 is copied; %init_buf is live out, so the in-place
+  // update of index 2 could not run on its buffer.
+  const HloInstruction* while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Negate(), op::GetTupleElement(op::While()),
+                        op::Copy(op::Broadcast())));
+}
+
+// Same module through the interference step alone, so the copy cannot come
+// from the alias analysis that later steps build.
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesDuplicateInitBuffersInterferenceStepOnly) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           kDuplicateInitBuffersThroughEarlierWhileHlo));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_OK(CopyInsertionTestPeer::AddCopiesToResolveInterference(
+      copy_insertion, module.get()));
+
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  // The step deep copies the init, which leaves get-tuple-element/tuple
+  // rewraps for the tuple simplifier of the full pass; look through them.
+  auto through_rewraps = [](const HloInstruction* instr) {
+    while (instr->opcode() == HloOpcode::kGetTupleElement &&
+           instr->operand(0)->opcode() == HloOpcode::kTuple) {
+      instr = instr->operand(0)->operand(instr->tuple_index());
+    }
+    return instr;
+  };
+  const HloInstruction* while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* init = while_hlo->operand(0);
+  ASSERT_EQ(init->opcode(), HloOpcode::kTuple);
+  EXPECT_THAT(through_rewraps(init->operand(0)), op::Negate());
+  EXPECT_THAT(through_rewraps(init->operand(1)),
+              op::GetTupleElement(op::While()));
+  const HloInstruction* copy = through_rewraps(init->operand(2));
+  ASSERT_THAT(copy, op::Copy());
+  EXPECT_THAT(through_rewraps(copy->operand(0)), op::Broadcast());
 }
 
 // Tests Copy Insertion when a while feeds another while

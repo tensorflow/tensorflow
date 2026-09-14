@@ -234,7 +234,13 @@ absl::Status SyclStream::DoHostCallbackWithStatus(
 }
 
 absl::Status SyclStream::BlockHostUntilDone() {
-  stream_handle_->wait();
+  // Called from ~SyclStream(), so exceptions must be caught, not propagated.
+  try {
+    stream_handle_->wait();
+  } catch (const ::sycl::exception& e) {
+    return absl::InternalError(absl::StrCat(
+        "SYCL exception in SyclStream::BlockHostUntilDone: ", e.what()));
+  }
   return absl::OkStatus();
 }
 
@@ -272,7 +278,11 @@ absl::StatusOr<std::unique_ptr<SyclStream>> SyclStream::Create(
 
 SyclStream::~SyclStream() {
   // Wait for all pending operations to complete before destroying the stream.
-  BlockHostUntilDone().IgnoreError();
+  absl::Status wait_status = BlockHostUntilDone();
+  if (!wait_status.ok()) {
+    LOG(ERROR) << "BlockHostUntilDone failed during stream destruction: "
+               << wait_status;
+  }
 
   // Remove this stream from the executor's list of allocated streams.
   executor_->DeallocateStream(this);
