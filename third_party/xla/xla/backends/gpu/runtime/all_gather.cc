@@ -164,6 +164,17 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   ABSL_ASSIGN_OR_RETURN(
       const bool is_local,
       IsAllReplicasLocal(gpu_topology, *all_gather, device_assignment));
+  const DebugOptions& debug_options =
+      all_gather->GetModule()->config().debug_options();
+  if (IsCrossHostOneShotKernelEnabled(debug_options, DebugOptions::ALLGATHER) &&
+      device_info.gpu_compute_capability().IsRocm()) {
+    return absl::UnimplementedError(
+        "Cross-host one-shot all-gather (xla_gpu_unsupported_use_cross_host_"
+        "one_shot_kernel=ALLGATHER) requires kLoadStoreAccessible symmetric "
+        "memory (NCCL symmetric-memory windows), which is not supported on "
+        "ROCm/RCCL. Disable the cross-host flag to use the single-host "
+        "kXlaRendezvous path, or run on a CUDA/NCCL target.");
+  }
   ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
       is_collective_kernel_enabled, device_info, num_operands, num_devices,
       num_elements, element_type, is_local, all_gather->replica_groups()));
