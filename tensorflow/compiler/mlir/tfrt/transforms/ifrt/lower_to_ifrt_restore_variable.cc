@@ -37,7 +37,10 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -123,6 +126,77 @@ class LowerToIfrtRestoreVariablePass
     std::vector<mlir::Operation*> op_chain;
   };
 
+  // Resolves the VarHandleOp for a resource that arrives as a block argument.
+  //
+  // This happens when TensorFlow outlines the restore logic (e.g., via variable
+  // capturing) into a separate function. In this case, AssignVariableOp uses
+  // a function argument as its resource instead of a local VarHandleOp.
+  //
+  // Example Python source that generates this MLIR structure:
+  //   class MyModel(tf.Module):
+  //     def __init__(self): self.w = tf.Variable(...)
+  //     @tf.function
+  //     def restore(self, p): self.w.assign(tf.raw_ops.RestoreV2(...))
+  //
+  // In MLIR, the `VarHandleOp` lives in the caller (session initializer), and
+  // the outlined function receives the resource as a block argument.
+  mlir::TF::VarHandleOp ResolveVarHandleFromBlockArg(
+      mlir::BlockArgument block_arg) {
+    // Only resolve arguments for the entry block (i.e., actual function
+    // arguments). Internal control-flow blocks (e.g., conditional branches or
+    // loops) can have arguments too, but their indices do not map to the
+    // caller's arguments at the function call site.
+    if (!block_arg.getOwner()->isEntryBlock()) return nullptr;
+
+    mlir::Operation* func_op = block_arg.getOwner()->getParentOp();
+    if (!func_op) return nullptr;
+    auto func_sym = func_op->getAttrOfType<mlir::StringAttr>(
+        mlir::SymbolTable::getSymbolAttrName());
+    if (!func_sym) return nullptr;
+    unsigned arg_index = block_arg.getArgNumber();
+
+    mlir::TF::VarHandleOp resolved;
+    bool conflict = false;
+
+    func_op->getParentOfType<mlir::ModuleOp>().walk(
+        [&](mlir::CallOpInterface call) {
+          if (conflict) return mlir::WalkResult::interrupt();
+          auto sym = mlir::dyn_cast_or_null<mlir::SymbolRefAttr>(
+              call.getCallableForCallee());
+          if (!sym || sym.getLeafReference() != func_sym) {
+            return mlir::WalkResult::advance();
+          }
+
+          mlir::Operation::operand_range args = call.getArgOperands();
+          if (arg_index >= args.size()) {
+            conflict = true;
+            return mlir::WalkResult::interrupt();
+          }
+
+          auto vh = args[arg_index].getDefiningOp<mlir::TF::VarHandleOp>();
+          if (!vh) {
+            // The argument is not a VarHandleOp directly. We cannot guarantee
+            // it has the same identity across all calls.
+            conflict = true;
+            return mlir::WalkResult::interrupt();
+          }
+
+          if (!resolved) {
+            resolved = vh;
+          } else {
+            if (resolved.getContainerAttr() != vh.getContainerAttr() ||
+                resolved.getSharedNameAttr() != vh.getSharedNameAttr()) {
+              conflict = true;
+              return mlir::WalkResult::interrupt();
+            }
+          }
+          return mlir::WalkResult::advance();
+        });
+
+    if (conflict) return nullptr;
+    return resolved;
+  }
+
   mlir::LogicalResult ValidateThenUpdateUser(
       mlir::Value source_tensor, mlir::Operation* user,
       mlir::StringRef tensor_name,
@@ -147,19 +221,33 @@ class LowerToIfrtRestoreVariablePass
         user = *cast_op.getResult().getUsers().begin();
       } else if (auto assign_variable_op =
                      llvm::dyn_cast<mlir::TF::AssignVariableOp>(user)) {
-        // The chain must end with an `AssignVariableOp`.
-        if (auto var_handle_op = llvm::dyn_cast<mlir::TF::VarHandleOp>(
-                assign_variable_op.getResource().getDefiningOp())) {
-          // The AssignVariableOp must be associated with a VarHandleOp.
+        // The chain must end with an `AssignVariableOp`. Its resource is
+        // normally a VarHandleOp in the same function. However, if the resource
+        // is captured and passed as a function argument (e.g., in outlined
+        // restore routines), we must resolve the handle at the call site.
+        mlir::Value resource = assign_variable_op.getResource();
+        mlir::TF::VarHandleOp var_handle_op =
+            resource.getDefiningOp<mlir::TF::VarHandleOp>();
+        if (!var_handle_op) {
+          if (auto block_arg = llvm::dyn_cast<mlir::BlockArgument>(resource)) {
+            var_handle_op = ResolveVarHandleFromBlockArg(block_arg);
+          }
+        }
+        if (var_handle_op) {
           restored_tensor_user.var_handle_type = var_handle_op.getType();
           restored_tensor_user.container = var_handle_op.getContainerAttr();
           restored_tensor_user.shared_name = var_handle_op.getSharedNameAttr();
-          restored_tensor_user.original_var_handle_op = var_handle_op;
+          // Only reuse the original op when it is in the same block. A
+          // VarHandleOp resolved from another function's call site cannot be
+          // reused directly, so RewriteRestore will materialize a local
+          // VarHandleOp from the container/shared_name collected above.
+          if (var_handle_op->getBlock() == assign_variable_op->getBlock()) {
+            restored_tensor_user.original_var_handle_op = var_handle_op;
+          }
           break;
-        } else {
-          return assign_variable_op->emitOpError()
-                 << "does not have any associated VarHandle";
         }
+        return assign_variable_op->emitOpError()
+               << "does not have any associated VarHandle";
       } else {
         // If the restored tensor is not assigned to a variable, it is returned
         // by the IfrtRestoreVariableOp. A VarHandleOp is created to track the
