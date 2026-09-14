@@ -67,13 +67,16 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     }
 #endif
     std::string dir = GetTestTmpDir();
-    error = mkdir(dir.c_str(), 0777);
+    error = mkdir(dir.c_str(), 0700);
     if (error == -1) {
       if (errno != EEXIST) {
         perror("mkdir failed");
         ASSERT_TRUE(false);
       }
     }
+    struct stat dir_stat = {0};
+    ASSERT_EQ(stat(dir.c_str(), &dir_stat), 0);
+    ASSERT_EQ(dir_stat.st_mode & 077, 0);
 
     std::string path = ModelPath();
     (void)unlink(path.c_str());
