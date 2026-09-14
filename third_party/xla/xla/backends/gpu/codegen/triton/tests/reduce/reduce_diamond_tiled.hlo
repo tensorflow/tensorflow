@@ -1,7 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s
-// RUN: not triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
-
-// CHECK: MapSymbolIdToSequentialDimValue failed for symbolic dimension
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
 
 max_region {
   p0 = f32[] parameter(0)
@@ -40,3 +38,14 @@ ENTRY main {
           "num_ctas":"1",
           "num_stages":"1"}}}
 }
+
+// CHECK:      %[[MAX_FOR:.*]] = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}}
+// CHECK:        arith.maximumf
+// CHECK:      %[[MAX_RED:.*]] = "tt.reduce"(%[[MAX_FOR]]) <{axis = 1 : i32}>
+// CHECK:      %[[EXP_OUTER:.*]] = tt.extern_elementwise {{.*}} symbol = "__nv_expf"
+// CHECK:      %[[SUM_FOR:.*]] = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}}
+// CHECK:        arith.subf
+// CHECK:        tt.extern_elementwise {{.*}} symbol = "__nv_expf"
+// CHECK:        arith.addf
+// CHECK:      %[[SUM_RED:.*]] = "tt.reduce"(%[[SUM_FOR]]) <{axis = 1 : i32}>
+// CHECK:      arith.divf %[[EXP_OUTER]]
