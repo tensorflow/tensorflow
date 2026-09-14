@@ -885,14 +885,14 @@ bool AssertSameStructureHelper(
   // checking, structures are the same.
   if (!is_nested1) return true;
 
+  tensorflow::Safe_PyObjectPtr o1_wrapped;
+  tensorflow::Safe_PyObjectPtr o2_wrapped;
   if (check_types) {
     // Treat wrapped tuples as tuples.
-    tensorflow::Safe_PyObjectPtr o1_wrapped;
     if (IsObjectProxy(o1)) {
       o1_wrapped.reset(PyObject_GetAttrString(o1, "__wrapped__"));
       o1 = o1_wrapped.get();
     }
-    tensorflow::Safe_PyObjectPtr o2_wrapped;
     if (IsObjectProxy(o2)) {
       o2_wrapped.reset(PyObject_GetAttrString(o2, "__wrapped__"));
       o2 = o2_wrapped.get();
