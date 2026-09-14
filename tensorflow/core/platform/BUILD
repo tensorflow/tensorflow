@@ -243,7 +243,7 @@ cc_library(
     hdrs = ["casts.h"],
     deps = [
         ":platform",
-        "@tsl//tsl/platform:casts",
+        "@xla//third_party/tsl/tsl/platform:casts",
     ],
 )
 
