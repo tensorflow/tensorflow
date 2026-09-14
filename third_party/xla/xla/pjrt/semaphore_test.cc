@@ -54,6 +54,30 @@ TEST(SemaphoreTest, UnthreadedTests) {
     auto d = semaphore.ScopedAcquire(2);
     EXPECT_EQ(d.amount(), 2);
   }
+
+  {
+    Semaphore sem(10);
+    ASSERT_EQ(sem.value(), 10);
+    {
+      auto r1 = sem.ScopedAcquire(5);
+      ASSERT_EQ(sem.value(), 5);
+      auto r2 = sem.ScopedAcquire(3);
+      ASSERT_EQ(sem.value(), 2);
+
+      r1 = std::move(r2);
+      ASSERT_EQ(sem.value(), 7);
+    }
+    ASSERT_EQ(sem.value(), 10);
+
+    {
+      auto r1 = sem.ScopedAcquire(4);
+      ASSERT_EQ(sem.value(), 6);
+      auto& r1_ref = r1;
+      r1 = std::move(r1_ref);
+      ASSERT_EQ(sem.value(), 6);
+    }
+    ASSERT_EQ(sem.value(), 10);
+  }
 }
 
 TEST(SemaphoreTest, ConcurrentTest) {
