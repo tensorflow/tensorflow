@@ -35,7 +35,9 @@ def MHLO_Precision : I32EnumAttr<"Precision",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_PrecisionAttr : EnumAttr<MHLO_Dialect, MHLO_Precision, "precision">;
+def MHLO_PrecisionAttr : EnumAttr<MHLO_Dialect, MHLO_Precision, "precision"> {
+  let assemblyFormat = "$value";
+}
 
 // TODO(b/129153247) See if it's possible to also validate the size.
 def MHLO_PrecisionConfigAttr:
@@ -63,7 +65,9 @@ def MHLO_CustomCallSchedule : I32EnumAttr<"CustomCallSchedule",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_CustomCallScheduleAttr : EnumAttr<MHLO_Dialect, MHLO_CustomCallSchedule, "custom_call_schedule">;
+def MHLO_CustomCallScheduleAttr : EnumAttr<MHLO_Dialect, MHLO_CustomCallSchedule, "custom_call_schedule"> {
+  let assemblyFormat = "$value";
+}
 
 //===----------------------------------------------------------------------===//
 // Domain Metadata Kind  enum definitions.
@@ -79,7 +83,9 @@ def MHLO_DomainKind : I32EnumAttr<"DomainKind",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_DomainKindAttr : EnumAttr<MHLO_Dialect, MHLO_DomainKind, "kind">;
+def MHLO_DomainKindAttr : EnumAttr<MHLO_Dialect, MHLO_DomainKind, "kind"> {
+  let assemblyFormat = "$value";
+}
 
 //===----------------------------------------------------------------------===//
 // Fast Fourier Transform Type enum definitions.
@@ -99,7 +105,9 @@ def MHLO_FftType : I32EnumAttr<"FftType",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_FftTypeAttr : EnumAttr<MHLO_Dialect, MHLO_FftType, "fft_type">;
+def MHLO_FftTypeAttr : EnumAttr<MHLO_Dialect, MHLO_FftType, "fft_type"> {
+  let assemblyFormat = "$value";
+}
 
 //===----------------------------------------------------------------------===//
 // Custom call enum definitions.
@@ -154,7 +162,9 @@ def MHLO_ComparisonDirection : I32EnumAttr<"ComparisonDirection",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_ComparisonDirectionAttr : EnumAttr<MHLO_Dialect, MHLO_ComparisonDirection, "comparison_direction">;
+def MHLO_ComparisonDirectionAttr : EnumAttr<MHLO_Dialect, MHLO_ComparisonDirection, "comparison_direction"> {
+  let assemblyFormat = "$value";
+}
 
 def MHLO_DEFAULT_COMPARISON_TYPE : NativeCodeCall<"::mlir::mhlo::ComparisonTypeAttr()">;
 def MHLO_COMPARISON_TYPE_NOTYPE : I32EnumAttrCase<"NOTYPE", 0>;
@@ -176,7 +186,9 @@ def MHLO_ComparisonType : I32EnumAttr<"ComparisonType",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_ComparisonTypeAttr : EnumAttr<MHLO_Dialect, MHLO_ComparisonType, "comparison_type">;
+def MHLO_ComparisonTypeAttr : EnumAttr<MHLO_Dialect, MHLO_ComparisonType, "comparison_type"> {
+  let assemblyFormat = "$value";
+}
 
 // These mirror the XLA Dequantize mode string enum.
 def MHLO_MIN_COMBINED : I32EnumAttrCase<"MIN_COMBINED", 0>;
@@ -188,7 +200,9 @@ def MHLO_DequantizeMode : I32EnumAttr<"DequantizeMode",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_DequantizeModeAttr : EnumAttr<MHLO_Dialect, MHLO_DequantizeMode, "dequantize_mode">;
+def MHLO_DequantizeModeAttr : EnumAttr<MHLO_Dialect, MHLO_DequantizeMode, "dequantize_mode"> {
+  let assemblyFormat = "$value";
+}
 
 // These mirror the XLA Transpose enum in Triangular Solve options.
 def MHLO_TRANSPOSE_INVALID : I32EnumAttrCase<"TRANSPOSE_INVALID", 0>;
@@ -208,7 +222,9 @@ def MHLO_Transpose : I32EnumAttr<"Transpose",
   let cppNamespace = "::mlir::mhlo";
 }
 
-def MHLO_TransposeAttr : EnumAttr<MHLO_Dialect, MHLO_Transpose, "transpose">;
+def MHLO_TransposeAttr : EnumAttr<MHLO_Dialect, MHLO_Transpose, "transpose"> {
+  let assemblyFormat = "$value";
+}
 
 def MHLO_LOOP_FUSION : I32EnumAttrCase<"kLoop", 0>;
 def MHLO_INPUT_FUSION : I32EnumAttrCase<"kInput", 1>;
@@ -238,7 +254,10 @@ def MHLO_RngDistributionAttr : EnumAttr<MHLO_Dialect, MHLO_RngDistribution, "rng
   let assemblyFormat = "`<` $value `>`";
 }
 
-def MHLO_FusionKindAttr : EnumAttr<MHLO_Dialect, MHLO_FusionKind, "fusion_kind">;
+def MHLO_FusionKindAttr : EnumAttr<MHLO_Dialect, MHLO_FusionKind, "fusion_kind"> {
+  let assemblyFormat = "$value";
+}
+
 
 def MHLO_RNG_ALGORITHM_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
 def MHLO_RNG_ALGORITHM_THREE_FRY : I32EnumAttrCase<"THREE_FRY", 1>;

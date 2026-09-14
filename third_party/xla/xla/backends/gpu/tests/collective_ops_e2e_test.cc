@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -636,6 +639,108 @@ TEST_P(CollectivesModeOps, AllGatherMixedTypes) {
                                              tuple_results[0]);
     LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0},
                                           tuple_results[1]);
+  }
+}
+
+// Extend multi-input AllGather coverage to large BF16 buffers and four GPUs.
+class AllGatherGroupedTest : public CollectiveOpsE2ETestBase {
+ public:
+  AllGatherGroupedTest()
+      : CollectiveOpsE2ETestBase(/*memory_size=*/256 * kMB,
+                                 /*collectives_memory_size=*/128 * kMB) {}
+
+ protected:
+  static constexpr int kNumReplicas = 4;
+  static constexpr int kNumBuffers = 2;
+  static constexpr int64_t kElementsPerRank = 8388608;
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options = CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
+    // Use synchronous AllGather with private memory and no graph capture.
+    options.add_xla_gpu_disable_async_collectives(DebugOptions::ALLGATHER);
+    options.set_xla_gpu_all_gather_mode(
+        DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
+    options.clear_xla_gpu_enable_command_buffer();
+    return options;
+  }
+
+  static Literal MakeInput(int buffer, int rank) {
+    Literal input = Literal::CreateFromShape(
+        ShapeUtil::MakeShape(BF16, {kElementsPerRank}));
+    // All values are integers in [0, 127], exactly representable in BF16.
+    std::mt19937 rng(buffer * kNumReplicas + rank);
+    std::uniform_int_distribution<int> distribution(0, 15);
+    const int base = (buffer * kNumReplicas + rank) * 16;
+    absl::Span<bfloat16> data = input.data<bfloat16>();
+    for (int64_t i = 0; i < kElementsPerRank; ++i) {
+      data[i] = bfloat16(static_cast<float>(base + distribution(rng)));
+    }
+    return input;
+  }
+};
+
+TEST_F(AllGatherGroupedTest, LargeTwoInputs4GpuBF16) {
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  // Gather two 16 MiB inputs per rank using two calls in the same group.
+  constexpr absl::string_view kHlo = R"(
+HloModule grouped_all_gather
+
+ENTRY main {
+  a = bf16[8388608]{0} parameter(0)
+  b = bf16[8388608]{0} parameter(1)
+  ROOT gathered = (bf16[33554432]{0}, bf16[33554432]{0})
+    all-gather(a, b), dimensions={0},
+    replica_groups={{0,1,2,3}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHlo, kNumReplicas));
+
+  // Prepare inputs and expected outputs.
+  std::vector<std::vector<Literal>> inputs(kNumReplicas);
+  Literal expected = Literal::CreateFromShape(
+      module->entry_computation()->root_instruction()->shape());
+  for (int buffer = 0; buffer < kNumBuffers; ++buffer) {
+    for (int rank = 0; rank < kNumReplicas; ++rank) {
+      inputs[rank].push_back(MakeInput(buffer, rank));
+      const auto data = inputs[rank].back().data<bfloat16>();
+      std::copy(
+          data.begin(), data.end(),
+          expected.data<bfloat16>({buffer}).begin() + rank * kElementsPerRank);
+    }
+  }
+  std::vector<std::vector<Literal*>> arguments(kNumReplicas);
+  for (int rank = 0; rank < kNumReplicas; ++rank) {
+    arguments[rank].reserve(kNumBuffers);
+    for (int buffer = 0; buffer < kNumBuffers; ++buffer) {
+      arguments[rank].push_back(&inputs[rank][buffer]);
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution,
+                       ExecuteReplicated(std::move(module), arguments));
+
+  // Check that one AllGather with two inputs remains after compilation.
+  int all_gather_count = 0;
+  for (const HloComputation* computation :
+       execution.optimized_module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kAllGather) {
+        ++all_gather_count;
+        EXPECT_EQ(instruction->operand_count(), kNumBuffers);
+      }
+    }
+  }
+  EXPECT_EQ(all_gather_count, 1);
+
+  ASSERT_EQ(execution.results.size(), kNumReplicas);
+  for (int rank = 0; rank < kNumReplicas; ++rank) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, execution.results[rank]))
+        << "destination rank " << rank;
   }
 }
 
