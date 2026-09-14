@@ -292,6 +292,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/synchronization",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
+        "@xla//xla/tsl/python/lib/core:numpy",
     ] + if_pywrap(["@com_google_absl//absl/strings"]),
 )
 
@@ -497,6 +498,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
