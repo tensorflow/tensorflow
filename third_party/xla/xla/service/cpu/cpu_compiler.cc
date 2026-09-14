@@ -219,6 +219,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/map_inliner.h"
 #include "xla/service/multi_module_driver.h"
+#include "xla/service/nullary_function_wrap_inliner.h"
 #include "xla/service/scan_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
@@ -645,6 +646,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
     spmd_pipeline.AddPass<ControlDepRewriter>();
+    spmd_pipeline.AddPass<NullaryFunctionWrapInliner>();
     if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {
       spmd_pipeline.AddPass<RecognizeReduceWindow>();
       spmd_pipeline.AddPass<CollectivePermuteCSE>();
@@ -677,6 +679,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
           /*runSdyShardingPropagation=*/false);
     }
     sharding_removal_pipeline.AddPass<ControlDepRewriter>();
+    sharding_removal_pipeline.AddPass<NullaryFunctionWrapInliner>();
     sharding_removal_pipeline.AddPass<HloDCE>();
     ABSL_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }

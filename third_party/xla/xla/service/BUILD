@@ -5820,6 +5820,35 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "nullary_function_wrap_inliner",
+    srcs = ["nullary_function_wrap_inliner.cc"],
+    hdrs = ["nullary_function_wrap_inliner.h"],
+    deps = [
+        ":call_inliner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "nullary_function_wrap_inliner_test",
+    srcs = ["nullary_function_wrap_inliner_test.cc"],
+    deps = [
+        ":nullary_function_wrap_inliner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_test(
     name = "topk_rewriter_test",
     srcs = ["topk_rewriter_test.cc"],

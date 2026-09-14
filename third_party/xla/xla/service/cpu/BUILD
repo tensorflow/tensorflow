@@ -295,6 +295,7 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service:map_inliner",
         "//xla/service:multi_module_driver",
+        "//xla/service:nullary_function_wrap_inliner",
         "//xla/service:scan_expander",
         "//xla/service:scatter_expander",
         "//xla/service:scatter_simplifier",
