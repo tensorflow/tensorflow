@@ -924,7 +924,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     if constexpr (std::is_same_v<ElementwiseT, float>) {
       auto is_row_major_r2 = [](const Shape& s) {
-        return s.dimensions_size() == 2 &&
+        return s.dimensions().size() == 2 &&
                (!s.has_layout() ||
                 LayoutUtil::IsMonotonicWithDim0Major(s.layout()));
       };
