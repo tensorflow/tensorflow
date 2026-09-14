@@ -3065,7 +3065,7 @@ constexpr char kAttrPlacedModule[] = R"(
     s = f32[512,1024] custom-call(t), custom_call_target="RecordBufferAddress",
       api_version=API_VERSION_TYPED_FFI,
       output_to_operand_aliasing={{}: (0, {})},
-      frontend_attributes={results_memory_spaces="{0:1}"}
+      frontend_attributes={results_memory_spaces="{0:7}"}
     ROOT r = f32[512,1024] add(s, s)
   })";
 

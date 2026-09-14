@@ -124,9 +124,37 @@ class AutotunerCacheInterface {
     autotuner::BackendConfig backend_config;
   };
 
+  enum class MissReason {
+    kNotFound,         // Target key not found in the cache.
+    kVersionMismatch,  // Target key found but codegen version mismatch.
+    kReadError,        // Failed to read from the cache.
+  };
+
   struct CacheStats {
     int64_t hits = 0;
     int64_t misses = 0;
+
+    int64_t strict_hits = 0;
+    int64_t in_memory_hits = 0;
+
+    int64_t miss_not_found = 0;
+    int64_t miss_version_mismatch = 0;
+    int64_t miss_read_error = 0;
+
+    // Records a single miss attributed to `reason`, keeping the total and the
+    // per-reason counter in step.
+    void RecordMiss(MissReason reason);
+
+    bool operator==(const CacheStats& other) const {
+      return hits == other.hits && misses == other.misses &&
+             strict_hits == other.strict_hits &&
+             in_memory_hits == other.in_memory_hits &&
+             miss_not_found == other.miss_not_found &&
+             miss_version_mismatch == other.miss_version_mismatch &&
+             miss_read_error == other.miss_read_error;
+    }
+
+    std::string ToString() const;
   };
 
   virtual ~AutotunerCacheInterface() = default;
