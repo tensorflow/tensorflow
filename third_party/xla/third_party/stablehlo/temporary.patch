@@ -1978,6 +1978,45 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/BUILD.bazel b/stablehlo/
 +    size_per_test = "small",
      tags = ["stablehlo_tosa_tests"],
  )
+diff --ruN a/stablehlo/stablehlo/dialect/ChloEnums.td b/stablehlo/stablehlo/dialect/ChloEnums.td
+--- stablehlo/stablehlo/dialect/ChloEnums.td
++++ stablehlo/stablehlo/dialect/ChloEnums.td
+@@ -46,7 +46,9 @@
+   let cppNamespace = "::mlir::chlo";
+ }
+ 
+-def CHLO_ComparisonDirectionAttr : EnumAttr<CHLO_Dialect, CHLO_ComparisonDirection, "comparison_direction">;
++def CHLO_ComparisonDirectionAttr : EnumAttr<CHLO_Dialect, CHLO_ComparisonDirection, "comparison_direction"> {
++  let assemblyFormat = "$value";
++}
+ 
+ def CHLO_DEFAULT_COMPARISON_TYPE : NativeCodeCall<"::mlir::chlo::ComparisonTypeAttr()">;
+ def CHLO_COMPARISON_TYPE_NOTYPE : I32EnumAttrCase<"NOTYPE", 0>;
+@@ -68,7 +70,9 @@
+   let cppNamespace = "::mlir::chlo";
+ }
+ 
+-def CHLO_ComparisonTypeAttr : EnumAttr<CHLO_Dialect, CHLO_ComparisonType, "comparison_type">;
++def CHLO_ComparisonTypeAttr : EnumAttr<CHLO_Dialect, CHLO_ComparisonType, "comparison_type"> {
++  let assemblyFormat = "$value";
++}
+ 
+ //===----------------------------------------------------------------------===//
+ // Ragged dot op definitions.
+@@ -90,9 +94,12 @@
+   let cppNamespace = "::mlir::chlo";
+ }
+ 
+-def CHLO_PrecisionAttr : EnumAttr<CHLO_Dialect, CHLO_Precision, "precision">;
++def CHLO_PrecisionAttr : EnumAttr<CHLO_Dialect, CHLO_Precision, "precision"> {
++  let assemblyFormat = "$value";
++}
+ 
+ def CHLO_PrecisionConfigAttr:
+   TypedArrayAttrBase<CHLO_PrecisionAttr, "Precision Config attribute">;
+ 
++
+ #endif // STABLEHLO_DIALECT_CHLO_ENUMS
 diff --ruN a/stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp b/stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp
 --- stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp
 +++ stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp
@@ -2274,6 +2313,97 @@ diff --ruN a/stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp b/stablehlo/stabl
  }
  
  }  // namespace stablehlo
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloEnums.td b/stablehlo/stablehlo/dialect/StablehloEnums.td
+--- stablehlo/stablehlo/dialect/StablehloEnums.td
++++ stablehlo/stablehlo/dialect/StablehloEnums.td
+@@ -40,7 +40,9 @@
+   let cppNamespace = "::mlir::stablehlo";
+ }
+ 
+-def StableHLO_PrecisionAttr : EnumAttr<StableHLO_Dialect, StableHLO_Precision, "precision">;
++def StableHLO_PrecisionAttr : EnumAttr<StableHLO_Dialect, StableHLO_Precision, "precision"> {
++  let assemblyFormat = "$value";
++}
+ 
+ // TODO(b/129153247) See if it's possible to also validate the size.
+ def StableHLO_PrecisionConfigAttr:
+@@ -91,7 +93,9 @@
+   let cppNamespace = "::mlir::stablehlo";
+ }
+ 
+-def StableHLO_FftTypeAttr : EnumAttr<StableHLO_Dialect, StableHLO_FftType, "fft_type">;
++def StableHLO_FftTypeAttr : EnumAttr<StableHLO_Dialect, StableHLO_FftType, "fft_type"> {
++  let assemblyFormat = "$value";
++}
+ 
+ //===----------------------------------------------------------------------===//
+ // Custom call enum definitions.
+@@ -146,7 +150,9 @@
+   let cppNamespace = "::mlir::stablehlo";
+ }
+ 
+-def StableHLO_ComparisonDirectionAttr : EnumAttr<StableHLO_Dialect, StableHLO_ComparisonDirection, "comparison_direction">;
++def StableHLO_ComparisonDirectionAttr : EnumAttr<StableHLO_Dialect, StableHLO_ComparisonDirection, "comparison_direction"> {
++  let assemblyFormat = "$value";
++}
+ 
+ def STABLEHLO_DEFAULT_COMPARISON_TYPE : NativeCodeCall<"::mlir::stablehlo::ComparisonTypeAttr()">;
+ def STABLEHLO_COMPARISON_TYPE_NOTYPE : I32EnumAttrCase<"NOTYPE", 0>;
+@@ -168,7 +174,9 @@
+   let cppNamespace = "::mlir::stablehlo";
+ }
+ 
+-def StableHLO_ComparisonTypeAttr : EnumAttr<StableHLO_Dialect, StableHLO_ComparisonType, "comparison_type">;
++def StableHLO_ComparisonTypeAttr : EnumAttr<StableHLO_Dialect, StableHLO_ComparisonType, "comparison_type"> {
++  let assemblyFormat = "$value";
++}
+ 
+ // These mirror the XLA Transpose enum in Triangular Solve options.
+ def STABLEHLO_TRANSPOSE_INVALID : I32EnumAttrCase<"TRANSPOSE_INVALID", 0>;
+@@ -188,7 +196,9 @@
+   let cppNamespace = "::mlir::stablehlo";
+ }
+ 
+-def StableHLO_TransposeAttr : EnumAttr<StableHLO_Dialect, StableHLO_Transpose, "transpose">;
++def StableHLO_TransposeAttr : EnumAttr<StableHLO_Dialect, StableHLO_Transpose, "transpose"> {
++  let assemblyFormat = "$value";
++}
+ 
+ def STABLEHLO_RNG_DISTRIBUTION_UNIFORM : I32EnumAttrCase<"UNIFORM", 1>;
+ def STABLEHLO_RNG_DISTRIBUTION_NORMAL : I32EnumAttrCase<"NORMAL", 2>;
+@@ -203,7 +213,9 @@
+   let cppNamespace = "::mlir::stablehlo";
+ }
+ 
+-def StableHLO_RngDistributionAttr : EnumAttr<StableHLO_Dialect, StableHLO_RngDistribution, "rng_distribution">;
++def StableHLO_RngDistributionAttr : EnumAttr<StableHLO_Dialect, StableHLO_RngDistribution, "rng_distribution"> {
++  let assemblyFormat = "$value";
++}
+ 
+ def STABLEHLO_RNG_ALGORITHM_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
+ def STABLEHLO_RNG_ALGORITHM_THREE_FRY : I32EnumAttrCase<"THREE_FRY", 1>;
+@@ -220,6 +232,9 @@
+   let cppNamespace = "::mlir::stablehlo";
+ }
+ 
+-def StableHLO_RngAlgorithmAttr : EnumAttr<StableHLO_Dialect, StableHLO_RngAlgorithm, "rng_algorithm">;
++def StableHLO_RngAlgorithmAttr : EnumAttr<StableHLO_Dialect, StableHLO_RngAlgorithm, "rng_algorithm"> {
++  let assemblyFormat = "$value";
++}
+ 
+ #endif // STABLEHLO_DIALECT_STABLEHLO_ENUMS
++
+diff --ruN a/stablehlo/stablehlo/dialect/VhloEnums.td b/stablehlo/stablehlo/dialect/VhloEnums.td
+--- stablehlo/stablehlo/dialect/VhloEnums.td
++++ stablehlo/stablehlo/dialect/VhloEnums.td
+@@ -43,6 +43,7 @@
+ 
+ class VHLO_EnumAttr<EnumAttrInfo enumInfo, string name, string minVersion, string maxVersion>
+   : EnumAttr<VHLO_Dialect, enumInfo, name, [VHLO_VersionedAttrInterface]> {
++  let assemblyFormat = "$value";
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+       return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/BUILD.bazel b/stablehlo/stablehlo/integrations/cpp/builder/BUILD.bazel
 --- stablehlo/stablehlo/integrations/cpp/builder/BUILD.bazel
 +++ stablehlo/stablehlo/integrations/cpp/builder/BUILD.bazel
