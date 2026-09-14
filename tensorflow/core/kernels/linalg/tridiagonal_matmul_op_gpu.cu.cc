@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #ifdef GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
