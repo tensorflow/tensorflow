@@ -21,3 +21,5 @@ toc:
   section:
   - title: Debugging Megascale
     path: xla/megascale/debugging_workflow
+  - title: Megascale Performance Tuning Flags
+    path: xla/megascale/performance_tuning
