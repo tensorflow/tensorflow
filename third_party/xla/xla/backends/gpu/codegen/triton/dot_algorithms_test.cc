@@ -1051,7 +1051,8 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
       p1 = f32[8,8] parameter(1)
       ROOT dot = f32[8,8] dot(p0, p1),
         lhs_contracting_dims={1},
-        rhs_contracting_dims={0}
+        rhs_contracting_dims={0},
+        algorithm=dot_f32_f32_f32
     }
   )";
 
@@ -1067,7 +1068,8 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
     config.set_replica_count(1);
     config.set_num_partitions(1);
 
-    auto optimized_module = GetOptimizedModule(kReferenceHloText, config);
+    auto optimized_module = GetOptimizedModule(
+        absl::StrFormat(kReferenceHloText, HloModuleTestName()), config);
     CHECK_OK(optimized_module.status());
     return std::move(optimized_module.value());
   }

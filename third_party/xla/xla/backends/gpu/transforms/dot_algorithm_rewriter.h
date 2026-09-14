@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -47,7 +48,8 @@ namespace xla::gpu {
 // emitters like Triton.
 class DotAlgorithmRewriter : public HloModulePass {
  public:
-  DotAlgorithmRewriter() = default;
+  explicit DotAlgorithmRewriter(se::GpuComputeCapability gpu_version)
+      : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "dot-algorithm-rewriter"; }
 
   static absl::StatusOr<HloInstruction*> MakeMultiplyForBF16BF16F32(
@@ -67,6 +69,9 @@ class DotAlgorithmRewriter : public HloModulePass {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  se::GpuComputeCapability gpu_version_;
 };
 
 }  // namespace xla::gpu
