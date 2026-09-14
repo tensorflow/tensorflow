@@ -18,8 +18,11 @@ limitations under the License.
 #include <iosfwd>
 #include <ostream>
 
+#include "absl/algorithm/container.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo.pb.h"
 
 namespace xla {
 

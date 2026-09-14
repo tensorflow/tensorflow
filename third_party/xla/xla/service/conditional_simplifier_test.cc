@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/conditional_simplifier.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>

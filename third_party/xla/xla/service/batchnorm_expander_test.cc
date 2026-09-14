@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
