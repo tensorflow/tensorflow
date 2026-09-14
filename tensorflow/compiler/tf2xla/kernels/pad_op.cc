@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <limits>
+#include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -21,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -67,16 +70,40 @@ class PadOp : public XlaOpKernel {
         ctx, ctx->ResolveInputDynamism("paddings", &padding_dynamism_literal));
 
     xla::PaddingConfig config;
+    std::vector<int64_t> padded_dims;
     for (int i = 0; i < dims; ++i) {
       auto* dim = config.add_dimensions();
-      int before = pad_literal.Get<int64_t>({i, 0});
-      int after = pad_literal.Get<int64_t>({i, 1});
+      int64_t before = pad_literal.Get<int64_t>({i, 0});
+      int64_t after = pad_literal.Get<int64_t>({i, 1});
       OP_REQUIRES(ctx, before >= 0 && after >= 0,
                   errors::InvalidArgument(
                       "Paddings must be non-negative: ", before, " ", after));
+      // xla::Pad does not return an error for every overflowing shape.
+      const int64_t size = input_shape.dim_size(i);
+      OP_REQUIRES(
+          ctx,
+          before <= std::numeric_limits<int64_t>::max() - size &&
+              after <= std::numeric_limits<int64_t>::max() - size - before,
+          errors::InvalidArgument("Padded size of dimension ", i,
+                                  " overflows int64: ", before, " + ", size,
+                                  " + ", after));
+      const int64_t padded_size = before + size + after;
+      padded_dims.push_back(padded_size);
+      OP_REQUIRES(
+          ctx,
+          !padding_dynamism_literal.Get<bool>({i, 1}) ||
+              padded_size <= std::numeric_limits<int32_t>::max(),
+          errors::InvalidArgument(
+              "Padded size of dimension ", i,
+              " must fit in int32 when its high padding is dynamic: ",
+              padded_size));
       dim->set_edge_padding_low(before);
       dim->set_edge_padding_high(after);
     }
+    // xla::Pad unwraps this status with .value(), so check it first.
+    OP_REQUIRES_OK(ctx, xla::ShapeUtil::MakeValidatedShape(
+                            ctx->input_xla_type(0), padded_dims)
+                            .status());
 
     // PadV2 added a "constant_values" input that indicates the pad value.
     xla::XlaOp constant_values;
@@ -114,7 +141,8 @@ class PadOp : public XlaOpKernel {
         high_pad_size = xla::ConvertElementType(high_pad_size, xla::S32);
         // Low pad has to be static.
         xla::XlaOp low_pad_size = xla::ConstantR0<int32_t>(
-            ctx->builder(), pad_literal.Get<int64_t>({i, 0}));
+            ctx->builder(),
+            static_cast<int32_t>(pad_literal.Get<int64_t>({i, 0})));
         xla::XlaOp input_size = xla::GetDimensionSize(input, i);
         xla::XlaOp total_size = low_pad_size + input_size + high_pad_size;
         auto size_upper_bound_status_or =
