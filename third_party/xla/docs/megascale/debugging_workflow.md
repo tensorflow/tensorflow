@@ -209,6 +209,11 @@ available.
 
 ## Performance
 
+For an in-depth reference on configuring and tuning MegaScale flags (such as
+host-offloaded reductions, DCN topology, collective buffer sizing, and
+zero-copy memory premapping), see the
+[MegaScale Performance Tuning Flags guide](performance_tuning.md).
+
 ### Get an XProf session
 
 Follow the instructions in the [XProf

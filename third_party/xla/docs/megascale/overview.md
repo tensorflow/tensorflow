@@ -11,6 +11,10 @@ The [debugging guide](./debugging_workflow.md) discusses how to identify and
 diagnose sources of performance issues such as slowness, hangs or errors in a
 multi-slice job driven by Megascale.
 
+The [Megascale Performance Tuning Flags guide](./performance_tuning.md) details
+how to configure and tune MegaScale XLA flags to optimize collective
+communication performance and alleviate bottlenecks in multi-slice workloads.
+
 ## Terminology
 
 -   **Slice**
