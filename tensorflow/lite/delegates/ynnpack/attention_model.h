@@ -39,10 +39,15 @@ enum class AttentionImpl {
 
 class AttentionModel : public MultiOpModel {
  public:
+  // `num_kv_heads` < 1 means K and V have `n` heads. `fused_output` emits the
+  // rank-3 [b, 1, n * h] output that odml.sdpa_transposed uses for its
+  // single-token signature; it requires `impl == kOdmlSdpa`, `transpose_io ==
+  // false` and `t == 1`.
   AttentionModel(int b, int t, int s, int h, int n, float scale,
                  bool transpose_io, bool use_delegate,
                  const TfLiteYNNPackDelegateOptions& delegate_options,
-                 AttentionImpl impl);
+                 AttentionImpl impl, int num_kv_heads = -1,
+                 bool fused_output = false);
 
   int query() const { return query_id_; }
   int key() const { return key_id_; }

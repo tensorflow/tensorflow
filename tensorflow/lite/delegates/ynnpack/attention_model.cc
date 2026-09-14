@@ -181,6 +181,14 @@ TfLiteStatus DummySdpaPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
   const TfLiteTensor* q = &context->tensors[node->inputs->data[0]];
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  if (output->dims->size == 3) {
+    // Fused single-token output, [b, 1, n * h] for q = [b, n, 1, h].
+    TfLiteIntArray* dims = TfLiteIntArrayCreate(3);
+    dims->data[0] = q->dims->data[0];
+    dims->data[1] = 1;
+    dims->data[2] = q->dims->data[1] * q->dims->data[3];
+    return context->ResizeTensor(context, output, dims);
+  }
   return context->ResizeTensor(context, output, TfLiteIntArrayCopy(q->dims));
 }
 
@@ -205,22 +213,23 @@ TfLiteRegistration* Register_DummySDPA() {
 AttentionModel::AttentionModel(
     int b, int t, int s, int h, int n, float scale, bool transpose_io,
     bool use_delegate, const TfLiteYNNPackDelegateOptions& delegate_options,
-    AttentionImpl impl) {
+    AttentionImpl impl, int num_kv_heads, bool fused_output) {
+  const int kv = num_kv_heads > 0 ? num_kv_heads : n;
   std::vector<int> query_shape = transpose_io ? std::vector<int>{b, t, n, h}
                                               : std::vector<int>{b, n, t, h};
-  std::vector<int> key_shape = transpose_io ? std::vector<int>{b, s, n, h}
-                                            : std::vector<int>{b, n, s, h};
+  std::vector<int> key_shape = transpose_io ? std::vector<int>{b, s, kv, h}
+                                            : std::vector<int>{b, kv, s, h};
 
   std::vector<int> value_shape;
   if (impl == AttentionImpl::kOdmlRuntimeBmm) {
-    value_shape = transpose_io ? std::vector<int>{b, h, n, s}
-                               : std::vector<int>{b, n, h, s};
+    value_shape = transpose_io ? std::vector<int>{b, h, kv, s}
+                               : std::vector<int>{b, kv, h, s};
   } else if (impl == AttentionImpl::kOdmlSdpa) {
-    value_shape = transpose_io ? std::vector<int>{b, s, n, h}
-                               : std::vector<int>{b, n, h, s};
+    value_shape = transpose_io ? std::vector<int>{b, s, kv, h}
+                               : std::vector<int>{b, kv, h, s};
   } else {  // kFullSequence
-    value_shape = transpose_io ? std::vector<int>{b, s, n, h}
-                               : std::vector<int>{b, n, s, h};
+    value_shape = transpose_io ? std::vector<int>{b, s, kv, h}
+                               : std::vector<int>{b, kv, s, h};
   }
 
   std::vector<int> mask_shape = transpose_io ? std::vector<int>{b, t, 1, s}
@@ -241,6 +250,9 @@ AttentionModel::AttentionModel(
 
   std::vector<int> output_shape = transpose_io ? std::vector<int>{b, t, n, h}
                                                : std::vector<int>{b, n, t, h};
+  if (fused_output) {
+    output_shape = {b, 1, n * h};
+  }
 
   if (impl == AttentionImpl::kOdmlSdpa) {
     output_id_ = AddOutput({TensorType_FLOAT32, output_shape});
