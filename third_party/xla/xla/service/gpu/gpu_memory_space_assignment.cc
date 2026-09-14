@@ -80,8 +80,9 @@ absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
     default:
       return InvalidArgument(
           "Invalid memory space %d. "
-          "Valid values are 0 (default), 1 (collective), 2 (temp).",
-          memory_space);
+          "Valid values are %d (default), %d (collective), %d (temp).",
+          memory_space, MemorySpaceColor::kDefault,
+          MemorySpaceColor::kCollective, MemorySpaceColor::kTempBuffer);
   }
 }
 

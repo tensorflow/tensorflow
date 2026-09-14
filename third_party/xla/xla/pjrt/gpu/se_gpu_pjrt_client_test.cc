@@ -314,11 +314,15 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
     EXPECT_THAT(
         device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
         absl_testing::IsOkAndHolds(memory_space));
-    EXPECT_EQ(device->memory_spaces().size(), 2);
+    EXPECT_EQ(device->memory_spaces().size(), 3);
     auto* pinned = device->memory_spaces()[1];
     EXPECT_EQ(pinned->kind_id(), PinnedHostMemorySpace::kKindId);
     EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
                 absl_testing::IsOkAndHolds(pinned));
+    auto* collective = device->memory_spaces()[2];
+    EXPECT_EQ(collective->kind_id(), CollectiveMemorySpace::kKindId);
+    EXPECT_THAT(device->memory_space_by_kind(CollectiveMemorySpace::kKind),
+                absl_testing::IsOkAndHolds(collective));
   }
 }
 
@@ -1655,6 +1659,122 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
   std::vector<xla::s4> expected{xla::s4(1), xla::s4(2), xla::s4(3), xla::s4(4)};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<xla::s4>(expected),
                                      *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CollectiveMemorySpace) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+  PjRtDevice* device = client->addressable_devices()[0];
+
+  ASSERT_OK_AND_ASSIGN(
+      auto* collective_memory_space,
+      device->memory_space_by_kind(CollectiveMemorySpace::kKind));
+  EXPECT_EQ(collective_memory_space->kind(), "collective");
+  EXPECT_EQ(collective_memory_space->kind_id(), CollectiveMemorySpace::kKindId);
+  EXPECT_THAT(collective_memory_space->devices(),
+              ::testing::ElementsAre(device));
+  EXPECT_EQ(collective_memory_space->client(), client.get());
+
+  ASSERT_OK_AND_ASSIGN(auto* default_memory_space,
+                       device->default_memory_space());
+  EXPECT_EQ(default_memory_space->kind(), "device");
+
+  ASSERT_OK_AND_ASSIGN(auto stats_before, device->GetAllocatorStats());
+
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+
+  // Allocate in default device memory space
+  ASSERT_OK_AND_ASSIGN(
+      auto default_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          default_memory_space, /*device_layout=*/nullptr));
+
+  // Allocate in collective memory space
+  ASSERT_OK_AND_ASSIGN(
+      auto collective_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          collective_memory_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(collective_buffer->memory_space(), collective_memory_space);
+  EXPECT_EQ(collective_buffer->memory_space()->kind(), "collective");
+  EXPECT_FALSE(collective_buffer->IsOnCpu());
+  EXPECT_EQ(collective_buffer->on_device_shape().layout().memory_space(),
+            Layout::kCollectiveMemorySpace);
+
+  // Check BFC allocator stats reflected the allocations and pool presence
+  ASSERT_OK_AND_ASSIGN(auto stats_after, device->GetAllocatorStats());
+  EXPECT_GT(stats_after.bytes_in_use, stats_before.bytes_in_use);
+  EXPECT_GT(stats_after.num_allocs, stats_before.num_allocs);
+  EXPECT_TRUE(stats_after.pool_bytes.has_value());
+  EXPECT_GT(*stats_after.pool_bytes, 0);
+
+  ASSERT_OK(default_buffer->GetReadyFuture().Await());
+  ASSERT_OK(collective_buffer->GetReadyFuture().Await());
+
+  // Obtain raw device pointers
+  ASSERT_OK_AND_ASSIGN(auto default_ref,
+                       default_buffer->AcquireExternalReference());
+  ASSERT_OK_AND_ASSIGN(auto collective_ref,
+                       collective_buffer->AcquireExternalReference());
+  void* default_ptr = default_ref->OpaqueDeviceMemoryDataPointer();
+  void* collective_ptr = collective_ref->OpaqueDeviceMemoryDataPointer();
+  ASSERT_NE(default_ptr, nullptr);
+  ASSERT_NE(collective_ptr, nullptr);
+
+  // Verify that the underlying BFC allocator tracks both allocations
+  auto* pjrt_se_client =
+      absl::down_cast<PjRtStreamExecutorClient*>(client.get());
+  auto* adapter = dynamic_cast<se::MultiDeviceAdapter*>(
+      pjrt_se_client->raw_client()->allocator());
+  ASSERT_NE(adapter, nullptr);
+  ASSERT_OK_AND_ASSIGN(
+      tsl::Allocator * allocator,
+      adapter->GetAllocator(device->local_device_id().value()));
+  EXPECT_THAT(allocator->Name(), ::testing::HasSubstr("bfc"));
+  EXPECT_EQ(allocator->RequestedSize(collective_ptr), sizeof(int32_t) * 4);
+  EXPECT_GE(allocator->AllocatedSize(collective_ptr), sizeof(int32_t) * 4);
+  EXPECT_EQ(allocator->RequestedSize(default_ptr), sizeof(int32_t) * 4);
+  EXPECT_GE(allocator->AllocatedSize(default_ptr), sizeof(int32_t) * 4);
+
+  // Verify spatial partitioning: collective memory is allocated from the high
+  // end (AllocationEnd::kUpper) of the BFC pool, whereas default device memory
+  // is allocated from the low end (AllocationEnd::kLower).
+  EXPECT_GT(reinterpret_cast<uintptr_t>(collective_ptr),
+            reinterpret_cast<uintptr_t>(default_ptr));
+
+  // Verify data readback
+  ASSERT_OK_AND_ASSIGN(auto literal, collective_buffer->ToLiteral().Await());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data), *literal));
+
+  // Test CopyToMemorySpace: collective -> default
+  ASSERT_OK_AND_ASSIGN(
+      auto copied_to_default,
+      collective_buffer->CopyToMemorySpace(default_memory_space));
+  EXPECT_EQ(copied_to_default->memory_space()->kind(), "device");
+  ASSERT_OK_AND_ASSIGN(auto copied_literal,
+                       copied_to_default->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data),
+                                     *copied_literal));
+
+  // Test CopyToMemorySpace: default -> collective
+  ASSERT_OK_AND_ASSIGN(
+      auto copied_to_collective,
+      default_buffer->CopyToMemorySpace(collective_memory_space));
+  EXPECT_EQ(copied_to_collective->memory_space(), collective_memory_space);
+  EXPECT_EQ(copied_to_collective->memory_space()->kind(), "collective");
+  ASSERT_OK_AND_ASSIGN(auto copied_coll_literal,
+                       copied_to_collective->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data),
+                                     *copied_coll_literal));
 }
 
 class RecordingAllocator : public HostMemoryAllocator {
@@ -3065,7 +3185,7 @@ constexpr char kAttrPlacedModule[] = R"(
     s = f32[512,1024] custom-call(t), custom_call_target="RecordBufferAddress",
       api_version=API_VERSION_TYPED_FFI,
       output_to_operand_aliasing={{}: (0, {})},
-      frontend_attributes={results_memory_spaces="{0:1}"}
+      frontend_attributes={results_memory_spaces="{0:7}"}
     ROOT r = f32[512,1024] add(s, s)
   })";
 

@@ -1914,6 +1914,7 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
   devices_copy.reserve(devices.size());
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   const int basePinnedId = devices.size();
+  const int baseCollectiveId = basePinnedId + devices.size();
   for (auto& device : devices) {
     device->SetClient(result.get());
     if (device->IsAddressable()) {
@@ -1928,6 +1929,10 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
                                                             device.get());
       device->AttachMemorySpace(pinned.get());
       memory_spaces.push_back(std::move(pinned));
+      auto collective = std::make_unique<CollectiveMemorySpace>(
+          baseCollectiveId + id, device.get());
+      device->AttachMemorySpace(collective.get());
+      memory_spaces.push_back(std::move(collective));
     }
     devices_copy.push_back(std::move(device));
   }
@@ -2221,6 +2226,32 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
   std::vector<const Shape*> argument_shapes;
   if (exec.executable() != nullptr) {
     const auto& layout = exec.executable()->module().entry_computation_layout();
+    if (!parameter_is_tupled_arguments) {
+      for (int i = 0; i < layout.parameter_count() && i < flat_arguments.size();
+           ++i) {
+        int64_t expected_ms =
+            layout.parameter_shape(i).has_layout()
+                ? layout.parameter_shape(i).layout().memory_space()
+                : Layout::kDefaultMemorySpace;
+        absl::string_view actual_kind =
+            flat_arguments[i]->memory_space()
+                ? flat_arguments[i]->memory_space()->kind()
+                : "";
+        bool is_expected_collective =
+            expected_ms == Layout::kCollectiveMemorySpace;
+        if (is_expected_collective &&
+            actual_kind != CollectiveMemorySpace::kKind) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "Argument %d expected collective memory space, but got '%s'", i,
+              actual_kind));
+        } else if (!is_expected_collective &&
+                   actual_kind == CollectiveMemorySpace::kKind) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "Argument %d expected default/device memory space, but got '%s'",
+              i, actual_kind));
+        }
+      }
+    }
     argument_shapes.reserve(layout.parameter_count());
     for (int i = 0; i < layout.parameter_count(); ++i) {
       argument_shapes.push_back(&layout.parameter_shape(i));

@@ -276,12 +276,16 @@ StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
   static const int kDeviceMemorySpaceKindId =
       static_cast<int>(tsl::Fingerprint32("device"));
 
-  // Only allow pinned host memory or device memory.
+  // Only allow pinned host memory, device memory, or collective memory.
   if (memory_space_kind_id == kPinnedHostMemorySpaceKindId) {
     shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
   } else if (memory_space_kind_id == kDeviceMemorySpaceKindId) {
     if (shape.has_layout()) {
       shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+    }
+  } else if (memory_space_kind_id == CollectiveMemorySpace::kKindId) {
+    if (shape.has_layout()) {
+      shape.mutable_layout()->set_memory_space(Layout::kCollectiveMemorySpace);
     }
   } else {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -296,7 +300,7 @@ absl::Span<const int>
 StreamExecutorGpuTopologyDescription::GetMemorySpaceKindIds() const {
   static const int kGpuMemorySpaceKindIds[] = {
       static_cast<int>(tsl::Fingerprint32("device")),
-      PinnedHostMemorySpace::kKindId};
+      PinnedHostMemorySpace::kKindId, CollectiveMemorySpace::kKindId};
   return absl::MakeConstSpan(kGpuMemorySpaceKindIds);
 }
 
@@ -405,7 +409,9 @@ StreamExecutorGpuTopologyDescription::GetMemorySpaceKindForShape(
       case Layout::kHostMemorySpace:
         return GetMemorySpaceKindIds()[1];
         break;
-      case Layout::kGenericFastMemorySpace:
+      case Layout::kCollectiveMemorySpace:
+        return GetMemorySpaceKindIds()[2];
+        break;
       case Layout::kDefaultMemorySpace:
         break;
       default:
