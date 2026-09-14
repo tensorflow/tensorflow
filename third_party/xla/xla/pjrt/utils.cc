@@ -231,6 +231,9 @@ absl::StatusOr<MemorySpaceColor> GetMemorySpaceColor(
   if (memory_kind == "device") {
     return xla::Layout::kDefaultMemorySpace;
   }
+  if (memory_kind == "collective") {
+    return xla::Layout::kCollectiveMemorySpace;
+  }
   return InvalidArgument("Unknown memory kind %s", memory_kind);
 }
 
@@ -540,16 +543,18 @@ absl::StatusOr<Shape> LayoutModeToXlaShape(
   LayoutUtil::ClearLayout(&result);
   LayoutMode::Mode mode = layout_mode.mode;
   if (mode == LayoutMode::Mode::kAuto &&
-      memory_space == Layout::kHostMemorySpace) {
+      (memory_space == Layout::kHostMemorySpace ||
+       memory_space == Layout::kCollectiveMemorySpace)) {
     // Fall back to default layout mode so that the memory space is preserved,
     // in order to prevent the
     // CompileTimeHostOffloadOutputLocationMismatch error later.
-    LOG(WARNING) << "Auto layout mode is not supported for host memory "
-                    "space (memory space is part of Layout). Falling back to "
-                    "default layout mode. "
-                 << "unsharded_shape: " << unsharded_shape.ToString()
-                 << ", sharded_shape: " << sharded_shape.ToString()
-                 << ", memory_space: " << memory_space;
+    LOG(WARNING)
+        << "Auto layout mode is not supported for host or collective memory "
+           "space (memory space is part of Layout). Falling back to "
+           "default layout mode. "
+        << "unsharded_shape: " << unsharded_shape.ToString()
+        << ", sharded_shape: " << sharded_shape.ToString()
+        << ", memory_space: " << memory_space;
     mode = LayoutMode::Mode::kDefault;
   }
   switch (mode) {

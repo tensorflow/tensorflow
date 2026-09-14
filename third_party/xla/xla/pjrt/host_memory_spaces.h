@@ -135,6 +135,43 @@ class CpuDeviceMemorySpace : public PjRtMemorySpace {
   PjRtMemorySpaceCApiDelegator capi_delegator_{this};
 };
 
+// Represents the collective memory space accessible to a `PjRtDevice`.
+// A "collective" memory space accommodates buffers allocated in symmetric /
+// collective memory (e.g., NCCL symmetric memory on GPU) for fast direct peer
+// access across devices.
+class CollectiveMemorySpace : public PjRtMemorySpace {
+ public:
+  static constexpr absl::string_view kKind = "collective";
+  static const int kKindId;
+
+  CollectiveMemorySpace(int id, PjRtDevice* device);
+
+  PjRtClient* client() const override { return device_->client(); }
+
+  absl::Span<PjRtDevice* const> devices() const override {
+    return absl::Span<PjRtDevice* const>(&device_, device_ != nullptr ? 1 : 0);
+  }
+
+  int id() const override { return id_; }
+
+  absl::string_view kind() const override { return kKind; }
+
+  int kind_id() const override { return kKindId; }
+
+  absl::string_view DebugString() const override { return debug_string_; }
+
+  absl::string_view ToString() const override { return to_string_; }
+
+  PJRT_Memory* ToCApiPtr() override { return capi_delegator_.ToCApiPtr(); }
+
+ private:
+  int id_;
+  PjRtDevice* device_ = nullptr;
+  std::string debug_string_;
+  std::string to_string_;
+  PjRtMemorySpaceCApiDelegator capi_delegator_{this};
+};
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_HOST_MEMORY_SPACES_H_

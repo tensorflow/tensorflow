@@ -885,6 +885,45 @@ TEST(StreamExecutorGpuClientTest, MlirParameterHostMemorySpaceIsSetInHlo) {
   EXPECT_EQ(result_layout.memory_space(), Layout::kDefaultMemorySpace);
 }
 
+TEST(StreamExecutorGpuClientTest,
+     MlirParameterCollectiveMemorySpaceIsSetInHlo) {
+  constexpr char kMlirCollective[] =
+      R"(
+    func.func public @main(%arg0: tensor<8x2xi32> {
+            mhlo.layout_mode = "{1,0}",
+            mhlo.memory_kind = "collective",
+            mhlo.sharding = "{devices=[2,2]<=[4]}"
+        }) -> (tensor<8x2xi32> {
+            jax.result_info = "",
+            mhlo.layout_mode = "default",
+            mhlo.memory_kind = "device",
+            mhlo.sharding = "{devices=[2,2]<=[4]}"}) {
+      return %arg0 : tensor<8x2xi32>
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
+
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       xla::ParseMlirModuleString(kMlirCollective, *context));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(module)), {}));
+  ASSERT_OK_AND_ASSIGN(auto modules,
+                       executable->GetExecutable()->GetHloModules());
+
+  auto first_param_layout =
+      modules[0]->entry_computation_layout().parameter_layout(0).layout();
+  EXPECT_EQ(first_param_layout.memory_space(), Layout::kCollectiveMemorySpace);
+  auto result_layout =
+      modules[0]->entry_computation_layout().result_layout().layout();
+  EXPECT_EQ(result_layout.memory_space(), Layout::kDefaultMemorySpace);
+}
+
 TEST(StreamExecutorGpuClientTest, MlirResultHostMemorySpaceIsSetInHlo) {
   constexpr char kMlirD2H[] =
       R"(
