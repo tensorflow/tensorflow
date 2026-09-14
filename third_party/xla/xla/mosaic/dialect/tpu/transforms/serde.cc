@@ -765,14 +765,22 @@ void MosaicSerdePass::runOnOperation() {
   if (serialize) {
     serialize_version = target_version.hasValue() ? target_version : kVersion;
   }
+  auto legality_check = [](Operation* op) -> LogicalResult {
+    if (op != nullptr && op->hasTrait<mlir::OpTrait::CompilerInternalOp>()) {
+      return op->emitOpError()
+             << "is compiler-internal and not allowed in deserialized module";
+    }
+    return success();
+  };
   if (failed(jaxlib::mosaic::RunSerde(
           module, upgrade_rules(), downgrade_rules(), serialize,
           {.dialect_prefix = kMangledDialect,
            .highest_version = kVersion,
            .version_attr_name = kVersionAttrName,
            .serialize_version = serialize_version},
-          /*keep_version_attr=*/keep_version_attr))) {
+          /*keep_version_attr=*/keep_version_attr, legality_check))) {
     signalPassFailure();
+    return;
   }
 }
 
