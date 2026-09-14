@@ -1033,11 +1033,12 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
                                   vector_type.getElementType());
     auto outputType =
         ml::LLVMStructType::getLiteral(b.getContext(), outputTypes);
-    ml::InlineAsmOp::create(
-        b, loc, outputType, asm_operands, asm_string, constraints,
-        /*has_side_effects=*/true,
-        /*is_align_stack=*/true, ml::TailCallKind::None, asmDialectAttr,
-        /*operand_attrs=*/mlir::ArrayAttr());
+    ml::InlineAsmOp::create(b, loc, outputType, asm_operands, asm_string,
+                            constraints,
+                            /*has_side_effects=*/true,
+                            /*is_align_stack=*/true, ml::TailCallKind::None,
+                            /*convergent=*/false, asmDialectAttr,
+                            /*operand_attrs=*/mlir::ArrayAttr());
     return success();
   }
 
