@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <memory>
-#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
