@@ -82,6 +82,27 @@ namespace {
 constexpr char kConversionMetadataKey[] = "CONVERSION_METADATA";
 constexpr char kTelemetryBuilderEventName[] = "InterpreterBuilder::operator()";
 
+// Number of spare node slots ParseNodes() reserves on top of the model's own
+// operator count.
+//
+// Delegates append one "macro" node per delegated partition, and they do so
+// *after* the model has been parsed. Reserving exactly operators->size() leaves
+// the node array at capacity() == size() when delegation starts, so the first
+// delegate node forces std::vector to reallocate: it has to obtain a fresh
+// contiguous block while the old one is still live, memcpy the whole array
+// over, and only then release the old block.
+//
+// That paired allocation is a real crash source on 32-bit Android, where the
+// address space is ~3GB and imaging apps fragment it heavily. When it fails,
+// operator new throws std::bad_alloc and nothing on the path back to the JNI
+// boundary catches it, so the process aborts. Reserving the slack here instead
+// happens during model load, when the heap is at its least fragmented, and
+// costs only kDelegateNodeSlack * sizeof(node+registration) bytes.
+//
+// Real models produce roughly 1-8 delegated partitions; 32 leaves headroom for
+// several delegates to be applied one after another.
+constexpr int kDelegateNodeSlack = 32;
+
 // Ensure that ErrorReporter is non-null.
 ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
   return e ? e : DefaultErrorReporter();
@@ -336,8 +357,10 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     Subgraph* subgraph) {
   TfLiteStatus status = kTfLiteOk;
 
-  // Reduce the number of redundant allocations
-  subgraph->ReserveNodes(operators->size());
+  // Reduce the number of redundant allocations. The slack covers the delegate
+  // kernel nodes that ModifyGraphWithDelegate() appends once parsing is done,
+  // so the node array is sized exactly once for the whole interpreter build.
+  subgraph->ReserveNodes(operators->size() + kDelegateNodeSlack);
 
   for (int i = 0; i < operators->size(); ++i) {
     const auto* op = operators->Get(i);
