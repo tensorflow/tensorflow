@@ -1243,7 +1243,9 @@ def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
+        ::mlir::MemRefType input_type, ::mlir::ArrayRef<int64_t> result_shape,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
 }
