@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -56,6 +57,36 @@ absl::StatusOr<bool> Defuser::RunImpl(
         return absl::OkStatus();
       },
       /*visit_unreachable_nodes=*/true));
+
+  // Clean up any inlined bitcasts that are invalid outside fusions.
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      if (instruction->opcode() == HloOpcode::kBitcast) {
+        HloInstruction* operand = instruction->mutable_operand(0);
+        if (ShapeUtil::Compatible(instruction->shape(), operand->shape())) {
+          ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(operand));
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          changed = true;
+        } else if (ShapeUtil::CompatibleIgnoringElementType(
+                       instruction->shape(), operand->shape())) {
+          auto bitcast_convert =
+              computation->AddInstruction(HloInstruction::CreateBitcastConvert(
+                  instruction->shape(), operand));
+          ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(bitcast_convert));
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          changed = true;
+        } else if (instruction->shape().element_type() ==
+                   operand->shape().element_type()) {
+          auto reshape = computation->AddInstruction(
+              HloInstruction::CreateReshape(instruction->shape(), operand));
+          ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(reshape));
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          changed = true;
+        }
+      }
+    }
+  }
 
   XLA_VLOG_LINES(2, "After defusion:\n" + module->ToString());
 
