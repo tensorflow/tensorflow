@@ -4238,8 +4238,11 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
     std::shared_ptr<const xla::PjRtTopologyDescription> topology,
     std::unique_ptr<PjRtRawClient> raw_client,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
-    std::optional<PjRtPluginAttributes> plugin_attributes)
-    : platform_id_(platform_id),
+    std::optional<PjRtPluginAttributes> plugin_attributes,
+    std::unique_ptr<PjRtHostMemoryForDeviceManager>
+        host_memory_for_device_manager)
+    : CommonPjRtClient(std::move(host_memory_for_device_manager)),
+      platform_id_(platform_id),
       platform_name_(std::move(platform_name)),
       platform_version_(std::move(platform_version)),
       topology_(std::move(topology)),

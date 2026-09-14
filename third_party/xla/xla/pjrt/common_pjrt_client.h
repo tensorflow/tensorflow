@@ -1094,7 +1094,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
       std::shared_ptr<const xla::PjRtTopologyDescription> topology,
       std::unique_ptr<PjRtRawClient> raw_client,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
-      std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt);
+      std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt,
+      std::unique_ptr<PjRtHostMemoryForDeviceManager>
+          host_memory_for_device_manager = nullptr);
 
   bool allow_fallback_for_donation() const override {
     return allow_fallback_for_donation_;
@@ -1125,7 +1127,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
-  std::map<int, PjRtDevice*> id_to_device_;
+  absl::flat_hash_map<int, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   int process_index_;
