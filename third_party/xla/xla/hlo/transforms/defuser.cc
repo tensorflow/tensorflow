@@ -43,7 +43,8 @@ absl::StatusOr<bool> Defuser::RunImpl(
   XLA_VLOG_LINES(2, "Before defusion:\n" + module->ToString());
 
   bool changed = false;
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(module, execution_threads);
   ABSL_RETURN_IF_ERROR(call_graph->VisitNodes(
       [&](const CallGraphNode& call_graph_node) -> absl::Status {
         if (call_graph_node.computation()->IsFusionComputation()) {
