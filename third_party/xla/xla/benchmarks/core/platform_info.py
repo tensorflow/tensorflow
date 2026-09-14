@@ -103,6 +103,11 @@ class PlatformInfo:
     """Returns the emulated dtype for the given dtype."""
     if dtype in supported_dtypes:
       return dtype
+    if (
+        dtype == jnp.float8_e4m3fn
+        and jnp.float8_e4m3b11fnuz in supported_dtypes
+    ):
+      return jnp.float8_e4m3b11fnuz
     dtype_bits = jax.dtypes.itemsize_bits(dtype)
     if dtype_bits < 8 and jnp.float8_e4m3fn in supported_dtypes:
       return jnp.float8_e4m3fn
@@ -171,7 +176,7 @@ _PLATFORM_INFOS = (
         chip_version=pltpu.ChipVersion.TPU_V5E,
         default_internal_scratch_bytes=73728,
         matmul_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 32,
+            jnp.float8_e4m3b11fnuz: 32,
             jnp.float8_e5m2: 32,
             jnp.bfloat16: 16,
             jnp.float32: 8,
@@ -181,7 +186,7 @@ _PLATFORM_INFOS = (
             jnp.uint4: 16,
         }),
         latch_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 4,
+            jnp.float8_e4m3b11fnuz: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 4,
             jnp.float32: 2,
@@ -198,7 +203,7 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_latency_ns=1133,
         vmem_to_hbm_latency_ns=439,
         matmul_latency_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 131,
+            jnp.float8_e4m3b11fnuz: 131,
             jnp.float8_e5m2: 131,
             jnp.bfloat16: 131,
             jnp.float32: 131,
@@ -214,7 +219,7 @@ _PLATFORM_INFOS = (
         chip_version=pltpu.ChipVersion.TPU_V5P,
         default_internal_scratch_bytes=73728,
         matmul_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 32,
+            jnp.float8_e4m3b11fnuz: 32,
             jnp.float8_e5m2: 32,
             jnp.bfloat16: 16,
             jnp.float32: 8,
@@ -224,7 +229,7 @@ _PLATFORM_INFOS = (
             jnp.uint4: 16,
         }),
         latch_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 4,
+            jnp.float8_e4m3b11fnuz: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 4,
             jnp.float32: 2,
@@ -241,7 +246,7 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_latency_ns=667,
         vmem_to_hbm_latency_ns=624,
         matmul_latency_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 131,
+            jnp.float8_e4m3b11fnuz: 131,
             jnp.float8_e5m2: 131,
             jnp.bfloat16: 131,
             jnp.float32: 131,
@@ -257,7 +262,7 @@ _PLATFORM_INFOS = (
         chip_version=pltpu.ChipVersion.TPU_V6E,
         default_internal_scratch_bytes=73728,
         matmul_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 16,
+            jnp.float8_e4m3b11fnuz: 16,
             jnp.float8_e5m2: 16,
             jnp.bfloat16: 8,
             jnp.float32: 4,
@@ -267,7 +272,7 @@ _PLATFORM_INFOS = (
             jnp.uint4: 8,
         }),
         latch_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 4,
+            jnp.float8_e4m3b11fnuz: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 4,
             jnp.float32: 2,
@@ -284,7 +289,7 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_latency_ns=628,
         vmem_to_hbm_latency_ns=523,
         matmul_latency_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 192,
+            jnp.float8_e4m3b11fnuz: 192,
             jnp.float8_e5m2: 192,
             jnp.bfloat16: 192,
             jnp.float32: 192,
