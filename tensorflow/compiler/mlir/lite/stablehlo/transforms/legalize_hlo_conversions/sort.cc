@@ -29,9 +29,9 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
@@ -47,11 +47,12 @@ bool MatchTopKComparator(Region& comparator) {
   if (operations.size() != 2) return false;
 
   auto compare_op =
-      llvm::dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
+      llvm::dyn_cast_or_null<stablehlo::CompareOp>(&operations.front());
   auto return_op = llvm::dyn_cast_or_null<ReturnOpType>(&operations.back());
   if (!compare_op || !return_op) return false;
 
-  if (compare_op.getComparisonDirection() != mhlo::ComparisonDirection::GT) {
+  if (compare_op.getComparisonDirection() !=
+      stablehlo::ComparisonDirection::GT) {
     return false;
   }
 
@@ -63,7 +64,7 @@ bool MatchTopKComparator(Region& comparator) {
   return return_op.getOperands().front() == compare_op.getResult();
 }
 
-bool IsSortOpNotTopK(mhlo::SortOp op) {
+bool IsSortOpNotTopK(stablehlo::SortOp op) {
   if (op->getNumOperands() != 2) {
     return true;
   }
@@ -97,24 +98,24 @@ bool IsSortOpNotTopK(mhlo::SortOp op) {
     return true;
   }
 
-  if (!MatchTopKComparator<mhlo::ReturnOp>(op.getComparator())) {
+  if (!MatchTopKComparator<stablehlo::ReturnOp>(op.getComparator())) {
     return true;
   }
 
   return false;
 }
 
-class LegalizeSortOp : public OpConversionPattern<mhlo::SortOp> {
+class LegalizeSortOp : public OpConversionPattern<stablehlo::SortOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::SortOp sort_op, OpAdaptor adaptor,
+      stablehlo::SortOp sort_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeSortOp::matchAndRewrite(
-    mhlo::SortOp op, OpAdaptor adaptor,
+    stablehlo::SortOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   if (IsSortOpNotTopK(op)) {
     return failure();
@@ -140,7 +141,7 @@ LogicalResult LegalizeSortOp::matchAndRewrite(
 void PopulateSortPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                           ConversionTarget& target) {
   patterns.add<LegalizeSortOp>(ctx);
-  target.addDynamicallyLegalOp<mhlo::SortOp>(IsSortOpNotTopK);
+  target.addDynamicallyLegalOp<stablehlo::SortOp>(IsSortOpNotTopK);
 }
 
 }  // namespace mlir::odml

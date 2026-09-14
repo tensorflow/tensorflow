@@ -591,8 +591,9 @@ gentbl_cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
-        "@xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
     ],
 )
 
@@ -636,7 +637,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = True,
 )
