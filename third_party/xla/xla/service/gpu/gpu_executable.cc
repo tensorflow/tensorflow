@@ -410,6 +410,19 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     return protos;
   }();
 
+  // Hoist duplicated kernel loader specs into a side table so that a kernel
+  // invoked several times is serialized only once. This runs single-threaded,
+  // after all backend compilation has completed, and iterates the thunks in
+  // schedule order, which is what makes the assigned indices deterministic.
+  KernelSpecTable kernel_spec_table;
+  if (params.debug_options
+          .xla_gpu_experimental_deduplicate_custom_kernel_specs() &&
+      thunk_sequence_proto.ok()) {
+    for (ThunkProto& thunk_proto : *thunk_sequence_proto) {
+      ABSL_RETURN_IF_ERROR(InternKernelSpecs(thunk_proto, kernel_spec_table));
+    }
+  }
+
   // Wrap the ThunkExecutor's thunks in a temporary SequentialThunk for running
   // thunk passes (which operate on SequentialThunk).
   auto seq_thunk = std::make_unique<SequentialThunk>(
@@ -442,7 +455,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.alias_info), std::move(params.debug_options),
       std::move(params.constants), std::move(params.output_info),
       params.enable_debug_info_manager, std::move(params.module_stats),
-      std::move(thunk_sequence_proto), std::move(params.executable_abi_version),
+      std::move(thunk_sequence_proto), std::move(kernel_spec_table),
+      std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
       std::move(params.buffer_allocations_debug_summary),
@@ -462,6 +476,7 @@ GpuExecutable::GpuExecutable(
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     bool enable_debug_info_manager, ModuleStats module_stats,
     absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
+    KernelSpecTable kernel_spec_table,
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
@@ -501,6 +516,7 @@ GpuExecutable::GpuExecutable(
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
+      kernel_spec_table_(std::move(kernel_spec_table)),
       executable_abi_version_(std::move(executable_abi_version)),
       cpu_target_machine_options_(std::move(cpu_target_machine_options)),
       buffer_allocations_debug_summary_(
@@ -1369,6 +1385,12 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
     *proto.add_thunks() = thunk_proto;
   }
 
+  proto.mutable_kernel_specs()->Reserve(kernel_spec_table_.size());
+  for (const stream_executor::KernelLoaderSpecProto& kernel_spec :
+       kernel_spec_table_.specs()) {
+    *proto.add_kernel_specs() = kernel_spec;
+  }
+
   proto.set_module_name(module_name_);
   *proto.mutable_program_shape() = program_shape_.ToProto();
 
@@ -1477,6 +1499,22 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
+
+  // Put the deduplicated kernel loader specs back where the thunks expect
+  // them. This is deliberately not gated on the deduplication flag: the reader
+  // has to handle both representations. It is a no-op for protos produced by a
+  // compiler that did not deduplicate.
+  if (!proto.kernel_specs().empty()) {
+    KernelSpecTable kernel_spec_table;
+    for (const stream_executor::KernelLoaderSpecProto& kernel_spec :
+         proto.kernel_specs()) {
+      kernel_spec_table.Append(kernel_spec);
+    }
+    for (ThunkProto& thunk : *thunk_sequence_proto.mutable_thunks()) {
+      ABSL_RETURN_IF_ERROR(InlineKernelSpecs(thunk, kernel_spec_table));
+    }
+  }
+
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
       DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,

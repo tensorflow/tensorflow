@@ -4530,6 +4530,45 @@ xla_py_proto_library(
 )
 
 cc_library(
+    name = "kernel_spec_table",
+    srcs = ["kernel_spec_table.cc"],
+    hdrs = ["kernel_spec_table.h"],
+    deps = [
+        ":thunk_proto_cc",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel_proto_cc",
+        "//xla/stream_executor:kernel_spec_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_spec_table_test",
+    srcs = ["kernel_spec_table_test.cc"],
+    deps = [
+        ":kernel_spec_table",
+        ":thunk_proto_cc",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel_proto_cc",
+        "//xla/stream_executor:kernel_spec_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_library(
     name = "thunk_proto_deserialization",
     srcs = ["thunk_proto_deserialization.cc"],
     hdrs = ["thunk_proto_deserialization.h"],

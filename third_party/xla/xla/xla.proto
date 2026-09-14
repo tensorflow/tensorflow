@@ -1850,7 +1850,13 @@ message DebugOptions {
   // available devices in the topology.
   optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
 
-  // Next id: 546
+  // If true, the GPU compiler stores each distinct custom kernel only once in
+  // the serialized executable, in `GpuExecutableProto.kernel_specs`, instead of
+  // inlining a copy into every `CustomKernelThunkProto`. Readers support both
+  // representations regardless of this flag.
+  optional bool xla_gpu_experimental_deduplicate_custom_kernel_specs = 546;
+
+  // Next id: 547
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

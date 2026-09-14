@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_memory_cache.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -287,6 +288,7 @@ class GpuExecutable : public Executable {
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
+      KernelSpecTable kernel_spec_table,
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
@@ -405,6 +407,10 @@ class GpuExecutable : public Executable {
   // Stores the thunk sequence as a proto from before running the thunk pass.
   // Might contain an error if the given thunk graph is not serializable.
   absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
+
+  // Kernel loader specs hoisted out of `thunk_sequence_proto_`, which then
+  // refers to them by index. Empty unless deduplication is enabled.
+  KernelSpecTable kernel_spec_table_;
 
   se::ExecutableAbiVersion executable_abi_version_;
 
