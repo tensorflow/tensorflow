@@ -66,6 +66,7 @@ limitations under the License.
 #include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/error_util.h"
@@ -125,11 +126,9 @@ absl::Status MlirToXlaComputation(
     // no-op if the module is already pure StableHLO.
     // NOTE: we don't use `use_shardy` because it isn't guaranteed to be true if
     // the module has Shardy artifacts.
-    bool enable_hlo_sharding_v3 =
-        exec_build_options && exec_build_options->has_debug_options() &&
-        exec_build_options->debug_options().xla_enable_hlo_sharding_v3();
-    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
-                                            enable_hlo_sharding_v3);
+    xla::sdy::addSdyRoundTripExportPipeline(
+        pm, /*keepMeshesInlined=*/false,
+        GetDebugOptionsFromFlags().xla_enable_hlo_sharding_v3());
 
     // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
     // CHLO -> StableHLO otherwise
