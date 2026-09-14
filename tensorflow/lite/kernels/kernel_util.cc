@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
-#include <cstdlib>
+#include <complex>
 #include <initializer_list>
 #include <limits>
 #include <memory>
@@ -547,7 +547,6 @@ int TfLiteTypeGetSizeBits(TfLiteType type) {
     case kTfLiteInt8:
     case kTfLiteFloat8E4M3FN:
     case kTfLiteFloat8E5M2:
-    case kTfLiteFloat8E8M0FNU:
       return 8;
     case kTfLiteUInt16:
     case kTfLiteInt16:

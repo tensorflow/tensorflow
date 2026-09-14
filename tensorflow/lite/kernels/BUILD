@@ -843,7 +843,6 @@ cc_library(
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:float8",
         "//tensorflow/lite/types:half",
         "//tensorflow/lite:array",
         "//tensorflow/lite:builtin_ops",
