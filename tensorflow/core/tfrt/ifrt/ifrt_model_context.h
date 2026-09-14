@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
@@ -230,6 +231,10 @@ class IfrtModelContext {
   absl::Status Freeze();
 
   bool IsFrozen() const { return frozen_; }
+
+  absl::flat_hash_set<std::string> GetUsedByHostVariableNames() const {
+    return restore_tensor_registry_.GetUsedByHostNames();
+  }
 
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
