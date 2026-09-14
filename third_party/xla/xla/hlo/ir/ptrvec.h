@@ -36,7 +36,7 @@ namespace xla {
 template <typename T>
 class PtrVec {
  public:
-  static_assert(std::is_pointer<T>::value);
+  static_assert(std::is_pointer_v<T>);
 
   // Default constructible.
   PtrVec();
