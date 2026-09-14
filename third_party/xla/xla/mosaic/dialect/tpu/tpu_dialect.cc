@@ -678,7 +678,8 @@ std::optional<bool> areAnyDivisible(Value lhs, Value rhs, int64_t divisor,
   return std::nullopt;
 }
 
-// Returns the remainder of the value divided by the divisor, if known.
+// Returns the remainder of the value divided by the divisor, if known. The
+// remainder is in [0, divisor), also for negative values.
 std::optional<int64_t> getExplicitRemainder(Value value, int64_t divisor,
                                             int64_t fuel) {
   if (fuel <= 0) {
@@ -689,15 +690,30 @@ std::optional<int64_t> getExplicitRemainder(Value value, int64_t divisor,
   }
   if (auto cst_op = value.getDefiningOp<arith::ConstantOp>()) {
     if (auto int_attr = dyn_cast<IntegerAttr>(cst_op.getValue())) {
-      return int_attr.getInt() % divisor;
+      return llvm::mod(int_attr.getInt(), divisor);
     }
   }
   if (auto add_op = value.getDefiningOp<arith::AddIOp>()) {
     if (auto lhs_rem = getRemainder(add_op.getLhs(), divisor, fuel / 2)) {
       if (auto rhs_rem =
               getRemainder(add_op.getRhs(), divisor, (fuel + 1) / 2)) {
-        return (*lhs_rem + *rhs_rem) % divisor;
+        return llvm::mod(*lhs_rem + *rhs_rem, divisor);
       }
+    }
+  }
+  // A cast keeps the low min(source, result) bits, so a power of two divisor
+  // that fits both widths keeps its remainder.
+  if (Operation* cast_op = value.getDefiningOp();
+      isa_and_present<arith::IndexCastOp, arith::IndexCastUIOp>(cast_op) &&
+      value.getType().isIntOrIndex() && llvm::isPowerOf2_64(divisor)) {
+    auto bits = [](Type t) {
+      return t.isIndex() ? IndexType::kInternalStorageBitWidth
+                         : t.getIntOrFloatBitWidth();
+    };
+    if (llvm::Log2_64(divisor) <=
+        std::min(bits(value.getType()),
+                 bits(cast_op->getOperand(0).getType()))) {
+      return getRemainder(cast_op->getOperand(0), divisor, fuel - 1);
     }
   }
   return std::nullopt;
