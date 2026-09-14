@@ -149,6 +149,7 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       break;
     case kTfLiteFloat8E4M3FN:
     case kTfLiteFloat8E5M2:
+    case kTfLiteFloat8E8M0FNU:
       *bytes = 1;
       break;
     default:

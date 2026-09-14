@@ -722,6 +722,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "FLOAT8_E4M3FN";
     case kTfLiteFloat8E5M2:
       return "FLOAT8_E5M2";
+    case kTfLiteFloat8E8M0FNU:
+      return "FLOAT8_E8M0FNU";
   }
   return "Unknown type";
 }

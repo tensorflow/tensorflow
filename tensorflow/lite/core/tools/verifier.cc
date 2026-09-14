@@ -442,6 +442,7 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       break;
     case TensorType_FLOAT8_E4M3FN:
     case TensorType_FLOAT8_E5M2:
+    case TensorType_FLOAT8_E8M0FNU:
       bytes_required *= sizeof(uint8_t);
       break;
     case TensorType_INT8:

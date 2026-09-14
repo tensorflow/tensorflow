@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/c/common.h"
@@ -118,6 +117,10 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_FLOAT8_E4M3FN;
     case kTfLiteFloat8E5M2:
       return TF_FLOAT8_E5M2;
+    case kTfLiteFloat8E8M0FNU:
+      // Tensorflow DT_FLOAT8_E8M0FNU type doesn't exist yet; fall back to
+      // TF_UINT8.
+      return TF_UINT8;
     case kTfLiteInt64:
       return TF_INT64;
     case kTfLiteUInt64:
@@ -213,6 +216,8 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type) {
       return "float8_e4m3fn";
     case kTfLiteFloat8E5M2:
       return "float8_e5m2";
+    case kTfLiteFloat8E8M0FNU:
+      return "float8_e8m0fnu";
     case kTfLiteInt64:
       return "int64";
     case kTfLiteUInt64:

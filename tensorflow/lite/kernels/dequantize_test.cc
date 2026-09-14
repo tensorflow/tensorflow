@@ -210,6 +210,19 @@ TEST(DequantizeOpTest, Float8E5M2) {
               ElementsAreArray(ArrayFloatNear(
                   Float8Values<float8_internal::Float8E5M2>(input))));
 }
+
+TEST(DequantizeOpTest, Float8E8M0FNU) {
+  DequantizeOpModel m(TensorType_FLOAT8_E8M0FNU, {2, 3}, 1.0f, 0, 9);
+
+  const std::vector<uint8_t> input =
+      Float8Bytes<float8_internal::Float8E8M0FNU>(
+          {0.25f, 0.5f, 1.f, 2.f, 4.f, 16.f});
+  m.SetRawInput(input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  Float8Values<float8_internal::Float8E8M0FNU>(input))));
+}
 #endif
 
 TEST(DequantizeOpTest, Int16) {

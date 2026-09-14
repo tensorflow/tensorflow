@@ -1107,6 +1107,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_FLOAT8_E5M2:
       *type = kTfLiteFloat8E5M2;
       return kTfLiteOk;
+    case TensorType_FLOAT8_E8M0FNU:
+      *type = kTfLiteFloat8E8M0FNU;
+      return kTfLiteOk;
     default:
       *type = kTfLiteNoType;
       TF_LITE_REPORT_ERROR(error_reporter,

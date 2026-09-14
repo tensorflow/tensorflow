@@ -22,6 +22,7 @@ namespace float8_internal {
 
 using Float8E4M3FN = ml_dtypes::float8_e4m3fn;
 using Float8E5M2 = ml_dtypes::float8_e5m2;
+using Float8E8M0FNU = ml_dtypes::float8_e8m0fnu;
 
 }  // namespace float8_internal
 }  // namespace tflite
