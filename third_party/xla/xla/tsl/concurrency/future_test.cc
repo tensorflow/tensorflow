@@ -71,6 +71,28 @@ TEST(FutureTest, StatusConstructedFuture) {
   EXPECT_EQ(future.Await(), absl::OkStatus());
 }
 
+TEST(FutureTest, FutureBoolCopyAndMoveDoesNotConvertViaOperatorBool) {
+  auto [promise, future] = MakePromise<bool>();
+  EXPECT_FALSE(future.IsReady());
+
+  // Copying a non-const Future<bool> lvalue must copy the future (sharing the
+  // pending async value), not invoke operator bool() via Future(U&&).
+  Future<bool> copied_from_non_const = future;
+  EXPECT_FALSE(copied_from_non_const.IsReady());
+
+  // Moving a const Future<bool> rvalue (e.g. when moving a lambda that captured
+  // Future<bool> by value) must copy the future, not invoke operator bool().
+  const Future<bool> const_future = future;
+  Future<bool> moved_from_const = std::move(const_future);
+  EXPECT_FALSE(moved_from_const.IsReady());
+
+  promise.Set(false);
+  EXPECT_TRUE(copied_from_non_const.IsReady());
+  EXPECT_THAT(copied_from_non_const.Await(), IsOkAndHolds(false));
+  EXPECT_TRUE(moved_from_const.IsReady());
+  EXPECT_THAT(moved_from_const.Await(), IsOkAndHolds(false));
+}
+
 TEST(FutureTest, ValueConstructedFuture) {
   Future<int32_t> future = Future<int32_t>(42);
   EXPECT_TRUE(future.IsReady());
