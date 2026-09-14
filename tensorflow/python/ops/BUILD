@@ -1799,6 +1799,7 @@ py_library(
     srcs = [
         "image_ops.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
