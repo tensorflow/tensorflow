@@ -135,6 +135,7 @@ ENTRY %AllReduce {
   const auto* rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 0) << rs->ToString();
+  EXPECT_FALSE(rs->channel_id().has_value());
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
@@ -419,8 +420,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/8,
                                                /*use_spmd_partitioning=*/true,
                                                /*expect_change=*/true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
+  const auto* rs = Cast<HloReduceScatterInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_EQ(rs->channel_id(), 1);
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
