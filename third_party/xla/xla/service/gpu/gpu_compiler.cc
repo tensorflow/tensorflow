@@ -355,6 +355,9 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
+// Test change: verify bazel-diff impacted target filtering on a widely-used
+// GPU compiler source file.
+
 namespace xla {
 namespace gpu {
 namespace {

@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 # Copyright 2024 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +30,21 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Any, ClassVar, Dict, List, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
+
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if _REPO_ROOT not in sys.path:
+  sys.path.insert(0, _REPO_ROOT)
+
+# pylint: disable=g-import-not-at-top
+try:
+  from build_tools.ci import bazel_diff
+except (ImportError, ModuleNotFoundError):
+  try:
+    from build_tools.ci import bazel_diff  # pyrefly: ignore[missing-import]
+  except (ImportError, ModuleNotFoundError):
+    import bazel_diff  # pyrefly: ignore[missing-import]
+# pylint: enable=g-import-not-at-top
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
@@ -151,6 +164,8 @@ class Build:
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   startup_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
+  use_bazel_diff: bool = False
+  bazel_diff_use_cquery: bool = True
 
   def __post_init__(self):
     # pylint: disable=protected-access
@@ -169,13 +184,17 @@ class Build:
     return cls._builds
 
   def bazel_command(
-      self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
+      self,
+      subcommand: str = "test",
+      extra_options: Tuple[str, ...] = (),
+      target_pattern_file: Optional[str] = None,
   ) -> List[str]:
     """Returns a bazel test command for this build.
 
     Args:
       subcommand: The subcommand to give to bazel. `test` by default.
       extra_options: Extra options. For now just used to pass in `--nobuild`.
+      target_pattern_file: Optional file containing explicit target patterns.
 
     Returns: List of command line arguments
     """
@@ -209,6 +228,15 @@ class Build:
         + options
         + list(extra_options)
     )
+    if target_pattern_file:
+      return [
+          "bazel",
+          *startup_options,
+          subcommand,
+          *all_options,
+          "--skip_incompatible_explicit_targets",
+          f"--target_pattern_file={target_pattern_file}",
+      ]
     return [
         "bazel",
         *startup_options,
@@ -218,7 +246,9 @@ class Build:
         *self.target_patterns,
     ]
 
-  def commands(self) -> List[List[str]]:
+  def commands(
+      self, target_pattern_file: Optional[str] = None
+  ) -> List[List[str]]:
     """Returns list of commands for a build."""
     cmds = []
 
@@ -241,11 +271,18 @@ class Build:
       cmds.append(
           retry(
               self.bazel_command(
-                  subcommand="build", extra_options=("--nobuild",)
+                  subcommand="build",
+                  extra_options=("--nobuild",),
+                  target_pattern_file=target_pattern_file,
               )
           )
       )
-    cmds.append(self.bazel_command(subcommand=self.subcommand))
+    cmds.append(
+        self.bazel_command(
+            subcommand=self.subcommand,
+            target_pattern_file=target_pattern_file,
+        )
+    )
     cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
 
     return cmds
@@ -304,6 +341,8 @@ def nvidia_gpu_build_with_compute_capability(
     configs: Tuple[str, ...],
     compute_capability: int,
     multi_gpu: bool = False,
+    use_bazel_diff: bool = False,
+    bazel_diff_use_cquery: bool = True,
 ) -> Build:
   """Returns a build for a Nvidia GPU build with the given compute capability."""
   repo_env = {"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"}
@@ -350,6 +389,8 @@ def nvidia_gpu_build_with_compute_capability(
       options=options,
       repo_env=repo_env,
       extra_setup_commands=(["nvidia-smi"],) if multi_gpu else (),
+      use_bazel_diff=use_bazel_diff,
+      bazel_diff_use_cquery=bazel_diff_use_cquery,
   )
 
 
@@ -368,6 +409,8 @@ Build(
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 windows_x86_tag_filter = (
@@ -424,6 +467,8 @@ Build(
     startup_options={
         "output_user_root": "C:/x",
     },
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 Build(
@@ -434,6 +479,8 @@ Build(
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 cpu_arm_tag_filter = (
@@ -456,6 +503,8 @@ Build(
     },
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 nvidia_gpu_build_with_compute_capability(
@@ -463,6 +512,8 @@ nvidia_gpu_build_with_compute_capability(
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     compute_capability=75,
     multi_gpu=False,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 nvidia_gpu_build_with_compute_capability(
@@ -470,6 +521,8 @@ nvidia_gpu_build_with_compute_capability(
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     compute_capability=90,
     multi_gpu=True,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 oneapi_build_tag_filter = (
@@ -513,6 +566,8 @@ Build(
     test_tag_filters=oneapi_test_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 # ROCm builds - hermetic LLVM
@@ -556,6 +611,8 @@ Build(
     test_tag_filters=rocm_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 Build(
@@ -883,7 +940,10 @@ def dump_all_build_commands():
   # Awkward workaround b/c Build instances are not hashable
   for build in sorted(Build.all_builds().values(), key=lambda b: str(b.type_)):
     sys.stdout.write(f"# BEGIN {build.type_}\n")
-    for cmd in build.commands():
+    target_pattern_file = (
+        "/tmp/target_pattern_file" if build.use_bazel_diff else None
+    )
+    for cmd in build.commands(target_pattern_file=target_pattern_file):
       sys.stdout.write(" ".join(cmd) + "\n")
     sys.stdout.write(f"# END {build.type_}\n")
 
@@ -914,9 +974,41 @@ def main():
   if args.dump_commands:
     dump_all_build_commands()
     return
-  else:
-    for cmd in Build.all_builds()[args.build].commands():
-      sh(cmd)
+
+  build = Build.all_builds()[args.build]
+  base_sha = os.environ.get("XLA_CI_BAZEL_DIFF_BASE_SHA", "").strip()
+  head_sha = os.environ.get("XLA_CI_BAZEL_DIFF_HEAD_SHA", "HEAD").strip()
+  disabled = os.environ.get("XLA_CI_DISABLE_BAZEL_DIFF", "false").lower() in (
+      "true",
+      "1",
+      "yes",
+  )
+
+  target_pattern_file = None
+  if build.use_bazel_diff and base_sha and not disabled:
+    logging.info(
+        "Running bazel-diff analysis (base=%s, head=%s)",
+        base_sha,
+        head_sha,
+    )
+    decision = bazel_diff.compute_impacted_targets(build, base_sha, head_sha)
+    bazel_diff.report_decision(decision, str(build.type_))
+
+    if decision.decision == bazel_diff.BazelDiffDecisionType.SKIP:
+      logging.info("bazel-diff: 0 impacted targets, skipping Bazel commands!")
+      return
+    elif decision.decision == bazel_diff.BazelDiffDecisionType.IMPACTED:
+      target_pattern_file = decision.impacted_targets_file
+
+  for cmd in build.commands(target_pattern_file=target_pattern_file):
+    res = sh(cmd, check=False)
+    if res.returncode == 4 and target_pattern_file:
+      logging.info(
+          "Bazel returned exit code 4 (no tests found), treating as success."
+      )
+      continue
+    if res.returncode != 0:
+      sys.exit(res.returncode)
 
 
 if __name__ == "__main__":
