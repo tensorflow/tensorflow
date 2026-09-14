@@ -55,7 +55,7 @@ absl::StatusOr<HloInstruction*> Downcast(HloInstruction* input,
   broadcasted_dimensions.push_back(factor);
 
   Shape broadcasted_shape =
-      ShapeUtil::MakeShape(input_shape.element_type(), broadcasted_dimensions);
+      ShapeUtil::ChangeElementType(output_shape, input->shape().element_type());
 
   HloInstruction* broadcasted_input =
       MakeBroadcastHlo(input, broadcast_dims, broadcasted_shape);
@@ -134,6 +134,9 @@ absl::StatusOr<HloInstruction*> Upcast(HloInstruction* input,
     ABSL_ASSIGN_OR_RETURN(
         HloInstruction * slice,
         MakeSliceHlo(collapsed_input, start_indices, limit_indices, strides));
+    if (output_shape.dimensions().size() > 0) {
+      *slice->mutable_shape()->mutable_layout() = output_shape.layout();
+    }
     HloInstruction* logical_slice =
         MakeBitcastConvertToHlo(slice, input_logical_type);
     HloInstruction* converted_slice =
