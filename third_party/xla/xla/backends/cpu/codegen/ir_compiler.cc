@@ -66,6 +66,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
@@ -503,8 +504,17 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   CHECK(md_str != nullptr);
   llvm::StringRef mem_region_name_str = md_str->getString();
 
+  // Each module gets assigned two names encoded into the buffer identifier:
+  // - Memory region name: human-friendly name shared among related kernels,
+  //   so that profilers can aggregate results per kernel.
+  // - Buffer identifier: to refer to each module uniquely. Necessary for
+  //   sanitizers.
+  std::string buffer_identifier = EncodeBufferIdentifier(
+      absl::string_view(mem_region_name_str.data(), mem_region_name_str.size()),
+      module.getModuleIdentifier());
+
   return std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(mc_stream_buffer), mem_region_name_str);
+      std::move(mc_stream_buffer), buffer_identifier);
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
