@@ -2539,16 +2539,18 @@ void GpuCollectiveBufferAnalysis(
   VLOG(2) << "Running unified GPU Custom Buffer Analysis for collective memory "
              "spaces";
 
-  bool allow_persistent_symmetric_memory = false;
-  if (opts.xla_gpu_enable_persistent_symmetric_memory()) {
+  bool allow_skipping_aliased_copies = false;
+  if (opts.xla_gpu_skip_aliased_collective_memory_copies()) {
     int64_t module_device_count =
         module->config().replica_count() * module->config().num_partitions();
     if (gpu_topology == nullptr ||
         (gpu_topology->number_of_devices() > 0 &&
          module_device_count == gpu_topology->number_of_devices())) {
-      allow_persistent_symmetric_memory = true;
+      allow_skipping_aliased_copies = true;
     }
   }
+  bool enable_persistent_symmetric_memory =
+      opts.xla_gpu_enable_persistent_symmetric_memory();
 
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     // Entry inputs or constants contained in this buffer
@@ -2606,9 +2608,17 @@ void GpuCollectiveBufferAnalysis(
     // Special Copy Insertion Case A: Entry input
     if (is_hlo_buffer_s1 && !entry_input_values.empty()) {
       for (const HloValue* input_value : entry_input_values) {
-        if (allow_persistent_symmetric_memory &&
+        if ((enable_persistent_symmetric_memory ||
+             allow_skipping_aliased_copies) &&
             input_value->defining_instruction()->opcode() ==
                 HloOpcode::kParameter) {
+          if (enable_persistent_symmetric_memory) {
+            VLOG(2) << "Skipping Case A copy insertion for S1 parameter with "
+                       "persistent symmetric memory enabled: "
+                    << input_value->ToShortString();
+            continue;
+          }
+
           const Shape& shape = input_value->shape();
           int64_t param_no =
               input_value->defining_instruction()->parameter_number();
@@ -2654,7 +2664,15 @@ void GpuCollectiveBufferAnalysis(
               continue;
             }
 
-            if (allow_persistent_symmetric_memory && pos.shape().has_layout() &&
+            if (enable_persistent_symmetric_memory) {
+              VLOG(2) << "Skipping Case B copy insertion for S1 ROOT with "
+                         "persistent symmetric memory enabled: "
+                      << pos.instruction->name();
+              marked_for_copy = true;
+              continue;
+            }
+
+            if (allow_skipping_aliased_copies && pos.shape().has_layout() &&
                 pos.shape().layout().memory_space() ==
                     static_cast<int64_t>(MemorySpaceColor::kCollective) &&
                 module->input_output_alias_config().OutputHasAlias(pos.index)) {

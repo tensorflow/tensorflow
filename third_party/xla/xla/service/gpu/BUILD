@@ -983,6 +983,7 @@ xla_cc_test(
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
+        "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:logical_buffer",
         "//xla/service:service_executable_run_options",

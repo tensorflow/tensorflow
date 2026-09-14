@@ -73,5 +73,28 @@ TEST(UtilsTest, LayoutModeToXlaShape_AutoDeviceMemorySpace) {
   EXPECT_FALSE(result.has_layout());
 }
 
+TEST(UtilsTest, LayoutModeToXlaShape_AutoCollectiveMemorySpace) {
+  Shape unsharded_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape sharded_shape = unsharded_shape;
+
+  // Auto layout mode with collective memory space should fallback to default
+  // layout and preserve kCollectiveMemorySpace.
+  LayoutMode layout_mode;
+  layout_mode.mode = LayoutMode::Mode::kAuto;
+
+  auto choose_compact_layout = [](Shape shape) -> absl::StatusOr<Shape> {
+    *shape.mutable_layout() = LayoutUtil::MakeLayout({0});
+    return shape;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result, LayoutModeToXlaShape(
+                        layout_mode, unsharded_shape, sharded_shape,
+                        Layout::kCollectiveMemorySpace, choose_compact_layout));
+
+  EXPECT_TRUE(result.has_layout());
+  EXPECT_EQ(result.layout().memory_space(), Layout::kCollectiveMemorySpace);
+}
+
 }  // namespace
 }  // namespace xla
