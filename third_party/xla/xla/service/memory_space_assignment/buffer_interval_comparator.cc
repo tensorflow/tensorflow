@@ -43,7 +43,7 @@ MemoryBoundednessBufferIntervalComparator::
     MemoryBoundednessBufferIntervalComparator(
         const CostAnalysis& cost_analysis,
         CostAnalysis::Cache* cost_analysis_cache)
-    : BufferIntervalComparator(),
+    : BufferIntervalKeyedComparator(),
       cost_analysis_(cost_analysis),
       cost_analysis_cache_(cost_analysis_cache) {}
 
@@ -52,7 +52,7 @@ MemoryBoundednessBufferIntervalComparator::
         const CostAnalysis& cost_analysis,
         CostAnalysis::Cache* cost_analysis_cache,
         MsaSortOrderOverrides msa_sort_order_overrides)
-    : BufferIntervalComparator(),
+    : BufferIntervalKeyedComparator(),
       cost_analysis_(cost_analysis),
       cost_analysis_cache_(cost_analysis_cache),
       msa_sort_order_overrides_(msa_sort_order_overrides) {}
@@ -65,37 +65,25 @@ MemoryBoundednessBufferIntervalComparator::DescribeComparisonCriteria() const {
 
 std::string MemoryBoundednessBufferIntervalComparator::CriteriaToString(
     const MsaBufferInterval& buffer_interval) {
-  return absl::StrCat("[ ", absl::StrJoin(GetTuple(buffer_interval), ", "),
-                      " ]");
-}
-
-bool MemoryBoundednessBufferIntervalComparator::LessThan(
-    const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
-  return GetTuple(lhs) < GetTuple(rhs);
+  return absl::StrCat(
+      "[ ", absl::StrJoin(GetComparisonKeyCached(buffer_interval), ", "), " ]");
 }
 
 int64_t MemoryBoundednessBufferIntervalComparator::GetLatestUseTime(
     const MsaBufferInterval& buffer_interval) {
-  auto latest_use_it = buffer_to_latest_use_.find(buffer_interval.buffer);
-  if (latest_use_it == buffer_to_latest_use_.end()) {
-    int64_t latest_use_time = 0;
-    for (const HloUse& use : buffer_interval.buffer->GetUses()) {
-      auto it = cost_analysis_.hlo_live_range().instruction_schedule().find(
-          use.instruction);
-      if (it != cost_analysis_.hlo_live_range().instruction_schedule().end()) {
-        latest_use_time = std::max(latest_use_time, it->second);
-      }
+  int64_t latest_use_time = 0;
+  for (const HloUse& use : buffer_interval.buffer->GetUses()) {
+    auto it = cost_analysis_.hlo_live_range().instruction_schedule().find(
+        use.instruction);
+    if (it != cost_analysis_.hlo_live_range().instruction_schedule().end()) {
+      latest_use_time = std::max(latest_use_time, it->second);
     }
-    latest_use_it =
-        buffer_to_latest_use_
-            .insert(std::make_pair(buffer_interval.buffer, latest_use_time))
-            .first;
   }
-  return latest_use_it->second;
+  return latest_use_time;
 }
 
-MemoryBoundednessBufferIntervalComparator::ComparisonTuple
-MemoryBoundednessBufferIntervalComparator::GetTuple(
+MemoryBoundednessBufferIntervalComparator::ComparisonKey
+MemoryBoundednessBufferIntervalComparator::BuildComparisonKey(
     const MsaBufferInterval& buffer_interval) {
   int64_t priority =
       MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
@@ -117,7 +105,7 @@ DefaultCrossProgramPrefetchBufferIntervalComparator::
     DefaultCrossProgramPrefetchBufferIntervalComparator(
         const HloLiveRange& hlo_live_range,
         const MsaSortOrderOverrides& msa_sort_order_overrides)
-    : BufferIntervalComparator(),
+    : BufferIntervalKeyedComparator(),
       hlo_live_range_(hlo_live_range),
       msa_sort_order_overrides_(msa_sort_order_overrides) {}
 
@@ -129,42 +117,32 @@ std::string DefaultCrossProgramPrefetchBufferIntervalComparator::
 std::string
 DefaultCrossProgramPrefetchBufferIntervalComparator::CriteriaToString(
     const MsaBufferInterval& buffer_interval) {
-  return absl::StrCat("[ ", absl::StrJoin(GetTuple(buffer_interval), ", "),
-                      " ]");
+  return absl::StrCat(
+      "[ ", absl::StrJoin(GetComparisonKeyCached(buffer_interval), ", "), " ]");
 }
 
-bool DefaultCrossProgramPrefetchBufferIntervalComparator::LessThan(
-    const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
-  return GetTuple(lhs) < GetTuple(rhs);
-}
-
-DefaultCrossProgramPrefetchBufferIntervalComparator::ComparisonTuple
-DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
+DefaultCrossProgramPrefetchBufferIntervalComparator::ComparisonKey
+DefaultCrossProgramPrefetchBufferIntervalComparator::BuildComparisonKey(
     const MsaBufferInterval& buffer_interval) {
   int64_t priority =
       MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
           msa_sort_order_overrides_, buffer_interval,
           /*is_cross_program_prefetch=*/true);
-  auto sort_data_it = additional_sort_data_.find(buffer_interval.buffer);
-  if (sort_data_it == additional_sort_data_.end()) {
-    AdditionalSortData sort_data;
-    absl::c_for_each(buffer_interval.buffer->GetUses(), [&](const HloUse& use) {
-      auto it = hlo_live_range_.instruction_schedule().find(use.instruction);
-      if (it == hlo_live_range_.instruction_schedule().end()) {
-        return;
-      }
-      sort_data.latest_use = std::max(sort_data.latest_use, it->second);
-      sort_data.cumulative_use_size +=
-          ShapeUtil::ElementsInRecursive(use.instruction->shape());
-    });
-    sort_data_it =
-        additional_sort_data_.try_emplace(buffer_interval.buffer, sort_data)
-            .first;
-  }
+
+  int64_t latest_use = 0;
+  int64_t cumulative_use_size = 0;
+  absl::c_for_each(buffer_interval.buffer->GetUses(), [&](const HloUse& use) {
+    auto it = hlo_live_range_.instruction_schedule().find(use.instruction);
+    if (it == hlo_live_range_.instruction_schedule().end()) {
+      return;
+    }
+    latest_use = std::max(latest_use, it->second);
+    cumulative_use_size +=
+        ShapeUtil::ElementsInRecursive(use.instruction->shape());
+  });
 
   return std::make_tuple(priority, -1 * buffer_interval.size,
-                         -1 * sort_data_it->second.cumulative_use_size,
-                         sort_data_it->second.latest_use,
+                         -1 * cumulative_use_size, latest_use,
                          buffer_interval.buffer->id());
 }
 
