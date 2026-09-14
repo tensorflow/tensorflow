@@ -254,7 +254,7 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
 }
 
 bool IsTritonDotScaledOperandType(PrimitiveType type) {
-  return type == F4E2M1FN || type == F8E4M3FN || type == F8E5M2;
+  return type == F4E2M1FN || type == F8E4M3FN || type == F8E5M2 || type == BF16;
 }
 
 bool IsPackedTritonDotScaledOperandType(PrimitiveType type) {
