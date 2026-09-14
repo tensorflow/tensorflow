@@ -425,6 +425,7 @@ StreamExecutorGpuTopologyDescription::GetMemorySpaceKindForShape(
         return GetMemorySpaceKindIds()[1];
         break;
       case Layout::kGenericFastMemorySpace:
+      case Layout::kCollectiveMemorySpace:
       case Layout::kDefaultMemorySpace:
         break;
       default:
