@@ -2,7 +2,7 @@ diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
 index 654c5290..71f75526 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,299 +1,14125 @@
+@@ -1,299 +1,14090 @@
  Auto generated patch. Do not edit or delete it, even if empty.
 -diff -ruN --strip-trailing-cr a/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h b/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
 ---- a/clang/include/clang/Analysis/Analyses/LifetimeSafety/LifetimeSafety.h
@@ -14311,41 +14311,6 @@ index 654c5290..71f75526 100644
 +   %c = fcmp olt <4 x float> %src2, zeroinitializer
 +   %s = select <4 x i1> %c, <4 x float> %1, <4 x float> %src1
 +   ret <4 x float> %s
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Support/BUILD.bazel b/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Support/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Support/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Support/BUILD.bazel
-+@@ -45,6 +45,7 @@
-+         "//mlir:ArithDialect",
-+         "//mlir:ControlFlowInterfaces",
-+         "//mlir:IR",
-++        "//mlir:LLVMDialect",
-+         "//mlir:OpenACCDialect",
-+         "//mlir:OpenACCUtils",
-+         "//mlir:Support",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Transforms/BUILD.bazel b/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Transforms/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Transforms/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/flang/lib/Optimizer/OpenACC/Transforms/BUILD.bazel
-+@@ -24,10 +24,12 @@
-+     ),
-+     deps = [
-+         "//flang:RuntimeHeaders",
-++        "//flang:SemanticsHeaders",
-+         "//flang/include/flang/Optimizer/Analysis:AnalysisHeaders",
-+         "//flang/include/flang/Optimizer/Builder:BuilderHeaders",
-+         "//flang/include/flang/Optimizer/Dialect:DialectHeaders",
-+         "//flang/include/flang/Optimizer/Dialect/CUF:CUFHeaders",
-++        "//flang/include/flang/Optimizer/Dialect/CUF/Attributes:CUFAttrsHeaders",
-+         "//flang/include/flang/Optimizer/HLFIR:HLFIRHeaders",
-+         "//flang/include/flang/Optimizer/OpenACC:FIROpenACCPassesIncGen",
-+         "//flang/include/flang/Optimizer/OpenACC:OpenACCHeaders",
-+@@ -42,6 +44,7 @@
-+         "//flang/lib/Optimizer/OpenACC/Support:FIROpenACCSupport",
-+         "//llvm:Support",
-+         "//mlir:Analysis",
-++        "//mlir:ArithDialect",
-+         "//mlir:FuncDialect",
-+         "//mlir:IR",
-+         "//mlir:OpenACCAnalysis",
 +diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
 +--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
 ++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
