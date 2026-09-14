@@ -173,6 +173,10 @@ TEST(StreamExecutorGpuClientTest, ResultsHaveIndividualDefinitionEvents) {
 
   ASSERT_OK_AND_ASSIGN(auto client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+#if !(defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \
+      defined(TENSORFLOW_USE_SYCL))
+  GTEST_SKIP() << "Individual definition events not supported";
+#endif
   ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
   CompileOptions compile_options;
   compile_options.individually_defined_output_indices = {0, 1};
@@ -212,6 +216,10 @@ TEST(StreamExecutorGpuClientTest, AsyncResultDefinitionEventUsesAsyncStream) {
 
   ASSERT_OK_AND_ASSIGN(auto client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+#if !(defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \
+      defined(TENSORFLOW_USE_SYCL))
+  GTEST_SKIP() << "Individual definition events not supported";
+#endif
   ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
   CompileOptions compile_options;
   compile_options.individually_defined_output_indices = {0};
