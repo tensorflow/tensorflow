@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tests/aot_interception_pjrt_client.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -117,6 +118,23 @@ absl::Status CompareStructurally(
         "Golden Proto structural comparison failed:\n", diff_string));
   }
   return absl::OkStatus();
+}
+
+std::string RegenerationHint(absl::string_view target_name) {
+  // Bazel exports the running test's full label as TEST_TARGET, which is what
+  // update_goldens.py takes. Fall back to a placeholder label if it is unset.
+  const char* test_target = std::getenv("TEST_TARGET");
+  std::string label = test_target != nullptr
+                          ? std::string(test_target)
+                          : absl::StrCat("//<package>:", target_name);
+  return absl::StrCat(
+      "\n\nRegenerate the goldens for target `", label,
+      "` and add the newly generated v<N+1> directory to the change after "
+      "reviewing the differences.\n"
+      "(Google-internal: run, from the workspace root, "
+      "third_party/tensorflow/compiler/xla/tests/"
+      "aot_compatibility_experimental/google/update_goldens.py ",
+      label, ")");
 }
 
 }  // namespace
@@ -271,12 +289,9 @@ absl::Status AOTInterceptionPjrtClient::VerifyAgainstGolden(
         tsl::io::Basename(tsl::io::Dirname(tsl::io::Dirname(artifact_path_)));
     return absl::Status(
         diff_status.code(),
-        absl::StrCat(
-            "Golden artifact verification failed for ", artifact_path_, ".\n",
-            diff_status.message(), "\n\nRegenerate the goldens for target `",
-            target_name,
-            "` and add the newly generated v<N+1> directory to the change "
-            "after reviewing the differences."));
+        absl::StrCat("Golden artifact verification failed for ", artifact_path_,
+                     ".\n", diff_status.message(),
+                     RegenerationHint(target_name)));
   }
 
   return absl::OkStatus();
