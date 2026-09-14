@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -62,17 +63,26 @@ class CopyInsertion : public HloModulePass {
   // backend specific function that decides whether an instruction
   // can share buffer with its operand.
   //
+  // `view_color` is the layout memory space color of view values (address
+  // stand ins with no storage of their own that alias their operand 0's
+  // buffer, see BufferAssigner::Options::dus_view_color). When set, copy
+  // removal counts the readers of a value's views as uses of that value, so
+  // no producer is merged into the viewed buffer between a view and its
+  // readers.
+  //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
   explicit CopyInsertion(
       const AliasInfo* alias_info,
       int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit,
       std::function<bool(const HloInstruction* copy)> should_skip_removal =
-          nullptr)
+          nullptr,
+      std::optional<int64_t> view_color = std::nullopt)
       : alias_info_(alias_info),
         should_skip_removal_(should_skip_removal),
         use_region_based_live_range_analysis_(
-            use_region_based_live_range_analysis) {}
+            use_region_based_live_range_analysis),
+        view_color_(view_color) {}
 
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
@@ -140,6 +150,7 @@ class CopyInsertion : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
   int64_t use_region_based_live_range_analysis_;
+  std::optional<int64_t> view_color_;
 };
 
 }  // namespace xla
