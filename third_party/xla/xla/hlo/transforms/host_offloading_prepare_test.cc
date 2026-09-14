@@ -18,24 +18,30 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::xla::RunFileCheck;
 using Rewrite = HostOffloadingPrepare::Rewrite;
 
 class HostOffloadingPrepareTest : public HloHardwareIndependentTestBase {
  protected:
+  HostOffloadingPrepare pass_{Rewrite::kElideMoveToHost};
   absl::StatusOr<bool> RunRewrite(HloModule* module, Rewrite rewrite) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
@@ -383,6 +389,187 @@ ENTRY main {
 
   RunAndFilecheckHloRewrite(
       hlo, HostOffloadingPrepare(Rewrite::kConvertToCustomCall), expected);
+}
+
+TEST_F(HostOffloadingPrepareTest, EntryCallsFooTransformationInsideFoo) {
+  const std::string hlo_string = R"(
+HloModule my_module
+
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT multiply.0 = s32[32] multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
+}, execution_thread="host"
+
+// CHECK-LABEL: %foo
+// CHECK-NOT: custom_call_target="MoveToHost"
+// CHECK: %start = {{.*}} async-start(%p), async_execution_thread="host", calls=%async_computation
+// CHECK: ROOT %done = {{.*}} async-done(%start)
+foo {
+  p = s32[32] parameter(0)
+  move_to_host = s32[32] custom-call(p), custom_call_target="MoveToHost"
+  start = ((s32[32]), s32[32], u32[]) async-start(move_to_host), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32] async-done(start), frontend_attributes={_xla_compute_type="host"}
+}
+
+ENTRY main {
+  x = s32[32] parameter(0)
+  ROOT call = s32[32] call(x), to_apply=foo
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(pass_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HostOffloadingPrepareTest,
+       EntryCallsFooAndBarFooCallsBarTransformationInsideBar) {
+  const std::string hlo_string = R"(
+HloModule my_module
+
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT multiply.0 = s32[32] multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
+}, execution_thread="host"
+
+// CHECK-LABEL: %bar
+// CHECK-NOT: custom_call_target="MoveToHost"
+// CHECK: %start = {{.*}} async-start(%p), async_execution_thread="host", calls=%async_computation
+// CHECK: ROOT %done = {{.*}} async-done(%start)
+bar {
+  p = s32[32] parameter(0)
+  move_to_host = s32[32] custom-call(p), custom_call_target="MoveToHost"
+  start = ((s32[32]), s32[32], u32[]) async-start(move_to_host), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32] async-done(start), frontend_attributes={_xla_compute_type="host"}
+}
+
+foo {
+  p = s32[32] parameter(0)
+  ROOT call_bar = s32[32] call(p), to_apply=bar
+}
+
+ENTRY main {
+  x = s32[32] parameter(0)
+  call_foo = s32[32] call(x), to_apply=foo
+  call_bar = s32[32] call(x), to_apply=bar
+  ROOT add = s32[32] add(call_foo, call_bar)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(pass_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HostOffloadingPrepareTest,
+       MoveToHostWrappedInCallTransformationDoesNotHappen) {
+  const std::string hlo_string = R"(
+HloModule my_module
+
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT multiply.0 = s32[32] multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
+}, execution_thread="host"
+
+foo {
+  p = s32[32] parameter(0)
+  ROOT move_to_host = s32[32] custom-call(p), custom_call_target="MoveToHost"
+}
+
+ENTRY main {
+  x = s32[32] parameter(0)
+  x_host = s32[32] call(x), to_apply=foo
+  start = ((s32[32]), s32[32], u32[]) async-start(x_host), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32] async-done(start), frontend_attributes={_xla_compute_type="host"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(pass_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(HostOffloadingPrepareTest,
+       AsyncStartWrappedInCallTransformationDoesNotHappen) {
+  const std::string hlo_string = R"(
+HloModule my_module
+
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT multiply.0 = s32[32] multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
+}, execution_thread="host"
+
+foo {
+  p = s32[32] parameter(0)
+  start = ((s32[32]), s32[32], u32[]) async-start(p), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32] async-done(start), frontend_attributes={_xla_compute_type="host"}
+}
+
+ENTRY main {
+  x = s32[32] parameter(0)
+  move_to_host = s32[32] custom-call(x), custom_call_target="MoveToHost"
+  ROOT call = s32[32] call(move_to_host), to_apply=foo
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(pass_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(HostOffloadingPrepareTest,
+       HostComputationSharedByCallerNotWrappedByAsyncStart) {
+  const std::string hlo_string = R"(
+HloModule my_module
+
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT multiply.0 = s32[32] multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+// CHECK-LABEL: %async_computation
+// CHECK: ROOT %custom-call = {{.*}} custom-call(%param_0), custom_call_target="HostExecute", called_computations={%host_computation}
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation
+}, execution_thread="host"
+
+// CHECK-LABEL: %main
+// CHECK: %start = {{.*}} async-start(%x), async_execution_thread="host", calls=%async_computation
+// CHECK: %done = {{.*}} async-done(%start)
+// CHECK: %direct_call = {{.*}} call(%x), to_apply=%host_computation
+// CHECK: ROOT %add = {{.*}} add(%done, %direct_call)
+ENTRY main {
+  x = s32[32] parameter(0)
+  start = ((s32[32]), s32[32], u32[]) async-start(x), async_execution_thread="host", calls=async_computation
+  done = s32[32] async-done(start)
+  direct_call = s32[32] call(x), to_apply=host_computation
+  ROOT add = s32[32] add(done, direct_call)
+}
+)";
+
+  HostOffloadingPrepare pass(Rewrite::kConvertToCustomCall);
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace
