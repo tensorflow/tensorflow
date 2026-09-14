@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/request_id.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
