@@ -15087,6 +15087,96 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceOfDynamicSlice) {
                                   m::ConstantScalar(6))))));
 }
 
+TEST_F(AlgebraicSimplifierTest, FusesShuffleRotates) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule shuffle_module
+
+    ENTRY main {
+      p0 = f32[5]{0} parameter(0)
+      r1 = f32[5]{0} shuffle(p0), dimensions={0}, mode=rotate, shifts={2}
+      ROOT r2 = f32[5]{0} shuffle(r1), dimensions={0}, mode=rotate, shifts={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kShuffle);
+  auto* shuffle = Cast<HloShuffleInstruction>(root);
+  EXPECT_EQ(shuffle->operand(0)->opcode(), HloOpcode::kParameter);
+  ASSERT_EQ(shuffle->dimensions().size(), 1);
+  EXPECT_EQ(shuffle->dimensions()[0], 0);
+  EXPECT_EQ(shuffle->rotate().shifts(0), 3);
+}
+
+TEST_F(AlgebraicSimplifierTest, RemovesShuffleRotateOnSplatBroadcast) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule shuffle_module
+
+    ENTRY main {
+      c = f32[] constant(1.0)
+      b = f32[5,5]{1,0} broadcast(c), dimensions={}
+      ROOT r = f32[5,5]{1,0} shuffle(b), dimensions={0}, mode=rotate, shifts={2}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+}
+
+TEST_F(AlgebraicSimplifierTest, RemovesNoopDimAndCanonicalizesShift) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule shuffle_module
+
+    ENTRY main {
+      p0 = f32[5,5]{1,0} parameter(0)
+      ROOT r = f32[5,5]{1,0} shuffle(p0), dimensions={1,0}, mode=rotate,
+        shifts={0,-1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kShuffle);
+  auto* shuffle = Cast<HloShuffleInstruction>(root);
+  ASSERT_EQ(shuffle->dimensions().size(), 1);
+  EXPECT_EQ(shuffle->dimensions()[0], 0);
+  EXPECT_EQ(shuffle->rotate().shifts(0), 4);
+}
+
+TEST_F(AlgebraicSimplifierTest, CanonicalizesMultiDimShuffleRotate) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule shuffle_module
+
+    ENTRY main {
+      p0 = f32[5,6]{1,0} parameter(0)
+      ROOT r = f32[5,6]{1,0} shuffle(p0), dimensions={1,0}, mode=rotate,
+        shifts={3,-2}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  auto* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kShuffle);
+  auto* shuffle = Cast<HloShuffleInstruction>(root);
+  ASSERT_EQ(shuffle->dimensions().size(), 2);
+  EXPECT_EQ(shuffle->dimensions()[0], 0);
+  EXPECT_EQ(shuffle->rotate().shifts(0), 3);
+  EXPECT_EQ(shuffle->dimensions()[1], 1);
+  EXPECT_EQ(shuffle->rotate().shifts(1), 3);
+}
+
 }  // namespace
 }  // namespace xla
-// Trivial comment to force rebuild

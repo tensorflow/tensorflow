@@ -965,6 +965,35 @@ enum RandomAlgorithm {
   // Next: 2
 }
 
+// The mode of a `shuffle` instruction together with the attributes that
+// parameterize that mode. A shuffle moves the elements of its operand around
+// along its shuffled dimensions, and the mode is the pattern of that movement.
+// Every mode owns a message holding exactly the attributes that the mode
+// needs, and the active case of the `mode` oneof selects the mode; a mode
+// without attributes owns an empty message.
+//
+// The name of a case of the `mode` oneof is also the name of the mode in the
+// HLO text format, e.g. `mode=rotate`.
+message ShuffleMode {
+  // Rotates the elements along each shuffled dimension to the left, wrapping
+  // the elements that fall off the front around to the back, e.g. rotating
+  // `[1, 2, 3, 4]` by a shift of 1 yields `[2, 3, 4, 1]`.
+  message Rotate {
+    // The shift of each rotated dimension, in the order in which the
+    // dimensions appear in `dimensions`. A shift of `s` moves the
+    // element at index `i` of a dimension of size `d` to index
+    // `(i - s) mod d`, so `s` is the index of the element that ends up first.
+    // Shifts outside of `[0, d)`, including negative ones, wrap around.
+    repeated int64 shifts = 1;
+  }
+
+  oneof mode {
+    Rotate rotate = 1;
+  }
+
+  // Next: 2
+}
+
 message TriangularSolveOptions {
   // If true, solves ax = b. If false, solves xa = b.
   bool left_side = 1;
@@ -1405,8 +1434,14 @@ message PrecisionConfig {
     ALG_DOT_F32_F32_F32 = 11;
     ALG_DOT_F64_F64_F64 = 12;
     ALG_DOT_BF16_BF16_F32_X9 = 13;
+    // An algorithm which uses 3 FP8 matmuls to emulate a BF16_BF16 dot product
+    // with F32 accumulation.
+    ALG_DOT_BF16_BF16_FP8X3 = 14;
+    // An algorithm which uses 4 FP8 matmuls to emulate a BF16_BF16 dot product
+    // with F32 accumulation.
+    ALG_DOT_BF16_BF16_FP8X4 = 15;
 
-    // Next: 14
+    // Next: 16
   }
 
   repeated Precision operand_precision = 1;

@@ -660,7 +660,8 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
       unsorted = math_ops.unsorted_segment_sum(
           np.ones((3)), segment_ids=898042203, num_segments=num_segments)
       with self.assertRaisesOpError(
-          "Encountered overflow when multiplying | must not be negative"
+          "Encountered overflow when multiplying | must not be negative | "
+          "is too large"
       ):
         self.evaluate(unsorted)
 
@@ -723,6 +724,67 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
               self.assertAllClose(evaluated_min[0][1], 1.0)
               self.assertTrue(np.isnan(evaluated_max[0][0]))
               self.assertAllClose(evaluated_max[0][1], 3.0)
+
+  def testNumSegmentsOverflow(self):
+    """Regression test: an oversized num_segments raises InvalidArgumentError.
+
+    Excessively large num_segments values (near INT64_MAX) cause integer
+    overflow in internal size calculations, leading to illegal memory access
+    or process abort. The kint32max upper bound prevents this. See #117549.
+    """
+    data = constant_op.constant([1, 2, 3, 4], dtype=dtypes_lib.int32)
+    segment_ids = constant_op.constant([0, 1, 0, 1], dtype=dtypes_lib.int64)
+    # Just above the 2G limit (2^31 + 1).
+    num_segments = constant_op.constant((1 << 31) + 1, dtype=dtypes_lib.int64)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "is too large"
+    ):
+      self.evaluate(
+          math_ops.unsorted_segment_sum(
+              data=data, segment_ids=segment_ids, num_segments=num_segments
+          )
+      )
+
+  def testNumSegmentsOverflow_Int32Index(self):
+    """num_segments == 2^31 must be rejected when the index type is int32.
+
+    With a signed int32 index the largest representable segment count is
+    kint32max (2^31 - 1), so exactly 2^31 must be flagged as too large
+    rather than silently overflowing the cast to Index. See #117549.
+    """
+    data = constant_op.constant([1, 2, 3, 4], dtype=dtypes_lib.int32)
+    segment_ids = constant_op.constant([0, 1, 0, 1], dtype=dtypes_lib.int32)
+    # Exactly the 2^31 boundary: one past what a signed int32 can represent.
+    num_segments = constant_op.constant(1 << 31, dtype=dtypes_lib.int64)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "is too large"
+    ):
+      self.evaluate(
+          math_ops.unsorted_segment_sum(
+              data=data, segment_ids=segment_ids, num_segments=num_segments
+          )
+      )
+
+  def testNumSegmentsOverflow_Int64Index(self):
+    """num_segments == 2^31 must be rejected with an int64 index too.
+
+    The limit is kint32max for every index type, not 2^31. The two differ by
+    one, and an earlier revision of this check allowed 2^31 whenever Index was
+    wide enough to hold it -- which left a value that is not representable in a
+    signed 32-bit integer reaching any downstream code that indexes with int32.
+    This pins the 64-bit path to the same bound. See #117549.
+    """
+    data = constant_op.constant([1, 2, 3, 4], dtype=dtypes_lib.int32)
+    segment_ids = constant_op.constant([0, 1, 0, 1], dtype=dtypes_lib.int64)
+    num_segments = constant_op.constant(1 << 31, dtype=dtypes_lib.int64)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "is too large"
+    ):
+      self.evaluate(
+          math_ops.unsorted_segment_sum(
+              data=data, segment_ids=segment_ids, num_segments=num_segments
+          )
+      )
 
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
@@ -1182,6 +1244,27 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
           tf_xgrad = tf_op(tf_ygrad, indices, segment_ids, output_dim0)
           self.assertAllClose(tf_xgrad, np_xgrad)
 
+  def testGradientEmptyIndicesWithNonZeroOutputDim(self):
+    ops_list = [
+        math_ops.sparse_segment_sum_grad,
+        math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad,
+    ]
+    indices = []
+    segment_ids = []
+    output_dim0 = 4
+    for dtype in [
+        dtypes_lib.float16,
+        dtypes_lib.bfloat16,
+        dtypes_lib.float32,
+        dtypes_lib.float64,
+    ]:
+      grad = constant_op.constant([], shape=[0, 3], dtype=dtype)
+      for tf_op in ops_list:
+        res = self.evaluate(tf_op(grad, indices, segment_ids, output_dim0))
+        self.assertEqual(res.shape, (4, 3))
+        self.assertAllEqual(res, np.zeros((4, 3), dtype=dtype.as_numpy_dtype))
+
   def testGradientV2Explicit(self):
     # Note that the GPU implem has different paths for different inner sizes.
     for inner_size in (1, 2, 3, 32):
@@ -1281,7 +1364,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, 0, 10]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Index 10 out of range \[0, 10\)"):
@@ -1296,7 +1379,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, -1, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Index -1 out of range \[0, 10\)"):
@@ -1312,7 +1395,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 1, 4]  # 5 segments
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError("Invalid number of segments"):
@@ -1327,7 +1410,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 2, 0]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id 1 out of range \[0, 1\)"):
@@ -1342,7 +1425,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [-1, 0, 1, 1]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id -1 out of range \[0, 2\)"):

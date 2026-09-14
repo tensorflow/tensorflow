@@ -1175,5 +1175,95 @@ TEST(CustomCallThunkTest, RecordCommandBufferFfiRecordWithEmptyCommand) {
   EXPECT_EQ(host_update, 90);
 }
 
+TEST(CustomCallThunkTest, RecordCommandBufferMultipleRecordsInSameBuffer) {
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  if (executor->GetDeviceDescription().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm.";
+  }
+
+  CustomCallThunk::OwnedHandlerBundle bundle;
+  bundle.execute =
+      ffi::Ffi::BindExecute().To([]() { return absl::OkStatus(); });
+  bundle.record = ffi::Ffi::BindRecord()
+                      .Ctx<ffi::Extension<ffi::RecordExtension>>()
+                      .Arg<ffi::AnyBuffer>()
+                      .Arg<ffi::AnyBuffer>()
+                      .Ret<ffi::AnyBuffer>()
+                      .To(AddI32FfiHandler);
+
+  ASSERT_OK_AND_ASSIGN(auto setup, FfiRecordTestSetup::Create(
+                                       executor, std::move(bundle),
+                                       "add_i32_ffi_unroll", {10, 20}, {0}));
+
+  RecordTestAlloc alloc_iter1_create(executor);
+  ASSERT_OK_AND_ASSIGN(
+      auto slices_iter1_create,
+      AllocateAndCopy(*setup->stream, alloc_iter1_create, {1, 2}, {0}));
+  Thunk::ExecuteParams execute_params_iter1_create =
+      Thunk::ExecuteParams::Create(
+          ServiceExecutableRunOptions(), *alloc_iter1_create.buffer_allocations,
+          setup->stream.get(), setup->stream.get(), nullptr, nullptr, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(auto cb, executor->CreateCommandBuffer(
+                                    se::CommandBuffer::Mode::kPrimary));
+
+  // Record two iterations of the same CustomCallThunk into the same command
+  // buffer using the same CommandStateManager (as unrolled WhileThunk does).
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd_0,
+      setup->thunk->Record(*setup->execute_params, *setup->record_params,
+                           Command::RecordCreate{/*dependencies=*/{}},
+                           cb.get()));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd_1,
+      setup->thunk->Record(execute_params_iter1_create, *setup->record_params,
+                           Command::RecordCreate{/*dependencies=*/{cmd_0}},
+                           cb.get()));
+  ASSERT_NE(cmd_0, cmd_1);
+
+  ASSERT_OK(cb->Finalize());
+  ASSERT_OK(cb->Submit(setup->stream.get()));
+  ASSERT_OK(setup->stream->BlockHostUntilDone());
+
+  // Update both recorded nodes with new buffer allocations.
+  ASSERT_OK(cb->Update());
+  RecordTestAlloc alloc_iter0_update(executor);
+  ASSERT_OK_AND_ASSIGN(
+      auto slices_iter0_update,
+      AllocateAndCopy(*setup->stream, alloc_iter0_update, {40, 50}, {0}));
+  Thunk::ExecuteParams execute_params_iter0_update =
+      Thunk::ExecuteParams::Create(
+          ServiceExecutableRunOptions(), *alloc_iter0_update.buffer_allocations,
+          setup->stream.get(), setup->stream.get(), nullptr, nullptr, nullptr);
+
+  RecordTestAlloc alloc_iter1_update(executor);
+  ASSERT_OK_AND_ASSIGN(
+      auto slices_iter1_update,
+      AllocateAndCopy(*setup->stream, alloc_iter1_update, {100, 200}, {0}));
+  Thunk::ExecuteParams execute_params_iter1_update =
+      Thunk::ExecuteParams::Create(
+          ServiceExecutableRunOptions(), *alloc_iter1_update.buffer_allocations,
+          setup->stream.get(), setup->stream.get(), nullptr, nullptr, nullptr);
+
+  ASSERT_OK(setup->thunk->Record(execute_params_iter0_update,
+                                 *setup->record_params,
+                                 Command::RecordUpdate{cmd_0}, cb.get()));
+  ASSERT_OK(setup->thunk->Record(execute_params_iter1_update,
+                                 *setup->record_params,
+                                 Command::RecordUpdate{cmd_1}, cb.get()));
+  ASSERT_OK(cb->Finalize());
+  ASSERT_OK(cb->Submit(setup->stream.get()));
+  ASSERT_OK(setup->stream->BlockHostUntilDone());
+
+  int32_t out_0 = 0;
+  int32_t out_1 = 0;
+  ASSERT_OK(setup->stream->Memcpy(&out_0, alloc_iter0_update.result_dev_ptrs[0],
+                                  sizeof(int32_t)));
+  ASSERT_OK(setup->stream->Memcpy(&out_1, alloc_iter1_update.result_dev_ptrs[0],
+                                  sizeof(int32_t)));
+  EXPECT_EQ(out_0, 90);
+  EXPECT_EQ(out_1, 300);
+}
+
 }  // namespace
 }  // namespace xla::gpu
