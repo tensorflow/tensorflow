@@ -393,7 +393,7 @@ cc_test(
     deps = [
         ":delegate",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + tflite_extra_gles_deps(),
 )
 
 cc_library(
