@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -263,6 +264,83 @@ std::string PrintAttentionImplName(
       return "kOdmlRuntimeBmm";
     case AttentionImpl::kOdmlSdpa:
       return "kOdmlSdpa";
+  }
+}
+
+// odml.sdpa_transposed's single-token signature: GQA left unresolved (n query
+// heads against kv heads) and a rank-3 [b, 1, n * h] output. The reference is
+// the non-GQA runtime_bmm graph with K and V repeated per query group; its
+// rank-4 [b, n, 1, h] output has the same memory layout as the fused output.
+TEST(AttentionSdpaDecodeTest, GqaFusedOutput) {
+  const int b = 1;
+  const int t = 1;
+  const int s = 8;
+  const int h = 16;
+  const int n = 4;
+  const int kv = 2;
+  const int g = n / kv;
+  const int s_active = 5;
+  const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+
+  TfLiteYNNPackDelegateOptions options = TfLiteYNNPackDelegateOptionsDefault();
+  options.num_threads = 1;
+  options.static_shape = true;
+
+  // Layouts (transpose_io == false): q [b, n, t, h], k [b, kv, s, h],
+  // v [b, kv, h, s], mask [b, 1, t, s].
+  std::vector<float> q_data(b * n * t * h);
+  std::vector<float> k_data(b * kv * s * h);
+  std::vector<float> v_data(b * kv * h * s);
+  std::vector<float> mask_data(b * 1 * t * s);
+  for (size_t i = 0; i < q_data.size(); ++i) q_data[i] = 0.1f * (i % 10);
+  for (size_t i = 0; i < k_data.size(); ++i) k_data[i] = 0.2f * (i % 10);
+  for (size_t i = 0; i < v_data.size(); ++i) v_data[i] = 0.3f * (i % 10);
+  for (int i = 0; i < b * t; ++i) {
+    for (int j = 0; j < s; ++j) {
+      mask_data[i * s + j] = (j < s_active) ? 0.0f : -1e9f;
+    }
+  }
+
+  // Query head j reads kv head j / g (repeat_interleave order).
+  std::vector<float> k_rep(b * n * s * h);
+  std::vector<float> v_rep(b * n * h * s);
+  for (int ib = 0; ib < b; ++ib) {
+    for (int j = 0; j < n; ++j) {
+      const int src = j / g;
+      std::copy_n(&k_data[(ib * kv + src) * s * h], s * h,
+                  &k_rep[(ib * n + j) * s * h]);
+      std::copy_n(&v_data[(ib * kv + src) * h * s], h * s,
+                  &v_rep[(ib * n + j) * h * s]);
+    }
+  }
+
+  AttentionModel model_ref(b, t, s, h, n, scale, /*transpose_io=*/false,
+                           /*use_delegate=*/false, options,
+                           AttentionImpl::kOdmlRuntimeBmm);
+  model_ref.PopulateTensor(model_ref.query(), q_data);
+  model_ref.PopulateTensor(model_ref.key(), k_rep);
+  model_ref.PopulateTensor(model_ref.value(), v_rep);
+  model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  model_ref.PopulateTensor(model_ref.mask(), mask_data);
+  ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+  AttentionModel model(b, t, s, h, n, scale, /*transpose_io=*/false,
+                       /*use_delegate=*/true, options, AttentionImpl::kOdmlSdpa,
+                       /*num_kv_heads=*/kv, /*fused_output=*/true);
+  model.PopulateTensor(model.query(), q_data);
+  model.PopulateTensor(model.key(), k_data);
+  model.PopulateTensor(model.value(), v_data);
+  model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  model.PopulateTensor(model.mask(), mask_data);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  auto out_delegate = model.ExtractVector<float>(model.output());
+  auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+  ASSERT_EQ(out_delegate.size(), static_cast<size_t>(b * n * h));
+  ASSERT_EQ(out_delegate.size(), out_ref.size());
+  for (size_t i = 0; i < out_delegate.size(); ++i) {
+    EXPECT_FALSE(std::isnan(out_delegate[i]));
+    EXPECT_NEAR(out_delegate[i], out_ref[i], 1e-3f);
   }
 }
 
