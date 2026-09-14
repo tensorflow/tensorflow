@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
