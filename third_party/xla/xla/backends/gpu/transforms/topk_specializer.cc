@@ -363,8 +363,14 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
     }
     TF_RET_CHECK(topk->operand_count() == 1);
     bool is_cuda = compute_capability_.IsCuda();
+    bool enable_raft_for_stable_topk =
+        topk->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_raft_for_stable_topk();
     // Route stable TopK to RAFT select_k via Uint64 adapter
-    if (is_cuda && ShouldRewriteStableTopKToUint64(topk)) {
+    if (is_cuda && enable_raft_for_stable_topk &&
+        ShouldRewriteStableTopKToUint64(topk)) {
       ABSL_ASSIGN_OR_RETURN(HloInstruction * new_topk,
                        RewriteStableTopKToUint64(topk));
       return ReplaceInstruction(topk, new_topk);

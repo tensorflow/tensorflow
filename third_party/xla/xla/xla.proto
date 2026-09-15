@@ -1850,7 +1850,10 @@ message DebugOptions {
   // available devices in the topology.
   optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
 
-  // Next id: 546
+  // Enables Raft for stable TopK.
+  optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
+
+  // Next id: 547
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -596,6 +596,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_gxl_ragged_all_to_all(false);
   opts.set_xla_gpu_gxl_scratch_size_bytes(64 * 1024 * 1024);
   opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
+  opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -3617,6 +3618,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If true, allows skipping defensive copy insertion for S(1) collective "
       "memory parameters that have input-output aliasing and execute on all "
       "available devices in the topology."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_raft_for_stable_topk",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_raft_for_stable_topk),
+      debug_options->xla_gpu_experimental_enable_raft_for_stable_topk(),
+      "If true, enables RAFT for stable TopK."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
       bool_setter_for(

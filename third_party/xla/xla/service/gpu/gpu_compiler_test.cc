@@ -1796,6 +1796,7 @@ ENTRY main {
   // Configure module with debug options.
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
