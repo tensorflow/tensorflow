@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -410,6 +412,57 @@ ENTRY main {
 
   absl::Status status = pipeline.Run(module.get()).status();
   TF_EXPECT_OK(status);
+}
+
+// A module pass which removes the instructions named 'dead'.
+class RemoveDeadPass : public HloModulePass {
+  absl::string_view name() const override { return "remove-dead"; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
+    bool changed = false;
+    for (HloComputation* computation :
+         module->computations(execution_threads)) {
+      for (HloInstruction* instruction :
+           computation->MakeInstructionPostOrder()) {
+        if (instruction->name() == "dead") {
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+};
+
+// The cleanup after a pass compacts the instruction lists and renumbers the
+// unique ids of the instructions after a removed one; without it they keep
+// their ids.
+TEST_F(HloPassPipelineTest, CleanupBetweenPassesRenumbersUniqueIds) {
+  const std::string module_str = R"(
+HloModule CleanupBetweenPasses
+
+ENTRY main {
+  a = f32[] parameter(0)
+  dead = f32[] negate(a)
+  ROOT foo = f32[] negate(a)
+}
+)";
+  for (const bool cleanup : {true, false}) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(module_str));
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    const int64_t root_id = root->unique_id();
+    HloPassPipeline pipeline(TestName());
+    pipeline.set_cleanup_between_passes(cleanup);
+    pipeline.AddPass<RemoveDeadPass>();
+    ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+    EXPECT_TRUE(changed);
+    EXPECT_EQ(module->entry_computation()->instruction_count(), 2);
+    EXPECT_EQ(root->unique_id() != root_id, cleanup) << "cleanup " << cleanup;
+  }
 }
 
 class AppendPass : public HloModulePass {

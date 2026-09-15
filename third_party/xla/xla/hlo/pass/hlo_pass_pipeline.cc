@@ -88,7 +88,8 @@ absl::Status HloPassPipeline::RunInvariantCheckers(
   for (auto& invariant_checker : invariant_checkers_) {
     VLOG(1) << "    Invariant checker " << invariant_checker->name();
     absl::StatusOr<bool> changed_status =
-        RunHelper<HloT>(invariant_checker.get(), hlo, execution_threads);
+        RunHelper<HloT>(invariant_checker.get(), hlo, execution_threads,
+                        cleanup_between_passes_);
     VLOG(1) << "    Invariant checker done " << invariant_checker->name();
     if (!changed_status.ok()) {
       VLOG(2) << "Failed invariant check:";
@@ -245,7 +246,8 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
     }
-    auto status_or_changed = RunHelper<HloT>(pass, hlo, execution_threads);
+    auto status_or_changed =
+        RunHelper<HloT>(pass, hlo, execution_threads, cleanup_between_passes_);
     if (auto status = status_or_changed.status(); !status.ok()) {
       compilation_stats_->RecordPassError(
           pass_name, absl::StatusCodeToString(status.code()));

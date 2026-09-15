@@ -26,15 +26,18 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
@@ -2126,6 +2129,66 @@ TEST_F(CopyInsertionTest, ParameterAndOpsWithPartialAliasing) {
   InsertCopies(module.get());
 
   EXPECT_EQ(CountCopies(*module), 0);
+}
+
+// An ordering that orders nothing within a computation.
+class UnorderedHloOrdering : public HloOrdering {
+ public:
+  explicit UnorderedHloOrdering(const HloModule* module)
+      : HloOrdering(module) {}
+
+  const HloInstructionSequence* SequentialOrder(
+      const HloComputation& computation) const override {
+    return nullptr;
+  }
+
+  std::string ToString() const override { return "UnorderedHloOrdering"; }
+
+ protected:
+  bool ExecutesBeforeInSameComputation(const HloInstruction* a,
+                                       const HloInstruction* b) const override {
+    return false;
+  }
+};
+
+// Copy insertion that removes the copies of an unscheduled module under the
+// ordering above.
+class UnorderedCopyInsertion : public CopyInsertion {
+ public:
+  using CopyInsertion::CopyInsertion;
+
+ protected:
+  absl::StatusOr<std::unique_ptr<HloOrdering>> CreateUnscheduledOrdering(
+      const HloModule* module) const override {
+    return std::make_unique<UnorderedHloOrdering>(module);
+  }
+};
+
+// The donated parameter is read before its in place update, and the
+// dependency ordering sees that: the copies of the parameter and of the root
+// go. RemoveUnnecessaryCopies takes the ordering of an unscheduled module from
+// CreateUnscheduledOrdering, so an override that orders nothing keeps both.
+TEST_F(CopyInsertionTest, UnscheduledOrderingComesFromTheOverride) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, input_output_alias={ {}: (0, {}) }
+
+ENTRY main {
+  p = f32[8] parameter(0)
+  read = f32[8] negate(p)
+  ROOT update = f32[8] add(p, read)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  InsertCopies(module.get());
+  EXPECT_EQ(CountCopies(*module), 0);
+
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHlo));
+  UnorderedCopyInsertion unordered_copy_insertion(&alias_info_);
+  ASSERT_IS_OK(unordered_copy_insertion.Run(module.get()).status());
+  EXPECT_EQ(CountCopies(*module), 2);
+  EXPECT_THAT(FindInstruction(module.get(), "read"),
+              op::Negate(op::Copy(op::Parameter(0))));
 }
 
 TEST_F(CopyInsertionTest, SwizzlingWhileWithOneOp) {
