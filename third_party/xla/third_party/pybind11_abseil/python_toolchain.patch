@@ -1,0 +1,42 @@
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -34,39 +34,3 @@
+     version = "2.11.1.bzl.2"
+ )
+ 
+-SUPPORTED_PYTHON_VERSIONS = [
+-  "3.12",
+-  "3.11",
+-  "3.10",
+-  "3.9",
+-  "3.8"
+-]
+-
+-DEFAULT_PYTHON = "3.11"
+-
+-python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+-[
+-  python.toolchain(
+-    python_version = version,
+-    is_default = version == DEFAULT_PYTHON,
+-  )
+-  for version in SUPPORTED_PYTHON_VERSIONS
+-]
+-
+-use_repo(
+-    python,
+-    python = "python_versions",
+-)
+-
+-pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+-[
+-  pip.parse(
+-    hub_name = "pypi",
+-    python_version = version,
+-    requirements_lock = "//pybind11_abseil/requirements:requirements_lock_" + version.replace('.','_') + ".txt",
+-  )
+-  for version in SUPPORTED_PYTHON_VERSIONS
+-
+-]
+-
+-use_repo(pip, "pypi")

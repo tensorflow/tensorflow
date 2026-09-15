@@ -530,6 +530,7 @@ cc_library(
         ":types",
         "@tsl//tsl/platform:numbers",
     ],
+    alwayslink = True,
 )
 
 cc_library(
