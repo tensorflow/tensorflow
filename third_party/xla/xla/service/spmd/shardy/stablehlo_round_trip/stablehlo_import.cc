@@ -406,7 +406,7 @@ TensorShardingAttr convertToSdySharding(
     if (inlineMesh) {
       return TensorShardingAttr::getFullyClosed(
           ctx, /*rank=*/0,
-          MeshAttr::getMaximal(ctx, hloSharding.GetUniqueDevice()));
+          MeshAttr::getSingleDevice(ctx, hloSharding.GetUniqueDevice()));
     }
     return TensorShardingAttr::getFullyClosed(
         ctx, /*rank=*/0,
@@ -684,9 +684,9 @@ class ImportShardingsPass
     for (int64_t deviceId : deviceIdsForMaximalMesh) {
       // Create a mesh name with its deviceId as a suffix for each maximal mesh.
       std::string meshName = absl::StrCat("maximal_mesh_", deviceId);
-      auto meshOp =
-          MeshOp::create(opBuilder, moduleOp.getLoc(), meshName,
-                         MeshAttr::getMaximal(moduleOp.getContext(), deviceId));
+      auto meshOp = MeshOp::create(
+          opBuilder, moduleOp.getLoc(), meshName,
+          MeshAttr::getSingleDevice(moduleOp.getContext(), deviceId));
       symbolTable.insert(meshOp);
       deviceIdToMaximalMeshName[deviceId] = meshOp.getSymName();
     }
