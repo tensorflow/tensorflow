@@ -1085,3 +1085,6 @@ test:rbe_cross_compile_macos_x86 --jobs=100
 common --java_runtime_version=remotejdk_21
 
 # LINT.ThenChange(//xla/tensorflow.bazelrc)
+
+# Enabled flaky test attempts for release branch
+test --flaky_test_attempts=3
