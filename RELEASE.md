@@ -1,3 +1,31 @@
+# Release 2.23.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+*   <BREAKING CHANGES GO HERE>
+
+### Known Caveats
+
+*   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+
+### Major Features and Improvements
+
+*   <MAJOR FEATURES GO HERE>
+
+### Bug Fixes and Other Changes
+
+*   <BUG FIXES GO HERE>
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.22.0
 
 ## TensorFlow
