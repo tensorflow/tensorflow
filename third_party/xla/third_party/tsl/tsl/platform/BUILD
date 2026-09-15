@@ -1214,7 +1214,6 @@ tsl_cc_test(
         ":blocking_counter",
         ":random",
         ":unbounded_work_queue",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:env",

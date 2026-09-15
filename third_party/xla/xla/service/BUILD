@@ -1640,7 +1640,6 @@ cc_library(
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
-        "//learning/brain/google/xla:__pkg__",
     ]),
     deps = [
         ":buffer_value",
@@ -4659,9 +4658,11 @@ xla_cc_test(
     name = "host_offload_utils_test",
     srcs = ["host_offload_utils_test.cc"],
     deps = [
+        ":call_graph",
         ":host_offload_utils",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_set",
