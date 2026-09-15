@@ -30,6 +30,23 @@ typedef Eigen::GpuDevice GPUDevice;
 
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 CAST_FUNCTORS_SUBSET(GPUDevice);
+
+#define DEFINE_TEMP(O, I) template struct CastFunctor<GPUDevice, O, I>
+#define DEFINE_CAST_FLOAT_TO_INT(float_type) \
+  DEFINE_TEMP(int8, float_type);             \
+  DEFINE_TEMP(int16, float_type);            \
+  DEFINE_TEMP(int32, float_type);            \
+  DEFINE_TEMP(int64_t, float_type);          \
+  DEFINE_TEMP(uint8, float_type);            \
+  DEFINE_TEMP(uint16, float_type);           \
+  DEFINE_TEMP(uint32, float_type);           \
+  DEFINE_TEMP(uint64, float_type)
+
+DEFINE_CAST_FLOAT_TO_INT(Eigen::half);
+DEFINE_CAST_FLOAT_TO_INT(float);
+DEFINE_CAST_FLOAT_TO_INT(double);
+#undef DEFINE_CAST_FLOAT_TO_INT
+#undef DEFINE_TEMP
 #else
 CAST_FUNCTORS(GPUDevice);
 #endif
