@@ -138,8 +138,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       if (IsConstantOrPersistentTensor(input)) {
         SetTensorToPersistentRo(output);
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+        TF_LITE_ENSURE_EQ(context, output->bytes, input->bytes);
         op_data->output_ptr = output->data.data;
-        memcpy(output->data.data, input->data.data, input->bytes);
+        if (input->bytes > 0) {
+          memcpy(output->data.data, input->data.data, input->bytes);
+        }
       } else {
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
       }
