@@ -1254,6 +1254,10 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   OP_REQUIRES(ctx, cycle_length > 0,
               absl::InvalidArgumentError("`cycle_length` must be > 0"));
+  OP_REQUIRES(
+      ctx, cycle_length <= kMaxCycleLength,
+      absl::InvalidArgumentError(absl::StrCat(
+          "`cycle_length` must be <= ", kMaxCycleLength)));
 
   int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));

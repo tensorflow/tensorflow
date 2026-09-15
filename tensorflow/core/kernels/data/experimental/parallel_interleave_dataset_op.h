@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_PARALLEL_INTERLEAVE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_PARALLEL_INTERLEAVE_DATASET_OP_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -43,6 +45,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kTarguments = "Targuments";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  // Match InterleaveDataset's limit so a legacy parallel interleave cannot
+  // allocate an unbounded number of worker and buffering slots.
+  static constexpr int64_t kMaxCycleLength = 1'048'576;
 
   explicit ParallelInterleaveDatasetOp(OpKernelConstruction* ctx);
 
