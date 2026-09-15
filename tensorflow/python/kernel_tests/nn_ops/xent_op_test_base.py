@@ -51,7 +51,8 @@ class XentOpTestBase(test.TestCase):
     e = np.exp(logits - np.reshape(np.amax(logits, axis=dim), one_only_on_dim))
     probs = e / np.reshape(np.sum(e, axis=dim), one_only_on_dim)
     bp = (probs - labels)
-    l = -np.sum(labels * np.log(probs + 1.0e-20), axis=dim)
+    l = np.negative(
+        np.sum(labels * np.log(probs + 1.0e-20), axis=dim))
     return l, bp
 
   # TODO(b/123860949): The values are constant folded for XLA, so placeholders
@@ -188,6 +189,28 @@ class XentOpTestBase(test.TestCase):
     labels = np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64)
     logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64)
     self._testXent2D(labels, logits)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDoublePreservesSmallGradient(self):
+    tail_probability = 5.551115123125776e-17
+    for batch_size in (1, 4096):
+      for target_class in (0, 1):
+        for broadcast_labels in (False, True):
+          with self.subTest(batch_size=batch_size, target_class=target_class,
+                            broadcast_labels=broadcast_labels):
+            logits = np.zeros((batch_size, 2), dtype=np.float64)
+            logits[:, target_class] = 37.42994775023705
+            labels = np.zeros(
+                (1 if broadcast_labels else batch_size, 2), dtype=np.float64)
+            labels[:, target_class] = 1.0
+            expected = np.full_like(logits, tail_probability)
+            expected[:, target_class] = -tail_probability
+
+            _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+            gradient = self.evaluate(gradient)
+
+            self.assertAllClose(expected, gradient, rtol=1e-14, atol=0)
+            self.assertAllEqual(gradient[:, 0], -gradient[:, 1])
 
   @test_util.run_deprecated_v1
   def testGradient(self):
