@@ -54,7 +54,7 @@ using ::tensorflow::quantization::RepresentativeDatasetFile;
 
 }  // namespace
 
-PYBIND11_MODULE(pywrap_quantize_model, m) {
+PYBIND11_MODULE(pywrap_quantize_model, m, pybind11::mod_gil_not_used()) {
   // Supports absl::StatusOr<T> type conversions.
   pybind11::google::ImportStatusModule();
   pybind11_protobuf::ImportNativeProtoCasters();

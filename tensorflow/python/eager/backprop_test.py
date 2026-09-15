@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 import functools
+import threading
 
 from absl.testing import parameterized
 import numpy as np
@@ -170,6 +171,57 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       y, h = array_ops.identity_n([x, h])
 
     self.assertAllClose(1., tape.gradient(y, x))
+
+  def testConcurrentGradientFunctionRegistration(self):
+    previous_fn = backprop._gradient_function
+    stop = threading.Event()
+    errors = []
+
+    class DelegatingGradient:
+
+      def __call__(self, *args, **kwargs):
+        return previous_fn(*args, **kwargs)
+
+    def register_loop():
+      try:
+        for _ in range(2000):
+          # This temporary callable has no long-lived external reference.
+          # Replacing it exercises callback lifetime management.
+          pywrap_tfe.TFE_Py_RegisterGradientFunction(DelegatingGradient())
+          pywrap_tfe.TFE_Py_RegisterGradientFunction(previous_fn)
+      except BaseException as e:  # pylint: disable=broad-except
+        errors.append(e)
+      finally:
+        stop.set()
+
+    def execute_loop():
+      try:
+        while not stop.is_set():
+          x = constant_op.constant(1.0)
+          with backprop.GradientTape() as tape:
+            tape.watch(x)
+            y = x * x
+          gradient = tape.gradient(y, x)
+          self.assertIsNotNone(gradient)
+          self.assertAllClose(2.0, gradient)
+      except BaseException as e:  # pylint: disable=broad-except
+        errors.append(e)
+        stop.set()
+
+    try:
+      registration_thread = threading.Thread(target=register_loop)
+      execution_thread = threading.Thread(target=execute_loop)
+
+      registration_thread.start()
+      execution_thread.start()
+
+      registration_thread.join()
+      execution_thread.join()
+
+      if errors:
+        raise errors[0]
+    finally:
+      pywrap_tfe.TFE_Py_RegisterGradientFunction(previous_fn)
 
   def testGradientInsideLoop(self):
     with ops.Graph().as_default():
