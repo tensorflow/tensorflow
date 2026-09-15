@@ -66,6 +66,16 @@ bool IsMklEnabled();
 // Returns true if TF_ENABLE_ZENDNN_OPTS is set to 1
 bool IsZenDnnEnabled();
 
+// Returns true if KDNN (Kunpeng Deep Neural Network library) is
+// enabled. KDNN is gated on:
+//   * the build having been done with --define=enable_kdnn=true AND
+//   * the env-var TF_ENABLE_KDNN_OPTS not being explicitly disabled.
+//
+// Note: there is no automatic default-on behavior. KDNN is opt-in by
+// build flag AND by runtime env-var. This matches the existing
+// ZenDnnEnabled semantics.
+bool IsKDNNEnabled();
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_PORT_H_
