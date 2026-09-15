@@ -154,6 +154,13 @@ class MultiDeviceIterator : public ResourceBase {
           {{"shard_num", shard_num}});
     });
     tf_shared_lock l(mu_);
+    if (!multi_device_buffer_) {
+      return absl::FailedPreconditionError(
+          "GetNextFromShard() failed because the MultiDeviceIterator "
+          "has not been initialized. Ensure that you have run the initializer "
+          "operation for this MultiDeviceIterator before getting the next "
+          "element.");
+    }
     IteratorContext::Params params(ctx);
     params.flr = flr_;
     params.function_handle_cache = function_handle_cache_.get();
@@ -877,7 +884,8 @@ class DeleteMultiDeviceIteratorOp : public OpKernel {
       : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     // The iterator resource is guaranteed to
     // exist because the variant tensor wrapping the deleter is provided as an
     // unused input to this op, which guarantees that it has not run yet.
