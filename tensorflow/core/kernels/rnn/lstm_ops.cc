@@ -593,6 +593,35 @@ class LSTMBlockCellGradOp : public OpKernel {
     const Tensor* h_grad_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h_grad", &h_grad_tensor));
 
+    // The dimensions read below, and the sanity checks that follow them, index
+    // dimension 1 of these tensors. That is a fatal check rather than an error
+    // when a tensor has a lower rank, so validate the ranks first, the way
+    // LSTMBlockCellOp does before using the same inputs.
+    const auto check_rank = [](const Tensor* t, const char* name,
+                               int expected) -> absl::Status {
+      if (t->dims() != expected) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            name, " must be rank ", expected, " but is rank ", t->dims()));
+      }
+      return absl::OkStatus();
+    };
+    OP_REQUIRES_OK(ctx, check_rank(x_tensor, "x", 2));
+    OP_REQUIRES_OK(ctx, check_rank(cs_prev_tensor, "cs_prev", 2));
+    OP_REQUIRES_OK(ctx, check_rank(h_prev_tensor, "h_prev", 2));
+    OP_REQUIRES_OK(ctx, check_rank(w_tensor, "w", 2));
+    OP_REQUIRES_OK(ctx, check_rank(wci_tensor, "wci", 1));
+    OP_REQUIRES_OK(ctx, check_rank(wcf_tensor, "wcf", 1));
+    OP_REQUIRES_OK(ctx, check_rank(wco_tensor, "wco", 1));
+    OP_REQUIRES_OK(ctx, check_rank(b_tensor, "b", 1));
+    OP_REQUIRES_OK(ctx, check_rank(i_tensor, "i", 2));
+    OP_REQUIRES_OK(ctx, check_rank(cs_tensor, "cs", 2));
+    OP_REQUIRES_OK(ctx, check_rank(f_tensor, "f", 2));
+    OP_REQUIRES_OK(ctx, check_rank(o_tensor, "o", 2));
+    OP_REQUIRES_OK(ctx, check_rank(ci_tensor, "ci", 2));
+    OP_REQUIRES_OK(ctx, check_rank(co_tensor, "co", 2));
+    OP_REQUIRES_OK(ctx, check_rank(cs_grad_tensor, "cs_grad", 2));
+    OP_REQUIRES_OK(ctx, check_rank(h_grad_tensor, "h_grad", 2));
+
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
     const int64_t cell_size = cs_prev_tensor->dim_size(1);
@@ -1291,6 +1320,52 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Tensor* h_grad = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h_grad", &h_grad));
+
+    // `timelen`, `batch_size` and `cell_size` are taken from x and w, and every
+    // other input is sliced with them below. A tensor whose dimensions
+    // disagree is read out of bounds rather than failing the op: a zero batch
+    // on one side and a non-zero batch on the other crashes, and a shorter
+    // time dimension trips a fatal check while slicing. LSTMBlockCellGradOp
+    // already validates its own inputs this way. The rank is checked here as
+    // well so that the dimension lookups below are valid for any caller.
+    const auto check_dims = [&](const Tensor* t, const char* name,
+                                bool has_time) -> absl::Status {
+      const int expected_dims = has_time ? 3 : 2;
+      if (t->dims() != expected_dims) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(name, " must be rank ", expected_dims,
+                         " but is rank ", t->dims()));
+      }
+      const int batch_dim = has_time ? 1 : 0;
+      if (has_time && t->dim_size(0) != timelen) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(name, ".dim_size(0) != timelen: ", t->dim_size(0),
+                         " vs. ", timelen));
+      }
+      if (t->dim_size(batch_dim) != batch_size) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            name, ".dim_size(", batch_dim,
+            ") != batch_size: ", t->dim_size(batch_dim), " vs. ", batch_size));
+      }
+      if (t->dim_size(batch_dim + 1) != cell_size) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(name, ".dim_size(", batch_dim + 1,
+                         ") != cell_size: ", t->dim_size(batch_dim + 1),
+                         " vs. ", cell_size));
+      }
+      return absl::OkStatus();
+    };
+    OP_REQUIRES_OK(ctx, check_dims(cs_prev_tensor, "cs_prev", false));
+    OP_REQUIRES_OK(ctx, check_dims(h_prev_tensor, "h_prev", false));
+    OP_REQUIRES_OK(ctx, check_dims(i_out, "i", true));
+    OP_REQUIRES_OK(ctx, check_dims(cs_out, "cs", true));
+    OP_REQUIRES_OK(ctx, check_dims(f_out, "f", true));
+    OP_REQUIRES_OK(ctx, check_dims(o_out, "o", true));
+    OP_REQUIRES_OK(ctx, check_dims(ci_out, "ci", true));
+    OP_REQUIRES_OK(ctx, check_dims(co_out, "co", true));
+    OP_REQUIRES_OK(ctx, check_dims(h_out, "h", true));
+    OP_REQUIRES_OK(ctx, check_dims(cs_grad, "cs_grad", true));
+    OP_REQUIRES_OK(ctx, check_dims(h_grad, "h_grad", true));
 
     TensorShape batch_input_shape({timelen, batch_size, input_size});
     Tensor* x_grad;
