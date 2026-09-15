@@ -13,6 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <cstddef>
+#include <tuple>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
