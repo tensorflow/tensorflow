@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/tools/hlo_dump/hlo_dump_utils.h"
 #include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tsl/platform/test.h"
 
@@ -147,6 +149,101 @@ ENTRY main {
       HloIsolationTestResult result_allowed,
       RunIsolationTestOnModule(*module, nullptr, nullptr, options));
   EXPECT_TRUE(result_allowed.is_intentional_inf_nan());
+}
+
+TEST(HloIsolationApiTest, ParseMismatchLineWithCoordinates) {
+  std::string line =
+      "actual 1.25, expected 2.5, index {1, 3, 5}, rel error 0.5, abs error "
+      "1.25";
+  auto mismatch_or = ParseMismatchLine(line);
+  ASSERT_OK(mismatch_or);
+  const auto& mismatch = *mismatch_or;
+  EXPECT_DOUBLE_EQ(mismatch.actual(), 1.25);
+  EXPECT_DOUBLE_EQ(mismatch.expected(), 2.5);
+  EXPECT_DOUBLE_EQ(mismatch.rel_error(), 0.5);
+  ASSERT_EQ(mismatch.top_mismatch_index_size(), 3);
+  EXPECT_EQ(mismatch.top_mismatch_index(0), 1);
+  EXPECT_EQ(mismatch.top_mismatch_index(1), 3);
+  EXPECT_EQ(mismatch.top_mismatch_index(2), 5);
+}
+
+TEST(HloIsolationApiTest, ExtractMismatchDetailsPopulatesBoundingBox) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_extract
+ENTRY main {
+  p0 = f32[4, 5] parameter(0)
+  p1 = f32[4, 5] parameter(1)
+  ROOT add = f32[4, 5] add(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(hlo_string));
+
+  HloIsolationTestResult result;
+  NumericCheck* check = result.add_numeric_checks();
+  check->set_name("TPU_VS_INTERPRETER");
+  NumericMismatch* mismatch = check->add_top_mismatches();
+  mismatch->set_actual(1.0);
+  mismatch->set_expected(2.0);
+  mismatch->set_rel_error(0.5);
+  mismatch->add_tensor_dimensions(4);
+  mismatch->add_tensor_dimensions(5);
+  mismatch->add_mismatch_box_min(1);
+  mismatch->add_mismatch_box_min(2);
+  mismatch->add_mismatch_box_max(3);
+  mismatch->add_mismatch_box_max(4);
+  mismatch->add_top_mismatch_index(2);
+  mismatch->add_top_mismatch_index(3);
+  mismatch->set_mismatch_count(7);
+  mismatch->set_total_elements(20);
+
+  std::vector<numerics::debug_info::MismatchDetails> details =
+      ExtractMismatchDetails(*module, result);
+  ASSERT_EQ(details.size(), 1);
+  EXPECT_EQ(details[0].target_instruction_name, "add");
+  EXPECT_DOUBLE_EQ(details[0].actual, 1.0);
+  EXPECT_DOUBLE_EQ(details[0].expected, 2.0);
+  EXPECT_DOUBLE_EQ(details[0].rel_error, 0.5);
+  ASSERT_TRUE(details[0].bounding_box.has_value());
+  const auto& bbox = *details[0].bounding_box;
+  EXPECT_EQ(bbox.tensor_shape, (std::vector<int64_t>{4, 5}));
+  EXPECT_EQ(bbox.box_min, (std::vector<int64_t>{1, 2}));
+  EXPECT_EQ(bbox.box_max, (std::vector<int64_t>{3, 4}));
+  ASSERT_EQ(bbox.top_mismatch_coords.size(), 1);
+  EXPECT_EQ(bbox.top_mismatch_coords[0], (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(bbox.mismatch_count, 7);
+  EXPECT_EQ(bbox.total_elements, 20);
+}
+
+TEST(HloIsolationApiTest, ExtractMismatchDetailsPopulatesScalarBoundingBox) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_scalar
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(hlo_string));
+
+  HloIsolationTestResult result;
+  NumericCheck* check = result.add_numeric_checks();
+  check->set_name("TPU_VS_INTERPRETER");
+  NumericMismatch* mismatch = check->add_top_mismatches();
+  mismatch->set_actual(3.0);
+  mismatch->set_expected(4.0);
+  mismatch->set_rel_error(0.25);
+  mismatch->set_mismatch_count(1);
+  mismatch->set_total_elements(1);
+
+  std::vector<numerics::debug_info::MismatchDetails> details =
+      ExtractMismatchDetails(*module, result);
+  ASSERT_EQ(details.size(), 1);
+  EXPECT_EQ(details[0].target_instruction_name, "add");
+  EXPECT_DOUBLE_EQ(details[0].actual, 3.0);
+  EXPECT_DOUBLE_EQ(details[0].expected, 4.0);
+  EXPECT_DOUBLE_EQ(details[0].rel_error, 0.25);
 }
 
 }  // namespace
