@@ -2695,6 +2695,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncSendRecvStart(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncDone(
     const HloInstruction* done, const HloInstruction* start) {
   auto it = hlo_async_executions_.find(start);
+  if (it == hlo_async_executions_.end()) {
+    if (const HloInstruction* canonical_start =
+            hlo_instruction_utils::async::FindAsyncStart(start);
+        canonical_start != nullptr) {
+      it = hlo_async_executions_.find(canonical_start);
+    }
+  }
   TF_RET_CHECK(it != hlo_async_executions_.end())
       << "could not find async execution for start operation";
   return ThunkSequence::Of<AsyncDoneThunk>(

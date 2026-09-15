@@ -686,8 +686,6 @@ absl::Status RunPreSPMDPartitionerPasses(
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner", compilation_stats);
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
-  pre_spmd_pipeline.AddPass<AsyncCollectiveCustomCallRewriter>(
-      /*use_legacy_collectives=*/false);
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<CompositeRewriter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
@@ -890,6 +888,16 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<CallInliner>(
       /*single_call_site=*/false, /*update_domain=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>());
+
+  // Runs AsyncCollectiveCustomCallRewriter post-SPMD (pre-layout assignment)
+  // rather than pre-SPMD to keep async collectives wrapped in custom calls
+  // during the Shardy/SPMD pipeline. This avoids introducing async bundle
+  // types that are not supported across optimization barriers in Shardy.
+  // Runs after CallInliner because start and done can be split across
+  // different functions/shard_maps, so they must be inlined first for the
+  // rewriter to see them together in the same computation.
+  pipeline.AddPass<AsyncCollectiveCustomCallRewriter>(
+      /*use_legacy_collectives=*/false);
 
   pipeline.AddPass<StochasticConvertDecomposer>();
 
