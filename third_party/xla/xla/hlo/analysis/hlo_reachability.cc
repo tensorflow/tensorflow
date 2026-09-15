@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <utility>
@@ -306,30 +307,143 @@ void HloReachabilityMap::UpdateReachabilityForMerge(
   tmp_indices_to_update_.clear();
 }
 
-void HloReachabilityMap::UpdateMultipleInstructions(
-    absl::flat_hash_map<const HloInstruction*,
-                        absl::flat_hash_set<const HloInstruction*>>
-        to_update) {
-  while (!to_update.empty()) {
-    auto it = to_update.begin();
-    const HloInstruction* instruction = it->first;
+namespace {
 
-    BitSet bit_set = BitSetFromIndex(GetIndex(instruction));
-    bool changed = false;
+// Calls `fn` on `instruction` if `is_present(instruction)`. Otherwise looks
+// through it: the instructions that `neighbors` yields for it are handled the
+// same way, transitively. An instruction absent from the map has no row, but
+// paths through it still connect instructions that do.
+template <typename IsPresent, typename Neighbors, typename Fn>
+void ForEachPresentThrough(const HloInstruction* instruction,
+                           const IsPresent& is_present,
+                           const Neighbors& neighbors, const Fn& fn) {
+  if (is_present(instruction)) {
+    fn(instruction);
+    return;
+  }
+  absl::InlinedVector<const HloInstruction*, 4> absent = {instruction};
+  for (size_t i = 0; i < absent.size(); ++i) {
+    neighbors(absent[i], [&](const HloInstruction* neighbor) {
+      if (is_present(neighbor)) {
+        fn(neighbor);
+      } else if (!absl::c_linear_search(absent, neighbor)) {
+        absent.push_back(neighbor);
+      }
+    });
+  }
+}
+
+}  // namespace
+
+void HloReachabilityMap::UpdateMultipleInstructions(
+    const absl::flat_hash_map<const HloInstruction*,
+                              absl::flat_hash_set<const HloInstruction*>>&
+        to_update) {
+  DCHECK(tmp_changed_words_.empty());
+  if (tmp_pending_words_.size() < indices_.size()) {
+    tmp_pending_words_.resize(indices_.size());
+  }
+  const auto is_present = [this](const HloInstruction* instruction) {
+    return IsKeyPresent(GetKey(instruction));
+  };
+  const auto successors = [](const HloInstruction* instruction,
+                             const auto& visit) {
+    for (const HloInstruction* user : instruction->users()) {
+      visit(user);
+    }
+    for (const HloInstruction* successor : instruction->control_successors()) {
+      visit(successor);
+    }
+  };
+  const auto predecessors = [](const HloInstruction* instruction,
+                               const auto& visit) {
+    for (const HloInstruction* operand : instruction->operands()) {
+      visit(operand);
+    }
+    for (const HloInstruction* predecessor :
+         instruction->control_predecessors()) {
+      visit(predecessor);
+    }
+  };
+
+  // Min heap by row index. Build assigns indices in post order, so a row is
+  // normally popped once, after all of its predecessors. The result does not
+  // depend on the order: a change that arrives later queues the row again.
+  using Item = std::pair<Index, const HloInstruction*>;
+  std::priority_queue<Item, std::vector<Item>, std::greater<Item>> worklist;
+
+  // Applies `update(row, pending)` to the row of `instruction` and to the list
+  // of its changed words that are still pending, and queues the row if the
+  // list was empty before and is not anymore.
+  const auto update_row = [&](const HloInstruction* instruction,
+                              const auto& update) {
+    const Index index = GetIndex(instruction);
+    std::vector<std::pair<size_t, BitSet::Word>>& pending =
+        tmp_pending_words_[GetKey(instruction)];
+    const bool queued = !pending.empty();
+    update(BitSetFromIndex(index), pending);
+    if (!queued && !pending.empty()) {
+      worklist.emplace(index, instruction);
+    }
+  };
+
+  // Seed: every updated row absorbs the rows of its new predecessors.
+  absl::InlinedVector<const HloInstruction*, 4> targets;
+  absl::InlinedVector<const HloInstruction*, 4> sources;
+  // NOLINTNEXTLINE the loop aggregation is order independent.
+  for (const auto& [instruction, new_predecessors] : to_update) {
+    targets.clear();
+    ForEachPresentThrough(
+        instruction, is_present, successors,
+        [&](const HloInstruction* target) { targets.push_back(target); });
     // NOLINTNEXTLINE the loop aggregation is order independent.
-    for (const HloInstruction* operand : it->second) {
-      BitSet operand_bit_set = BitSetFromIndex(GetIndex(operand));
-      changed |= bit_set.OrUpdate(operand_bit_set);
-    }
-    to_update.erase(it);
-    if (changed) {
-      for (const HloInstruction* user : instruction->users()) {
-        to_update[user].insert(instruction);
+    for (const HloInstruction* predecessor : new_predecessors) {
+      DCHECK(
+          instruction->IsUserOf(predecessor) ||
+          absl::c_linear_search(predecessor->control_successors(), instruction))
+          << "The new edge from " << predecessor->name() << " to "
+          << instruction->name() << " is not in the graph.";
+      sources.clear();
+      ForEachPresentThrough(
+          predecessor, is_present, predecessors,
+          [&](const HloInstruction* source) { sources.push_back(source); });
+      for (const HloInstruction* source : sources) {
+        const BitSet source_row = BitSetFromIndex(GetIndex(source));
+        for (const HloInstruction* target : targets) {
+          update_row(target, [&](BitSet row, auto& pending) {
+            row.OrUpdateCollectChanged(source_row, pending);
+          });
+        }
       }
-      for (const HloInstruction* succ : instruction->control_successors()) {
-        to_update[succ].insert(instruction);
+    }
+  }
+
+  while (!worklist.empty()) {
+    const HloInstruction* instruction = worklist.top().second;
+    worklist.pop();
+    tmp_changed_words_.swap(tmp_pending_words_[GetKey(instruction)]);
+    DCHECK(!tmp_changed_words_.empty());
+    // Several predecessors may have changed the same word. Its recorded values
+    // only grow, so their union is the current word.
+    absl::c_sort(tmp_changed_words_);
+    size_t merged = 0;
+    for (size_t i = 1; i < tmp_changed_words_.size(); ++i) {
+      if (tmp_changed_words_[i].first == tmp_changed_words_[merged].first) {
+        tmp_changed_words_[merged].second |= tmp_changed_words_[i].second;
+      } else {
+        tmp_changed_words_[++merged] = tmp_changed_words_[i];
       }
     }
+    tmp_changed_words_.resize(merged + 1);
+    successors(instruction, [&](const HloInstruction* successor) {
+      ForEachPresentThrough(
+          successor, is_present, successors, [&](const HloInstruction* target) {
+            update_row(target, [&](BitSet row, auto& pending) {
+              row.OrUpdatePartialCollectChanged(tmp_changed_words_, pending);
+            });
+          });
+    });
+    tmp_changed_words_.clear();
   }
 }
 
