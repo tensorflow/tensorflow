@@ -199,3 +199,147 @@ stack_frame_index {
     parent_frame_id: 1
   }
 }
+
+// -----
+
+# Checks that instructions with the same frame get the same location and that
+# a chain sharing its outer frames with another chain reuses their locations.
+# CHECK: %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc([[LOC_A:#loc[0-9]+]])
+# CHECK-NEXT: %1 = mhlo.after_all %0 {xla_shape = "token[]"} : !mhlo.token loc([[LOC_B:#loc[0-9]+]])
+# CHECK-NEXT: %2 = mhlo.after_all %1 {xla_shape = "token[]"} : !mhlo.token loc([[LOC_A]])
+# CHECK: [[FILE_3:#loc[0-9]+]] = loc("file_name_3":5:6)
+# CHECK-NEXT: [[FILE_2:#loc[0-9]+]] = loc("file_name_2":3:4)
+# CHECK-NEXT: [[FILE_1:#loc[0-9]+]] = loc("file_name":2:8)
+# CHECK-NEXT: [[FILE_4:#loc[0-9]+]] = loc("file_name_4":7:9)
+# CHECK-NEXT: [[FUNC_3:#loc[0-9]+]] = loc("function_name_3"([[FILE_3]]))
+# CHECK-NEXT: [[FUNC_2:#loc[0-9]+]] = loc("function_name_2"([[FILE_2]]))
+# CHECK-NEXT: [[FUNC_1:#loc[0-9]+]] = loc("function_name"([[FILE_1]]))
+# CHECK-NEXT: [[FUNC_4:#loc[0-9]+]] = loc("function_name_4"([[FILE_4]]))
+# CHECK-NEXT: [[CHAIN_2:#loc[0-9]+]] = loc(callsite([[FUNC_2]] at [[FUNC_1]]))
+# CHECK-NEXT: [[CHAIN_3:#loc[0-9]+]] = loc(callsite([[FUNC_3]] at [[CHAIN_2]]))
+# CHECK-NEXT: [[CHAIN_4:#loc[0-9]+]] = loc(callsite([[FUNC_4]] at [[CHAIN_2]]))
+# CHECK-NEXT: [[LOC_A]] = loc("op_a"([[CHAIN_3]]))
+# CHECK-NEXT: [[LOC_B]] = loc("op_b"([[CHAIN_4]]))
+name: "main"
+entry_computation_name: "main.5"
+computations {
+  name: "main.5"
+  instructions {
+    name: "Arg_0.1"
+    opcode: "parameter"
+    shape {
+      element_type: TOKEN
+    }
+    id: 1
+  }
+  instructions {
+    name: "after-all.2"
+    opcode: "after-all"
+    shape {
+      element_type: TOKEN
+    }
+    metadata {
+      op_name: "op_a"
+      stack_frame_id: 3
+    }
+    id: 2
+    operand_ids: 1
+  }
+  instructions {
+    name: "after-all.3"
+    opcode: "after-all"
+    shape {
+      element_type: TOKEN
+    }
+    metadata {
+      op_name: "op_b"
+      stack_frame_id: 4
+    }
+    id: 3
+    operand_ids: 2
+  }
+  instructions {
+    name: "after-all.4"
+    opcode: "after-all"
+    shape {
+      element_type: TOKEN
+    }
+    metadata {
+      op_name: "op_a"
+      stack_frame_id: 3
+    }
+    id: 4
+    operand_ids: 3
+  }
+  program_shape {
+    parameters {
+      element_type: TOKEN
+    }
+    result {
+      element_type: TOKEN
+    }
+    parameter_names: "Arg_0"
+  }
+  id: 5
+  root_id: 4
+}
+host_program_shape {
+  parameters {
+    element_type: TOKEN
+  }
+  result {
+    element_type: TOKEN
+  }
+  parameter_names: "Arg_0"
+}
+id: 5
+entry_computation_id: 5
+stack_frame_index {
+  file_names: "file_name"
+  file_names: "file_name_2"
+  file_names: "file_name_3"
+  file_names: "file_name_4"
+  function_names: "function_name"
+  function_names: "function_name_2"
+  function_names: "function_name_3"
+  function_names: "function_name_4"
+  file_locations {
+    file_name_id: 1
+    function_name_id: 1
+    line: 2
+    column: 8
+  }
+  file_locations {
+    file_name_id: 2
+    function_name_id: 2
+    line: 3
+    column: 4
+  }
+  file_locations {
+    file_name_id: 3
+    function_name_id: 3
+    line: 5
+    column: 6
+  }
+  file_locations {
+    file_name_id: 4
+    function_name_id: 4
+    line: 7
+    column: 9
+  }
+  stack_frames {
+    file_location_id: 1
+  }
+  stack_frames {
+    file_location_id: 2
+    parent_frame_id: 1
+  }
+  stack_frames {
+    file_location_id: 3
+    parent_frame_id: 2
+  }
+  stack_frames {
+    file_location_id: 4
+    parent_frame_id: 2
+  }
+}

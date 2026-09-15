@@ -48,6 +48,12 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 
+namespace mlir {
+namespace hlo {
+class StackFrameLocationCache;
+}  // namespace hlo
+}  // namespace mlir
+
 namespace xla {
 
 class HloModule;
@@ -123,16 +129,24 @@ class HloFunctionImporter {
       mlir::ValueRange values, std::optional<int> reserve_size = std::nullopt);
 
  private:
-  HloFunctionImporter(mlir::SymbolTable& symbol_table,
-                      std::unordered_map<const HloComputation*,
-                                         mlir::func::FuncOp>* function_map,
-                      mlir::Builder* builder,
-                      bool flatten_computation_args_result)
+  // HloModuleImporter drives the importer directly so that all computations of
+  // a module share one memo of stack frame locations.
+  friend class HloModuleImporter;
+
+  // `stack_frame_location_cache` may be null; when given it must belong to the
+  // module of the imported computations.
+  HloFunctionImporter(
+      mlir::SymbolTable& symbol_table,
+      std::unordered_map<const HloComputation*, mlir::func::FuncOp>*
+          function_map,
+      mlir::Builder* builder, bool flatten_computation_args_result,
+      mlir::hlo::StackFrameLocationCache* stack_frame_location_cache)
       : context_(symbol_table.getOp()->getContext()),
         symbol_table_(symbol_table),
         builder_(builder),
         function_map_(function_map),
-        flatten_computation_args_result_(flatten_computation_args_result) {
+        flatten_computation_args_result_(flatten_computation_args_result),
+        stack_frame_location_cache_(stack_frame_location_cache) {
     context_->loadDialect<mlir::arith::ArithDialect>();
     context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
@@ -241,6 +255,10 @@ class HloFunctionImporter {
   std::unordered_map<const HloInstruction*, mlir::Value> instruction_value_map_;
 
   bool flatten_computation_args_result_;
+
+  // Memo of stack frame locations shared with nested imports; null unless the
+  // importer is driven by HloModuleImporter.
+  mlir::hlo::StackFrameLocationCache* stack_frame_location_cache_;
 };
 
 // Returns a StringAttr that carries a prettyprinted representation of the

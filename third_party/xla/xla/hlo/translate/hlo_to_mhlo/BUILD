@@ -105,7 +105,21 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "stack_location_utils_test",
+    srcs = ["stack_location_utils_test.cc"],
+    deps = [
+        ":stack_location_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -162,6 +176,7 @@ cc_library(
     deps = [
         ":hlo_function_importer",
         ":module_attributes_importer",
+        ":stack_location_utils",
         "//xla:debug_options_flags",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
