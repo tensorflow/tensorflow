@@ -205,6 +205,12 @@ class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
           self.evaluate(get_next())
         except errors.OutOfRangeError:
           break
+      del get_next
+      import gc
+      gc.collect()
+      if os.name == 'nt':
+        import time
+        time.sleep(0.1)
 
     if not context.executing_eagerly():
       self.skipTest(
