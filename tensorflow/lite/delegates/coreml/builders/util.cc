@@ -105,6 +105,11 @@ float GetScalarFloatFromTensor(const TfLiteTensor* tensor) {
   return GetTensorData<float>(tensor)[0];
 }
 
+bool TensorHasRank(const TfLiteTensor* tensor, int expected_rank) {
+  return tensor != nullptr && tensor->dims != nullptr &&
+         tensor->dims->size == expected_rank;
+}
+
 }  // namespace coreml
 }  // namespace delegates
 }  // namespace tflite
