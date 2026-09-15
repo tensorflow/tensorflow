@@ -1190,6 +1190,14 @@ absl::Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
+absl::Status ShapeVerifier::HandleShuffle(HloInstruction* shuffle) {
+  HloShuffleInstruction* shuffle_instr = Cast<HloShuffleInstruction>(shuffle);
+  return CheckShape(
+      shuffle, ShapeInference::InferShuffleShape(
+                   shuffle_instr->operand(0)->shape(),
+                   shuffle_instr->dimensions(), shuffle_instr->shuffle_mode()));
+}
+
 absl::Status ShapeVerifier::HandleTopK(HloInstruction* hlo) {
   return CheckShape(
       hlo, ShapeInference::InferTopKShape(hlo->operand(0)->shape(),

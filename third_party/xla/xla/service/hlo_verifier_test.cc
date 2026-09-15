@@ -4403,6 +4403,119 @@ ENTRY TopK {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, ShuffleRotateOK) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,1}, mode=rotate, shifts={2,5}
+}
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result, absl_testing::IsOk());
+}
+
+TEST_F(HloVerifierTest, ShuffleInvalidDimensions) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,2}, mode=rotate, shifts={2,5}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("out-of-bounds")));
+}
+
+TEST_F(HloVerifierTest, ShuffleRotateMismatchedShiftsSize) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,1}, mode=rotate, shifts={2}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result,
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("dimensions and shifts must have the same "
+                                 "size")));
+}
+
+TEST_F(HloVerifierTest, ShuffleDuplicatedDimensions) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,0}, mode=rotate, shifts={2,5}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("duplicated")));
+}
+
+TEST_F(HloVerifierTest, ShufflePermuteOK) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[3,2]{1,0})->f32[3,2]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[3,2]{1,0} parameter(0)
+  ROOT shuffle = f32[3,2]{1,0} shuffle(x), dimensions={0}, mode=permute, indices=s32[3,1]{1,0} { {1}, {0}, {2} }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_THAT(verifier().Run(module.get()), absl_testing::IsOk());
+}
+
+TEST_F(HloVerifierTest, ShufflePermuteOutOfBoundsIndices) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[3,2]{1,0})->f32[3,2]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[3,2]{1,0} parameter(0)
+  ROOT shuffle = f32[3,2]{1,0} shuffle(x), dimensions={0}, mode=permute, indices=s32[3,1]{1,0} { {1}, {0}, {3} }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("out-of-bounds")));
+}
+
+TEST_F(HloVerifierTest, ShufflePermuteMismatchedIndicesShape) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[3,2]{1,0})->f32[3,2]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[3,2]{1,0} parameter(0)
+  ROOT shuffle = f32[3,2]{1,0} shuffle(x), dimensions={0}, mode=permute, indices=s32[2,1]{1,0} { {1}, {0} }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_THAT(verifier().Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must have size 3")));
+}
+
 TEST_F(HloVerifierTest, InputLayoutMismatchIgnored) {
   // Note: The mismatch is between the entry_computation_layout and the layout
   // of parameter(1).

@@ -521,8 +521,10 @@ cc_library(
     hdrs = ["shape_inference.h"],
     deps = [
         ":hlo_proto_cc",
+        "//xla:literal",
         "//xla:permutation_util",
         "//xla:shape_util",
+        "//xla:shuffle",
         "//xla:status_macros",
         "//xla:util",
         "//xla:window_util",
@@ -550,7 +552,9 @@ xla_cc_test(
     deps = [
         ":hlo_proto_cc",
         ":shape_inference",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:shuffle",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:padding",
         "//xla/hlo/ir:hlo",
@@ -818,6 +822,7 @@ xla_cc_test(
         "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:shuffle",
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",

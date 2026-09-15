@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -1215,6 +1216,43 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
   EXPECT_FALSE(
       Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
                 *HloInstruction::CreateUnary(shape, HloOpcode::kNegate, op1)));
+
+  // Shuffle.
+  EXPECT_TRUE(
+      Identical(*HloInstruction::CreateShuffle(shape, op1, {0, 1},
+                                               shuffle::MakeRotateMode({2, 3})),
+                *HloInstruction::CreateShuffle(
+                    shape, op1, {0, 1}, shuffle::MakeRotateMode({2, 3}))));
+  EXPECT_FALSE(
+      Identical(*HloInstruction::CreateShuffle(shape, op1, {0, 1},
+                                               shuffle::MakeRotateMode({2, 3})),
+                *HloInstruction::CreateShuffle(
+                    shape, op1, {0, 1}, shuffle::MakeRotateMode({3, 2}))));
+  EXPECT_FALSE(
+      Identical(*HloInstruction::CreateShuffle(shape, op1, {0, 1},
+                                               shuffle::MakeRotateMode({2, 3})),
+                *HloInstruction::CreateShuffle(
+                    shape, op1, {1, 0}, shuffle::MakeRotateMode({2, 3}))));
+  EXPECT_TRUE(Identical(
+      *HloInstruction::CreateShuffle(
+          shape, op1, {0},
+          shuffle::MakePermuteMode(LiteralUtil::CreateR1<int32_t>({1, 0}))),
+      *HloInstruction::CreateShuffle(
+          shape, op1, {0},
+          shuffle::MakePermuteMode(LiteralUtil::CreateR1<int32_t>({1, 0})))));
+  EXPECT_FALSE(Identical(
+      *HloInstruction::CreateShuffle(
+          shape, op1, {0},
+          shuffle::MakePermuteMode(LiteralUtil::CreateR1<int32_t>({1, 0}))),
+      *HloInstruction::CreateShuffle(
+          shape, op1, {0},
+          shuffle::MakePermuteMode(LiteralUtil::CreateR1<int32_t>({0, 1})))));
+  EXPECT_FALSE(Identical(
+      *HloInstruction::CreateShuffle(
+          shape, op1, {0},
+          shuffle::MakePermuteMode(LiteralUtil::CreateR1<int32_t>({1, 0}))),
+      *HloInstruction::CreateShuffle(shape, op1, {0},
+                                     shuffle::MakeRotateMode({1}))));
 
   // Tuples.
   EXPECT_TRUE(Identical(*HloInstruction::CreateTuple({op1, op2}),

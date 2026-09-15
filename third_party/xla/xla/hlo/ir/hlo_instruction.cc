@@ -587,6 +587,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                         std::vector<int64_t>(proto.dimensions().begin(),
                                              proto.dimensions().end()));
       break;
+    case HloOpcode::kShuffle:
+      instruction =
+          CreateShuffle(shape, operands(0),
+                        std::vector<int64_t>(proto.dimensions().begin(),
+                                             proto.dimensions().end()),
+                        proto.shuffle_mode());
+      break;
     case HloOpcode::kConcatenate:
       TF_RET_CHECK(proto.dimensions().size() == 1)
           << "Concatenate instruction should have 1 dimension but sees "
@@ -2156,6 +2163,13 @@ HloInstruction::CreateCollectivePermuteStart(
   return std::make_unique<HloReverseInstruction>(shape, operand, dimensions);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateShuffle(
+    const Shape& shape, HloInstruction* operand,
+    absl::Span<const int64_t> dimensions, const ShuffleMode& mode) {
+  return std::make_unique<HloShuffleInstruction>(shape, operand, dimensions,
+                                                 mode);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAfterAll(
     absl::Span<HloInstruction* const> operands) {
   CHECK(!operands.empty());
@@ -2854,6 +2868,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReverse:
+    case HloOpcode::kShuffle:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReduce:
     case HloOpcode::kTranspose:
@@ -3569,6 +3584,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
     case HloOpcode::kTopK:
+    case HloOpcode::kShuffle:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -5101,6 +5117,8 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleTranspose(this);
       case HloOpcode::kReverse:
         return visitor->HandleReverse(this);
+      case HloOpcode::kShuffle:
+        return visitor->HandleShuffle(this);
       case HloOpcode::kReducePrecision:
         return visitor->HandleReducePrecision(this);
       case HloOpcode::kSlice:
@@ -5420,6 +5438,7 @@ static UseKind OperandElementUse(const HloInstruction& instr,
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
     case HloOpcode::kGather:
+    case HloOpcode::kShuffle:
       return UseKind::kUse;
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
@@ -5605,6 +5624,17 @@ std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm) {
 
 std::string PrecisionToString(const PrecisionConfig::Precision& precision) {
   return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
+}
+
+std::string ShuffleModeToString(ShuffleMode::ModeCase shuffle_mode) {
+  switch (shuffle_mode) {
+    case ShuffleMode::kPermute:
+      return "permute";
+    case ShuffleMode::kRotate:
+      return "rotate";
+    case ShuffleMode::MODE_NOT_SET:
+      return "invalid";
+  }
 }
 
 template <typename Sink>
@@ -5867,6 +5897,17 @@ absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
     const std::string& name) {
   return StringToEnum<PrecisionConfig::Precision>(name, PrecisionToString,
                                                   "precision");
+}
+
+absl::StatusOr<ShuffleMode::ModeCase> StringToShuffleMode(
+    absl::string_view mode) {
+  if (mode == "permute") {
+    return ShuffleMode::ModeCase::kPermute;
+  }
+  if (mode == "rotate") {
+    return ShuffleMode::ModeCase::kRotate;
+  }
+  return InvalidArgument("Unknown shuffle mode: %s", mode);
 }
 
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
