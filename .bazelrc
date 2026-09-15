@@ -76,7 +76,7 @@
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
-common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
+common --repo_env=ML_WHEEL_VERSION_SUFFIX="-rc0"
 
 common --incompatible_default_to_explicit_init_py
 
