@@ -214,6 +214,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kConvolution:
       return DebugOptions::CONVOLUTION;
     case Thunk::kCustomCall:
+    case Thunk::kSelectK:
       return DebugOptions::CUSTOM_CALL;
     case Thunk::kCublasLtMatmul:
       return DebugOptions::CUBLASLT;
