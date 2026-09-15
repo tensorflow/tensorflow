@@ -19,11 +19,16 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/ffi/attribute_map.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/ffi/attributes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -44,6 +49,12 @@ class NativeCustomCallEmitterContext {
 
   virtual const GpuTopology& GetTargetTopology() const = 0;
 
+  // The device the module is being compiled for. Unlike an FFI handler, which
+  // can query the stream's device at instantiation time, a native handler runs
+  // ahead of time and must take the target description from here.
+  virtual const stream_executor::DeviceDescription& GetDeviceDescription()
+      const = 0;
+
   virtual const DebugOptions& GetDebugOptions() const = 0;
 
   virtual Thunk::ThunkInfo GenerateThunkInfo() const = 0;
@@ -54,7 +65,39 @@ class NativeCustomCallEmitterContext {
   virtual absl::StatusOr<BufferAllocation::Slice> GetOperandAllocationSlice(
       int64_t operand_index, const ShapeIndex& index) const = 0;
 
-  virtual absl::StatusOr<xla::ffi::AttributesMap> GetFfiAttributes() const = 0;
+  // As above, but also returns the shape backing the slice. This is the form
+  // consumed by most thunks, so prefer it over the plain slice accessors.
+  virtual absl::StatusOr<ShapedSlice> GetResultShapedSlice(
+      const ShapeIndex& index) const = 0;
+
+  virtual absl::StatusOr<ShapedSlice> GetOperandShapedSlice(
+      int64_t operand_index, const ShapeIndex& index) const = 0;
+
+  // Builds the conventional kernel argument list for the custom call: all
+  // operands in operand order, then the array leaves of the result shape in
+  // shape-index order, then `unmanaged_arguments`.
+  //
+  // This is the same list that XLA's own kernel emitters build, with alignment,
+  // aliasing, slice deduplication and the `written` flags filled in. Handlers
+  // should use it rather than assembling `emitters::KernelArgument`s by hand,
+  // because those flags feed thunk scheduling and getting them wrong produces
+  // races that are hard to diagnose.
+  //
+  // Use `emitters::KernelArguments::OperandIndex` and `ResultIndex` to find
+  // where a given buffer ended up; those positions are exactly the index space
+  // of `stream_executor::KernelArgsPackingSpec` relocations.
+  absl::StatusOr<emitters::KernelArguments> CreateKernelArguments() const {
+    return CreateKernelArguments({});
+  }
+  virtual absl::StatusOr<emitters::KernelArguments> CreateKernelArguments(
+      absl::Span<const Shape> unmanaged_arguments) const = 0;
+
+  // The custom call's backend config, decoded into typed FFI attributes.
+  //
+  // The returned object owns its storage; values that alias it
+  // (`absl::string_view`, `absl::Span`, nested `ffi::Dictionary`) are only
+  // valid while it is alive.
+  virtual absl::StatusOr<xla::ffi::Attributes> GetFfiAttributes() const = 0;
 };
 
 }  // namespace xla::gpu

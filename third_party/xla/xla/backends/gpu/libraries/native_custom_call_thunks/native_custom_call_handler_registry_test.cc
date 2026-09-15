@@ -17,21 +17,29 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registration.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/ffi/attribute_map.h"
+#include "xla/ffi/attributes.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -86,6 +94,10 @@ class MockNativeCustomCallEmitterContext
     : public NativeCustomCallEmitterContext {
  public:
   const GpuTopology& GetTargetTopology() const override { return *topology_; }
+  const stream_executor::DeviceDescription& GetDeviceDescription()
+      const override {
+    return device_description_;
+  }
   const DebugOptions& GetDebugOptions() const override {
     return debug_options_;
   }
@@ -102,13 +114,28 @@ class MockNativeCustomCallEmitterContext
       int64_t operand_index, const ShapeIndex& index) const override {
     return slice_;
   }
-  absl::StatusOr<xla::ffi::AttributesMap> GetFfiAttributes() const override {
-    return xla::ffi::AttributesMap();
+  absl::StatusOr<ShapedSlice> GetResultShapedSlice(
+      const ShapeIndex& index) const override {
+    return ShapedSlice{slice_, shape_};
+  }
+  absl::StatusOr<ShapedSlice> GetOperandShapedSlice(
+      int64_t operand_index, const ShapeIndex& index) const override {
+    return ShapedSlice{slice_, shape_};
+  }
+  absl::StatusOr<emitters::KernelArguments> CreateKernelArguments(
+      absl::Span<const Shape> unmanaged_arguments) const override {
+    return emitters::KernelArguments(
+        std::vector<emitters::KernelArgument>{{shape_, slice_}});
+  }
+  absl::StatusOr<xla::ffi::Attributes> GetFfiAttributes() const override {
+    return xla::ffi::Attributes::Create(xla::ffi::AttributesMap());
   }
 
   const GpuTopology* topology_ = nullptr;
+  stream_executor::DeviceDescription device_description_;
   DebugOptions debug_options_;
   BufferAllocation::Slice slice_;
+  Shape shape_ = ShapeUtil::MakeShape(F32, {4});
 };
 
 TEST(NativeCustomCallEmitterContextTest, VirtualDispatchWorks) {
