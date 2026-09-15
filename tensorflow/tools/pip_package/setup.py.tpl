@@ -100,7 +100,7 @@ REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
     'flatbuffers >= 25.9.23',
-    'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
+    'gast >=0.6.0',
     'google_pasta >= 0.1.1',
     'libclang >= 13.0.0',
     'opt_einsum >= 2.3.2',
