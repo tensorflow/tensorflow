@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
@@ -36,8 +38,10 @@ namespace xla::gpu {
 // SelectKThunk
 //===----------------------------------------------------------------------===//
 
-// SelectKThunk executes the select_k operation on the provided inputs
-class SelectKThunk : public Thunk {
+// SelectKThunk executes the select_k operation on the provided inputs.
+// Implements TracedCommand so it can participate in CUDA Graph capture
+// and replay in CommandBuffer.
+class SelectKThunk : public TracedCommand {
  public:
   // Constructor.
   // Parameters:
@@ -57,6 +61,12 @@ class SelectKThunk : public Thunk {
 
   // Executes the TopK operation on the given stream.
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // Records the SelectK operation into a command buffer.
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
   BufferUses buffer_uses() const override;
 

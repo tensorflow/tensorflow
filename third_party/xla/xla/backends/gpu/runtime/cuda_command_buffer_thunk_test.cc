@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -35,8 +36,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
+#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -57,7 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -67,6 +70,7 @@ namespace xla::gpu {
 
 using MemoryAccess = BufferUse::MemoryAccess;
 using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
+using ::testing::ElementsAre;
 
 namespace {
 
@@ -256,4 +260,157 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
 
   ASSERT_EQ(dst, std::vector<int32_t>(kTotalElements, 0));
 }
+
+TEST(CommandBufferThunkTest, SelectKCmd) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  if (!stream_executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Requires at least an Ampere GPU.";
+  }
+
+  constexpr int kBatchSize = 1;
+  constexpr int kNumElements = 4096;
+  constexpr int kTopK = 32;
+  constexpr size_t kScratchSize = 32 * 1024 * 1024;
+
+  BufferAllocation alloc_input(/*index=*/0,
+                               kBatchSize * kNumElements * sizeof(float),
+                               /*color=*/0);
+  BufferAllocation alloc_output_val(
+      /*index=*/1, kBatchSize * kTopK * sizeof(float), /*color=*/0);
+  BufferAllocation alloc_output_idx(
+      /*index=*/2, kBatchSize * kTopK * sizeof(int32_t), /*color=*/0);
+  BufferAllocation alloc_scratch(/*index=*/3, kScratchSize, /*color=*/0);
+
+  BufferAllocation::Slice slice_input(&alloc_input, 0, alloc_input.size());
+  BufferAllocation::Slice slice_output_val(&alloc_output_val, 0,
+                                           alloc_output_val.size());
+  BufferAllocation::Slice slice_output_idx(&alloc_output_idx, 0,
+                                           alloc_output_idx.size());
+  BufferAllocation::Slice slice_scratch(&alloc_scratch, 0,
+                                        alloc_scratch.size());
+
+  emitters::KernelArgument arg_input(
+      ShapeUtil::MakeShape(F32, {kBatchSize, kNumElements}), slice_input);
+  emitters::KernelArgument arg_output_val(
+      ShapeUtil::MakeShape(F32, {kBatchSize, kTopK}), slice_output_val);
+  emitters::KernelArgument arg_output_idx(
+      ShapeUtil::MakeShape(S32, {kBatchSize, kTopK}), slice_output_idx);
+  emitters::KernelArgument arg_scratch(ShapeUtil::MakeShape(U8, {kScratchSize}),
+                                       slice_scratch);
+
+  emitters::KernelArguments kernel_arguments(
+      {arg_input, arg_output_val, arg_output_idx, arg_scratch});
+
+  auto select_k_thunk = std::make_unique<SelectKThunk>(
+      Thunk::ThunkInfo(), kBatchSize, kNumElements, kTopK, F32,
+      kernel_arguments);
+
+  CommandSequence commands;
+  commands.Append(select_k_thunk.get());
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
+
+  ThunkSequence thunk_sequence;
+  thunk_sequence.push_back(std::move(select_k_thunk));
+  auto sequential_thunk = std::make_unique<SequentialThunk>(
+      Thunk::ThunkInfo(), std::move(thunk_sequence));
+  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
+                           std::move(sequential_thunk));
+
+  std::vector<se::DeviceAddressBase> operands;
+  operands.reserve(4);
+
+  std::vector<float> host_in(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    host_in[i] = static_cast<float>(i);
+  }
+  se::DeviceAddress<float> input =
+      stream_executor->AllocateArray<float>(kBatchSize * kNumElements);
+  ASSERT_OK(
+      stream->Memcpy(&input, host_in.data(), sizeof(float) * host_in.size()));
+
+  se::DeviceAddress<float> output_val =
+      stream_executor->AllocateArray<float>(kBatchSize * kTopK);
+  ASSERT_OK(stream->MemZero(&output_val, output_val.size()));
+
+  se::DeviceAddress<int32_t> output_idx =
+      stream_executor->AllocateArray<int32_t>(kBatchSize * kTopK);
+  ASSERT_OK(stream->MemZero(&output_idx, output_idx.size()));
+
+  se::DeviceAddressBase scratch = stream_executor->Allocate(kScratchSize);
+
+  operands.push_back(input);
+  operands.push_back(output_val);
+  operands.push_back(output_idx);
+  operands.push_back(scratch);
+
+  ServiceExecutableRunOptions run_options;
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+  BufferAllocations allocations(operands, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
+      nullptr, /*additional_compute_streams=*/{},
+      /*execution_scoped_state=*/nullptr,
+      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
+
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  Thunk::InitializeParams initialize_params;
+  initialize_params.executor = stream_executor;
+  initialize_params.src = source;
+  initialize_params.buffer_allocations = &allocations;
+  initialize_params.stream = stream.get();
+  initialize_params.command_buffer_trace_stream = stream.get();
+  initialize_params.persistent_alloc_indices =
+      absl::Span<const BufferAllocation::Index>();
+  ASSERT_OK(thunk.Initialize(initialize_params));
+
+  // First execution: traces CUDA graph with SelectKThunk and executes it.
+  ASSERT_OK(thunk.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<float> dst_val(kTopK, 0.0f);
+  std::vector<int32_t> dst_idx(kTopK, -1);
+  ASSERT_OK(stream->Memcpy(dst_val.data(), output_val, sizeof(float) * kTopK));
+  ASSERT_OK(
+      stream->Memcpy(dst_idx.data(), output_idx, sizeof(int32_t) * kTopK));
+
+  std::vector<float> expected_val(kTopK);
+  std::vector<int32_t> expected_idx(kTopK);
+  for (int i = 0; i < kTopK; ++i) {
+    expected_val[i] = static_cast<float>(kNumElements - 1 - i);
+    expected_idx[i] = kNumElements - 1 - i;
+  }
+  EXPECT_EQ(dst_val, expected_val);
+  EXPECT_EQ(dst_idx, expected_idx);
+
+  // Second execution (replay): update input data in place.
+  std::vector<float> host_in2(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    host_in2[i] = static_cast<float>(kNumElements - i);
+  }
+  ASSERT_OK(
+      stream->Memcpy(&input, host_in2.data(), sizeof(float) * host_in2.size()));
+
+  ASSERT_OK(thunk.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  ASSERT_OK(stream->Memcpy(dst_val.data(), output_val, sizeof(float) * kTopK));
+  ASSERT_OK(
+      stream->Memcpy(dst_idx.data(), output_idx, sizeof(int32_t) * kTopK));
+
+  std::vector<float> expected_val2(kTopK);
+  std::vector<int32_t> expected_idx2(kTopK);
+  for (int i = 0; i < kTopK; ++i) {
+    expected_val2[i] = static_cast<float>(kNumElements - i);
+    expected_idx2[i] = i;
+  }
+  EXPECT_EQ(dst_val, expected_val2);
+  EXPECT_EQ(dst_idx, expected_idx2);
+}
+
 }  // namespace xla::gpu
