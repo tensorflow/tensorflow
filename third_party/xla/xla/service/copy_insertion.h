@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -112,15 +113,14 @@ class CopyInsertion : public HloModulePass {
 
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(
-      const HloAliasAnalysis& alias_analysis, HloInstruction* conditional);
+      const HloDataflowAnalysis& dataflow, HloInstruction* conditional);
 
   // Adds copies for transitioning into and out of non-copyable values.
-  absl::Status AddCopiesForNonCopyableTransitions(
-      const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start);
+  absl::Status AddCopiesForNonCopyableTransitions(HloInstruction* chain_start);
   // Adds copies for transitioning into and out of non-copyable values for a
   // explicit non-copyable chain.
   absl::Status AddCopiesForExplicitNonCopyableTransitions(
-      const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start);
+      HloInstruction* chain_start);
 
   // Backend specific information about whether an instruction can share buffer
   // with its operand.
@@ -136,6 +136,8 @@ class CopyInsertion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  friend class CopyInsertionTestPeer;
+
   absl::Status AddCopiesToResolveInterference(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
