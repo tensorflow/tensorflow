@@ -1,0 +1,61 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Auto-Retry Transient Infra Failures
+
+on:
+  # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows:
+      - "Bazel Dependency Violations"
+      - "Bazel Query"
+      - "Bazel Tags"
+      - "Clang Tidy"
+      - "CI"
+      - "Multi-Device CI"
+      - "CI ROCm"
+    types:
+      - completed
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  evaluate-and-retry:
+    name: Evaluate and Retry Failed Jobs
+    runs-on: ubuntu-latest
+    if: |
+      github.repository == 'openxla/xla' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 3
+    timeout-minutes: 10
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: "Evaluate failures and retry"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 .github/workflows/retry_infra_failures.py \
+            --repo "$REPO" \
+            --run-id "$WORKFLOW_RUN_ID" \
+            --max-attempts 2 \
+            --cooldown-seconds 15
