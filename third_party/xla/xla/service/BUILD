@@ -5830,6 +5830,7 @@ xla_cc_binary(
         "//xla/stream_executor/rocm:all_runtime",
         "//xla/stream_executor/rocm:rocm_platform",
     ]) + xla_internal(["tools:xsymbol_repository"]) + if_google([
+        "//third_party/py/jax/jaxlib/cpu:cpu_kernels",
         "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",
     ]),
 )
