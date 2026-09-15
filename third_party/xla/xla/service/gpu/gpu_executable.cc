@@ -69,10 +69,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
@@ -229,6 +231,48 @@ absl::StatusOr<bool> ShouldCollectiveUseMinimalResource(
   return (sync_collective_count <= async_collective_count ||
           total_sync_coll_size <= total_async_coll_size);
 }
+
+absl::Status ValidateArgumentLayouts(
+    const HloModule& module, const GpuExecutable::VariantArguments& arguments) {
+  const ComputationLayout& entry_layout = module.entry_computation_layout();
+  for (int64_t i = 0; i < entry_layout.parameter_count(); ++i) {
+    const Shape& expected_shape = entry_layout.parameter_shape(i);
+    const Shape& actual_shape =
+        std::holds_alternative<absl::Span<const ShapedBuffer* const>>(arguments)
+            ? std::get<absl::Span<const ShapedBuffer* const>>(arguments)[i]
+                  ->on_device_shape()
+            : std::get<absl::Span<ExecutionInput>>(arguments)[i].shape();
+
+    ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        expected_shape,
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+          if (!subshape.IsArray()) {
+            return absl::OkStatus();
+          }
+          if (!ShapeUtil::IndexIsValid(actual_shape, index)) {
+            return InvalidArgument("Argument %d missing subshape at index %s",
+                                   i, index.ToString());
+          }
+          const Shape& actual_subshape =
+              ShapeUtil::GetSubshape(actual_shape, index);
+          if (subshape.has_layout()) {
+            if (actual_subshape.has_layout() &&
+                subshape.layout().minor_to_major() !=
+                    actual_subshape.layout().minor_to_major()) {
+              return InvalidArgument(
+                  "Argument %d at index %s has layout minor_to_major %s, "
+                  "expected %s",
+                  i, index.ToString(),
+                  absl::StrJoin(actual_subshape.layout().minor_to_major(), ","),
+                  absl::StrJoin(subshape.layout().minor_to_major(), ","));
+            }
+          }
+          return absl::OkStatus();
+        }));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 using ::tsl::profiler::ScopedAnnotation;
@@ -955,6 +999,10 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                  << runtime_device_assignment.ToString()
                  << ". This may lead to incorrect results.";
     }
+  }
+
+  if (has_module()) {
+    ABSL_RETURN_IF_ERROR(ValidateArgumentLayouts(module(), arguments));
   }
 
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(

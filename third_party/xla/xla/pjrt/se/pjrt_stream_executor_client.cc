@@ -415,6 +415,8 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
   auto layout_memory_space = Layout::kDefaultMemorySpace;
   if (memory_space->kind() == PinnedHostMemorySpace::kKind) {
     layout_memory_space = Layout::kHostMemorySpace;
+  } else if (memory_space->kind() == CollectiveMemorySpace::kKind) {
+    layout_memory_space = Layout::kCollectiveMemorySpace;
   } else if (memory_space != default_memory_space) {
     return absl::InvalidArgumentError(
         absl::StrCat("Buffer allocation: invalid memory space: ",
@@ -1758,6 +1760,8 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
   switch (shape.layout().memory_space()) {
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
+    case Layout::kCollectiveMemorySpace:
+      return CollectiveMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
     case Layout::kDefaultMemorySpace:
       return default_memory_kind;

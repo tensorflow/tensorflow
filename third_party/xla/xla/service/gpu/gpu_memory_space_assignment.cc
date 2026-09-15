@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/collective_ops_utils.h"
@@ -80,8 +81,9 @@ absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
     default:
       return InvalidArgument(
           "Invalid memory space %d. "
-          "Valid values are 0 (default), 1 (collective), 2 (temp).",
-          memory_space);
+          "Valid values are %d (default), %d (collective), %d (temp).",
+          memory_space, MemorySpaceColor::kDefault,
+          MemorySpaceColor::kCollective, MemorySpaceColor::kTempBuffer);
   }
 }
 
@@ -293,6 +295,46 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
           defining_position.shape().layout().memory_space();
       if (memory_space != 0) {
         candidates.push_back(memory_space);
+      }
+    }
+
+    // Also check if any position of this value is an entry parameter or entry
+    // root instruction with a non-default memory space in
+    // entry_computation_layout, as layout assignment may have reset the memory
+    // space on the instruction shape.
+    for (const HloPosition& position : value->positions()) {
+      const HloComputation* computation = position.instruction->parent();
+      if (computation != nullptr && computation->IsEntryComputation()) {
+        const HloModule* module = computation->parent();
+        if (position.instruction->opcode() == HloOpcode::kParameter) {
+          const Shape& param_shape =
+              module->entry_computation_layout().parameter_shape(
+                  position.instruction->parameter_number());
+          if (ShapeUtil::IndexIsValid(param_shape, position.index)) {
+            const Shape& subshape =
+                ShapeUtil::GetSubshape(param_shape, position.index);
+            if (subshape.has_layout() &&
+                subshape.layout().memory_space() != 0) {
+              const BufferValue::Color memory_space =
+                  subshape.layout().memory_space();
+              candidates.push_back(memory_space);
+            }
+          }
+        }
+        if (position.instruction == computation->root_instruction()) {
+          const Shape& result_shape =
+              module->entry_computation_layout().result_shape();
+          if (ShapeUtil::IndexIsValid(result_shape, position.index)) {
+            const Shape& subshape =
+                ShapeUtil::GetSubshape(result_shape, position.index);
+            if (subshape.has_layout() &&
+                subshape.layout().memory_space() != 0) {
+              const BufferValue::Color memory_space =
+                  subshape.layout().memory_space();
+              candidates.push_back(memory_space);
+            }
+          }
+        }
       }
     }
 

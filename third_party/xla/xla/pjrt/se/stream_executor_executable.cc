@@ -260,6 +260,8 @@ absl::StatusOr<absl::string_view> MemoryKindFromLayout(
   switch (layout.memory_space()) {
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
+    case Layout::kCollectiveMemorySpace:
+      return CollectiveMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
     case Layout::kDefaultMemorySpace:
       return default_memory_kind;

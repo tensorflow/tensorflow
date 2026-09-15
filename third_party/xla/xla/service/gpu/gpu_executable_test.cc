@@ -55,10 +55,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
@@ -1136,6 +1138,61 @@ TEST_F(GpuExecutableTest, ExecutableAbiVersion) {
   ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
   EXPECT_THAT(proto.executable_abi_version(),
               EqualsProto(executable_abi_version_proto));
+}
+
+// Returns a single f32[2,4] argument laid out with `minor_to_major`.
+std::vector<ExecutionInput> CreateExecutionInputsWithLayout(
+    absl::Span<const int64_t> minor_to_major) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+  std::vector<ExecutionInput> args;
+  args.emplace_back(shape);
+  return args;
+}
+
+absl::StatusOr<std::unique_ptr<GpuExecutable>> CreateExecutableWithModule(
+    std::unique_ptr<HloModule> module) {
+  GpuExecutable::Params params;
+  params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
+  SetDummyBufferAssignment(params);
+  params.module_name = "test_module";
+  se::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()});
+  device_description.set_driver_version({12, 3, 0});
+  device_description.set_runtime_version({12, 3, 0});
+  params.device_description = device_description;
+  params.enable_debug_info_manager = false;
+  params.debug_module = std::move(module);
+  return GpuExecutable::Create(std::move(params));
+}
+
+// The entry computation layout expects a column-major parameter, but the
+// argument passed at run time is row-major. Execution must fail before any
+// thunk runs instead of silently reinterpreting the buffer.
+TEST_F(GpuExecutableTest, ExecuteAsyncOnStreamFailsWithLayoutMismatch) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test
+
+    ENTRY main {
+      p0 = f32[2,4]{0,1} parameter(0)
+      ROOT out = f32[2,4]{0,1} copy(p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       CreateExecutableWithModule(std::move(module)));
+
+  ServiceExecutableRunOptions run_options;
+  std::vector<ExecutionInput> args = CreateExecutionInputsWithLayout({1, 0});
+
+  EXPECT_THAT(executable->ExecuteAsyncOnStream(&run_options, std::move(args)),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr("Argument 0 at index {} has layout "
+                                       "minor_to_major 1,0, expected 0,1")));
 }
 
 int64_t BufferSizeBytes(const BufferValue& buffer) {
