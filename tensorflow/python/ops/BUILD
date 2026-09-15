@@ -4863,3 +4863,14 @@ tf_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
     ],
 )
+
+py_library(
+    name = "fused_linear_cross_entropy_op",
+    srcs = ["fused_linear_cross_entropy_op.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn_ops",
+    ],
+)
