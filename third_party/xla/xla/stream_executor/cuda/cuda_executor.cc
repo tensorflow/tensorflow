@@ -387,6 +387,17 @@ absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlockOptin(CUdevice device) {
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
 }
 
+int64_t GetMaxOversizedSharedMemoryPerBlock(CUdevice device) {
+#if CUDA_VERSION >= 13040
+  return GetSimpleAttribute<int64_t>(
+             device, CU_DEVICE_ATTRIBUTE_MAX_OVERSIZED_SHARED_MEMORY_PER_BLOCK)
+      .value_or(0);
+#else
+  (void)device;
+  return 0;
+#endif
+}
+
 absl::StatusOr<int64_t> GetReservedSharedMemoryPerBlock(CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_RESERVED_SHARED_MEMORY_PER_BLOCK);
@@ -1843,6 +1854,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_shared_memory_per_block(GetMaxSharedMemoryPerBlock(device).value());
   desc.set_shared_memory_per_block_optin(
       GetMaxSharedMemoryPerBlockOptin(device).value());
+  desc.set_oversized_shared_memory_per_block(
+      GetMaxOversizedSharedMemoryPerBlock(device));
   desc.set_reserved_shared_memory_per_block(
       GetReservedSharedMemoryPerBlock(device).value());
   desc.set_max_blocks_per_multiprocessor(
