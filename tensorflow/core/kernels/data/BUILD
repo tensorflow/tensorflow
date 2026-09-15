@@ -506,6 +506,7 @@ tf_cc_test(
     srcs = ["iterator_ops_test.cc"],
     deps = [
         ":iterator_ops",
+        ":multi_device_iterator_ops",
         ":prefetch_dataset_op",
         ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
@@ -516,6 +517,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
@@ -524,6 +526,8 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
     ],
 )
 
