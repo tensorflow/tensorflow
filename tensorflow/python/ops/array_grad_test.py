@@ -204,6 +204,38 @@ class ArrayGradTest(test.TestCase):
 
     self._testGrad(f, x)
 
+  def test_matrix_set_diag_v2_grad_ignores_diagonal_padding(self):
+    x = constant_op.constant(0.7, dtype=dtypes.float64)
+
+    def f(x):
+      diagonal = constant_op.constant(
+          [[1., 2.], [3., 4.]], dtype=dtypes.float64) * x
+      matrix = gen_array_ops.matrix_set_diag_v2(
+          input=constant_op.constant([[10., 20.], [30., 40.]],
+                                     dtype=dtypes.float64),
+          diagonal=diagonal,
+          k=constant_op.constant([0, 1], dtype=dtypes.int32))
+      return matrix * constant_op.constant(
+          [[5., 7.], [11., 13.]], dtype=dtypes.float64)
+
+    self._testGrad(f, x)
+
+  def test_matrix_diag_part_v2_grad_uses_left_alignment(self):
+    x = constant_op.constant(0.7, dtype=dtypes.float64)
+    coeff = constant_op.constant(
+        [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]], dtype=dtypes.float64)
+    weights = constant_op.constant(
+        [[100., 10., 1.], [7., 5., 3.]], dtype=dtypes.float64)
+
+    def f(x):
+      diagonal = gen_array_ops.matrix_diag_part_v2(
+          input=coeff * x,
+          k=constant_op.constant([0, 1], dtype=dtypes.int32),
+          padding_value=constant_op.constant(0., dtype=dtypes.float64))
+      return diagonal * weights
+
+    self._testGrad(f, x)
+
 
 if __name__ == "__main__":
   test.main()
