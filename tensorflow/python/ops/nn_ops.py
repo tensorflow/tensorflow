@@ -2801,6 +2801,11 @@ def conv2d_transpose_v2(
       data_format = "NHWC"
     channel_index = 1 if data_format.startswith("NC") else 3
 
+    filters = ops.convert_to_tensor(filters, name="filters")
+    if filters.shape.rank is not None and filters.shape.rank != 4:
+      raise ValueError(f"`filters` must be 4-dimensional. "
+                       f"Received: filters with shape {filters.shape}")
+
     strides = _get_sequence(strides, 2, channel_index, "strides")
     dilations = _get_sequence(dilations, 2, channel_index, "dilations")
     padding, explicit_paddings = convert_padding(padding)
