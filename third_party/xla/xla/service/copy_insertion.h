@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -113,6 +115,14 @@ class CopyInsertion : public HloModulePass {
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(
       const HloAliasAnalysis& alias_analysis, HloInstruction* conditional);
+
+  // Returns the ordering that RemoveUnnecessaryCopies uses when `module` has
+  // no schedule. The default is the dependency ordering of the HLO graph. A
+  // backend that removes dependencies from the graph after copy insertion but
+  // before the module is scheduled overrides this so that no copy is removed
+  // on the strength of an ordering the scheduler will not see.
+  virtual absl::StatusOr<std::unique_ptr<HloOrdering>>
+  CreateUnscheduledOrdering(const HloModule* module) const;
 
   // Adds copies for transitioning into and out of non-copyable values.
   absl::Status AddCopiesForNonCopyableTransitions(

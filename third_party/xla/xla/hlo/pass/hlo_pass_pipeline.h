@@ -88,6 +88,16 @@ class HloPassPipeline : public HloPassInterface {
 
   bool IsPassPipeline() const override { return true; }
 
+  // Whether HloModule::Cleanup runs after every pass, as it does by default.
+  // The cleanup frees the instructions a pass removed and compacts the
+  // instruction lists, which renumbers the unique ids of the instructions
+  // that remain. A caller that tracks the instructions of the module across
+  // the run by id or by pointer, say a pipeline run on a scratch clone, turns
+  // it off; the module cleans up when it is destroyed.
+  void set_cleanup_between_passes(bool cleanup) {
+    cleanup_between_passes_ = cleanup;
+  }
+
   // Return size of passes_.
   int PassesSize() { return passes_.size(); }
   // Return reference to pass specified by index.
@@ -137,9 +147,12 @@ class HloPassPipeline : public HloPassInterface {
   template <typename HloT>
   static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloT module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) {
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      bool cleanup) {
     ABSL_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
-    module->Cleanup();
+    if (cleanup) {
+      module->Cleanup();
+    }
     return changed;
   }
 
@@ -147,6 +160,7 @@ class HloPassPipeline : public HloPassInterface {
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;
+  bool cleanup_between_passes_ = true;
 
   CompilationStats* compilation_stats_;
   // Default stats instance for when one is not passed in the constructor.

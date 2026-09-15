@@ -1801,6 +1801,11 @@ static int64_t GetNumExistingCopies(
   return num_existing_copies;
 }
 
+absl::StatusOr<std::unique_ptr<HloOrdering>>
+CopyInsertion::CreateUnscheduledOrdering(const HloModule* module) const {
+  return std::make_unique<DependencyHloOrdering>(module);
+}
+
 absl::Status CopyInsertion::RemoveUnnecessaryCopies(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
@@ -1815,7 +1820,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   if (module->has_schedule()) {
     ordering = std::make_unique<SequentialHloOrdering>(module->schedule());
   } else {
-    ordering = std::make_unique<DependencyHloOrdering>(module);
+    ABSL_ASSIGN_OR_RETURN(ordering, CreateUnscheduledOrdering(module));
   }
 
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
