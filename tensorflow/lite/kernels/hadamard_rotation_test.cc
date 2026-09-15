@@ -39,8 +39,13 @@ using ::testing::Values;
 class BaseHadamardRotationOpModel : public SingleOpModel {
  public:
   BaseHadamardRotationOpModel(const int size, const TensorData& input,
-                              const TensorData& output) {
-    input1_ = AddInput(input);
+                              const TensorData& output,
+                              const std::vector<float>* const_input = nullptr) {
+    if (const_input != nullptr) {
+      input1_ = AddConstInput(input, *const_input);
+    } else {
+      input1_ = AddInput(input);
+    }
     output1_ = AddOutput(output);
 
     flexbuffers::Builder fbb;
@@ -166,6 +171,26 @@ TEST_P(HadamardRotationOpTest, RandomInputTest) {
 
 INSTANTIATE_TEST_SUITE_P(HadamardSizes, HadamardRotationOpTest,
                          Values(4, 16, 64));
+
+// A constant tensor's raw FlatBuffer buffer may legally be larger than
+// its logical shape requires; the model loader only validates
+// required_bytes <= buffer_size. The copy into the output must be
+// bounded by the output allocation, not by the raw buffer length.
+TEST(HadamardRotationOpTest, ConstantInputWithOversizedBuffer) {
+  const int size = 2;
+  std::vector<float> input_data(1 << 12, 1.0);
+  BaseHadamardRotationOpModel m(size, {TensorType_FLOAT32, {1, size * 2}},
+                                {TensorType_FLOAT32, {1, size * 2}},
+                                &input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::vector<float> output = m.GetOutput1<float>();
+  EXPECT_FLOAT_EQ(output[0], std::sqrt(size));
+  EXPECT_FLOAT_EQ(output[size], std::sqrt(size));
+  for (int i = 1; i < size; ++i) {
+    EXPECT_FLOAT_EQ(output[i], 0.0);
+    EXPECT_FLOAT_EQ(output[size + i], 0.0);
+  }
+}
 
 }  // namespace
 }  // namespace custom
