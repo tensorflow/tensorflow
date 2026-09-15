@@ -7373,19 +7373,6 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
                         *module, options_.report_instruction_count));
   XLA_VLOG_LINES(1, logger.MakeReport());
 
-  // Remove boundary copies inserted for SPMDFullToShardShape and
-  // SPMDShardToFullShape.
-  for (HloComputation* computation : module->computations(execution_threads)) {
-    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
-      if (hlo->opcode() == HloOpcode::kCopy &&
-          hlo->frontend_attributes().map().contains(kSpmdBoundaryCopyAttr)) {
-        ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(hlo->mutable_operand(0)));
-        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
-        changed = true;
-      }
-    }
-  }
-
   if (changed) {
     HloPassPipeline pass("spmd-cleanup");
     pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
