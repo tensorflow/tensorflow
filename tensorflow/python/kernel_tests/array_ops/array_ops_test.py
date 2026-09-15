@@ -392,6 +392,13 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class OperatorShapeTest(test_util.TensorFlowTestCase):
 
+  def _zero_high_rank(self, rank):
+    # tf.zeros(high_rank) in graph mode calls np.empty, and NumPy rejects
+    # rank > 32. Fill takes a 1-D shape tensor instead.
+    return array_ops.fill(
+        [0] + [1] * (rank - 1),
+        constant_op.constant(0.0, dtype=dtypes.float32))
+
   def testExpandScalar(self):
     scalar = "hello"
     scalar_expanded = array_ops.expand_dims(scalar, [0])
@@ -429,6 +436,18 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
               tensor=[[1]],
               shape=constant_op.constant([1 for i in range(254)],
                                          dtype=dtypes.int64)))
+
+  def testExpandDimsAtMaxRank(self):
+    # TensorShape::MaxDimensions() is 254.
+    value = self._zero_high_rank(253)
+    expanded = array_ops.expand_dims(value, 0)
+    self.assertEqual(254, self.evaluate(array_ops.rank(expanded)))
+
+  def testExpandDimsExceedsMaxRank(self):
+    value = self._zero_high_rank(254)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "maximum supported rank"):
+      self.evaluate(array_ops.expand_dims(value, 0))
 
 
 @test_util.with_eager_op_as_function
@@ -795,6 +814,33 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       strides = constant_op.constant([1], dtype=dtypes.int64)
       s = array_ops.strided_slice(x, begin, end, strides)
       self.assertAllEqual([3.], self.evaluate(s))
+
+  def testNewAxisAtMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 252,
+        constant_op.constant(0.0, dtype=dtypes.float32))
+    sliced = gen_array_ops.strided_slice(
+        value,
+        begin=[0],
+        end=[0],
+        strides=[1],
+        new_axis_mask=1)
+    self.assertEqual(254, self.evaluate(array_ops.rank(sliced)))
+
+  def testNewAxisExceedsMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 224,
+        constant_op.constant(0.0, dtype=dtypes.float32))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "maximum supported rank"):
+      self.evaluate(
+          gen_array_ops.strided_slice(
+              value,
+              begin=array_ops.zeros([31], dtypes.int32),
+              end=array_ops.zeros([31], dtypes.int32),
+              strides=array_ops.ones([31], dtypes.int32),
+              new_axis_mask=(1 << 30) - 1,
+              ellipsis_mask=1 << 30))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
