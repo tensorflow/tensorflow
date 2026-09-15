@@ -1108,6 +1108,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:types",
         "@xla//xla:literal",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
