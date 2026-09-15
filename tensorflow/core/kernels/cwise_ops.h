@@ -79,6 +79,35 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
+template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
+struct tf_scalar_pow_op;
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/false> : scalar_pow_op<T, T> {};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/false>>
+    : functor_traits<scalar_pow_op<T, T>> {};
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/true> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& base,
+                                                     const T& exponent) const {
+    if (exponent == T(0)) {
+      return T(1);
+    }
+    return scalar_pow_op<T, T>()(base, exponent);
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/true>> {
+  enum {
+    Cost = functor_traits<scalar_pow_op<T, T>>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
+};
+
 template <typename T, typename DivOrMod>
 struct safe_div_or_mod_op {
   static_assert(std::is_integral<T>::value, "Integer type expected");
@@ -1172,7 +1201,7 @@ struct truncate_div_real
     : base<T, Eigen::internal::google_truncate_div_real<T>> {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
+struct pow : base<T, Eigen::internal::tf_scalar_pow_op<T>> {};
 
 template <typename T>
 struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
