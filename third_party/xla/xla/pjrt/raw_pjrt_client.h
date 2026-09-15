@@ -245,6 +245,21 @@ class PjRtRawClient {
         "WaitUntilBufferReadyOnStream is only implemented for GPU.");
   }
 
+  virtual absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents(
+      LocalDeviceId local_device_id) const {
+    return absl::UnimplementedError(
+        "GetStreamForExternalReadyEvents is not supported.");
+  }
+
+  virtual absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats(
+      LocalDeviceId local_device_id) const {
+    return absl::UnimplementedError("GetAllocatorStats is not supported.");
+  }
+
+  virtual absl::Status ClearMemoryStats(LocalDeviceId local_device_id) {
+    return absl::UnimplementedError("ClearMemoryStats is not supported.");
+  }
+
   virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
                                   PjRtRawBufferRef raw_buffer,
                                   PjRtDeviceEventRefVector definition_events,

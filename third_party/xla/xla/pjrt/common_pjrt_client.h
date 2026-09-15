@@ -1229,6 +1229,13 @@ class CommonPjRtDevice : public PjRtDevice {
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;
 
+  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
+      const override;
+
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
+  absl::Status ClearMemoryStats() override;
+
  protected:
   PjRtDeviceDescription* description_ptr() { return description_.get(); }
   const PjRtDeviceDescription* description_ptr() const {

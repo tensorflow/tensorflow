@@ -4418,4 +4418,35 @@ absl::StatusOr<bool> CommonPjRtDevice::PoisonExecution(int32_t launch_id,
                                                 std::move(error));
 }
 
+absl::StatusOr<std::intptr_t>
+CommonPjRtDevice::GetStreamForExternalReadyEvents() const {
+  if (!IsAddressable()) {
+    return FailedPrecondition(
+        "GetStreamForExternalReadyEvents() is allowed only for addressable "
+        "devices");
+  }
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->GetStreamForExternalReadyEvents(
+      local_device_id());
+}
+
+absl::StatusOr<tsl::AllocatorStats> CommonPjRtDevice::GetAllocatorStats()
+    const {
+  if (!IsAddressable()) {
+    return FailedPrecondition(
+        "GetAllocatorStats() is allowed only for addressable devices");
+  }
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->GetAllocatorStats(local_device_id());
+}
+
+absl::Status CommonPjRtDevice::ClearMemoryStats() {
+  if (!IsAddressable()) {
+    return absl::FailedPreconditionError(
+        "ClearMemoryStats() is allowed only for addressable devices");
+  }
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->ClearMemoryStats(local_device_id());
+}
+
 }  // namespace xla

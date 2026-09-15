@@ -1420,9 +1420,10 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
   for (int device_index = 0; device_index < client->device_count();
        device_index++) {
-    auto device =
-        static_cast<PjRtStreamExecutorDevice*>(client->devices()[device_index]);
-    auto coords = device->description().coords();
+    PjRtDevice* device = client->devices()[device_index];
+    auto coords = absl::down_cast<const PjRtStreamExecutorDeviceDescription&>(
+                      device->description())
+                      .coords();
     // All devices are in the same partition & process.
     EXPECT_THAT(coords, ElementsAre(0, 0, device->local_device_id().value()));
   }
@@ -1444,8 +1445,7 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceSharedMemoryInfo) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
   for (const auto& device : client->devices()) {
-    auto value = static_cast<PjRtStreamExecutorDevice*>(device)
-                     ->description()
+    auto value = device->description()
                      .Attributes()
                      .find("shared_memory_per_block_optin")
                      ->second;
