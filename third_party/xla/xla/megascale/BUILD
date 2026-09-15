@@ -51,3 +51,43 @@ tf_proto_library(
     create_grpc_library = True,
     make_default_target_header_only = True,
 )
+
+tf_proto_library(
+    name = "action_graph_proto",
+    srcs = ["action_graph.proto"],
+    create_grpc_library = True,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "tpu_chip_enums_proto",
+    srcs = ["tpu_chip_enums.proto"],
+    create_grpc_library = True,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "debug_logging_proto",
+    srcs = ["debug_logging.proto"],
+    create_grpc_library = True,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":action_graph_proto",
+        ":tpu_chip_enums_proto",
+        "//xla/tsl/protobuf:status_proto",
+    ],
+    exports = [
+        ":action_graph_proto",
+        ":tpu_chip_enums_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "errors_proto",
+    srcs = ["errors.proto"],
+    create_grpc_library = True,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":debug_logging_proto",
+    ],
+)
