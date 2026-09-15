@@ -203,7 +203,7 @@ config_setting(
 )
 
 config_setting(
-    name = "windows_aarch64",
+    name = "windows_arm64",
     constraint_values = [
         "@platforms//cpu:aarch64",
         "@platforms//os:windows",
@@ -354,7 +354,7 @@ selects.config_setting_group(
     match_any = [
         ":linux_aarch64",
         ":macos_arm64",
-        ":windows_aarch64",
+        ":windows_arm64",
         ":with_cross_compiler_support",
     ],
     visibility = ["//visibility:public"],
@@ -365,7 +365,7 @@ selects.config_setting_group(
     match_any = [
         ":linux_aarch64",
         ":macos_arm64",
-        ":windows_aarch64",
+        ":windows_arm64",
         ":linux_armhf",
         ":with_cross_compiler_support",
     ],
