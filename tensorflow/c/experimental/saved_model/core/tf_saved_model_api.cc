@@ -196,11 +196,13 @@ absl::Status TFSavedModelAPI::GetFunction(const std::string& function_path,
 absl::Status TFSavedModelAPI::GetFunctions(
     int node_id,
     absl::flat_hash_map<std::string, ConcreteFunction*>* functions) {
+  if (functions == nullptr) {
+    return absl::InvalidArgumentError("functions must not be null.");
+  }
   const auto& nodes = bundle_.saved_object_graph().nodes();
-  if (node_id >= nodes.size()) {
-    return absl::OutOfRangeError(
-        absl::StrCat("node_id ", node_id,
-                     " not found.  Maximum node ID: ", nodes.size() - 1));
+  if (node_id < 0 || node_id >= nodes.size()) {
+    return absl::OutOfRangeError(absl::StrCat(
+        "node_id ", node_id, " is out of range [0, ", nodes.size(), ")."));
   }
   const SavedObject* current_node = &nodes.Get(node_id);
   for (const auto& child : current_node->children()) {
