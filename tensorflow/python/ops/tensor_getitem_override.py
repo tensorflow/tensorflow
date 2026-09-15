@@ -311,4 +311,27 @@ def _slice_helper_var(var, slice_spec):
   return _slice_helper(var.value(), slice_spec, var)
 
 
+def _setitem_helper_var(var, slice_spec, value):
+  """Assigns `value` to a sliced range of the variable.
+
+  This is an override for `Variable.__setitem__`. It allows for slice
+  assignment, e.g.:
+
+  ```python
+  import tensorflow as tf
+  A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
+  A[:2,:2] = 22. * tf.ones((2, 2))
+  ```
+
+  Args:
+    var: An `ops.Variable` object.
+    slice_spec: The arguments to `Tensor.__getitem__`.
+    value: The value to assign to the sliced range.
+
+  Returns:
+    The assignment operation.
+  """
+  return var[slice_spec].assign(value)
+
+
 tensor_lib.Tensor._override_operator("__getitem__", _slice_helper)  # pylint: disable=protected-access
