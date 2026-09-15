@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -41,8 +42,7 @@ limitations under the License.
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -100,7 +100,11 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  std::string while_instr_name = while_instr->ToString(print_no_metadata);
+  // Only used by VLOG, and the string carries the whole loop state shape.
+  std::string while_instr_name;
+  if (VLOG_IS_ON(1)) {
+    while_instr_name = while_instr->ToString(print_no_metadata);
+  }
   VLOG(2) << "Trying to hoist from " << while_instr_name;
 
   auto maybe_upper_bound = ComputeWhileLoopTripCountUpperBound(while_instr);
@@ -146,7 +150,8 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  for (auto* instruction : while_body->MakeInstructionPostOrder()) {
+  // This scan bails on any match, so it does not need the post order.
+  for (auto* instruction : while_body->instructions()) {
     // LICM in the presence of domain instructions is complex, bail.
     if (instruction->opcode() == HloOpcode::kDomain ||
         instruction->IsCustomCall("SPMDFullToShardShape") ||
@@ -167,6 +172,32 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   std::vector<HloInstruction*> instructions_to_replace;
   std::vector<HloInstruction*> replacement_instructions;
 
+  auto is_invariant = [&](HloInstruction* op) {
+    return op->opcode() == HloOpcode::kConstant ||
+           hoisted_instructions.contains(op) ||
+           unhoisted_invariant_instructions.contains(op);
+  };
+
+  // Sum of shape_size_function_ over the array leaves of an instruction's
+  // shape, cached per instruction: shapes do not change during the scan below,
+  // and a wide tuple would otherwise be walked once per user.
+  flat_hash_map<const HloInstruction*, int64_t> leaf_size_sum_cache;
+  auto leaf_size_sum = [&](const HloInstruction* instr) {
+    auto [it, inserted] = leaf_size_sum_cache.try_emplace(instr, 0);
+    if (inserted) {
+      int64_t size = 0;
+      ShapeUtil::ForEachSubshape(
+          instr->shape(),
+          [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+            if (subshape.IsArray()) {
+              size += shape_size_function_(subshape);
+            }
+          });
+      it->second = size;
+    }
+    return it->second;
+  };
+
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
     allowance->DeductCost(1);
     if (!allowance->ContinueAnalysis()) {
@@ -185,6 +216,13 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
         instruction->opcode() != HloOpcode::kReshape) {
       continue;
     }
+
+    // Cheap check first. Both checks are pure filters, so their order does not
+    // change which instructions are hoisted.
+    if (!absl::c_all_of(instruction->operands(), is_invariant)) {
+      continue;
+    }
+
     // Constants don't inflate, so size inflation check doesn't make sense for
     // constants.
     if (hoist_size_inflation_ratio_ &&
@@ -195,39 +233,15 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       // platforms where memory is limited. This can be especially harmful if
       // the instruction has a significantly larger output than its input, e.g.
       // kIota, kBroadcast or kConstant.
-      int64_t input_size = 0, output_size = 0;
-
+      int64_t input_size = 0;
       for (auto* operand : instruction->operands()) {
-        ShapeUtil::ForEachSubshape(
-            operand->shape(), [&input_size, this](const Shape& subshape,
-                                                  const ShapeIndex& /*index*/) {
-              if (subshape.IsArray()) {
-                input_size += shape_size_function_(subshape);
-              }
-            });
+        input_size += leaf_size_sum(operand);
       }
-      ShapeUtil::ForEachSubshape(
-          instruction->shape(),
-          [&output_size, this](const Shape& subshape,
-                               const ShapeIndex& /*index*/) {
-            if (subshape.IsArray()) {
-              output_size += shape_size_function_(subshape);
-            }
-          });
+      int64_t output_size = leaf_size_sum(instruction);
 
       if (output_size > input_size * *hoist_size_inflation_ratio_) {
         continue;
       }
-    }
-
-    auto is_invariant = [&](HloInstruction* op) {
-      return hoisted_instructions.find(op) != hoisted_instructions.end() ||
-             unhoisted_invariant_instructions.contains(op) ||
-             op->opcode() == HloOpcode::kConstant;
-    };
-
-    if (!absl::c_all_of(instruction->operands(), is_invariant)) {
-      continue;
     }
 
     if (NotWorthHoistingIndividually(*instruction)) {
