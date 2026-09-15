@@ -103,7 +103,7 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
     CHECK:           xla.pure_call
     CHECK:           scf.if
     CHECK:             xla.pure_call
-    CHECK:             tensor.extract
+    CHECK:             xla.pure_call
     CHECK:             arith.addf
     CHECK:           return %[[XLA_LOOP]]
   )";
