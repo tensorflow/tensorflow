@@ -173,6 +173,16 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
     bool allow_runtime_calls) {
   PrimitiveType element_type = dot_info.result_shape.element_type();
 
+  // Whether both operands have the same element type as the result. The tiled
+  // LLVM IR GEMV/GEMM emitters are templated on a single scalar type and would
+  // compute garbage for mixed-precision dots (e.g. s8 x s8 -> s32, where the
+  // result type is wider than the operand types due to preferred_element_type).
+  // Such dots must instead go to kEigen (correct via the Eigen contraction) or
+  // kNaiveLlvmIr (correct via the widened accumulator loop).
+  bool operands_match_result_type =
+      dot_info.lhs_shape.element_type() == element_type &&
+      dot_info.rhs_shape.element_type() == element_type;
+
   // Batched dot either handled by a runtime call or expanded into a sequence
   // of non-batch dot operations.
   DCHECK(dot_info.dim_nums.lhs_batch_dimensions_size() == 0 &&
@@ -187,7 +197,8 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
         (dot_info.result_shape.dimensions(0) == 1 ||
          dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
-       primitive_util::IsIntegralType(element_type))) {
+       primitive_util::IsIntegralType(element_type)) &&
+      operands_match_result_type) {
     return DotImplementationStrategy::kTiledLlvmIrGemv;
   }
 
@@ -206,7 +217,11 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   }
 
   if (IsAlignedGemm(dot_info, target_machine_features)) {
-    if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
+    // The tiled LLVM IR GEMM emitter is templated on a single scalar type, so
+    // only use it for uniform-precision dots; mixed-precision dots fall through
+    // to kEigen (or kNaiveLlvmIr below), both of which handle them correctly.
+    if (operands_match_result_type &&
+        CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
       return DotImplementationStrategy::kTiledLlvmIrGemm;
     } else if (allow_runtime_calls) {
       return DotImplementationStrategy::kEigen;
@@ -715,12 +730,31 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
     updated_accum = b_->CreateInsertValue(
         updated_accum, b_->CreateFAdd(imag(accum), product_imag), {1});
   } else if (ShapeUtil::ElementIsIntegral(lhs_shape)) {
+    // For mixed-precision dots (e.g. s8 x s8 -> s32) HLO semantics require the
+    // product and accumulation to happen in the wider result type. Widen the
+    // operand elements to the accumulator type before multiplying; otherwise
+    // the multiply/add would be emitted at the operand type (invalid IR when it
+    // differs from `accum_type`, and wrong arithmetic besides).
+    if (lhs_element->getType() != accum_type) {
+      bool operand_is_signed =
+          primitive_util::IsSignedIntegralType(lhs_shape.element_type());
+      lhs_element =
+          b_->CreateIntCast(lhs_element, accum_type, operand_is_signed);
+      rhs_element =
+          b_->CreateIntCast(rhs_element, accum_type, operand_is_signed);
+    }
     llvm::Value* product = b_->CreateMul(lhs_element, rhs_element);
     updated_accum = b_->CreateAdd(accum, product);
   } else if (lhs_shape.element_type() == PRED) {
     llvm::Value* product = b_->CreateAnd(lhs_element, rhs_element);
     updated_accum = b_->CreateOr(accum, product);
   } else {
+    // Mixed-precision floating-point dots (e.g. f16 x f16 -> f32) must likewise
+    // accumulate in the wider result type.
+    if (lhs_element->getType() != accum_type) {
+      lhs_element = b_->CreateFPCast(lhs_element, accum_type);
+      rhs_element = b_->CreateFPCast(rhs_element, accum_type);
+    }
     llvm::Value* product = b_->CreateFMul(lhs_element, rhs_element);
     updated_accum = b_->CreateFAdd(accum, product);
   }
@@ -787,7 +821,27 @@ absl::Status DotOpEmitter::EmitScalarDot() {
     result = b_->CreateInsertValue(result, real, {0});
     result = b_->CreateInsertValue(result, imag, {1});
   } else {
-    result = b_->CreateFMul(lhs_value, rhs_value);
+    llvm::Type* accum_type = target_array_.GetElementLlvmType();
+    if (lhs_value->getType() != accum_type) {
+      // Mixed-precision scalar dot: compute the product in the (wider) result
+      // type so the stored value has the target element type. Integer operands
+      // must use an integer multiply after widening; using a float multiply as
+      // in the uniform path would emit invalid IR.
+      PrimitiveType operand_type = lhs_array_.GetShape().element_type();
+      if (primitive_util::IsIntegralType(operand_type)) {
+        bool operand_is_signed =
+            primitive_util::IsSignedIntegralType(operand_type);
+        lhs_value = b_->CreateIntCast(lhs_value, accum_type, operand_is_signed);
+        rhs_value = b_->CreateIntCast(rhs_value, accum_type, operand_is_signed);
+        result = b_->CreateMul(lhs_value, rhs_value);
+      } else {
+        lhs_value = b_->CreateFPCast(lhs_value, accum_type);
+        rhs_value = b_->CreateFPCast(rhs_value, accum_type);
+        result = b_->CreateFMul(lhs_value, rhs_value);
+      }
+    } else {
+      result = b_->CreateFMul(lhs_value, rhs_value);
+    }
   }
   target_array_.EmitWriteArrayElement(/*index=*/element_index, result, b_);
   return absl::OkStatus();

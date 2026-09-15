@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tuple_tree.h"
@@ -200,6 +201,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kShuffle:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSinh:
@@ -344,6 +346,7 @@ class HloParserImpl : public HloParser {
     kShapeList,
     kEnum,
     kRandomAlgorithm,
+    kShuffleMode,
     kPrecisionAlgorithm,
     kResultAccuracyType,
     kAliasing,
@@ -636,6 +639,7 @@ class HloParserImpl : public HloParser {
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseConvKind(ConvolutionKind* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
+  bool ParseShuffleMode(ShuffleMode::ModeCase* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseAlgorithm(PrecisionConfig::Algorithm* result);
   bool ParseResultAccuracyType(ResultAccuracy::Mode* result);
@@ -1164,6 +1168,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<
       absl::btree_map<OriginalArray, std::vector<HloModule::DebugAttributes>>>
       debug_attributes;
+  std::optional<std::string> backend_config;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["replica_count"] = {/*required=*/false, AttrTy::kInt64, &replica_count};
@@ -1191,6 +1196,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
                                     &original_value_recovery_table};
   attrs["debug_attributes"] = {
       /*required=*/false, AttrTy::kDebugAttributesTable, &debug_attributes};
+  attrs["backend_config"] = {/*required=*/false, AttrTy::kStringOrJsonDict,
+                             &backend_config};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -1258,6 +1265,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
   if (frontend_attributes) {
     module->set_frontend_attributes(frontend_attributes.value());
+  }
+  if (backend_config) {
+    module->set_raw_backend_config_string(*backend_config);
   }
   if (!allow_spmd_sharding_propagation_to_parameters.empty()) {
     config.set_allow_spmd_sharding_propagation_to_parameters(
@@ -1455,12 +1465,18 @@ bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
   }
   absl::btree_map<std::string, AttrConfig> attrs;
   optional<std::string> execution_thread = HloInstruction::kMainExecutionThread;
+  optional<std::string> backend_config;
   attrs["execution_thread"] = {/*required=*/false, AttrTy::kString,
                                &execution_thread};
+  attrs["backend_config"] = {/*required=*/false, AttrTy::kStringOrJsonDict,
+                             &backend_config};
   if (!ParseAttributes(attrs)) {
     return false;
   }
   computation->SetExecutionThread(*execution_thread);
+  if (backend_config) {
+    computation->set_raw_backend_config_string(*backend_config);
+  }
   if (is_entry_computation) {
     if (*entry_computation != nullptr) {
       return Error(maybe_entry_loc, "expects only one ENTRY");
@@ -3125,6 +3141,52 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       return builder->AddInstruction(
           HloInstruction::CreateReverse(*shape, operands[0], *dimensions));
     }
+    case HloOpcode::kShuffle: {
+      optional<std::vector<int64_t>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      optional<ShuffleMode::ModeCase> mode;
+      attrs["mode"] = {/*required=*/true, AttrTy::kShuffleMode, &mode};
+      // Attributes below are specific to a subset of the modes, so they are
+      // optional here and checked against the mode afterwards.
+      optional<std::vector<int64_t>> shifts;
+      attrs["shifts"] = {/*required=*/false, AttrTy::kBracedInt64List, &shifts};
+      optional<Literal> indices;
+      attrs["indices"] = {/*required=*/false, AttrTy::kLiteral, &indices};
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      ShuffleMode shuffle_mode;
+      switch (*mode) {
+        case ShuffleMode::kPermute:
+          if (!indices || shifts) {
+            TokenError("expects only indices for permute mode");
+            return nullptr;
+          }
+          shuffle_mode = shuffle::Permute(*indices);
+          break;
+        case ShuffleMode::kRotate:
+          if (!shifts || indices) {
+            TokenError("expects only shifts for rotate mode");
+            return nullptr;
+          }
+          shuffle_mode = shuffle::Rotate(*shifts);
+          break;
+        case ShuffleMode::MODE_NOT_SET:
+          TokenError("expects a shuffle mode");
+          return nullptr;
+      }
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferShuffleShape(operands[0]->shape(),
+                                                     *dimensions, shuffle_mode);
+          })) {
+        return nullptr;
+      }
+      return builder->AddInstruction(HloInstruction::CreateShuffle(
+          *shape, operands[0], *dimensions, shuffle_mode));
+    }
     case HloOpcode::kSelectAndScatter: {
       optional<HloComputation*> select;
       attrs["select"] = {/*required=*/true, AttrTy::kHloComputation, &select};
@@ -4334,20 +4396,23 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   std::string device_ids_str;
   bool is_device_ids = false;
   const char* ptr = lexer_.GetLoc();
-  if (ptr != nullptr) {
+  const char* const buf_end = lexer_.GetBufferEnd();
+  if (ptr != nullptr && ptr < buf_end) {
     if (*ptr == ']') {
       ptr++;
     }
-    while (*ptr == ' ' || *ptr == '\t' || *ptr == '\n' || *ptr == '\r') {
+    while (ptr < buf_end &&
+           (*ptr == ' ' || *ptr == '\t' || *ptr == '\n' || *ptr == '\r')) {
       ptr++;
     }
-    if (*ptr == ',') {
+    if (ptr < buf_end && *ptr == ',') {
       const char* lookahead_ptr = ptr + 1;
-      while (*lookahead_ptr == ' ' || *lookahead_ptr == '\t' ||
-             *lookahead_ptr == '\n' || *lookahead_ptr == '\r') {
+      while (lookahead_ptr < buf_end &&
+             (*lookahead_ptr == ' ' || *lookahead_ptr == '\t' ||
+              *lookahead_ptr == '\n' || *lookahead_ptr == '\r')) {
         lookahead_ptr++;
       }
-      absl::string_view remaining(lookahead_ptr);
+      absl::string_view remaining(lookahead_ptr, buf_end - lookahead_ptr);
       if (absl::StartsWith(remaining, "device_ids") &&
           (remaining.size() == 10 || remaining[10] == '=' ||
            remaining[10] == ' ' || remaining[10] == '\t')) {
@@ -6399,6 +6464,15 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<RandomAlgorithm>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kShuffleMode: {
+        ShuffleMode::ModeCase result;
+        if (!ParseShuffleMode(&result)) {
+          return false;
+        }
+        static_cast<optional<ShuffleMode::ModeCase>*>(attr_out_ptr)
+            ->emplace(result);
         return true;
       }
       case AttrTy::kPrecisionAlgorithm: {
@@ -8539,6 +8613,22 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
     return TokenError(
         StrFormat("expects random algorithm but sees: %s, error: %s", val,
                   status_or_result.status().message()));
+  }
+  *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseShuffleMode(ShuffleMode::ModeCase* result) {
+  VLOG(kDebugLevel) << "ParseShuffleMode";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects shuffle mode");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToShuffleMode(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects shuffle mode but sees: %s, error: %s",
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();

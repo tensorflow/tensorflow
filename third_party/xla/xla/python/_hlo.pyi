@@ -321,37 +321,39 @@ class HloOpcode(enum.Enum):
 
   kShiftRightLogical = 117
 
-  kSign = 118
+  kShuffle = 118
 
-  kSin = 119
+  kSign = 119
 
-  kSinh = 120
+  kSin = 120
 
-  kSlice = 121
+  kSinh = 121
 
-  kSort = 122
+  kSlice = 122
 
-  kSqrt = 123
+  kSort = 123
 
-  kStochasticConvert = 124
+  kSqrt = 124
 
-  kSubtract = 125
+  kStochasticConvert = 125
 
-  kTan = 126
+  kSubtract = 126
 
-  kTanh = 127
+  kTan = 127
 
-  kTopK = 128
+  kTanh = 128
 
-  kTranspose = 129
+  kTopK = 129
 
-  kTriangularSolve = 130
+  kTranspose = 130
 
-  kTuple = 131
+  kTriangularSolve = 131
 
-  kWhile = 132
+  kTuple = 132
 
-  kXor = 133
+  kWhile = 133
+
+  kXor = 134
 
 class Layout:
   @overload
@@ -408,6 +410,7 @@ class Shape:
     """Constructs a scalar shape."""
 
   def dimensions(self) -> tuple[int, ...]: ...
+  def has_layout(self) -> bool: ...
   def layout(self) -> Layout: ...
   def xla_element_type(self) -> PrimitiveType: ...
   def element_type(self) -> numpy.dtype: ...
@@ -556,6 +559,8 @@ class HloInstruction:
   def to_string(self) -> str: ...
   @property
   def opcode(self) -> HloOpcode: ...
+  @property
+  def shape(self) -> Shape: ...
   def users(self) -> list[HloInstruction]: ...
   def operands(self) -> list[HloInstruction]: ...
   def async_wrapped_root(self) -> HloInstruction: ...
@@ -563,6 +568,7 @@ class HloInstruction:
   def set_frontend_attribute(self, key: str, value: str) -> None: ...
   def set_core_assignment(self, core_ids: Sequence[int]) -> None: ...
   def core_assignment(self) -> list[int]: ...
+  def as_serialized_proto(self) -> bytes: ...
   def __hash__(self) -> int: ...
   def __eq__(self, arg: HloInstruction, /) -> bool: ...
 

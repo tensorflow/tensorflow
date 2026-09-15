@@ -1020,6 +1020,31 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_options",
+    hdrs = ["custom_options.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "custom_options_test",
+    srcs = ["custom_options_test.cc"],
+    deps = [
+        ":custom_options",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "packed_literal_reader",
     srcs = ["packed_literal_reader.cc"],
     hdrs = ["packed_literal_reader.h"],
@@ -1164,6 +1189,36 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "shuffle",
+    srcs = ["shuffle.cc"],
+    hdrs = ["shuffle.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":literal",
+        ":shape_util",
+        ":xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "shuffle_test",
+    srcs = ["shuffle_test.cc"],
+    deps = [
+        ":literal",
+        ":literal_util",
+        ":shape_util",
+        ":shuffle",
+        ":xla_data_proto_cc",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
     ],
 )
 

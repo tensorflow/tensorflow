@@ -1111,6 +1111,12 @@ class XlaBuilder {
   virtual absl::StatusOr<XlaOp> RevInternal(
       const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions);
 
+  XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                const ShuffleMode& mode);
+  virtual absl::StatusOr<XlaOp> ShuffleInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+      const ShuffleMode& mode);
+
   XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
              int64_t dimension = -1, bool is_stable = false);
   virtual absl::StatusOr<XlaOp> SortInternal(const Shape& shape,
@@ -1254,7 +1260,7 @@ class XlaBuilder {
   XlaOp BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                  absl::Span<const int64_t> broadcast_dimensions,
                  std::optional<ComparisonDirection> direction = std::nullopt,
-                 std::optional<Comparison::Type> type = std::nullopt);
+                 std::optional<ComparisonOrder> order = std::nullopt);
 
   absl::StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                 ComparisonDirection direction);
@@ -1263,7 +1269,7 @@ class XlaBuilder {
   virtual absl::StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs,
                                         XlaOp rhs,
                                         ComparisonDirection direction,
-                                        Comparison::Type type);
+                                        ComparisonOrder order);
 
   // Internal helper method that does the building for an arbitrary binary op
   // with same ranked operands that doesn't broadcast.
@@ -1519,6 +1525,9 @@ class XlaBuilder {
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64_t> broadcast_dimensions,
                        ComparisonDirection direction);
+  friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
+                       absl::Span<const int64_t> broadcast_dimensions,
+                       ComparisonDirection direction, ComparisonOrder order);
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64_t> broadcast_dimensions,
                        ComparisonDirection direction,
@@ -1988,6 +1997,8 @@ class XlaBuilder {
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
+  friend XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                       const ShuffleMode& mode);
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     const XlaComputation& comparator, int64_t dimension,
                     bool is_stable);
@@ -2574,6 +2585,9 @@ XlaOp LeTotalOrder(XlaOp lhs, XlaOp rhs,
 
 // Enqueues a comparison instruction onto the computation (optionally without
 // broadcast_dimensions for consistency with others).
+XlaOp Compare(XlaOp lhs, XlaOp rhs,
+              absl::Span<const int64_t> broadcast_dimensions,
+              ComparisonDirection direction, ComparisonOrder order);
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64_t> broadcast_dimensions,
               ComparisonDirection direction, Comparison::Type compare_type);
@@ -3406,6 +3420,18 @@ XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
 // elements in the given dimensions is reversed (i.e., the element at index i
 // is moved to index dimension_size - 1 - i).
 XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
+
+// Enqueues a shuffle instruction onto the computation. The elements are
+// shuffled along the given dimensions following the pattern selected by `mode`,
+// which also carries the attributes of that mode:
+// - permute: the element at an index in the output is taken from the index of
+//   the operand obtained by replacing the coordinates of the given dimensions
+//   with the corresponding entries of `indices`.
+// - rotate: the elements are (left) rotated by `shifts` along the given
+//   dimensions (i.e. the element at index i in the output is taken from index
+//   (i + shifts[j]) % dimension_size[j] of the operand).
+XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+              const ShuffleMode& mode);
 
 // Enqueues a sort instruction onto the computation, using 'comparator' for
 // comparisons. 'comparator' needs to define a strict weak order. 'is_stable'

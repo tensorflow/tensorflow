@@ -620,7 +620,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/platform:env",
         "@com_google_absl//absl/memory",
+        "@tsl//tsl/platform:context",
     ],
 )
 
@@ -634,10 +636,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
-        "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/data:metric_utils",
         "//tensorflow/core/data:root_dataset",
-        "//tensorflow/core/data:tfdataz_metrics",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:ops_util",
@@ -648,6 +648,7 @@ tf_kernel_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@tsl//tsl/platform:context",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",
     ],
