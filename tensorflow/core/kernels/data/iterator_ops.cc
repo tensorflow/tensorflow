@@ -631,7 +631,8 @@ absl::Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
 absl::Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
-  const ResourceHandle& handle = ctx->input(0).flat<ResourceHandle>()(0);
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
   // guarantees that it has not run yet.
