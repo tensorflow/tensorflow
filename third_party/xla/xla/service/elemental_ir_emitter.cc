@@ -51,6 +51,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "xla/codegen/intrinsic/expm1.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/log1p.h"
@@ -2219,28 +2220,17 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(
     PrimitiveType prim_type, llvm::Value* value) {
-  auto x = value;
   auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_->getContext());
-  auto one = llvm::ConstantFP::get(type, 1.0);
-  auto half = llvm::ConstantFP::get(type, 0.5);
-  auto zero = llvm::ConstantFP::get(type, 0.0);
-
-  // expm1(x) == tanh(x/2)*(exp(x)+1)
-  // x/2 can underflow, if it does we approximate expm1 with x.
-  auto x_over_two = FMul(x, half);
-  auto x_over_two_is_zero = FCmpOEQ(x_over_two, zero);
-  auto abs_x =
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {x}, {type}, b_);
-  // Use a naive exp(x)-1 calculation if |x| is > 0.5
-  auto x_magnitude_is_large = FCmpOGT(abs_x, half);
-  ABSL_ASSIGN_OR_RETURN(auto tanh_of_x_over_two, EmitTanh(prim_type, x_over_two));
-  ABSL_ASSIGN_OR_RETURN(auto exp_of_x, EmitExp(prim_type, x, ""));
-  auto exp_of_x_plus_one = FAdd(exp_of_x, one);
-  auto exp_of_x_minus_one = FSub(exp_of_x, one);
-  auto expm1_of_x = FMul(tanh_of_x_over_two, exp_of_x_plus_one);
-  expm1_of_x = Select(x_magnitude_is_large, exp_of_x_minus_one, expm1_of_x);
-  expm1_of_x = Select(x_over_two_is_zero, x, expm1_of_x);
-  return expm1_of_x;
+  PrimitiveType target_type = prim_type;
+  llvm::Value* input = value;
+  if (prim_type == F16 || prim_type == BF16) {
+    target_type = F32;
+    input = b_->CreateFPExt(value, b_->getFloatTy());
+  }
+  llvm::Function* expm1_fn = codegen::intrinsics::Expm1::GetOrInsertDeclaration(
+      module_, IntrinsicType::S(target_type));
+  llvm::Value* result = b_->CreateCall(expm1_fn, {input});
+  return target_type == prim_type ? result : b_->CreateFPTrunc(result, type);
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(

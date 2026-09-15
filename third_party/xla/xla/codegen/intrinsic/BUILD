@@ -288,6 +288,36 @@ cc_library(
 )
 
 cc_library(
+    name = "expm1",
+    srcs = ["expm1.cc"],
+    hdrs = ["expm1.h"],
+    deps = [
+        ":intrinsic",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "expm1_test",
+    srcs = ["expm1_test.cc"],
+    deps = [
+        ":expm1",
+        ":simple_jit_runner",
+        ":test_matchers",
+        ":type",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
     name = "log1p",
     srcs = ["log1p.cc"],
     hdrs = ["log1p.h"],
