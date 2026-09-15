@@ -1062,12 +1062,12 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSize(
-    const Shape& shape) {
-  return SerializedSizeWithProto(shape, shape.ToProto());
+    const Shape& shape, bool pack_pred) {
+  return SerializedSizeWithProto(shape, shape.ToProto(), pack_pred);
 }
 
 /* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSizeWithProto(
-    const Shape& shape, const ShapeProto& proto) {
+    const Shape& shape, const ShapeProto& proto, bool pack_pred) {
   // The size computed here must be kept in sync with the serialized format as
   // described in the comments for LiteralBase::SerializeWithShapeProto in
   // literal.h.
@@ -1087,8 +1087,12 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
           size += sizeof(DynamicSizeType) * subshape.dimensions().size();
         }
         if (subshape.element_type() == PRED) {
-          // PRED is packed 8 elements per byte.
-          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
+          if (pack_pred) {
+            // PRED is packed 8 elements per byte.
+            size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
+          } else {
+            size += ByteSizeOfElements(subshape);
+          }
         } else if (primitive_util::IsSubByteNonPredType(
                        subshape.element_type())) {
           // 4-bit types are packed 2 elements per byte.
