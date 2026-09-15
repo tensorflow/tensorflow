@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/scatter_nd_index.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -117,38 +118,39 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
     Index error_loc = -1;
 
     const Eigen::DenseIndex batch_size = Tindices.dimension(0);
+    const Eigen::DenseIndex num_slices = Toutput.dimension(0);
 
-    Index batch_strides[IXDIM];
-    if (IXDIM > 0) {
-      batch_strides[IXDIM - 1] = 1;
-    }
-    for (int dim = IXDIM - 2; dim >= 0; --dim) {
-      batch_strides[dim] =
-          batch_strides[dim + 1] * output_shape_prefix[dim + 1];
+    Eigen::array<int64_t, IXDIM> batch_strides;
+    if (!scatter_nd_op::ComputeScatterNdBatchStrides<IXDIM>(output_shape_prefix,
+                                                            &batch_strides)) {
+      // Valid TensorShapes cannot overflow int64 element counts; this is a
+      // defensive fallback so we never chip with a wrapped stride.
+      return batch_size > 0 ? Index{0} : Index{-1};
     }
 
     for (Eigen::DenseIndex loc = 0; loc < batch_size; ++loc) {
-      Index i = 0;
-      bool out_of_bounds = false;
+      Eigen::array<Index, IXDIM> coords;
       for (int dim = 0; dim < IXDIM; ++dim) {
-        const Index ix_d = internal::SubtleMustCopy(Tindices(loc, dim));
-        out_of_bounds |= !FastBoundsCheck(ix_d, output_shape_prefix[dim]);
-        i += ix_d * batch_strides[dim];
+        coords[dim] = internal::SubtleMustCopy(Tindices(loc, dim));
       }
-      if (TF_PREDICT_FALSE(out_of_bounds)) {
+      int64_t i = 0;
+      const bool index_ok =
+          scatter_nd_op::ComputeScatterNdFlatIndex<Index, IXDIM>(
+              output_shape_prefix, batch_strides, coords, num_slices, &i);
+      if (TF_PREDICT_FALSE(!index_ok)) {
         error_loc = loc;
         // Don't break the loop here, but continue to update the rest because
         // the caller might ignore bad indices.
         continue;
-      } else {
-        auto input_chip = Toutput.template chip<0>(i);
-        auto output_chip = input_chip;
-        auto update_chip = Tupdates.template chip<0>(loc);
-        update_executor::UpdateExecutor<
-            CPUDevice, decltype(input_chip), decltype(update_chip),
-            decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
-                                                output_chip);
       }
+      auto input_chip =
+          Toutput.template chip<0>(static_cast<Eigen::DenseIndex>(i));
+      auto output_chip = input_chip;
+      auto update_chip = Tupdates.template chip<0>(loc);
+      update_executor::UpdateExecutor<
+          CPUDevice, decltype(input_chip), decltype(update_chip),
+          decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
+                                              output_chip);
     }
 
     return error_loc;
