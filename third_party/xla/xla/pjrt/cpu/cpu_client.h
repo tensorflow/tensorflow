@@ -450,14 +450,14 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   const CpuTopologyDescription* topology_;
 };
 
-absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
-    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
-    GetPjRtCpuClient(CpuClientOptions options);
+[[deprecated("Use public XLA:CPU GetXlaPjRtCpuClient instead")]]
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
+    CpuClientOptions options);
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
-    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
-    GetPjRtCpuClient(bool asynchronous) {
+[[deprecated("Use public XLA:CPU GetXlaPjRtCpuClient instead")]]
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
+    bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
   return GetPjRtCpuClient(std::move(options));
