@@ -53,6 +53,7 @@ namespace xla {
 class HloModule;
 class HloComputation;
 class HloInstruction;
+class HloShuffleInstruction;
 class Shape;
 
 // HLO bounded dynamic shapes can be converted to either MLIR dynamic shapes
@@ -195,6 +196,13 @@ class HloFunctionImporter {
 
   // Returns the Mlir Value for the corresponding HloInstruction.
   absl::StatusOr<mlir::Value> GetMlirValue(const HloInstruction* instruction);
+
+  // Returns the start indices of the `stablehlo.gather` that `shuffle`, which
+  // must be in permute mode, is imported as: one index of the operand of
+  // `shuffle` for every element of its result.
+  absl::StatusOr<mlir::Value> ImportShufflePermuteStartIndices(
+      const HloShuffleInstruction* shuffle, mlir::OpBuilder* func_builder,
+      mlir::Location loc);
 
   // TODO(b/179166199): Move attribute converters to attribute_importer.
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
