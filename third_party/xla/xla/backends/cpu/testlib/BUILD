@@ -175,7 +175,6 @@ tsl_pybind_extension(
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
-        "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -237,23 +236,5 @@ py_test(
         "//third_party/py/numpy",
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
-    ],
-)
-
-py_test(
-    name = "elemental_kernel_emitter_test",
-    srcs = ["elemental_kernel_emitter_test.py"],
-    main = "elemental_kernel_emitter_test.py",
-    strict_deps = True,
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        ":testlib",
-        "//third_party/py/numpy",
-        "//xla/codegen/testlib",
-        "//xla/python:xla_extension",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

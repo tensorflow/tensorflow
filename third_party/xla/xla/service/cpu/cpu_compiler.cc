@@ -1092,10 +1092,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   bool use_experimental_loop_fusion =
       options::UseExperimentalLoopFusion(module->config());
   bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
-  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
-                                  use_tiled_emitter, target_machine_features);
-
   if (use_multi_output_fusion) {
+    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
+                                    use_tiled_emitter, target_machine_features);
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
     pipeline.AddPass<TupleSimplifier>();
   }
@@ -1111,9 +1110,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<CpuAllReduceCombiner>(kCombineBytes, kCombineCount);
   pipeline.AddPass<TupleSimplifier>();
 
-  // The LayoutAssignment pass may leave behind kCopy instructions which are
-  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  // Run this to a fixed point.
+  // Run algebraic simplifier to a fixpoint.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
        "simplification after layout assignment"),
    &module, use_onednn_custom_call] {
@@ -1831,6 +1828,21 @@ CpuCompiler::CompileCpuExecutable(
   const bool embed_ir_in_executable =
       debug_options.xla_embed_ir_in_executable();
 
+  TargetMachineFeatures target_machine_features(target_machine.get());
+
+  const bool fusion_wrapper_ran =
+      absl::c_any_of(module->metadata()->proto().pass_metadata(),
+                     [](const HloPassMetadata& m) {
+                       return m.pass_name() == "fusion-wrapper";
+                     });
+  if (!fusion_wrapper_ran) {
+    FusionWrapper fusion_wrapper(
+        options::UseExperimentalLoopFusion(module->config()),
+        options::EnableTiledEmitter(module->config()),
+        &target_machine_features);
+    ABSL_RETURN_IF_ERROR(fusion_wrapper.Run(module.get()).status());
+  }
+
   ABSL_ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
   ABSL_RETURN_IF_ERROR(module->set_schedule(schedule));
 
@@ -1861,8 +1873,6 @@ CpuCompiler::CompileCpuExecutable(
     }
     return cpu_executable;
   };
-
-  TargetMachineFeatures target_machine_features(target_machine.get());
 
   // TODO(ezhulenev): Once we fully migrate to Thunks current IrEmitter should
   // be renamed to NestedIrEmitter and be used only for emitting nested (aka
