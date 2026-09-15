@@ -3716,6 +3716,7 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
     HloOpcode::kSetDimensionSize,
+    HloOpcode::kShuffle,
     // go/keep-sorted end
     // clang-format on
 };
