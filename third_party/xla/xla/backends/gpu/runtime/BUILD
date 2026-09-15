@@ -3516,6 +3516,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
