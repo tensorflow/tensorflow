@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -446,6 +447,51 @@ class CropAndResizeOpTestBase(test.TestCase):
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))
+
+  def testMalformedEmptyBoxesRaisesError(self):
+    # Regression test for GitHub issue 123397: rank-1 empty `boxes` or
+    # rank-2 empty `box_ind` used to pass validation and crash the process
+    # with a fatal CHECK failure instead of raising InvalidArgumentError.
+    grads = array_ops.zeros([0, 1, 1, 1], dtype=dtypes.float32)
+    image_size = constant_op.constant([2, 7, 7, 1], dtype=dtypes.int32)
+    valid_boxes = array_ops.zeros([0, 4], dtype=dtypes.float32)
+    valid_box_ind = array_ops.zeros([0], dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), "boxes must be 2-D"):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_image(
+              grads=grads,
+              boxes=array_ops.zeros([0], dtype=dtypes.float32),
+              box_ind=valid_box_ind,
+              image_size=image_size,
+              T=dtypes.float32))
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), "box_index must be 1-D"
+    ):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_image(
+              grads=grads,
+              boxes=valid_boxes,
+              box_ind=array_ops.zeros([0, 0], dtype=dtypes.int32),
+              image_size=image_size,
+              T=dtypes.float32))
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), "boxes must be 2-D"):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_boxes(
+              grads=grads,
+              image=array_ops.zeros([2, 7, 7, 1], dtype=dtypes.float32),
+              boxes=array_ops.zeros([0], dtype=dtypes.float32),
+              box_ind=valid_box_ind))
+    # Well-formed empty boxes must keep working.
+    output = self.evaluate(
+        gen_image_ops.crop_and_resize_grad_image(
+            grads=grads,
+            boxes=valid_boxes,
+            box_ind=valid_box_ind,
+            image_size=image_size,
+            T=dtypes.float32))
+    self.assertEqual((2, 7, 7, 1), output.shape)
 
   def _randomUniformAvoidAnchors(self, low, high, anchors, radius, num_samples):
     """Generate samples that are far enough from a set of anchor points.

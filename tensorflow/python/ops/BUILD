@@ -3494,6 +3494,7 @@ py_library(
     srcs = ["image_grad_test_base.py"],
     strict_deps = True,
     deps = [
+        ":array_ops",
         ":array_ops_stack",
         ":gradient_checker_v2",
         ":image_ops",
