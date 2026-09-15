@@ -3620,5 +3620,39 @@ ENTRY main {
   EXPECT_EQ(it->second, "true");
 }
 
+TEST_F(GpuCompilerTest, EarlyExitAfterConfigAssignment) {
+  absl::string_view hlo_text = R"hlo(
+    HloModule gemm
+
+    ENTRY main {
+      p0 = f32[32,32]{1,0} parameter(0)
+      p1 = f32[32,32]{1,0} parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)hlo";
+
+  AotCompilationOptions aot_options(compiler()->PlatformId());
+  aot_options.set_gpu_topology(
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config()));
+  aot_options.set_early_exit_point(
+      AotCompilationOptions::EarlyExitPoint::kAfterConfigAssignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      compiler()->CompileAheadOfTime(std::move(module), aot_options));
+
+  ASSERT_EQ(aot_results.size(), 1);
+  const HloModule* optimized_module = aot_results[0]->optimized_module();
+  ASSERT_NE(optimized_module, nullptr);
+
+  // Make sure both the pre-autotune and autotuner passes are run.
+  EXPECT_THAT(optimized_module,
+              HasExpectedPasses(std::vector<std::string>{
+                  "layout-assignment", "cublas-gemm-rewriter", "autotuner"}));
+}
+
 }  // namespace gpu
 }  // namespace xla
