@@ -57,7 +57,7 @@ module {
   }
 
   func.func private @composite_conv2d_fn_2(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
-    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 3, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
     return %conv : tensor<*xf32>
   }
 
@@ -81,7 +81,7 @@ module {
 // CHECK-SAME: rhs_quantization_axis = -1 : i64
 // CHECK-SAME: rhs_quantization_max_val = 127 : i64
 // CHECK-SAME: rhs_quantization_min_val = -128 : i64
-// CHECK-SAME: window_strides = [1, 2]
+// CHECK-SAME: window_strides = [1, 3]
 // CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func private @quantized_conv2d_fn_1
