@@ -947,3 +947,14 @@ py_library(
         "//third_party/py/numpy",
     ],
 )
+
+tf_py_test(
+    name = "fused_linear_cross_entropy_op_test",
+    size = "small",
+    srcs = ["fused_linear_cross_entropy_op_test.py"],
+    deps = [
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:fused_linear_cross_entropy_op",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
