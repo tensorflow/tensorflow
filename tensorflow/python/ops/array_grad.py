@@ -442,8 +442,9 @@ def _MatrixDiagGrad(_, grad):
 
 @ops.RegisterGradient("MatrixDiagV2")
 def _MatrixDiagV2Grad(op: ops.Operation, grad):
+  # MatrixDiagV2 always left-aligns; it has no align attr.
   return (
-      array_ops.matrix_diag_part(grad, k=op.inputs[1]),
+      array_ops.matrix_diag_part(grad, k=op.inputs[1], align="LEFT_LEFT"),
       None,
       None,
       None,
