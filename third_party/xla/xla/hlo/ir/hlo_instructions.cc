@@ -4494,17 +4494,30 @@ HloDotInstruction::HloDotInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config)
+    : HloDotInstruction(shape, {lhs, rhs}, dimension_numbers, precision_config,
+                        SparsityConfig(), BlockScalingConfig()) {}
+
+HloDotInstruction::HloDotInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config)
     : HloInstruction(HloOpcode::kDot, shape),
       dot_dimension_numbers_(dimension_numbers),
-      precision_config_(precision_config) {
-  AppendOperand(lhs);
-  AppendOperand(rhs);
+      precision_config_(precision_config),
+      sparsity_config_(sparsity_config),
+      block_scaling_config_(block_scaling_config) {
+  CHECK_GE(operands.size(), 2);
+  AppendOperands(operands);
 }
 
 void HloDotInstruction::ToProto(HloInstructionProto* proto) const {
   HloInstruction::ToProto(proto);
   *proto->mutable_dot_dimension_numbers() = dot_dimension_numbers_;
   *proto->mutable_precision_config() = precision_config_;
+  *proto->mutable_sparsity_config() = sparsity_config_;
+  *proto->mutable_block_scaling_config() = block_scaling_config_;
 }
 
 void HloDotInstruction::PrintExtraAttributesImpl(
@@ -4513,6 +4526,18 @@ void HloDotInstruction::PrintExtraAttributesImpl(
     printer->Append(DotDimensionNumbersToString(dot_dimension_numbers_));
   });
   PrintPrecisionConfig(printer, precision_config_);
+  auto print_config = [&printer](absl::string_view name,
+                                 const std::string& config) {
+    printer.Next(
+        [&](Printer* p) { p->Append(absl::StrCat(name, "={", config, "}")); });
+  };
+  if (sparsity_config_.has_lhs() || sparsity_config_.has_rhs()) {
+    print_config("sparsity_config", SparsityConfigToString(sparsity_config_));
+  }
+  if (block_scaling_config_.has_lhs() || block_scaling_config_.has_rhs()) {
+    print_config("block_scaling_config",
+                 BlockScalingConfigToString(block_scaling_config_));
+  }
 }
 
 bool HloDotInstruction::IdenticalSlowPath(
@@ -4522,17 +4547,21 @@ bool HloDotInstruction::IdenticalSlowPath(
   const auto& casted_other = static_cast<const HloDotInstruction&>(other);
   return protobuf_util::HaveSameSerialization(
              dot_dimension_numbers(), casted_other.dot_dimension_numbers()) &&
-         protobuf_util::HaveSameSerialization(precision_config(),
-                                              casted_other.precision_config());
+         protobuf_util::HaveSameSerialization(
+             precision_config(), casted_other.precision_config()) &&
+         protobuf_util::HaveSameSerialization(sparsity_config(),
+                                              casted_other.sparsity_config()) &&
+         protobuf_util::HaveSameSerialization(
+             block_scaling_config(), casted_other.block_scaling_config());
 }
 
 std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
+  CHECK_GE(new_operands.size(), 2);
   return std::make_unique<HloDotInstruction>(
-      shape, new_operands[0], new_operands[1], dot_dimension_numbers_,
-      precision_config_);
+      shape, new_operands, dot_dimension_numbers_, precision_config_,
+      sparsity_config_, block_scaling_config_);
 }
 
 HloRaggedDotInstruction::HloRaggedDotInstruction(
