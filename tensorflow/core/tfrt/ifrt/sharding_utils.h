@@ -116,7 +116,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::ShardingRef sharding, const tsl::thread::ThreadPool& thread_pool,
     const xla::ifrt::LayoutRef& xla_input_layout);
 
-// Reshard an disassembled array list back to one single tensor
+// Reshard a disassembled array list back to one single tensor
 // based on given sharding spec.
 //
 // input_array: the input device buffers.
