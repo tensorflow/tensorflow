@@ -152,6 +152,7 @@ EXPORTS
  ??1FileCheck@llvm@@QEAA@XZ
  ??1FingerprintDef@tensorflow@@UEAA@XZ
  ??1FunctionDef@tensorflow@@UEAA@XZ
+ ??1GraphDebugInfo@tensorflow@@UEAA@XZ
  ??1GraphDef@tensorflow@@UEAA@XZ
  ??1HistogramProto@tensorflow@@UEAA@XZ
  ??1Impl@MakeErrorStream@status_macros@xla@@QEAA@XZ
