@@ -76,7 +76,16 @@ static void SpatialMaxPoolWithArgMaxHelper(
         absl::InternalError("SpatialMaxPoolWithArgMaxHelper requires Targmax "
                             "to be int64 when input_backprop != nullptr"));
   }
-  if (tensor_in.NumElements() == 0 || output->NumElements() == 0) return;
+  if (tensor_in.NumElements() == 0 || output->NumElements() == 0) {
+    // The gradient is zero everywhere when the forward output is empty. The
+    // shard loop below normally zeroes input_backprop, but it does not run in
+    // this case, and the output buffer may alias the forwarded orig_input or
+    // hold reused uninitialized memory.
+    if (input_backprop != nullptr) {
+      input_backprop->flat<T>().setZero();
+    }
+    return;
+  }
 
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
