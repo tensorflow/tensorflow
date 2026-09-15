@@ -274,6 +274,18 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
                          perm_shape.dim_size(0), " != ", *batch_size));
     }
 
+    const auto permutation_vec = permutation_indices.flat<int32_t>();
+    const int32_t* perm_data = permutation_vec.data();
+    const int64_t size = permutation_vec.size();
+    for (int64_t i = 0; i < size; ++i) {
+      const int32_t p = perm_data[i];
+      if (p < 0 || p >= *num_rows) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Permutation index out of bounds: got ", p,
+            ", but expected index in range [0, ", *num_rows, ")"));
+      }
+    }
+
     return absl::OkStatus();
   }
 };
