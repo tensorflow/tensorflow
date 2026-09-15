@@ -34,17 +34,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
-#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/codegen_utils.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace cpu {
@@ -346,11 +346,11 @@ TEST_P(JitVectorizationTest, JitX86UpToIsa) {
 std::vector<JitVectorizationTestSpec> GetJitVectorizationTestCases() {
   return std::vector<JitVectorizationTestSpec>({
       JitVectorizationTestSpec{HloOpcode::kMultiply, "SSE4_2",
-                               R"(CHECK: fmul <%d x float>)", 4},
+                               R"(CHECK: fmul contract <%d x float>)", 4},
       JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX2",
-                               R"(CHECK: fmul <%d x float>)", 8},
+                               R"(CHECK: fmul contract <%d x float>)", 8},
       JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX512",
-                               R"(CHECK: fmul <%d x float>)", 16},
+                               R"(CHECK: fmul contract <%d x float>)", 16},
   });
 }
 
