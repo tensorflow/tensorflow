@@ -79,6 +79,9 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
+// Returns true if the calling thread's name begins with "tf_".
+bool IsTensorFlowExecutorThread();
+
 // Check the value of the environment variable,
 // `TF_REMOTE_HANDLE_SKIP_WAIT_FOR_READY` from its cached copy in memory and if
 // not cached, reads from the environment variable.
@@ -105,7 +108,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr,
       bool run_eager_op_as_function = false, bool jit_compile_rewrite = false);
 
-  void Release() override { Unref(); }
+  void Release() override;
 
   AbstractTensorInterface* CreateInt64Scalar(int64_t value) override;
   AbstractTensorInterface* CreateUint64Scalar(uint64_t value) override;
