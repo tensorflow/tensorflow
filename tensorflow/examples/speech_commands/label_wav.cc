@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/command_line_flags.h"
