@@ -119,7 +119,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
     start = threading.Barrier(thread_count + 1)
     done = threading.Barrier(thread_count + 1)
-    errors = []
+    error_list = []
 
     def worker():
       for _ in range(rounds):
@@ -127,9 +127,9 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         try:
           shape = t.shape
           if shape.rank != 2 or shape[1] != 4:
-            errors.append(repr(shape))
+            error_list.append(repr(shape))
         except BaseException as e:  # pylint: disable=broad-except
-          errors.append(repr(e))
+          error_list.append(repr(e))
         done.wait()
 
     threads = [threading.Thread(target=worker) for _ in range(thread_count)]
@@ -144,7 +144,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     for thread in threads:
       thread.join()
 
-    self.assertEmpty(errors)
+    self.assertEmpty(error_list)
 
   def testNdim(self):
 

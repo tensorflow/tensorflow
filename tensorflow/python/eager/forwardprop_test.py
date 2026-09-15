@@ -341,7 +341,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     stop = threading.Event()
     errors = []
 
-    def replacement_jvp(*args, **kwargs):
+    def replacement_jvp(*_, **__):
       return [constant_op.constant(4.)]
 
     def register_loop():
