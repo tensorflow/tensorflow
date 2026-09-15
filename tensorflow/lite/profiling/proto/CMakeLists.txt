@@ -53,5 +53,5 @@ add_custom_command(
 
 set_source_files_properties(${model_runtime_info_generated_files} PROPERTIES GENERATED TRUE)
 target_sources(model_runtime_info_proto PRIVATE ${model_runtime_info_generated_files})
-target_link_libraries(model_runtime_info_proto protobuf::libprotobuf)
+target_link_libraries(model_runtime_info_proto protobuf::libprotobuf profiling_info_proto)
 target_include_directories(model_runtime_info_proto PUBLIC ${CMAKE_BINARY_DIR})
