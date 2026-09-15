@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -240,7 +241,12 @@ class FFTBase : public OpKernel {
     }
 
     if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
+      // With an explicit fft_length the output can be non-empty even though
+      // the input is empty. It is then the transform of pure zero padding,
+      // so it is all zeros; fill it rather than returning it uninitialized.
+      if (output_shape.num_elements() != 0) {
+        ZeroOutput(ctx, out);
+      }
       return;
     }
 
@@ -255,6 +261,9 @@ class FFTBase : public OpKernel {
   // The function that actually computes the FFT.
   virtual void DoFFT(OpKernelContext* ctx, const Tensor& in,
                      uint64_t* fft_shape, Tensor* out) = 0;
+
+  // Fills `out` with zeros on the device the kernel runs on.
+  virtual void ZeroOutput(OpKernelContext* ctx, Tensor* out) = 0;
 };
 
 class FFTNBase : public OpKernel {
@@ -365,7 +374,12 @@ class FFTNBase : public OpKernel {
     }
 
     if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
+      // With an explicit fft_length the output can be non-empty even though
+      // the input is empty. It is then the transform of pure zero padding,
+      // so it is all zeros; fill it rather than returning it uninitialized.
+      if (output_shape.num_elements() != 0) {
+        ZeroOutput(ctx, out);
+      }
       return;
     }
     DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
@@ -379,6 +393,9 @@ class FFTNBase : public OpKernel {
   virtual void DoFFTN(OpKernelContext* ctx, const Tensor& in,
                       uint64_t* fft_shape, int32_t* axes_shape,
                       Tensor* out) = 0;
+
+  // Fills `out` with zeros on the device the kernel runs on.
+  virtual void ZeroOutput(OpKernelContext* ctx, Tensor* out) = 0;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -404,6 +421,10 @@ class FFTCPU : public FFTBase {
 
     OP_REQUIRES_OK(ctx, DuccFftImpl(ctx->eigen_device<CPUDevice>(), in, out,
                                     fft_shape, axes, Forward));
+  }
+
+  void ZeroOutput(OpKernelContext* ctx, Tensor* out) override {
+    memset(out->data(), 0, out->TotalBytes());
   }
 };
 
@@ -664,6 +685,14 @@ class FFTGPUBase : public FFTBase {
   // ever hitting this limit in practice.
   static constexpr size_t kFftPlanCacheCapacity = 512;
 
+  void ZeroOutput(OpKernelContext* ctx, Tensor* out) override {
+    auto* stream = ctx->op_device_context()->stream();
+    OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+    stream_executor::DeviceAddressBase out_memory(out->data(),
+                                                  out->TotalBytes());
+    OP_REQUIRES_OK(ctx, stream->MemZero(&out_memory, out->TotalBytes()));
+  }
+
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
              Tensor* out) override {
     auto* stream = ctx->op_device_context()->stream();
@@ -848,6 +877,14 @@ class FFTNGPUBase : public FFTNBase {
   // since the scratch space is provided externally.  We don't anticipate
   // ever hitting this limit in practice.
   static constexpr size_t kFftPlanCacheCapacity = 512;
+
+  void ZeroOutput(OpKernelContext* ctx, Tensor* out) override {
+    auto* stream = ctx->op_device_context()->stream();
+    OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+    stream_executor::DeviceAddressBase out_memory(out->data(),
+                                                  out->TotalBytes());
+    OP_REQUIRES_OK(ctx, stream->MemZero(&out_memory, out->TotalBytes()));
+  }
 
   void DoFFTN(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
               int32_t* axes_shape, Tensor* out) override {
