@@ -374,7 +374,8 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
 
       Value result = DescriptorLoadOp::create(
           builder, ordered_type, cast_to_tensor_desc.getResult(0),
-          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets),
+          /*cachePolicy=*/nullptr);
 
       // Insert a transpose if the layout is not major-to-minor.
       if (!xtriton::IsMajorToMinorLayout(src_layout)) {
@@ -411,7 +412,8 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
 
       Value result = DescriptorLoadOp::create(
           builder, ordered_type, desc.getResult(),
-          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets),
+          /*cachePolicy=*/nullptr);
 
       if (!xtriton::IsMajorToMinorLayout(operands.layout)) {
         result = TransOp::create(
@@ -444,8 +446,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           builder, builder.getZeroAttr(RankedTensorType::get(
                        tile_shape, tile_type.getElementType())));
     }
-    auto load = LoadOp::create(builder, ptr, mask, other, CacheModifier::NONE,
-                               EvictionPolicy::NORMAL,
+    auto load = LoadOp::create(builder, ptr, mask, other,
                                /*isVolatile=*/false);
     rewriter.replaceOp(op, load);
     return mlir::success();
@@ -568,8 +569,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
       auto [ptr, mask] = xtriton::CreateTensorOfPointersAndMask(
           builder, op.getDst(), dst_shape, dst_layout, offsets, sizes, strides,
           reduced_dims, tile_shape);
-      StoreOp::create(builder, ptr, op.getSrc(), mask, CacheModifier::NONE,
-                      EvictionPolicy::NORMAL);
+      StoreOp::create(builder, ptr, op.getSrc(), mask);
     }
     rewriter.eraseOp(op);
     return mlir::success();
@@ -596,9 +596,7 @@ class RewriteScalarInsert : public mlir::OpRewritePattern<tensor::InsertOp> {
     auto cast_dst_to_tensor_ptr_type = mlir::UnrealizedConversionCastOp::create(
                                            builder, ptr_type, op.getDest())
                                            .getResult(0);
-    StoreOp::create(builder, cast_dst_to_tensor_ptr_type, op.getScalar(),
-                    /*mask=*/Value(), CacheModifier::NONE,
-                    EvictionPolicy::NORMAL);
+    StoreOp::create(builder, cast_dst_to_tensor_ptr_type, op.getScalar());
     rewriter.replaceOp(op, op.getDest());
     return mlir::success();
   }
@@ -621,7 +619,6 @@ class RewriteScalarExtract : public mlir::OpRewritePattern<tensor::ExtractOp> {
                                            builder, ptr_type, op.getTensor())
                                            .getResult(0);
     auto scalar = LoadOp::create(builder, cast_src_to_tensor_ptr_type,
-                                 CacheModifier::NONE, EvictionPolicy::NORMAL,
                                  /*isVolatile=*/false);
     rewriter.replaceOp(op, scalar.getResult());
     return mlir::success();
