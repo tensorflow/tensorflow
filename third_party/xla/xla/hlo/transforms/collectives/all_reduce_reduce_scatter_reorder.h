@@ -13,38 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
-#define XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
-
-#include <cstdint>
+#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_REDUCE_SCATTER_REORDER_H_
+#define XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_REDUCE_SCATTER_REORDER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 
-// Combines small non-dependent CollectivePermute ops into larger combined
-// CollectivePermute ops. A single combined op is more efficient as each
-// collective op has some inherent overhead including kernel launching.
-class CollectivePermuteCombiner : public HloModulePass {
+// Rewrites all-reduce + reduce-scatter to reduce-scatter + all-reduce such that
+// the all-reduce is on a smaller tensor. The proof of equivalence is below.
+//
+//   AR_1 + RS_2
+// = AR_1 + AR_2 + DS_2
+// = AR_2 + AR_1 + DS_2
+// = AR_2 + DS_2 + AR_1
+// = RS_2 + AR_1
+class AllReduceReduceScatterReorder : public HloModulePass {
  public:
-  CollectivePermuteCombiner(int64_t combine_threshold_in_bytes,
-                            int64_t combine_threshold_count);
-
   absl::string_view name() const override {
-    return "collective-permute-combiner";
+    return "all-reduce-reduce-scatter-reorder";
   }
-
-  // Combine collective permute ops up to this threshold.
-  int64_t combine_threshold_in_bytes_;
-
-  // Combine collective permute ops up to this threshold (number of operands).
-  int64_t combine_threshold_count_;
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -54,4 +46,4 @@ class CollectivePermuteCombiner : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
+#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_REDUCE_SCATTER_REORDER_H_

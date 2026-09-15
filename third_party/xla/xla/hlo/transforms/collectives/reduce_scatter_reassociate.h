@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,38 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
-#define XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
-
-#include <cstdint>
+#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_REASSOCIATE_H_
+#define XLA_HLO_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_REASSOCIATE_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 
-// Combines small non-dependent CollectivePermute ops into larger combined
-// CollectivePermute ops. A single combined op is more efficient as each
-// collective op has some inherent overhead including kernel launching.
-class CollectivePermuteCombiner : public HloModulePass {
+// A pass that reassociates reduce-scatter feeding into compatible elementwise
+// operations. As an example: add(reduce-scatter(x), reduce-scatter(y)) will be
+// replaced with reduce_scatter(add(x,y)).
+//
+//  i.e., reassociating the reduce-scatter operation.
+
+class ReduceScatterReassociate : public HloModulePass {
  public:
-  CollectivePermuteCombiner(int64_t combine_threshold_in_bytes,
-                            int64_t combine_threshold_count);
-
   absl::string_view name() const override {
-    return "collective-permute-combiner";
+    return "reduce-scatter-reassociate";
   }
-
-  // Combine collective permute ops up to this threshold.
-  int64_t combine_threshold_in_bytes_;
-
-  // Combine collective permute ops up to this threshold (number of operands).
-  int64_t combine_threshold_count_;
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -54,4 +44,4 @@ class CollectivePermuteCombiner : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
+#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_REASSOCIATE_H_

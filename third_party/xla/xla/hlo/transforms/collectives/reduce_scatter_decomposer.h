@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,38 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
-#define XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
+#ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_DECOMPOSER_H_
+#define XLA_HLO_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_DECOMPOSER_H_
 
-#include <cstdint>
+#include <functional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/xla_data.pb.h"
+#include "xla/shape.h"
 
 namespace xla {
 
-// Combines small non-dependent CollectivePermute ops into larger combined
-// CollectivePermute ops. A single combined op is more efficient as each
-// collective op has some inherent overhead including kernel launching.
-class CollectivePermuteCombiner : public HloModulePass {
+// A pass that decomposes a reduce-scatter into an all-reduce followed by a
+// dynamic-slice.
+class ReduceScatterDecomposer : public HloModulePass {
  public:
-  CollectivePermuteCombiner(int64_t combine_threshold_in_bytes,
-                            int64_t combine_threshold_count);
-
-  absl::string_view name() const override {
-    return "collective-permute-combiner";
+  explicit ReduceScatterDecomposer(
+      std::function<void(Shape&)> update_layout = nullptr,
+      std::function<bool(HloReduceScatterInstruction*)> should_decompose =
+          nullptr)
+      : update_layout_(update_layout), should_decompose_(should_decompose) {
+    VLOG(2) << "ReduceScatterDecomposer: should_decompose: "
+            << (should_decompose_ ? "true" : "false");
   }
-
-  // Combine collective permute ops up to this threshold.
-  int64_t combine_threshold_in_bytes_;
-
-  // Combine collective permute ops up to this threshold (number of operands).
-  int64_t combine_threshold_count_;
+  absl::string_view name() const override {
+    return "reduce-scatter-decomposer";
+  }
+  std::function<void(Shape&)> update_layout_;
+  std::function<bool(HloReduceScatterInstruction*)> should_decompose_;
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -54,4 +55,4 @@ class CollectivePermuteCombiner : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
+#endif  // XLA_HLO_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_DECOMPOSER_H_
