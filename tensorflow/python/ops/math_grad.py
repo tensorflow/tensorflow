@@ -347,7 +347,9 @@ def _SegmentMeanGrad(op: ops.Operation, grad):
   )
   ones_shape = array_ops.concat([segment_ids_shape, remaining_shape], 0)
   ones = array_ops.ones(ones_shape, dtype=grad.dtype)
-  scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
+  # Empty segments must stay zero when differentiating this gradient for JVPs.
+  scaled_grad = math_ops.div_no_nan(
+      grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
 
