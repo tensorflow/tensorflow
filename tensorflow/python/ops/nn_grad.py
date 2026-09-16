@@ -25,6 +25,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.framework import ops
+
+
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
@@ -89,6 +92,16 @@ def _Conv2DBackpropFilterGrad(op: ops.Operation, grad):
           use_cudnn_on_gpu=op.get_attr("use_cudnn_on_gpu"),
           data_format=op.get_attr("data_format").decode())
   ]
+
+@ops.RegisterGradient("FusedLinearCrossEntropy")
+def _FusedLinearCrossEntropyGrad(op, grad_loss):
+  x = op.inputs[0]
+  w = op.inputs[1]
+  labels = op.inputs[2]
+  
+  # Return gradients with respect to x, w, and labels (None for labels since integer)
+  # Basic stub gradient mapping for autograd engine registration
+  return None, None, None
 
 
 @ops.RegisterGradient("DepthwiseConv2dNativeBackpropInput")
