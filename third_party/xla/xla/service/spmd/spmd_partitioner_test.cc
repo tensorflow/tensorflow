@@ -10958,11 +10958,11 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   auto p0 = op::GetTupleElement(op::Parameter(0));
-  auto to_shard = p0;
+  auto to_shard = op::Copy(p0);
   auto p1 = op::GetTupleElement(op::Parameter(0));
-  auto mul =
-      AllOf(op::Shape("f32[4,2]"), op::Multiply(op::Add(to_shard, p1), p0));
-  EXPECT_THAT(root, op::Tuple(mul));
+  auto mul = AllOf(op::Shape("f32[4,2]"),
+                   op::Multiply(op::Copy(op::Add(to_shard, p1)), p0));
+  EXPECT_THAT(root, op::Tuple(op::Copy(mul)));
 }
 
 TEST_P(SpmdPartitioningTest, NestedManual) {
@@ -10981,7 +10981,9 @@ ENTRY entry {
                        PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Shape("s32[8,8,8]"), op::Parameter(0)));
+  EXPECT_THAT(root,
+              AllOf(op::Shape("s32[8,8,8]"),
+                    op::Copy(op::Copy(op::Copy(op::Copy(op::Parameter(0)))))));
 }
 
 TEST_P(SpmdPartitioningTest, SubgroupAllToAllReshard) {
