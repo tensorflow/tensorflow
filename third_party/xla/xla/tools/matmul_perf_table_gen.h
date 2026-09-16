@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_TOOLS_MATMUL_PERF_TABLE_GEN_H_
 #define XLA_TOOLS_MATMUL_PERF_TABLE_GEN_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,11 +32,31 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/service/gpu/model/hlo_op_profiler.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+namespace internal {
+
+class KernelExecutionTimer {
+ public:
+  using KernelTracerFactory =
+      absl::AnyInvocable<std::unique_ptr<HloOpProfiler::KernelTracer>()>;
+
+  explicit KernelExecutionTimer(KernelTracerFactory tracer_factory);
+
+  uint64_t MeasureRepeated(
+      int num_executions,
+      absl::FunctionRef<absl::Status(int execution)> execute);
+
+ private:
+  KernelTracerFactory tracer_factory_;
+};
+
+}  // namespace internal
 
 class MatmulPerfTableGen {
  public:
