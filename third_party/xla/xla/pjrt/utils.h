@@ -151,12 +151,12 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
     std::vector<const Shape*>* argument_layout_pointers);
 
 // Executables can donate buffers so that buffers can be aliased from inputs
-// to outputs. This function returns a sorted vector of parameters that must be
+// to outputs. This function returns a sorted vector of parameters that may be
 // donated when executable is run. tuple_inputs reflects the option that
 // executable was compiled with.
-absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+absl::StatusOr<std::vector<int>> ComputeParametersThatMayBeDonated(
     const HloModule& hlo_module, bool tuple_inputs);
-absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+absl::StatusOr<std::vector<int>> ComputeParametersThatMayBeDonated(
     const HloInputOutputAliasConfig& config, int num_parameters,
     bool tuple_inputs);
 

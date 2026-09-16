@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -26,10 +27,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -75,6 +75,16 @@ class TieredCache : public AutotunerCacheInterface {
   KeyMatchingMode GetKeyMatchingMode() const override { return matching_mode_; }
 
  private:
+  struct Hit {
+    autotuner::AutotuneEntry entry;
+    // True if the entry matched the full codegen environment, i.e. the entry
+    // would also have been a hit under `KeyMatchingMode::kStrict`.
+    bool is_strict = false;
+  };
+
+  // Either a matched entry, or the reason why nothing matched.
+  using MatchResult = std::variant<Hit, MissReason>;
+
   // Builds the target key (device, explicit_version, hlo_fingerprint) for the
   // instruction.
   autotuner::AutotuneTargetKey BuildTargetKey(
@@ -85,13 +95,28 @@ class TieredCache : public AutotunerCacheInterface {
                                       const Config& config) const;
 
   // Returns the first entry from `entries` that matches the current context
-  // or nullopt.
-  std::optional<autotuner::AutotuneEntry> MatchEntry(
+  // or the reason why nothing matched.
+  MatchResult MatchEntry(
       const std::vector<autotuner::AutotuneEntry>& entries) const;
+
+  // Reads the entries cached for `target_key` in `store` and matches them
+  // against the current context.
+  MatchResult LookupInStore(
+      AutotuneCacheStore& store,
+      const autotuner::AutotuneTargetKey& target_key) const;
 
   // Writes `entry` to `store` honoring the store's CacheMode.
   absl::Status MaybeWriteToStore(AutotuneCacheStore& store,
                                  const autotuner::AutotuneEntry& entry) const;
+
+  // Returns the more informative of two miss reasons, so that a lookup that
+  // missed in both tiers is attributed to the most specific cause.
+  static MissReason MostInformativeMissReason(MissReason a, MissReason b);
+
+  static Config ToConfig(const autotuner::AutotuneEntry& entry);
+
+  void RecordHit(const Hit& hit, bool in_memory_hit);
+  void RecordMiss(MissReason reason);
 
   AutotuneCacheContext context_;
   KeyMatchingMode matching_mode_;

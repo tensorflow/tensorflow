@@ -21,6 +21,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_st
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_binaries", "pywrap_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
+load("//tensorflow/lite:api_visibility.bzl", "TFLITE_PYTHON_CLIENTS_VISIBILITY")
 load("//tensorflow/lite:build_def.bzl", "tflite_exec_properties")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
@@ -64,7 +65,7 @@ py_library(
     ],
     compatible_with = get_compatible_with_portable(),
     strict_deps = True,
-    visibility = ["//visibility:public"],
+    visibility = TFLITE_PYTHON_CLIENTS_VISIBILITY,
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics",
@@ -226,7 +227,7 @@ py_library(
         ":util",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/profiling/proto:model_runtime_info_py",
         "//tensorflow/lite/profiling/proto:profiling_info_py",
@@ -283,7 +284,7 @@ py_test(
         ":util",
         #internal proto upb dep
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

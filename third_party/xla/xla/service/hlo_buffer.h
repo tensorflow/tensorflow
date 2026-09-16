@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -96,6 +97,25 @@ class HloBuffer {
 
   // Return all values contained in this buffer.
   const std::vector<const HloValue*>& values() const { return values_; }
+
+  // Computes the physical size of the buffer as the maximum size of its
+  // constituent HloValues according to the given size function.
+  int64_t ComputeSize(const BufferValue::SizeFunction& size_fn) const;
+
+  // Returns whether this value impacts dynamic heap allocation pressure (e.g.
+  // not an embedded constant or a buffer excluded by allocation filter).
+  static bool IsHeapPressureImpacting(
+      const HloValue& value, bool alloc_constants = false,
+      const absl::flat_hash_set<const HloValue*>* buffers_to_assign = nullptr);
+
+  // Returns whether this buffer impacts dynamic heap allocation pressure.
+  // Matches HeapSimulator's allocation logic: a buffer impacts heap pressure if
+  // any of its constituent values impacts heap pressure (i.e. is not ignored
+  // by HeapSimulator). A buffer is only exempt if all of its constituent values
+  // are ignored (e.g. purely constants or outside buffers_to_assign).
+  bool IsHeapPressureImpacting(bool alloc_constants = false,
+                               const absl::flat_hash_set<const HloValue*>*
+                                   buffers_to_assign = nullptr) const;
 
   // Memory space color. Used to indicate the memory space that the hlo buffer
   // needs to live in.

@@ -84,6 +84,7 @@ class FusionCompiler {
 void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled);
 void AddNewXtileToVectorPasses(mlir::OpPassManager& pm);
 void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max);
+void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max);
 
 }  // namespace xla::cpu
 

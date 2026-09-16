@@ -32,6 +32,8 @@ limitations under the License.
 
 namespace xla::numerics::debug_info {
 
+inline constexpr double kNanInfMismatchDiffScore = -1.0;
+
 struct MismatchDetails {
   std::string target_instruction_name;
   std::optional<int64_t> output_shape_index;

@@ -191,7 +191,7 @@ class GpuCompiler : public LLVMCompiler {
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
       CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context);
 
-  virtual absl::Status AddAutotunerPass(
+  virtual absl::Status AddConfigAssignerPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
@@ -302,6 +302,11 @@ class GpuCompiler : public LLVMCompiler {
 
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool_;
 };
+
+void GpuCollectiveBufferAnalysis(
+    HloModule* module, const HloAliasAnalysis& alias_analysis,
+    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
+    const GpuTopology* gpu_topology = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

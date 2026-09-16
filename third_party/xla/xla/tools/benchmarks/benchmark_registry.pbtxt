@@ -21,7 +21,7 @@ benchmarks {
   environment_configs {
     id: "gpu_l4"
     runner_label: "linux-x86-g2-16-l4-1gpu"
-    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda13.2-cudnn9.15:latest"
     workload_action_inputs {
       key: "hardware_category"
       value: "GPU_L4"
@@ -125,7 +125,7 @@ benchmarks {
   environment_configs {
     id: "gpu_l4"
     runner_label: "linux-x86-g2-16-l4-1gpu"
-    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda13.2-cudnn9.15:latest"
     workload_action_inputs {
       key: "hardware_category"
       value: "GPU_L4"
@@ -173,7 +173,7 @@ benchmarks {
   environment_configs {
     id: "gpu_b200"
     runner_label: "linux-x86-a4-224-b200-1gpu"
-    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda13.2-cudnn9.15:latest"
     workload_action_inputs {
       key: "hardware_category"
       value: "GPU_B200"
@@ -263,7 +263,7 @@ benchmarks {
   environment_configs {
     id: "gpu_b200"
     runner_label: "linux-x86-a4-224-b200-1gpu"
-    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda13.2-cudnn9.15:latest"
     workload_action_inputs {
       key: "hardware_category"
       value: "GPU_B200"
@@ -325,7 +325,7 @@ benchmarks {
   environment_configs {
     id: "gpu_b200"
     runner_label: "linux-x86-a4-224-b200-1gpu"
-    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda13.2-cudnn9.15:latest"
     workload_action_inputs {
       key: "hardware_category"
       value: "GPU_B200"

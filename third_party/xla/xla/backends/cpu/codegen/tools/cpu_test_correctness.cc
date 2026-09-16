@@ -38,7 +38,7 @@ Flags& flags = *new Flags;
 namespace xla::cpu {
 namespace {
 
-using CpuCorrectnessTest = HloInterpreterReferenceMixin<HloPjRtTestBase>;
+using CpuCorrectnessTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(CpuCorrectnessTest, RunAndCompare) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));

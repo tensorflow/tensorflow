@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.signal import dct_ops
@@ -219,6 +220,15 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
   def test_error(self):
     signals = np.random.rand(10)
+    # A scalar has no dimension to transform. Every type, and idct, used to
+    # fail with an IndexError from tensor_shape here, whether the scalar
+    # arrived as a Python float, a numpy value or a tensor.
+    for dct_type in (1, 2, 3, 4):
+      for scalar in (2.0, np.float32(2.0), constant_op.constant(2.0)):
+        with self.assertRaises(ValueError):
+          dct_ops.dct(scalar, type=dct_type)
+        with self.assertRaises(ValueError):
+          dct_ops.idct(scalar, type=dct_type)
     # Unsupported type.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, type=5)

@@ -820,7 +820,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   for (const auto& [id, memory] : memories) {
     auto* m = init_resp->add_memories();
     m->set_id(id);
-    m->set_memory_space_kind(AsProtoStringData(*memory->Kind().memory_kind()));
+    m->set_memory_space_kind(AsProtoStringData(memory->Kind().value()));
     for (const auto* device : memory->Devices()) {
       m->add_device_ids(device->Id().value());
     }

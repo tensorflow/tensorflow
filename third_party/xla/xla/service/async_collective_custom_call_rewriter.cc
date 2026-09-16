@@ -19,20 +19,25 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -52,29 +57,43 @@ std::string GetConfigString(HloInstruction* instr) {
   return instr->raw_backend_config_string();
 }
 
-bool IsCollectiveCustomCall(HloInstruction* instr, absl::string_view suffix) {
+bool IsCollectiveCustomCall(const HloInstruction* instr,
+                            absl::string_view suffix) {
   if (instr->opcode() != HloOpcode::kCustomCall) {
     return false;
   }
+  static constexpr absl::string_view kCollectiveBases[] = {
+      "all-gather", "all-reduce", "reduce-scatter", "all-to-all",
+      "collective-permute"};
   absl::string_view target = instr->custom_call_target();
-  if (!absl::EndsWith(target, suffix)) {
+  if (!absl::ConsumeSuffix(&target, suffix)) {
     return false;
   }
-
-  absl::string_view base = target;
-  base.remove_suffix(suffix.size());
-
-  return base == "all-gather" || base == "all-reduce" ||
-         base == "reduce-scatter" || base == "all-to-all" ||
-         base == "collective-permute";
+  return absl::c_linear_search(kCollectiveBases, target);
 }
 
-absl::Status CleanupAndPropagate(HloComputation* computation,
-                                 HloInstruction* start_call,
-                                 HloInstruction* done_call,
-                                 HloInstruction* async_start,
-                                 HloInstruction* async_done,
-                                 HloInstruction* final_result) {
+std::optional<std::string> MatchingStartTarget(absl::string_view done_target) {
+  absl::string_view base = done_target;
+  if (!absl::ConsumeSuffix(&base, "-done")) {
+    return std::nullopt;
+  }
+  return absl::StrCat(base, "-start");
+}
+
+absl::Status FinishRewrite(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call, HloInstruction* async_start,
+    HloInstruction* async_done,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    HloInstruction* final_result) {
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * done_operand,
+                   hlo_instruction_utils::async::PropagateDataflow(
+                       forward_path, async_start));
+  if (done_operand != async_done->operand(0)) {
+    ABSL_RETURN_IF_ERROR(
+        async_done->ReplaceOperandWithDifferentShape(0, done_operand));
+  }
+
   async_start->set_metadata(start_call->metadata());
   async_done->set_metadata(done_call->metadata());
   if (final_result != async_done) {
@@ -84,20 +103,32 @@ absl::Status CleanupAndPropagate(HloComputation* computation,
   for (HloInstruction* pred : start_call->control_predecessors()) {
     ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_start));
   }
+  for (HloInstruction* succ : start_call->control_successors()) {
+    ABSL_RETURN_IF_ERROR(async_start->AddControlDependencyTo(succ));
+  }
+  for (HloInstruction* pred : done_call->control_predecessors()) {
+    ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_done));
+  }
   for (HloInstruction* succ : done_call->control_successors()) {
     ABSL_RETURN_IF_ERROR(final_result->AddControlDependencyTo(succ));
   }
 
   ABSL_RETURN_IF_ERROR(done_call->ReplaceAllUsesWith(final_result));
+  ABSL_RETURN_IF_ERROR(done_call->DropAllControlDeps());
   ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(done_call));
-  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(start_call));
+
+  if (start_call->user_count() == 0 && !start_call->IsRoot()) {
+    ABSL_RETURN_IF_ERROR(start_call->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(start_call));
+  }
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> ProcessAllGather(HloComputation* computation,
-                                      HloInstruction* start_call,
-                                      HloInstruction* done_call,
-                                      bool use_legacy_collectives) {
+absl::StatusOr<bool> ProcessAllGather(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
   std::string config_str = GetConfigString(start_call);
   ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
@@ -106,7 +137,6 @@ absl::StatusOr<bool> ProcessAllGather(HloComputation* computation,
   int64_t all_gather_dim = *config.all_gather_dimension;
 
   Shape shape = done_call->shape();
-
   auto device_list =
       std::make_shared<CollectiveDeviceList>(config.replica_groups);
 
@@ -142,20 +172,20 @@ absl::StatusOr<bool> ProcessAllGather(HloComputation* computation,
                      computation->CreateAsyncInstructions(
                          sync_all_gather.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
-
     async_start = async_done->mutable_operand(0);
   }
 
-  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
-                                      async_start, async_done, async_done));
-
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path,
+                                /*final_result=*/async_done));
   return true;
 }
 
-absl::StatusOr<bool> ProcessAllReduce(HloComputation* computation,
-                                      HloInstruction* start_call,
-                                      HloInstruction* done_call,
-                                      bool use_legacy_collectives) {
+absl::StatusOr<bool> ProcessAllReduce(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
   std::string config_str = GetConfigString(start_call);
   ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
@@ -191,19 +221,20 @@ absl::StatusOr<bool> ProcessAllReduce(HloComputation* computation,
                      computation->CreateAsyncInstructions(
                          sync_all_reduce.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
-
     async_start = async_done->mutable_operand(0);
   }
 
-  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
-                                      async_start, async_done, async_done));
-
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path,
+                                /*final_result=*/async_done));
   return true;
 }
 
-absl::StatusOr<bool> ProcessReduceScatter(HloComputation* computation,
-                                          HloInstruction* start_call,
-                                          HloInstruction* done_call) {
+absl::StatusOr<bool> ProcessReduceScatter(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
+        forward_path) {
   std::string config_str = GetConfigString(start_call);
   ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
@@ -250,7 +281,6 @@ absl::StatusOr<bool> ProcessReduceScatter(HloComputation* computation,
                    computation->CreateAsyncInstructions(
                        sync_reduce_scatter.get(), /*context_shapes=*/{},
                        computation->execution_thread(), /*replace=*/false));
-
   HloInstruction* async_start = async_done->mutable_operand(0);
 
   HloInstruction* final_result = async_done;
@@ -259,15 +289,16 @@ absl::StatusOr<bool> ProcessReduceScatter(HloComputation* computation,
         HloInstruction::CreateReshape(done_call->shape(), async_done));
   }
 
-  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
-                                      async_start, async_done, final_result));
-
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path, final_result));
   return true;
 }
 
-absl::StatusOr<bool> ProcessAllToAll(HloComputation* computation,
-                                     HloInstruction* start_call,
-                                     HloInstruction* done_call) {
+absl::StatusOr<bool> ProcessAllToAll(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
+        forward_path) {
   std::string config_str = GetConfigString(start_call);
   ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
@@ -357,17 +388,16 @@ absl::StatusOr<bool> ProcessAllToAll(HloComputation* computation,
   }
 
   HloInstruction* async_start = async_done->mutable_operand(0);
-
-  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
-                                      async_start, async_done, final_result));
-
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path, final_result));
   return true;
 }
 
-absl::StatusOr<bool> ProcessCollectivePermute(HloComputation* computation,
-                                              HloInstruction* start_call,
-                                              HloInstruction* done_call,
-                                              bool use_legacy_collectives) {
+absl::StatusOr<bool> ProcessCollectivePermute(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
   std::string config_str = GetConfigString(start_call);
   ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
@@ -376,21 +406,12 @@ absl::StatusOr<bool> ProcessCollectivePermute(HloComputation* computation,
   HloInstruction* async_done = nullptr;
 
   if (use_legacy_collectives) {
-    std::vector<const Shape*> operand_shapes;
-    for (HloInstruction* operand : start_call->operands()) {
-      operand_shapes.push_back(&operand->shape());
-    }
-
-    ABSL_ASSIGN_OR_RETURN(
-        Shape start_shape,
-        ShapeInference::InferCollectivePermuteStartShape(
-            operand_shapes, /*context_shapes=*/{}, /*inplace=*/false));
-
+    Shape start_shape = ShapeUtil::MakeTupleShape(
+        {start_call->operand(0)->shape(), done_call->shape()});
     async_start = computation->AddInstruction(
         HloInstruction::CreateCollectivePermuteStart(
             start_shape, start_call->operands(), config.permutation,
             config.channel_id));
-
     async_done = computation->AddInstruction(HloInstruction::CreateUnary(
         done_call->shape(), HloOpcode::kCollectivePermuteDone, async_start));
   } else {
@@ -403,39 +424,40 @@ absl::StatusOr<bool> ProcessCollectivePermute(HloComputation* computation,
                      computation->CreateAsyncInstructions(
                          sync_collective_permute.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
-
     async_start = async_done->mutable_operand(0);
   }
 
-  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
-                                      async_start, async_done, async_done));
-
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path,
+                                /*final_result=*/async_done));
   return true;
 }
 
-absl::StatusOr<bool> ProcessPair(HloComputation* computation,
-                                 HloInstruction* start_call,
-                                 HloInstruction* done_call,
-                                 bool use_legacy_collectives) {
+absl::StatusOr<bool> ProcessPair(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
   absl::string_view target = start_call->custom_call_target();
 
   if (absl::StartsWith(target, "all-gather")) {
-    return ProcessAllGather(computation, start_call, done_call,
+    return ProcessAllGather(computation, start_call, done_call, forward_path,
                             use_legacy_collectives);
   }
   if (absl::StartsWith(target, "all-reduce")) {
-    return ProcessAllReduce(computation, start_call, done_call,
+    return ProcessAllReduce(computation, start_call, done_call, forward_path,
                             use_legacy_collectives);
   }
   if (absl::StartsWith(target, "reduce-scatter")) {
-    return ProcessReduceScatter(computation, start_call, done_call);
+    return ProcessReduceScatter(computation, start_call, done_call,
+                                forward_path);
   }
   if (absl::StartsWith(target, "all-to-all")) {
-    return ProcessAllToAll(computation, start_call, done_call);
+    return ProcessAllToAll(computation, start_call, done_call, forward_path);
   }
   if (absl::StartsWith(target, "collective-permute")) {
     return ProcessCollectivePermute(computation, start_call, done_call,
-                                    use_legacy_collectives);
+                                    forward_path, use_legacy_collectives);
   }
   return false;
 }
@@ -446,32 +468,34 @@ absl::StatusOr<bool> AsyncCollectiveCustomCallRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  std::vector<HloComputation*> computations(module->computations().begin(),
-                                            module->computations().end());
-  for (HloComputation* computation : computations) {
-    // First pass to find all pairs to avoid modifying while iterating.
-    std::vector<std::pair<HloInstruction*, HloInstruction*>> pairs_to_rewrite;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    std::vector<HloInstruction*> done_calls;
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
       if (IsCollectiveCustomCall(instr, "-done")) {
-        HloInstruction* done_call = instr;
-        if (done_call->operand_count() == 0) {
-          continue;
-        }
-        HloInstruction* start_call = done_call->mutable_operand(0);
-        if (IsCollectiveCustomCall(start_call, "-start")) {
-          pairs_to_rewrite.push_back({start_call, done_call});
-        }
+        done_calls.push_back(instr);
       }
     }
 
-    // Second pass to process the collected pairs.
-    for (const auto& pair : pairs_to_rewrite) {
-      ABSL_ASSIGN_OR_RETURN(bool pair_changed,
-                       ProcessPair(computation, pair.first, pair.second,
-                                   use_legacy_collectives_));
-      if (pair_changed) {
-        changed = true;
+    for (HloInstruction* done_call : done_calls) {
+      auto expected_start =
+          MatchingStartTarget(done_call->custom_call_target());
+      if (!expected_start.has_value()) {
+        continue;
       }
+      auto trace = hlo_instruction_utils::async::TraceDataflowPath(
+          done_call, [&](const HloInstruction* instr) {
+            return instr->parent() == computation &&
+                   instr->IsCustomCall(*expected_start);
+          });
+      if (!trace.has_value()) {
+        continue;
+      }
+      auto [start_call, forward_path] = *std::move(trace);
+      ABSL_ASSIGN_OR_RETURN(bool pair_changed,
+                       ProcessPair(computation, start_call, done_call,
+                                   forward_path, use_legacy_collectives_));
+      changed |= pair_changed;
     }
   }
   return changed;

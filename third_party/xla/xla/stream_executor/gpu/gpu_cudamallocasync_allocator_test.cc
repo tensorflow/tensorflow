@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
@@ -44,7 +44,7 @@ namespace stream_executor {
 
 TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream1, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream1, executor->CreateStream());
   auto allocator1 = GpuCudaMallocAsyncAllocator(
       /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
       /*pool_size*/ 2048,
@@ -52,7 +52,7 @@ TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
       /*release_threshold*/ true);
   allocator1.SetStreamAndPreallocateMemory(
       stream1->platform_specific_handle().stream);
-  TF_ASSERT_OK_AND_ASSIGN(auto stream2, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream2, executor->CreateStream());
   auto allocator2 = GpuCudaMallocAsyncAllocator(
       /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
       /*pool_size*/ 2048,
@@ -72,7 +72,7 @@ TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
 
 TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   auto allocator = GpuCudaMallocAsyncAllocator(
       /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
       /*pool_size*/ 2048,
@@ -91,7 +91,7 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
 
 TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   auto allocator = GpuCudaMallocAsyncAllocator(
       /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
       /*create_new_pool*/ true,
@@ -113,7 +113,7 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
 
 TEST(GpuCudaMallocAsyncAllocator, SyncAddressAlignedNewPool) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   auto allocator = GpuCudaMallocAsyncAllocator(
       /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
       /*create_new_pool*/ true,

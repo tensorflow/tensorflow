@@ -29,7 +29,7 @@ cc_library(
         "//xla/hlo/testlib:filecheck",
         "//xla/service:backend",
         "//xla/service:compiler",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_runner_interface",
         "//xla/service:interpreter_plugin",  # reference backend

@@ -84,6 +84,9 @@ class EmitterContext {
   mlir::Value tid() const { return tid_; }
   const HloFusionInstruction& fusion() const { return *fusion_; }
   xtile::EntryFuncOp entry_func() const { return entry_func_; }
+  const gpu::experimental::TiledHloComputation& tiled_computation() const {
+    return tiled_computation_;
+  }
 
   TensorValue TiledHloToTensorValue(
       const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
@@ -234,6 +237,10 @@ mlir::Type GetSignlessType(mlir::Type t);
 // Other HLO scaled-dot operand dtypes are emitted without attaching a scale
 // operand to tt.dot_scaled.
 bool IsTritonDotScaledOperandType(PrimitiveType type);
+
+// Returns true if `scale` is provably all ones. Looks through value-preserving
+// ops and fusion parameters, as the scale may be defined outside the fusion.
+bool IsAllOnesScale(const HloInstruction& scale);
 
 // Some Triton dot-scaled value dtypes are smaller than one byte. XTile stores
 // those logical elements inside byte-sized carrier elements, so storage shapes

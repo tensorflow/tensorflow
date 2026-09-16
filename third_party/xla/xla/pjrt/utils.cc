@@ -805,7 +805,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+absl::StatusOr<std::vector<int>> ComputeParametersThatMayBeDonated(
     const HloModule& module, bool tuple_inputs) {
   const HloComputation* computation = module.entry_computation();
   int number_of_parameters = [&]() -> int {
@@ -818,11 +818,11 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     }
     return computation->num_parameters();
   }();
-  return ComputeParametersThatMustBeDonated(module.input_output_alias_config(),
-                                            number_of_parameters, tuple_inputs);
+  return ComputeParametersThatMayBeDonated(module.input_output_alias_config(),
+                                           number_of_parameters, tuple_inputs);
 }
 
-absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+absl::StatusOr<std::vector<int>> ComputeParametersThatMayBeDonated(
     const HloInputOutputAliasConfig& config, int num_parameters,
     bool tuple_inputs) {
   // If any buffer in a parameter is aliased we will donate the entire input

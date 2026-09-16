@@ -55,6 +55,7 @@ class FusionInfoCache {
   void Invalidate(const HloInstruction* instr) {
     shared_memory_usage_.erase(instr);
     num_unnested_reductions_.erase(instr);
+    contains_scan_.erase(instr);
   }
 
   // Returns expected shared memory usage of a given instruction in bytes.
@@ -63,6 +64,10 @@ class FusionInfoCache {
   // Returns the number of unnested reductions in the instruction output.
   int64_t GetNumUnnestedReductions(const HloInstruction& instr);
 
+  // Returns whether the instruction is a scan or, in the case of a fusion,
+  // contains a scan operation.
+  bool ContainsScan(const HloInstruction& instr);
+
  private:
   const se::DeviceDescription& device_info_;
 
@@ -70,6 +75,7 @@ class FusionInfoCache {
 
   absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage_;
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions_;
+  absl::flat_hash_map<const HloInstruction*, bool> contains_scan_;
 };
 
 // Returns the computations within `module` whose instructions can still be
@@ -242,6 +248,11 @@ int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis);
 
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
                             const Shape& shape);
+
+// Returns whether the instruction is a scan or, in the case of a fusion,
+// contains a scan operation.
+bool ContainsScan(const HloInstruction& instr,
+                  FusionInfoCache* cache = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

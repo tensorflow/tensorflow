@@ -375,14 +375,51 @@ INSTANTIATE_TEST_CASE_P(CacheDatasetOpTest,
                         ParameterizedIteratorSaveAndRestoreTest,
                         ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
 
-TEST_F(CacheDatasetOpTest, NegativeIndexTest) {
-  auto params = CacheDatasetParams3();
+TEST_F(CacheDatasetOpTest, NegativeIndexEarlyRejection) {
+  auto range_dataset_params = RangeDatasetParams(0, 20000000, 1);
+  auto params =
+      CacheDatasetParams(range_dataset_params,
+                         /*filename=*/"",
+                         /*output_dtypes=*/{DT_INT64},
+                         /*output_shapes=*/{PartialTensorShape({})}, kNodeName);
   TF_ASSERT_OK(Initialize(params));
   std::vector<Tensor> out_tensors;
   absl::Status status =
-      dataset_->Get(AnyContext(iterator_ctx_.get()), -1, &out_tensors);
-  EXPECT_TRUE(status.code() == absl::StatusCode::kOutOfRange);
-  EXPECT_EQ(status.message(), "Index out of range [0, 3):-1");
+      dataset_->Get(AnyContext(iterator_ctx_.get()), -1LL, &out_tensors);
+  EXPECT_TRUE(status.code() == absl::StatusCode::kInvalidArgument ||
+              status.code() == absl::StatusCode::kOutOfRange);
+}
+
+TEST_F(CacheDatasetOpTest, LargeIndexTest) {
+  auto range_dataset_params = RangeDatasetParams(0, 20000000, 1);
+  auto params =
+      CacheDatasetParams(range_dataset_params,
+                         /*filename=*/"",
+                         /*output_dtypes=*/{DT_INT64},
+                         /*output_shapes=*/{PartialTensorShape({})}, kNodeName);
+  TF_ASSERT_OK(Initialize(params));
+  std::vector<Tensor> out_tensors;
+  int64_t huge_index = std::numeric_limits<int64_t>::max();
+  absl::Status status =
+      dataset_->Get(AnyContext(iterator_ctx_.get()), huge_index, &out_tensors);
+  EXPECT_TRUE(status.code() == absl::StatusCode::kInvalidArgument ||
+              status.code() == absl::StatusCode::kOutOfRange);
+}
+
+TEST_F(CacheDatasetOpTest, BadAllocCrashTest) {
+  auto range_dataset_params = RangeDatasetParams(0, 20000000, 1);
+  auto params =
+      CacheDatasetParams(range_dataset_params,
+                         /*filename=*/"",
+                         /*output_dtypes=*/{DT_INT64},
+                         /*output_shapes=*/{PartialTensorShape({})}, kNodeName);
+  TF_ASSERT_OK(Initialize(params));
+  std::vector<Tensor> out_tensors;
+  absl::Status status =
+      dataset_->Get(AnyContext(iterator_ctx_.get()), 15000000, &out_tensors);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "exceeds the maximum allowed cache size"));
 }
 
 }  // namespace

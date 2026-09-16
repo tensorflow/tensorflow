@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 
 namespace xla::gpu::experimental {

@@ -230,6 +230,13 @@ class ArrayCreationTest(test.TestCase):
                 np_array_ops.eye(n, m, k, dtype=dtype),
                 np.eye(n, m, k, dtype=dtype))
 
+    # Test M=0 and N=0 zero-dimension edge cases
+    for n in (0, 1, 3):
+      for m in (0, 1, 3):
+        self.match(np_array_ops.eye(n, m), np.eye(n, m))
+        for k in range(-n - 1, m + 2):
+          self.match(np_array_ops.eye(n, m, k), np.eye(n, m, k))
+
   def testIdentity(self):
     n_max = 3
 
@@ -380,6 +387,20 @@ class ArrayCreationTest(test.TestCase):
           np_array_ops.ascontiguousarray(a, dtype=dtype),
           np.ascontiguousarray(a, dtype=dtype))
 
+  def testARangeFloatStep(self):
+    for args, kwargs in [
+        ((0.0, 1.0), dict(step=0.3)),
+        ((0.0, 5.0), dict(step=1.5)),
+        ((2.0, -3.0), dict(step=-0.75)),
+    ]:
+      self.assertAllEqual(
+          np_array_ops.arange(*args, **kwargs), np.arange(*args, **kwargs)
+      )
+    self.assertAllEqual(
+        np_array_ops.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
+        np.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
+    )
+
   def testARange(self):
     int_values = np.arange(-3, 3).tolist()
     float_values = np.arange(-3.5, 3.5).tolist()
@@ -508,6 +529,28 @@ class ArrayCreationTest(test.TestCase):
     run_test(np.arange(2).reshape((1, 2)).tolist())
     # 3-d arrays
     run_test(np.arange(8).reshape((2, 2, 2)).tolist())
+
+  def testDiagInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diag(v, k=k)
+
+  def testDiagFlatInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diagflat(v, k=k)
 
   def match_shape(self, actual, expected, msg=None):
     if msg:
@@ -730,6 +773,17 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
 
+  def testCumProdAndSumOutOfBoundsAxis(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=-3)
+
   def testImag(self):
 
     def run_test(arr, *args, **kwargs):
@@ -856,6 +910,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
     run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test([1.0, 2.0, 3.0], ddof=1)
+    run_test([1.0, 2.0, 3.0], ddof=1, dtype=np.float64)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=1, keepdims=True)
+    run_test([1.0j, 2.0, 3.0j], ddof=1)
+    run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
@@ -1172,6 +1231,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(out, out_expected)
 
   def testTakeAlongAxisJitCompile(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # Regression test for GitHub issue 62391: the axis-swapping branch was
     # emitted as a real conditional whose branches have different shapes, so
     # the result shape XLA computed disagreed with the shape set on the
@@ -1192,6 +1253,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllClose(expected, actual)
 
   def testTakeAlongAxisUnknownRank(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # The tensor predicate is still used when the rank is not known
     # statically.
     @def_function.function(
@@ -1295,6 +1358,11 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, tuple(range(6)), tuple(reversed(range(6))))
     _test(a, (), ())
 
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, -8, 0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, 0, 8)
+
   def testFlip(self):
     np.random.seed(0)
     random_seed.set_seed(0)
@@ -1366,6 +1434,11 @@ class ArrayMethodsTest(test.TestCase):
         else:
           arr = np.asarray(state.randn(*shape) * 100, dtype=dtype)
         self.match(np_array_ops.sign(arr), np.sign(arr))
+
+    with self.assertRaisesRegex(ValueError, "doesn't support setting out"):
+      np_array_ops.sign([1], out=[])
+    with self.assertRaisesRegex(ValueError, "doesn't support setting where"):
+      np_array_ops.sign([1], where=False)
 
 
 class ArrayManipulationTest(test.TestCase):

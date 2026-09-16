@@ -16,11 +16,13 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -29,13 +31,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/pass/hlo_pass_filter.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/dump.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -75,6 +77,7 @@ void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
     LOG(FATAL) << status;
   }
 }
+
 }  // namespace
 
 template <typename HloT>
@@ -142,7 +145,10 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
   std::unique_ptr<tsl::ThreadNote> thread_note;
   thread_note = env->AddThreadNote(absl::StrCat(
       "Running HLO pass pipeline on module ", hlo->name(), ": ", name()));
-  auto passes = GetEnabledPasses(debug_options);
+  if (debug_options.xla_disable_all_hlo_passes()) {
+    VLOG(1) << "*All* passes disabled by --xla_disable_all_hlo_passes.";
+    return false;
+  }
   // Copy string by value since debug options could get clobbered in an hlo
   // module group pass.
   std::string dump_regex = debug_options.xla_dump_hlo_pass_re();
@@ -160,9 +166,9 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
   MaybeDumpHloAndSaveFilenames(*hlo,
                                /*after_pass_name=*/kPipelineStart,
-                               /*before_pass_name=*/passes.empty()
+                               /*before_pass_name=*/passes_.empty()
                                    ? kPipelineEnd
-                                   : passes.front()->name());
+                                   : passes_.front()->name());
   RecordPassEndMetadata(*hlo, std::string(kPipelineStart),
                         /*module_changed=*/false);
 
@@ -170,8 +176,32 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
   bool verify_pass_changed_report =
       debug_options.xla_unsupported_crash_on_hlo_pass_silent_hlo_change() ||
       debug_options.xla_unsupported_crash_on_hlo_pass_noop_change();
-  for (int i = 0, sz = passes.size(); i < sz; i++) {
-    HloPassInterface* pass = passes[i];
+
+  ABSL_ASSIGN_OR_RETURN(const auto disable_filter,
+                   HloPassFilter::FromRepeatedProtoField(
+                       debug_options.xla_disable_hlo_passes()));
+  ABSL_ASSIGN_OR_RETURN(const auto enable_filter,
+                   HloPassFilter::FromRepeatedProtoField(
+                       debug_options.xla_enable_hlo_passes_only()));
+  CHECK(disable_filter.empty() || enable_filter.empty())
+      << "Cannot set both --xla_disable_hlo_passes and "
+         "--xla_enable_hlo_passes_only.";
+  if (!disable_filter.empty()) {
+    VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
+            << absl::StrJoin(debug_options.xla_disable_hlo_passes(), ", ");
+  }
+  if (!enable_filter.empty()) {
+    VLOG(1) << "Passes enabled by --xla_enable_hlo_passes_only: "
+            << absl::StrJoin(debug_options.xla_enable_hlo_passes_only(), ", ");
+  }
+  const bool has_disable_filter = !disable_filter.empty();
+  const bool has_enable_filter = !enable_filter.empty();
+  // Per-pipeline-instance occurrence counter (0-based) keyed by pass name, used
+  // for scoped occurrence specs like "simplification/algsimp:2".
+  absl::flat_hash_map<std::string, int64_t> pipeline_occurrence;
+  const int sz = passes_.size();
+  for (int i = 0; i < sz; i++) {
+    HloPassInterface* pass = passes_[i].get();
     std::string pass_name = std::string(pass->name());
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass_name));
     tsl::profiler::ScopedAnnotation annotation{[&] {
@@ -186,10 +216,35 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     }
     VLOG(2) << "  Number of instructions: " << hlo->instruction_count();
     tsl::profiler::TraceMe traceme(pass->name());
+    RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
+
+    // Run-time gate for xla_disable_hlo_passes / xla_enable_hlo_passes_only.
+    if (has_disable_filter || has_enable_filter) {
+      ABSL_ASSIGN_OR_RETURN(int64_t pass_id, hlo->metadata()->current_pass_id());
+      const HloPassFilter::InvocationInfo invocation{
+          /*pass_name=*/pass_name,
+          /*pipeline_name=*/pipeline_name,
+          /*pass_id=*/pass_id,
+          /*global_occurrence=*/
+          hlo->IncrementPassOccurrenceCount(pass_name),
+          /*pipeline_occurrence=*/pipeline_occurrence[pass_name]++};
+
+      // In disable mode, skip matching passes. In enable-only mode,
+      // non-matching leaf passes are skipped (pipelines are always entered).
+      if ((has_disable_filter && disable_filter.Matches(invocation)) ||
+          (has_enable_filter && !pass->IsPassPipeline() &&
+           !enable_filter.Matches(invocation))) {
+        VLOG(1) << "  Skipping HLO pass (filtered by xla_disable_hlo_passes / "
+                   "xla_enable_hlo_passes_only): "
+                << pass_name;
+        RecordPassEndMetadata(*hlo, pass_name, /*module_changed=*/false);
+        continue;
+      }
+    }
+
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
     }
-    RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
     auto status_or_changed = RunHelper<HloT>(pass, hlo, execution_threads);
     if (auto status = status_or_changed.status(); !status.ok()) {
       compilation_stats_->RecordPassError(
@@ -203,9 +258,9 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
                                    /*after_pass_name=*/pass_name,
-                                   /*before_pass_name=*/i + 1 >= passes.size()
+                                   /*before_pass_name=*/i + 1 >= sz
                                        ? kPipelineEnd
-                                       : passes[i + 1]->name());
+                                       : passes_[i + 1]->name());
     }
     RecordPassEndMetadata(*hlo, pass_name, pass_changed);
     changed |= pass_changed;
@@ -224,62 +279,6 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     }
   }
   return changed;
-}
-
-std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
-    const DebugOptions& debug_options) {
-  if (debug_options.xla_disable_all_hlo_passes()) {
-    VLOG(1) << "*All* passes disabled by --xla_disable_all_hlo_passes.";
-    return {};
-  }
-
-  absl::flat_hash_set<std::string> disabled_pass_names(
-      debug_options.xla_disable_hlo_passes().begin(),
-      debug_options.xla_disable_hlo_passes().end());
-
-  absl::flat_hash_set<std::string> enabled_pass_names(
-      debug_options.xla_enable_hlo_passes_only().begin(),
-      debug_options.xla_enable_hlo_passes_only().end());
-
-  if (!disabled_pass_names.empty()) {
-    VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
-            << absl::StrJoin(disabled_pass_names, ", ");
-  }
-
-  if (!enabled_pass_names.empty()) {
-    VLOG(1) << "Passes enabled by --xla_enable_hlo_passes_only: "
-            << absl::StrJoin(enabled_pass_names, ", ");
-  }
-
-  CHECK(disabled_pass_names.empty() || enabled_pass_names.empty());
-
-  if (disabled_pass_names.contains(name())) {
-    // Disable the full pass.
-    VLOG(1) << "Disable the full pass: " << name();
-    return {};
-  }
-
-  if (enabled_pass_names.contains(name())) {
-    VLOG(1) << "Enable the full pass: " << name();
-    // Enable the full pass.
-    enabled_pass_names.clear();
-  }
-
-  std::vector<HloPassInterface*> enabled_passes;
-  if (!enabled_pass_names.empty()) {
-    for (auto& pass : passes_) {
-      if (enabled_pass_names.contains(pass->name())) {
-        enabled_passes.push_back(pass.get());
-      }
-    }
-  } else {
-    for (auto& pass : passes_) {
-      if (!disabled_pass_names.contains(pass->name())) {
-        enabled_passes.push_back(pass.get());
-      }
-    }
-  }
-  return enabled_passes;
 }
 
 void HloPassPipeline::MaybeDumpHloAndSaveFilenames(

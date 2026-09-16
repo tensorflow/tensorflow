@@ -21,7 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/tsl/platform/test.h"
 

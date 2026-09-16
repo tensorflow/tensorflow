@@ -129,7 +129,7 @@ TEST(ExpiringLRUCacheTest, LookupOrCompute) {
   TF_EXPECT_OK(status.status);
   EXPECT_EQ(value, 0);
   EXPECT_EQ(num_compute_calls, 1);
-  // Re-read, exepct no additional function compute_func calls.
+  // Re-read, expect no additional function compute_func calls.
   cache2.LookupOrCompute("a", &value, compute_func, &status);
   TF_EXPECT_OK(status.status);
   EXPECT_EQ(value, 0);

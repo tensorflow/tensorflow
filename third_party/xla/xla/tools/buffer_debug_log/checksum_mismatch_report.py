@@ -162,13 +162,13 @@ def _parse_log(
       ThunkExecution(
           module_execution_id=module_execution,
           thunk_execution_id=execution_id,
-          thunk_id=thunk_id,
-          input_checksums=BufferChecksums({
+          thunk_id=thunk_id,  # pyrefly: ignore[bad-argument-type]
+          input_checksums=BufferChecksums({  # pyrefly: ignore[bad-argument-type]
               entry.buffer_idx: entry.checksum
               for entry in entries
               if entry.is_input_buffer
           }),
-          output_checksums=BufferChecksums({
+          output_checksums=BufferChecksums({  # pyrefly: ignore[bad-argument-type]
               entry.buffer_idx: entry.checksum
               for entry in entries
               if not entry.is_input_buffer

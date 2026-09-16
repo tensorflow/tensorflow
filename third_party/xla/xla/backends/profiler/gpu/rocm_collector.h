@@ -50,8 +50,16 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
            grid_z = kernel_info.workgroup_z != 0
                         ? kernel_info.grid_z / kernel_info.workgroup_z
                         : 0;
+  const uint32_t dynamic_group_segment_size =
+      kernel_info.group_segment_size > kernel_info.static_group_segment_size
+          ? kernel_info.group_segment_size -
+                kernel_info.static_group_segment_size
+          : 0;
 
-  return absl::StrCat(" grid:", grid_x, ",", grid_y, ",", grid_z,
+  return absl::StrCat("regs:", kernel_info.registers_per_work_item,
+                      " static_shared:", kernel_info.static_group_segment_size,
+                      " dynamic_shared:", dynamic_group_segment_size,
+                      " grid:", grid_x, ",", grid_y, ",", grid_z,
                       " block:", kernel_info.workgroup_x, ",",
                       kernel_info.workgroup_y, ",", kernel_info.workgroup_z,
                       " private_mem:", kernel_info.private_segment_size,
@@ -154,6 +162,7 @@ class PerDeviceCollector {
   void Export(uint64_t start_walltime_ns, uint64_t start_gputime_ns,
               uint64_t end_gputime_ns,
               tsl::profiler::XPlaneBuilder* device_plane,
+              tsl::profiler::XPlaneBuilder* marker_plane,
               tsl::profiler::XPlaneBuilder* host_plane);
 
   PerDeviceCollector() = default;
@@ -226,6 +235,12 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   // This is for the APIs that we track because we need some information from
   // them to populate the corresponding activity that we actually track.
   absl::flat_hash_map<uint64_t, RocmTracerEvent> auxiliary_api_events_map_
+      ABSL_GUARDED_BY(event_maps_mutex_);
+
+  // Host-side events that need no API↔Activity join (e.g. ROCTX markers).
+  // Flushed directly to per_device_collector_ without going through
+  // ApiActivityInfoExchange.
+  std::vector<RocmTracerEvent> standalone_events_
       ABSL_GUARDED_BY(event_maps_mutex_);
 
   std::vector<RocmTracerEvent> ApiActivityInfoExchange()

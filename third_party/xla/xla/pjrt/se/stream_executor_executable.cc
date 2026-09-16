@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/pjrt/se/stream_executor_executable.h"
 
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "riegeli/base/any.h"
 #include "riegeli/base/maker.h"
 #include "riegeli/bytes/cord_reader.h"
@@ -73,7 +73,7 @@ constexpr absl::string_view kPjRtStreamExecutorClientName =
 
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (IsEarlyExitCompilation(compile_options_)) {
     ExecutableAndOptionsProto proto;
     ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
@@ -169,6 +169,7 @@ StreamExecutorExecutable::StreamExecutorExecutable(
   if (mod != nullptr) {
     hlo_module_ = mod->shared_optimized_module();
   }
+  CHECK(hlo_module_ != nullptr);
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
@@ -193,11 +194,12 @@ StreamExecutorExecutable::StreamExecutorExecutable(
   if (local_exec != nullptr) {
     hlo_module_ = local_exec->executable()->shared_module();
   }
+  CHECK(hlo_module_ != nullptr);
 }
 
 absl::StatusOr<CompiledMemoryStats>
 StreamExecutorExecutable::GetCompiledMemoryStats() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CompiledMemoryStats memory_stats = CompiledMemoryStats();
   if (auto* aot_executable =
           std::get_if<std::unique_ptr<CompiledModule>>(&executables_)) {
@@ -235,7 +237,7 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
 }
 
 int64_t StreamExecutorExecutable::SizeOfGeneratedCodeInBytes() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return SizeOfGeneratedCodeInBytesLocked();
 }
 
@@ -340,7 +342,7 @@ StreamExecutorExecutable::GetOutputMemoryKinds() const {
 
 absl::StatusOr<std::shared_ptr<LocalExecutable>>
 StreamExecutorExecutable::GetOrLoadExecutable(LocalClient* client) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (std::holds_alternative<std::shared_ptr<LocalExecutable>>(executables_)) {
     const auto& tmp = std::get<std::shared_ptr<LocalExecutable>>(executables_);
     if (tmp == nullptr) {
@@ -367,7 +369,7 @@ StreamExecutorExecutable::GetOrLoadExecutable(LocalClient* client) {
 
 absl::StatusOr<stream_executor::ExecutableAbiVersion>
 StreamExecutorExecutable::ExtractExecutableAbiVersion() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (executables_.index() == 0) {
     const std::unique_ptr<CompiledModule>& compiled_module =
         std::get<0>(executables_);

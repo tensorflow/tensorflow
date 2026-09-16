@@ -96,8 +96,8 @@ void DeviceCompilationProfiler::RegisterExecution(
 
 absl::Status DeviceCompilationProfiler::RegisterCompilation(
     const NameAttrList& function, int64_t compile_time_us,
-    bool used_persistent_cache) {
-  metrics::UpdateXlaCompilationTime(compile_time_us);
+    bool used_persistent_cache, int64_t compile_end_us) {
+  metrics::UpdateXlaCompilationTime(compile_time_us, compile_end_us);
 
   const std::string& function_name = function.name();
 

@@ -827,6 +827,22 @@ TEST(AsyncValueRefTest, DynCast) {
   typed_indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(DynCast<A>(c_typed_indirect));
   EXPECT_TRUE(DynCast<C>(c_typed_indirect));
+
+  // Casting an rvalue transfers ownership without changing the refcount.
+  AsyncValueRef<A> moved_ref = MakeAvailableAsyncValueRef<C>();
+  EXPECT_TRUE(moved_ref.IsUnique());
+  AsyncValueRef<C> moved_cast = DynCast<C>(std::move(moved_ref));
+  EXPECT_TRUE(moved_cast.IsUnique());
+}
+
+TEST(AsyncValueRefTest, DynCastOrNull) {
+  AsyncValueRef<A> null_ref;
+  EXPECT_FALSE(DynCastOrNull<C>(null_ref));
+
+  AsyncValueRef<A> moved_ref = MakeAvailableAsyncValueRef<C>();
+  EXPECT_TRUE(moved_ref.IsUnique());
+  AsyncValueRef<C> moved_cast = DynCastOrNull<C>(std::move(moved_ref));
+  EXPECT_TRUE(moved_cast.IsUnique());
 }
 
 TEST(AsyncValueRefTest, Cast) {
@@ -881,6 +897,12 @@ TEST(AsyncValueRefTest, Cast) {
   typed_indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Cast<A>(c_typed_indirect));
   EXPECT_TRUE(Cast<C>(c_typed_indirect));
+
+  // Casting an rvalue transfers ownership without changing the refcount.
+  AsyncValueRef<A> moved_ref = MakeAvailableAsyncValueRef<C>();
+  EXPECT_TRUE(moved_ref.IsUnique());
+  AsyncValueRef<C> moved_cast = Cast<C>(std::move(moved_ref));
+  EXPECT_TRUE(moved_cast.IsUnique());
 }
 
 TEST(AsyncValueRefTest, RecursiveOwnership) {

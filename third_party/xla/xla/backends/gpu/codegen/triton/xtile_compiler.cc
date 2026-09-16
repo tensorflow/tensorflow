@@ -96,11 +96,13 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -115,8 +117,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -137,6 +137,7 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
 absl::Status CheckAtLeastAmpere(const se::GpuComputeCapability& gpu_cc) {
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability();
       cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
@@ -226,6 +227,16 @@ absl::Status ValidateComplexUseInTritonFusion(
   }
   return absl::OkStatus();
 }
+
+bool IsAllGatherFusion(const HloFusionInstruction& fusion) {
+  const HloComputation* computation = fusion.fused_instructions_computation();
+  if (computation == nullptr) {
+    return false;
+  }
+  return absl::c_any_of(computation->instructions(),
+                        HloPredicateIsOp<HloOpcode::kAllGather>);
+}
+
 }  // namespace
 
 namespace ttir = ::mlir::triton;
@@ -236,6 +247,9 @@ using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
 
 using ::xla::gpu::ir_emitter_triton_internal::GetModuleIrString;
+using ::xla::xtile::BlockLevelParameters;
+using ::xla::xtile::GetTilingSpaceConcreteSizes;
+using ::xla::xtile::TilingFromAnnotatedFusion;
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<
@@ -296,7 +310,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
   const HloComputation* computation = fusion.fused_instructions_computation();
 
-  if (use_experimental_tiling) {
+  if (use_experimental_tiling || IsAllGatherFusion(fusion)) {
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
@@ -372,7 +386,8 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
   const DebugOptions& debug_options =
       fusion.GetModule()->config().debug_options();
   bool use_experimental_tiling =
-      debug_options.xla_gpu_experimental_enable_tiling_propagation();
+      debug_options.xla_gpu_experimental_enable_tiling_propagation() ||
+      IsAllGatherFusion(fusion);
   bool enable_same_shape_multi_output_fusion =
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
@@ -431,6 +446,14 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
           fn_name, fusion, device_info, block_level_parameters,
           absl::MakeSpan(opaque_args_types), mlir_context,
           use_experimental_tiling, enable_same_shape_multi_output_fusion));
+
+  if (fusion_kind == kTritonCollectiveFusionKind &&
+      CreateCollectiveCodegenConfig(&fusion).emit_entry_barrier) {
+    const HloInstruction* root = hlo_computation->root_instruction();
+    int32_t world_size = root->replica_groups()[0].replica_ids_size();
+    ABSL_RETURN_IF_ERROR(
+        EmitCollectiveEntryBarrier(triton_module.get(), world_size));
+  }
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {

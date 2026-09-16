@@ -243,8 +243,15 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add_binary(feature_shape, HloOpcode::kMultiply, mean, mean);
 
   // Var[X].
-  auto var =
+  auto raw_var =
       add_binary(feature_shape, HloOpcode::kSubtract, square_mean, mean_square);
+
+  // Clamp variance to 0 to prevent negative variance due to floating-point
+  // rounding errors.
+  auto zero_feature = add(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeStaticShape(feature_shape), zero, {}));
+  auto var =
+      add_binary(feature_shape, HloOpcode::kMaximum, raw_var, zero_feature);
 
   auto var_broadcasted = feature_broadcast(var);
 

@@ -105,7 +105,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_topology_description_registry",
         "//xla/runtime:device_id",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:computation_placer",
         "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -145,6 +145,7 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_description",
+        "//xla:shape_util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_common",

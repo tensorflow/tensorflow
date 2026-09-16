@@ -832,6 +832,12 @@ class HloModule {
   bool hlo_passes_started() const { return hlo_passes_started_; }
   void set_hlo_passes_started(bool started) { hlo_passes_started_ = started; }
 
+  // Increment a per-pass-name invocation counter (returning the 0-based index
+  // of the current invocation). Used by tre --xla_disable_hlo_passes flag.
+  int64_t IncrementPassOccurrenceCount(const std::string& pass_name) {
+    return pass_occurrence_counts_[pass_name]++;
+  }
+
   // Moves (not copies) metadata from this HloModule to `module`. To be used
   // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
@@ -1035,6 +1041,10 @@ class HloModule {
   // - true: We have reached the starting pass and passes are run as normal.
   bool hlo_passes_started_ = false;
 
+  // Per-pass-name invocation counter for the xla_disable_hlo_passes runtime
+  // gate. Transient (not serialized).
+  absl::flat_hash_map<std::string, int64_t> pass_occurrence_counts_;
+
   // Optional compilation profile handle.
   int64_t profile_version_ = 0;
 
@@ -1069,11 +1079,8 @@ class HloModule {
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this
   // module.
-  // TODO(phawkins): unique_id_ may not be as dense as we might like for this
-  // data structure.
-  TopologicalSort<HloComputation, int64_t,
-                  &HloComputation::topological_sort_node_,
-                  &HloComputation::unique_id_, HloComputation::NeighborIterator,
+  TopologicalSort<HloComputation, int32_t, &HloComputation::index_in_module_,
+                  HloComputation::NeighborIterator,
                   &HloComputation::callers_begin, &HloComputation::callers_end,
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>
@@ -1225,6 +1232,8 @@ class HloModule {
   debug_attributes() const {
     return debug_attributes_;
   }
+
+  bool IsEntryComputationUnboundedDynamic() const;
 
  private:
   absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>

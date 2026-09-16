@@ -400,7 +400,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
                       config().group_mode, communication_id_));
 
   ABSL_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
-      clique_key, *device_groups_, GetCliqueRequirements(clique_key)));
+      clique_key, *device_groups_, GetCliqueRequirements(clique_key, params)));
 
   if (CanUseSymmetricBuffer() && config().use_symmetric_buffer) {
     for (const Buffer& buffer : buffers_) {

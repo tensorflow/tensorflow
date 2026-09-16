@@ -507,6 +507,29 @@ REGISTER_OP("BroadcastTo")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle shape_in = c->input(1);
       TF_RETURN_IF_ERROR(c->WithRank(shape_in, 1, &shape_in));
+      // Unlike Reshape, BroadcastTo does not treat -1 as an inferred dimension.
+      // A known negative value is invalid. Mapping it to "unknown" would merge
+      // with the input shape, and Grappler would then drop the op as a no-op.
+      const Tensor* shape_t = c->input_tensor(1);
+      if (shape_t != nullptr) {
+        if (shape_t->dtype() == DT_INT32) {
+          auto flat = shape_t->flat<int32_t>();
+          for (int i = 0; i < shape_t->NumElements(); ++i) {
+            if (flat(i) < 0) {
+              return absl::InvalidArgumentError(
+                  absl::StrCat("Dimension ", flat(i), " must be >= 0"));
+            }
+          }
+        } else if (shape_t->dtype() == DT_INT64) {
+          auto flat = shape_t->flat<int64_t>();
+          for (int i = 0; i < shape_t->NumElements(); ++i) {
+            if (flat(i) < 0) {
+              return absl::InvalidArgumentError(
+                  absl::StrCat("Dimension ", flat(i), " must be >= 0"));
+            }
+          }
+        }
+      }
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
       if (!c->RankKnown(out)) {

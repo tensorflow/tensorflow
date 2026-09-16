@@ -253,6 +253,55 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
             }
           },
           first_element_type);
+    } else if (raw_data.size() == 2 && direction.has_value() &&
+               (sort_dims.inner_dim_size == 1 ||
+                sort_dims.sort_dim_size <= 65536)) {
+      size_t val_size = primitive_sizes[1];
+      primitive_util::ArrayTypeSwitch(
+          [&](auto key_type) {
+            if constexpr ((primitive_util::IsFloatingPointType(key_type) &&
+                           primitive_util::BitWidth(key_type) >= 16) ||
+                          (primitive_util::IsIntegralType(key_type) &&
+                           primitive_util::BitWidth(key_type) >= 8)) {
+              using Key = primitive_util::NativeTypeOf<key_type>;
+              auto* keys = reinterpret_cast<Key*>(raw_data[0]);
+              switch (val_size) {
+                case 1:
+                  internal::Sort2DKeyValue<Key, uint8_t>(
+                      sort_dims, start_slice, end_slice, keys,
+                      reinterpret_cast<uint8_t*>(raw_data[1]), is_stable,
+                      *direction);
+                  break;
+                case 2:
+                  internal::Sort2DKeyValue<Key, uint16_t>(
+                      sort_dims, start_slice, end_slice, keys,
+                      reinterpret_cast<uint16_t*>(raw_data[1]), is_stable,
+                      *direction);
+                  break;
+                case 4:
+                  internal::Sort2DKeyValue<Key, uint32_t>(
+                      sort_dims, start_slice, end_slice, keys,
+                      reinterpret_cast<uint32_t*>(raw_data[1]), is_stable,
+                      *direction);
+                  break;
+                case 8:
+                  internal::Sort2DKeyValue<Key, uint64_t>(
+                      sort_dims, start_slice, end_slice, keys,
+                      reinterpret_cast<uint64_t*>(raw_data[1]), is_stable,
+                      *direction);
+                  break;
+                default:
+                  internal::SortInplace(sort_dims, start_slice, end_slice,
+                                        raw_data, primitive_sizes, is_stable,
+                                        less_than);
+                  break;
+              }
+            } else {
+              internal::SortInplace(sort_dims, start_slice, end_slice, raw_data,
+                                    primitive_sizes, is_stable, less_than);
+            }
+          },
+          first_element_type);
     } else {
       internal::SortInplace(sort_dims, start_slice, end_slice, raw_data,
                             primitive_sizes, is_stable, less_than);

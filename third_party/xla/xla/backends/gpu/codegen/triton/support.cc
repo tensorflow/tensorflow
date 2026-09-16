@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -326,7 +327,43 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
-// Filters Reduces which can be handled using Triton.
+CodegenDecision CanTritonHandleScan(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  const HloScanInstruction& scan = *Cast<HloScanInstruction>(&instr);
+
+  if (!scan.shape().IsTuple()) {
+    return CodegenDecision::Forbid("Scan must return a tuple.");
+  }
+  if (scan.is_reverse()) {
+    return CodegenDecision::Forbid("Reverse scan is not supported in Triton.");
+  }
+  if (scan.inputs().size() != 1 || scan.num_carries() != 1) {
+    return CodegenDecision::Forbid(
+        "Only single-input, single-carry scans are supported in Triton.");
+  }
+
+  if (!IsTritonSupportedComputation(*scan.to_apply(), gpu_version)) {
+    return CodegenDecision::Forbid("Unsupported scan computation by Triton.");
+  }
+
+  if (scan.is_associative() != TRI_STATE_TRUE) {
+    return CodegenDecision::Forbid(
+        "Triton requires the scan combiner to be associative.");
+  }
+
+  switch (scan.shape().tuple_shapes(0).element_type()) {
+    case PrimitiveType::F8E4M3FN:
+    case PrimitiveType::F8E5M2:
+    case PrimitiveType::F8E5M2FNUZ:
+    case PrimitiveType::F8E4M3FNUZ:
+      // ScanOpConversion::emitFastScan doesn't support F8 types.
+      return CodegenDecision::Forbid("fp8 are not supported for scans.");
+    default:
+      break;
+  }
+  return CodegenDecision::Allow();
+}
+
 CodegenDecision CanTritonHandleReduce(
     const HloReduceInstruction& reduce,
     const se::GpuComputeCapability& gpu_version) {
@@ -401,14 +438,6 @@ CodegenDecision IsTritonSupportedAllReduce(
   }
 
   return CodegenDecision::Allow();
-}
-
-bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
-  if (!hlo.parent()->IsFusionComputation()) {
-    return false;
-  }
-  return IsGpuFusionKind(*hlo.parent()->FusionInstruction(),
-                         kTritonNestedGemmFusionKind);
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
@@ -664,18 +693,27 @@ CodegenDecision IsTritonSupportedScaledDot(
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
   std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
                                                       F8E8M0FNU, S8};
-  // Unscaled 16-bit operands (BF16) do not use dequantization block scales.
-  // In HLO, they carry dummy/placeholder scale constants (e.g. BF16 1.0), so
-  // we skip the scale type check when the operand type is BF16.
-  if (lhs_type != BF16 &&
-      !absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
-    return CodegenDecision::Forbid(absl::StrCat(
-        "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
+  // tt.dot_scaled only dequantizes some operand types; a scale on any other
+  // operand type is dropped, so it has to be all ones to be emittable.
+  if (xtile::IsTritonDotScaledOperandType(lhs_type)) {
+    if (!absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
+    }
+  } else if (!xtile::IsAllOnesScale(*dot.operand(2))) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("LHS scale is ignored for operand type ",
+                     PrimitiveType_Name(lhs_type), " but is not all ones."));
   }
-  if (rhs_type != BF16 &&
-      !absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
-    return CodegenDecision::Forbid(absl::StrCat(
-        "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
+  if (xtile::IsTritonDotScaledOperandType(rhs_type)) {
+    if (!absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
+    }
+  } else if (!xtile::IsAllOnesScale(*dot.operand(3))) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("RHS scale is ignored for operand type ",
+                     PrimitiveType_Name(rhs_type), " but is not all ones."));
   }
   return CodegenDecision::Allow();
 }
@@ -723,8 +761,20 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       break;
   }
 
-  auto type = instr.shape().element_type();
-  auto output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
+  CodegenDecision output_type_is_supported = CodegenDecision::Allow();
+  if (instr.shape().IsTuple()) {
+    for (const auto& shape : instr.shape().tuple_shapes()) {
+      if (shape.IsTuple() || shape.IsToken()) {
+        return CodegenDecision::Forbid(
+            "Nested tuple or token shape is not supported.");
+      }
+      output_type_is_supported = output_type_is_supported.And(
+          IsTritonSupportedDataType(shape.element_type(), gpu_version));
+    }
+  } else {
+    output_type_is_supported =
+        IsTritonSupportedDataType(instr.shape().element_type(), gpu_version);
+  }
 
   if (!output_type_is_supported) {
     return CodegenDecision::Forbid(absl::StrCat(
@@ -768,7 +818,7 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   // Const is technically an elementwise op, so this check must be before the
   // elementwise check.
   if (instr.opcode() == HloOpcode::kConstant) {
-    if (type == PrimitiveType::S4) {
+    if (instr.shape().element_type() == PrimitiveType::S4) {
       return CodegenDecision::Forbid("S4 is not supported.");
     }
     return CodegenDecision(ShapeUtil::IsEffectiveScalar(instr.shape()),
@@ -789,6 +839,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   switch (instr.opcode()) {
+    case HloOpcode::kScan:
+      return CanTritonHandleScan(instr, gpu_version);
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
                                    gpu_version);
@@ -837,16 +889,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
     case HloOpcode::kAllGather:
-      if (instr.shape().element_type() == S4) {
-        return CodegenDecision::Forbid("S4 is not supported.");
-      }
-      return instr.GetModule()
-                     ->config()
-                     .debug_options()
-                     .xla_gpu_experimental_enable_tiling_propagation()
-                 ? CodegenDecision::Allow()
-                 : CodegenDecision::Forbid(absl::StrCat(
-                       HloOpcodeString(instr.opcode()), " is not supported"));
+      return CodegenDecision(instr.shape().element_type() != S4,
+                             "S4 is not supported.");
     default:
       // Not all instructions have a special handling.
       break;
@@ -880,7 +924,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kMulhi:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
-    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:
@@ -937,6 +980,13 @@ CodegenDecision IsTritonSupportedComputation(
       // supported for fusion roots.
       continue;
     }
+    if (instruction->opcode() == HloOpcode::kGetTupleElement &&
+        instruction->operand(0)->opcode() == HloOpcode::kScan &&
+        instruction->tuple_index() == 0) {
+      // While GetTupleElement is not generally supported by Triton codegen, it
+      // is supported for scan results.
+      continue;
+    }
     if (CodegenDecision can_codegen =
             IsTritonSupportedInstruction(*instruction, gpu_compute_capability);
         !can_codegen) {
@@ -951,9 +1001,7 @@ bool IsTritonFusedComputation(const HloComputation& computation) {
       static_cast<HloFusionInstruction*>(computation.FusionInstruction());
   return fusion != nullptr &&
          fusion->fusion_kind() == HloInstruction::FusionKind::kCustom &&
-         fusion->backend_config<gpu::GpuBackendConfig>()
-                 ->fusion_backend_config()
-                 .kind() == kTritonGemmFusionKind;
+         IsGpuFusionKind(*fusion, kTritonGemmFusionKind);
 }
 
 bool IsTritonGemm(const HloInstruction& instr) {

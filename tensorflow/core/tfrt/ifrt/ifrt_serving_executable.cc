@@ -78,11 +78,13 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -726,6 +728,21 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   if (VLOG_IS_ON(1)) {
     xla::DumpHloModuleProtoIfEnabled(tf2hlo_result.hlo_module_proto,
                                      "before_ifrt_serialization");
+  }
+
+  if (xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtCompatibleClient>(
+          ifrt_client_.get()) == nullptr) {
+    if (tf2hlo_result.hlo_module_proto.has_host_program_shape() &&
+        tf2hlo_result.hlo_module_proto.host_program_shape().has_result()) {
+      TF_ASSIGN_OR_RETURN(
+          xla::Shape result_shape,
+          xla::Shape::FromProto(
+              tf2hlo_result.hlo_module_proto.host_program_shape().result()));
+      if (result_shape.is_dynamic()) {
+        return absl::UnimplementedError(
+            "Dynamic output shape is not supported for non-PJRT IFRT client");
+      }
+    }
   }
 
   TF_ASSIGN_OR_RETURN(

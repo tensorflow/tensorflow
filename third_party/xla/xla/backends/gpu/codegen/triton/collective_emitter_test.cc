@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -60,7 +62,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -69,10 +70,11 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::ElementsAre;
-using ::testing::Optional;
 using ::tsl::proto_testing::EqualsProto;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 MATCHER_P(HasShape, expected_shape, "") {
   return arg != nullptr && arg->shape() == expected_shape;
@@ -124,28 +126,30 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
   }
 
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
-      std::string module_str) const {
+      absl::string_view module_str,
+      HloOpcode opcode = HloOpcode::kAllReduce) const {
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
                                      /*num_partitions=*/1));
+    module->mutable_config()
+        .mutable_debug_options()
+        .add_xla_gpu_experimental_use_collective_kernels(
+            xla::DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
     CollectiveKernelStrategyAnnotator annotator(*gpu_topology_,
                                                 /*is_multimem_enabled=*/false);
     ABSL_RETURN_IF_ERROR(annotator.Run(module.get()).status());
     const HloInstruction* instr = nullptr;
     for (const HloComputation* comp : module->computations()) {
-      instr = hlo_query::GetFirstInstructionWithOpcode(*comp,
-                                                       HloOpcode::kAllReduce);
+      instr = hlo_query::GetFirstInstructionWithOpcode(*comp, opcode);
       if (instr != nullptr) {
         break;
       }
     }
-    TF_RET_CHECK(instr != nullptr) << "Could not find all-reduce instruction";
+    TF_RET_CHECK(instr != nullptr)
+        << "Could not find " << HloOpcodeString(opcode) << " instruction";
     std::unique_ptr<HloModule> module_with_fusion =
         NewModuleWithFusion(instr, HloInstruction::FusionKind::kLoop);
-    module_with_fusion->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(true);
     return ModuleWithFusion{std::move(module_with_fusion)};
   }
 
@@ -233,10 +237,10 @@ TEST_P(CollectiveBlockLevelConfigParameterizedTest, AllReduceBlockLevelConfig) {
   const auto& param = GetParam();
   ASSERT_OK_AND_ASSIGN(const auto module_with_fusion,
                        BuildModuleWithFusion(GetModuleStr(param.shape)));
-  ASSERT_OK_AND_ASSIGN(const auto block_level_config,
+  ASSERT_OK_AND_ASSIGN(BlockLevelFusionConfig block_level_config,
                        GetCollectiveBlockLevelFusionConfig(
                            *gpu_topology_, module_with_fusion.FusionInstr()));
-  EXPECT_THAT(block_level_config, Optional(EqualsProto(param.expected_proto)));
+  EXPECT_THAT(block_level_config, EqualsProto(param.expected_proto));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -277,10 +281,10 @@ TEST_F(CollectiveEmitterTest, AllReduceBlockLevelConfigNoReplicaGroups) {
       const auto module_with_fusion,
       BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}),
                                          /* replica_groups= */ "")));
-  ASSERT_OK_AND_ASSIGN(const auto block_level_config,
-                       GetCollectiveBlockLevelFusionConfig(
-                           *gpu_topology_, module_with_fusion.FusionInstr()));
-  EXPECT_EQ(block_level_config, std::nullopt);
+  absl::StatusOr<BlockLevelFusionConfig> block_level_config =
+      GetCollectiveBlockLevelFusionConfig(*gpu_topology_,
+                                          module_with_fusion.FusionInstr());
+  EXPECT_THAT(block_level_config, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
@@ -468,6 +472,28 @@ TEST_F(CollectiveEmitterTest, FlattenCollectiveComputation) {
       ElementsAre(AllOf(HasOpcode(HloOpcode::kParameter), HasShape(shape_1d))));
   EXPECT_THAT(fused_comp->root_instruction(),
               AllOf(HasOpcode(HloOpcode::kAllReduce), HasShape(shape_1d)));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfig) {
+  constexpr absl::string_view kAllGatherHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[32768] parameter(0)
+      ROOT all-gather = f32[65536] all-gather(param_0), replica_groups={{0,1}},
+        dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kAllGatherHloStr, HloOpcode::kAllGather));
+  ASSERT_OK_AND_ASSIGN(BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+
+  EXPECT_EQ(block_level_config.num_warps(), 16);
+  EXPECT_EQ(block_level_config.num_ctas(), 1);
+  EXPECT_EQ(block_level_config.num_stages(), 1);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
 }
 
 }  // namespace

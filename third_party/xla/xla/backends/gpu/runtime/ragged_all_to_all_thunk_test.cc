@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -539,6 +539,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
           num_input_rows: 2
           num_row_elements: 5
           one_shot_kernel_enabled: true
+          enable_gxl: true
         }
       )pb");
 

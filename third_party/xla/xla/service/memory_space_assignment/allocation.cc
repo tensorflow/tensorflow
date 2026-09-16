@@ -556,8 +556,9 @@ void CopyAllocation::MarkIfNeeded(
 
 void CopyAllocation::MarkNeeded(
     absl::flat_hash_set<const Allocation*>& needed_allocations) const {
-  needed_allocations.insert(this);
-  prev_allocation_.MarkNeeded(needed_allocations);
+  if (needed_allocations.insert(this).second) {
+    prev_allocation_.MarkNeeded(needed_allocations);
+  }
 }
 
 std::string CopyAllocation::ToString() const {
@@ -732,8 +733,9 @@ void SlicedCopyAllocation::MarkIfNeeded(
 
 void SlicedCopyAllocation::MarkNeeded(
     absl::flat_hash_set<const Allocation*>& needed_allocations) const {
-  needed_allocations.insert(this);
-  prev_allocation_.MarkNeeded(needed_allocations);
+  if (needed_allocations.insert(this).second) {
+    prev_allocation_.MarkNeeded(needed_allocations);
+  }
 }
 
 HloPosition SlicedCopyAllocation::defining_position() const {
@@ -994,8 +996,9 @@ void MirroredAllocation::MarkIfNeeded(
 
 void MirroredAllocation::MarkNeeded(
     absl::flat_hash_set<const Allocation*>& needed_allocations) const {
-  needed_allocations.insert(this);
-  original_allocation_.MarkNeeded(needed_allocations);
+  if (needed_allocations.insert(this).second) {
+    original_allocation_.MarkNeeded(needed_allocations);
+  }
 }
 
 bool MirroredAllocation::operator==(const Allocation& other) const {
@@ -1095,8 +1098,9 @@ void ParentAllocation::MarkIfNeeded(
 
 void ParentAllocation::MarkNeeded(
     absl::flat_hash_set<const Allocation*>& needed_allocations) const {
-  needed_allocations.insert(this);
-  original_allocation_.MarkNeeded(needed_allocations);
+  if (needed_allocations.insert(this).second) {
+    original_allocation_.MarkNeeded(needed_allocations);
+  }
 }
 
 bool ParentAllocation::operator==(const Allocation& other) const {

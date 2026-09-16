@@ -95,7 +95,7 @@ limitations under the License.
 #include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -176,17 +176,17 @@ PjRtCApiClient::PjRtCApiClient(
       extensions_(InitExtensions(c_api)),
       host_memory_allocator_(InitHostMemoryAllocator(c_api, c_client)),
       // Example platform version string:
-      //   PJRT C API
       //   TFRT TPU v2
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_client, c_api)),
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();
   InitAttributes();
   LOG(INFO) << "PjRtCApiClient created.";
 }
+
+bool PjRtCApiClient::IsCApi() const { return true; }
 
 void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   // Initialize devices.
@@ -746,6 +746,15 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
 }
 
 }  // namespace
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tsl::profiler::TraceMe traceme("PjRtCApiClient::Compile(XlaComputation)");
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* const topology,
+                   GetTopologyDescription());
+  return InitializeArgsAndCompileAot(c_api_, this, &computation, options,
+                                     *topology);
+}
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
     MaybeOwningMlirModule module, CompileOptions options) {
@@ -2675,8 +2684,8 @@ PjRtCApiExecutable::GetOutputMemoryKinds() const {
   return std::vector<std::vector<absl::string_view>>{std::move(out)};
 }
 
-absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
-PjRtCApiExecutable::GetHloModules() const {
+absl::StatusOr<std::shared_ptr<HloModule>> PjRtCApiExecutable::GetHloModule()
+    const {
   auto* c_api = pjrt_c_api();
   auto* executable = c_executable();
   PJRT_Executable_OptimizedProgram_Args args;
@@ -2721,23 +2730,14 @@ PjRtCApiExecutable::GetHloModules() const {
     // equivalent) once implemented.
     mlir::MlirToHloConversionOptions options;
     options.return_tuple = false;
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
-                     mlir::ConvertMlirHloToHloModule(module.get(), options));
-
-    std::vector<std::shared_ptr<HloModule>> out;
-    out.push_back(std::move(hlo_module));
-    return out;
+    return mlir::ConvertMlirHloToHloModule(module.get(), options);
   }
 
   HloModuleProtoWithConfig proto;
   if (!proto.ParseFromString(code)) {
     return InvalidArgument("Failed to deserialize HloModuleProtoWithConfig");
   }
-  std::vector<std::shared_ptr<HloModule>> out;
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                   HloModule::CreateFromProtoWithConfig(proto));
-  out.push_back(std::move(module));
-  return out;
+  return HloModule::CreateFromProtoWithConfig(proto);
 }
 
 absl::StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {

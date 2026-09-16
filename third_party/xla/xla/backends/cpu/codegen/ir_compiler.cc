@@ -484,8 +484,8 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   llvm::MCContext* mc_context;
   llvm::legacy::PassManager codegen_passes;
   codegen_passes.add(new llvm::RuntimeLibraryInfoWrapper(
-      module.getTargetTriple(), target_machine->Options.ExceptionModel,
-      target_machine->Options.FloatABIType, target_machine->Options.EABIVersion,
+      target_machine->Options.ExceptionModel,
+      target_machine->Options.EABIVersion,
       target_machine->Options.MCOptions.ABIName,
       target_machine->Options.VecLib));
   target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);

@@ -97,7 +97,8 @@ WidenComputation(HloComputation* narrow_comp, const Shape& wide_shape) {
       HloInstruction::CreateCall(narrow_comp->root_instruction()->shape(),
                                  {truncated_parameter}, narrow_comp));
   call_narrow_comp->set_original_value(
-      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+      std::make_shared<OriginalValue>(call_narrow_comp->shape(),
+                                      /*call_hierarchy=*/""));
   wide_comp->set_root_instruction(call_narrow_comp,
                                   /*accept_different_shape=*/true);
   ABSL_ASSIGN_OR_RETURN(auto inline_map, CallInliner::Inline(call_narrow_comp));
@@ -485,6 +486,22 @@ absl::Status DynamicDimensionInferenceVisitor::HandleCustomCall(
         // returns the padded data output and the dynamic sizes of input
         // dimensions.
         ShapeIndex data_output = {0};
+        SetDynamicSize(hlo, data_output, i, dynamic_size);
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  if (hlo->custom_call_target() == "PadRealToStatic") {
+    TF_RET_CHECK(hlo->operand_count() > 0);
+    const Shape& input_shape = hlo->operand(0)->shape();
+    TF_RET_CHECK(input_shape.IsArray());
+    TF_RET_CHECK(hlo->operand_count() >= 1 + input_shape.dimensions().size());
+
+    for (int64_t i = 0; i < input_shape.dimensions().size(); ++i) {
+      if (input_shape.is_dynamic_dimension(i)) {
+        HloInstruction* dynamic_size = hlo->mutable_operand(i + 1);
+        ShapeIndex data_output = {};
         SetDynamicSize(hlo, data_output, i, dynamic_size);
       }
     }
@@ -1676,10 +1693,26 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
         }
 
         if (!window_util::IsTrivialWindowDimension(window_dim)) {
+          // Explicit window padding extends the input; add it to the dynamic
+          // size. Base dilation is still ignored.
+          const int64_t total_padding =
+              window_dim.padding_low() + window_dim.padding_high();
+          if (total_padding != 0) {
+            dynamic_size = hlo->AddInstruction(HloInstruction::CreateBinary(
+                dynamic_size->shape(), HloOpcode::kAdd, dynamic_size,
+                hlo->AddInstruction(HloInstruction::CreateConstant(
+                    LiteralUtil::CreateR0<int32_t>(
+                        static_cast<int32_t>(total_padding))))));
+          }
           DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
               dynamic_size, window_dim.size(), window_dim.window_dilation(),
               window_dim.stride(), PaddingType::PADDING_VALID);
           dynamic_size = dynamic_window_dims.output_size;
+          // Clamp at zero, as static shape inference does.
+          dynamic_size = hlo->AddInstruction(HloInstruction::CreateBinary(
+              dynamic_size->shape(), HloOpcode::kMaximum, dynamic_size,
+              hlo->AddInstruction(
+                  HloInstruction::CreateConstant(LiteralUtil::Zero(S32)))));
         }
 
         // The dimensions of all data operands of a variadic reduce window have
@@ -2487,8 +2520,8 @@ absl::StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
       return true;
     }
     if (use.instruction->opcode() != HloOpcode::kCustomCall ||
-        !use.instruction->IsCustomCall({"PadToStatic", "Sharding",
-                                        "SPMDShardToFullShape",
+        !use.instruction->IsCustomCall({"PadToStatic", "PadRealToStatic",
+                                        "Sharding", "SPMDShardToFullShape",
                                         "SPMDFullToShardShape"})) {
       if (parent_->op_supports_dynamism_handler_ == nullptr) {
         return true;

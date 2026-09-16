@@ -164,6 +164,7 @@ typedef struct XLA_FFI_RecordApi {
       XLA_FFI_SourceFormat format,                 //
       XLA_FFI_LaunchDims launch_dims,              //
       uint32_t shared_mem_bytes,                   //
+      int32_t uses_pdl,                            //
       const XLA_FFI_KernelArgs* args,              //
       const XLA_FFI_Command* const* dependencies,  //
       uint32_t num_dependencies,                   //

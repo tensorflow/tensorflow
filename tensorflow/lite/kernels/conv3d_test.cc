@@ -393,6 +393,29 @@ TEST(Conv3dOpModel, DilationTest) {
                                 19880, 19248, 20392, 19728, 20904}));
 }
 
+// End-to-end correctness test for the dilated 3D im2col path when the spatial
+// depth D exceeds the channel count C (b/512611805). This complements the
+// memory-safety regression test in im2col_utils_test: the underlying overflow
+// there is a forward out-of-bounds write into the TFLite arena, which does not
+// change the visible Conv3D output, so this test only guards the functional
+// result of the D>C dilated-depth path (D=8, C=1, dilation_depth=2).
+TEST(Conv3dOpModel, DilatedDepthGreaterThanChannelsTest) {
+  Conv3dOpModel m({TensorType_FLOAT32, {1, 8, 1, 1, 1}},
+                  {TensorType_FLOAT32, {2, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID, /*stride_depth=*/1,
+                  /*stride_width=*/1, /*stride_height=*/1,
+                  /*activation=*/ActivationFunctionType_NONE,
+                  /*dilation_depth=*/2, /*dilation_width=*/1,
+                  /*dilation_height=*/1);
+
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
+  m.SetFilter({1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 6, 1, 1, 1));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 6, 8, 10, 12, 14}));
+}
+
 TEST(Conv3dOpModel, BiasTest) {
   Conv3dOpModel m({TensorType_FLOAT32, {2, 2, 3, 4, 2}},
                   {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
@@ -426,6 +449,44 @@ TEST(Conv3dOpModel, NoIm2ColTensorTest) {
       ElementsAreArray({56,  62,  68,  74,  152, 174, 196, 218, 248, 286, 324,
                         362, 344, 398, 452, 506, 440, 510, 580, 650, 536, 622,
                         708, 794, 632, 734, 836, 938, 728, 846, 964, 1082}));
+}
+
+TEST(Conv3dOpModel, HandlesZeroBatch) {
+  Conv3dOpModel m({TensorType_FLOAT32, {0, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  m.SetFilter({1.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(0, 1, 1, 1, 1));
+}
+
+TEST(Conv3dOpModel, HandlesEmptyOutputSpatialDimension) {
+  Conv3dOpModel m({TensorType_FLOAT32, {1, 1, 8, 4, 1}},
+                  {TensorType_FLOAT32, {2, 3, 2, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID,
+                  /*stride_depth=*/1, /*stride_width=*/1, /*stride_height=*/1,
+                  ActivationFunctionType_NONE,
+                  /*dilation_depth=*/1, /*dilation_width=*/3,
+                  /*dilation_height=*/1);
+
+  m.SetInput(CreateRangeVector<float>(32));
+  m.SetFilter(CreateRangeVector<float>(12));
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 0, 6, 1, 1));
+}
+
+TEST(Conv3dPrepareSecurityTest, RejectsTotalOutputDimensionsOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
+                    "on 32-bit.";
+  }
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyConv3dOpModel m({TensorType_FLOAT32, {kHugeDim, 1, 1, 1, 1}},
+                             {TensorType_FLOAT32, {1, 1, 1, 1, kHugeDim}},
+                             {TensorType_FLOAT32, {}}, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
 TEST(Conv3dPrepareSecurityTest, RejectsShapeOverflow) {

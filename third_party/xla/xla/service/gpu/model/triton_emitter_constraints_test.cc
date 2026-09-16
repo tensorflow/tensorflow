@@ -177,6 +177,77 @@ ENTRY entry_computation {
               absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(TritonEmitterConstraintsTest,
+       TransposeSharedMemoryConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT transpose = f32[1024,1024] transpose(param_0), dimensions={1,0}
+}
+
+ENTRY entry_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT fusion = f32[1024,1024] fusion(param_0), kind=kCustom,
+    calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  // The RTX A6000 test device has 99 * 1024 = 101376 bytes of opt-in shared
+  // memory. A [128, 128] f32 transpose operand tile requires
+  // 128 * 128 * 4 = 65536 bytes, which fits.
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({128, 128})}})),
+              absl_testing::IsOkAndHolds(true));
+
+  // A [256, 128] f32 transpose operand tile requires
+  // 256 * 128 * 4 = 131072 bytes, which exceeds the shared memory limit. The
+  // tile is otherwise valid (32768 elements is below the tensor size limit,
+  // tile sizes are powers of 2, and the number of blocks fits on the grid), so
+  // it is the transpose shared memory constraint that rejects it.
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({256, 128})}})),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(TritonEmitterConstraintsTest, NonTransposeIsNotChargedToSharedMemory) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT log = f32[1024,1024] log(param_0)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT fusion = f32[1024,1024] fusion(param_0), kind=kCustom,
+    calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  // A [256, 128] f32 tile requires 256 * 128 * 4 = 131072 bytes, which would
+  // exceed the shared memory limit if it were charged to shared memory. Because
+  // there is no transpose op, the shared memory constraint does not apply and
+  // the tiling is accepted.
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({256, 128})}})),
+              absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(TritonEmitterConstraintsTest, TooManyBlocksConstraintIsEnforced) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
@@ -428,6 +499,63 @@ ENTRY entry_computation {
               StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
 }
 
+TEST_F(VerifyTritonConstraintsTest, TransposeSharedMemoryConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT transpose = f32[1024,1024] transpose(param_0), dimensions={1,0}
+}
+
+ENTRY entry_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT fusion = f32[1024,1024] fusion(param_0), kind=kCustom,
+    calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  // The RTX A6000 test device has 99 * 1024 = 101376 bytes of opt-in shared
+  // memory. A [128, 128] f32 transpose operand tile requires
+  // 128 * 128 * 4 = 65536 bytes, which fits.
+  EXPECT_OK(CheckTiling(module.get(), {128, 128}));
+
+  // A [256, 128] f32 transpose operand tile requires
+  // 256 * 128 * 4 = 131072 bytes, which exceeds the shared memory limit. The
+  // tile is otherwise valid (32768 elements is below the tensor size limit,
+  // tile sizes are powers of 2, and the number of blocks fits on the grid), so
+  // it is the transpose shared memory constraint that rejects it.
+  EXPECT_THAT(CheckTiling(module.get(), {256, 128}),
+              StatusIs(_, HasSubstr("exceeds the device limit")));
+}
+
+TEST_F(VerifyTritonConstraintsTest, NonTransposeIsNotChargedToSharedMemory) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT log = f32[1024,1024] log(param_0)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[1024,1024] parameter(0)
+  ROOT fusion = f32[1024,1024] fusion(param_0), kind=kCustom,
+    calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  // A [256, 128] f32 tile requires 256 * 128 * 4 = 131072 bytes, which would
+  // exceed the shared memory limit if it were charged to shared memory. Because
+  // there is no transpose op, the shared memory constraint does not apply and
+  // the tiling is accepted.
+  EXPECT_OK(CheckTiling(module.get(), {256, 128}));
+}
+
 TEST_F(VerifyTritonConstraintsTest, TooManyBlocksConstraintIsEnforced) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"hlo(
@@ -514,6 +642,99 @@ ENTRY entry_computation {
       .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   EXPECT_THAT(CheckTiling(module.get(), {1, 12, 12}),
               StatusIs(_, HasSubstr("neither a power of 2 nor equal")));
+}
+
+class VerifySubsetOfTritonConstraintsTest
+    : public HloHardwareIndependentTestBase {
+ protected:
+  mlir::MLIRContext mlir_context_;
+  se::DeviceDescription device_description_ =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+};
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, ValidTilingPasses) {
+  auto space = std::make_unique<experimental::TilingSpace>();
+  space->AppendDimension(
+      nullptr, 0, 1024,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+
+  Decision decision = experimental::VerifySubsetOfTritonConstraints(
+      {64}, *space, device_description_);
+  EXPECT_TRUE(decision.IsAllowed());
+}
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, RejectsExcessiveElements) {
+  auto space = std::make_unique<experimental::TilingSpace>();
+  space->AppendDimension(
+      nullptr, 0, 1024,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+  space->AppendDimension(
+      nullptr, 1, 2048,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+
+  // Cumulative product 1024 * 2048 = 2097152 exceeds 1048576 elements:
+  Decision decision = experimental::VerifySubsetOfTritonConstraints(
+      {1024, 2048}, *space, device_description_);
+  EXPECT_TRUE(decision.IsForbidden());
+  EXPECT_THAT(decision.Explain(),
+              HasSubstr("Padded tile size product exceeds the maximum number "
+                        "of elements of a Triton tensor"));
+}
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, RejectsDotTileExceedingMMALimit) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16,512] parameter(0)
+      p1 = f32[512,16] parameter(1)
+      ROOT dot = f32[16,16] dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK_AND_ASSIGN(auto space, experimental::TilingSpace::Create(
+                                       *fusion_adaptor, &mlir_context_));
+
+  // Tile sizes [16, 16, 512] has contracting tile 512 > 256 (MMA limit).
+  Decision invalid_decision = experimental::VerifySubsetOfTritonConstraints(
+      {16, 16, 512}, *space, device_description_);
+  EXPECT_TRUE(invalid_decision.IsForbidden());
+  EXPECT_THAT(invalid_decision.Explain(),
+              HasSubstr("exceeds the maximum MMA dimension size"));
+
+  // Contracting tile 256 (<= 256) passes.
+  Decision valid_decision = experimental::VerifySubsetOfTritonConstraints(
+      {16, 16, 256}, *space, device_description_);
+  EXPECT_TRUE(valid_decision.IsAllowed()) << valid_decision.Explain();
+}
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, MultiOutputFusionEvaluatedPerRoot) {
+  auto space = std::make_unique<experimental::TilingSpace>();
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1000000] parameter(0)
+      root0 = f32[1000000] exponential(p0)
+      root1 = f32[1000000] negate(p0)
+      ROOT tuple = (f32[1000000], f32[1000000]) tuple(root0, root1)
+    }
+  )"));
+  const HloInstruction* root0 =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* root1 =
+      module->entry_computation()->root_instruction()->operand(1);
+
+  space->AppendDimension(
+      root0, 0, 1000000,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+  space->AppendDimension(
+      root1, 0, 1000000,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+
+  Decision decision = experimental::VerifySubsetOfTritonConstraints(
+      {1000000, 1000000}, *space, device_description_);
+  EXPECT_TRUE(decision.IsAllowed()) << decision.Explain();
 }
 
 }  // namespace

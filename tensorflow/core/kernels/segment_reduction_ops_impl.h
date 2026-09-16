@@ -1344,6 +1344,9 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (M == 0 || N == 0) return;
 
+    OP_REQUIRES(context, input.dim_size(0) > 0,
+                absl::InvalidArgumentError("Invalid number of segments"));
+
     functor::SparseSegmentGradFunctor<Device, T, Index, SegmentId>()(
         context, operation_, input_flat, indices_vec, segment_vec, output);
   }
@@ -1420,6 +1423,10 @@ class SparseSegmentGradV2OpCommon {
       TF_RETURN_IF_ERROR(context->allocate_output(1, TensorShape({0}),
                                                   &sorted_unique_indices));
       return absl::OkStatus();
+    }
+
+    if (input.dim_size(0) == 0) {
+      return absl::InvalidArgumentError("Invalid number of segments");
     }
 
     auto input_flat = input.flat_outer_dims<T>();

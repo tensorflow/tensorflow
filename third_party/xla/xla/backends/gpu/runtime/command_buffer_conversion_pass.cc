@@ -123,6 +123,15 @@ CommandBufferConfig GetCommandBufferConfig(
       std::move(commands), std::move(enabled_collectives), device_info,
       debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
 
+  // oneAPI command buffers are not implemented yet. Hence, disable command
+  // buffer conversion for the oneAPI backend.
+  // TODO(intel-tf): Remove this fallback once oneAPI command buffers are
+  // implemented.
+  if (device_info.gpu_compute_capability().IsOneAPI()) {
+    config.enabled_commands.clear();
+    return config;
+  }
+
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
                                                 DebugOptions::WHILE};

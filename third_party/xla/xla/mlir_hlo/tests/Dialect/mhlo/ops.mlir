@@ -100,6 +100,83 @@ func.func @all_reduce_with_promotable_quantized_types(%operand: tensor<!quant.un
 
 // -----
 
+// CHECK-LABEL: func @collective_reduce
+func.func @collective_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "mhlo.collective_reduce"(%arg0) <{
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 5, type = 2>,
+    use_global_device_ids
+  }> ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  }) : (tensor<10xf32>) -> tensor<10xf32>
+  func.return %0 : tensor<10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @collective_reduce_tuple
+func.func @collective_reduce_tuple(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> tensor<10xf32> {
+  %0:2 = "mhlo.collective_reduce"(%arg0, %arg1) <{
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  }> ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %add = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%add) : (tensor<f32>) -> ()
+  }) : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @collective_reduce_dynamic_root
+func.func @collective_reduce_dynamic_root(%arg0: tensor<10xf32>, %root: tensor<1xi32>) -> tensor<10xf32> {
+  %0 = "mhlo.collective_reduce"(%arg0, %root) <{
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    has_dynamic_root
+  }> ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %add = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%add) : (tensor<f32>) -> ()
+  }) : (tensor<10xf32>, tensor<1xi32>) -> tensor<10xf32>
+  func.return %0 : tensor<10xf32>
+}
+
+// -----
+
+func.func @collective_reduce_dynamic_root_bad_length(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>, %root: tensor<1xi32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.collective_reduce' op failed to infer returned types}}
+  // expected-error@+1 {{CollectiveReduce dynamic-root operand must be a 1-D i32 tensor with one element per data operand}}
+  %0:2 = "mhlo.collective_reduce"(%arg0, %arg1, %root) <{
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    has_dynamic_root
+  }> ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %add = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%add) : (tensor<f32>) -> ()
+  }) : (tensor<10xf32>, tensor<10xf32>, tensor<1xi32>) -> (tensor<10xf32>, tensor<10xf32>)
+  func.return %0#0 : tensor<10xf32>
+}
+
+// -----
+
+func.func @collective_reduce_dynamic_root_bad_type(%arg0: tensor<10xf32>, %root: tensor<1xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.collective_reduce' op failed to infer returned types}}
+  // expected-error@+1 {{CollectiveReduce dynamic-root operand must be a 1-D i32 tensor with one element per data operand}}
+  %0 = "mhlo.collective_reduce"(%arg0, %root) <{
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    has_dynamic_root
+  }> ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %add = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%add) : (tensor<f32>) -> ()
+  }) : (tensor<10xf32>, tensor<1xf32>) -> tensor<10xf32>
+  func.return %0 : tensor<10xf32>
+}
+
+// -----
+
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
   // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region must take 2 parameters, but takes 3 parameter(s)}}

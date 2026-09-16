@@ -49,16 +49,16 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) {
-  const Shape& output_shape = concatenate->shape();
-  for (auto* op : concatenate->operands()) {
+absl::Status CanDoFastConcatenate(const HloInstruction& instruction) {
+  const Shape& output_shape = instruction.shape();
+  for (auto* op : instruction.operands()) {
     if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
       return absl::Status(absl::StatusCode::kFailedPrecondition,
                           "Operand has mismatching layouts");
     }
   }
   return absl::OkStatus();
-};
+}
 
 ConcatenateKernelEmitter::ConcatenateKernelEmitter(
     const HloInstruction* instr, const BufferAssignment* buffer_assignment,
@@ -69,7 +69,7 @@ ConcatenateKernelEmitter::ConcatenateKernelEmitter(
 
 absl::StatusOr<ConcatenateKernelEmitter::KernelDefinition>
 ConcatenateKernelEmitter::EmitKernelDefinition() {
-  if (absl::Status status = CanDoFastConcatenate(instr_); !status.ok()) {
+  if (absl::Status status = CanDoFastConcatenate(*instr_); !status.ok()) {
     VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
             << ": " << status.message();
     return ElementalKernelEmitter(instr_, buffer_assignment_, target_machine_)

@@ -144,6 +144,7 @@ class CPUAllocator : public Allocator {
     absl::MutexLock l(mu_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = stats_.bytes_in_use;
+    stats_.peak_allocated_bytes = stats_.bytes_in_use + stats_.bytes_reserved;
     stats_.largest_alloc_size = 0;
     return true;
   }
@@ -183,6 +184,9 @@ class CPUAllocator : public Allocator {
       stats_.bytes_in_use += alloc_size;
       stats_.peak_bytes_in_use =
           std::max<int64_t>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+      stats_.peak_allocated_bytes =
+          std::max<int64_t>(stats_.peak_allocated_bytes,
+                            stats_.bytes_in_use + stats_.bytes_reserved);
       stats_.largest_alloc_size =
           std::max<int64_t>(stats_.largest_alloc_size, alloc_size);
 

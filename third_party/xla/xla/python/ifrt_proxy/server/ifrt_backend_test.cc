@@ -75,7 +75,7 @@
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
@@ -903,7 +903,7 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   }
   // OSS requires explicit string conversion
   // NOLINTNEXTLINE(*-redundant-string-conversions)
-  copy_arrays_request->set_memory_kind(std::string(*memory_kind.memory_kind()));
+  copy_arrays_request->set_memory_kind(std::string(memory_kind.value()));
   copy_arrays_request->set_copy_semantics(
       proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
   copy_arrays_request->add_result_handles(1);

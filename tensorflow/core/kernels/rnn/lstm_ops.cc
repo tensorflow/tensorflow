@@ -1058,6 +1058,10 @@ class BlockLSTMOp : public OpKernel {
     const Device& device = ctx->eigen_device<Device>();
 
     const int64_t seq_len_max = seq_len_max_tensor->scalar<int64_t>()();
+    OP_REQUIRES(ctx, seq_len_max >= 0 && seq_len_max <= timelen,
+                absl::InvalidArgumentError(
+                    absl::StrCat("seq_len_max must be between 0 and ", timelen,
+                                 " but is ", seq_len_max)));
     SliceHelper<Device, T> slicer(ctx);
     for (int64_t t = 0; t < seq_len_max; ++t) {
       const Tensor x_tensor = slicer.InputSlice(*x, t, "x");
@@ -1200,6 +1204,11 @@ class BlockLSTMGradOp : public OpKernel {
     OP_REQUIRES(ctx, w_tensor->dims() == 2,
                 absl::InvalidArgumentError(absl::StrCat(
                     "w must be rank 2 but is rank ", w_tensor->dims())));
+    OP_REQUIRES(
+        ctx, w_tensor->dim_size(1) > 0 && w_tensor->dim_size(1) % 4 == 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "w matrix columns must be a positive multiple of 4, but got ",
+            w_tensor->dim_size(1))));
     const int64_t cell_size = w_tensor->dim_size(1) / 4;
     OP_REQUIRES(ctx, input_size + cell_size == w_tensor->dim_size(0),
                 absl::InvalidArgumentError(absl::StrCat(
@@ -1377,6 +1386,10 @@ class BlockLSTMGradOp : public OpKernel {
     functor::TensorZero<Device, T>()(device, b_grad_tensor->flat<T>());
 
     const int64_t seq_len_max = seq_len_max_tensor->scalar<int64_t>()();
+    OP_REQUIRES(ctx, seq_len_max >= 0 && seq_len_max <= timelen,
+                absl::InvalidArgumentError(
+                    absl::StrCat("seq_len_max must be between 0 and ", timelen,
+                                 " but is ", seq_len_max)));
     SliceHelper<Device, T> slicer(ctx);
     for (int64_t t = seq_len_max - 1; t >= 0; --t) {
       const Tensor& x_tensor = slicer.InputSlice(*x, t, "x");

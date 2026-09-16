@@ -24,15 +24,40 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Adds support for FP16 in Transpose and DynamicUpdateSlice operator.
     * Transpose now supports up to 8D tensors.
     * Adds support for FLOAT8_E4M3FN and FLOAT8_E5M2 data types.
+*   `tf.experimental.fold`: Adds support for folding/reconstructing image
+    tensors from extracted spatial patches as an inverse operation to
+    `tf.image.extract_patches`.
 
 ### Bug Fixes and Other Changes
 
 * `BatchFunction Operator`
     * Adds the `num_warmup_batch_threads` op attribute to support a separate thread pool for processing warmup requests.
+    * Adds the `per_criticality_batch_timeout_micros` op attribute to support different batch timeouts for different criticality levels.
 * `TensorFlow API`
     * Exports `__new__` in public API golden files for subclasses of `tuple` (like `tf.io.FixedLenFeature`) to fix false positives during static type checking.>
 * `tf.data`
     * Fixes a bug in `tf.data.Dataset.scan` where the shape of the state returned by `scan_func` was not strictly validated against the initial state.
+*   `tf.image.adjust_contrast`
+
+    *   Registers the missing Python gradient for the `AdjustContrastv2` op, so
+        `tf.image.adjust_contrast` can now be differentiated with
+        `GradientTape`. Fixes
+        [#126083](https://github.com/tensorflow/tensorflow/issues/126083).
+*   `tf.nn.softsign`
+
+    *   Fixes second-order gradients of `tf.nn.softsign`. Differentiating twice
+        previously failed with a lookup error because the `SoftsignGrad`
+        backward op had no registered Python gradient.
+
+*   `tf.math.reciprocal`
+
+    *   Constrains the XLA registration of `Reciprocal` and `Inv` to the types
+        that have a device kernel, so `jit_compile=True` no longer silently
+        accepts the integer inputs that eager execution and autoclustering
+        reject. Fixes
+        [#126414](https://github.com/tensorflow/tensorflow/issues/126414).
+
+
 *   `tf.experimental.numpy`
 
     *   `tf.experimental.numpy.isclose` and `tf.experimental.numpy.allclose` now
@@ -41,6 +66,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         arithmetic; combining integer inputs with floating-point tolerances
         (including the defaults) now raises an error unless automatic type
         promotion is enabled, which keeps the cost of promotion opt-in.
+
+*   `tf.nn.elu`
+
+    *   Fixes the second derivative computed by automatic differentiation for
+        small negative inputs. There `elu(x)` rounds to `0.0`, which made the
+        backward pass of the gradient take the positive branch and return `0`
+        instead of a value close to `1`. Fixes
+        [#124830](https://github.com/tensorflow/tensorflow/issues/124830).
 
 *   oneDNN (MKL) convolution and transpose kernels
 
@@ -1878,7 +1911,7 @@ Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3
     try it out, though be aware that the DTensor API is experimental and up-to
     backward-incompatible changes. DTensor and Keras integration is published
     under `tf.keras.dtensor` in this release (refer to the `tf.keras` entry).
-    The tutoral and guide for DTensor will be published on
+    The tutorial and guide for DTensor will be published on
     https://www.tensorflow.org/. Please stay tuned.
 
 *   [oneDNN CPU performance optimizations](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md)
@@ -3464,7 +3497,7 @@ This release introduces several vulnerability fixes:
     *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan` and
         deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.snapshot` API to
-        `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
+        `tf.data.Dataset.snapshot` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.take_while` API to
         `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.ThreadingOptions` API to
@@ -8354,7 +8387,7 @@ love to hear your migration feedback and questions.
         transition canned Estimators that are warm started from
         `tf.train.Optimizers` to `tf.keras.optimizers`.
     *   Losses are scaled in canned estimator v2 and not in the optimizers
-        anymore. If you are using Estimator + distribution strategy + optimikzer
+        anymore. If you are using Estimator + distribution strategy + optimizer
         v1 then the behavior does not change. This implies that if you are using
         custom estimator with optimizer v2, you have to scale losses. We have
         new utilities to help scale losses `tf.nn.compute_average_loss`,

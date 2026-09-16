@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iostream>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -92,6 +91,18 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+namespace {
+HloInstruction* FindUpstreamAsyncProducer(HloInstruction* instr) {
+  while (instr != nullptr && !instr->IsAsyncProducer()) {
+    if (instr->operand_count() == 0) {
+      return nullptr;
+    }
+    instr = instr->mutable_operand(0);
+  }
+  return instr;
+}
+}  // namespace
 
 using absl::CEscape;
 using absl::StrAppend;
@@ -435,10 +446,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() >= 1)
           << "Async update requires at least one operand";
       HloInstruction* prev_op = operands(0);
-      HloInstruction* async_op =
-          prev_op->IsAsynchronous()
-              ? prev_op
-              : HloInstruction::FindAsyncProducer(prev_op);
+      HloInstruction* async_op = prev_op->IsAsynchronous()
+                                     ? prev_op
+                                     : FindUpstreamAsyncProducer(prev_op);
       if (async_op != nullptr) {
         if (!proto.async_execution_thread().empty()) {
           TF_RET_CHECK(proto.async_execution_thread() ==
@@ -463,10 +473,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "Async done requires one singular operand";
       HloInstruction* prev_op = operands(0);
-      HloInstruction* async_op =
-          prev_op->IsAsynchronous()
-              ? prev_op
-              : HloInstruction::FindAsyncProducer(prev_op);
+      HloInstruction* async_op = prev_op->IsAsynchronous()
+                                     ? prev_op
+                                     : FindUpstreamAsyncProducer(prev_op);
       if (async_op != nullptr) {
         if (!proto.async_execution_thread().empty()) {
           TF_RET_CHECK(proto.async_execution_thread() ==
@@ -509,18 +518,28 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             comparison_direction,
             StringToComparisonDirection(proto.comparison_direction()));
       }
-      auto comparison_type_str = proto.comparison_type();
-      if (!comparison_type_str.empty()) {
-        // If a comparison type is specified, it *must* be valid.
-        ABSL_ASSIGN_OR_RETURN(auto comparison_type,
-                         StringToComparisonType(comparison_type_str));
+      auto comparison_order_str = proto.comparison_order();
+      if (!comparison_order_str.empty()) {
+        ABSL_ASSIGN_OR_RETURN(auto comparison_order,
+                         ShortStringToComparisonOrder(comparison_order_str));
         instruction = CreateCompare(shape, operands(0), operands(1),
-                                    *comparison_direction, comparison_type);
+                                    *comparison_direction, comparison_order);
       } else {
-        // Allow the specify of comparison type to be optional.
-        // The comparison type will be determined by the types of the operands.
-        instruction = CreateCompare(shape, operands(0), operands(1),
-                                    *comparison_direction);
+        auto comparison_type_str = proto.comparison_type();
+        if (!comparison_type_str.empty()) {
+          // If a comparison type is specified, it *must* be valid.
+          ABSL_ASSIGN_OR_RETURN(auto comparison_type,
+                           StringToComparisonType(comparison_type_str));
+          instruction = CreateCompare(
+              shape, operands(0), operands(1), *comparison_direction,
+              Comparison::DefaultOrdering(comparison_type));
+        } else {
+          // Allow the specification of comparison type to be optional.
+          // The comparison type will be determined by the types of the
+          // operands.
+          instruction = CreateCompare(shape, operands(0), operands(1),
+                                      *comparison_direction);
+        }
       }
       break;
     }
@@ -537,6 +556,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kSend:
       instruction = CreateSend(operands(0), operands(1), channel_id,
                                proto.is_host_transfer());
+      // CreateSend will create an assumed layout-less u32[] in the output
+      // shape, so copy over the shape from the proto to ensure no information
+      // is lost.
+      *instruction->mutable_shape() = shape;
       break;
     case HloOpcode::kSendDone:
       TF_RET_CHECK(DynCast<HloSendInstruction>(operands(0)) != nullptr)
@@ -547,6 +570,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kRecv:
       instruction = CreateRecv(shape.tuple_shapes(0), operands(0), channel_id,
                                proto.is_host_transfer());
+      // CreateRecv will create an assumed layout-less u32[] in the output
+      // shape, so copy over the shape from the proto to ensure no information
+      // is lost.
+      *instruction->mutable_shape() = shape;
       break;
     case HloOpcode::kRecvDone:
       TF_RET_CHECK(DynCast<HloRecvInstruction>(operands(0)) != nullptr)
@@ -791,7 +818,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
-    case HloOpcode::kReduceScatter: {
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
           << proto.called_computation_ids_size();
@@ -818,6 +846,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             shape, all_operands(), computations(0), std::move(device_list),
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
             scatter_dimension);
+      } else if (opcode == HloOpcode::kCollectiveReduce) {
+        instruction = CreateCollectiveReduce(
+            shape, all_operands(), computations(0), std::move(device_list),
+            proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
+            proto.has_dynamic_root());
       } else {
         instruction = CreateAllReduceStart(
             shape, all_operands(), computations(0), std::move(device_list),
@@ -999,12 +1032,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction = CreateConvolve(
-          shape, operands(0), operands(1),
-          std::max<int64_t>(proto.feature_group_count(), 1),
-          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
-          proto.convolution_dimension_numbers(), precision_config,
-          proto.sparsity_config(), proto.conv_kind());
+      instruction =
+          CreateConvolve(shape, all_operands(),
+                         std::max<int64_t>(proto.feature_group_count(), 1),
+                         std::max<int64_t>(proto.batch_group_count(), 1),
+                         proto.window(), proto.convolution_dimension_numbers(),
+                         precision_config, proto.sparsity_config(),
+                         proto.block_scaling_config(), proto.conv_kind());
       break;
     }
     case HloOpcode::kReduceWindow:
@@ -1658,14 +1692,17 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
-    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind) {
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config,
+    ConvolutionKind convolution_kind) {
   return std::make_unique<HloConvolutionInstruction>(
-      shape, lhs, rhs, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config, sparsity_config, convolution_kind);
+      shape, operands, feature_group_count, batch_group_count, window,
+      dimension_numbers, precision_config, sparsity_config,
+      block_scaling_config, convolution_kind);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -1697,12 +1734,13 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     std::optional<HloOpcode> async_wrapped_opcode,
     HloComputation* async_computation) {
   CHECK_GE(operands.size(), 1);
+  CHECK_NE(operands[0], nullptr);
   auto instruction = std::make_unique<HloAsyncUpdateInstruction>(
       shape, operands, async_wrapped_opcode);
 
   HloComputation* upstream_comp = nullptr;
   HloInstruction* prev_async = operands[0];
-  if (HloInstruction* producer = FindAsyncProducer(prev_async)) {
+  if (HloInstruction* producer = FindUpstreamAsyncProducer(prev_async)) {
     if (auto* async_inst = DynCast<HloAsyncInstruction>(producer)) {
       upstream_comp = async_inst->async_wrapped_computation();
     }
@@ -1719,7 +1757,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     std::optional<HloOpcode> async_wrapped_opcode,
     HloComputation* async_computation) {
   HloComputation* upstream_comp = nullptr;
-  if (HloInstruction* producer = FindAsyncProducer(operand)) {
+  if (HloInstruction* producer = FindUpstreamAsyncProducer(operand)) {
     if (auto* async_inst = DynCast<HloAsyncInstruction>(producer)) {
       upstream_comp = async_inst->async_wrapped_computation();
     }
@@ -1742,9 +1780,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    ComparisonDirection direction, std::optional<Comparison::Type> type) {
+    ComparisonDirection direction, std::optional<ComparisonOrder> order) {
   return std::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction,
-                                                 type);
+                                                 order);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1951,6 +1989,18 @@ HloInstruction::CreateRaggedAllToAll(
   return CreateRaggedAllToAll(
       shape, operands, std::make_shared<CollectiveDeviceList>(replica_groups),
       channel_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectiveReduce(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, bool has_dynamic_root) {
+  return std::make_unique<HloCollectiveReduceInstruction>(
+      shape, operands, reduce_computation, std::move(device_list),
+      constrain_layout, channel_id, use_global_device_ids, has_dynamic_root);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -2561,6 +2611,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
       if (Cast<HloCollectiveInstruction>(this)->constrain_layout()) {
         return true;
       }
@@ -2823,6 +2874,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kRaggedAllToAll:
@@ -3493,6 +3545,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
@@ -3548,11 +3601,6 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
     ABSL_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
-  // Update the async chain if the new producer is an async instruction.
-  if (HloAsyncInstruction* async_op =
-          DynCast<HloAsyncInstruction>(new_producer)) {
-    async_op->UpdateAsyncChain();
-  }
   return absl::OkStatus();
 }
 
@@ -3581,11 +3629,6 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
       << " to be equal to " << ToString();
   user->operands_[operand_number] = new_producer;
   new_producer->AddUser(user);
-  // Update the async chain if the new producer is an async instruction.
-  if (HloAsyncInstruction* async_op =
-          DynCast<HloAsyncInstruction>(new_producer)) {
-    async_op->UpdateAsyncChain();
-  }
   return absl::OkStatus();
 }
 
@@ -3617,11 +3660,6 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
-  // Update the async chain if the new operand is an async instruction.
-  if (HloAsyncInstruction* async_op =
-          DynCast<HloAsyncInstruction>(new_operand)) {
-    async_op->UpdateAsyncChain();
-  }
   return absl::OkStatus();
 }
 
@@ -3792,11 +3830,6 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   // Copy the original value recovery table from this instruction to the new
   // producer instruction if their shapes are compatible.
   new_producer->CopyOriginalValue(/*instruction=*/this);
-  // Update the async chain if the new producer is an async instruction.
-  if (HloAsyncInstruction* async_op =
-          DynCast<HloAsyncInstruction>(new_producer)) {
-    async_op->UpdateAsyncChain();
-  }
 
   return absl::OkStatus();
 }
@@ -3836,6 +3869,7 @@ bool HloInstruction::has_to_apply() const {
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
@@ -4115,10 +4149,20 @@ bool HloInstruction::IsCrossModuleAllReduce() const {
     return channel_id().has_value();
   }
   if (opcode() == HloOpcode::kAllReduceDone) {
-    CHECK_EQ(operand_count(), 1);
-    const HloInstruction* operand = this->operand(0);
-    CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
-    return operand->channel_id().has_value();
+    if (operand_count() > 0 && operand(0) != nullptr) {
+      const HloInstruction* start = operand(0);
+      while (start != nullptr &&
+             start->opcode() != HloOpcode::kAllReduceStart) {
+        if (start->operand_count() == 0 || start->operand(0) == nullptr) {
+          return false;
+        }
+        start = start->operand(0);
+      }
+      if (start != nullptr && start->opcode() == HloOpcode::kAllReduceStart) {
+        return start->channel_id().has_value();
+      }
+    }
+    return false;
   }
   return false;
 }
@@ -4129,10 +4173,20 @@ bool HloInstruction::IsCrossReplicaAllReduce() const {
     return channel_id() == std::nullopt;
   }
   if (opcode() == HloOpcode::kAllReduceDone) {
-    CHECK_EQ(operand_count(), 1);
-    const HloInstruction* operand = this->operand(0);
-    CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
-    return operand->channel_id() == std::nullopt;
+    if (operand_count() > 0 && operand(0) != nullptr) {
+      const HloInstruction* start = operand(0);
+      while (start != nullptr &&
+             start->opcode() != HloOpcode::kAllReduceStart) {
+        if (start->operand_count() == 0 || start->operand(0) == nullptr) {
+          return false;
+        }
+        start = start->operand(0);
+      }
+      if (start != nullptr && start->opcode() == HloOpcode::kAllReduceStart) {
+        return start->channel_id() == std::nullopt;
+      }
+    }
+    return false;
   }
   return false;
 }
@@ -4402,6 +4456,7 @@ void HloInstruction::PrintExtraAttributes(
                opcode() == HloOpcode::kReduce ||
                opcode() == HloOpcode::kAllReduce ||
                opcode() == HloOpcode::kReduceScatter ||
+               opcode() == HloOpcode::kCollectiveReduce ||
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort || opcode() == HloOpcode::kScan) {
@@ -4502,6 +4557,7 @@ void HloInstruction::PrintExtraAttributes(
       case HloOpcode::kReduce:
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
+      case HloOpcode::kCollectiveReduce:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
         if (!called_computations().empty()) {
@@ -4697,7 +4753,9 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 void HloInstruction::ToProto(HloInstructionProto* proto,
                              HloProtoOptions options) const {
   ToProto(proto);
-  if (options.deduplicate_backend_config && !backend_config_->empty()) {
+  if (options.deduplicate_backend_config && !backend_config_->empty() &&
+      backend_config_->GetRawString().size() >=
+          options.min_backend_config_size) {
     if (options.payload_deduplicator == nullptr) {
       LOG_FIRST_N(WARNING, 1)
           << "Backend config deduplication requested without a payload "
@@ -4756,6 +4814,37 @@ bool HloInstruction::IsCustomCall(
     absl::Span<const absl::string_view> targets) const {
   return opcode() == HloOpcode::kCustomCall &&
          absl::c_linear_search(targets, custom_call_target());
+}
+
+bool HloInstruction::IsAllowedAsyncIntermediaryCustomCall() const {
+  static constexpr absl::string_view kMetadataTargets[] = {
+      "Sharding",
+      "LocalToGlobalShape",
+      "GlobalToLocalShape",
+      "xla.sdy.LocalToGlobalShape",
+      "xla.sdy.GlobalToLocalShape",
+      "xla.sdy.FuncResultSharding",
+  };
+  return IsCustomCall(kMetadataTargets);
+}
+
+bool HloInstruction::IsAllowedAsyncIntermediary() const {
+  switch (opcode()) {
+    case HloOpcode::kTuple:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kCopy:
+    case HloOpcode::kParameter:
+    case HloOpcode::kWhile: {
+      return true;
+    }
+    case HloOpcode::kCustomCall: {
+      return IsAllowedAsyncIntermediaryCustomCall();
+    }
+    default: {
+      return false;
+    }
+  }
 }
 
 bool HloInstruction::IsInputFusion() const {
@@ -4926,6 +5015,8 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleAllToAll(this);
       case HloOpcode::kRaggedAllToAll:
         return visitor->HandleRaggedAllToAll(this);
+      case HloOpcode::kCollectiveReduce:
+        return visitor->HandleCollectiveReduce(this);
       case HloOpcode::kCollectiveBroadcast:
         return visitor->HandleCollectiveBroadcast(this);
       case HloOpcode::kCollectivePermute:
@@ -5634,7 +5725,8 @@ std::string SparsityConfigToString(const SparsityConfig& sparsity_config) {
                      sparsity_config.lhs().block_size());
     result.push_back(StrCat("lhs={sparsity=", sparsity_str,
                             " dimension=", sparsity_config.lhs().dimension(),
-                            " stride=", sparsity_config.lhs().stride(), "}"));
+                            " stride=", sparsity_config.lhs().stride(),
+                            " idx=", sparsity_config.lhs().idx(), "}"));
   }
   if (sparsity_config.has_rhs()) {
     std::string sparsity_str =
@@ -5642,7 +5734,48 @@ std::string SparsityConfigToString(const SparsityConfig& sparsity_config) {
                      sparsity_config.rhs().block_size());
     result.push_back(StrCat("rhs={sparsity=", sparsity_str,
                             " dimension=", sparsity_config.rhs().dimension(),
-                            " stride=", sparsity_config.rhs().stride(), "}"));
+                            " stride=", sparsity_config.rhs().stride(),
+                            " idx=", sparsity_config.rhs().idx(), "}"));
+  }
+  return StrJoin(result, " ");
+}
+
+std::string BlockScalingConfigToString(
+    const BlockScalingConfig& block_scaling_config) {
+  std::vector<std::string> result;
+  if (block_scaling_config.has_lhs()) {
+    std::string lhs_str =
+        StrCat("lhs={scale_idx=", block_scaling_config.lhs().scale_idx());
+    if (block_scaling_config.lhs().has_zero_idx()) {
+      StrAppend(&lhs_str, " zero_idx=", block_scaling_config.lhs().zero_idx());
+    }
+    if (!block_scaling_config.lhs().strides().empty()) {
+      StrAppend(&lhs_str, " strides=",
+                StrJoin(block_scaling_config.lhs().strides(), "x"));
+    }
+    if (!block_scaling_config.lhs().steps().empty()) {
+      StrAppend(&lhs_str,
+                " steps=", StrJoin(block_scaling_config.lhs().steps(), "x"));
+    }
+    StrAppend(&lhs_str, "}");
+    result.push_back(lhs_str);
+  }
+  if (block_scaling_config.has_rhs()) {
+    std::string rhs_str =
+        StrCat("rhs={scale_idx=", block_scaling_config.rhs().scale_idx());
+    if (block_scaling_config.rhs().has_zero_idx()) {
+      StrAppend(&rhs_str, " zero_idx=", block_scaling_config.rhs().zero_idx());
+    }
+    if (!block_scaling_config.rhs().strides().empty()) {
+      StrAppend(&rhs_str, " strides=",
+                StrJoin(block_scaling_config.rhs().strides(), "x"));
+    }
+    if (!block_scaling_config.rhs().steps().empty()) {
+      StrAppend(&rhs_str,
+                " steps=", StrJoin(block_scaling_config.rhs().steps(), "x"));
+    }
+    StrAppend(&rhs_str, "}");
+    result.push_back(rhs_str);
   }
   return StrJoin(result, " ");
 }
@@ -6300,128 +6433,22 @@ void HloInstruction::set_sparsity_config(
   Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
 }
 
+const BlockScalingConfig& HloInstruction::block_scaling_config() const {
+  return Cast<HloConvolutionInstruction>(this)->block_scaling_config();
+}
+
+void HloInstruction::set_block_scaling_config(
+    const BlockScalingConfig& block_scaling_config) {
+  Cast<HloConvolutionInstruction>(this)->set_block_scaling_config(
+      block_scaling_config);
+}
+
 const DomainMetadata& HloInstruction::operand_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->operand_side_metadata();
 }
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
-}
-
-namespace {
-const HloInstruction* GetOperand(const HloInstruction* instr, int64_t i) {
-  return instr->operand(i);
-}
-HloInstruction* GetOperand(HloInstruction* instr, int64_t i) {
-  return instr->mutable_operand(i);
-}
-
-// Helper function to trace backward from an instruction to find the matching
-// async producer (e.g. kAsyncStart). It traces through kGetTupleElement,
-// kTuple, kWhile, and kParameter to handle loop-crossing async operations.
-// 'index' tracks the shape index path to match tuple elements.
-// If 'stop_at_parameter' is true, it stops tracing at a computation parameter
-// (used when tracing inside loop bodies).
-template <typename InstT>
-InstT* FindAsyncProducerImpl(InstT* instr, ShapeIndex& index,
-                             bool stop_at_parameter) {
-  if (instr == nullptr) {
-    return nullptr;
-  }
-
-  if (HloAsyncInstruction::ClassOf(instr)) {
-    return instr;
-  }
-
-  switch (instr->opcode()) {
-    case HloOpcode::kGetTupleElement: {
-      index.push_back(instr->tuple_index());
-      InstT* res =
-          FindAsyncProducerImpl(GetOperand(instr, 0), index, stop_at_parameter);
-      if (res != nullptr) {
-        return res;
-      }
-      index.pop_back();
-      return nullptr;
-    }
-    case HloOpcode::kTuple: {
-      if (index.empty()) {
-        for (int64_t i = 0; i < instr->operand_count(); ++i) {
-          index.push_back(i);
-          InstT* res = FindAsyncProducerImpl(GetOperand(instr, i), index,
-                                             stop_at_parameter);
-          index.pop_back();
-          if (res != nullptr && res->opcode() != HloOpcode::kAsyncDone) {
-            return res;
-          }
-        }
-        return nullptr;
-      }
-      int64_t idx = index.back();
-      index.pop_back();
-      InstT* res = FindAsyncProducerImpl(GetOperand(instr, idx), index,
-                                         stop_at_parameter);
-      if (res != nullptr) {
-        return res;
-      }
-      index.push_back(idx);
-      return nullptr;
-    }
-    case HloOpcode::kWhile: {
-      const HloComputation* comp = instr->while_body();
-      InstT* comp_root = comp->root_instruction();
-      ShapeIndex comp_index = index;
-      InstT* comp_producer = FindAsyncProducerImpl(comp_root, comp_index,
-                                                   /*stop_at_parameter=*/true);
-      if (comp_producer != nullptr) {
-        if (comp_producer->opcode() == HloOpcode::kParameter &&
-            comp_producer->parent() == comp) {
-          return FindAsyncProducerImpl(
-              GetOperand(instr, comp_producer->parameter_number()), comp_index,
-              stop_at_parameter);
-        }
-        return comp_producer;
-      }
-      return nullptr;
-    }
-    case HloOpcode::kParameter: {
-      if (stop_at_parameter) {
-        return instr;
-      }
-      const HloComputation* comp = instr->parent();
-      if (comp == nullptr || comp->parent() == nullptr ||
-          comp->IsEntryComputation()) {
-        return nullptr;
-      }
-      auto callers = comp->caller_instructions();
-      for (HloInstruction* caller : callers) {
-        if (caller->opcode() == HloOpcode::kWhile) {
-          InstT* res = FindAsyncProducerImpl(
-              GetOperand(caller, instr->parameter_number()), index,
-              stop_at_parameter);
-          if (res != nullptr) {
-            return res;
-          }
-        }
-      }
-      return nullptr;
-    }
-    default:
-      return nullptr;
-  }
-}
-}  // namespace
-
-/* static */ const HloInstruction* HloInstruction::FindAsyncProducer(
-    const HloInstruction* instr) {
-  ShapeIndex index;
-  return FindAsyncProducerImpl(instr, index, /*stop_at_parameter=*/false);
-}
-
-/* static */ HloInstruction* HloInstruction::FindAsyncProducer(
-    HloInstruction* instr) {
-  ShapeIndex index;
-  return FindAsyncProducerImpl(instr, index, /*stop_at_parameter=*/false);
 }
 
 HloInstruction* HloInstruction::async_chain_start() const {
@@ -6484,6 +6511,42 @@ void HloInstruction::set_called_computations_execution_thread(
     absl::string_view async_execution_thread) {
   Cast<HloCallableInstruction>(this)->RecursivelySetComputationsThreadName(
       async_execution_thread);
+}
+
+bool HloInstruction::IsAsyncStart() const {
+  switch (opcode()) {
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCollectivePermuteStart: {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+bool HloInstruction::IsAsyncDone() const {
+  switch (opcode()) {
+    case HloOpcode::kAsyncDone:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kCollectivePermuteDone: {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+bool HloInstruction::IsAsyncProducer() const {
+  return opcode() == HloOpcode::kAsyncUpdate || IsAsyncStart();
+}
+
+bool HloInstruction::IsAsyncConsumer() const {
+  return opcode() == HloOpcode::kAsyncUpdate || IsAsyncDone();
 }
 
 std::optional<int> HloInstruction::cross_program_prefetch_index() const {

@@ -652,11 +652,6 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     std::swap(a_scale, b_scale);
   }
 
-  absl::Status status =
-      blas_lt_.executor_->RecordApiTrace(StreamExecutor::GemmCallTrace{
-          StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0, a.size(),
-          b.size()});
-
   std::unique_ptr<EventBasedTimer> timer;
   if (profile_result != nullptr) {
     ABSL_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
@@ -991,11 +986,6 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
                                 (cfg_.group_count * cfg_.batch_count))
           : static_cast<size_t>(args.group_sizes.size() / cfg_.group_count);
 
-  absl::Status status =
-      blas_lt_.executor_->RecordApiTrace(StreamExecutor::GemmCallTrace{
-          StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0,
-          cfg_.m * cfg_.k * cfg_.batch_count,
-          cfg_.k * cfg_.n * cfg_.batch_count * cfg_.group_count});
   std::unique_ptr<EventBasedTimer> timer;
 
   if (profile_result != nullptr) {

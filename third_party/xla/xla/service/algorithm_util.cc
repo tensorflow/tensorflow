@@ -148,7 +148,8 @@ absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
 absl::StatusOr<PrimitiveType> GetDefaultGemmAlgorithmAccumulatorType(
     const HloInstruction* dot) {
   TF_RET_CHECK(dot != nullptr);
-  TF_RET_CHECK(dot->opcode() == HloOpcode::kDot);
+  TF_RET_CHECK(dot->opcode() == HloOpcode::kDot ||
+               dot->opcode() == HloOpcode::kRaggedDot);
 
   PrimitiveType lhs_type = dot->operand(0)->shape().element_type();
   PrimitiveType rhs_type = dot->operand(1)->shape().element_type();

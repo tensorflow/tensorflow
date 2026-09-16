@@ -60,6 +60,23 @@ __global__ void CopyKernel(std::byte* dst, std::array<std::byte, 16> byval) {
     }
   }
 }
+
+// Copies each column of `buf` into dynamic shared memory, then writes it back
+// with both axes reversed. The caller must launch with
+// dynamic shared memory of at least n_cols * n_rows bytes.
+__global__ void DynShmemKernel(uint8_t* buf, uint32_t* n_cols,
+                               uint32_t* n_rows) {
+  extern __shared__ uint8_t shmem[];
+  uint32_t src_col = threadIdx.x;
+  uint32_t dst_col = *n_cols - src_col - 1;
+  for (uint32_t i = 0; i < *n_rows; i++) {
+    shmem[src_col + *n_cols * i] = buf[src_col + *n_cols * i];
+  }
+  __syncthreads();
+  for (uint32_t i = 0; i < *n_rows; i++) {
+    buf[dst_col + *n_cols * (*n_rows - i - 1)] = shmem[src_col + *n_cols * i];
+  }
+}
 }
 }  // namespace stream_executor::gpu
 

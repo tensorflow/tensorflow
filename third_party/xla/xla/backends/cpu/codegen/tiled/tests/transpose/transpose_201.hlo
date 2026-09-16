@@ -5,6 +5,9 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
 // RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
 // RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
 // RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
 
 fusion {
@@ -47,3 +50,6 @@ ENTRY main {
 // NEW-VECTOR:      %[[EXT:.*]] = vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}], %{{.*}} {in_bounds = [true, true, true]} : memref<128x32x64xf32>, vector<16x16x8xf32>
 // NEW-VECTOR:      %[[TRANS:.*]] = vector.transpose %[[EXT]], [2, 0, 1] : vector<16x16x8xf32> to vector<8x16x16xf32>
 // NEW-VECTOR:      vector.transfer_write %[[TRANS]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] {in_bounds = [true, true, true]} : vector<8x16x16xf32>, memref<64x128x32xf32>
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc

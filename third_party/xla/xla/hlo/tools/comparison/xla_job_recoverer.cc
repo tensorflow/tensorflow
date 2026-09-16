@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/hlo/tools/comparison/original_tensor_summary_propagator.h"
 #include "xla/hlo/tools/comparison/original_tensor_summary_sequencer.h"
 #include "xla/hlo/tools/comparison/original_tensor_summary_utils.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 

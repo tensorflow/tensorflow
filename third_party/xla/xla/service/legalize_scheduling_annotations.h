@@ -41,7 +41,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
  public:
   struct Config {
     HloPredicate keep_sync_annotation = HloPredicateTrue;
-    HloPredicate keep_trivial_sync_annotation = HloPredicateTrue;
+    HloPredicate keep_trivial_sync_annotation = HloPredicateFalse;
     bool propagate_annotation = false;
     bool check_start_done_annotation_consistency = true;
     bool remove_loop_iteration_annotation_only = false;

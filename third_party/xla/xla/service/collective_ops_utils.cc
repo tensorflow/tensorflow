@@ -44,12 +44,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/hlo/transforms/collectives/collective_permute_cycle.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_permute_cycle.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
@@ -177,6 +177,7 @@ bool IsNonFusionCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReduceScatter:
       return true;
@@ -218,6 +219,7 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCollectiveReduce:
       case HloOpcode::kRaggedAllToAll:
       case HloOpcode::kReduceScatter:
         return true;
@@ -243,6 +245,7 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReduceScatter:
       return false;
@@ -828,10 +831,30 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
-                   GetCollectiveOpGroupMode(collective));
+  return GetParticipatingDevicesGroups(*collective, device_assignment);
+}
+
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const HloInstruction& collective,
+                              const DeviceAssignment& device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(&collective));
+
+  if (HloPredicateIsOp<HloOpcode::kCollectivePermute,
+                       HloOpcode::kCollectivePermuteStart>(&collective)) {
+    std::vector<ReplicaGroup> source_target_groups;
+    source_target_groups.reserve(collective.source_target_pairs().size());
+    for (const auto& [source, target] : collective.source_target_pairs()) {
+      ReplicaGroup& group = source_target_groups.emplace_back();
+      group.add_replica_ids(source);
+      group.add_replica_ids(target);
+    }
+    return GetParticipatingDevicesGroups(device_assignment,
+                                         source_target_groups, group_mode);
+  }
+
   return GetParticipatingDevicesGroups(device_assignment,
-                                       collective->replica_groups(), mode);
+                                       collective.replica_groups(), group_mode);
 }
 
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -1006,8 +1029,6 @@ bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts) {
   return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
 }
 
-namespace {
-
 std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
     const HloInstruction* instruction) {
   if (!IsNonFusionCollective(instruction)) {
@@ -1036,14 +1057,14 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return DebugOptions::COLLECTIVEPERMUTE;
+    case HloOpcode::kCollectiveReduce:
+      return DebugOptions::ALLREDUCE;
     case HloOpcode::kRaggedAllToAll:
       return DebugOptions::RAGGEDALLTOALL;
     default:
       return std::nullopt;
   }
 }
-
-}  // namespace
 
 NcclSymmetricBuffersSpec::NcclSymmetricBuffersSpec(
     const DebugOptions& debug_options) {

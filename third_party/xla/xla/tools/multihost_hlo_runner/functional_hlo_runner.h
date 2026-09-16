@@ -97,6 +97,9 @@ class HLORunnerProfiler : public XSpaceProfilerInterface {
   std::unique_ptr<tsl::ProfilerSession> session_;
   // The XSpace proto to be returned by GetXSpace().
   std::unique_ptr<tensorflow::profiler::XSpace> xspace_;
+  // Session counter to uniquely name dump paths when multiple sessions are
+  // uploaded.
+  int session_index_ = 0;
 };
 
 // FunctionalHloRunner takes an HLO module as input and runs the HLO module

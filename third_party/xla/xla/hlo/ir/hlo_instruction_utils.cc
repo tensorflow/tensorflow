@@ -16,16 +16,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -35,6 +39,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -103,11 +108,96 @@ bool IsTopKStable(const HloCustomCallInstruction* inst) {
 namespace async {
 namespace {
 
-const HloInstruction* GetAsyncChainStart(const HloInstruction* async_op) {
-  if (async_op == nullptr || !async_op->IsAsynchronous()) {
+using async_detail::GetHloOperand;
+
+template <typename HloInstructionT>
+HloInstructionT* FindAsyncStartImpl(HloInstructionT* instr) {
+  if (instr == nullptr) {
     return nullptr;
   }
-  return async_op->async_chain_start();
+  if (instr->IsAsyncDone()) {
+    if (instr->operand_count() == 0 || GetHloOperand(instr, 0) == nullptr) {
+      return nullptr;
+    }
+    instr = GetHloOperand(instr, 0);
+  }
+  HloInstructionT* producer = FindAsyncProducer(instr);
+  while (producer != nullptr && producer->opcode() == HloOpcode::kAsyncUpdate) {
+    if (producer->operand_count() == 0 ||
+        GetHloOperand(producer, 0) == nullptr) {
+      return nullptr;
+    }
+    producer = FindAsyncProducer(GetHloOperand(producer, 0));
+  }
+  return producer;
+}
+
+template <typename HloInstructionT>
+HloInstructionT* FindAsyncConsumerImpl(HloInstructionT* instr) {
+  if (instr == nullptr || instr->IsAsyncDone()) {
+    return nullptr;
+  }
+
+  for (auto* user : instr->users()) {
+    if (user->IsAsyncConsumer() && user->operand_count() > 0 &&
+        GetHloOperand(user, 0) == instr) {
+      return user;
+    }
+  }
+
+  // Identify canonical root producer for backward verification.
+  const HloInstruction* root_producer =
+      instr->IsAsyncProducer() ? instr : FindAsyncProducer(instr);
+  if (root_producer == nullptr) {
+    return nullptr;
+  }
+
+  // Use stack-allocated vectors to avoid heap allocation.
+  absl::InlinedVector<HloInstructionT*, 8> stack;
+  absl::InlinedVector<const HloInstruction*, 8> visited;
+
+  for (auto* user : instr->users()) {
+    stack.push_back(user);
+  }
+
+  while (!stack.empty()) {
+    HloInstructionT* current = stack.back();
+    stack.pop_back();
+    if (current == nullptr || absl::c_linear_search(visited, current)) {
+      continue;
+    }
+    visited.push_back(current);
+
+    if (current->IsAsyncConsumer()) {
+      if (current->operand_count() > 0 &&
+          FindAsyncProducer(GetHloOperand(current, 0)) == root_producer) {
+        return current;
+      }
+      continue;
+    }
+
+    if (current->IsAllowedAsyncIntermediary()) {
+      for (auto* user : current->users()) {
+        stack.push_back(user);
+      }
+    }
+  }
+  return nullptr;
+}
+
+template <typename HloInstructionT>
+HloInstructionT* FindAsyncDoneImpl(HloInstructionT* instr) {
+  if (instr == nullptr) {
+    return nullptr;
+  }
+  if (instr->IsAsyncDone()) {
+    return instr;
+  }
+  HloInstructionT* consumer = FindAsyncConsumerImpl(instr);
+  while (consumer != nullptr && consumer->opcode() == HloOpcode::kAsyncUpdate) {
+    consumer = FindAsyncConsumerImpl(consumer);
+  }
+  return consumer;
 }
 
 absl::StatusOr<bool> AreOperandsAndOutputFullyBoundImpl(
@@ -168,6 +258,42 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBoundImpl(
 
 }  // namespace
 
+const HloInstruction* FindAsyncProducer(const HloInstruction* instr) {
+  return TraceAsyncDataflow(instr, [](const HloInstruction* node) {
+    return node->IsAsyncProducer();
+  });
+}
+
+HloInstruction* FindAsyncProducer(HloInstruction* instr) {
+  return TraceAsyncDataflow(instr, [](const HloInstruction* node) {
+    return node->IsAsyncProducer();
+  });
+}
+
+const HloInstruction* FindAsyncStart(const HloInstruction* instr) {
+  return FindAsyncStartImpl(instr);
+}
+
+HloInstruction* FindAsyncStart(HloInstruction* instr) {
+  return FindAsyncStartImpl(instr);
+}
+
+const HloInstruction* FindAsyncConsumer(const HloInstruction* instr) {
+  return FindAsyncConsumerImpl(instr);
+}
+
+HloInstruction* FindAsyncConsumer(HloInstruction* instr) {
+  return FindAsyncConsumerImpl(instr);
+}
+
+const HloInstruction* FindAsyncDone(const HloInstruction* instr) {
+  return FindAsyncDoneImpl(instr);
+}
+
+HloInstruction* FindAsyncDone(HloInstruction* instr) {
+  return FindAsyncDoneImpl(instr);
+}
+
 absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
     const HloInstruction* async_op, const ShapeIndex& index) {
   if (!async_op->IsAsynchronous()) {
@@ -175,21 +301,20 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
         absl::StrCat("Instruction is not asynchronous: ", async_op->name()));
   }
 
-  const HloInstruction* async_start = GetAsyncChainStart(async_op);
+  const HloInstruction* async_start = FindAsyncStart(async_op);
   if (async_start == nullptr) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Async instruction ", async_op->name(),
         " is not part of a valid async chain starting with AsyncStart."));
   }
 
-  if (async_start->called_computations().empty() ||
-      async_start->called_computations().front() == nullptr) {
+  HloComputation* async_wrapped_computation =
+      async_start->async_wrapped_computation();
+  if (async_wrapped_computation == nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("Async instruction ", async_op->name(),
                      " has no valid wrapped computation."));
   }
-  HloComputation* async_wrapped_computation =
-      async_start->called_computations().front();
 
   if (async_op->opcode() == HloOpcode::kAsyncDone) {
     if (async_op->operand_count() != 1) {
@@ -203,9 +328,14 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
                        " does not have a valid operand."));
     }
   }
-  const Shape& async_tuple_shape = (async_op->opcode() == HloOpcode::kAsyncDone)
-                                       ? async_op->operand(0)->shape()
-                                       : async_op->shape();
+  const HloInstruction* prod = (async_op->opcode() == HloOpcode::kAsyncDone)
+                                   ? FindAsyncProducer(async_op->operand(0))
+                                   : async_op;
+  if (prod == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot find async producer for: ", async_op->name()));
+  }
+  const Shape& async_tuple_shape = prod->shape();
   if (!async_tuple_shape.IsTuple() ||
       async_tuple_shape.tuple_shapes().size() < 2) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -230,16 +360,17 @@ std::vector<const HloInstruction*> GetAsyncBoundOperands(
   if (async_op == nullptr || async_op->async_chain_start() == nullptr) {
     return bound_operands;
   }
-  const HloAsyncStartInstruction* async_start =
-      DynCast<HloAsyncStartInstruction>(async_op->async_chain_start());
-  if (async_start == nullptr) {
-    return bound_operands;
-  }
-  for (const HloInstruction* instr : async_start->GetAsyncChain()) {
+  for (const HloInstruction* instr :
+       async_op->async_chain_start()->GetAsyncChain()) {
+    if (instr == nullptr) {
+      continue;
+    }
     int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
 
     for (int i = start_idx; i < instr->operand_count(); ++i) {
-      bound_operands.push_back(instr->operand(i));
+      if (instr->operand(i) != nullptr) {
+        bound_operands.push_back(instr->operand(i));
+      }
     }
     if (instr == async_op) {
       break;
@@ -250,6 +381,9 @@ std::vector<const HloInstruction*> GetAsyncBoundOperands(
 }
 
 absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
+  if (async_inst == nullptr) {
+    return false;
+  }
   ABSL_ASSIGN_OR_RETURN(bool fully_bound,
                    AreOperandsAndOutputFullyBound(async_inst));
   if (!fully_bound) {
@@ -259,13 +393,92 @@ absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
     return true;
   }
 
-  if (!async_inst->operand(0)->IsAsynchronous()) {
-    return true;
+  if (async_inst->operand_count() == 0 || async_inst->operand(0) == nullptr) {
+    return false;
   }
-
-  ABSL_ASSIGN_OR_RETURN(bool prev_fully_bound,
-                   AreOperandsAndOutputFullyBound(async_inst->operand(0)));
+  const HloInstruction* prev = FindAsyncProducer(async_inst->operand(0));
+  if (prev == nullptr) {
+    return false;
+  }
+  ABSL_ASSIGN_OR_RETURN(bool prev_fully_bound, AreOperandsAndOutputFullyBound(prev));
   return !prev_fully_bound;
+}
+
+std::optional<std::pair<HloInstruction*, std::vector<AsyncTraceStep>>>
+TraceDataflowPath(HloInstruction* from,
+                  absl::FunctionRef<bool(const HloInstruction*)> is_target) {
+  if (from == nullptr || from->operand_count() == 0) {
+    return std::nullopt;
+  }
+  std::vector<AsyncTraceStep> backward_steps;
+  HloInstruction* target =
+      TraceAsyncDataflow(from->mutable_operand(0), is_target, &backward_steps);
+  if (target == nullptr) {
+    return std::nullopt;
+  }
+  std::vector<AsyncTraceStep> forward_path(backward_steps.rbegin(),
+                                           backward_steps.rend());
+  return std::make_pair(target, std::move(forward_path));
+}
+
+std::optional<std::vector<AsyncTraceStep>> TraceDataflowPath(
+    HloInstruction* from, HloInstruction* target) {
+  auto result = TraceDataflowPath(
+      from, [target](const HloInstruction* instr) { return instr == target; });
+  if (!result.has_value()) {
+    return std::nullopt;
+  }
+  return std::move(result->second);
+}
+
+absl::StatusOr<HloInstruction*> PropagateDataflow(
+    absl::Span<const AsyncTraceStep> forward_path, HloInstruction* source) {
+  HloInstruction* current = source;
+  for (const auto& step : forward_path) {
+    HloInstruction* node = step.instruction;
+    switch (node->opcode()) {
+      case HloOpcode::kTuple: {
+        ABSL_RETURN_IF_ERROR(node->ReplaceOperandWithDifferentShape(
+            step.operand_index, current));
+        *node->mutable_shape()->mutable_tuple_shapes(step.operand_index) =
+            current->shape();
+        break;
+      }
+      case HloOpcode::kGetTupleElement: {
+        ABSL_RETURN_IF_ERROR(node->ReplaceOperandWithDifferentShape(0, current));
+        *node->mutable_shape() =
+            current->shape().tuple_shapes(node->tuple_index());
+        break;
+      }
+      case HloOpcode::kOptimizationBarrier: {
+        if (node->operand_count() > 1) {
+          ABSL_RETURN_IF_ERROR(node->ReplaceOperandWithDifferentShape(
+              step.operand_index, current));
+          *node->mutable_shape()->mutable_tuple_shapes(step.operand_index) =
+              current->shape();
+        } else {
+          ABSL_RETURN_IF_ERROR(node->ReplaceOperandWithDifferentShape(0, current));
+          *node->mutable_shape() = current->shape();
+        }
+        break;
+      }
+      case HloOpcode::kCopy: {
+        ABSL_RETURN_IF_ERROR(node->ReplaceOperandWithDifferentShape(0, current));
+        *node->mutable_shape() = current->shape();
+        break;
+      }
+      case HloOpcode::kCustomCall: {
+        ABSL_RETURN_IF_ERROR(node->ReplaceOperandWithDifferentShape(0, current));
+        *node->mutable_shape() = current->shape();
+        break;
+      }
+      default: {
+        return Internal("Unsupported forward step: %s", node->ToString());
+      }
+    }
+    current = node;
+  }
+  return current;
 }
 
 }  // namespace async

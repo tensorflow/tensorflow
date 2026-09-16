@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -553,6 +554,14 @@ void KernelApiIrBuilder::SetKernelFunctionAttributes(llvm::Function* function) {
   // We use external linkage because we'll be resolving this function from the
   // XLA runtime.
   function->setCallingConv(llvm::CallingConv::C);
+
+  // Annotations for the kernel call frame.
+  // Noundef is needed for msan; the host (caller) can prove that the call frame
+  // is always defined, and therefore will elide annotating the corresponding
+  // shadow memory entry. The kernel must be ready for this by having noundef.
+  function->addParamAttr(0, llvm::Attribute::NoUndef);
+  // Non-null: simply a performance optimization. Not needed for sanitizers.
+  function->addParamAttr(0, llvm::Attribute::NonNull);
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.

@@ -548,6 +548,22 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedSplitRankNotOne) {
                                "Ragged splits must have rank 1"));
 }
 
+TEST_F(RaggedTensorFromVariantKernelTest, RaggedSplitEmpty) {
+  const std::vector<int64_t> component_split_1_1 = {};
+  const std::vector<int> component_values_1 = {0};
+
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
+      {component_split_1_1}, TensorShape({1}), component_values_1);
+
+  int input_ragged_rank = 1;
+  int output_ragged_rank = 2;
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({1}),
+      {variant_component_1});
+  EXPECT_TRUE(absl::StartsWith(RunOpKernel().message(),
+                               "Ragged splits must have at least one element"));
+}
+
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesTypeMismatch) {
   const std::vector<int64_t> component_split_1_1 = {0, 1};
   const std::vector<int> component_values_1 = {0};

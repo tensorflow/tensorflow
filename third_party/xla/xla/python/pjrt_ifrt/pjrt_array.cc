@@ -86,9 +86,7 @@ absl::Status ValidateArrayCreationInput(
     return absl::OkStatus();
   }
 
-  // Canonicalize memory kind in case it hasn't been done before.
-  MemoryKind canonicalized_sharding_memory_kind =
-      CanonicalizeMemoryKind(sharding->memory_kind(), sharding_devices.front());
+  const MemoryKind& sharding_memory_kind = sharding->memory_kind();
   for (int i = 0; i < sharding_devices.size(); ++i) {
     PjRtCompatibleDevice* device =
         dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
@@ -109,11 +107,11 @@ absl::Status ValidateArrayCreationInput(
     }
     MemoryKind buffer_memory_kind =
         MakeMemoryKindFromPjRtBuffer(pjrt_buffers[i].get());
-    if (canonicalized_sharding_memory_kind != buffer_memory_kind) {
+    if (sharding_memory_kind != buffer_memory_kind) {
       return InvalidArgument(
           "PjRtBuffer's memory kind does not match sharding's memory kind. Got "
           "PjRtBuffer's memory kind: %v vs shardings's memory kind: %v",
-          buffer_memory_kind, canonicalized_sharding_memory_kind);
+          buffer_memory_kind, sharding_memory_kind);
     }
   }
   return absl::OkStatus();
@@ -125,14 +123,9 @@ absl::StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
     const PjRtArray::PjRtBuffers& pjrt_buffers) {
   const auto first_memory_kind =
       MakeMemoryKindFromPjRtBuffer(pjrt_buffers.front().get());
-  const MemoryKind canonical_first_memory_kind =
-      CanonicalizeMemoryKindWithPjRtDevice(first_memory_kind,
-                                           pjrt_buffers.front()->device());
   for (const auto& pjrt_buffer : pjrt_buffers) {
     if (auto memory_kind = MakeMemoryKindFromPjRtBuffer(pjrt_buffer.get());
-        canonical_first_memory_kind !=
-        CanonicalizeMemoryKindWithPjRtDevice(memory_kind,
-                                             pjrt_buffer->device())) {
+        first_memory_kind != memory_kind) {
       return InvalidArgument(
           "Memory kind mismatch between PjRtBuffers. Got one buffer with "
           "memory kind: %v and another with memory_kind: %v",
@@ -498,10 +491,10 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
   ABSL_ASSIGN_OR_RETURN(Device * buffer_device,
                    client_->LookupPjRtDevice(pjrt_buffers_[index]->device()));
   bool devices_equal = buffer_device == dst_device;
-  bool dst_has_memory_kind = dst_memory_kind->memory_kind().has_value();
+  bool dst_has_memory_kind = dst_memory_kind.has_value();
   bool memory_kind_equal =
-      dst_has_memory_kind && pjrt_buffers_[index]->memory_space()->kind() ==
-                                 dst_memory_kind->memory_kind();
+      dst_has_memory_kind &&
+      pjrt_buffers_[index]->memory_space()->kind() == dst_memory_kind->value();
 
   // No need for data transfer.
   if (devices_equal && (!dst_has_memory_kind || memory_kind_equal)) {
@@ -579,17 +572,14 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
   buffers.reserve(pjrt_buffers_.size());
   TF_RET_CHECK(!new_sharding->devices()->empty());
 
-  // Canonicalize memory kind in case it hasn't been done before.
-  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
-      new_sharding->memory_kind(), new_sharding->devices()->devices().front());
+  const MemoryKind& sharding_memory_kind = new_sharding->memory_kind();
   const absl::Span<Device* const> new_sharding_devices =
       new_sharding->devices()->devices();
   PjRtCompatibleClient* new_client = nullptr;
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
-    ABSL_ASSIGN_OR_RETURN(
-        std::shared_ptr<PjRtBuffer> copied_buffer,
-        CopySinglePjRtBuffer(i, new_sharding_devices[i],
-                             canonicalized_sharding_memory_kind, semantics));
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<PjRtBuffer> copied_buffer,
+                     CopySinglePjRtBuffer(i, new_sharding_devices[i],
+                                          sharding_memory_kind, semantics));
     buffers.push_back(std::move(copied_buffer));
     if (new_client == nullptr) {
       PjRtCompatibleDevice* pjrt_device =
@@ -609,8 +599,8 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
   // buffer. Refreshing the custom layout using the new buffer layout makes sure
   // that `PjRtArray` tracks a valid custom layout.
   if (layout != nullptr &&
-      (client_ != new_client || array_spec_.sharding->memory_kind() !=
-                                    canonicalized_sharding_memory_kind)) {
+      (client_ != new_client ||
+       array_spec_.sharding->memory_kind() != sharding_memory_kind)) {
     layout = buffers.front()->layout();
   }
   if (dynamic_shape_ != std::nullopt) {

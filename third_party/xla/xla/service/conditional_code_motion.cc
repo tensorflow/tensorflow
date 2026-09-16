@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,6 +44,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -58,6 +61,89 @@ limitations under the License.
 namespace xla {
 
 namespace conditional_opt {
+
+// Updates or preserves the OriginalValue of an instruction whose shape was
+// modified during conditional code motion (e.g. widening conditional branch
+// parameters or tuples), maintaining structural consistency with
+// instruction->shape().
+//
+// `instruction`: The instruction whose shape was modified and whose
+//   OriginalValue needs to be updated.
+// `operand_source`: An optional source instruction from which to inherit the
+//   OriginalValue. For example, when moving an operand into a branch
+//   (MoveOperandIntoBranch), the branch parameter's shape is widened to match
+//   the newly created caller argument tuple passed to the conditional. Passing
+//   that argument tuple as `operand_source` allows the branch parameter to
+//   directly inherit the caller argument's OriginalValue via CopyOriginalValue.
+//   When operand_source is null or has no OriginalValue, the instruction's
+//   existing OriginalValue leaves are re-indexed into the new shape.
+void UpdateInstructionOriginalValue(HloInstruction* instruction,
+                                    HloInstruction* operand_source = nullptr) {
+  // If the instruction is a tuple or GTE, derive the OriginalValue from its
+  // operands if possible.
+  if (instruction->opcode() == HloOpcode::kTuple ||
+      instruction->opcode() == HloOpcode::kGetTupleElement) {
+    if (auto created = OriginalValue::CreateFromInstruction(instruction)) {
+      instruction->set_original_value(created);
+      return;
+    }
+  }
+
+  if (instruction->original_value() != nullptr &&
+      instruction->original_value()->is_synthetic_call()) {
+    return;
+  }
+
+  // If an operand source with an OriginalValue is provided (e.g. caller
+  // argument tuple with compatible shape), copy its OriginalValue directly.
+  if (operand_source != nullptr &&
+      operand_source->original_value() != nullptr) {
+    CopyOriginalValue(operand_source, instruction, /*clone=*/true,
+                      /*issue_warning=*/false);
+    return;
+  }
+
+  // If neither the instruction nor operand_source has an OriginalValue,
+  // nothing to update.
+  if (instruction->original_value() == nullptr) {
+    return;
+  }
+
+  // Handle tuple-to-scalar or shape changes for non-tuple instructions.
+  if (!instruction->shape().IsTuple()) {
+    auto old_ov = instruction->original_value();
+    auto new_ov = std::make_shared<OriginalValue>(instruction->shape());
+    if (old_ov->IsTuple()) {
+      if (old_ov->tree().find({0}) != old_ov->tree().end()) {
+        new_ov->mutable_tree()->CopySubtreeFrom(old_ov->tree(), {0}, {});
+      }
+    } else {
+      new_ov->mutable_tree()->CopySubtreeFrom(old_ov->tree(), {}, {});
+    }
+    instruction->set_original_value(new_ov);
+    return;
+  }
+
+  // Handle scalar-to-tuple transition or tuple widening/re-indexing.
+  absl::flat_hash_map<int64_t, int64_t> old_to_new_map;
+  if (!instruction->original_value()->IsTuple()) {
+    auto old_ov = instruction->original_value();
+    auto new_ov = std::make_shared<OriginalValue>(instruction->shape());
+    new_ov->mutable_tree()->CopySubtreeFrom(old_ov->tree(), {}, {0});
+    instruction->set_original_value(new_ov);
+  } else {
+    // Re-index existing leaves into a new OriginalValue matching the new shape.
+    // Any newly added elements will be initialized to std::nullopt.
+    for (const auto& [shape_index, _] :
+         instruction->original_value()->original_arrays()) {
+      if (!shape_index.empty() &&
+          shape_index[0] < instruction->shape().tuple_shapes().size()) {
+        old_to_new_map[shape_index[0]] = shape_index[0];
+      }
+    }
+    CopyOriginalValue(instruction, instruction, old_to_new_map);
+  }
+}
 
 HloInstruction* CloneNestedTuples(HloInstruction* tuple) {
   if (!tuple->shape().IsTuple()) {
@@ -788,6 +874,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
+  conditional_opt::UpdateInstructionOriginalValue(conditional);
   // Keep conditional instruction sharding consistent with the branches. Note
   // that this sharding could be lost after this pass.
   conditional->copy_sharding(new_root);
@@ -920,6 +1007,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
         HloInstruction* new_root = computation->root_instruction();
         new_root->AppendOperand(new_op);
         *new_root->mutable_shape()->add_tuple_shapes() = new_op->shape();
+        conditional_opt::UpdateInstructionOriginalValue(new_root);
         VLOG(2) << "Extending conditional root " << i << " : "
                 << new_root->ToString() << "\n";
       }
@@ -939,6 +1027,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
+  conditional_opt::UpdateInstructionOriginalValue(conditional);
   // Keep conditional instruction sharding consistent with the branches. Note
   // that this sharding could be lost after this pass.
   conditional->copy_sharding(new_root);
@@ -949,6 +1038,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
         VLOG(2) << "Resetting shape of user: " << user->ToString() << "\n";
         *user->mutable_shape() =
             conditional->shape().tuple_shapes(user->tuple_index());
+        conditional_opt::UpdateInstructionOriginalValue(user);
       }
     }
   }
@@ -1016,7 +1106,7 @@ class MoveOperandIntoBranch {
   bool UpdateParamShape(
       std::vector<std::vector<int64_t>>& matching_tuple_indices,
       const Shape* param_shape, HloInstruction*& branch_param,
-      HloInstruction*& param_tuple) {
+      HloInstruction*& param_tuple, HloInstruction* user = nullptr) {
     bool used = false;
     // Update shapes from branch parameter to the immediate tuple user.
     for (int64_t matching_index = matching_tuple_indices.size() - 1;
@@ -1038,6 +1128,7 @@ class MoveOperandIntoBranch {
       }
       used = false;
       *branch_param->mutable_shape() = *param_shape;
+      conditional_opt::UpdateInstructionOriginalValue(branch_param, user);
       const Shape* new_param_shape = nullptr;
       for (auto param_users : gte_users) {
         if (param_users.empty()) {
@@ -1065,11 +1156,13 @@ class MoveOperandIntoBranch {
             param_shape = new_param_shape;
             VLOG(1) << "new_param_shape: " << param_shape->ToString();
             *param_user->mutable_shape() = *new_param_shape;
+            conditional_opt::UpdateInstructionOriginalValue(param_user);
             VLOG(1) << "branch parameter: " << param_user->ToString();
             used = true;
           } else {
             VLOG(1) << "new_param_shape=" << new_param_shape->ToString();
             *param_user->mutable_shape() = *new_param_shape;
+            conditional_opt::UpdateInstructionOriginalValue(param_user);
             CHECK_OK(param_user->ReplaceAllUsesWith(branch_param));
           }
         }
@@ -1132,6 +1225,7 @@ class MoveOperandIntoBranch {
         user->mutable_shape()->mutable_tuple_shapes()->push_back(
             new_input->shape());
       }
+      conditional_opt::UpdateInstructionOriginalValue(user);
       int64_t nesting_index = 1;
       for (auto user_now = user->users()[0];
            nesting_index < matching_tuple_indices.size() &&
@@ -1143,6 +1237,7 @@ class MoveOperandIntoBranch {
           *user_now->mutable_shape()->mutable_tuple_shapes(opd_index) =
               user->shape();
         }
+        conditional_opt::UpdateInstructionOriginalValue(user_now);
         VLOG(2) << "Done replacing tuple:" << user->ToString();
         CHECK_EQ(user_now->user_count(), 1);
       }
@@ -1161,6 +1256,8 @@ class MoveOperandIntoBranch {
     if (user == cond) {
       auto new_input =
           input->AddInstruction(HloInstruction::CreateTuple(new_operands));
+      new_input->set_original_value(
+          OriginalValue::CreateFromInstruction(new_input));
       for (int64_t i = 0; i < new_operands.size(); ++i) {
         op_map_[new_operands[i]] = i;
       }
@@ -1186,6 +1283,7 @@ class MoveOperandIntoBranch {
                    "directly.";
         VLOG(5) << branch_comp->ToString() << "\n";
         *branch_param->mutable_shape() = *param_shape;
+        conditional_opt::UpdateInstructionOriginalValue(branch_param, user);
         if (branch_param == branch_comp->root_instruction()) {
           VLOG(2) << "Cloning root user";
           auto new_user =
@@ -1197,7 +1295,7 @@ class MoveOperandIntoBranch {
         }
       } else {
         if (!UpdateParamShape(matching_tuple_indices, param_shape, branch_param,
-                              param_tuple)) {
+                              param_tuple, user)) {
           VLOG(2) << "instruction is not used in this branch.";
           continue;
         }

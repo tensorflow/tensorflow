@@ -322,7 +322,7 @@ class FfiKernelCache : public se::CommandBuffer::Resource {
 XLA_FFI_Error* FfiCreateLaunch(
     XLA_FFI_RecordContext* ctx, const char* kernel_name,
     const void* kernel_data, int64_t kernel_size, XLA_FFI_SourceFormat format,
-    XLA_FFI_LaunchDims launch_dims, uint32_t shared_mem_bytes,
+    XLA_FFI_LaunchDims launch_dims, uint32_t shared_mem_bytes, int32_t use_pdl,
     const XLA_FFI_KernelArgs* args, const XLA_FFI_Command* const* dependencies,
     uint32_t num_dependencies, const XLA_FFI_Command** out_command) {
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
@@ -335,7 +335,7 @@ XLA_FFI_Error* FfiCreateLaunch(
     return xla::ffi::CreateError(kernel_or.status());
   }
   se::Kernel* kernel = *kernel_or;
-  kernel->set_use_pdl(ctx->use_pdl);
+  kernel->set_use_pdl(ctx->pdl_enabled && (use_pdl != 0));
 
   FfiKernelArgsPacked packed_args(args->num_args);
   packed_args.add_shared_bytes(shared_mem_bytes);
@@ -344,7 +344,10 @@ XLA_FFI_Error* FfiCreateLaunch(
   }
   // Map dependencies
   std::vector<const se::CommandBuffer::Command*> deps;
-  deps.reserve(num_dependencies);
+  deps.reserve(num_dependencies + ctx->dependencies.size());
+  for (const se::CommandBuffer::Command* dep : ctx->dependencies) {
+    deps.push_back(dep);
+  }
   for (uint32_t i = 0; i < num_dependencies; ++i) {
     deps.push_back(AsStreamExecutorCommand(dependencies[i]));
   }
@@ -369,7 +372,7 @@ XLA_FFI_Error* FfiCreateLaunch(
   const int32_t device_ordinal = ctx->executor->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "FfiCreateLaunch for kernel: " << kernel_name
-      << ", use_pdl from ctx: " << ctx->use_pdl
+      << ", use_pdl: " << kernel->use_pdl()
       << ", num_dependencies passed: " << num_dependencies
       << ", resolved deps size: " << deps.size()
       << ", launch_params: " << params;

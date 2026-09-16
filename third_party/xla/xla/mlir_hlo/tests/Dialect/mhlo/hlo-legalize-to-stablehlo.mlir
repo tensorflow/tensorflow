@@ -507,6 +507,44 @@ func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (ten
   return %0#0, %0#1 : tensor<8xf32>, tensor<f32>
 }
 
+// CHECK-LABEL: "op_collective_reduce"
+func.func @op_collective_reduce(%arg0: tensor<f32>) -> tensor<f32> {
+  //               CHECK: "stablehlo.collective_reduce"([[ARG0:%arg[0-9]+]]) <{
+  //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
+  //          CHECK-SAME:   use_global_device_ids
+  //          CHECK-SAME: }> ({
+  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG1:arg.*]]: tensor<f32>, %[[ARG2:arg.*]]: tensor<f32>):
+  //          CHECK-NEXT:     %[[VAL1:.*]] = "stablehlo.add"(%[[ARG1]], %[[ARG2]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  //          CHECK-NEXT:     "stablehlo.return"(%[[VAL1]]) : (tensor<f32>) -> ()
+  //          CHECK-NEXT: }) : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.collective_reduce"(%arg0) <{
+    replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    use_global_device_ids
+  }> ({
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %1 = "mhlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: "op_collective_reduce_dynamic_root"
+func.func @op_collective_reduce_dynamic_root(%arg0: tensor<8xf32>, %arg1: tensor<1xi32>) -> tensor<8xf32> {
+  // CHECK: "stablehlo.collective_reduce"
+  // CHECK-SAME: has_dynamic_root
+  %0 = "mhlo.collective_reduce"(%arg0, %arg1) <{
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    has_dynamic_root
+  }> ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+      %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+      mhlo.return %1 : tensor<f32>
+  }) : (tensor<8xf32>, tensor<1xi32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+}
+
 // CHECK-LABEL: "op_all_to_all"
 func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   //               CHECK: "stablehlo.all_to_all"([[ARG0:%arg[0-9]+]]) <{

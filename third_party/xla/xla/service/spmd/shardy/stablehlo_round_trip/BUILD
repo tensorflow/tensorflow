@@ -128,6 +128,7 @@ cc_library(
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
+        "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@com_google_absl//absl/algorithm:container",
@@ -170,7 +171,6 @@ cc_library(
     srcs = ["export_manual_reduction_collectives.cc"],
     hdrs = ["export_manual_reduction_collectives.h"],
     deps = [
-        "//xla:array",
         "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log",
@@ -181,6 +181,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/export:utils",
         "@stablehlo//:stablehlo_ops",
     ],
 )

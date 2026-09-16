@@ -189,6 +189,7 @@ cc_library(
         "//xla/stream_executor:kernel_stats",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:sha256",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",

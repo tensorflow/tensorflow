@@ -116,7 +116,7 @@ class ShapeInference {
   // to lhs in the way specified by the fields on window. An optional
   // preferred_element_type can be specified to upcast the element type.
   static absl::StatusOr<Shape> InferConvolveShape(
-      const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
+      const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
       int64_t batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const SparsityConfig& sparsity_config,
@@ -187,6 +187,11 @@ class ShapeInference {
 
   // Infers the shape of a collective broadcast operation.
   static absl::StatusOr<Shape> InferCollectiveBroadcastShape(
+      absl::Span<const Shape* const> operand_shapes,
+      bool has_dynamic_root = false);
+
+  // Infers the shape of a collective reduce operation.
+  static absl::StatusOr<Shape> InferCollectiveReduceShape(
       absl::Span<const Shape* const> operand_shapes,
       bool has_dynamic_root = false);
 

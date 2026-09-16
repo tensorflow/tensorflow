@@ -2372,24 +2372,12 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
 }  // namespace
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvolveShape(
-    const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
+    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
     const SparsityConfig& sparsity_config,
     std::optional<PrimitiveType> preferred_element_type,
     ConvolutionKind convolution_kind) {
-  const Shape* rhs_ptr = &rhs_arg;
-  if (rhs_arg.IsTuple()) {
-    if (rhs_arg.tuple_shapes().size() != 2) {
-      return InvalidArgument(
-          "rhs of convolution, if a tuple, must have 2 elements for sparsity; "
-          "got: %s",
-          ShapeUtil::HumanString(rhs_arg));
-    }
-    rhs_ptr = &rhs_arg.tuple_shapes(0);
-  }
-  const Shape& rhs = *rhs_ptr;
-
   ABSL_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   ABSL_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -2985,6 +2973,38 @@ ShapeInference::InferCollectiveBroadcastShape(
   ABSL_RETURN_IF_ERROR(
       ExpectArray(*(operand_shapes[0]), "operand of collective-broadcast"));
   return *(operand_shapes[0]);
+}
+
+/* static */ absl::StatusOr<Shape> ShapeInference::InferCollectiveReduceShape(
+    absl::Span<const Shape* const> operand_shapes, bool has_dynamic_root) {
+  if (has_dynamic_root) {
+    TF_RET_CHECK(operand_shapes.size() > 1);
+    const Shape& root_shape = *operand_shapes.back();
+    TF_RET_CHECK(root_shape ==
+                 ShapeUtil::MakeShape(
+                     S32, {static_cast<int64_t>(operand_shapes.size() - 1)}))
+        << "The last operand of collective-reduce with has_dynamic_root=true "
+           "must be a 1-D array of S32 with the same number of elements as "
+           "the number of data operands, but got "
+        << ShapeUtil::HumanString(root_shape);
+    absl::Span<const Shape* const> data_shapes =
+        operand_shapes.first(operand_shapes.size() - 1);
+    for (const Shape* s : data_shapes) {
+      ABSL_RETURN_IF_ERROR(ExpectArray(*s, "operand of collective-reduce"));
+    }
+    if (data_shapes.size() == 1) {
+      return *data_shapes[0];
+    }
+    return ShapeUtil::MakeTupleShapeWithPtrs(data_shapes);
+  }
+  for (const Shape* operand_shape : operand_shapes) {
+    ABSL_RETURN_IF_ERROR(
+        ExpectArray(*operand_shape, "operand of collective-reduce"));
+  }
+  if (operand_shapes.size() == 1) {
+    return *operand_shapes[0];
+  }
+  return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(

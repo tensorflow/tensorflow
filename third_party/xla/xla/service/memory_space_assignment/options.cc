@@ -105,6 +105,8 @@ std::string Options::ToString() const {
                     autotuning_config.has_value() ? "present" : "nullopt"),
        absl::StrCat("preferred_prefetch_overrides: \n",
                     preferred_prefetch_overrides.DebugString()),
+       absl::StrCat("msa_tensor_overrides: \n",
+                    msa_tensor_overrides.DebugString()),
        absl::StrCat("sliced_prefetch_options: \n",
                     sliced_prefetch_options.DebugString()),
        absl::StrCat("memory_bound_loop_optimizer_options: \n",

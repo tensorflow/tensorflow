@@ -688,7 +688,7 @@ cc_library(
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/service/spmd/shardy:constants",
         "@xla//xla/service/spmd/shardy:utils",
@@ -895,7 +895,7 @@ cc_library(
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
         "@xla//xla/service/gpu:gpu_executable_run_options",
         "@xla//xla/stream_executor:stream",
         "@xla//xla/stream_executor:stream_executor_h",
@@ -1643,11 +1643,13 @@ tf_cc_test(
     srcs = ["xla_op_registry_test.cc"],
     deps = [
         ":xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest",
     ],
 )
 

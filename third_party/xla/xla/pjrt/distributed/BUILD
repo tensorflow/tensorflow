@@ -131,6 +131,47 @@ cc_library(
 )
 
 cc_library(
+    name = "mtls",
+    srcs = ["mtls.cc"],
+    hdrs = ["mtls.h"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@grpc",
+        "@grpc//:grpc++",
+    ],
+)
+
+xla_cc_test(
+    name = "mtls_test",
+    size = "small",
+    srcs = ["mtls_test.cc"],
+    # Test-only certificates and keys; regenerate with testdata/mtls/generate.sh.
+    data = glob([
+        "testdata/mtls/*.pem",
+        "testdata/mtls/*.key",
+    ]),
+    deps = [
+        ":client",
+        ":distributed",
+        ":mtls",
+        ":service",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
     name = "topology_util",
     srcs = ["topology_util.cc"],
     hdrs = ["topology_util.h"],
@@ -216,14 +257,32 @@ cc_library(
     hdrs = ["in_memory_key_value_store.h"],
     deps = [
         ":key_value_store_interface",
+        "//xla/pjrt/distributed/coordination:key_value_store",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "in_memory_key_value_store_test",
+    srcs = ["in_memory_key_value_store_test.cc"],
+    deps = [
+        ":in_memory_key_value_store",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )

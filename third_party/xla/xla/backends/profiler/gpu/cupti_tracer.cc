@@ -21,7 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <ios>
-#include <list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -30,8 +30,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -46,7 +48,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cuda_version_variants.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/per_thread.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -79,6 +79,12 @@ using tsl::profiler::GpuPlaneName;
 using tsl::profiler::XPlaneBuilder;
 
 static thread_local int internalCuCall = 0;
+
+// CUPTI reuses correlationData between enter and exit callbacks. Mark entries
+// without a usable timestamp so their matching exit callbacks drop incomplete
+// records.
+constexpr uint64_t kInvalidCallbackTimestamp =
+    std::numeric_limits<uint64_t>::max();
 
 // Temporary disable cupti api tracing for this thread during the life scope of
 // this class. Used for the API calls that initiated by us.
@@ -1011,8 +1017,11 @@ absl::Status AddDriverApiCallbackEvent(
     return absl::OkStatus();
   }
   tracer->IncCallbackEventCount();
-  absl::Span<const int64_t> range_ids = AnnotationStack::GetScopeRangeIds();
-  guarded_annotations_and_events.AddScopeRangeIdSequence(range_ids);
+  absl::Span<const int64_t> range_ids;
+  if (tracer->IsScopeRangeTrackingEnabled()) {
+    range_ids = AnnotationStack::GetScopeRangeIds();
+    guarded_annotations_and_events.AddScopeRangeIdSequence(range_ids);
+  }
   CuptiTracerEvent event{};
   event.correlation_id = cbdata->correlationId;
   event.annotation = annotation;
@@ -1037,17 +1046,21 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
                                 CUpti_CallbackId cbid,
                                 const CUpti_CallbackData* cbdata) override {
     // Stash away the current Cupti timestamp into cbdata.
-    *cbdata->correlationData = option_.required_callback_api_events
-                                   ? tracer_->GetTimestampForSubscriber()
-                                   : 0;
+    *cbdata->correlationData = kInvalidCallbackTimestamp;
+    ABSL_ASSIGN_OR_RETURN(*cbdata->correlationData,
+                     tracer_->GetTimestampForSubscriber());
     return absl::OkStatus();
   }
   absl::Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                CUpti_CallbackId cbid,
                                const CUpti_CallbackData* cbdata) override {
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
-    uint64_t end_tsc = tracer_->GetTimestampForSubscriber();
     uint64_t start_tsc = *cbdata->correlationData;
+    if (start_tsc == kInvalidCallbackTimestamp) {
+      return absl::FailedPreconditionError(
+          "CUPTI callback entry timestamp was unavailable");
+    }
+    ABSL_ASSIGN_OR_RETURN(uint64_t end_tsc, tracer_->GetTimestampForSubscriber());
     TrackContext(cbid, cbdata->context);
     return AddDriverApiCallbackEvent(tracer_, cupti_interface_, device_id,
                                      start_tsc, end_tsc, domain, cbid, cbdata);
@@ -1105,13 +1118,6 @@ const char* GetCuptiErrorString(CuptiInterface* cupti_interface,
     cupti_interface->GetResultString(err, &err_str);
   }
   return err_str;
-}
-
-bool& IsCuptiHardwareEventSystemEnabled() {
-  // This flag can not flip to true once per process. Once enabled, it will stay
-  // enabled until the process is terminated.
-  static bool is_enabled = false;
-  return is_enabled;
 }
 
 }  // namespace
@@ -1259,22 +1265,42 @@ void CuptiTracer::Disable() {
   }
 
   if (using_v2_subscriber_api_) {
-    // Preserve a best effort end timestamp in case teardown disables CUPTI
-    // before the final timestamp can be read.
-    uint64_t tracing_end_time_ns = GetTimestampForSubscriber();
-    // The subsequent ActivityDisableV2 and ActivityGetNextRecordV2 calls still
-    // need the subscriber handle.
-    DisableApiTracing(/*unsubscribe=*/false).IgnoreError();
-    DisableActivityTracing().IgnoreError();
-    cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+    // Preserve an end timestamp before a fatal CUPTI error can trigger the
+    // error manager's teardown.
+    absl::StatusOr<uint64_t> tracing_end_time_ns = GetTimestampForSubscriber();
+
+    // Synchronize while the V2 subscriber and its registered CUPTI state are
+    // still live. This lets the final timestamp cover synchronized work.
     if (!cupti_interface_->Disabled()) {
-      // Prefer the timestamp taken after synchronization.
-      uint64_t final_timestamp_ns = GetTimestampForSubscriber();
-      if (!cupti_interface_->Disabled()) {
-        tracing_end_time_ns = final_timestamp_ns;
+      cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+    }
+
+    if (!cupti_interface_->Disabled()) {
+      // Prefer the post-synchronization timestamp, but retain the earlier
+      // valid value when the final V2 timestamp query fails.
+      absl::StatusOr<uint64_t> final_timestamp_ns = GetTimestampForSubscriber();
+      if (final_timestamp_ns.ok()) {
+        tracing_end_time_ns = *final_timestamp_ns;
+      } else {
+        LOG(WARNING) << "Unable to read final CUPTI V2 tracing end timestamp: "
+                     << final_timestamp_ns.status();
       }
     }
-    collector_->SetTracingEndTimeNs(tracing_end_time_ns);
+
+    // A fatal final timestamp error makes CuptiErrorManager undo the
+    // registered CUPTI operations, including unsubscribe. Do not manually
+    // tear down those operations after that happens.
+    if (!cupti_interface_->Disabled()) {
+      DisableApiTracing(/*unsubscribe=*/false).IgnoreError();
+      DisableActivityTracing().IgnoreError();
+    }
+
+    if (tracing_end_time_ns.ok()) {
+      collector_->SetTracingEndTimeNs(*tracing_end_time_ns);
+    } else {
+      LOG(WARNING) << "Unable to read a CUPTI V2 tracing end timestamp: "
+                   << tracing_end_time_ns.status();
+    }
 
     // Process callback events first because they populate AnnotationMap.
     // Activity events then use that map to attach annotations to GPU events.
@@ -1646,31 +1672,6 @@ absl::Status CuptiTracer::EnableActivityTracing() {
                      << err;
       }
     }
-    if (option_->enable_activity_hardware_tracing) {
-      if (IsCuptiHardwareEventSystemEnabled()) {
-        LOG(INFO) << "CUPTI activity HW trace already enabled.";
-      } else {
-        auto err = cupti_interface_->ActivityEnableHWTrace(true);
-        if (err == CUPTI_ERROR_NOT_SUPPORTED) {
-          LOG(INFO)
-              << "CUPTI activity HW trace not enabled due to not supported on "
-                 "this platform!";
-        } else if (err != CUPTI_SUCCESS) {
-          LOG(WARNING)
-              << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE:"
-              << err << " (" << GetCuptiErrorString(cupti_interface_, err)
-              << ")";
-        } else {
-          LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
-          IsCuptiHardwareEventSystemEnabled() = true;
-        }
-      }
-    } else {
-      if (IsCuptiHardwareEventSystemEnabled()) {
-        LOG(INFO)
-            << "CUPTI activity HW trace already enabled, continue with it.";
-      }
-    }
 
     if (using_v2_subscriber_api_) {
       RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacksV2(
@@ -1772,7 +1773,7 @@ absl::Status CuptiTracer::UnsubscribeAndClearSubscriber() {
   return 0;
 }
 
-uint64_t CuptiTracer::GetTimestampForSubscriber() const {
+absl::StatusOr<uint64_t> CuptiTracer::GetTimestampForSubscriber() const {
   if (!subscriber_is_v2_) {
     return CuptiTracer::GetTimestamp();
   }
@@ -1785,11 +1786,10 @@ uint64_t CuptiTracer::GetTimestampForSubscriber() const {
   if (timestamp_status == CUPTI_SUCCESS) {
     return tsc;
   }
-  LOG_FIRST_N(WARNING, 1) << "CUPTI V2 GetTimestamp failed for the subscriber; "
-                             "returning timestamp 0.";
-  // Return 0 for an unavailable V2 timestamp; dependent events may be dropped
-  // during time normalization.
-  return 0;
+  return absl::InternalError(absl::StrCat(
+      "CUPTI V2 GetTimestamp failed for the subscriber with status ",
+      static_cast<int>(timestamp_status), " (",
+      GetCuptiErrorString(cupti_interface_, timestamp_status), ")"));
 }
 
 // Resource callback happens logically inside a driver API call's enter/exit.
@@ -2039,6 +2039,66 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
         "Insufficient privilege to run libcupti (you need root permission).");
   }
   return "";
+}
+
+/*static*/ absl::Status CuptiTracer::EnableHES() {
+  static absl::Mutex mu(absl::kConstInit);
+  static bool is_hes_enabled ABSL_GUARDED_BY(mu) = false;
+
+  absl::MutexLock lock(mu);
+  if (is_hes_enabled) {
+    LOG(INFO) << "CUPTI activity HW trace already enabled.";
+    return absl::OkStatus();
+  }
+
+  CUresult cu_err = cuInit(0);
+  if (cu_err != CUDA_SUCCESS) {
+    return absl::InternalError(absl::StrCat(
+        "cuInit(0) failed with error code: ", static_cast<int>(cu_err)));
+  }
+
+  CUcontext ctx = nullptr;
+  if (cuCtxGetCurrent(&ctx) == CUDA_SUCCESS && ctx != nullptr) {
+    return absl::FailedPreconditionError(
+        "Cannot enable HES: a CUDA context is already active on the current "
+        "thread.");
+  }
+
+  int gpu_count = NumGpus();
+  for (int i = 0; i < gpu_count; ++i) {
+    CUdevice dev;
+    if (cuDeviceGet(&dev, i) == CUDA_SUCCESS) {
+      unsigned int flags = 0;
+      int active = 0;
+      if (cuDevicePrimaryCtxGetState(dev, &flags, &active) == CUDA_SUCCESS &&
+          active) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Cannot enable HES: active primary CUDA context found on device ",
+            i));
+      }
+    }
+  }
+
+  CuptiInterface* cupti_interface = GetCuptiInterface();
+  auto err = cupti_interface->ActivityEnableHWTrace(true);
+  if (err == CUPTI_ERROR_NOT_SUPPORTED) {
+    LOG(INFO)
+        << "CUPTI activity HW trace not enabled due to not supported on this "
+           "platform!";
+    return absl::UnimplementedError(
+        "CUPTI activity HW trace not supported on this platform.");
+  }
+  if (err != CUPTI_SUCCESS) {
+    LOG(WARNING) << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE: "
+                 << err << " (" << GetCuptiErrorString(cupti_interface, err)
+                 << ")";
+    return absl::InternalError(
+        absl::StrCat("Fail to enable CUPTI activity HW trace: ",
+                     GetCuptiErrorString(cupti_interface, err)));
+  }
+  LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
+  is_hes_enabled = true;
+  return absl::OkStatus();
 }
 
 std::vector<CallbackAnnotationsAndEvents>

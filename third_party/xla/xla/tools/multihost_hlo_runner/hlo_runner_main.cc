@@ -114,6 +114,8 @@ struct HloRunnerConfig {
   bool use_layouts_from_hlo_module = false;
   bool force_auto_layout = false;
   int32_t num_repeats = 1;
+  int32_t num_repeats_with_profiler = 1;
+  bool recreate_profiler_session_between_repeats = false;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
@@ -187,7 +189,22 @@ RunningOptionsFromFlags(const HloRunnerConfig& opts) {
                      " Got: ", opts.output_mode_str));
   }
 
+  if (opts.num_repeats < 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "--num_repeats must be at least 1, got: ", opts.num_repeats));
+  }
+  if (opts.num_repeats_with_profiler < 0 ||
+      opts.num_repeats_with_profiler > opts.num_repeats) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "--num_repeats_with_profiler must be between 0 and --num_repeats (",
+        opts.num_repeats, "), got: ", opts.num_repeats_with_profiler));
+  }
+
   out.num_repeats = static_cast<size_t>(opts.num_repeats);
+  out.num_repeats_with_profiler =
+      static_cast<size_t>(opts.num_repeats_with_profiler);
+  out.recreate_profiler_session_between_repeats =
+      opts.recreate_profiler_session_between_repeats;
   out.log_input_output_mode =
       opts.log_output ? FunctionalHloRunner::LogOutputMode::kLogOutput
                       : FunctionalHloRunner::LogOutputMode::kNotLogOutput;
@@ -560,6 +577,13 @@ int main(int argc, char** argv) {
                 "If set, force auto layout."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
+      tsl::Flag("num_repeats_with_profiler", &opts.num_repeats_with_profiler,
+                "The last `num_repeats_with_profiler` repeats out of "
+                "`num_repeats` will be profiled."),
+      tsl::Flag("recreate_profiler_session_between_repeats",
+                &opts.recreate_profiler_session_between_repeats,
+                "Whether to recreate the profiler session between repeats when "
+                "profiling more than one repeat."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,
                 "A path to a protobuf text file which stores the "
                 "ExecutionOptions message for this HLO module."),

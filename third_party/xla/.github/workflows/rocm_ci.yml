@@ -16,6 +16,7 @@
 name: CI ROCm
 permissions:
   contents: read
+  packages: read
 on:
   pull_request:
   workflow_dispatch:
@@ -29,53 +30,43 @@ on:
       runner_label:
         description: 'Runner label for GPU jobs'
         required: false
-        default: 'amd-do-linux-xla-gpu-gfx950-1'
+        default: 'amd-do-linux-xla-gpu-gfx950-dpx-1'
         type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.ref != 'main' }}
 
+env:
+  ROCM_DISTRO_URL: https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz
+  ROCM_DISTRO_HASH: 1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6
+
 jobs:
   rocm-config:
     runs-on: ubuntu-latest
     outputs:
       docker-image: ${{ steps.out.outputs.docker-image }}
-      docker-image-jax: ${{ steps.out.outputs.docker-image-jax }}
     steps:
       - id: out
         shell: bash
         run: |
-          # hermetic llvm based on  ghcr.io/rocm/jax-ubu22.rocm7.2.4:latest
-          echo "docker-image=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
-          echo "docker-image-jax=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
+          echo "docker-image=ghcr.io/rocm/jax-build-ubu24.rocmless@sha256:68854ed30b800d3e8c390f6e651721e2bead58830da1c59e1b828354eb8f077f" >> "$GITHUB_OUTPUT"
 
   jax:
     needs: rocm-config
     if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
-    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
-    timeout-minutes: 80
+    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
+    timeout-minutes: 220
     # Remove this once the JAX CI is stable.
     continue-on-error: true
+    container: &rocm_container
+      image: ${{ needs.rocm-config.outputs.docker-image }}  # zizmor: ignore[unpinned-images]
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     env:
-      DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image-jax }}
-    container:
-      image: ${{ needs.rocm-config.outputs.docker-image-jax }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
-      volumes: &rocm_container_volumes
-        - /data/ci-cert.crt:/data/ci-cert.crt
-        - /data/ci-cert.key:/data/ci-cert.key
-        - /data:/data
-      options: &rocm_container_options >-
-        --device=/dev/dri
-        --device=/dev/kfd
-        --ipc=host
-        --shm-size=64G
-        --cap-add=SYS_PTRACE
-        --security-opt=seccomp=unconfined
-        --tmpfs /root/.cache/bazel:rw,exec,size=80g
-        --group-add video
-        --env-file /etc/podinfo/gha-gpu-isolation-settings
+      DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
     defaults:
       run:
         shell: bash
@@ -97,7 +88,7 @@ jobs:
         run: lscpu
 
       - name: Run JAX Unit Tests
-        timeout-minutes: 60
+        timeout-minutes: 120
         working-directory: jax
         run: |
           ./ci/run_bazel_test_rocm_rbe.sh \
@@ -111,22 +102,31 @@ jobs:
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
             --jobs=20 \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            --repo_env=SYSROOT_DIST=linux_glibc_2_31 \
             --bes_keywords=jax \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
-            --bes_keywords=pull_request
+            --bes_keywords=pull_request \
+            --build_event_json_file=jax_build_events.json
+
+      - name: Upload JAX BEP File
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: jax-bep
+          path: jax/jax_build_events.json
+          if-no-files-found: warn
   xla:
     needs: rocm-config
     name: XLA Linux x86 AMD Instinct GPU
-    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
+    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
     timeout-minutes: 220
+    container: *rocm_container
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
-      EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/execute_ci_build_upstream.sh
-    container:
-      image: ${{ needs.rocm-config.outputs.docker-image }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
-      volumes: *rocm_container_volumes
-      options: *rocm_container_options
     defaults:
       run:
         shell: bash
@@ -137,9 +137,12 @@ jobs:
           repository: openxla/xla
           persist-credentials: false
 
-      - name: Fetch ROCm XLA Upstream Script from ROCm/xla
+      - name: Fetch ROCm XLA Upstream Scripts from ROCm/xla
+        env:
+          ROCM_XLA_BRANCH: ${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}
         run: |
-          wget -O build_tools/rocm/execute_ci_build_upstream.sh "${EXECUTE_CI_BUILD_URL}"
+          wget -O build_tools/rocm/execute_ci_build_upstream.sh \
+            "https://raw.githubusercontent.com/ROCm/xla/refs/heads/${ROCM_XLA_BRANCH}/build_tools/rocm/execute_ci_build_upstream.sh"
           chmod +x build_tools/rocm/execute_ci_build_upstream.sh
 
       - name: CPU Info
@@ -149,12 +152,13 @@ jobs:
         timeout-minutes: 120
         run: |
           build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
+            --config=rocm_ci_hermetic \
             --config=rocm_rbe \
             --config=ci_single_gpu \
-            --local_test_jobs=1 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
-            --repo_env=ROCM_PATH="/opt/rocm" \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
             --local_test_jobs=1 \
             --internal_spawn_scheduler \
             --strategy=TestRunner=dynamic \
@@ -162,17 +166,32 @@ jobs:
             --bes_keywords=upstream \
             --bes_keywords=gpu \
             --bes_keywords=pull_request \
+            --build_event_json_file=xla_single_gpu_build_events.json
+
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |
           build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
+            --config=rocm_ci_hermetic \
             --config=rocm_rbe \
             --config=ci_rocm_cpu \
             --local_test_jobs=200 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
-            --repo_env=ROCM_PATH="/opt/rocm" \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
+            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \
-            --bes_keywords=pull_request
+            --bes_keywords=pull_request \
+            --build_event_json_file=xla_rocm_cpu_build_events.json
+
+      - name: Upload XLA BEP Files
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: xla-bep
+          path: |
+            xla_single_gpu_build_events.json
+            xla_rocm_cpu_build_events.json
+          if-no-files-found: warn

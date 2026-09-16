@@ -59,14 +59,12 @@ namespace xla::cpu {
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     std::string triple, std::string cpu_name, std::string features,
-    std::string entry_point_name, RelocationModel relocation_model,
-    bool compile_copy_as_llvm_kernel)
+    std::string entry_point_name, RelocationModel relocation_model)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
       entry_point_name_(std::move(entry_point_name)),
-      relocation_model_(relocation_model),
-      compile_copy_as_llvm_kernel_(compile_copy_as_llvm_kernel) {}
+      relocation_model_(relocation_model) {}
 
 CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
 

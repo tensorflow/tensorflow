@@ -774,7 +774,7 @@ optional<Range> MatchLoopRangeWithKnownValues(
   int64_t trip_count_step = 0;
   if (!Match(while_body_indvar_update,
              m::AddAnyOrder(m::Op().Is(while_body_indvar),
-                            m::Op(&trip_count_increase_step_instr)))) {
+                            m::Constant(&trip_count_increase_step_instr)))) {
     if (trip_count_increase_step_instr == nullptr) {
       VLOG(2) << "Pattern-match failed: induction variable is not getting "
                  "updated by an add operation: "

@@ -236,6 +236,10 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       const absl::Status& error,
       absl::Span<const ArraySpec> array_specs) override;
 
+  absl::StatusOr<std::vector<tsl::Future<>>> CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ArrayCopySemantics semantics) override;
+
   absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, ShardingRef sharding,
       absl::Span<ArrayRef> arrays, ArrayCopySemantics array_copy_semantics,

@@ -16,14 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_LAYOUT_ASSIGNMENT_H_
 #define XLA_SERVICE_LAYOUT_ASSIGNMENT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -598,6 +599,7 @@ class LayoutAssignment : public HloModulePass {
   ComputationLayout& saved_entry_computation_layout() {
     return saved_entry_computation_layout_;
   }
+
   virtual bool NegotiateLayout(const HloInstruction* instruction,
                                const Layout& new_layout,
                                const Layout& existing_layout,
@@ -803,6 +805,13 @@ class LayoutAssignment : public HloModulePass {
   absl::Status AddAsyncDoneConstraints(HloInstruction* instruction,
                                        LayoutConstraints* constraints);
 
+  // Propagates while loop parameter and result layouts to subcomputations (such
+  // as conditionals) within the while body or condition.
+  void PropagateWhileLoopLayoutToSubcomputations(HloComputation* computation,
+                                                 const Shape& param_shape,
+                                                 const Shape* result_shape,
+                                                 int64_t priority);
+
   // Propagates layout constraints from the caller instruction into the inner
   // async sub-computation.
   // This is the forward propagation step: it takes the layouts of the operands
@@ -952,6 +961,7 @@ class LayoutAssignment : public HloModulePass {
 
  protected:
   static constexpr int64_t kNumberOfPropagationRounds = 2;
+  static constexpr int64_t kMaxPropagationRounds = 6;
   // Sets up the copy instruction according to the characteristic (sharding,
   // metadata, ...) of the reference instruction. The index argument is used
   // when the instruction is a tuple, and in such case the index represents
@@ -1009,6 +1019,10 @@ class LayoutAssignment : public HloModulePass {
   // Adds constraints related to host Send/Recv instructions.
   absl::Status BuildHostChannelConstraints(HloComputation* computation);
 
+  // Replaces points_to_analysis_ and drops the buffer sets memoized from the
+  // previous analysis.
+  void SetPointsToAnalysis(std::unique_ptr<TuplePointsToAnalysis> analysis);
+
   // Module points to analysis that can be updated for cloned computations.
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 
@@ -1053,17 +1067,54 @@ class LayoutAssignment : public HloModulePass {
   // host.
   ChannelLayoutConstraints host_channel_constraints_;
 
-  // Array-shaped buffers which have not yet been constrained.
-  std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
+  // Array-shaped buffers which have not yet been constrained, in id order.
+  absl::btree_set<LogicalBuffer::Id> unconstrained_buffer_ids_;
 
+  // Buffer sets of points_to_analysis_ memoized by GetBufferSet. The entries
+  // point at buffers owned by the analysis, so the cache is only valid for the
+  // analysis it was filled from: SetPointsToAnalysis, the only place the
+  // analysis changes, clears it, and GetBufferSet checks that pairing.
   mutable absl::flat_hash_map<const HloInstruction*,
                               std::unique_ptr<PointsToSet::BufferSet>>
       buffer_sets_cache_;
+  const TuplePointsToAnalysis* buffer_sets_cache_analysis_ = nullptr;
 
-  // The set of BufferLayoutConstraints applied to the computation.
-  absl::flat_hash_map<const LogicalBuffer*,
-                      std::unique_ptr<BufferLayoutConstraint>>
-      buffer_constraints_;
+  // Buffer layout constraints stored densely by LogicalBuffer::Id, which the
+  // points-to analysis assigns sequentially. Clear() invalidates every entry
+  // in O(1) by bumping a generation, so no table is destroyed and rebuilt per
+  // propagation round.
+  class BufferConstraintTable {
+   public:
+    // The live constraint of `id`, or nullptr.
+    BufferLayoutConstraint* Find(LogicalBuffer::Id id) const {
+      const size_t slot = static_cast<size_t>(id);
+      return slot < constraints_.size() && generations_[slot] == generation_
+                 ? constraints_[slot].get()
+                 : nullptr;
+    }
+
+    // Makes `constraint` the live constraint of `id`.
+    BufferLayoutConstraint* Insert(
+        LogicalBuffer::Id id,
+        std::unique_ptr<BufferLayoutConstraint> constraint) {
+      const size_t slot = static_cast<size_t>(id);
+      if (slot >= constraints_.size()) {
+        constraints_.resize(slot + 1);
+        generations_.resize(slot + 1, 0);
+      }
+      generations_[slot] = generation_;
+      constraints_[slot] = std::move(constraint);
+      return constraints_[slot].get();
+    }
+
+    void Clear() { ++generation_; }
+
+   private:
+    std::vector<std::unique_ptr<BufferLayoutConstraint>> constraints_;
+    std::vector<uint32_t> generations_;
+    uint32_t generation_ = 1;
+  };
+  BufferConstraintTable buffer_constraints_;
 
   // A vector which holds constraints as they are added. Can be cleared with
   // ClearAddedConstraints.
@@ -1072,6 +1123,10 @@ class LayoutAssignment : public HloModulePass {
 
   // Stores the set of while computations that have copy disabled.
   absl::flat_hash_set<const HloComputation*> copy_disabled_while_computations_;
+
+  // Tracks whether while loop parameter/condition layouts changed in the
+  // current propagation round and require another round to converge.
+  bool while_layout_changed_ = false;
 };
 
 }  // namespace xla

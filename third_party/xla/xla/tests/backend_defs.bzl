@@ -34,6 +34,7 @@ NVIDIA_GPU_BACKENDS = [
     "b200",
     "gb200",
     "gb300",
+    "vr200",
 ] + if_google([], ["rtx6000pro"])
 
 # The generic "gpu" backend includes the actual backends in this list.
@@ -44,6 +45,7 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "b200",
     "gb200",
     "gb300",
+    "vr200",
 ] + if_google([], ["rtx6000pro"])
 
 AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
@@ -93,6 +95,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         "b200": (10, 0),
         "gb200": (10, 0),
         "gb300": (10, 3),
+        "vr200": (10, 7),
         "rtx6000pro": (12, 0),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:

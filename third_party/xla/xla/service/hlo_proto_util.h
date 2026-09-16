@@ -30,14 +30,17 @@ namespace xla {
 
 // Returns a serialized representation of the HLO state.
 HloProto MakeHloProto(const HloModule& module,
-                      const BufferAssignment& assignment);
+                      const BufferAssignment& assignment,
+                      HloProtoOptions options = HloProtoOptions());
 void MakeHloProto(const HloModule& module, const BufferAssignment& assignment,
-                  HloProto* proto);
+                  HloProto* proto, HloProtoOptions options = HloProtoOptions());
 
 // Returns a serialized representation of the HLO state, but buffer assignment
 // will not be included in the output.
-HloProto MakeHloProto(const HloModule& module);
-void MakeHloProto(const HloModule& module, HloProto* proto);
+HloProto MakeHloProto(const HloModule& module,
+                      HloProtoOptions options = HloProtoOptions());
+void MakeHloProto(const HloModule& module, HloProto* proto,
+                  HloProtoOptions options = HloProtoOptions());
 
 // Returns the shapes of the parameters of the entry computation. Shape pointers
 // refer to shapes inside of the given HloProto.

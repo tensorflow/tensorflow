@@ -104,6 +104,9 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
           .xla_gpu_experimental_parallel_collective_overlap_limit(),
       module->config()
           .debug_options()
+          .xla_gpu_experimental_parallel_scale_up_collective_overlap_limit(),
+      module->config()
+          .debug_options()
           .xla_gpu_experimental_parallel_async_compute_limit());
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SolLatencyEstimator> estimator,
                    SolLatencyEstimator::Create(

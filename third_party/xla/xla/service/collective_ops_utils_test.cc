@@ -33,23 +33,24 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/array2d.h"
+#include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/collectives/collective_permute_cycle.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -163,8 +164,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId) {
     %copy1 = f32[1,4,512]{2,0,1} copy(all-gather)
     ROOT root = f32[1,4,512]{2,1,0} copy(%copy1)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   HloInstruction* all_gather =
       module->entry_computation()->GetInstructionWithName("all-gather");
@@ -185,8 +185,8 @@ TEST(CollectiveOpsUtilsTest, IsNonFusionCollectiveSendRecv) {
         frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
     ROOT root = tuple(send_ctx, recv_ctx)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   HloInstruction* recv_ctx =
       module->entry_computation()->GetInstructionWithName("recv_ctx");
@@ -206,7 +206,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   }
 
   auto builder = HloComputation::Builder("CollectiveWithChannelId2");
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloInstruction * param_0,
       builder.AddParameter(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p0")));
@@ -225,7 +225,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion.get()), instr);
 
   auto builder2 = HloComputation::Builder("CollectiveWithChannelId2");
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloInstruction * param_1,
       builder2.AddParameter(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p1")));
@@ -272,8 +272,8 @@ TEST(IsExclusivelyCrossModuleTest, CrossModuleNoGlobalIds) {
   int64_t num_replicas = 4;
   int64_t num_partitions = 2;
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0}, {1}, {2}, {3}});
   bool is_exclusively_cross_module =
@@ -286,8 +286,8 @@ TEST(IsExclusivelyCrossModuleTest, CrossReplicaWithGlobalIds) {
   int64_t num_replicas = 8;
   int64_t num_partitions = 1;
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
   bool is_exclusively_cross_module =
@@ -300,8 +300,8 @@ TEST(IsExclusivelyCrossModuleTest, CrossReplicaAndCrossModuleWithGlobalIds) {
   int64_t num_replicas = 4;
   int64_t num_partitions = 2;
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
   bool is_exclusively_cross_module =
@@ -315,8 +315,8 @@ TEST(IsExclusivelyCrossModuleTest, CrossModuleWithGlobalIds) {
   int64_t num_partitions = 2;
 
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1}, {2, 3}, {4, 5}, {6, 7}});
   bool is_exclusively_cross_module =
@@ -343,7 +343,7 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           param_shape, param_0, source_target_pairs, /*channel_id=*/1));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveDeviceListBase> permute_groups_list,
       GetAsyncReplicaGroups(permute_start));
   auto permute_groups = permute_groups_list->flattened_replica_groups();
@@ -365,7 +365,7 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
           /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveDeviceListBase> all_gather_groups_list,
       GetAsyncReplicaGroups(all_gather_start));
   auto all_gather_groups = all_gather_groups_list->flattened_replica_groups();
@@ -394,7 +394,7 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
           /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveDeviceListBase> all_reduce_groups_list,
       GetAsyncReplicaGroups(all_reduce_start));
   auto all_reduce_groups = all_reduce_groups_list->flattened_replica_groups();
@@ -526,8 +526,8 @@ TEST(IsExclusivelyCrossReplicaTest, CrossModuleNoGlobalIds) {
   int64_t num_replicas = 4;
   int64_t num_partitions = 2;
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0}, {1}, {2}, {3}});
 
@@ -540,8 +540,8 @@ TEST(IsExclusivelyCrossReplicaTest, CrossReplicaWithGlobalIds) {
   int64_t num_replicas = 8;
   int64_t num_partitions = 1;
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
 
@@ -554,8 +554,8 @@ TEST(IsExclusivelyCrossReplicaTest, CrossReplicaAndCrossModuleWithGlobalIds) {
   int64_t num_replicas = 4;
   int64_t num_partitions = 2;
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
 
@@ -569,8 +569,8 @@ TEST(IsExclusivelyCrossReplicaTest, CrossModuleWithGlobalIds) {
   int64_t num_partitions = 2;
 
   ComputationPlacer placer;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
-                          placer.AssignDevices(num_replicas, num_partitions));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                       placer.AssignDevices(num_replicas, num_partitions));
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1}, {2, 3}, {4, 5}, {6, 7}});
 
@@ -646,7 +646,7 @@ TEST_P(GetCollectOpGroupModeTest, Test) {
   absl::StatusOr<CollectiveOpGroupMode> actual =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
   if (tc.expected) {
-    TF_ASSERT_OK(actual.status());
+    ASSERT_OK(actual.status());
     EXPECT_EQ(*actual, *tc.expected);
   } else {
     EXPECT_FALSE(actual.ok());
@@ -688,6 +688,13 @@ std::vector<TestCaseForInstruction> GetTestCasesForInstruction() {
       {HloOpcode::kCollectiveBroadcast, true, std::nullopt,
        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kCollectiveBroadcast, false, std::nullopt,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {HloOpcode::kCollectiveReduce, true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
+      {HloOpcode::kCollectiveReduce, true, false,
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
+      {HloOpcode::kCollectiveReduce, false, false,
        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kCollectivePermute, true, std::nullopt,
        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
@@ -738,9 +745,9 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
 
   // Create the entry computation for testing the group mode of the collectives.
   auto builder = HloComputation::Builder("entry");
-  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * parameter,
-                          builder.AddParameter(HloInstruction::CreateParameter(
-                              0, two_elements, "parameter")));
+  ASSERT_OK_AND_ASSIGN(HloInstruction * parameter,
+                       builder.AddParameter(HloInstruction::CreateParameter(
+                           0, two_elements, "parameter")));
 
   HloInstruction* collective;
   switch (test_case.op_code) {
@@ -751,8 +758,8 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
       break;
     case HloOpcode::kAllReduce: {
       // Create a computation to be applied by the all-reduce instruction.
-      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloComputation> max_computation,
-                              CreateMaxComputation());
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloComputation> max_computation,
+                           CreateMaxComputation());
 
       collective = builder.AddInstruction(HloInstruction::CreateAllReduce(
           two_elements, {parameter}, max_computation.get(), {group},
@@ -770,6 +777,19 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
               two_elements, {parameter}, {group}, /*constrain_layout=*/true,
               channel_id()));
       break;
+    case HloOpcode::kCollectiveReduce: {
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloComputation> max_computation,
+                           CreateMaxComputation());
+      std::unique_ptr<CollectiveDeviceListBase> device_list =
+          std::make_unique<CollectiveDeviceList>(std::vector<ReplicaGroup>{});
+      collective =
+          builder.AddInstruction(HloInstruction::CreateCollectiveReduce(
+              two_elements, {parameter}, max_computation.get(),
+              std::move(device_list),
+              /*constrain_layout=*/true, channel_id(),
+              use_global_device_ids()));
+      break;
+    }
     case HloOpcode::kCollectivePermute:
       collective =
           builder.AddInstruction(HloInstruction::CreateCollectivePermute(
@@ -777,7 +797,7 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
       break;
     case HloOpcode::kRaggedAllToAll: {
       // Create a parameter with s64 to use a offset and size operands.
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           HloInstruction * offset_size_parameter,
           builder.AddParameter(HloInstruction::CreateParameter(
               1, ShapeUtil::MakeShape(S64, {4}), "offset_size_parameter")));
@@ -792,8 +812,8 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
     default:
       LOG(FATAL) << "Unexpected opcode.";
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto collective_group_mode,
-                          GetCollectiveOpGroupMode(collective));
+  ASSERT_OK_AND_ASSIGN(auto collective_group_mode,
+                       GetCollectiveOpGroupMode(collective));
   EXPECT_EQ(collective_group_mode, test_case.expected_group_mode);
 }
 
@@ -1276,7 +1296,7 @@ TEST_P(GetParticipantCountsForReplicaGroupsTest, Test) {
 
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups(tc.replica_groups);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<int64_t> actual,
       GetParticipantCountsForReplicaGroups(tc.num_replicas, tc.num_partitions,
                                            replica_groups, tc.group_mode));

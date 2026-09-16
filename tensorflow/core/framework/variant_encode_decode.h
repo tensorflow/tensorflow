@@ -52,52 +52,62 @@ struct TypeResolver {};
 
 // Specialization for POD type
 template <typename T>
-void EncodeVariantImpl(const T& value, TypeResolver<T, true /* is_pod */>,
+bool EncodeVariantImpl(const T& value, TypeResolver<T, true /* is_pod */>,
                        VariantTensorData* data) {
   data->set_metadata(value);
+  return true;
 }
 
 // Specialization for tensorflow::Tensor
 template <typename T>
-void EncodeVariantImpl(const T& value,
+bool EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, true /* Tensor */>,
                        VariantTensorData* data) {
   data->tensors_.clear();
   data->tensors_.push_back(value);
+  return true;
 }
 
 // Specialization for protobuf
 template <typename T>
-void EncodeVariantImpl(const T& value,
+bool EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     true /* protobuf */>,
                        VariantTensorData* data) {
   if (!value.SerializeToString(&data->metadata_)) {
     data->metadata_.clear();
     LOG(ERROR) << "Failed to encode variant " << value.DebugString();
+    return false;
   }
+  return true;
 }
 
 // Specialization for other types
 template <typename T>
-typename std::enable_if<
-    !std::is_pointer<typename std::decay<T>::type>::value>::type
+typename std::enable_if<!std::is_pointer<typename std::decay<T>::type>::value,
+                        bool>::type
 EncodeVariantImpl(const T& value,
                   TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                false /* protobuf */>,
                   VariantTensorData* data) {
-  value.Encode(data);
+  if constexpr (std::is_void_v<decltype(value.Encode(data))>) {
+    value.Encode(data);
+    return true;
+  } else {
+    return static_cast<bool>(value.Encode(data));
+  }
 }
 
 // Specialization for pointers
 template <typename T>
-typename std::enable_if<
-    std::is_pointer<typename std::decay<T>::type>::value>::type
+typename std::enable_if<std::is_pointer<typename std::decay<T>::type>::value,
+                        bool>::type
 EncodeVariantImpl(const T& value,
                   TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                false /* protobuf */>,
                   VariantTensorData* data) {
   // Pointers cannot be encoded.
+  return false;
 }
 
 // Specialization for POD type
@@ -254,9 +264,10 @@ std::string DebugStringVariant(const T& value) {
 }
 
 template <typename T>
-void EncodeVariant(const T& value, VariantTensorData* data) {
-  EncodeVariantImpl(value, TypeResolver<T>(), data);
+bool EncodeVariant(const T& value, VariantTensorData* data) {
+  if (!EncodeVariantImpl(value, TypeResolver<T>(), data)) return false;
   data->set_type_name(TypeNameVariant(value));
+  return true;
 }
 
 template <typename T>
@@ -265,12 +276,12 @@ bool DecodeVariant(VariantTensorData* data, T* value) {
 }
 
 template <typename T>
-void EncodeVariant(const T& value, std::string* buf) {
+bool EncodeVariant(const T& value, std::string* buf) {
   VariantTensorData data;
-  EncodeVariantImpl(value, TypeResolver<T>(), &data);
+  if (!EncodeVariantImpl(value, TypeResolver<T>(), &data)) return false;
   data.set_type_name(TypeNameVariant(value));
   DCHECK(buf != nullptr);
-  data.SerializeToString(buf);
+  return data.SerializeToString(buf);
 }
 
 template <typename T>
@@ -288,21 +299,21 @@ template <>
 std::string TypeNameVariant(const VariantTensorDataProto& value);
 
 template <>
-void EncodeVariant(const VariantTensorDataProto& value,
+bool EncodeVariant(const VariantTensorDataProto& value,
                    VariantTensorData* data);
 
 template <>
 bool DecodeVariant(VariantTensorData* data, VariantTensorDataProto* value);
 
 template <>
-void EncodeVariant(const VariantTensorDataProto& value, std::string* buf);
+bool EncodeVariant(const VariantTensorDataProto& value, std::string* buf);
 
 template <>
 bool DecodeVariant(std::string* buf, VariantTensorDataProto* value);
 
 // Encodes an array of Variant objects in to the given StringListEncoder.
 // `variant_array` is assumed to point to an array of `n` Variant objects.
-void EncodeVariantList(const Variant* variant_array, int64_t n,
+bool EncodeVariantList(const Variant* variant_array, int64_t n,
                        std::unique_ptr<port::StringListEncoder> e);
 
 // Decodes an array of Variant objects from the given StringListDecoder.

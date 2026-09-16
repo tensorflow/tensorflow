@@ -1093,21 +1093,52 @@ TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp) {
 
   // Create a tile for a scalar carry output (output_index = 1)
   Tile tile_carry = GetTestTile(*tiling_space, {});
-  ASSERT_OK_AND_ASSIGN(
-      auto tiled_operands_carry,
-      PropagateTileToInput(*tiling_space, *scan, tile_carry, 1));
+  EXPECT_THAT(PropagateTileToInput(*tiling_space, *scan, tile_carry, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
 
-  EXPECT_THAT(tiled_operands_carry, MatchToString(R"(
-    0) (tid_0)
-         -> offsets []
-            sizes []
-            strides []
-            upper bounds []
-    1) (tid_0)
-         -> offsets []
-            sizes []
-            strides []
-            upper bounds []
+TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp2D) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add1 = f32[4] add(p0, p1)
+      ROOT tuple = (f32[4], f32[4]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4, 8] parameter(0)
+      p1 = f32[4] parameter(1)
+      scan = (f32[4, 8], f32[4]) scan(p0, p1), dimensions={1}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4, 8] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for a 2D array output (output_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4, 8});
+  ASSERT_OK_AND_ASSIGN(auto tiled_operands_arr,
+                       PropagateTileToInput(*tiling_space, *scan, tile_arr, 0));
+
+  // operand 0 gets the full 2D tile, operand 1 (carry) gets a 1D tile with
+  // the scan dimension (dim 1) sliced away.
+  EXPECT_THAT(tiled_operands_arr, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+            sizes [ts_0, ts_1]
+            strides [1, 2]
+            upper bounds [4, 8]
+    1) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
   )"));
 }
 
@@ -1158,6 +1189,52 @@ TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp) {
   Tile tile_carry = GetTestTile(*tiling_space, {});
   EXPECT_THAT(PropagateTileToOutput(*tiling_space, *scan, tile_carry, 1),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp2D) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add1 = f32[4] add(p0, p1)
+      ROOT tuple = (f32[4], f32[4]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4, 8] parameter(0)
+      p1 = f32[4] parameter(1)
+      scan = (f32[4, 8], f32[4]) scan(p0, p1), dimensions={1}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4, 8] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for a 2D array input (input_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4, 8});
+  ASSERT_OK_AND_ASSIGN(
+      auto output_tiles,
+      PropagateTileToOutput(*tiling_space, *scan, tile_arr, 0));
+
+  // output 0 gets the full 2D tile, output 1 (carry) gets a 1D tile with
+  // the scan dimension (dim 1) sliced away.
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+            sizes [ts_0, ts_1]
+            strides [1, 2]
+            upper bounds [4, 8]
+    1) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+  )"));
 }
 
 TEST_F(TilePropagationTest, CanPropagateToGetTupleElementOp) {

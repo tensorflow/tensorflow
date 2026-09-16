@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -46,6 +47,18 @@ namespace profiler {
 using tensorflow::ProfileOptions;
 using tensorflow::profiler::XSpace;
 using tsl::ReadBoolFromEnvVar;
+
+static void MaybeEnableHES() {
+  bool enable_hes = false;
+  tsl::ReadBoolFromEnvVar("TF_GPU_CUPTI_ENABLE_ACTIVITY_HW_TRACING", false,
+                          &enable_hes)
+      .IgnoreError();
+  if (enable_hes) {
+    if (auto status = CuptiTracer::EnableHES(); !status.ok()) {
+      LOG(WARNING) << "Failed to enable HES: " << status.message();
+    }
+  }
+}
 
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
@@ -102,11 +115,6 @@ absl::Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
-  // TODO: Change default to true once we have more confidence in HES.
-  ReadBoolFromEnvVar("TF_GPU_CUPTI_ENABLE_ACTIVITY_HW_TRACING", false,
-                     &options_.enable_activity_hardware_tracing)
-      .IgnoreError();
-
 // CUDA/CUPTI 10 have issues (leaks and crashes) with cuptiFinalize.
 #if CUDA_VERSION >= 11000
   options_.cupti_finalize = true;
@@ -135,7 +143,8 @@ absl::Status GpuTracer::DoStart() {
 
   // A fresh V2 subscriber must exist before its timestamp API can be used.
   ABSL_RETURN_IF_ERROR(cupti_tracer_->PrepareForProfilerStart(options_));
-  uint64_t start_gputime_ns = cupti_tracer_->GetTimestampForSubscriber();
+  ABSL_ASSIGN_OR_RETURN(uint64_t start_gputime_ns,
+                   cupti_tracer_->GetTimestampForSubscriber());
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
@@ -207,8 +216,13 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
         }
       }
       if (cupti_collector_) {
-        uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
-        cupti_collector_->Export(space, end_gpu_ns);
+        absl::StatusOr<uint64_t> end_gpu_ns =
+            cupti_collector_->GetTracingEndTimeNs();
+        if (end_gpu_ns.ok()) {
+          cupti_collector_->Export(space, *end_gpu_ns);
+        } else {
+          space->add_errors(end_gpu_ns.status().ToString());
+        }
       }
       return absl::OkStatus();
     }
@@ -236,6 +250,7 @@ std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
 }
 
 auto register_gpu_tracer_factory = [] {
+  MaybeEnableHES();
   RegisterProfilerFactory(&CreateGpuTracer);
   return 0;
 }();

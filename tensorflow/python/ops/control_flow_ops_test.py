@@ -228,6 +228,19 @@ class TupleTestCase(test_util.TensorFlowTestCase):
     res = control_flow_ops.tuple([a, b])
     self.assertLen(res, 2)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRepeatedVariableUnderTFFunction(self):
+    v = variables.Variable([10.0, 20.0])
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def compute():
+      return control_flow_ops.tuple([v, v, v])
+
+    result = self.evaluate(compute())
+    for t in result:
+      self.assertAllClose(t, [10.0, 20.0])
+
 
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
@@ -1647,6 +1660,25 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     r = while_loop.while_loop(
         c, b, [i], return_same_structure=True, maximum_iterations=50)
     self.assertEqual(self.evaluate(r), [10])
+
+  @test_util.run_v2_only
+  def testEagerWhileLoopSingleLoopVarBareTensorBodyPreservesShape(self):
+    x = constant_op.constant([[5.0]], shape=[1, 1])
+    shapes_seen = []
+
+    def cond(x):
+      shapes_seen.append(x.shape.as_list())
+      return math_ops.greater(x[0, 0], 3)
+
+    def body(x):
+      return x - 1
+
+    r = while_loop.while_loop(cond, body, [x], return_same_structure=True)
+
+    self.assertAllEqual(shapes_seen, [[1, 1]] * len(shapes_seen))
+    self.assertLen(shapes_seen, 3)
+    self.assertIsInstance(r, list)
+    self.assertAllClose(self.evaluate(r), [[[3.0]]])
 
   @test_util.enable_control_flow_v2
   @test_util.run_in_graph_and_eager_modes

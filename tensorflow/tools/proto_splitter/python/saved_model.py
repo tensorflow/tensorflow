@@ -43,5 +43,5 @@ class SavedModelSplitter(split.ComposableSplitter):
     if self._proto.ByteSize() >= constants.max_size():
       # Create a chunk for the GraphDef, and ensure the GraphDef is merged in
       # first by adding it at index 1. The 0th chunk is the SavedModel itself.
-      self.add_chunk(graph_def, graph_def_fields, index=1)
+      self.add_chunk(graph_def, graph_def_fields, index=1)  # pyrefly: ignore[unbound-name]
       self._proto.meta_graphs[0].ClearField("graph_def")

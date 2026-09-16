@@ -353,6 +353,7 @@ class TransposePlan {
   absl::InlinedVector<int64_t, 4> b_tiling_;
   bool a_is_tiled_ = false;
   bool b_is_tiled_ = false;
+  bool is_identity_permutation_ = false;
 
   // Per-chunk loop nests. Each loop nest has its own start/end bounds
   // representing one chunk of the work.

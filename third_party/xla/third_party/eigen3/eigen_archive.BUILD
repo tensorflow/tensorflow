@@ -78,3 +78,28 @@ filegroup(
     srcs = EIGEN_SOURCES,
     visibility = ["//visibility:public"],
 )
+
+# ==============================================================================
+# Eigen BLAS Library (:blas)
+# ==============================================================================
+
+cc_library(
+    name = "blas",
+    srcs = glob([
+        "blas/*.cpp",
+        "blas/*.h",
+        "blas/f2c/*.c",
+        "blas/f2c/*.h",
+    ]) + [
+        "Eigen/src/misc/blas.h",
+    ],
+    hdrs = ["blas/blas.h"],
+    copts = ["-O3"],
+    includes = [
+        "blas",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":eigen3",
+    ],
+)

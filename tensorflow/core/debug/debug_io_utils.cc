@@ -694,6 +694,14 @@ absl::Status DebugFileIO::DumpTensorToEventFile(
 }
 
 absl::Status DebugFileIO::RecursiveCreateDir(Env* env, const std::string& dir) {
+  if (dir.empty()) {
+    // io::Dirname() returns "" for any path with no '/' component; this is
+    // a fixed point (Dirname("") == ""). It means there is no parent
+    // directory left to create: any remaining path is relative to the
+    // current working directory. Stop here instead of recursing forever.
+    return absl::OkStatus();
+  }
+
   if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
     // The path already exists as a directory. Return OK right away.
     return absl::OkStatus();

@@ -169,9 +169,9 @@ absl::Status AbstractArraySpec::ToProto(AbstractArraySpecProto& proto,
   shape().ToProto(*proto.mutable_shape(), version);
   ABSL_ASSIGN_OR_RETURN(*proto.mutable_sharding_spec(),
                    sharding_spec()->ToProto(version));
-  if (memory_kind().memory_kind().has_value()) {
+  if (!memory_kind().is_default()) {
     // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
-    proto.set_memory_kind(std::string(*memory_kind().memory_kind()));
+    proto.set_memory_kind(std::string(memory_kind().value()));
   }
   if (layout() != nullptr) {
     proto.set_layout(layout()->Serialize());

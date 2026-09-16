@@ -125,6 +125,23 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                    DeviceAddressBase source,
                                    uint64_t size) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateMemcpyD2HNode(
+      absl::Span<const GraphNodeHandle> dependencies, void* destination,
+      DeviceAddressBase source, uint64_t size) override;
+
+  absl::Status UpdateMemcpyD2HNode(GraphNodeHandle node_handle,
+                                   void* destination, DeviceAddressBase source,
+                                   uint64_t size) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateMemcpyH2DNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      DeviceAddressBase destination, const void* source,
+      uint64_t size) override;
+
+  absl::Status UpdateMemcpyH2DNode(GraphNodeHandle node_handle,
+                                   DeviceAddressBase destination,
+                                   const void* source, uint64_t size) override;
+
   absl::Status PopulateDnnGraphNode(
       dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands) override;
 
@@ -145,6 +162,10 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
                                      const CommandBuffer& nested) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateHostNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      absl::AnyInvocable<void()> callback) override;
 
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,

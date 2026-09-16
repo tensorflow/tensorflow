@@ -574,7 +574,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   OwnedDataPtr owned_data_;
 };
 
-ABSL_ATTRIBUTE_UNUSED char NanoArray::ID = 'A';  // NOLINT
+[[maybe_unused]] char NanoArray::ID = 'A';  // NOLINT
 
 // Sharded array implementation. Represents an array that should be assembled
 // from multiple arrays, but we aren't sure how to assemble it yet.
@@ -693,7 +693,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
     return Ready(Internal("Cannot copy sharded array to host buffer."));
   }
 
-  ABSL_ATTRIBUTE_UNUSED static char ID;  // NOLINT
+  [[maybe_unused]] static char ID;  // NOLINT
 
  private:
   ShardedNanoArray(NanoIfrtClient* client, ifrt::DType dtype,
@@ -838,7 +838,7 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
   std::vector<ifrt::ValueRef> values_;
 };
 
-ABSL_ATTRIBUTE_UNUSED char NanoTuple::ID = 'T';  // NOLINT
+[[maybe_unused]] char NanoTuple::ID = 'T';  // NOLINT
 
 // Executable implementation.
 class NanoExecutable final
@@ -1240,7 +1240,7 @@ class NanoExecutable final
   const xla::ifrt::UserContextRef user_context_;
 };
 
-ABSL_ATTRIBUTE_UNUSED char NanoExecutable::ID = 'E';  // NOLINT
+[[maybe_unused]] char NanoExecutable::ID = 'E';  // NOLINT
 
 // Compiler implementation.
 class NanoCompiler final
@@ -1280,7 +1280,7 @@ class NanoCompiler final
   NanoIfrtClient* client_;
 };
 
-ABSL_ATTRIBUTE_UNUSED char NanoCompiler::ID = 'C';  // NOLINT
+[[maybe_unused]] char NanoCompiler::ID = 'C';  // NOLINT
 
 // Memory implementation. There is only one address space so this doesn't do
 // much.
@@ -1310,7 +1310,7 @@ class NanoMemory final
   NanoIfrtClient* client_;
 };
 
-ABSL_ATTRIBUTE_UNUSED char NanoMemory::ID = 'M';  // NOLINT
+[[maybe_unused]] char NanoMemory::ID = 'M';  // NOLINT
 
 // Device implementation. There is only one device so this doesn't do much.
 class NanoDevice final
@@ -1356,7 +1356,7 @@ class NanoDevice final
   ifrt::Memory* memory_;
 };
 
-ABSL_ATTRIBUTE_UNUSED char NanoDevice::ID = 'D';  // NOLINT
+[[maybe_unused]] char NanoDevice::ID = 'D';  // NOLINT
 
 }  // namespace
 
@@ -1416,6 +1416,13 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::MakeErrorArrays(
     const absl::Status& error, absl::Span<const ifrt::ArraySpec> array_specs) {
   return absl::UnimplementedError(
       "NanoIfrtClient does not support MakeErrorArrays.");
+}
+
+absl::StatusOr<std::vector<tsl::Future<>>>
+NanoIfrtClient::CopyArraysToHostBufferShards(
+    absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+    ifrt::ArrayCopySemantics semantics) {
+  return ifrt::ClientCopyArraysToHostBufferShards(this, specs, semantics);
 }
 
 absl::StatusOr<ifrt::ArrayRef>

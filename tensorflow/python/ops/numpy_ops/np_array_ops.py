@@ -100,7 +100,7 @@ def ones_like(a, dtype=None):
 def eye(N, M=None, k=0, dtype=float):  # pylint: disable=invalid-name,missing-docstring
   if dtype:
     dtype = np_utils.result_type(dtype)
-  if not M:
+  if M is None:
     M = N
   # Making sure N, M and k are `int`
   N = int(N)
@@ -296,6 +296,16 @@ def arange(start, stop=None, step=1, dtype=None):
     return array([], dtype=dtype)
   # TODO(srbs): There are some bugs when start or stop is float type and dtype
   # is integer type.
+  if dtypes.as_dtype(dtype).is_floating:
+    # Build the range at the resolved precision so the values follow NumPy;
+    # handing the Python scalars to tf.range directly computes them as
+    # float32 even when the output dtype is float64.
+    limit = None if stop is None else ops.convert_to_tensor(stop, dtype=dtype)
+    return math_ops.range(
+        ops.convert_to_tensor(start, dtype=dtype),
+        limit=limit,
+        delta=ops.convert_to_tensor(step, dtype=dtype),
+    )
   return math_ops.cast(
       math_ops.range(start, limit=stop, delta=step), dtype=dtype
   )
@@ -317,6 +327,11 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
       np_utils.logical_or(math_ops.equal(v_rank, 1), math_ops.equal(v_rank, 2)),
       [v_rank],
   )
+
+  if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
+    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
+  elif not isscalar(k):
+    raise ValueError(f'k must be an integer scalar, got {k}')
 
   def _diag(v, k):
     return np_utils.cond(
@@ -507,8 +522,19 @@ def cumprod(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   if axis is None:
     a = ravel(a)
     axis = 0
-  elif axis < 0:
-    axis += array_ops.rank(a)
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
+    elif axis < 0:
+      axis += array_ops.rank(a)
   return math_ops.cumprod(a, axis)
 
 
@@ -524,8 +550,19 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   if axis is None:
     a = ravel(a)
     axis = 0
-  elif axis < 0:
-    axis += array_ops.rank(a)
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
+    elif axis < 0:
+      axis += array_ops.rank(a)
   return math_ops.cumsum(a, axis)
 
 
@@ -733,10 +770,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
       centered = input_tensor - means
       if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-        centered = math_ops.cast(
-            math_ops.real(centered * math_ops.conj(centered)),
-            input_tensor.dtype,
-        )
+        # The variance of a complex tensor is real; keep the real dtype like
+        # math_ops.reduce_variance and NumPy do.
+        centered = math_ops.real(centered * math_ops.conj(centered))
       else:
         centered = math_ops.square(centered)
       squared_deviations = math_ops.reduce_sum(
@@ -751,9 +787,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
         n = math_ops.reduce_prod(
             array_ops.gather(array_ops.shape(input_tensor), axis)
         )
-      n = math_ops.cast(n - ddof, input_tensor.dtype)
+      n = math_ops.cast(n - ddof, squared_deviations.dtype)
 
-      return math_ops.cast(math_ops.divide(squared_deviations, n), dtype)
+      return math_ops.divide(squared_deviations, n)
 
   else:
     reduce_fn = math_ops.reduce_variance
@@ -844,12 +880,15 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
     # Use float as the working dtype when a.dtype is exact (e.g. integer),
     # because `decimals` can be negative.
     float_dtype = np_utils.result_type(float)
-    a = a.astype(float_dtype)
+    # `Tensor.astype` only exists once `enable_numpy_methods_on_tensor()`
+    # has been called, and is an alias of `math_ops.cast`; calling `cast`
+    # directly keeps `around` working without that opt-in.
+    a = math_ops.cast(a, float_dtype)
     factor = math_ops.cast(factor, float_dtype)
   a = math_ops.multiply(a, factor)
   a = math_ops.round(a)
   a = math_ops.divide(a, factor)
-  return a.astype(dtype)
+  return math_ops.cast(a, dtype)
 
 
 setattr(np_arrays.ndarray, '__round__', around)
@@ -1013,14 +1052,35 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
   a_rank = np_utils._maybe_static(array_ops.rank(a))  # pylint: disable=protected-access
 
   def _correct_axis(axis, rank):
-    if axis < 0:
-      return axis + rank
-    return axis
+    if isinstance(axis, (int, np.integer)) and isinstance(
+        rank, (int, np.integer)
+    ):
+      axis = int(axis)
+      rank = int(rank)
+      if not (-rank <= axis < rank):
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input {a} of rank {rank}.'
+        )
+      return axis + rank if axis < 0 else axis
+    rank_t = ops.convert_to_tensor(rank)
+    axis_t = ops.convert_to_tensor(axis)
+    control_flow_assert.Assert(
+        math_ops.reduce_all(
+            math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
+        ),
+        ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
+    )
+    return array_ops.where_v2(axis_t < 0, np_utils.add(axis_t, rank_t), axis_t)
 
   source = tuple(_correct_axis(axis, a_rank) for axis in source)
   destination = tuple(_correct_axis(axis, a_rank) for axis in destination)
 
-  if a.shape.rank is not None:
+  if (
+      isinstance(a_rank, (int, np.integer))
+      and builtins.all(isinstance(x, (int, np.integer)) for x in source)
+      and builtins.all(isinstance(x, (int, np.integer)) for x in destination)
+  ):
     perm = [i for i in range(a_rank) if i not in source]
     for dest, src in sorted(zip(destination, source)):
       assert dest <= len(perm)
@@ -1627,12 +1687,14 @@ def broadcast_arrays(*args, **kwargs):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.sign', v1=[])
 @np_utils.np_doc_only('sign')
 def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstring,redefined-outer-name
-  if out:
-    raise ValueError('tf.numpy doesnt support setting out.')
-  if where:
-    raise ValueError('tf.numpy doesnt support setting where.')
+  if out is not None:
+    raise ValueError("tf.numpy doesn't support setting out.")
+  if where is not None:
+    raise ValueError("tf.numpy doesn't support setting where.")
   if kwargs:
-    raise ValueError('tf.numpy doesnt support setting {}'.format(kwargs.keys()))
+    raise ValueError(
+        "tf.numpy doesn't support setting {}".format(kwargs.keys())
+    )
 
   x = asarray(x)
 
@@ -2147,7 +2209,9 @@ def _with_index_update_helper(update_method, a, slice_spec, updates):
   a_dtype = a.dtype
   a, updates = _promote_dtype_binary(a, updates)
   result_t = _slice_helper(a, slice_spec, update_method, updates)
-  return result_t.astype(a_dtype)
+  # See the note in `around`: `astype` depends on an opt-in that this
+  # module-level helper does not require of its callers.
+  return math_ops.cast(result_t, a_dtype)
 
 
 setattr(np_arrays.ndarray, '_numpy_style_getitem', _getitem)

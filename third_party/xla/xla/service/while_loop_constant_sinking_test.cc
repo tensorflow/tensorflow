@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/service/while_loop_constant_sinking.h"
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -56,17 +56,15 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
-                               /*sink_only_scalar_constants=*/true)
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConstantSinking(
+                                         /*sink_broadcast_of_constants=*/false,
+                                         /*sink_only_scalar_constants=*/true)
+                                         .Run(module.get()));
   ASSERT_FALSE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       changed, WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
                                         /*sink_only_scalar_constants=*/false)
                    .Run(module.get()));
@@ -103,14 +101,12 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
-                               /*sink_only_scalar_constants=*/false)
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConstantSinking(
+                                         /*sink_broadcast_of_constants=*/false,
+                                         /*sink_only_scalar_constants=*/false)
+                                         .Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto while_instr = module->entry_computation()->root_instruction();
@@ -147,16 +143,14 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false)
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConstantSinking(
+                                         /*sink_broadcast_of_constants=*/false)
+                                         .Run(module.get()));
   ASSERT_FALSE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       changed, WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/true)
                    .Run(module.get()));
   ASSERT_TRUE(changed);
@@ -194,13 +188,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/true)
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConstantSinking(
+                                         /*sink_broadcast_of_constants=*/true)
+                                         .Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_instr = module->entry_computation()->root_instruction();
@@ -237,11 +229,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body.sunk");
@@ -278,11 +269,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body.sunk");
@@ -318,11 +308,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_instr = module->entry_computation()->root_instruction();
@@ -366,11 +355,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body.sunk");
@@ -408,11 +396,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body.sunk");
@@ -454,11 +441,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_condition = module->GetComputationWithName("condition.sunk");
@@ -493,11 +479,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_instr = module->entry_computation()->root_instruction();
@@ -535,11 +520,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_condition = module->GetComputationWithName("condition.sunk");
@@ -578,11 +562,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_condition = module->GetComputationWithName("condition.sunk");
@@ -629,10 +612,9 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConstantSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_condition = module->GetComputationWithName("condition.sunk");
@@ -669,14 +651,12 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
-                               /*sink_only_scalar_constants=*/false)
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConstantSinking(
+                                         /*sink_broadcast_of_constants=*/false,
+                                         /*sink_only_scalar_constants=*/false)
+                                         .Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body.sunk");
@@ -711,14 +691,12 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
-                               /*sink_only_scalar_constants=*/false)
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConstantSinking(
+                                         /*sink_broadcast_of_constants=*/false,
+                                         /*sink_only_scalar_constants=*/false)
+                                         .Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_EQ(module->computation_count(), 2);
 }

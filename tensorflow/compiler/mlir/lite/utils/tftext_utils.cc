@@ -84,7 +84,7 @@ LogicalResult VerifyWhitespaceTokenizer(func::FuncOp func) {
   // * 1st output is the value of ragged tensor;
   // * 2nd output is the offset.
   //
-  // In the case of batched input tesnor,
+  // In the case of batched input tensor,
   // Whitespace tokenizer has 3 outputs to make up a nested ragged tensor:
   // * 1st output is the value of ragged tensor;
   // * 2nd output is the inner offset;

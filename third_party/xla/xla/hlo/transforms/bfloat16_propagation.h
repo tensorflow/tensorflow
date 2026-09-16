@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_BFLOAT16_PROPAGATION_H_
 #define XLA_HLO_TRANSFORMS_BFLOAT16_PROPAGATION_H_
 
+#include <array>
+#include <cstdint>
+#include <deque>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -24,8 +28,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -175,45 +181,85 @@ class BFloat16Propagation : public HloModulePass {
 
   // ***************************
   // Functions called by the final inconsistency resolving pass.
+  //
+  // The resolving pass runs a single BFS over the F32 constraint graph. Its
+  // nodes are the HLO values and positions of the module; an edge u -> v
+  // means "if u must be F32, then v must be F32":
+  //  * A value constrains its positions and the in-place output positions
+  //    aliased with it.
+  //  * A position constrains the values whose AllUsersConsumeBF16 check
+  //    reads it, and the F32 values it aliases.
+  //  * A call site position constrains the same position of the roots it
+  //    calls; an operand position constrains the same position of the
+  //    parameters called with it. These edges are called pushes.
+  //  * A scan carry init position constrains the other three carry slots.
+  // The BFS starts from the seeds, the nodes that must be F32 up front;
+  // every position it does not reach becomes BF16. Pushes are one way: F32
+  // crossing a call boundary is final, and a BF16 call site never overrides
+  // a callee that must be F32. Remaining call boundary mismatches are
+  // patched with converts by ResolveInconsistentFusions/Scans.
 
   // Adjusts the output shapes of HloInstructions such that if two
   // HloInstructions have aliasing buffers in their outputs, they must have the
   // same precision.
   void ResolveInconsistencyOfAliasingBuffers(HloModule* module);
 
-  // Resolves inconsistency of aliasing buffers for the given computation, and
-  // recursively runs on a while instruction's condition and body until a fixed
-  // point is reached.
-  bool ResolveInconsistencyOfAliasingBuffersHelper(
-      HloComputation* computation,
-      absl::flat_hash_set<const HloComputation*>* visited_computations);
+  // Builds the seeds and edges of the F32 constraint graph.
+  void BuildF32ConstraintGraph(HloModule* module);
 
-  // Makes the parameters of called computations match how they are called by
-  // the given HLO.
-  void AdjustCalledComputationParameters(HloInstruction* hlo);
+  // Fills push_roots_, push_params_ and bf16_pushable_positions_.
+  void BuildCallBoundaryPushIndex(
+      absl::Span<HloComputation* const> computations);
 
-  // Makes the root instructions of called computations match how they are used
-  // by the given HLO.
-  void AdjustCalledComputationRoot(HloInstruction* hlo);
+  // Registers the parameters of a called computation as push targets of the
+  // corresponding call site operands.
+  void AddPushableParams(HloComputation* callee,
+                         absl::Span<HloInstruction* const> operands);
 
-  // For an associative scan, aligns the precision of every carry slot across
-  // its four logically-equivalent IR locations:
-  //   * scan operand `num_inputs + i` (the carry init),
-  //   * body parameter `num_inputs + i`,
-  //   * body root tuple slot `num_outputs + i`,
-  //   * scan result tuple slot `num_outputs + i`.
-  // HloVerifier::HandleScan requires these four locations to share the same
-  // element type even though, unlike kWhile.
-  // If any of the four is F32 (after pending changes_to_bf16_),
-  // all four are forced to F32. The standard
-  // ResolveInconsistencyOfAliasingBuffersHelper fixed-point relies on
-  // HloDataflowAnalysis aliases to propagate precision, but no such alias
-  // exists for scan carries, so we enforce this verifier-level constraint
-  // explicitly here. Returns whether any change was made.
-  //
-  // Precondition: hlo->opcode() == kScan and is_associative() ==
-  // TRI_STATE_TRUE.
-  bool AlignScanCarryPrecisions(HloInstruction* scan_hlo);
+  // Registers the root of a called computation as a push target of the call
+  // site.
+  void AddPushableRoot(HloInstruction* call_site, HloComputation* callee);
+
+  // Adds value -> position edges for `hlo`'s in-place operand/output pairs.
+  void AddInPlaceEdges(HloInstruction* hlo);
+
+  // Seeds the F32 positions of a ShouldKeepPrecisionUnchanged instruction;
+  // nothing may mark them BF16, except a pending call boundary push.
+  void AddKeepPrecisionSeeds(HloInstruction* hlo);
+
+  // Adds carry init -> {body parameter, body root slot, scan result slot}
+  // edges for an associative scan. HloVerifier requires the four slots to
+  // agree, and no dataflow alias connects them.
+  void AddScanCarryEdges(HloInstruction* hlo);
+
+  // Seeds `value` if it must be F32 up front, and records which output
+  // position each of its uses reads.
+  void AddValueSeedsAndUseEdges(const HloValue* value);
+
+  // Adds the position -> `value` edge for one use, mirroring
+  // AllUsersConsumeBF16: a called computation use reads the callee
+  // parameter, a forwarding user reads its own output. A statically failing
+  // use seeds the value instead.
+  void AddEdgesForUse(const HloValue* value, const HloUse& use);
+
+  // BFS from the seeds: finds every value and position that must be F32.
+  void PropagateF32Constraints();
+
+  // Records that the value / position must be F32 and enqueues it.
+  void ConstrainValueToF32(const HloValue* value);
+  void ConstrainPositionToF32(const HloPosition& position);
+
+  // Constrains the targets of the dequeued node's outgoing edges.
+  void PropagateFromValue(const HloValue* value);
+  void PropagateFromPosition(const HloPosition& position);
+
+  // Applies `position`'s push edges: the same position of the roots it
+  // calls and of the parameters called with it. The caller ensures
+  // `position` is an F32 array leaf.
+  void PushAcrossCallBoundaries(const HloPosition& position);
+
+  // Makes every adjustable F32 position BF16 iff the BFS did not reach it.
+  void MaterializeResolvedPrecisions(HloModule* module);
 
   // ***************************
   // Functions called after changes in changes_to_bf16_ are applied.
@@ -247,14 +293,19 @@ class BFloat16Propagation : public HloModulePass {
   bool AllUsersConsumeBF16(const HloInstruction& hlo,
                            const ShapeIndex& index) const;
 
+  // Memoized ShouldKeepPrecisionUnchanged. Valid while shapes are
+  // unmutated; the loop that applies changes_to_bf16_ in RunImpl must call
+  // the virtual method directly.
+  bool ShouldKeepPrecisionUnchangedCached(const HloInstruction* inst);
+
+  // Memoized AliasInfo::GetInPlaceInputOutputPairs.
+  const std::vector<std::pair<HloOperandIndex, ShapeIndex>>&
+  GetInPlaceInputOutputPairsCached(const HloInstruction* hlo);
+
   // The output element type of the HLO at the given shape index after changes
   // in changes_to_bf16_ are applied.
   PrimitiveType OutputTypeAfterChange(HloInstruction* hlo,
                                       const ShapeIndex& index) const;
-
-  // The element type of the HLO value after changes in changes_to_bf16_ are
-  // applied.
-  PrimitiveType ValueTypeAfterChange(const HloValue* value) const;
 
   // If target_type == BF16, adds the HLO at the given index to
   // changes_to_bf16_; otherwise, target_type must be F32 and this function
@@ -264,8 +315,60 @@ class BFloat16Propagation : public HloModulePass {
                                       const ShapeIndex& index,
                                       PrimitiveType target_type);
 
-  // The set of F32 HLO values that must be kept in F32.
+  // The set of F32 HLO values that must be kept in F32. Insert only.
   absl::flat_hash_set<const HloValue*> values_that_must_be_kept_as_f32_;
+
+  // The computations this run operates on. Positions outside are left
+  // unchanged.
+  absl::flat_hash_set<const HloComputation*> included_computations_;
+
+  // BFS state: the nodes that must be F32, and the queues of nodes whose
+  // edges have not been followed yet.
+  std::deque<const HloValue*> value_queue_;
+  std::deque<HloPosition> position_queue_;
+  absl::flat_hash_set<const HloValue*> f32_values_;
+  absl::flat_hash_set<HloPosition> f32_positions_;
+
+  // Position -> values whose AllUsersConsumeBF16 check reads it (see
+  // AddEdgesForUse).
+  absl::flat_hash_map<HloPosition, std::vector<const HloValue*>> use_edges_;
+
+  // Value -> in-place output positions aliased with it.
+  absl::flat_hash_map<const HloValue*, std::vector<HloPosition>>
+      value_to_inplace_outputs_;
+
+  // The BFS seeds. A value: defining position unmarked and not pushable, a
+  // statically failing use, or pinned by the backward pass. A position:
+  // unmarked on a keep precision instruction, or holding a value that is
+  // neither F32 nor BF16.
+  std::vector<const HloValue*> static_f32_seed_values_;
+  std::vector<HloPosition> static_f32_seed_positions_;
+
+  // Positions a call boundary push can still mark BF16. Their unmarked
+  // defining values are not seeded.
+  absl::flat_hash_set<HloPosition> bf16_pushable_positions_;
+
+  // Push targets: an F32 position of a call site forces the same position
+  // of push_roots_[site]; an F32 operand position forces push_params_
+  // [operand]. Precomputed to avoid rescanning users per leaf.
+  absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
+      push_roots_;
+  absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
+      push_params_;
+
+  // Carry init position -> the other three carry slot positions.
+  absl::flat_hash_map<HloPosition, std::vector<std::array<HloPosition, 3>>>
+      scan_carry_edges_;
+
+  // Cache for ShouldKeepPrecisionUnchangedCached. Only valid while the module
+  // is unmutated (i.e., until changes_to_bf16_ is applied in RunImpl).
+  absl::flat_hash_map<const HloInstruction*, bool>
+      keep_precision_unchanged_cache_;
+
+  // Cache for GetInPlaceInputOutputPairsCached.
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<std::pair<HloOperandIndex, ShapeIndex>>>
+      inplace_input_output_pairs_cache_;
 
   // Mapping from each HloComputation to the number of callers to it in the
   // module. Populated at the beginning of this pass.

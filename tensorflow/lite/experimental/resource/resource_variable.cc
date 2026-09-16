@@ -85,22 +85,16 @@ TfLiteStatus ResourceVariable::AssignFrom(const TfLiteTensor* tensor) {
   return kTfLiteOk;
 }
 
-void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
-                                          int resource_id) {
-  if (resources->count(resource_id) != 0) {
-    return;
-  }
-  resources->emplace(resource_id, std::make_unique<ResourceVariable>());
+TfLiteStatus CreateResourceVariableIfNotAvailable(ResourceMap* resources,
+                                                  int resource_id) {
+  return CreateTypedResourceIfNotAvailable(
+      resources, resource_id, ResourceBase::ResourceType::kResourceVariable,
+      []() { return std::make_unique<ResourceVariable>(); });
 }
 
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {
-  auto it = resources->find(resource_id);
-  if (it != resources->end() &&
-      it->second->GetResourceType() ==
-          ResourceBase::ResourceType::kResourceVariable) {
-    return static_cast<ResourceVariable*>(it->second.get());
-  }
-  return nullptr;
+  return GetTypedResource<ResourceVariable>(
+      resources, resource_id, ResourceBase::ResourceType::kResourceVariable);
 }
 
 bool IsBuiltinResource(const TfLiteTensor* tensor) {

@@ -262,6 +262,33 @@ bool IsPackedTritonDotScaledOperandType(PrimitiveType type) {
          primitive_util::IsSubByteNonPredType(type);
 }
 
+bool IsAllOnesScale(const HloInstruction& scale) {
+  const HloInstruction* value = &scale;
+  while (true) {
+    switch (value->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConvert:
+      case HloOpcode::kCopy:
+      case HloOpcode::kReshape:
+        value = value->operand(0);
+        break;
+      case HloOpcode::kParameter: {
+        const HloInstruction* fusion = value->parent()->FusionInstruction();
+        if (fusion == nullptr ||
+            value->parameter_number() >= fusion->operand_count()) {
+          return false;
+        }
+        value = fusion->operand(value->parameter_number());
+        break;
+      }
+      default:
+        return value->opcode() == HloOpcode::kConstant &&
+               value->literal().IsAll(1);
+    }
+  }
+}
+
 absl::StatusOr<SmallVector<int64_t>> GetStorageShape(
     ArrayRef<int64_t> logical_shape_dims, const Shape& logical_shape) {
   SmallVector<int64_t> storage_shape(logical_shape_dims.begin(),
@@ -348,7 +375,20 @@ Value EmitClampedRTVar(mlir::ImplicitLocOpBuilder& b,
                        const Interval& bounds) {
   mlir::OpBuilder::InsertionGuard guard(b);
   b.setInsertionPointAfterValue(tensor_value);
-  Value scalar_value = mlir::tensor::ExtractOp::create(b, tensor_value);
+  Value scalar_value;
+  auto ranked_type = tensor_value.getType();
+  if (ranked_type.getRank() == 0) {
+    // Rank-0 tensor (scalar): extract with no indices (existing behaviour).
+    scalar_value = mlir::tensor::ExtractOp::create(b, tensor_value);
+  } else {
+    // Rank-N tensor (N >= 1): the tile has been narrowed to exactly one
+    // element per dimension (e.g. group_sizes[g] with tile_G=1, or
+    // group_sizes[b, g] with tile_B=1 and tile_G=1).
+    // Extract element [0, 0, ..., 0].
+    Value zero = CreateConst(b, b.getIndexType(), 0);
+    llvm::SmallVector<mlir::Value> indices(ranked_type.getRank(), zero);
+    scalar_value = mlir::tensor::ExtractOp::create(b, tensor_value, indices);
+  }
   Value clamped_index =
       EmitClampedIndex(b, scalar_value, bounds.lower, bounds.upper);
   return Cast(b, clamped_index, b.getIndexType());

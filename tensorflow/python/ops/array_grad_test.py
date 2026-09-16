@@ -19,7 +19,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -180,6 +183,25 @@ class ArrayGradTest(test.TestCase):
       return array_ops.reshape(x_without_shape, [0])
 
     x = constant_op.constant([], shape=[3, 0], dtype=dtypes.float64)
+    self._testGrad(f, x)
+
+  def test_matrix_diag_v2_grad_ignores_diagonal_padding(self):
+    x = constant_op.constant(0.7, dtype=dtypes.float64)
+
+    def f(x):
+      diagonal = array_ops_stack.stack([
+          array_ops_stack.stack([x * x, 7.0 * x]),
+          array_ops_stack.stack([x, 2.0 * x]),
+      ])
+      matrix = gen_array_ops.matrix_diag_v2(
+          diagonal=diagonal,
+          k=constant_op.constant([0, 1], dtype=dtypes.int32),
+          num_rows=constant_op.constant(2, dtype=dtypes.int32),
+          num_cols=constant_op.constant(2, dtype=dtypes.int32),
+          padding_value=constant_op.constant(-1.0, dtype=dtypes.float64),
+      )
+      return math_ops.reduce_sum(matrix)
+
     self._testGrad(f, x)
 
 

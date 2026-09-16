@@ -208,11 +208,10 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
       return {};
     }
   }
-  if (user->opcode() == HloOpcode::kCustomCall) {
-    // Custom Calls previously assumed that aliased operands were
-    // forwarded, but now supports modification semantics.
-    const auto& aliasing_pairs =
-        Cast<HloCustomCallInstruction>(user)->output_to_operand_aliasing();
+  if (user->opcode() == HloOpcode::kCall ||
+      user->opcode() == HloOpcode::kCustomCall) {
+    const auto* callable = Cast<HloCallableInstruction>(user);
+    const auto& aliasing_pairs = callable->output_to_operand_aliasing();
     std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
     in_place_pairs.reserve(aliasing_pairs.size());
     for (const auto& pair : aliasing_pairs) {

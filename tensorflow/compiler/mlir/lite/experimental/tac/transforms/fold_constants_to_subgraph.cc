@@ -144,7 +144,7 @@ void FoldConstantsToSubgraphPass::runOnOperation() {
 
       // We only fold int32/int64 for Const and i32 for QConst if not specify
       // all constants flag. (Since they're more like "configs" or i32 biases.)
-      // We will fold every const ops (and q_const ops) if we speicfy the
+      // We will fold every const ops (and q_const ops) if we specify the
       // fold_all_constants_flag.
       if (!fold_all_constants_flag_) {
         if (!IsConstOrQConstInt(op)) return;

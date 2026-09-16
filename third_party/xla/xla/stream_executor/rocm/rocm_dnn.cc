@@ -450,12 +450,7 @@ class MIOpenAccess {
   miopenHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
-MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {
-  bool enable_pooling_cache = false;
-  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
-                                   &enable_pooling_cache));
-  if (enable_pooling_cache) m_pooling_cache_allowed = true;
-}
+MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {}
 
 absl::Status MIOpenSupport::Init() {
   std::unique_ptr<ActivateContext> context = parent_->Activate();
@@ -3884,34 +3879,6 @@ absl::Status MIOpenSupport::DoPoolForward(
   bool do_backward = false;
   uint8_t* workspace = nullptr;
   size_t workspace_size = 0;
-  if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
-    do_backward = true;
-    auto status = miopenPoolingGetWorkSpaceSizeV2(
-        pooling_desc.handle(), dest_desc.handle(), &workspace_size);
-    if (status != miopenStatusSuccess) {
-      return absl::InternalError(absl::StrCat(
-          "Failed to obtain workspace size for backward pooling on stream: ",
-          ToString(status)));
-    }
-    if (workspace_size != 0) {
-      PoolingWorkspaceDescriptor* pdesc = nullptr;
-      bool cache_hit =
-          m_pooling_cache_allowed &&
-          m_pooling_cache.find(input_data.opaque(), input_dimensions,
-                               output_dimensions, pooling_dimensions,
-                               miopenFloat, pdesc);
-      if (cache_hit) {
-        // reusing the same buffer
-        workspace =
-            reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
-      } else {
-        ABSL_ASSIGN_OR_RETURN(auto allocated,
-                         workspace_allocator->AllocateBytes(workspace_size));
-        workspace = reinterpret_cast<uint8_t*>(allocated.opaque());
-      }
-    }
-  }
-
   auto status = miopenPoolingForward(
       miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
       input_data.opaque(), &beta, dest_desc.handle(), output_data.opaque(),
@@ -3921,93 +3888,6 @@ absl::Status MIOpenSupport::DoPoolForward(
         "Failed to enqueue forward pooling on stream: ", ToString(status)));
   }
   return absl::OkStatus();
-}
-
-bool PoolingWorkspaceDescriptor::IsSame(
-    const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions, int _type) {
-  return dtype == _type &&
-         input_dims ==
-             input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX) &&
-         output_dims ==
-             output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX) &&
-         op.mode() == pooling_dimensions.mode() &&
-         op.window() == pooling_dimensions.window() &&
-         op.padding() == pooling_dimensions.padding() &&
-         op.strides() == pooling_dimensions.strides();
-}
-
-bool PoolingWorkspaceCache::find(
-    const void* p, const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    PoolingWorkspaceDescriptor*& pdesc) {
-  pdesc = nullptr;
-  auto it = cache.find(p);
-  if (it == cache.end()) {
-    return false;
-  }
-  if (!it->second.IsSame(input_dimensions, output_dimensions,
-                         pooling_dimensions, _type)) {
-    return false;
-  }
-  pdesc = &it->second;
-  return true;
-}
-
-void PoolingWorkspaceCache::insert(
-    const void* p, const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    ScopedDeviceAddress<uint8_t>& workspace, size_t wsp_size,
-    hipStream_t hip_stream) {
-  PoolingWorkspaceDescriptor* desc = nullptr;
-  auto it = cache.find(p);
-  if (it != cache.end()) {
-    // replacing an entry with the same pointer but different attributes
-    // (if everything matches, the caller is expected to reuse the entry)
-    desc = &it->second;
-    CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
-        << "Failed to sync hipStream";
-    memory_used -= desc->workspace_size;
-  } else {
-    cache[p] = PoolingWorkspaceDescriptor();
-    desc = &cache[p];
-  }
-  desc->input_dims = input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-  desc->output_dims =
-      output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-  desc->op = pooling_dimensions;
-  desc->dtype = _type;
-  desc->timestamp = timestamp;
-  timestamp++;
-  desc->workspace = std::move(workspace);
-  desc->workspace_size = wsp_size;
-  memory_used += wsp_size;
-  trim(hip_stream);
-}
-
-void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
-  if (memory_used < memory_budget && cache.size() < trim_size) return;
-  bool must_sync = true;
-  while (true) {
-    int new_size = cache.size() - (cache.size() >> 2);
-    std::vector<const void*> old_entries;
-    for (auto& x : cache)
-      if (x.second.timestamp + new_size < timestamp)
-        old_entries.push_back(x.first);
-    if (old_entries.empty()) break;
-    if (must_sync)
-      CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
-          << "Failed to sync hipStream";
-    must_sync = true;
-    for (auto x : old_entries) {
-      memory_used -= cache[x].workspace_size;
-      cache.erase(x);
-    }
-    if (memory_used < memory_budget || cache.size() < 10) break;
-  }
 }
 
 absl::Status MIOpenSupport::DoPoolBackward(
@@ -4023,7 +3903,6 @@ absl::Status MIOpenSupport::DoPoolBackward(
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
-  if (m_pooling_cache_allowed) m_pooling_cache_enabled = true;
   // Alpha is the scaling factor for input.
   float alpha = 1.0;
   // Beta is the scaling factor for output.
@@ -4038,7 +3917,6 @@ absl::Status MIOpenSupport::DoPoolBackward(
 
   uint8_t* workspace_ptr = nullptr;
   DeviceAddress<uint8_t> workspace;
-  PoolingWorkspaceDescriptor* pdesc = nullptr;
 
   size_t workspace_size_in_bytes = 0;
   auto status = miopenPoolingGetWorkSpaceSizeV2(
@@ -4051,62 +3929,49 @@ absl::Status MIOpenSupport::DoPoolBackward(
 
   // Allocate the workspace.
   if (workspace_size_in_bytes > 0) {
-    bool cache_hit = m_pooling_cache_allowed &&
-                     m_pooling_cache.find(input_data.opaque(), input_dimensions,
-                                          output_dimensions, pooling_dimensions,
-                                          miopen_dtype, pdesc);
-    if (cache_hit) {
-      assert(pdesc != nullptr);
-      workspace_ptr =
-          reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
-      VLOG(1) << "Pooling cache hit";
-    } else {
-      VLOG(1) << "Pooling cache miss";
+    assert(workspace_allocator);
+    auto allocated =
+        workspace_allocator->AllocateBytes(workspace_size_in_bytes);
+    if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
+      return absl::InternalError(
+          "Failed to allocate backward pooling workspace");
+    }
+    DeviceAddress<uint8_t> dest2;  // duplicated dest from forward:
+    int64_t dest2_size = 0;
+
+    // miopen requires the strides and dims to be ordered as BDYX.
+    std::vector<int64_t> dims64 =
+        output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
+    // miopen does not use strides and must have 4D tensor.
+    // std::vector<int> dims(pooling_dimensions.ndims() + 2);
+
+    dest2_size = (element_type == dnn::DataType::kFloat) ? sizeof(float)
+                                                         : sizeof(Eigen::half);
+    for (auto& x : dims64) dest2_size *= x;
+
+    if (dest2_size > 0) {
       assert(workspace_allocator);
-      auto allocated =
-          workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-      if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
+      auto allocated = workspace_allocator->AllocateBytes(dest2_size);
+      if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
         return absl::InternalError(
             "Failed to allocate backward pooling workspace");
       }
-      DeviceAddress<uint8_t> dest2;  // duplicated dest from forward:
-      int64_t dest2_size = 0;
-
-      // miopen requires the strides and dims to be ordered as BDYX.
-      std::vector<int64_t> dims64 =
-          output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-      // miopen does not use strides and must have 4D tensor.
-      // std::vector<int> dims(pooling_dimensions.ndims() + 2);
-
-      dest2_size = (element_type == dnn::DataType::kFloat)
-                       ? sizeof(float)
-                       : sizeof(Eigen::half);
-      for (auto& x : dims64) dest2_size *= x;
-
-      if (dest2_size > 0) {
-        assert(workspace_allocator);
-        auto allocated = workspace_allocator->AllocateBytes(dest2_size);
-        if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
-          return absl::InternalError(
-              "Failed to allocate backward pooling workspace");
-        }
-      } else {
-        LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
-                      "backward pooling";
-      }
-
-      status = miopenPoolingForward(
-          miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-          input_data.opaque(), &beta, dest_desc.handle(), dest2.opaque(), true,
-          workspace.opaque(), workspace_size_in_bytes);
-
-      if (status != miopenStatusSuccess) {
-        return absl::InternalError(absl::StrCat(
-            "Failed to enqueue forward pooling (before backward) on stream: ",
-            ToString(status)));
-      }
-      workspace_ptr = reinterpret_cast<uint8_t*>(workspace.opaque());
+    } else {
+      LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
+                    "backward pooling";
     }
+
+    status = miopenPoolingForward(
+        miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
+        input_data.opaque(), &beta, dest_desc.handle(), dest2.opaque(), true,
+        workspace.opaque(), workspace_size_in_bytes);
+
+    if (status != miopenStatusSuccess) {
+      return absl::InternalError(absl::StrCat(
+          "Failed to enqueue forward pooling (before backward) on stream: ",
+          ToString(status)));
+    }
+    workspace_ptr = reinterpret_cast<uint8_t*>(workspace.opaque());
   }
 
   status = miopenPoolingBackward(

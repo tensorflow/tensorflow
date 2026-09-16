@@ -43,18 +43,31 @@ class JaxProfilerResult:
 
 
 class JaxProfiler:
-  """Context manager for JAX Profiler."""
+  """Context manager for JAX Profiler.
+
+    Attributes:
+    kernel_name: The name of the kernel to profile.
+    enable_profiling: Whether to enable profiling. Convenience for disabling
+      profiling without complicating the calling code.
+    temp_dir: The temporary directory to store the trace files.
+    result: The result of the profiling that is populated when exiting the
+      context manager.
+  """
 
   kernel_name: str
+  enable_profiling: bool
   temp_dir: tempfile.TemporaryDirectory[str] | None
   result: JaxProfilerResult
 
-  def __init__(self, kernel_name: str) -> None:
+  def __init__(self, kernel_name: str, enable_profiling: bool = True) -> None:
     self.kernel_name = kernel_name
+    self.enable_profiling = enable_profiling
     self.temp_dir = None
     self.result = JaxProfilerResult()
 
   def __enter__(self) -> "JaxProfiler":
+    if not self.enable_profiling:
+      return self
     self.temp_dir = tempfile.TemporaryDirectory()
     logging.debug("Starting JAX trace to %s", self.temp_dir.name)
     try:
@@ -71,6 +84,8 @@ class JaxProfiler:
       exc_val: BaseException | None,
       exc_tb: types.TracebackType | None,
   ) -> None:
+    if not self.enable_profiling:
+      return
     if self.temp_dir is not None:
       try:
         jax.profiler.stop_trace()

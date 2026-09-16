@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/shape.h"
@@ -622,13 +623,20 @@ LogicalResult importShardings(
         flatHloSharding = hloSharding.tuple_elements();
       }
       SmallVector<TensorShardingAttr> newShardings;
-      newShardings.reserve(op->getNumResults());
-      for (const auto& [resHloSharding, resType] :
-           llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
+      if (op->getNumResults() == 0) {
+        const xla::HloSharding& leafSharding = flatHloSharding.front();
         newShardings.push_back(convertToSdySharding(
-            resHloSharding, globalMesh, deviceIdToMaximalMeshName,
-            mlir::sdy::getTensorRank(resType),
-            /*openDims=*/false, inlineMesh));
+            leafSharding, globalMesh, deviceIdToMaximalMeshName,
+            /*rank=*/0, /*openDims=*/false, inlineMesh));
+      } else {
+        newShardings.reserve(op->getNumResults());
+        for (const auto& [resHloSharding, resType] :
+             llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
+          newShardings.push_back(convertToSdySharding(
+              resHloSharding, globalMesh, deviceIdToMaximalMeshName,
+              mlir::sdy::getTensorRank(resType),
+              /*openDims=*/false, inlineMesh));
+        }
       }
       mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
@@ -737,6 +745,8 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
                                 ArrayRef<bool> allowPropagationToResults,
                                 bool enableHloShardingV3) {
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,

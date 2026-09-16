@@ -419,17 +419,19 @@ void LiteralBase::BuildPieceSubtree(const Shape& shape, Piece* piece) {
   }
 }
 
-absl::Status LiteralBase::SerializeToString(std::string* output) const {
+absl::Status LiteralBase::SerializeToString(std::string* output,
+                                            bool pack_pred) const {
   ShapeProto shape_proto = shape().ToProto();
-  ABSL_ASSIGN_OR_RETURN(int64_t size,
-                   ShapeUtil::SerializedSizeWithProto(shape(), shape_proto));
+  ABSL_ASSIGN_OR_RETURN(int64_t size, ShapeUtil::SerializedSizeWithProto(
+                                     shape(), shape_proto, pack_pred));
   output->resize(size);
-  return SerializeWithShapeProto(shape_proto, output->data());
+  return SerializeWithShapeProto(shape_proto, output->data(), pack_pred);
 }
 
-absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
+absl::StatusOr<std::string> LiteralBase::SerializeAsString(
+    bool pack_pred) const {
   std::string result;
-  ABSL_RETURN_IF_ERROR(SerializeToString(&result));
+  ABSL_RETURN_IF_ERROR(SerializeToString(&result, pack_pred));
   return result;
 }
 
@@ -1109,6 +1111,14 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
 
   TF_RET_CHECK(result_shape.element_type() == src_shape.element_type());
   Literal result(result_shape);
+  // Start every dynamic dimension at its bound: a broadcast fills dimensions
+  // completely, and dimensions not mapped from the source (e.g. a scalar
+  // broadcast) would otherwise keep uninitialized sizes.
+  for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
+    if (result_shape.is_dynamic_dimension(i)) {
+      result.SetDynamicSize(i, result_shape.dimensions(i));
+    }
+  }
   if (src_shape.is_dynamic()) {
     for (int64_t i = 0; i < dimensions.size(); ++i) {
       if (src_shape.is_dynamic_dimension(i)) {

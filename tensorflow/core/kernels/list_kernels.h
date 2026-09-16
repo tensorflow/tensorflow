@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 
+#include <limits>
+
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
@@ -893,13 +895,47 @@ class TensorListScatterIntoExistingList : public OpKernel {
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     const auto indices_vec = indices.vec<int32_t>();
-    int32_t max_index =
-        (indices.NumElements() == 0)
-            ? -1
-            : *std::max_element(indices_vec.data(),
-                                indices_vec.data() + indices.NumElements());
-    if (max_index + 1 > output_list->tensors().size()) {
-      output_list->tensors().resize(max_index + 1);
+    // Reject negative indices (mirrors the sibling op TensorListScatter): a
+    // negative index reaches Scatter()'s std::swap(list->tensors()[i], ...)
+    // with i < 0, an out-of-bounds heap access. Do it in the same pass that
+    // finds the max via std::minmax_element, and reuse the max for the resize.
+    int32_t max_index = -1;
+    if (indices.NumElements() > 0) {
+      const auto minmax = std::minmax_element(
+          indices_vec.data(), indices_vec.data() + indices.NumElements());
+      OP_REQUIRES(
+          c, *minmax.first >= 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Indices in TensorListScatterIntoExistingList must all be "
+              "non-negative; got ",
+              *minmax.first)));
+      max_index = *minmax.second;
+      // TensorListLength returns int32, so max_index + 1 must be representable
+      // as int32 before the list is resized.
+      OP_REQUIRES(
+          c, max_index < std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "TensorListScatterIntoExistingList: index ", max_index,
+              " would produce a list length that is not representable as "
+              "int32")));
+      // Also honor the list's declared capacity. TensorListPushBack already
+      // enforces `size() < max_num_elements`; mirror it here so a scatter
+      // cannot silently grow the list past its cap. This also bounds the
+      // resize below by an attacker-controlled index.
+      OP_REQUIRES(c,
+                  output_list->max_num_elements == -1 ||
+                      max_index < output_list->max_num_elements,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "TensorListScatterIntoExistingList: index ", max_index,
+                      " is beyond the list's max_num_elements ",
+                      output_list->max_num_elements)));
+    }
+    // Compute the required size as size_t: max_index is >= 0 here, but
+    // max_index == INT32_MAX would overflow the signed `max_index + 1`
+    // (undefined behavior) before the comparison/resize below.
+    const size_t needed = static_cast<size_t>(max_index) + 1;
+    if (needed > output_list->tensors().size()) {
+      output_list->tensors().resize(needed);
     }
 
     // Scatter the values.

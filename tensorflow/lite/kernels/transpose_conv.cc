@@ -29,9 +29,7 @@ limitations under the License.
 // NOLINTNEXTLINE - This header file shouldn't go to the top.
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -291,6 +289,34 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+TfLiteStatus ComputeAndValidatePadding(TfLiteContext* context,
+                                       const TfLiteTransposeConvParams* params,
+                                       const TfLiteTensor* weights,
+                                       const TfLiteTensor* input,
+                                       const TfLiteTensor* output,
+                                       TfLitePaddingValues* padding) {
+  TF_LITE_ENSURE_EQ(context, NumDimensions(output), 4);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 4);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
+  TF_LITE_ENSURE(context, SizeOfDimension(output, 1) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(output, 2) > 0);
+  const int width = SizeOfDimension(output, 2);
+  const int height = SizeOfDimension(output, 1);
+  const int filter_width = SizeOfDimension(weights, 2);
+  const int filter_height = SizeOfDimension(weights, 1);
+
+  int computed_input_height, computed_input_width;
+  TF_LITE_ENSURE_OK(
+      context, ComputePaddingHeightWidthChecked(
+                   params->stride_height, params->stride_width, 1, 1, height,
+                   width, filter_height, filter_width, params->padding,
+                   &computed_input_height, &computed_input_width, padding));
+  TF_LITE_ENSURE_STATUS(ValidatePaddingValuesForInt16(*padding));
+  TF_LITE_ENSURE_EQ(context, computed_input_height, SizeOfDimension(input, 1));
+  TF_LITE_ENSURE_EQ(context, computed_input_width, SizeOfDimension(input, 2));
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -321,6 +347,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Tensor sanity checks
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
+  TF_LITE_ENSURE_EQ(context, NumElements(output_shape), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 4);
   TF_LITE_ENSURE(context, params->stride_height > 0);
@@ -406,6 +433,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   } else {
     TF_LITE_ENSURE_STATUS(ResizeTensor(context, output_shape, output));
+    TF_LITE_ENSURE_STATUS(ComputeAndValidatePadding(
+        context, params, weights, input, output, &data->padding));
     if (data->has_col2im) {
       TF_LITE_ENSURE_STATUS(
           ResizeCol2ImTensor(context, output_shape, weights, input, col2im));
@@ -880,20 +909,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                                   weights, input, col2im));
   }
 
-  // Get height and width of the output image.
-  const int width = SizeOfDimension(output, 2);
-  const int height = SizeOfDimension(output, 1);
-  const int filter_width = SizeOfDimension(weights, 2);
-  const int filter_height = SizeOfDimension(weights, 1);
-
-  int computed_input_height, computed_input_width;
-  TF_LITE_ENSURE_OK(context, ComputePaddingHeightWidthChecked(
-                                 params->stride_height, params->stride_width, 1,
-                                 1, height, width, filter_height, filter_width,
-                                 params->padding, &computed_input_height,
-                                 &computed_input_width, &data->padding));
-  TF_LITE_ENSURE_EQ(context, computed_input_height, SizeOfDimension(input, 1));
-  TF_LITE_ENSURE_EQ(context, computed_input_width, SizeOfDimension(input, 2));
+  TF_LITE_ENSURE_STATUS(ComputeAndValidatePadding(
+      context, params, weights, input, output, &data->padding));
 
   // Currently support float32, uint8, int8, int16.
   switch (input->type) {

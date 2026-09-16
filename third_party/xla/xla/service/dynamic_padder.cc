@@ -1044,7 +1044,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionInputGrad(
   }
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), grad, kernel,
+          custom_call_conv->shape(), {grad, kernel},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -1103,7 +1103,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionForward(
 
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), input, kernel,
+          custom_call_conv->shape(), {input, kernel},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -1187,7 +1187,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
 
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), activations, gradients,
+          custom_call_conv->shape(), {activations, gradients},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -2050,7 +2050,8 @@ absl::Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
 absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
     HloInstruction* hlo) {
   if (hlo->custom_call_target() == "SliceToDynamic" ||
-      hlo->custom_call_target() == "PadToStatic") {
+      hlo->custom_call_target() == "PadToStatic" ||
+      hlo->custom_call_target() == "PadRealToStatic") {
     // Those ops support are created to handle dynamic tensors so by their
     // nature they support dynamic lowering.
     return absl::OkStatus();

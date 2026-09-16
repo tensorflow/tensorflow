@@ -213,5 +213,14 @@ TEST_F(BuildAllGatherInfoTest, FailsWithoutNvlink) {
       StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("NVLink/UALink")));
 }
 
+TEST_F(BuildAllGatherInfoTest, FailsForLargeInputs) {
+  // 2 * 1024 * 1024 F32 elements = 8 MB > 4 MB limit -> unimplemented.
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), F32,
+                /*num_elements=*/2 * 1024 * 1024, /*replica_groups=*/{0, 1}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("only supported for small inputs")));
+}
+
 }  // namespace
 }  // namespace xla::gpu

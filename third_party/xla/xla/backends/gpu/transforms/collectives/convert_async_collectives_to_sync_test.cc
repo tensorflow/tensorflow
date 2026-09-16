@@ -512,7 +512,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest,
     CHECK-NOT: all-reduce-start
     CHECK: %id2 = f32[] bitcast(%id)
     CHECK: ROOT %{{.*}} = u32[] all-reduce(%id)
-    CHECK-SAME: "is_sync":true,"is_pipelined":true
+    CHECK-SAME: "is_pipelined":true{{.*}}"is_sync":true
   )"),
               IsOkAndHolds(true));
 }

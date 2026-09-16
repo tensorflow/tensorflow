@@ -1,0 +1,142 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_add
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = add %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_add {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] add(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_atan2
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = atan2 %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_atan2 {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] atan2(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_div
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = div %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_div {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] divide(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_max
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = max %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_max {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] maximum(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_min
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = min %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_min {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] minimum(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_mul
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = mul %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_mul {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] multiply(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_pow
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = pow %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_pow {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] power(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_rem
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = rem %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_rem {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] remainder(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_sub
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = sub %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_sub {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = f32[8,16] subtract(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_and
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xi1>, %[[ARG1:.*]]: tensor<8x16xi1>
+// CHECK: %[[OUT:.*]] = and %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_and {
+  %p0 = pred[8,16] parameter(0)
+  %p1 = pred[8,16] parameter(1)
+  %out = pred[8,16] and(%p0, %p1)
+}
+
+// -----
+
+// CHECK-LABEL: @test_or
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xi1>, %[[ARG1:.*]]: tensor<8x16xi1>
+// CHECK: %[[OUT:.*]] = or %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[OUT]]
+
+test_or {
+  %p0 = pred[8,16] parameter(0)
+  %p1 = pred[8,16] parameter(1)
+  %out = pred[8,16] or(%p0, %p1)
+}

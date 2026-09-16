@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -24,6 +25,7 @@ namespace mlir {
 namespace {
 
 using ::mlir::tpu::TiledLayoutAttr;
+using ::testing::ElementsAre;
 
 TEST(TiledLayoutTest, NumTrailingDimsWithContiguousTilesTest) {
   DialectRegistry registry;
@@ -66,6 +68,26 @@ TEST(TiledLayoutTest, NumTrailingDimsWithContiguousTilesTest) {
   EXPECT_EQ(tiled_layout.getNumTrailingDimsWithContiguousTiles(
                 {4, ShapedType::kDynamic}),
             0);
+}
+
+TEST(TiledLayoutTest, DynamicTileStridesTest) {
+  MLIRContext ctx;
+  ctx.loadDialect<tpu::TPUDialect>();
+
+  SmallVector<xla::Tile> tiles = {xla::Tile({8, 128})};
+  TiledLayoutAttr dynamic_layout =
+      TiledLayoutAttr::get(&ctx, tiles, {ShapedType::kDynamic, 1});
+
+  EXPECT_TRUE(dynamic_layout.hasDynamicStrides());
+  EXPECT_EQ(dynamic_layout.getNumDynamicStrides(), 1);
+
+  EXPECT_THAT(dynamic_layout.getExpandedStrides(),
+              ElementsAre(ShapedType::kDynamic, 1024, 128, 1));
+
+  EXPECT_EQ(dynamic_layout.getNumTrailingDimsWithContiguousTiles({10, 128}), 1);
+  EXPECT_EQ(dynamic_layout.getNumTrailingDimsWithContiguousTiles(
+                {10, ShapedType::kDynamic}),
+            1);
 }
 
 }  // namespace

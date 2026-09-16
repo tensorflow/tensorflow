@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -471,16 +472,34 @@ TEST_P(KernelTest, IfrtLoadVariableOpCanGetTensorFromResourceManager) {
 
   execution_context.AddUserContext(std::move(tf_context_));
 
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+  restore_context->checkpoint_loader()
+      ->set_materialize_variables_in_resource_manager(true);
+
   tensorflow::Tensor input_tensor;
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
 
-  tsl::core::RefCountPtr<Var> variable(new Var(DT_INT32));
+  auto [input_tensor_promise, input_tensor_future] =
+      tsl::MakePromise<tensorflow::Tensor>();
+  input_tensor_promise.Set(input_tensor);
+  TF_ASSERT_OK(ifrt_model_context_->GetRestoreTensorRegistry().TryRegister(
+      kVariableRuntimeName,
+      ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo{
+          false,
+          tsl::Future<ifrt_serving::DtypeAndShape>(ifrt_serving::DtypeAndShape{
+              .dtype = input_tensor.dtype(), .shape = input_tensor.shape()}),
+          std::move(input_tensor_future)}));
+
+  auto* variable = new Var(DT_INT32);
   *variable->tensor() = input_tensor;
   variable->is_initialized = true;
   ASSERT_OK(
       fallback_state_->device_manager().HostCPU()->resource_manager()->Create(
-          std::string(kContainer), std::string(kSharedName), &(*variable)));
+          std::string(kContainer), std::string(kSharedName), variable));
 
   std::vector<mlrt::Value> args;
   std::vector<uint8_t> last_uses;
@@ -673,6 +692,70 @@ TEST_P(KernelTest, IfrtRestoreVariableOp) {
   absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
   TF_ASSERT_OK(restored_tensor.status());
   EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
+}
+
+TEST_P(KernelTest, IfrtRestoreVariableOpMaterializeInResourceManager) {
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+  restore_context->checkpoint_loader()
+      ->set_materialize_variables_in_resource_manager(true);
+
+  std::string checkpoint_prefix =
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/core/tfrt/mlrt/kernel/testdata/"
+          "gen_checkpoint_data/variables") +
+      "/variables";
+
+  auto buffer = CreateExecutableForIfrtRestoreVariableOp();
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry_);
+
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(execution_work_queue_.get());
+
+  execution_context.AddUserContext(std::move(tf_context_));
+
+  std::vector<mlrt::Value> args;
+  args.resize(3);
+
+  tensorflow::Tensor prefix_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring(checkpoint_prefix)});
+  args.at(0).Set(tfrt_stub::FallbackTensor(std::move(prefix_tensor)));
+
+  tensorflow::Tensor name_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring("w/.ATTRIBUTES/VARIABLE_VALUE")});
+  args.at(1).Set(tfrt_stub::FallbackTensor(std::move(name_tensor)));
+
+  tensorflow::Tensor slice_tensor = AsTensor<tsl::tstring>({tsl::tstring("")});
+  args.at(2).Set(tfrt_stub::FallbackTensor(std::move(slice_tensor)));
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  std::vector<mlrt::Value> results;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(results));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+
+  TF_ASSERT_OK(execution_context.status());
+
+  // Verify variable was materialized in ResourceManager and is initialized.
+  tensorflow::Var* variable = nullptr;
+  TF_ASSERT_OK(
+      fallback_state_->device_manager().HostCPU()->resource_manager()->Lookup(
+          std::string(kContainer), absl::StrCat(kSharedName, 0), &variable));
+  core::ScopedUnref unref(variable);
+  EXPECT_TRUE(variable->is_initialized);
+  EXPECT_THAT(*variable->tensor(), TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
 }
 
 TEST_P(KernelTest, IfrtRestoreVariableOp4Variables) {

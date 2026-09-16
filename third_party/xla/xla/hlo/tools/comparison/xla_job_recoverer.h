@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/tools/comparison/original_tensor_summary_utils.h"
 #include "xla/hlo/tools/comparison/tensor_summary_util.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 
 namespace xla::numerics::comparison {
 

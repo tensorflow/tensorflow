@@ -232,6 +232,111 @@ class TPUEmbeddingUtilityFunctionTest(test.TestCase):
     self.assertEqual(sorted_specs, sorted(device_spec_strings))
 
 
+class PositionalWeightedCombinerTest(test.TestCase):
+
+  def test_custom_optimizer_validation(self):
+    def dummy_fn(grad, var, slots, lr, hyperparams):
+      return var - grad * lr
+
+    # Valid config
+    optimizer = tpu_embedding_v2_utils.CustomOptimizer(
+        custom_computation=dummy_fn,
+        slot_names=['slot_a'],
+        slot_initializers=[init_ops_v2.Zeros()],
+    )
+    self.assertEqual(optimizer._slot_names(), ['slot_a'])
+
+    # slot_names is None, slot_initializers is not None
+    with self.assertRaisesRegex(ValueError, 'must match'):
+      tpu_embedding_v2_utils.CustomOptimizer(
+          custom_computation=dummy_fn,
+          slot_names=None,
+          slot_initializers=[init_ops_v2.Zeros()],
+      )
+
+    # slot_names is not None, slot_initializers is None
+    with self.assertRaisesRegex(ValueError, 'must match'):
+      tpu_embedding_v2_utils.CustomOptimizer(
+          custom_computation=dummy_fn,
+          slot_names=['slot_a'],
+          slot_initializers=None,
+      )
+
+    # length mismatch
+    with self.assertRaisesRegex(ValueError, 'must match'):
+      tpu_embedding_v2_utils.CustomOptimizer(
+          custom_computation=dummy_fn,
+          slot_names=['slot_a', 'slot_b'],
+          slot_initializers=[init_ops_v2.Zeros()],
+      )
+
+  def test_positional_weighted_combiner(self):
+    def dummy_fn(grad, var, slots, lr, hyperparams):
+      return var - grad * lr
+
+    optimizer = tpu_embedding_v2_utils.CustomOptimizer(
+        custom_computation=dummy_fn,
+        learning_rate=0.1,
+        slot_names=['slot_a'],
+        slot_initializers=[init_ops_v2.Zeros()],
+        hyperparameters=[0.5],
+    )
+    combiner = tpu_embedding_v2_utils.PositionalWeightedCombiner(
+        max_valency=10,
+        initializer=init_ops_v2.Ones(),
+        custom_optimizer=optimizer,
+    )
+    self.assertEqual(combiner.max_valency, 10)
+    self.assertEqual(combiner.custom_optimizer, optimizer)
+    self.assertEqual(combiner.combiner_weights_learning_rate, 0.1)
+    self.assertEqual(combiner.custom_optimizer_function, dummy_fn)
+    self.assertEqual(combiner.custom_computation, dummy_fn)
+    self.assertEqual(combiner._slot_names(), ['slot_a'])
+    self.assertLen(combiner._slot_initializers(), 1)
+    self.assertEqual(combiner.hyperparameters, [0.5])
+    self.assertEqual(str(combiner), 'positional_weighted')
+
+    # equality
+    combiner_same = tpu_embedding_v2_utils.PositionalWeightedCombiner(
+        max_valency=10,
+        initializer=combiner.initializer,
+        custom_optimizer=optimizer,
+    )
+    self.assertEqual(combiner, combiner_same)
+
+    # invalid max_valency <= 0
+    with self.assertRaisesRegex(ValueError, 'max_valency > 0'):
+      tpu_embedding_v2_utils.PositionalWeightedCombiner(
+          max_valency=0,
+          initializer=init_ops_v2.Ones(),
+          custom_optimizer=optimizer,
+      )
+
+    # invalid initializer is None
+    with self.assertRaisesRegex(ValueError, 'initializer to be not None'):
+      tpu_embedding_v2_utils.PositionalWeightedCombiner(
+          max_valency=10,
+          initializer=None,
+          custom_optimizer=optimizer,
+      )
+
+    # custom_optimizer is not an instance of CustomOptimizer
+    with self.assertRaisesRegex(ValueError, 'CustomOptimizer'):
+      tpu_embedding_v2_utils.PositionalWeightedCombiner(
+          max_valency=10,
+          initializer=init_ops_v2.Ones(),
+          custom_optimizer='invalid_optimizer',
+      )
+
+    # custom_optimizer is None
+    with self.assertRaisesRegex(ValueError, 'CustomOptimizer'):
+      tpu_embedding_v2_utils.PositionalWeightedCombiner(
+          max_valency=10,
+          initializer=init_ops_v2.Ones(),
+          custom_optimizer=None,
+      )
+
+
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
   test.main()

@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/call_marker.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -113,8 +112,8 @@ ENTRY entry {
   ROOT tuple = (f32[], f32[]) tuple(call, c)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule outline, entry_computation_layout={()->(f32[], f32[])}
@@ -149,8 +148,8 @@ ENTRY inline {
   ROOT a = f32[] call(c), to_apply=a
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
@@ -194,8 +193,8 @@ ENTRY inline {
   ROOT result = f32[] call(c), to_apply=a
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
@@ -238,8 +237,8 @@ TEST_F(CallOutlinerTest, OutlineCallWithCapturedValue) {
     ROOT after = f32[] custom-call(add), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          OutlineModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={(f32[], f32[])->f32[]}
@@ -280,8 +279,8 @@ ENTRY inline {
   ROOT call_b = f32[] call(call_a), to_apply=b
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
@@ -323,8 +322,8 @@ ENTRY inline {
   ROOT result = f32[] call(c1, c2), to_apply=a
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
@@ -362,8 +361,8 @@ ENTRY inline {
 
   // Use bitcast as a no-op that might be simplified away, or just return
   // parameter directly.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
@@ -451,8 +450,8 @@ TEST_F(CallOutlinerTest, ErrorOnAbandonedBeforeMarker) {
     ROOT add = f32[] add(gte, gte)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallOutliner call_outliner;
   auto status = call_outliner.Run(module.get()).status();
   EXPECT_FALSE(status.ok());
@@ -477,8 +476,8 @@ TEST_F(CallOutlinerTest, ErrorOnMultipleAbandonedBeforeMarkers) {
     ROOT add = f32[] add(gte2, gte2)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallOutliner call_outliner;
   auto status = call_outliner.Run(module.get()).status();
   EXPECT_FALSE(status.ok());
@@ -500,8 +499,8 @@ TEST_F(CallOutlinerTest, ErrorOnAbandonedAfterMarkers) {
     ROOT after2 = f32[] custom-call(add2), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="b"}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallOutliner call_outliner;
   auto status = call_outliner.Run(module.get()).status();
   EXPECT_FALSE(status.ok());
@@ -528,8 +527,8 @@ ENTRY inline {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          OutlineModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->(f32[], f32[])}
@@ -596,20 +595,20 @@ TEST_F(CallOutlinerTest, OutlineNestedAndSharedCalls) {
     ROOT result = f32[] add(c1, c2)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   std::string original_str = module->ToString();
 
   CallInliner call_inliner;
   CallMarker call_marker(call_inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool marked, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool marked, call_marker.Run(module.get()));
   EXPECT_TRUE(marked);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
   EXPECT_TRUE(inlined);
 
   CallOutliner call_outliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool outlined, call_outliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool outlined, call_outliner.Run(module.get()));
   EXPECT_TRUE(outlined);
 
   // Verify structure.
@@ -665,8 +664,8 @@ TEST_F(CallOutlinerTest, OutlineCallWithTupleUserOfBeforeMarker) {
     ROOT root = (f32[], ((f32[], f32[]))) tuple(after, nested_tuple)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          OutlineModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
 
   // Verify that 'before' is gone.
   for (const HloInstruction* inst :
@@ -697,8 +696,8 @@ TEST_F(CallOutlinerTest, OutlineCallWithNonTupleBeforeMarker) {
     ROOT after = f32[] custom-call(add), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          OutlineModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
 
   // Verify that 'before' is gone.
   for (const HloInstruction* inst :
@@ -739,8 +738,8 @@ TEST_F(CallOutlinerTest, OutlineCallWithMultipleOutputs) {
     ROOT after = (f32[], f32[]) custom-call(add, sub), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          OutlineModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
@@ -779,8 +778,8 @@ TEST_F(CallOutlinerTest, OutlineConsecutiveCallsWithSharedConstant) {
     ROOT after_b = f32[] custom-call(add_b), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="b"}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          OutlineModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
 
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={(f32[])->f32[]}
@@ -822,8 +821,8 @@ TEST_F(CallOutlinerTest, RetainOpMetadata) {
     ROOT tuple = (f32[], f32[]) tuple(call, c)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
@@ -848,8 +847,8 @@ TEST_F(CallOutlinerTest, RetainFrontendAttributes) {
     ROOT tuple = (f32[], f32[]) tuple(call, c)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
@@ -869,8 +868,8 @@ TEST_F(CallOutlinerTest, RetainBackendConfig) {
     ROOT after = f32[] custom-call(add), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}, backend_config="my_backend_config"
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          OutlineModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
 
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
@@ -892,8 +891,8 @@ TEST_F(CallOutlinerTest, RetainSharding) {
     ROOT tuple = (f32[], f32[]) tuple(call, c)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
@@ -918,8 +917,8 @@ TEST_F(CallOutlinerTest, RetainControlDependencies) {
     ROOT tuple = (f32[], f32[], f32[], f32[]) tuple(call, c, other1, other2)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
@@ -952,11 +951,11 @@ TEST_F(CallOutlinerTest, OutlineWithExecutionThread) {
   // match the entry computation's execution thread "foo_thread"), it should not
   // outline.
   {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_string));
     CallOutliner call_outliner;
-    TF_ASSERT_OK_AND_ASSIGN(bool outlined,
-                            call_outliner.Run(module.get(), {"bar_thread"}));
+    ASSERT_OK_AND_ASSIGN(bool outlined,
+                         call_outliner.Run(module.get(), {"bar_thread"}));
     EXPECT_FALSE(outlined);
   }
 
@@ -964,11 +963,11 @@ TEST_F(CallOutlinerTest, OutlineWithExecutionThread) {
   // The newly created outlined computation should inherit "foo_thread"
   // as its execution thread.
   {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_string));
     CallOutliner call_outliner;
-    TF_ASSERT_OK_AND_ASSIGN(bool outlined,
-                            call_outliner.Run(module.get(), {"foo_thread"}));
+    ASSERT_OK_AND_ASSIGN(bool outlined,
+                         call_outliner.Run(module.get(), {"foo_thread"}));
     EXPECT_TRUE(outlined);
 
     HloInstruction* call = FindCallByName(module->entry_computation(), "a");
@@ -992,8 +991,8 @@ TEST_F(CallOutlinerTest, RetainOriginalInstructionName) {
     ROOT tuple = (f32[], f32[]) tuple(attention_block, c)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseInlineAndOutline(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
 
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
@@ -1017,20 +1016,20 @@ TEST_F(CallOutlinerTest, OutlineRootCallPreservesEntryResultLayout) {
   HloParserOptions parser_options;
   parser_options.set_keep_module_auto_layouts(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest(),
                                    parser_options));
   CallInliner call_inliner;
   CallMarker call_marker(call_inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool marked, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool marked, call_marker.Run(module.get()));
   EXPECT_TRUE(marked);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
   EXPECT_TRUE(inlined);
 
   CallOutliner call_outliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool outlined, call_outliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool outlined, call_outliner.Run(module.get()));
   EXPECT_TRUE(outlined);
 
   EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
@@ -1038,6 +1037,44 @@ TEST_F(CallOutlinerTest, OutlineRootCallPreservesEntryResultLayout) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kCall);
+}
+
+// Tests that CallOutliner safely skips instructions removed during earlier
+// block outlining (e.g. in nested blocks).
+//
+// In post-order traversal, `after_inner` is visited before `gte_inner_1`
+// because `gte_inner_1` only feeds `add_outer`. When `inner` is outlined, all
+// users of `before_inner` (including `gte_inner_1`) are unlinked and removed
+// from the computation (`parent_ = nullptr`). When the traversal subsequently
+// visits `gte_inner_1`, CallOutliner must skip it to avoid accessing or cloning
+// a detached instruction. If CallOutliner were to not skip/process
+// `gte_inner_1`, it would result in a runtime crash.
+TEST_F(CallOutlinerTest, OutlineNestedBlockWithGteUsedOutsideInnerBlock) {
+  const absl::string_view hlo_string = R"(
+  HloModule nested_gte_module
+
+  ENTRY entry {
+    p0 = f32[2,2]{1,0} parameter(0)
+    p1 = f32[2,2]{1,0} parameter(1)
+
+    before_outer = (f32[2,2]{1,0}) custom-call(p0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="outer"}
+    gte_outer = f32[2,2]{1,0} get-tuple-element(before_outer), index=0
+
+    before_inner = (f32[2,2]{1,0}, f32[2,2]{1,0}) custom-call(gte_outer, p1), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="inner"}
+    gte_inner_0 = f32[2,2]{1,0} get-tuple-element(before_inner), index=0
+    add_inner = f32[2,2]{1,0} add(gte_inner_0, gte_inner_0)
+    after_inner = f32[2,2]{1,0} custom-call(add_inner), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="inner"}
+
+    gte_inner_1 = f32[2,2]{1,0} get-tuple-element(before_inner), index=1
+    add_outer = f32[2,2]{1,0} add(after_inner, gte_inner_1)
+    ROOT after_outer = f32[2,2]{1,0} custom-call(add_outer), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="outer"}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
+  EXPECT_EQ(CountCalls(module->entry_computation()), 1);
+  HloInstruction* root_call = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root_call->opcode(), HloOpcode::kCall);
 }
 
 }  // namespace

@@ -65,8 +65,8 @@ class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
     HloShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     *proto.mutable_xla_op_sharding() = sharding.xla_hlo_sharding().ToProto();
     return proto.SerializeAsCord();

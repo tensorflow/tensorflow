@@ -1255,7 +1255,8 @@ ShapeTracker::MapInputDimensionsToOutputUnordered(
   return kept_output_dims;
 }
 
-bool ShapeTracker::MapsToOneStride(absl::Span<const int64_t> input_dims) const {
+bool ShapeTracker::MapsToOneStride(absl::Span<const int64_t> input_dims,
+                                   bool allow_swaps) const {
   std::optional<std::vector<int64_t>> mapped =
       MapInputDimensionsToOutputUnordered(input_dims);
   if (!mapped.has_value()) {
@@ -1280,6 +1281,10 @@ bool ShapeTracker::MapsToOneStride(absl::Span<const int64_t> input_dims) const {
   };
   if (absl::c_adjacent_find(*mapped, is_invalid_transition) != mapped->end()) {
     return false;
+  }
+
+  if (allow_swaps) {
+    return true;
   }
 
   // Check for swaps.

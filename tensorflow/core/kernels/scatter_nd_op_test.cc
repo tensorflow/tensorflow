@@ -163,7 +163,7 @@ TEST_F(TensorScatterUpdateOpTest, Error_MalformedIndicesShape) {
   AddInputFromArray<int32_t>(TensorShape({1}), {3});
   absl::Status s = RunOpKernel();
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(absl::StrContains(s.ToString(), "Outer dimensions")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "outer dimensions")) << s;
 }
 
 class TensorScatterUpdateOpErrorOnBadIndicesTest : public OpsTestBase {

@@ -116,8 +116,10 @@ class LiteralBase {
   int64_t total_size_bytes(const ShapeIndex& shape_index = {}) const;
 
   // Computes the size in bytes of the output of the Serialize method.
-  absl::StatusOr<int64_t> SerializedSize() const {
-    return ShapeUtil::SerializedSize(shape());
+  // If `pack_pred` is true, PRED elements are bit-packed (8 elements per byte);
+  // if false, each PRED element occupies 1 byte.
+  absl::StatusOr<int64_t> SerializedSize(bool pack_pred = true) const {
+    return ShapeUtil::SerializedSize(shape(), pack_pred);
   }
 
   // Serialize the Literal into the given output iterator, whose value_type must
@@ -130,18 +132,22 @@ class LiteralBase {
   // The serialization format should not be relied on for forward/backward
   // compatibility.  If compatibility is required, you should use protobuf
   // serialization instead.
+  // If `pack_pred` is true, PRED elements are bit-packed (8 elements per byte).
+  // If false, each PRED element is serialized as 1 byte (preserving the full
+  // 8-bit storage, e.g. from bitcast-convert).
   template <typename OutputIterator>
-  absl::Status Serialize(OutputIterator output) const {
-    return SerializeWithShapeProto(shape().ToProto(), output);
+  absl::Status Serialize(OutputIterator output, bool pack_pred = true) const {
+    return SerializeWithShapeProto(shape().ToProto(), output, pack_pred);
   }
 
   // Serialize the Literal into the given string.  This method has the same
   // caveats as the Serialize() method above.
-  absl::Status SerializeToString(std::string* output) const;
+  absl::Status SerializeToString(std::string* output,
+                                 bool pack_pred = true) const;
 
   // Serialize the Literal into a string and return it.  This method has the
   // same caveats as the Serialize() method above.
-  absl::StatusOr<std::string> SerializeAsString() const;
+  absl::StatusOr<std::string> SerializeAsString(bool pack_pred = true) const;
 
   // Returns this literal's data as a string. This literal must be a rank-1 U8
   // array.
@@ -581,13 +587,15 @@ class LiteralBase {
 
   template <typename OutputIterator>
   absl::Status SerializeWithShapeProto(const ShapeProto& proto,
-                                       OutputIterator output) const;
+                                       OutputIterator output,
+                                       bool pack_pred = true) const;
 
   template <typename OutputIterator>
   class SerializeState {
    public:
-    SerializeState(const ShapeProto& shape, OutputIterator output)
-        : output_(output) {
+    SerializeState(const ShapeProto& shape, OutputIterator output,
+                   bool pack_pred = true)
+        : output_(output), pack_pred_(pack_pred) {
       WriteShape(shape);
     }
 
@@ -597,14 +605,14 @@ class LiteralBase {
     void WriteElement(NativeT element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
+      static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         WriteElement(element.real());
         WriteElement(element.imag());
       } else {
         constexpr PrimitiveType unsigned_type =
             primitive_util::UnsignedIntegralTypeForBitWidth(
-                primitive_util::BitWidth(primitive_type));
+                primitive_util::StorageBitWidth(primitive_type));
         using UnsignedT = primitive_util::NativeTypeOf<unsigned_type>;
         UnsignedT unsigned_element = absl::bit_cast<UnsignedT>(element);
         if constexpr (sizeof(UnsignedT) == 1) {
@@ -626,6 +634,14 @@ class LiteralBase {
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
       if constexpr (bits_per_element < 8) {
+        if constexpr (primitive_type == PRED) {
+          if (!pack_pred_) {
+            for (NativeT element : elements) {
+              WriteElement(element);
+            }
+            return;
+          }
+        }
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
 
@@ -674,21 +690,23 @@ class LiteralBase {
 
     OutputIterator output_;
     int64_t num_written_ = 0;
+    bool pack_pred_ = true;
   };
 
   template <typename InputIterator>
   class DeserializeState {
    public:
-    DeserializeState(InputIterator input, InputIterator end)
-        : input_(input), end_(end) {}
+    DeserializeState(InputIterator input, InputIterator end,
+                     bool pack_pred = true)
+        : input_(input), end_(end), pack_pred_(pack_pred) {}
 
     int64_t num_read() const { return num_read_; }
 
     template <typename NativeT>
-    ABSL_MUST_USE_RESULT bool ReadElement(NativeT& element) {
+    [[nodiscard]] bool ReadElement(NativeT& element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
+      static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         using ComponentT =
             primitive_util::NativeTypeOf<primitive_util::ComplexComponentType(
@@ -705,7 +723,7 @@ class LiteralBase {
       } else {
         constexpr PrimitiveType unsigned_type =
             primitive_util::UnsignedIntegralTypeForBitWidth(
-                primitive_util::BitWidth(primitive_type));
+                primitive_util::StorageBitWidth(primitive_type));
         using UnsignedT = primitive_util::NativeTypeOf<unsigned_type>;
         if constexpr (sizeof(UnsignedT) == 1) {
           if (at_end()) {
@@ -732,11 +750,21 @@ class LiteralBase {
     }
 
     template <typename NativeT>
-    ABSL_MUST_USE_RESULT bool ReadElements(absl::Span<NativeT> elements) {
+    [[nodiscard]] bool ReadElements(absl::Span<NativeT> elements) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
       if constexpr (bits_per_element < 8) {
+        if constexpr (primitive_type == PRED) {
+          if (!pack_pred_) {
+            for (NativeT& element : elements) {
+              if (!ReadElement(element)) {
+                return false;
+              }
+            }
+            return true;
+          }
+        }
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
 
@@ -811,6 +839,7 @@ class LiteralBase {
     InputIterator input_;
     InputIterator end_;
     int64_t num_read_ = 0;
+    bool pack_pred_ = true;
   };
 
   // Array literals could be in one of the following three states:
@@ -1589,12 +1618,15 @@ class Literal : public MutableLiteralBase {
 
   // Deserialize a Literal from the given iterator range, whose value type must
   // be char.  See the comments on the Serialize() method for caveats.
+  // `pack_pred` must match the value used when serializing the data.
   template <typename InputIterator>
   static absl::StatusOr<Literal> Deserialize(InputIterator begin,
-                                             InputIterator end);
+                                             InputIterator end,
+                                             bool pack_pred = true);
 
-  static absl::StatusOr<Literal> DeserializeFromString(absl::string_view data) {
-    return Deserialize(data.data(), data.data() + data.size());
+  static absl::StatusOr<Literal> DeserializeFromString(absl::string_view data,
+                                                       bool pack_pred = true) {
+    return Deserialize(data.data(), data.data() + data.size(), pack_pred);
   }
 
  private:
@@ -1757,13 +1789,15 @@ bool LiteralBase::Piece::DeserializeData(
 //
 // - If a piece is dynamic, we first write the sizes of the dynamic dimensions.
 //
-// - The elements of the piece are then written.  Elements smaller than a single
-//   byte (PRED, S4, U4) are packed into bytes.  Otherwise, they are written in
-//   little-endian byte order.
+// - The elements of the piece are then written.  Sub-byte elements (e.g. S4,
+//   U4) are packed into bytes.  PRED elements are packed 8 per byte when
+//   `pack_pred` is true, or written as 1 byte per element when `pack_pred` is
+//   false.  Otherwise, elements are written in little-endian byte order.
 template <typename OutputIterator>
 absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
-                                                  OutputIterator output) const {
-  SerializeState<OutputIterator> state(shape_proto, output);
+                                                  OutputIterator output,
+                                                  bool pack_pred) const {
+  SerializeState<OutputIterator> state(shape_proto, output, pack_pred);
   ABSL_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
       [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
@@ -1782,15 +1816,18 @@ absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
             subshape.element_type());
         return absl::OkStatus();
       }));
-  DCHECK_EQ(state.num_written(), SerializedSize().value())
-      << shape().ToString();
+#ifndef NDEBUG
+  ABSL_ASSIGN_OR_RETURN(int64_t expected_size, SerializedSize(pack_pred));
+  DCHECK_EQ(state.num_written(), expected_size) << shape().ToString();
+#endif
   return absl::OkStatus();
 }
 
 template <typename InputIterator>
 absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
-                                             InputIterator end) {
-  DeserializeState<InputIterator> state(begin, end);
+                                             InputIterator end,
+                                             bool pack_pred) {
+  DeserializeState<InputIterator> state(begin, end, pack_pred);
   uint64_t shape_size;
   if (!state.ReadElement(shape_size)) {
     return InvalidArgument("Failed to read shape size");
@@ -1821,8 +1858,11 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
             }
             return absl::OkStatus();
           }));
-  DCHECK_EQ(state.num_read(), ShapeUtil::SerializedSize(shape).value())
-      << shape.ToString();
+#ifndef NDEBUG
+  ABSL_ASSIGN_OR_RETURN(int64_t expected_size,
+                   ShapeUtil::SerializedSize(shape, pack_pred));
+  DCHECK_EQ(state.num_read(), expected_size) << shape.ToString();
+#endif
   if (!state.at_end()) {
     return InvalidArgument("Did not consume all input data");
   }

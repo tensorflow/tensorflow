@@ -1,4 +1,8 @@
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+    "rocm_library",
+)
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
@@ -236,11 +240,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "abort_collectives_on_task_failure_test",
     srcs = ["abort_collectives_on_task_failure_test.cc"],
-    tags = [
-        "cuda-only",
+    backends = [
         "gpu",
     ],
     deps = [
@@ -248,7 +251,6 @@ xla_cc_test(
         ":gpu_clique_key",
         ":gpu_cliques",
         ":gpu_collectives",
-        ":nccl_or_rccl_collectives",  # fixdeps: keep
         "//xla:executable_run_options",
         "//xla:future",
         "//xla/core/collectives:clique_id",
@@ -256,25 +258,30 @@ xla_cc_test(
         "//xla/core/collectives:rank_id",
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/runtime:device_id",
+        "//xla/service:platform_util",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_platform",  # fixdeps: keep
         "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + if_cuda_or_rocm_is_configured(["nccl_or_rccl_collectives"]),
 )
 
 xla_test(
     name = "gpu_cliques_test",
     srcs = ["gpu_cliques_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -386,6 +393,10 @@ cc_library(
 xla_test(
     name = "gpu_collectives_test",
     srcs = ["gpu_collectives_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -436,6 +447,10 @@ xla_test(
 xla_test(
     name = "nccl_communicator_test",
     srcs = ["nccl_communicator_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "h100": [
             "full",
@@ -715,10 +730,7 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
-    visibility = [
-        "//xla/backends/gpu/runtime:__subpackages__",
-        "//xla/stream_executor/cuda:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":nccl_errors",
         ":nccl_types",
@@ -1039,6 +1051,7 @@ cc_library(
         "@oneccl//:libs",
         "@tsl//tsl/platform:casts",
     ],
+    alwayslink = True,  # registers collectives implementation
 )
 
 cc_library(
@@ -1055,6 +1068,7 @@ cc_library(
         ":gpu_communicator",
         ":oneccl_errors",
         ":single_threaded_executor",
+        "//xla:comparison_util",
         "//xla:future",
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives:communicator",
@@ -1064,6 +1078,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -1101,7 +1116,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/runtime:collective_kernel_api",
+        "//xla/backends/gpu/runtime:multi_gpu_barrier",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
@@ -1167,9 +1182,7 @@ cc_library(
         "no-oneapi",
         "rocm-only",
     ],
-    visibility = [
-        "//xla/backends/gpu/runtime:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":rccl_errors",
         "//xla:util",
@@ -1265,6 +1278,26 @@ cc_library(
     ],
 )
 
+rocm_library(
+    name = "mori_kernels",
+    srcs = [
+        "mori_kernels.cu.cc",
+    ],
+    hdrs = [
+        "mori_kernels.h",
+        "mori_stub.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    copts = ["-U__HIP_DISABLE_CPP_FUNCTIONS__"],  # <-- only if needed
+    linkstatic = True,
+    tags = [
+        "gpu",
+        "no-oneapi",
+        "rocm-only",
+    ],
+    deps = [],
+)
+
 cc_library(
     name = "mori_collectives",
     srcs = [
@@ -1274,10 +1307,13 @@ cc_library(
     hdrs = [
         "mori_collectives.h",
         "mori_communicator.h",
+        "mori_kernels.h",
         "mori_stub.h",
     ],
     tags = [
         "gpu",
+        "no-oneapi",
+        "rocm-only",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1297,6 +1333,7 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:symmetric_memory",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
@@ -1305,6 +1342,7 @@ cc_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_status",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -1327,7 +1365,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:numbers",
-    ],
+    ] + if_rocm_is_configured([
+        ":mori_kernels",
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
     alwayslink = True,
 )
 

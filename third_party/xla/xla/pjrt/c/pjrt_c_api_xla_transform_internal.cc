@@ -209,7 +209,8 @@ PJRT_Error* GetHloPassPipelineTrace(
   }
 
   xla::HloModuleProto proto;
-  if (!proto.ParseFromArray(args->hlo_module.data, args->hlo_module.size)) {
+  if (!proto.ParseFromString(
+          absl::string_view(args->hlo_module.data, args->hlo_module.size))) {
     return pjrt::StatusToPjRtError(
         absl::InvalidArgumentError("Failed to parse HloModuleProto"));
   }

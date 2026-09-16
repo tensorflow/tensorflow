@@ -159,34 +159,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_device",
-    srcs = ["cpu_device.cc"],
-    hdrs = ["cpu_device.h"],
-    visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_topology_users"]),
-    deps = [
-        ":cpu_async_execution_tracker",
-        ":execution_stream_event_map",
-        "//xla:literal",
-        "//xla/pjrt:host_memory_spaces",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_common",
-        "//xla/pjrt:semaphore",
-        "//xla/pjrt/plugin/xla_cpu:cpu_device_description",
-        "//xla/service/cpu:cpu_xfeed",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "cpu_event",
     hdrs = ["cpu_event.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
@@ -194,14 +166,20 @@ cc_library(
 
 cc_library(
     name = "cpu_client",
-    srcs = ["cpu_client.cc"],
-    hdrs = ["cpu_client.h"],
+    srcs = [
+        "cpu_client.cc",
+        "cpu_pjrt_compiler.cc",
+    ],
+    hdrs = [
+        "cpu_client.h",
+        "cpu_pjrt_compiler.h",
+    ],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
         ":abstract_cpu_buffer",
         ":cpu_async_execution_tracker",
-        ":cpu_device",
         ":cpu_event",
+        ":execution_stream_event_map",
         "//xla:array",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
@@ -246,6 +224,7 @@ cc_library(
         "//xla/pjrt:utils",
         "//xla/pjrt/dump",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:cpu_device_description",
         "//xla/pjrt/plugin/xla_cpu:cpu_execute_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_memory",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology",
@@ -256,7 +235,7 @@ cc_library(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
@@ -268,6 +247,7 @@ cc_library(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",
+        "//xla/service/cpu:cpu_xfeed",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_address",
@@ -293,12 +273,16 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
+        "@riegeli//riegeli/messages:parse_message",
         "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:setround",
         "@tsl//tsl/profiler/lib:traceme",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -378,24 +362,19 @@ cc_library(
 
 cc_library(
     name = "cpu_pjrt_compiler",
-    srcs = ["cpu_pjrt_compiler.cc"],
+    srcs = [],
     hdrs = ["cpu_pjrt_compiler.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
         ":cpu_client",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:maybe_owning_mlir_module",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
-        "//xla/stream_executor/platform:initialize",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ],
     alwayslink = True,
 )

@@ -192,3 +192,9 @@ def DropShapeAssertionsPass : Pass<"drop-shape-assertions", "ModuleOp"> {
   let constructor = "mlir::odml::CreateDropShapeAssertionsPass()";
   let dependentDialects = ["mlir::vhlo::VhloDialect", "mlir::stablehlo::StablehloDialect"];
 }
+
+def LegalizeVhloQuantCustomCallsPass : Pass<"legalize-vhlo-quant-custom-calls", "ModuleOp"> {
+  let summary = "Legalizes vhlo custom calls for quantization ops to stablehlo.custom_call.";
+  let constructor = "mlir::odml::CreateLegalizeVhloQuantCustomCallsPass()";
+  let dependentDialects = ["mlir::vhlo::VhloDialect", "mlir::stablehlo::StablehloDialect"];
+}

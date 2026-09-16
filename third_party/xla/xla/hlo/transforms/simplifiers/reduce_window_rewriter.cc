@@ -616,6 +616,12 @@ static absl::StatusOr<bool> TryOptimizeCumSumOrProd(
   const int64_t scan_dim = non_trivial_window_dimensions.front();
   const int64_t scan_length = operand_shape.dimensions(scan_dim);
 
+  // Tiling reshapes the scan dimension, which DynamicDimensionInference
+  // cannot track exactly for dynamic sizes.
+  if (operand_shape.is_dynamic_dimension(scan_dim)) {
+    return false;
+  }
+
   // Early checks to avoid unnecessary work.
   if (scan_length <= base_length) {
     return false;
@@ -733,8 +739,11 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
     return false;
   }
 
+  // Dynamic scan dimensions cannot use the tree rewrite (it reshapes the
+  // scan dimension); keep the single reduce-window form.
   const bool use_single_reduce_window =
-      base_length == 0 || scan_length <= base_length;
+      base_length == 0 || scan_length <= base_length ||
+      operand_shape.is_dynamic_dimension(scan_dim);
   if (!use_single_reduce_window && !IsTreeRewriteSafeInit(scan, init_source)) {
     // The tree rewrite folds the init into both tree levels, which is only
     // correct when the extra fold is a no-op (an identity, idempotent, or
@@ -810,7 +819,9 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  if (base_length_ == 0) {
+  // If base_length_ <= 1, tree reduction makes zero progress and would loop
+  // infinitely in HloPassFix.
+  if (base_length_ <= 1) {
     return false;
   }
 
@@ -839,6 +850,12 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
 absl::StatusOr<bool> AssociativeScanRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // base_length_ == 0 decomposes all scans into a single reduce-window.
+  // base_length_ == 1 cannot make progress with tree reduction, so skip.
+  if (base_length_ == 1) {
+    return false;
+  }
+
   bool changed = false;
   for (const auto& computation : module->computations(execution_threads)) {
     if (computation->IsFusionComputation()) {

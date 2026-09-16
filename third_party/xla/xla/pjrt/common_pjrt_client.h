@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -46,7 +47,9 @@ limitations under the License.
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/dynamic_shapes.h"
+#include "xla/pjrt/infer_dispatch_info.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/transpose.h"
@@ -76,6 +79,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool allows_execute_recursion() const { return allows_recursion(); }
   virtual bool allow_fallback_for_donation() const { return false; }
   virtual bool supports_two_phase_launch() const { return true; }
+  virtual bool dump_on_deserialize() const { return false; }
   // Returns true if we should skip the staging buffer during ToLiteral.
   virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
                                       const Shape& shape,
@@ -108,13 +112,12 @@ class CommonPjRtClient : public PjRtClient {
   virtual void CallOomHandlers() const {}
 
   virtual PjRtDynamicShapeKind GetDynamicShapeKind(
-      int memory_space_kind_id) const {
-    return PjRtDynamicShapeKind::kNotSupported;
-  }
+      int memory_space_kind_id) const;
 
   virtual void LaunchOnDevice(PjRtDevice* device,
                               absl::AnyInvocable<void()> execute_fn) const {
-    async_work_runner()->Execute(std::move(execute_fn));
+    raw_client()->LaunchOnDevice(device->local_device_id(),
+                                 std::move(execute_fn));
   }
 
   virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
@@ -122,6 +125,9 @@ class CommonPjRtClient : public PjRtClient {
                                 absl::Status prepare_status) {
     return false;
   }
+
+  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   // Computes the memory requirements for storing shape on memory_space.
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(int memory_space_kind,
@@ -134,8 +140,8 @@ class CommonPjRtClient : public PjRtClient {
   // Gets the memory_space_kind for a particular XLA layout.
   virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
       const xla::Shape& shape) const {
-    return absl::UnimplementedError(
-        "GetMemorySpaceKindForShape is not supported.");
+    ABSL_ASSIGN_OR_RETURN(auto* topology, GetTopologyDescription());
+    return topology->GetMemorySpaceKindForShape(shape);
   }
 
   // Allocates a raw buffer of a particular size after an optional
@@ -147,6 +153,12 @@ class CommonPjRtClient : public PjRtClient {
     return raw_client()->AllocateRawBuffer(memory_space, on_device_bytes_count,
                                            retry_on_oom, allocate_after);
   }
+
+  HostMemoryAllocator* GetHostMemoryAllocator() const override;
+
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
 
   // Allocates a raw buffer of a particular size. Backends may support retrying
   // allocation on oom which can be controlled via retry_on_oom.
@@ -299,11 +311,11 @@ class CommonPjRtClient : public PjRtClient {
 
   // Returns the shape+layout that would result from copying a buffer of
   // shape+layout shape from src_memory_space to dst_memory_space.
-  virtual absl::StatusOr<xla::Shape> GetCopyDestinationShape(
+  absl::StatusOr<xla::Shape> GetCopyDestinationShape(
       const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
       PjRtMemorySpace* dst_memory_space);
 
-  virtual bool IsOnCpu(PjRtMemorySpace* memory_space) { return false; }
+  virtual bool IsOnCpu(PjRtMemorySpace* memory_space);
   virtual bool use_stream_based_compaction() const { return false; }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
@@ -370,9 +382,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
-      PjRtMemorySpace* memory_space, const Layout* device_layout) const {
-    return false;
-  }
+      PjRtMemorySpace* memory_space, const Layout* device_layout) const;
 
   virtual absl::StatusOr<PjRtDeviceEventRef> LinearizeHostBufferInto(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -428,16 +438,7 @@ class CommonPjRtClient : public PjRtClient {
       absl::Span<const GlobalDeviceId> src_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) override;
 
-  // Similar to PjRtClient::CrossHost{Send/Receive}Buffers, but uses
-  // PjRtRawBuffer instead of PjRtBuffer.
-  // Takes in a vector of transfer dependencies and transfer specs, and launches
-  // the data transfers specified by the transfer specs so that they occur after
-  // all transfer dependencies are complete.
-  struct CrossHostTransferSpec {
-    GlobalDeviceId src_global_device_id;
-    GlobalDeviceId dst_global_device_id;
-    PjRtRawBufferRef raw_buffer;
-  };
+  using CrossHostTransferSpec = PjRtRawClient::CrossHostTransferSpec;
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
       PjRtDeviceEventRefVector transfer_dependencies,
@@ -458,18 +459,27 @@ class CommonPjRtClient : public PjRtClient {
       absl::Span<const Shape> parameter_device_shapes, bool& is_error,
       bool allow_fallback_for_donation = false);
 
-  absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
-  AllocateOutputBuffersWithInputReuse(
+  struct PreparedOutputBuffers {
+    absl::InlinedVector<PjRtRawBufferRef, 4> buffers;
+
+    // Overrides the executable's result shape when a donated static input
+    // is reused for an unbounded dynamic output.
+    std::optional<Shape> output_device_shape_override;
+  };
+
+  absl::StatusOr<PreparedOutputBuffers> AllocateOutputBuffersWithInputReuse(
       const Shape& output_device_shape,
       absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
+      absl::Span<PjRtBuffer* const> argument_handles,
       const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
       absl::Span<const int> output_memory_space_kind_ids,
       const ExecuteOptions& options);
 
+  // Creates output buffers using each result's definition event.
   std::vector<std::unique_ptr<PjRtBuffer>> CreateOutputs(
       const std::shared_ptr<const Shape>& output_device_shape,
-      PjRtDeviceEventRef definition_event, PjRtDevice* device,
-      absl::Span<const int> output_memory_space_kind_ids,
+      const PjRtRawLoadedExecutable::RawExecuteResult& execute_result,
+      PjRtDevice* device, absl::Span<const int> output_memory_space_kind_ids,
       absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers,
       bool is_predetermined_error);
 
@@ -491,10 +501,6 @@ class CommonPjRtClient : public PjRtClient {
                                         PjRtDeviceEventPtr device_event,
                                         absl::string_view description) {}
 
-  virtual absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
-                                    PjRtDeviceEventRef event,
-                                    std::intptr_t stream);
-
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const PjRtClient::ShapeSpec> shape_specs,
@@ -510,7 +516,31 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const absl::Cord& serialized,
+      std::optional<CompileOptions> options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::shared_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override;
+
  protected:
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
+      std::shared_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options, bool dump);
   // Returns the required alignment for device memory addresses when slicing.
   virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
     return absl::UnimplementedError(
@@ -536,47 +566,15 @@ class CommonPjRtClient : public PjRtClient {
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:
-  struct DispatchInfo {
-    std::vector<Shape> parameter_device_shapes;
-    std::shared_ptr<const Shape> output_device_shape;
-    std::vector<int> parameter_memory_space_kind_ids;
-    std::vector<int> output_memory_space_kind_ids;
-    std::vector<PjRtDevice*> addressable_devices;
-    std::vector<LogicalDeviceIds> addressable_device_logical_ids;
-    std::shared_ptr<DeviceAssignment> device_assignment;
-    std::vector<int> parameters_that_must_be_donated;
-    std::vector<int64_t> input_buffer_sizes_in_bytes;
-    // Executable shape information that is computable from the PjRtExecutable*.
-    struct Extras {
-      std::string name;
-      int num_partitions;
-      int num_replicas;
-      absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
-          parameter_layouts;
-      absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
-          output_layouts;
-      std::optional<std::vector<OpSharding>> parameter_shardings;
-      std::optional<std::vector<OpSharding>> output_shardings;
-      std::vector<absl::string_view> parameter_memory_kinds;
-      std::vector<absl::string_view> output_memory_kinds;
-      absl::StatusOr<std::string> fingerprint;
-      HloInputOutputAliasConfig input_output_alias_config;
-    };
-    struct InputHloSnapshotBits {
-      xla::HloModuleProto hlo_module;
-      xla::DebugOptions debug_options;
-    };
-    std::unique_ptr<InputHloSnapshotBits> input_hlo_snapshot_bits;
-    std::unique_ptr<Extras> extras;
-  };
+  using DispatchInfo = PjRtLoadedExecutableDispatchInfo;
 
   CommonPjRtLoadedExecutable(
       CommonPjRtClient* client, tsl::AsyncValueRef<PjRtExecutable> executable,
       DispatchInfo info, tsl::RCReference<PjRtExecutableLoadState> load_state)
       : client_(client),
         parameter_device_shapes_(std::move(info.parameter_device_shapes)),
-        parameters_that_must_be_donated_(
-            std::move(info.parameters_that_must_be_donated)),
+        parameters_that_may_be_donated_(
+            std::move(info.parameters_that_may_be_donated)),
         output_device_shape_(std::move(info.output_device_shape)),
         parameter_memory_space_kind_ids_(
             std::move(info.parameter_memory_space_kind_ids)),
@@ -664,7 +662,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         addressable_devices_,
         addressable_device_logical_ids_,
         device_assignment_,
-        parameters_that_must_be_donated_,
+        parameters_that_may_be_donated_,
         input_buffer_sizes_in_bytes_,
     };
   }
@@ -766,6 +764,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     PjRtDeviceEventRefVector extra_deps;
     PjRtDeviceEventRefVector control_deps;
     absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers;
+    std::optional<Shape> output_device_shape_override;
     bool is_predetermined_error;
     const ExecuteOptions* options;
   };
@@ -785,12 +784,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         std::move(device_and_assign), attempt);
   }
 
-  // Returns a sorted list of the parameters that must be donated as a
+  // Returns a sorted list of the parameters that may be donated as a
   // side-effect of the execution. Derived classes may use custom logic.
-  absl::Span<int const> ParametersThatMustBeDonated() const;
+  absl::Span<int const> ParametersThatMayBeDonated() const;
 
-  virtual const HloInputOutputAliasConfig& input_output_alias_config()
-      const = 0;
+  virtual const HloInputOutputAliasConfig& input_output_alias_config() const {
+    auto hlo_module = GetExecutable()->GetHloModule();
+    CHECK_OK(hlo_module.status());
+    return (*hlo_module)->input_output_alias_config();
+  }
 
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
@@ -824,9 +826,9 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   CommonPjRtClient* client_;
   // Parameter shapes.
   std::vector<Shape> parameter_device_shapes_;
-  // A sorted vector of parameters that have any aliased buffers and thus must
+  // A sorted vector of parameters that have any aliased buffers and thus may
   // be donated when executing the computation.
-  std::vector<int> parameters_that_must_be_donated_;
+  std::vector<int> parameters_that_may_be_donated_;
   // Result layouts (device shapes).
   std::shared_ptr<const Shape> output_device_shape_;
   // memory_space()->kind_id() for each parameter buffer. May be empty for
@@ -978,6 +980,279 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
 
  private:
   std::shared_ptr<const Shape> on_device_shape_;
+};
+
+class CommonPjRtClientImpl : public CommonPjRtClient {
+ public:
+  PjRtRawClient* raw_client() const override { return raw_client_.get(); }
+
+  int process_index() const override { return process_index_; }
+
+  int device_count() const override { return devices_.size(); }
+  int addressable_device_count() const override {
+    return addressable_devices_.size();
+  }
+  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
+  }
+
+  absl::StatusOr<PjRtDevice*> LookupDevice(
+      GlobalDeviceId global_device_id) const override {
+    auto it = id_to_device_.find(global_device_id.value());
+    if (it != id_to_device_.end()) {
+      return it->second;
+    }
+    return InvalidArgument("No matching device found for device_id %d",
+                           global_device_id.value());
+  }
+
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
+      LocalDeviceId local_device_id) const override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
+  PjRtPlatformId platform_id() const override { return platform_id_; }
+  absl::string_view platform_name() const override { return platform_name_; }
+  absl::string_view platform_version() const override {
+    return platform_version_;
+  }
+
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return &topology();
+  }
+
+  const xla::PjRtTopologyDescription& topology() const { return *topology_; }
+
+  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
+      const override {
+    if (!kv_store_) {
+      return std::nullopt;
+    }
+    return kv_store_;
+  }
+
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override {
+    return plugin_attributes_;
+  }
+
+  AsyncWorkRunner* async_work_runner() const override {
+    return raw_client_->async_work_runner();
+  }
+
+  void UpdateGlobalProcessInfo(
+      absl::Span<xla::coordination::TaskInfo> infos) override {
+    raw_client()->UpdateGlobalProcessInfo(infos);
+  }
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
+      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom) override {
+    return raw_client()->AllocateRawBufferForExecute(
+        memory_space, on_device_bytes_count, retry_on_oom);
+  }
+
+  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override {
+    raw_client()->ScheduleRemoteSend(memory_space, raw_buffer,
+                                     definition_events, usage_event_promise,
+                                     serialized_descriptor, std::move(on_done));
+  }
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs) override {
+    return raw_client()->CrossHostReceiveBuffersInto(
+        buffers, std::move(notifier), transfer_dependency_avs);
+  }
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CrossHostTransferSpec> transfer_specs) override {
+    return raw_client()->CrossHostTransferBuffers(
+        std::move(transfer_dependencies), std::move(transfer_specs));
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
+      const override;
+
+  // TODO(parkers): Devices should be constructed inside the constructor
+  // once the device types are unified.
+  void AttachDevices(
+      std::vector<std::unique_ptr<PjRtDevice>> devices,
+      std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces);
+
+  CommonPjRtClientImpl(
+      PjRtPlatformId platform_id, std::string platform_name,
+      std::string platform_version, int process_index,
+      std::shared_ptr<const xla::PjRtTopologyDescription> topology,
+      std::unique_ptr<PjRtRawClient> raw_client,
+      std::shared_ptr<KeyValueStoreInterface> kv_store,
+      std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt,
+      std::unique_ptr<PjRtHostMemoryForDeviceManager>
+          host_memory_for_device_manager = nullptr);
+
+  bool allow_fallback_for_donation() const override {
+    return allow_fallback_for_donation_;
+  }
+  bool supports_two_phase_launch() const override {
+    return supports_two_phase_launch_;
+  }
+  bool supports_predetermined_error() const override {
+    return supports_predetermined_error_;
+  }
+  bool allows_recursion() const override { return allows_recursion_; }
+  bool allows_execute_recursion() const override {
+    return allows_execute_recursion_;
+  }
+  bool use_stream_based_compaction() const override {
+    return use_stream_based_compaction_;
+  }
+  bool dump_on_deserialize() const override { return dump_on_deserialize_; }
+
+ private:
+  const PjRtPlatformId platform_id_;
+  const std::string platform_name_;
+  std::string platform_version_;
+  std::shared_ptr<const xla::PjRtTopologyDescription> topology_;
+
+  // Includes all devices, including non-local devices on multi-host platforms.
+  std::vector<std::unique_ptr<PjRtDevice>> owned_devices_;
+  // Pointers to `owned_devices_`.
+  std::vector<PjRtDevice*> devices_;
+  // Maps Device::id() to the corresponding Device. Includes all devices.
+  absl::flat_hash_map<int, PjRtDevice*> id_to_device_;
+  // Local devices indexed by local device ordinal.
+  std::vector<PjRtDevice*> addressable_devices_;
+  int process_index_;
+
+  std::vector<std::unique_ptr<PjRtMemorySpace>> owned_memory_spaces_;
+  // Pointers to `owned_memory_spaces_`.
+  std::vector<PjRtMemorySpace*> memory_spaces_;
+
+  std::optional<PjRtPluginAttributes> plugin_attributes_;
+
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
+
+  std::unique_ptr<PjRtRawClient> raw_client_;
+
+  bool allow_fallback_for_donation_ = false;
+  bool supports_two_phase_launch_ = true;
+  bool supports_predetermined_error_ = true;
+  bool allows_recursion_ = true;
+  bool allows_execute_recursion_;
+  bool use_stream_based_compaction_ = false;
+  bool dump_on_deserialize_ = false;
+};
+
+// A common base class for PjRtDevice implementations that delegate to
+// CommonPjRtClient.
+class CommonPjRtDevice : public PjRtDevice {
+ public:
+  CommonPjRtDevice() = default;
+  CommonPjRtDevice(std::unique_ptr<PjRtDeviceDescription> description,
+                   LocalDeviceId local_device_id = LocalDeviceId(-1),
+                   LocalChipId local_hardware_id = LocalChipId(-1),
+                   bool is_addressable = true,
+                   CommonPjRtClient* client = nullptr)
+      : client_(client),
+        description_(std::move(description)),
+        local_device_id_(local_device_id),
+        local_hardware_id_(local_hardware_id),
+        is_addressable_(is_addressable) {}
+
+  explicit CommonPjRtDevice(CommonPjRtClient* client) : client_(client) {}
+  ~CommonPjRtDevice() override = default;
+
+  // Must set client exactly once.
+  virtual void SetClient(PjRtClient* client);
+
+  CommonPjRtClient* client() const override { return client_; }
+
+  const PjRtDeviceDescription& description() const override {
+    CHECK(description_ != nullptr);
+    return *description_;
+  }
+
+  bool IsAddressable() const override { return is_addressable_; }
+
+  LocalDeviceId local_device_id() const override { return local_device_id_; }
+
+  LocalChipId local_hardware_id() const override { return local_hardware_id_; }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    if (!attributes_.empty()) {
+      return attributes_;
+    }
+    return description().Attributes();
+  }
+
+  void SetAttributes(
+      absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes) {
+    attributes_ = std::move(attributes);
+  }
+
+  // Return `platform_id` from client.
+  PjRtPlatformId platform_id() const;
+
+  // Return `platform_name` from client.
+  absl::string_view platform_name() const;
+
+  absl::Status TransferToInfeed(const LiteralSlice& literal) override;
+
+  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
+
+  void AttachMemorySpace(PjRtMemorySpace* memory_space,
+                         bool is_default = false);
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
+  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
+  absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
+      absl::string_view memory_space_kind) const override;
+
+  absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
+  absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
+                                       absl::Status error) override;
+
+  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
+      const override;
+
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
+  absl::Status ClearMemoryStats() override;
+
+ protected:
+  PjRtDeviceDescription* description_ptr() { return description_.get(); }
+  const PjRtDeviceDescription* description_ptr() const {
+    return description_.get();
+  }
+
+ private:
+  CommonPjRtClient* client_ = nullptr;
+  std::unique_ptr<PjRtDeviceDescription> description_;
+  LocalDeviceId local_device_id_ = LocalDeviceId(-1);
+  LocalChipId local_hardware_id_ = LocalChipId(-1);
+  bool is_addressable_ = false;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
+
+  absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
+  absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_id_;
+  PjRtMemorySpace* default_memory_space_ = nullptr;
 };
 
 }  // namespace xla

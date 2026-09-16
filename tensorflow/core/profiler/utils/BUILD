@@ -260,7 +260,7 @@ cc_library(
     name = "hlo_module_utils",
     hdrs = ["hlo_module_utils.h"],
     visibility = internal_visibility([
-        "//tensorflow/compiler/mlir/lite/experimental/google/tooling/hlo_adapter:__pkg__",
+        "//third_party/odml/model_explorer/backend/adapters/hlo:__pkg__",
     ]),
     deps = [
         "@org_xprof//xprof/utils:hlo_module_utils",

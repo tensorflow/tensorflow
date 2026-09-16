@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/frontend_attributes.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
@@ -71,6 +71,8 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+using ::xla::xtile::BlockLevelParameters;
 
 struct EmitArgs {
   TritonFusion::EmitThunk emit_thunk;

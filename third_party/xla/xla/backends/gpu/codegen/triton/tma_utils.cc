@@ -153,7 +153,7 @@ bool IsTmaRecommended(const TritonGemmConfig& config) {
 }
 
 // Equivalent to the recommendation constructed for TritonGemmConfig.
-bool IsTmaRecommended(const BlockLevelFusionConfig& config) {
+bool IsTmaRecommended(const xtile::BlockLevelFusionConfig& config) {
   if (!(config.num_warps() <= 8 &&
         (config.num_stages() == 1 || config.num_stages() == 3 ||
          config.num_stages() == 4))) {

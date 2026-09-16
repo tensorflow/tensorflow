@@ -113,6 +113,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/collectives/all_reduce_promotion.h"
+#include "xla/hlo/transforms/collectives/all_to_all_decomposer.h"
 #include "xla/hlo/transforms/collectives/async_collective_replacer.h"
 #include "xla/hlo/transforms/collectives/collective_permute_cse.h"
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
@@ -164,8 +166,6 @@ limitations under the License.
 #include "xla/literal_pool.h"
 #include "xla/map_util.h"
 #include "xla/mlir_hlo/transforms/passes.h"
-#include "xla/service/all_reduce_promotion.h"
-#include "xla/service/all_to_all_decomposer.h"
 #include "xla/service/async_collective_custom_call_rewriter.h"
 #include "xla/service/batched_gather_scatter_normalizer.h"
 #include "xla/service/batchnorm_expander.h"
@@ -219,6 +219,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/map_inliner.h"
 #include "xla/service/multi_module_driver.h"
+#include "xla/service/nullary_function_wrap_inliner.h"
 #include "xla/service/scan_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
@@ -245,7 +246,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
@@ -645,6 +645,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
     spmd_pipeline.AddPass<ControlDepRewriter>();
+    spmd_pipeline.AddPass<NullaryFunctionWrapInliner>();
     if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {
       spmd_pipeline.AddPass<RecognizeReduceWindow>();
       spmd_pipeline.AddPass<CollectivePermuteCSE>();
@@ -677,6 +678,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
           /*runSdyShardingPropagation=*/false);
     }
     sharding_removal_pipeline.AddPass<ControlDepRewriter>();
+    sharding_removal_pipeline.AddPass<NullaryFunctionWrapInliner>();
     sharding_removal_pipeline.AddPass<HloDCE>();
     ABSL_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }
@@ -753,7 +755,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
-  // The TopkDecomposer generates a compare op with type=TOTALORDER and must
+  // The TopkDecomposer generates a compare op with order=TOTAL and must
   // run before the ComparisonExpander which rewrites such comparisons.
   pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
     return instr->opcode() == HloOpcode::kTopK;
@@ -1134,6 +1136,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }();
+
+  // Safeguard for late elemental instructions created during post-layout
+  // simplification.
+  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
+                                  use_tiled_emitter, target_machine_features);
 
   // Outline ops in the entry computation into calls to subcomputations.
   if (!is_aot_compile) {
@@ -2194,7 +2201,6 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   };
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/false,
       /*is_aot_compilation=*/options.is_aot_compile};
 
   auto ir_compiler = IrCompiler::Create(CompilerTargetOptions(module->config()),
@@ -2312,7 +2318,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
                    target_machine_builder());
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
       /*is_aot_compilation=*/true};
 
   TargetMachineOptions target_machine_options(

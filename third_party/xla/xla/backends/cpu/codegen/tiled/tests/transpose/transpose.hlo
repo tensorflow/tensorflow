@@ -1,8 +1,13 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
 // RUN: test_correctness %s
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
 
 fusion {
+
   p0 = f32[16,40,40,64]{3,2,1,0} parameter(0)
   transpose = f32[64,40,40,16]{0,2,1,3} transpose(p0), dimensions={3,1,2,0}
   ROOT copy = f32[64,40,40,16]{3,2,1,0} copy(transpose)
@@ -42,3 +47,8 @@ ENTRY main {
 // CHECK:          xtile.insert %[[TRANS]] into %[[ARG1]][%[[IDX2]], %[[IDX0]], %[[IDX1]], %[[C0]]] [16, 1, 1, 16] [1, 1, 1, 1]
 // CHECK:        }
 // CHECK:        xtile.return
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc
+// NEW-VECTOR-LLVM: llvm.shufflevector
+

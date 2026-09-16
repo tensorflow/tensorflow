@@ -28,15 +28,12 @@ limitations under the License.
 
 namespace xla {
 
-// In OSS, insecure credentials are used as default.
-constexpr bool kVerifySecureCredentials = false;
-
 absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
                              const CoordinationServiceImpl::Options& options) {
   auto credentials = options.credentials;
   if (credentials == nullptr) {
-    credentials = tsl::GetServerCredentials(kVerifySecureCredentials);
+    credentials = tsl::GetServerCredentials(options.verify_secure_credentials);
   }
   return DistributedRuntimeService::Get(address, std::move(credentials),
                                         options);
@@ -47,7 +44,7 @@ std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
     bool use_compression) {
   auto credentials = options.credentials;
   if (credentials == nullptr) {
-    credentials = tsl::GetClientCredentials(kVerifySecureCredentials);
+    credentials = tsl::GetClientCredentials(options.verify_secure_credentials);
   }
   auto channel = GetDistributedRuntimeClientChannel(
       address, std::move(credentials), use_compression);

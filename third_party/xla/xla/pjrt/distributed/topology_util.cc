@@ -214,6 +214,21 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
     bool assign_global_device_ids) {
   CHECK(!local_topologies.empty());
 
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "BuildGlobalTopology called with " << local_topologies.size()
+            << " local topologies.";
+    for (size_t i = 0; i < local_topologies.size(); ++i) {
+      VLOG(3) << "  local_topology[" << i
+              << "]: process_id=" << local_topologies[i].process_id()
+              << ", boot_id=" << local_topologies[i].boot_id()
+              << ", partition_index="
+              << (local_topologies[i].has_partition_index()
+                      ? absl::StrCat(local_topologies[i].partition_index())
+                      : "unset")
+              << ", num_devices=" << local_topologies[i].devices_size();
+    }
+  }
+
   bool all_have_partition_index =
       absl::c_all_of(local_topologies, HasPartitionIndex);
   bool none_have_partition_index =
@@ -253,12 +268,6 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
         device.set_partition_index(it->second);
       }
     }
-    if (VLOG_IS_ON(10)) {
-      for (auto& [id, partition_index] : id_to_partition_index) {
-        LOG(INFO) << "BuildGlobalTopology id_to_partition_index " << id << "->"
-                  << partition_index;
-      }
-    }
   }
 
   if (assign_global_device_ids) {
@@ -278,6 +287,10 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
   for (LocalTopologyProto& local : local_topologies) {
     global_topology.add_processes()->Swap(&local);
   }
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "BuildGlobalTopology generated GlobalTopologyProto:\n"
+            << global_topology.DebugString();
+  }
   return global_topology;
 }
 
@@ -289,7 +302,7 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
                                 const LocalTopologyProto& local_topology,
                                 GlobalTopologyProto* global_topology,
                                 bool assign_global_device_ids) {
-  VLOG(3) << "Local Topology for platform" << platform << ":\n"
+  VLOG(3) << "Local Topology for platform " << platform << ":\n"
           << local_topology.DebugString();
   if (num_nodes == 1) {
     LocalTopologyProto* topology = global_topology->add_processes();
@@ -370,15 +383,18 @@ bool IsGpuTopologySymmetric(
   int num_devices_per_host = process_id_to_device_count.begin()->second;
   for (const auto& [partition_id, node_ids] : partition_id_to_node_ids) {
     if (node_ids.size() != num_hosts_per_partition) {
-      LOG(INFO) << "GpuTopology is asymmetric as it has different number "
-                   "of hosts per partition.";
+      LOG(INFO) << "GpuTopology is asymmetric as partition " << partition_id
+                << " has " << node_ids.size() << " hosts, but expected "
+                << num_hosts_per_partition << " (hosts in partition: ["
+                << absl::StrJoin(node_ids, ", ") << "])";
       return false;
     }
   }
   for (const auto& [node_id, device_count] : process_id_to_device_count) {
     if (device_count != num_devices_per_host) {
-      LOG(INFO) << "GpuTopology is asymmetric as it has different number "
-                   "of devices per host.";
+      LOG(INFO) << "GpuTopology is asymmetric as process " << node_id << " has "
+                << device_count << " devices, but expected "
+                << num_devices_per_host;
       return false;
     }
   }
@@ -389,12 +405,15 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     const GlobalTopologyProto& global_topology,
     const gpu::GpuTargetConfig& gpu_target_config,
     const cpu::TargetMachineOptions& host_target_machine_options) {
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "BuildGpuTopology input GlobalTopologyProto:\n"
+            << global_topology.DebugString();
+  }
   GpuTopologyProto gpu_topology;
   std::map<int, std::set<int>> partition_id_to_node_ids;
   std::map<int, int> process_id_to_device_count;
   for (int i = 0; i < global_topology.processes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.processes(i);
-
     process_id_to_device_count[local_topology.process_id()] =
         local_topology.devices_size();
     for (const DeviceProto& device : local_topology.devices()) {
@@ -416,6 +435,8 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
   } else {
     // If gpu topology is not symmetric, then we don't need to populate
     // the topology with the partition/host/device information.
+    LOG(INFO) << "GPU topology is asymmetric; setting partitions, hosts per "
+                 "partition, and devices per host to -1.";
     gpu_topology.set_num_partitions(-1);
     gpu_topology.set_num_hosts_per_partition(-1);
     gpu_topology.set_num_devices_per_host(-1);

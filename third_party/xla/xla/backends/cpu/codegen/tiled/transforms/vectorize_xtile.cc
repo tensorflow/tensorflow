@@ -31,7 +31,9 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -40,10 +42,10 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
@@ -52,8 +54,10 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -70,6 +74,17 @@ namespace shlo = ::mlir::stablehlo;
 
 using ::mlir::Value;
 using ::mlir::ValueRange;
+
+std::vector<xla::IndexingMap::Variable> GetVars(ValueRange values) {
+  std::vector<xla::IndexingMap::Variable> vars;
+  vars.reserve(values.size());
+  for (Value offset : values) {
+    vars.push_back(xla::IndexingMap::Variable{GetRange(offset).value_or(
+        Interval{std::numeric_limits<int64_t>::min(),
+                 std::numeric_limits<int64_t>::max()})});
+  }
+  return vars;
+}
 
 xla::SymbolicMap GetBoundsCheckSymbolicMap(mlir::MLIRContext* ctx,
                                            llvm::ArrayRef<int64_t> memref_shape,
@@ -89,17 +104,12 @@ Value GetIsInBoundsCondition(mlir::OpBuilder& builder, mlir::Location loc,
                              ValueRange offsets, Value memref,
                              llvm::ArrayRef<int64_t> tile_shape) {
   auto memref_shape = mlir::cast<mlir::MemRefType>(memref.getType()).getShape();
-  int rank = memref_shape.size();
 
   xla::SymbolicMap symbolic_map =
       GetBoundsCheckSymbolicMap(builder.getContext(), memref_shape, tile_shape);
 
-  std::vector<xla::IndexingMap::Variable> vars(
-      rank, xla::IndexingMap::Variable{std::numeric_limits<int64_t>::min(),
-                                       std::numeric_limits<int64_t>::max()});
-
   xla::IndexingMap indexing_map(symbolic_map,
-                                /*dimensions=*/std::move(vars),
+                                /*dimensions=*/GetVars(offsets),
                                 /*range_vars=*/{}, /*rt_vars=*/{});
 
   auto apply_indexing =
@@ -145,6 +155,94 @@ mlir::ArrayAttr GetInBoundsAttr(mlir::OpBuilder& builder, int64_t rank,
   return builder.getBoolArrayAttr(llvm::SmallVector<bool>(rank, in_bounds));
 }
 
+struct EmitElementsResult {
+  ms::LoopNest loop_nest;
+  llvm::SmallVector<Value> ubs;
+};
+
+template <typename BodyFn>
+EmitElementsResult EmitElements(mlir::OpBuilder& builder, mlir::Location loc,
+                                llvm::ArrayRef<int64_t> shape,
+                                ValueRange offsets,
+                                llvm::ArrayRef<int64_t> strides,
+                                llvm::ArrayRef<int64_t> memref_shape,
+                                ValueRange iter_args, BodyFn&& body_fn) {
+  int64_t rank = shape.size();
+  mlir::MLIRContext* ctx = builder.getContext();
+
+  // Compute lbs and ubs via apply_indexing.
+  // lb_d = max(0, ceil_div(-offset_d, stride_d))
+  // ub_d = min(shape_d, max(0, ceil_div(memref_shape_d - offset_d, stride_d)))
+  llvm::SmallVector<SymbolicExpr> bound_exprs;
+  bound_exprs.reserve(2 * rank);
+  for (int64_t d = 0; d < rank; ++d) {
+    SymbolicExpr offset_expr = xla::CreateDimExpr(d, ctx);
+    SymbolicExpr lb = (-offset_expr).ceilDiv(strides[d]).max(0);
+    SymbolicExpr ub = xla::CreateSymbolicConstant(shape[d], ctx);
+    if (d < memref_shape.size() &&
+        !mlir::ShapedType::isDynamic(memref_shape[d])) {
+      SymbolicExpr rem = -offset_expr + memref_shape[d];
+      ub = rem.ceilDiv(strides[d]).max(0).min(shape[d]);
+    }
+    bound_exprs.push_back(lb);
+    bound_exprs.push_back(ub);
+  }
+
+  xla::SymbolicMap bounds_map =
+      xla::SymbolicMap::Get(ctx, rank, 0, bound_exprs);
+  xla::IndexingMap bounds_indexing_map(bounds_map,
+                                       /*dimensions=*/GetVars(offsets),
+                                       /*range_vars=*/{}, /*rt_vars=*/{});
+  auto bounds_indexing_op =
+      xla::ApplyIndexingOp::create(builder, loc, offsets, bounds_indexing_map);
+
+  llvm::SmallVector<Value> lbs;
+  llvm::SmallVector<Value> ubs;
+  llvm::SmallVector<Value> steps;
+  lbs.reserve(rank);
+  ubs.reserve(rank);
+  steps.reserve(rank);
+
+  Value one = ma::ConstantIndexOp::create(builder, loc, 1);
+  for (int64_t d = 0; d < rank; ++d) {
+    lbs.push_back(bounds_indexing_op.getResult(2 * d));
+    ubs.push_back(bounds_indexing_op.getResult(2 * d + 1));
+    steps.push_back(one);
+  }
+
+  // memref_coords indexing map: (offsets, ivs) -> offsets + ivs * strides
+  // First rank dims are offsets, next rank dims are ivs.
+  llvm::SmallVector<SymbolicExpr> coord_exprs;
+  coord_exprs.reserve(rank);
+  for (int64_t d = 0; d < rank; ++d) {
+    SymbolicExpr offset_expr = xla::CreateDimExpr(d, ctx);
+    SymbolicExpr iv_expr = xla::CreateDimExpr(rank + d, ctx);
+    coord_exprs.push_back(offset_expr + iv_expr * strides[d]);
+  }
+  xla::SymbolicMap coords_map =
+      xla::SymbolicMap::Get(ctx, 2 * rank, 0, coord_exprs);
+
+  llvm::SmallVector<Value> operands;
+  operands.reserve(2 * rank);
+  operands.append(offsets.begin(), offsets.end());
+
+  ms::LoopNest loop_nest = ms::buildLoopNest(
+      builder, loc, lbs, ubs, steps, iter_args,
+      [&](mlir::OpBuilder& b, mlir::Location loc, ValueRange ivs,
+          ValueRange loop_iter_args) -> ms::ValueVector {
+        llvm::SmallVector<Value> all_operands = operands;
+        all_operands.append(ivs.begin(), ivs.end());
+        xla::IndexingMap coords_indexing_map(
+            coords_map,
+            /*dimensions=*/GetVars(all_operands),
+            /*range_vars=*/{}, /*rt_vars=*/{});
+        auto coords_op = xla::ApplyIndexingOp::create(b, loc, all_operands,
+                                                      coords_indexing_map);
+        return body_fn(b, loc, ivs, coords_op.getResults(), loop_iter_args);
+      });
+  return {loop_nest, ubs};
+}
+
 struct ConvertExtractTile
     : public mlir::OpConversionPattern<xtile::ExtractTileOp> {
   using mlir::OpConversionPattern<xtile::ExtractTileOp>::OpConversionPattern;
@@ -158,10 +256,51 @@ struct ConvertExtractTile
 
     ValueRange offsets = adaptor.getOffsets();
     Value source_memref = adaptor.getSource();
+    auto source_memref_type =
+        mlir::cast<mlir::MemRefType>(source_memref.getType());
 
     Value pad = ma::ConstantOp::create(
         rewriter, loc, result_vector_type.getElementType(),
         rewriter.getZeroAttr(result_vector_type.getElementType()));
+
+    if (llvm::any_of(op.getStrides(), llvm::not_equal_to<int64_t>(1))) {
+      auto buffer_type = mlir::MemRefType::get(
+          result_vector_type.getShape(), result_vector_type.getElementType());
+      Value buffer = mlir::memref::AllocaOp::create(rewriter, loc, buffer_type);
+
+      EmitElementsResult emit_result = EmitElements(
+          rewriter, loc, result_vector_type.getShape(), offsets,
+          op.getStrides(), source_memref_type.getShape(), ValueRange{},
+          [&](mlir::OpBuilder& b, mlir::Location loc, ValueRange ivs,
+              ValueRange memref_coords,
+              ValueRange loop_iter_args) -> ms::ValueVector {
+            Value elem = mlir::memref::LoadOp::create(b, loc, source_memref,
+                                                      memref_coords);
+            mlir::memref::StoreOp::create(b, loc, elem, buffer, ivs);
+            return {};
+          });
+
+      llvm::SmallVector<Value> zero_indices(
+          result_vector_type.getRank(),
+          ma::ConstantIndexOp::create(rewriter, loc, 0));
+      mlir::AffineMap permutation_map =
+          mv::getTransferMinorIdentityMap(buffer_type, result_vector_type);
+      auto permutation_map_attr = mlir::AffineMapAttr::get(permutation_map);
+      mlir::ArrayAttr out_of_bounds_attr =
+          GetInBoundsAttr(rewriter, result_vector_type.getRank(), false);
+
+      auto mask_type = mlir::VectorType::get(result_vector_type.getShape(),
+                                             rewriter.getI1Type());
+      Value mask =
+          mv::CreateMaskOp::create(rewriter, loc, mask_type, emit_result.ubs);
+
+      Value result_vec = mv::TransferReadOp::create(
+          rewriter, loc, result_vector_type, buffer, zero_indices,
+          permutation_map_attr, pad, mask, out_of_bounds_attr);
+
+      rewriter.replaceOp(op, result_vec);
+      return mlir::success();
+    }
 
     if (result_vector_type.getRank() == 0) {
       mlir::AffineMap permutation_map =
@@ -182,39 +321,34 @@ struct ConvertExtractTile
     Value is_in_bounds = GetIsInBoundsCondition(
         rewriter, loc, offsets, source_memref, result_vector_type.getShape());
 
-    // Generate scf.if
-    ms::IfOp if_op = ms::IfOp::create(rewriter, loc, result_vector_type,
-                                      is_in_bounds, /*withElseRegion=*/true);
-
-    // In-bounds branch (Then)
-    rewriter.setInsertionPointToStart(if_op.thenBlock());
-
     mlir::AffineMap permutation_map = mlir::vector::getTransferMinorIdentityMap(
         mlir::cast<mlir::ShapedType>(source_memref.getType()),
         result_vector_type);
     mlir::AffineMapAttr permutation_map_attr =
         mlir::AffineMapAttr::get(permutation_map);
-    mlir::ArrayAttr in_bounds_attr =
-        GetInBoundsAttr(rewriter, result_vector_type.getRank(), true);
 
-    Value in_bounds_read = mv::TransferReadOp::create(
-        rewriter, loc, result_vector_type, source_memref, offsets,
-        permutation_map_attr, pad, /*mask=*/Value(), in_bounds_attr);
-    ms::YieldOp::create(rewriter, loc, in_bounds_read);
-
-    // Out-of-bounds branch (Else)
-    rewriter.setInsertionPointToStart(if_op.elseBlock());
-
-    Value mask =
-        GetMask(rewriter, loc, offsets, source_memref, result_vector_type);
-
-    mlir::ArrayAttr out_of_bounds_attr =
-        GetInBoundsAttr(rewriter, result_vector_type.getRank(), false);
-
-    Value masked_read = mlir::vector::TransferReadOp::create(
-        rewriter, loc, result_vector_type, source_memref, offsets,
-        permutation_map_attr, pad, mask, out_of_bounds_attr);
-    ms::YieldOp::create(rewriter, loc, masked_read);
+    ms::IfOp if_op = ms::IfOp::create(
+        rewriter, loc, is_in_bounds,
+        /*thenBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          mlir::ArrayAttr in_bounds_attr =
+              GetInBoundsAttr(b, result_vector_type.getRank(), true);
+          Value in_bounds_read = mv::TransferReadOp::create(
+              b, loc, result_vector_type, source_memref, offsets,
+              permutation_map_attr, pad, /*mask=*/Value(), in_bounds_attr);
+          ms::YieldOp::create(b, loc, in_bounds_read);
+        },
+        /*elseBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          Value mask =
+              GetMask(b, loc, offsets, source_memref, result_vector_type);
+          mlir::ArrayAttr out_of_bounds_attr =
+              GetInBoundsAttr(b, result_vector_type.getRank(), false);
+          Value masked_read = mlir::vector::TransferReadOp::create(
+              b, loc, result_vector_type, source_memref, offsets,
+              permutation_map_attr, pad, mask, out_of_bounds_attr);
+          ms::YieldOp::create(b, loc, masked_read);
+        });
 
     rewriter.replaceOp(op, if_op.getResult(0));
     return mlir::success();
@@ -235,6 +369,25 @@ struct ConvertInsertTile
 
     ValueRange offsets = adaptor.getOffsets();
     Value dest_memref = adaptor.getDestination();
+    auto dest_memref_type = mlir::cast<mlir::MemRefType>(dest_memref.getType());
+
+    if (llvm::any_of(op.getStrides(), llvm::not_equal_to<int64_t>(1))) {
+      EmitElements(rewriter, loc, source_vector_type.getShape(), offsets,
+                   op.getStrides(), dest_memref_type.getShape(), ValueRange{},
+                   [&](mlir::OpBuilder& b, mlir::Location loc, ValueRange ivs,
+                       ValueRange memref_coords,
+                       ValueRange loop_iter_args) -> ms::ValueVector {
+                     llvm::SmallVector<mlir::OpFoldResult> position(ivs.begin(),
+                                                                    ivs.end());
+                     mlir::Value elem =
+                         mv::ExtractOp::create(b, loc, source_vector, position);
+                     mlir::memref::StoreOp::create(b, loc, elem, dest_memref,
+                                                   memref_coords);
+                     return {};
+                   });
+      rewriter.eraseOp(op);
+      return mlir::success();
+    }
 
     if (source_vector_type.getRank() == 0) {
       mlir::AffineMap permutation_map = mv::getTransferMinorIdentityMap(
@@ -254,36 +407,33 @@ struct ConvertInsertTile
     Value is_in_bounds = GetIsInBoundsCondition(
         rewriter, loc, offsets, dest_memref, source_vector_type.getShape());
 
-    // Generate scf.if (no results)
-    ms::IfOp if_op = ms::IfOp::create(rewriter, loc, is_in_bounds,
-                                      /*withElseRegion=*/true);
-
-    // In-bounds branch (Then)
-    rewriter.setInsertionPointToStart(if_op.thenBlock());
-
     mlir::AffineMap permutation_map = mv::getTransferMinorIdentityMap(
         mlir::cast<mlir::ShapedType>(dest_memref.getType()),
         source_vector_type);
     auto permutation_map_attr = mlir::AffineMapAttr::get(permutation_map);
-    mlir::ArrayAttr in_bounds_attr =
-        GetInBoundsAttr(rewriter, source_vector_type.getRank(), true);
 
-    mv::TransferWriteOp::create(rewriter, loc, source_vector, dest_memref,
-                                offsets, permutation_map_attr, /*mask=*/Value(),
-                                in_bounds_attr);
-
-    // Out-of-bounds branch (Else)
-    rewriter.setInsertionPointToStart(if_op.elseBlock());
-
-    Value mask = GetMask(rewriter, op.getLoc(), offsets, dest_memref,
-                         source_vector_type);
-
-    mlir::ArrayAttr out_of_bounds_attr =
-        GetInBoundsAttr(rewriter, source_vector_type.getRank(), false);
-
-    mlir::vector::TransferWriteOp::create(
-        rewriter, op.getLoc(), source_vector, dest_memref, offsets,
-        permutation_map_attr, mask, out_of_bounds_attr);
+    ms::IfOp::create(
+        rewriter, loc, is_in_bounds,
+        /*thenBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          mlir::ArrayAttr in_bounds_attr =
+              GetInBoundsAttr(b, source_vector_type.getRank(), true);
+          mv::TransferWriteOp::create(b, loc, source_vector, dest_memref,
+                                      offsets, permutation_map_attr,
+                                      /*mask=*/Value(), in_bounds_attr);
+          ms::YieldOp::create(b, loc);
+        },
+        /*elseBuilder=*/
+        [&](mlir::OpBuilder& b, mlir::Location loc) {
+          Value mask =
+              GetMask(b, loc, offsets, dest_memref, source_vector_type);
+          mlir::ArrayAttr out_of_bounds_attr =
+              GetInBoundsAttr(b, source_vector_type.getRank(), false);
+          mlir::vector::TransferWriteOp::create(
+              b, loc, source_vector, dest_memref, offsets, permutation_map_attr,
+              mask, out_of_bounds_attr);
+          ms::YieldOp::create(b, loc);
+        });
 
     rewriter.eraseOp(op);
     return mlir::success();
@@ -587,6 +737,91 @@ struct VectorizeTransposeOp
   }
 };
 
+struct VectorizeSliceOp : public mlir::OpConversionPattern<shlo::SliceOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::SliceOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto res_vec_ty = mlir::cast<mlir::VectorType>(new_type);
+    llvm::ArrayRef<int64_t> shape = res_vec_ty.getShape();
+    int64_t rank = res_vec_ty.getRank();
+
+    if (llvm::all_of(op.getStrides(), llvm::equal_to<int64_t>(1))) {
+      llvm::SmallVector<int64_t> offsets(op.getStartIndices().begin(),
+                                         op.getStartIndices().end());
+      llvm::SmallVector<int64_t> strides(rank, 1);
+      llvm::SmallVector<int64_t> sizes(shape.begin(), shape.end());
+      rewriter.replaceOpWithNewOp<mv::ExtractStridedSliceOp>(
+          op, adaptor.getOperand(), offsets, sizes, strides);
+      return mlir::success();
+    }
+
+    mlir::Value res = ma::ConstantOp::create(rewriter, op.getLoc(), res_vec_ty,
+                                             rewriter.getZeroAttr(res_vec_ty));
+    llvm::SmallVector<int64_t> start_indices(op.getStartIndices().begin(),
+                                             op.getStartIndices().end());
+    llvm::SmallVector<int64_t> strides(op.getStrides().begin(),
+                                       op.getStrides().end());
+
+    llvm::SmallVector<int64_t> curr_dst(rank, 0);
+    llvm::SmallVector<int64_t> curr_src(rank, 0);
+
+    auto emit_elements = [&](auto& self, int64_t dim) -> void {
+      if (dim == rank) {
+        mlir::Value elem = mv::ExtractOp::create(
+            rewriter, op.getLoc(), adaptor.getOperand(), curr_src);
+        res = mv::InsertOp::create(rewriter, op.getLoc(), elem, res, curr_dst);
+        return;
+      }
+      for (int64_t i = 0; i < shape[dim]; ++i) {
+        curr_dst[dim] = i;
+        curr_src[dim] = start_indices[dim] + i * strides[dim];
+        self(self, dim + 1);
+      }
+    };
+    emit_elements(emit_elements, 0);
+
+    rewriter.replaceOp(op, res);
+    return mlir::success();
+  }
+};
+
+struct VectorizeConcatenateOp
+    : public mlir::OpConversionPattern<shlo::ConcatenateOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::ConcatenateOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto res_vec_ty = mlir::cast<mlir::VectorType>(new_type);
+    mlir::Value res = ma::ConstantOp::create(rewriter, op.getLoc(), res_vec_ty,
+                                             rewriter.getZeroAttr(res_vec_ty));
+    int64_t current_offset = 0;
+    uint64_t dim = op.getDimension();
+    for (mlir::Value input : adaptor.getInputs()) {
+      auto in_vec_ty = mlir::cast<mlir::VectorType>(input.getType());
+      llvm::SmallVector<int64_t> offsets(res_vec_ty.getRank(), 0);
+      offsets[dim] = current_offset;
+      llvm::SmallVector<int64_t> strides(in_vec_ty.getRank(), 1);
+      res = mv::InsertStridedSliceOp::create(rewriter, op.getLoc(), input, res,
+                                             rewriter.getI64ArrayAttr(offsets),
+                                             rewriter.getI64ArrayAttr(strides));
+      current_offset += in_vec_ty.getDimSize(dim);
+    }
+    rewriter.replaceOp(op, res);
+    return mlir::success();
+  }
+};
+
 struct VectorizeReshapeOp : public mlir::OpConversionPattern<shlo::ReshapeOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -686,6 +921,23 @@ struct VectorizeIotaOp : public mlir::OpConversionPattern<shlo::IotaOp> {
   }
 };
 
+struct VectorizeBitcastOp
+    : public mlir::OpConversionPattern<mlir::tensor::BitcastOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::tensor::BitcastOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    rewriter.replaceOpWithNewOp<ma::BitcastOp>(op, new_type,
+                                               adaptor.getSource());
+    return mlir::success();
+  }
+};
+
 template <typename OpTy>
 struct VectorizeElementwiseOp : public mlir::OpConversionPattern<OpTy> {
   using mlir::OpConversionPattern<OpTy>::OpConversionPattern;
@@ -741,9 +993,10 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp,
-                        shlo::IotaOp, shlo::ReduceOp, shlo::ReshapeOp,
-                        shlo::TransposeOp, mlir::tensor::ExtractOp,
+    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::ConcatenateOp,
+                        shlo::DotGeneralOp, shlo::IotaOp, shlo::ReduceOp,
+                        shlo::ReshapeOp, shlo::SliceOp, shlo::TransposeOp,
+                        mlir::tensor::BitcastOp, mlir::tensor::ExtractOp,
                         mlir::tensor::FromElementsOp, xtile::ExtractTileOp,
                         xtile::InsertTileOp, xtile::MaskOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
@@ -751,28 +1004,69 @@ class VectorizeXTilePass
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
 
     mlir::RewritePatternSet patterns(context);
-    patterns
-        .add<ConvertExtractTile, ConvertInsertTile, VectorizeBroadcastInDimOp,
-             VectorizeConstantOp, VectorizeDotGeneralOp, VectorizeExtractOp,
-             VectorizeFromElementsOp, VectorizeIotaOp, VectorizeMaskOp,
-             VectorizeReduceOp, VectorizeReshapeOp, VectorizeTransposeOp>(
-            type_converter, context);
+    // clang-format off
+    patterns.add<
+      ConvertExtractTile,
+      ConvertInsertTile,
+      VectorizeBitcastOp,
+      VectorizeConcatenateOp,
+      VectorizeDotGeneralOp,
+      VectorizeExtractOp,
+      VectorizeIotaOp,
+      VectorizeMaskOp,
+      VectorizeReshapeOp,
+      VectorizeSliceOp,
+      VectorizeBroadcastInDimOp,
+      VectorizeConstantOp,
+      VectorizeFromElementsOp,
+      VectorizeReduceOp,
+      VectorizeTransposeOp
+    >(type_converter, context);
     populateVectorizePatterns<
-        ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
-        ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,
-        ma::RemUIOp, ma::MaximumFOp, ma::MaxSIOp, ma::MaxUIOp, ma::MinimumFOp,
-        ma::MinSIOp, ma::MinUIOp, ma::AndIOp, ma::OrIOp, ma::XOrIOp, ma::NegFOp,
-        ma::SelectOp, ma::CmpFOp, ma::CmpIOp, ma::ExtFOp, ma::TruncFOp,
-        ma::ExtSIOp, ma::ExtUIOp, ma::FPToSIOp, ma::FPToUIOp, ma::SIToFPOp,
-        ma::UIToFPOp, ma::TruncIOp, ma::IndexCastOp, mm::AbsIOp, mm::AbsFOp,
-        mm::CeilOp, mm::FloorOp, mm::RoundEvenOp, mm::AcosOp, mm::AcoshOp,
-        mm::AsinOp, mm::AsinhOp, mm::Atan2Op, mm::AtanhOp, mm::CosOp,
-        mm::CoshOp, mm::ExpOp, mm::ErfOp, mm::ExpM1Op, mm::LogOp, mm::Log1pOp,
-        mm::IPowIOp, mm::PowFOp, mm::RsqrtOp, mm::SinOp, mm::SinhOp, mm::SqrtOp,
-        mm::TanOp, mm::TanhOp, mm::CbrtOp, mm::IsFiniteOp>(type_converter,
-                                                           patterns);
-    mlir::scf::populateSCFStructuralTypeConversionsAndLegality(
-        type_converter, patterns, target);
+      ma::AddFOp, ma::AddIOp,
+      ma::AndIOp,
+      ma::BitcastOp,
+      ma::CmpFOp, ma::CmpIOp,
+      ma::DivFOp, ma::DivSIOp, ma::DivUIOp,
+      ma::ExtFOp, ma::ExtSIOp, ma::ExtUIOp,
+      ma::FPToSIOp, ma::FPToUIOp,
+      ma::IndexCastOp, ma::IndexCastUIOp,
+      ma::MaxSIOp, ma::MaxUIOp, ma::MaximumFOp,
+      ma::MinSIOp, ma::MinUIOp, ma::MinimumFOp,
+      ma::MulFOp, ma::MulIOp,
+      ma::NegFOp,
+      ma::OrIOp,
+      ma::RemFOp, ma::RemSIOp, ma::RemUIOp,
+      ma::SIToFPOp,
+      ma::SelectOp,
+      ma::ShLIOp, ma::ShRSIOp, ma::ShRUIOp,
+      ma::SubFOp, ma::SubIOp,
+      ma::TruncFOp, ma::TruncIOp,
+      ma::UIToFPOp,
+      ma::XOrIOp,
+      mm::AbsFOp, mm::AbsIOp,
+      mm::AcosOp, mm::AcoshOp,
+      mm::AsinOp, mm::AsinhOp,
+      mm::Atan2Op, mm::AtanhOp,
+      mm::CbrtOp,
+      mm::CeilOp,
+      mm::CopySignOp,
+      mm::CosOp, mm::CoshOp,
+      mm::ErfOp,
+      mm::ExpM1Op,
+      mm::ExpOp,
+      mm::FloorOp,
+      mm::IPowIOp,
+      mm::IsFiniteOp,
+      mm::Log1pOp, mm::LogOp,
+      mm::PowFOp,
+      mm::RoundEvenOp,
+      mm::RsqrtOp,
+      mm::SinOp, mm::SinhOp,
+      mm::SqrtOp,
+      mm::TanOp, mm::TanhOp
+    >(type_converter, patterns);
+    // clang-format on
 
     mlir::scf::populateSCFStructuralTypeConversionsAndLegality(
         type_converter, patterns, target);

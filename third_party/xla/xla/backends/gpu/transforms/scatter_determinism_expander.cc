@@ -369,11 +369,7 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
         shifted_indices_shape, indices, start_indices, end_indices, strides));
     // Use the total size of the operand tensor as out-of-bounds value
     // This matches how FlattenIndices works - it uses the total tensor size
-    int64_t total_size = 1;
-    for (int64_t dim : operand_dims) {
-      total_size *= dim;
-    }
-    int64_t out_of_bounds_value = total_size;
+    int64_t out_of_bounds_value = xla::Product(operand_dims);
     auto* padding_indices =
         parent->AddInstruction(HloInstruction::CreateBroadcast(
             padding_indices_shape,
@@ -627,23 +623,32 @@ absl::StatusOr<HloInstruction*> AddImplicitDimensionsToIndices(
     int64_t operand_rank, absl::Span<const int64_t> indices_to_operand_map,
     HloInstruction* indices) {
   const Shape& indices_shape = indices->shape();
-  HloComputation* computation = indices->parent();
 
   // Get the batch size (N) and S (number of dimensions in index_vector)
   int64_t batch_size = indices_shape.dimensions(0);
   int64_t num_indices_dims = indices_to_operand_map.size();
 
+  // If the operand rank is the same as the number of indices dimensions, we
+  // don't need to pad the indices.
+  if (operand_rank == num_indices_dims) {
+    return indices;
+  }
+
+  HloComputation* computation = indices->parent();
+
   // Create a tensor of zeros with the target shape [N, operand_rank]
   Shape expanded_shape = ShapeUtil::MakeShape(indices_shape.element_type(),
                                               {batch_size, operand_rank});
+  Shape padding_shape =
+      ShapeUtil::MakeShape(indices_shape.element_type(),
+                           {batch_size, operand_rank - num_indices_dims});
 
-  HloInstruction* zero_filled_tensor =
+  HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          indices->shape().element_type() == S64
-              ? LiteralUtil::CreateR2FromArray2D<int64_t>(Array2D<int64_t>(
-                    batch_size, operand_rank - num_indices_dims, 0))
-              : LiteralUtil::CreateR2FromArray2D<int32_t>(Array2D<int32_t>(
-                    batch_size, operand_rank - num_indices_dims, 0))));
+          LiteralUtil::Zero(indices_shape.element_type())));
+  HloInstruction* zero_filled_tensor = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(padding_shape, zero, {}));
+
   // Concatenate the zero-filled tensor with the index_vector
   HloInstruction* expanded_indices =
       computation->AddInstruction(HloInstruction::CreateConcatenate(

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <ios>
@@ -799,6 +800,13 @@ absl::StatusOr<bool> OnlyContainsPb(absl::string_view prefix) {
   }
   LOG(INFO) << "Reading chunked proto from " << cpb_file;
   return false;
+}
+
+absl::Status ValidateChunkIndex(uint64_t chunk_index, size_t chunks_size) {
+  if (chunk_index < chunks_size) return absl::OkStatus();
+  return absl::FailedPreconditionError(absl::StrCat("Chunk index ", chunk_index,
+                                                    " is out of range for ",
+                                                    chunks_size, " chunks."));
 }
 
 }  // namespace tools::proto_splitter
