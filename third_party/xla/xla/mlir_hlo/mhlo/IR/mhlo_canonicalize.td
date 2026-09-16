@@ -58,11 +58,14 @@ def DPadToPad: Pat<
 // Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
 // strides are constant.
 def RealDSliceToSlice: Pat<
-          (MHLO_RealDynamicSliceOp $operand,
+          (MHLO_RealDynamicSliceOp:$src $operand,
             (ConstantLikeMatcher AnyIntElementsAttr:$start_indices),
             (ConstantLikeMatcher AnyIntElementsAttr:$limit_indices),
             (ConstantLikeMatcher AnyIntElementsAttr:$strides)),
-          (MHLO_SliceOp $operand,
+          (MHLO_SliceOp:$dst $operand,
             (GetI64DenseElementsAttr (CastIntElementsAttr $start_indices)),
             (GetI64DenseElementsAttr (CastIntElementsAttr $limit_indices)),
-            (GetI64DenseElementsAttr (CastIntElementsAttr $strides)))>;
+            (GetI64DenseElementsAttr (CastIntElementsAttr $strides))),
+          [], [(MHLO_CopyDiscardableAttrs $src, $dst)]>;
+
+
