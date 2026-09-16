@@ -171,7 +171,6 @@ xla_cc_test(
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/cpu:cpu_compiler_pure",
         "//xla/service/cpu:test_header_helper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
