@@ -17409,6 +17409,11 @@ ENTRY %entry {
   VLOG(1) << module->ToString();
   auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
   EXPECT_THAT(sort_instruction, op::Shape("bf16[64,80]{1,0}"));
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  EXPECT_EQ(Cast<HloCompareInstruction>(
+                sort_instruction->to_apply()->root_instruction())
+                ->order(),
+            Comparison::Order::kTotal);
   auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
   auto topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
@@ -17442,6 +17447,14 @@ ENTRY %entry {
   VLOG(1) << module->ToString();
   auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
   CHECK_NE(sort_instruction, nullptr);
+  EXPECT_TRUE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  for (const HloInstruction* inst :
+       sort_instruction->to_apply()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCompare) {
+      EXPECT_EQ(Cast<HloCompareInstruction>(inst)->order(),
+                Comparison::Order::kTotal);
+    }
+  }
   auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
   auto topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
@@ -17474,6 +17487,11 @@ ENTRY %entry {
   VLOG(1) << module->ToString();
   auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
   EXPECT_THAT(sort_instruction, op::Shape("bf16[32,40]{1,0}"));
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  EXPECT_EQ(Cast<HloCompareInstruction>(
+                sort_instruction->to_apply()->root_instruction())
+                ->order(),
+            Comparison::Order::kTotal);
   auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
   auto topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
@@ -17506,6 +17524,11 @@ ENTRY %entry {
   VLOG(1) << module->ToString();
   auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
   EXPECT_THAT(sort_instruction, op::Shape("bf16[64,80]{1,0}"));
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  EXPECT_EQ(Cast<HloCompareInstruction>(
+                sort_instruction->to_apply()->root_instruction())
+                ->order(),
+            Comparison::Order::kTotal);
   auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
   auto topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");

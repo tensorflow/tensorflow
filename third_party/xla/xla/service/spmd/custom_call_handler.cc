@@ -277,7 +277,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     XlaBuilder b("Sort.Compare");
     XlaComputation comparator = CreateScalarComparisonComputation(
         "compare-value-and-index", {input->shape().element_type(), S32},
-        {Gt, Lt}, &b);
+        {GtTotalOrder, LtTotalOrder}, &b);
     ABSL_ASSIGN_OR_RETURN(HloComputation * compare_computation,
                      XlaComputationToHloComputation(comparator, module_));
     // Each partition needs to do TopK separately, thus the base shape for sort
@@ -314,7 +314,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     // Sort only the replicated values.
     XlaBuilder b("Sort.Compare");
     XlaComputation comparator = CreateScalarComparisonComputation(
-        "compare-value", {input->shape().element_type()}, {Gt}, &b);
+        "compare-value", {input->shape().element_type()}, {GtTotalOrder}, &b);
     ABSL_ASSIGN_OR_RETURN(HloComputation * compare_computation,
                      XlaComputationToHloComputation(comparator, module_));
 
@@ -323,7 +323,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
         {CeilOfRatio(batch_size, batch_dim_partition), k * shard_count});
     auto sort = b_.AddInstruction(
         HloInstruction::CreateSort(sort_shape, sort_dim, {replicated_value_gte},
-                                   compare_computation, true));
+                                   compare_computation, /*is_stable=*/false));
     sort->set_sharding(replicated_sharding);
 
     const Shape sort_replicated_shape = ShapeUtil::MakeShape(
