@@ -1383,6 +1383,7 @@ tf_proto_library(
         ":onednn_config_proto",
         "//xla/backends/cpu:xnn_fusion_options_proto",
         "//xla/backends/cpu:ynn_fusion_options_proto",
+        "//xla/codegen/xtile:xtile_config_proto",
     ],
 )
 
