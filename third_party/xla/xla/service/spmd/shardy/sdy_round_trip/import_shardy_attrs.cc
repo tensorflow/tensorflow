@@ -55,8 +55,6 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/mesh_and_axis.h"
-#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -84,7 +82,6 @@ using ::mlir::func::FuncOp;
 using ::mlir::sdy::getSharding;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
-using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::PropagationBarrierOp;
@@ -209,37 +206,6 @@ bool handleFuncResultSharding(
   return anyChanged;
 }
 
-ManualAxesAttr extractManualAxes(const xla::HloSharding& hloSharding,
-                                 mlir::MLIRContext* context) {
-  if (hloSharding.IsTuple()) {
-    // Manual axes are only attached to ranked tensors, so a leading token
-    // element can legitimately have none. Take the first element that does.
-    for (const xla::HloSharding& element : hloSharding.tuple_elements()) {
-      if (ManualAxesAttr manualAxes = extractManualAxes(element, context)) {
-        return manualAxes;
-      }
-    }
-    return nullptr;
-  }
-  if (hloSharding.UseNamedShardingLeaf()) {
-    const xla::NamedSharding& namedSharding = hloSharding.named_sharding();
-    llvm::SmallVector<mlir::StringAttr> manualAxes;
-    const xla::Mesh& mesh = namedSharding.mesh();
-    for (const auto& axisRef : namedSharding.manual_axes()) {
-      // Silently dropping an axis here would yield a manual computation with
-      // fewer manual axes than it actually has, which miscompiles rather than
-      // fails, so treat an out-of-range index as a bug.
-      CHECK_LT(axisRef.mesh_axis_index(), mesh.axis_names().size());
-      manualAxes.push_back(mlir::StringAttr::get(
-          context, mesh.axis_names()[axisRef.mesh_axis_index()]));
-    }
-    if (!manualAxes.empty()) {
-      return ManualAxesAttr::get(context, manualAxes);
-    }
-  }
-  return nullptr;
-}
-
 // The sharding information is in the `kXlaShardingAttr` attribute.
 void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
@@ -304,36 +270,12 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
           targetName == "X64Combine" ||
-          targetName == kGlobalToLocalShapeCallTargetName ||
-          targetName == kLocalToGlobalShapeCallTargetName ||
           isPythonCallbackCustomCall(customCallOp)) {
-        HloSharding hloSharding = parseShardingFromString(shardingAttr);
         customCallOp->setAttr(
             kShardingAttr,
-            convertToSdySharding(hloSharding, customCallOp->getResultTypes(),
+            convertToSdySharding(parseShardingFromString(shardingAttr),
+                                 customCallOp->getResultTypes(),
                                  customCallOp->getContext()));
-        // Only `xla.sdy.GlobalToLocalShape` (when there are operands) and the
-        // manual computation CallOp (when there are no operands) may carry
-        // manual axes.
-        if (targetName == kGlobalToLocalShapeCallTargetName) {
-          if (auto manualAxesAttr =
-                  extractManualAxes(hloSharding, customCallOp->getContext())) {
-            customCallOp->setAttr(kManualAxes, manualAxesAttr);
-          }
-        }
-      }
-    } else if (auto callOp = mlir::dyn_cast<mlir::func::CallOp>(op);
-               callOp && isManualComputation(callOp)) {
-      // The body call op carries the local out shardings and the manual axes.
-      // It is the only carrier of the manual axes when the manual computation
-      // has no operands, since there is no `xla.sdy.GlobalToLocalShape` then.
-      HloSharding hloSharding = parseShardingFromString(shardingAttr);
-      callOp->setAttr(kShardingAttr, convertToSdySharding(
-                                         hloSharding, callOp->getResultTypes(),
-                                         callOp->getContext()));
-      if (auto manualAxesAttr =
-              extractManualAxes(hloSharding, callOp->getContext())) {
-        callOp->setAttr(kManualAxes, manualAxesAttr);
       }
     }
 
