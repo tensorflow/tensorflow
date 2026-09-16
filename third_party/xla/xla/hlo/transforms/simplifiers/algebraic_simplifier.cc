@@ -7194,8 +7194,16 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     // slice_elements align cleanly with the sub-dimension boundaries of the
     // operand. Otherwise, reordering would slice an interior dimension of the
     // operand, creating strided memory access and complex index decomposition.
+    //
+    // The first dimension of the slice is equivalent to the first non-unit
+    // dimension of the reshape.
+    int64_t sliced_dim_in_reshape = 0;
+    for (; sliced_dim_in_reshape < rank; ++sliced_dim_in_reshape) {
+      if (new_slice_shape.dimensions(sliced_dim_in_reshape) != 1) break;
+    }
+
     int64_t operand_sub_dim_elements = 1;
-    for (int64_t i = 1; i < rank; ++i) {
+    for (int64_t i = sliced_dim_in_reshape + 1; i < rank; ++i) {
       operand_sub_dim_elements *= new_slice_shape.dimensions(i);
     }
     if (operand_sub_dim_elements == 0 ||
