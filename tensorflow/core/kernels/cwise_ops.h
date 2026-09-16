@@ -66,7 +66,23 @@ struct safe_scalar_binary_pow_op {
                                              const Exponent& b) const {
     const Exponent safe_b = tensorflow::internal::SubtleMustCopy(b);
     if (TF_PREDICT_TRUE(safe_b >= 0)) {
-      return numext::pow(a, safe_b);
+      Scalar result = 1;
+      Scalar base = a;
+      Exponent exp = safe_b;
+      while (exp > 0) {
+        if (exp & 1) {
+          Scalar next_result;
+          __builtin_mul_overflow(result, base, &next_result);
+          result = next_result;
+        }
+        exp >>= 1;
+        if (exp > 0) {
+          Scalar next_base;
+          __builtin_mul_overflow(base, base, &next_base);
+          base = next_base;
+        }
+      }
+      return result;
     } else {
       *error = true;
       return 0;
