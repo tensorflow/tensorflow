@@ -581,6 +581,44 @@ TEST_P(CSavedModelAPITest, LoadSavedModelWithWhileLoop) {
   TFE_DeleteContext(ctx);
 }
 
+TEST_P(CSavedModelAPITest, GetFunctionsInvalidNodeId) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  bool use_tfrt = GetParam();
+  if (use_tfrt) {
+    TFE_DeleteContextOptions(opts);
+    TF_DeleteStatus(status);
+    GTEST_SKIP();
+  }
+
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
+
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::string model_dir = SavedModelPath("VarsAndArithmeticObjectGraph");
+
+  TF_SavedModel* saved_model =
+      TF_LoadSavedModel(model_dir.c_str(), ctx, status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  tensorflow::TFSavedModelAPI* model_api =
+      absl::down_cast<tensorflow::TFSavedModelAPI*>(
+          tensorflow::unwrap(saved_model));
+
+  absl::flat_hash_map<std::string, tensorflow::ConcreteFunction*> functions;
+  absl::Status status_neg = model_api->GetFunctions(-1, &functions);
+  EXPECT_EQ(status_neg.code(), absl::StatusCode::kOutOfRange);
+
+  absl::Status status_large = model_api->GetFunctions(1000000, &functions);
+  EXPECT_EQ(status_large.code(), absl::StatusCode::kOutOfRange);
+
+  TF_DeleteSavedModel(saved_model);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
 INSTANTIATE_TEST_SUITE_P(RuntimeAgnosticSavedModelTests, CSavedModelAPITest,
                          ::testing::Bool());
 
