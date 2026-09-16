@@ -91,3 +91,11 @@ tf_proto_library(
     visibility = ["//visibility:public"],
     deps = ["@com_google_protobuf//:any_proto"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "topology_description_py_pb2",
+#     visibility = ["//visibility:public"],
+#     deps = [":topology_description_proto"],
+# )
+# copybara:uncomment_end
