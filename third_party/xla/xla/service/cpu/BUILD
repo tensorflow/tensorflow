@@ -606,31 +606,20 @@ cc_library(
     srcs = ["ir_emitter2.cc"],
     hdrs = ["ir_emitter2.h"],
     deps = [
-        ":backend_config_proto_cc",
         ":dot_op_emitter",
-        ":elemental_ir_emitter",
         ":ir_emitter",
-        ":parallel_loop_emitter",
         "//xla:shape_util",
         "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/cpu/codegen:symbol_name_util",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitter_config",
-        "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
-        "//xla/service/llvm_ir:dynamic_update_slice_util",
-        "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:loop_emitter",
         "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -645,7 +634,6 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -788,23 +776,6 @@ cc_library(
 )
 
 cc_library(
-    name = "parallel_loop_emitter",
-    srcs = ["parallel_loop_emitter.cc"],
-    hdrs = ["parallel_loop_emitter.h"],
-    deps = [
-        ":ir_emission_utils",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_loop",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:loop_emitter",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Core",
-    ],
-)
-
-cc_library(
     name = "thunk_emitter",
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
@@ -835,7 +806,6 @@ cc_library(
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
-        "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/backends/cpu/runtime:all_gather_thunk",
         "//xla/backends/cpu/runtime:all_reduce_thunk",
@@ -1057,7 +1027,6 @@ xla_cc_test(
     tags = ["not_run:arm"],
     deps = [
         ":cpu_instruction_fusion",
-        ":cpu_options",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -1068,7 +1037,6 @@ xla_cc_test(
         "//xla/service:transpose_folding",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -1083,7 +1051,6 @@ cc_library(
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
-        ":cpu_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
@@ -1126,10 +1093,10 @@ xla_cc_test(
     deps = [
         ":fusion_wrapper",
         ":target_machine_features_stub",
+        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -1141,7 +1108,6 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     deps = [
-        ":cpu_runtime",
         "//xla:shape_util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
@@ -1219,7 +1185,6 @@ cc_library(
     srcs = ["conv_canonicalization.cc"],
     hdrs = ["conv_canonicalization.h"],
     deps = [
-        ":cpu_runtime",
         ":ir_emission_utils",
         "//xla:permutation_util",
         "//xla:shape_util",
@@ -1232,7 +1197,6 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:errors",
     ],
 )
 
