@@ -226,8 +226,6 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
         return {inst, index};
       };
 
-      bool should_skip_reconstruction = false;
-
       // If the producing instruction shares the same buffer with the operand,
       // then we skip the reconstruction.
       auto is_aliasing_operand = [&](int operand_index) {
@@ -247,17 +245,26 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                        .id();
       };
 
-      for (int operand_index = 0; operand_index < tuple_inst->operand_count();
-           ++operand_index) {
-        if (tuple_inst->opcode() == HloOpcode::kTuple &&
-            !use.operand_index.empty() &&
-            operand_index != use.operand_index.front()) {
-          continue;
-        }
-        if (tuple_inst->operand(operand_index) == producing_instruction &&
-            is_aliasing_operand(operand_index)) {
-          should_skip_reconstruction = true;
-          break;
+      // Skip tuple reconstruction for asynchronous instructions (async-start,
+      // async-update, async-done). Reconstructing an async tuple with a generic
+      // 'tuple' instruction breaks the direct producer-consumer linkage and
+      // structural invariants required by asynchronous operations.
+      bool should_skip_reconstruction =
+          tuple_inst->IsAsynchronous() || use.instruction->IsAsynchronous();
+
+      if (!should_skip_reconstruction) {
+        for (int operand_index = 0; operand_index < tuple_inst->operand_count();
+             ++operand_index) {
+          if (tuple_inst->opcode() == HloOpcode::kTuple &&
+              !use.operand_index.empty() &&
+              operand_index != use.operand_index.front()) {
+            continue;
+          }
+          if (tuple_inst->operand(operand_index) == producing_instruction &&
+              is_aliasing_operand(operand_index)) {
+            should_skip_reconstruction = true;
+            break;
+          }
         }
       }
 
