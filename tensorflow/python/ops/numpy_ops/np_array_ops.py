@@ -1633,9 +1633,14 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     delta = -1
 
   x = array_ops.expand_dims(x, -1)
-  return math_ops.pow(
-      x, math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  exponents = math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  # Avoid 0.0 ** 0.0 in pow, whose gradient evaluates 0 * 0^(-1) = 0 * inf = NaN.
+  # Since x^0 == 1 has zero derivative with respect to x, substituting 1 for x
+  # where exponent == 0 preserves both forward values and exact derivatives.
+  safe_x = array_ops.where_v2(
+      math_ops.equal(exponents, 0), array_ops.ones_like(x), x
   )
+  return math_ops.pow(safe_x, exponents)
 
 
 @tf_export.tf_export('experimental.numpy.ix_', v1=[])
