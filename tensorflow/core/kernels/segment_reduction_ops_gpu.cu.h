@@ -988,6 +988,46 @@ absl::Status SparseSegmentReductionFunctor<T, Index, SegmentId>::operator()(
       /*output=*/output.data());
 }
 
+// Finds the position of an out-of-range `indices` value (against `noutput`)
+// and/or `segment_ids` value (against `nsegments`), if any. `bad_index_pos`
+// and `bad_segment_pos` must already be initialized to
+// std::numeric_limits<int32_t>::max(); a value is left unchanged if no
+// violation of that kind is found, or set to the position of one such
+// violation (not necessarily the first in `i` order) otherwise.
+template <typename Index, typename SegmentId>
+__global__ void SparseSegmentGradBoundsCheckKernel(
+    Index nouter, Index noutput, SegmentId nsegments,
+    const Index* __restrict__ indices_vec,     // [nouter]
+    const SegmentId* __restrict__ segment_vec,  // [nouter]
+    int32_t* __restrict__ bad_index_pos,        // [1]
+    int32_t* __restrict__ bad_segment_pos) {    // [1]
+  for (Index i : GpuGridRangeX(nouter)) {
+    if (!FastBoundsCheck(indices_vec[i], noutput)) {
+      GpuAtomicMin(bad_index_pos, static_cast<int32_t>(i));
+    }
+    if (!FastBoundsCheck(segment_vec[i], nsegments)) {
+      GpuAtomicMin(bad_segment_pos, static_cast<int32_t>(i));
+    }
+  }
+}
+
+template <typename Index, typename SegmentId>
+absl::Status LaunchSparseSegmentGradBoundsCheckKernel(
+    const GPUDevice& d, Index nouter, Index noutput, SegmentId nsegments,
+    const Index* indices_vec, const SegmentId* segment_vec,
+    int32_t* bad_index_pos, int32_t* bad_segment_pos) {
+  TF_ASSIGN_OR_RETURN(
+      GpuLaunchConfig64 config,
+      GetGpuLaunchConfig64(nouter, d,
+                           &SparseSegmentGradBoundsCheckKernel<Index, SegmentId>,
+                           /*dynamic_shared_memory_size=*/0,
+                           /*block_size_limit=*/0));
+  return GpuLaunchKernel(SparseSegmentGradBoundsCheckKernel<Index, SegmentId>,
+                         config.block_count, config.thread_per_block, 0,
+                         d.stream(), nouter, noutput, nsegments, indices_vec,
+                         segment_vec, bad_index_pos, bad_segment_pos);
+}
+
 template <typename T, typename Index, typename SegmentId>
 struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
   void operator()(OpKernelContext* context,
@@ -1010,65 +1050,98 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
     // failure. This GPU path performed no such validation, so an
     // out-of-range indices or segment_ids value caused an out-of-bounds
     // read or write on the device instead of a normal, recoverable error.
-    // Validate here by copying both (typically small) arrays to the host and
-    // replicating the same checks.
-    se::Stream* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream != nullptr,
-                absl::InternalError("No GPU stream available."));
-
-    AllocatorAttributes host_alloc_attr;
-    host_alloc_attr.set_on_host(true);
-    host_alloc_attr.set_gpu_compatible(true);
-    Tensor indices_host, segment_host;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<Index>::value,
-                                          TensorShape({nouter}), &indices_host,
-                                          host_alloc_attr));
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<SegmentId>::value,
-                                          TensorShape({nouter}), &segment_host,
-                                          host_alloc_attr));
-    OP_REQUIRES_OK(
-        context,
-        stream->Memcpy(indices_host.flat<Index>().data(),
-                       stream_executor::DeviceAddressBase(
-                           const_cast<Index*>(indices_vec.data()),
-                           nouter * sizeof(Index)),
-                       nouter * sizeof(Index)));
-    OP_REQUIRES_OK(
-        context,
-        stream->Memcpy(segment_host.flat<SegmentId>().data(),
-                       stream_executor::DeviceAddressBase(
-                           const_cast<SegmentId*>(segment_vec.data()),
-                           nouter * sizeof(SegmentId)),
-                       nouter * sizeof(SegmentId)));
-    OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
-    {
-      const auto indices_host_vec = indices_host.vec<Index>();
-      const auto segment_host_vec = segment_host.vec<SegmentId>();
+    // Validate here, without copying the full `indices`/`segment_ids`
+    // arrays to the host: a device-side kernel does the O(nouter) scan, and
+    // only a couple of small flags come back over the (synchronous) D2H
+    // transfer in the common, valid-input case.
+    if (nouter > 0) {
+      se::Stream* stream = context->op_device_context()->stream();
+      OP_REQUIRES(context, stream != nullptr,
+                  absl::InternalError("No GPU stream available."));
 
       // Fast check, matching the CPU functor: `segment_vec` is assumed
       // sorted in non-decreasing order, so its last element is the maximum
-      // segment id. This produces the same "Invalid number of segments"
-      // message as the CPU functor for the common (sorted) case where the
-      // incoming gradient simply doesn't have enough rows.
-      const SegmentId last_segment_id =
-          internal::SubtleMustCopy(segment_host_vec(nouter - 1));
-      OP_REQUIRES(context, last_segment_id + 1 <= nsegments,
+      // segment id. A single element is enough to validate `nsegments`
+      // against the well-formed/sorted case and produce the same
+      // "Invalid number of segments" message the CPU functor uses for it.
+      ScratchSpace<SegmentId> last_segment_id_host(context, 1,
+                                                   /*on_host=*/true);
+      OP_REQUIRES_OK(
+          context,
+          stream->Memcpy(
+              last_segment_id_host.mutable_data(),
+              stream_executor::DeviceAddressBase(
+                  const_cast<SegmentId*>(segment_vec.data()) + (nouter - 1),
+                  sizeof(SegmentId)),
+              sizeof(SegmentId)));
+      OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+      OP_REQUIRES(context, *last_segment_id_host.data() + 1 <= nsegments,
                   absl::InvalidArgumentError("Invalid number of segments"));
 
-      for (Index i = 0; i < nouter; ++i) {
-        const Index output_idx =
-            internal::SubtleMustCopy(indices_host_vec(i));
-        OP_REQUIRES(context, FastBoundsCheck(output_idx, noutput),
+      // Full per-element validation, matching the CPU functor: catches
+      // malformed input that isn't actually sorted (so the fast check above
+      // can't tell it's invalid from the last element alone). Runs as a
+      // device-side scan; `bad_positions` only ever carries 2 int32s back to
+      // the host, regardless of `nouter`.
+      Tensor bad_positions;
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DT_INT32, TensorShape({2}), &bad_positions));
+      int32_t* const bad_positions_ptr = bad_positions.flat<int32_t>().data();
+      int32_t* const bad_index_pos_ptr = bad_positions_ptr;
+      int32_t* const bad_segment_pos_ptr = bad_positions_ptr + 1;
+      stream_executor::DeviceAddressBase bad_positions_device(
+          bad_positions_ptr, 2 * sizeof(int32_t));
+      OP_REQUIRES_OK(context,
+                     stream->Memset32(&bad_positions_device,
+                                      std::numeric_limits<int32_t>::max(),
+                                      2 * sizeof(int32_t)));
+      OP_REQUIRES_OK(
+          context, LaunchSparseSegmentGradBoundsCheckKernel(
+                       device, nouter, noutput, nsegments, indices_vec.data(),
+                       segment_vec.data(), bad_index_pos_ptr,
+                       bad_segment_pos_ptr));
+      ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
+      OP_REQUIRES_OK(context,
+                     stream->Memcpy(bad_positions_host.mutable_data(),
+                                    bad_positions_device,
+                                    2 * sizeof(int32_t)));
+      OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+      const int32_t bad_index_pos = bad_positions_host.data()[0];
+      const int32_t bad_segment_pos = bad_positions_host.data()[1];
+
+      if (bad_index_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<Index> bad_index_host(context, 1, /*on_host=*/true);
+        OP_REQUIRES_OK(
+            context,
+            stream->Memcpy(
+                bad_index_host.mutable_data(),
+                stream_executor::DeviceAddressBase(
+                    const_cast<Index*>(indices_vec.data()) + bad_index_pos,
+                    sizeof(Index)),
+                sizeof(Index)));
+        OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+        OP_REQUIRES(context, false,
                     absl::InvalidArgumentError(absl::StrCat(
-                        "Index ", output_idx, " out of range [0, ", noutput,
-                        ").")));
-        const SegmentId idx = internal::SubtleMustCopy(segment_host_vec(i));
-        OP_REQUIRES(
-            context, FastBoundsCheck(idx, nsegments),
-            absl::InvalidArgumentError(absl::StrCat(
-                "Segment id ", idx, " out of range [0, ", nsegments, ").")));
+                        "Index ", *bad_index_host.data(), " out of range [0, ",
+                        noutput, ").")));
+      }
+      if (bad_segment_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<SegmentId> bad_segment_host(context, 1,
+                                                 /*on_host=*/true);
+        OP_REQUIRES_OK(
+            context,
+            stream->Memcpy(
+                bad_segment_host.mutable_data(),
+                stream_executor::DeviceAddressBase(
+                    const_cast<SegmentId*>(segment_vec.data()) +
+                        bad_segment_pos,
+                    sizeof(SegmentId)),
+                sizeof(SegmentId)));
+        OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+        OP_REQUIRES(context, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Segment id ", *bad_segment_host.data(),
+                        " out of range [0, ", nsegments, ").")));
       }
     }
 
