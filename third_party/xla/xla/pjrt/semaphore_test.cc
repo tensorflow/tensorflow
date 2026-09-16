@@ -56,6 +56,37 @@ TEST(SemaphoreTest, UnthreadedTests) {
   }
 }
 
+TEST(SemaphoreTest, ScopedReservationMoveAssignment) {
+  Semaphore semaphore(10);
+  {
+    auto r1 = semaphore.ScopedAcquire(5);
+    EXPECT_EQ(semaphore.value(), 5);
+
+    auto r2 = semaphore.ScopedAcquire(3);
+    EXPECT_EQ(semaphore.value(), 2);
+
+    r1 = std::move(r2);
+    EXPECT_EQ(semaphore.value(), 7);
+    EXPECT_EQ(r1.amount(), 3);
+  }
+  EXPECT_EQ(semaphore.value(), 10);
+}
+
+TEST(SemaphoreTest, ScopedReservationSelfMoveAssignment) {
+  Semaphore semaphore(10);
+  {
+    auto r1 = semaphore.ScopedAcquire(5);
+    EXPECT_EQ(semaphore.value(), 5);
+
+    Semaphore::ScopedReservation& r1_ref = r1;
+    r1 = std::move(r1_ref);
+
+    EXPECT_EQ(semaphore.value(), 5);
+    EXPECT_EQ(r1.amount(), 5);
+  }
+  EXPECT_EQ(semaphore.value(), 10);
+}
+
 TEST(SemaphoreTest, ConcurrentTest) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 2);
   Semaphore semaphore(2);
