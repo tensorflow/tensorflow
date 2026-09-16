@@ -20,6 +20,7 @@ import numbers
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -285,7 +286,7 @@ class SumReductionTest(BaseReductionTest):
 
     arr = np.ones([68000], dtype=np.float16)
 
-    with self.session(graph=ops.Graph(), use_gpu=True) as sess:
+    with self.session(graph=ops.Graph(), use_gpu=True):
       tf_arr = variables.Variable(arr)
       self.evaluate(variables.global_variables_initializer())
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
@@ -315,7 +316,7 @@ class SumReductionTest(BaseReductionTest):
       col_sum = np.sum(arr, axis=0)
       row_sum = np.sum(arr, axis=1)
 
-      with self.session(graph=ops.Graph(), use_gpu=True) as sess:
+      with self.session(graph=ops.Graph(), use_gpu=True):
         tf_row_sum = self._tf_reduce(arr, 1, False)
         tf_col_sum = self._tf_reduce(arr, 0, False)
         tf_out_row, tf_out_col = self.evaluate([tf_row_sum, tf_col_sum])
@@ -329,7 +330,7 @@ class SumReductionTest(BaseReductionTest):
           sum_y = np.sum(arr, axis=1)
           sum_xz = np.sum(arr, axis=(0, 2))
 
-          with self.session(graph=ops.Graph(), use_gpu=True) as sess:
+          with self.session(graph=ops.Graph(), use_gpu=True):
             tf_sum_xz = self._tf_reduce(arr, [0, 2], False)
             tf_sum_y = self._tf_reduce(arr, 1, False)
             tf_out_sum_xz, tf_out_sum_y = self.evaluate([tf_sum_xz, tf_sum_y])
@@ -762,8 +763,9 @@ class ProdReductionTest(BaseReductionTest):
   @test_util.run_deprecated_v1
   def testBfloat16(self):
     for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16) * \
-               np.array([0.01]).astype(dtypes.bfloat16.as_numpy_dtype)
+      np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16) * np.array(
+          [0.01]
+      ).astype(dtypes.bfloat16.as_numpy_dtype)
       self._compareAllAxes(np_arr, rtol=1e-2, atol=1e-2)
 
   @test_util.run_deprecated_v1
@@ -824,6 +826,61 @@ class ProdReductionTest(BaseReductionTest):
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_prod(x, [0])
         self.assertAllEqual(y, np.ones(9938))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testXlaZeroWithOverflow(self):
+    if not test_util.is_xla_enabled():
+      return
+
+    @def_function.function(jit_compile=True)
+    def reduce_prod(a, axis=None):
+      return math_ops.reduce_prod(a, axis=axis)
+
+    # 1. Overflow -> 0.0 (The original bug)
+    x = constant_op.constant([1e30, 1e30, 1e30, 0.0], dtype=dtypes.float32)
+    res = self.evaluate(reduce_prod(x))
+    self.assertFalse(np.isnan(res), "Result is NaN")
+    self.assertAllEqual(0.0, res)
+
+    # 2. Authentic NaNs -> NaN
+    x_nan = constant_op.constant(
+        [1e30, float("nan"), 0.0], dtype=dtypes.float32
+    )
+    res_nan = self.evaluate(reduce_prod(x_nan))
+    self.assertTrue(np.isnan(res_nan), "Result is not NaN for authentic NaN")
+
+    # 3. Authentic Infinities -> NaN
+    x_inf = constant_op.constant([float("inf"), 0.0], dtype=dtypes.float32)
+    res_inf = self.evaluate(reduce_prod(x_inf))
+    self.assertTrue(np.isnan(res_inf), "Result is not NaN for authentic inf")
+
+    # 4. Signed Zeros (-1.0 * 0.0 -> -0.0)
+    x_signed = constant_op.constant([-1.0, 0.0], dtype=dtypes.float32)
+    res_signed = self.evaluate(reduce_prod(x_signed))
+    self.assertAllEqual(-0.0, res_signed)
+    self.assertTrue(np.signbit(res_signed), "Result is not negative zero")
+
+    # 5. Multidimensional Reductions
+    x_multi = constant_op.constant(
+        [[1e30, 1e30, 0.0], [1.0, 2.0, 3.0]], dtype=dtypes.float32
+    )
+    res_multi = self.evaluate(reduce_prod(x_multi, axis=1))
+    self.assertAllEqual([0.0, 6.0], res_multi)
+
+    # 6. Data Types
+    dtypes_to_test = [
+        (dtypes.float16, 1000.0),
+        (dtypes.bfloat16, 1e30),
+        (dtypes.float32, 1e30),
+        (dtypes.float64, 1e300),
+    ]
+    for dtype, large_val in dtypes_to_test:
+      x_dt = constant_op.constant(
+          [large_val, large_val, large_val, 0.0], dtype=dtype
+      )
+      res_dt = self.evaluate(reduce_prod(x_dt))
+      self.assertFalse(np.isnan(res_dt), "Result is NaN for %s" % dtype)
+      self.assertAllEqual(0.0, res_dt)
 
 
 class MinReductionTest(test.TestCase):
@@ -1266,7 +1323,7 @@ class CountNonzeroReductionTest(test.TestCase):
 
   def testStringReduce(self):
     # Test case for GitHub issue 18712
-    with self.cached_session() as sess:
+    with self.cached_session():
       v = math_ops.count_nonzero(constant_op.constant(["test"]))
       self.assertAllClose(self.evaluate(v), 1)
 

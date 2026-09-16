@@ -24,9 +24,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -69,6 +71,40 @@ class ProdOp : public XlaReductionOp {
   void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
                     const xla::XlaOp& scalar_rhs) override {
     xla::Mul(scalar_lhs, scalar_rhs);
+  }
+
+  xla::XlaOp BuildFinalizer(
+      xla::XlaBuilder* builder, const xla::XlaOp& input,
+      const xla::XlaOp& reduce_output,
+      const std::vector<int64_t>& dimensions_to_reduce) override {
+    xla::XlaOp final_output = XlaReductionOp::BuildFinalizer(
+        builder, input, reduce_output, dimensions_to_reduce);
+
+    if (!xla::primitive_util::IsFloatingPointType(xla_reduction_type_)) {
+      return final_output;
+    }
+
+    xla::XlaOp zero = xla::Zero(builder, xla_reduction_type_);
+    xla::XlaOp is_zero = xla::Eq(input, zero);
+    xla::XlaComputation or_comp =
+        xla::CreateScalarOrComputation(xla::PRED, builder);
+    xla::XlaOp any_zero =
+        xla::Reduce(is_zero, xla::ConstantR0<bool>(builder, false), or_comp,
+                    dimensions_to_reduce);
+
+    xla::XlaOp is_nan_or_inf =
+        xla::Or(xla::Ne(input, input), xla::IsInf(input));
+    xla::XlaOp any_nan_or_inf =
+        xla::Reduce(is_nan_or_inf, xla::ConstantR0<bool>(builder, false),
+                    or_comp, dimensions_to_reduce);
+
+    xla::XlaOp output_is_nan = xla::Ne(final_output, final_output);
+
+    xla::XlaOp should_be_zero =
+        xla::And(output_is_nan, xla::And(any_zero, xla::Not(any_nan_or_inf)));
+
+    return xla::Select(should_be_zero, xla::ZerosLike(final_output),
+                       final_output);
   }
 };
 
