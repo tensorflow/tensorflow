@@ -21,6 +21,7 @@ limitations under the License.
 #include <stack>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
