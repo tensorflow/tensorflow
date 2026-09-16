@@ -29,7 +29,9 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
   def _unfused_linear_cross_entropy(self, x, weights, labels):
     """Reference implementation using standard TF operations."""
     logits = math_ops.matmul(x, weights)
-    return nn_ops.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+    return nn_ops.softmax_cross_entropy_with_logits(
+        labels=labels, logits=logits
+    )
 
   @test_util.run_in_graph_and_eager_modes
   def testFusedLinearCrossEntropyForward(self):
@@ -41,9 +43,11 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
 
     x_val = np.random.randn(batch_size, in_features).astype(np.float32)
     w_val = np.random.randn(in_features, num_classes).astype(np.float32)
-    
-    # Generate one-hot or probability distribution labels
-    labels_val = np.random.dirichlet(np.ones(num_classes), size=batch_size).astype(np.float32)
+
+    # Generate probability distribution labels
+    labels_val = np.random.dirichlet(
+        np.ones(num_classes), size=batch_size
+    ).astype(np.float32)
 
     x = constant_op.constant(x_val, dtype=dtypes.float32)
     w = constant_op.constant(w_val, dtype=dtypes.float32)
@@ -72,7 +76,6 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
     def forward_fn(inputs, weights):
       return nn_ops.fused_linear_cross_entropy(inputs, weights, labels)
 
-    # Verify gradients with respect to input X and weight matrix W
     err_x = test_util.compute_gradient_error(
         lambda x_in: forward_fn(x_in, w), [x]
     )
