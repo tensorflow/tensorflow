@@ -20,13 +20,16 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tsl/platform/test.h"
@@ -147,6 +150,165 @@ ENTRY main {
       HloIsolationTestResult result_allowed,
       RunIsolationTestOnModule(*module, nullptr, nullptr, options));
   EXPECT_TRUE(result_allowed.is_intentional_inf_nan());
+}
+
+TEST(HloIsolationApiTest, DefusedReferenceOutOfMemoryIsSkippedNotFailed) {
+  const absl::string_view kHlo = R"hlo(
+HloModule m
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  ROOT add = f32[4] add(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kHlo));
+
+  ModuleIsolationOptions options;
+  options.run_module_fn =
+      [](std::unique_ptr<HloModule> m, HloRunnerInterface* /*r*/,
+         absl::Span<const Literal> /*i*/,
+         const RunModuleOptions& /*run_opts*/) -> absl::StatusOr<Literal> {
+    if (absl::StrContains(m->name(), "defused")) {
+      return absl::ResourceExhaustedError("Ran out of memory on HBM");
+    }
+    return LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+  };
+
+  // Without a reference runner the defused module is the only reference, so an
+  // unrunnable defused module leaves nothing to compare against. That is
+  // inconclusive, not a failure.
+  ASSERT_OK_AND_ASSIGN(
+      HloIsolationTestResult result,
+      RunIsolationTestOnModule(*module, /*test_runner=*/nullptr,
+                               /*reference_runner=*/nullptr, options));
+  EXPECT_EQ(result.state(), State::SKIPPED);
+  EXPECT_EQ(result.reason(), "DEFUSED_REFERENCE_UNAVAILABLE");
+}
+
+TEST(HloIsolationApiTest, MismatchIsRetriedWithoutExcessPrecision) {
+  const absl::string_view kHlo = R"hlo(
+HloModule m
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  ROOT add = f32[4] add(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kHlo));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_allow_excess_precision(true);
+
+  ModuleIsolationOptions options;
+  options.retry_without_excess_precision = true;
+  // Models a fusion that holds an intermediate in a wider type than the HLO
+  // declares: the fused and defused runs only agree once excess precision is
+  // disabled.
+  options.run_module_fn =
+      [](std::unique_ptr<HloModule> m, HloRunnerInterface* /*r*/,
+         absl::Span<const Literal> /*i*/,
+         const RunModuleOptions& /*run_opts*/) -> absl::StatusOr<Literal> {
+    if (m->config().debug_options().xla_allow_excess_precision() &&
+        absl::StrContains(m->name(), "defused")) {
+      return LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+    }
+    return LiteralUtil::CreateR1<float>({1.0f, 1.0f, 1.0f, 1.0f});
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      HloIsolationTestResult result,
+      RunIsolationTestOnModule(*module, /*test_runner=*/nullptr,
+                               /*reference_runner=*/nullptr, options));
+  EXPECT_EQ(result.state(), State::SUCCESS);
+  EXPECT_EQ(result.reason(), "STAGE_1B_NO_EXCESS_PRECISION_SUCCESS");
+}
+
+// A stand-in for a reference runner. `run_module_fn` is stubbed out in these
+// tests, and RunIsolationTestOnModule only ever tests this pointer for null and
+// forwards it, so it is never dereferenced.
+HloRunnerInterface* FakeReferenceRunner() {
+  static int token = 0;
+  return reinterpret_cast<HloRunnerInterface*>(&token);
+}
+
+TEST(HloIsolationApiTest, DefusedReferenceOutOfMemoryIsSkippedNotEscalated) {
+  const absl::string_view kHlo = R"hlo(
+HloModule m
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  ROOT add = f32[4] add(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kHlo));
+
+  ModuleIsolationOptions options;
+  options.run_module_fn =
+      [](std::unique_ptr<HloModule> m, HloRunnerInterface* /*r*/,
+         absl::Span<const Literal> /*i*/,
+         const RunModuleOptions& /*run_opts*/) -> absl::StatusOr<Literal> {
+    if (absl::StrContains(m->name(), "defused")) {
+      return absl::ResourceExhaustedError("Ran out of memory on HBM");
+    }
+    return LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+  };
+
+  // If the defused module does not fit in device memory, the interpreter --
+  // which materializes the same intermediates on the host, far more slowly --
+  // will not fit either, and trying it just times the test out. The module is
+  // skipped even though a reference runner is available.
+  ASSERT_OK_AND_ASSIGN(
+      HloIsolationTestResult result,
+      RunIsolationTestOnModule(*module, /*test_runner=*/nullptr,
+                               FakeReferenceRunner(), options));
+  EXPECT_EQ(result.state(), State::SKIPPED);
+  EXPECT_EQ(result.reason(), "DEFUSED_REFERENCE_UNAVAILABLE");
+}
+
+TEST(HloIsolationApiTest, MismatchIsReportedExactlyOnce) {
+  const absl::string_view kHlo = R"hlo(
+HloModule m
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  ROOT add = f32[4] add(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kHlo));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_allow_excess_precision(true);
+
+  ModuleIsolationOptions options;
+  options.retry_without_excess_precision = true;
+  // Mismatches on every check, including the no-excess-precision retry.
+  options.run_module_fn =
+      [](std::unique_ptr<HloModule> m, HloRunnerInterface* /*r*/,
+         absl::Span<const Literal> /*i*/,
+         const RunModuleOptions& /*run_opts*/) -> absl::StatusOr<Literal> {
+    if (absl::StrContains(m->name(), "defused")) {
+      return LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+    }
+    return LiteralUtil::CreateR1<float>({1.0f, 1.0f, 1.0f, 1.0f});
+  };
+  int mismatch_reports = 0;
+  options.on_mismatch_fn = [&mismatch_reports](const HloModule& /*m*/,
+                                               const Literal& /*test_output*/,
+                                               const Literal& /*ref_output*/,
+                                               const absl::Status& /*status*/) {
+    ++mismatch_reports;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      HloIsolationTestResult result,
+      RunIsolationTestOnModule(*module, /*test_runner=*/nullptr,
+                               /*reference_runner=*/nullptr, options));
+  EXPECT_EQ(result.state(), State::FAILURE);
+  EXPECT_EQ(result.reason(), "NUMERIC_MISMATCH");
+  // Two checks mismatched (TPU_VS_DEFUSED_TPU and the no-excess-precision
+  // retry), but the module is only reported once, at the final verdict.
+  EXPECT_EQ(mismatch_reports, 1);
+  EXPECT_EQ(result.numeric_checks_size(), 2);
 }
 
 }  // namespace
