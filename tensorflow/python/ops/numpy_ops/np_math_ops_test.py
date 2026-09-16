@@ -343,6 +343,17 @@ class MathTest(test.TestCase, parameterized.TestCase):
         self.match(
             np_math_ops.argmin(arr, axis=axis), np.argmin(arr, axis=axis))
 
+  def testArgMaxArgMinOutOfBoundsAxis(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmax(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmax(a, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmin(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmin(a, axis=-3)
+
   @parameterized.parameters([False, True])
   def testIsCloseEqualNan(self, equal_nan):
     a = np.asarray([1, 1, np.nan, 1, np.nan], np.float32)
