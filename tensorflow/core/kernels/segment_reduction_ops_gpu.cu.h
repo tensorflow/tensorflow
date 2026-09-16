@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
@@ -1002,6 +1003,74 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
     const Index ninner = input_flat.dimension(1);
     const Index nouter = indices_vec.dimension(0);
     const Index noutput = output_flat.dimension(0);
+
+    // The CPU functor bounds-checks every `indices` value against `noutput`
+    // and every `segment_ids` value against `nsegments` before using them to
+    // read/write `input`/`output`, returning an InvalidArgumentError on
+    // failure. This GPU path performed no such validation, so an
+    // out-of-range indices or segment_ids value caused an out-of-bounds
+    // read or write on the device instead of a normal, recoverable error.
+    // Validate here by copying both (typically small) arrays to the host and
+    // replicating the same checks.
+    se::Stream* stream = context->op_device_context()->stream();
+    OP_REQUIRES(context, stream != nullptr,
+                absl::InternalError("No GPU stream available."));
+
+    AllocatorAttributes host_alloc_attr;
+    host_alloc_attr.set_on_host(true);
+    host_alloc_attr.set_gpu_compatible(true);
+    Tensor indices_host, segment_host;
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<Index>::value,
+                                          TensorShape({nouter}), &indices_host,
+                                          host_alloc_attr));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<SegmentId>::value,
+                                          TensorShape({nouter}), &segment_host,
+                                          host_alloc_attr));
+    OP_REQUIRES_OK(
+        context,
+        stream->Memcpy(indices_host.flat<Index>().data(),
+                       stream_executor::DeviceAddressBase(
+                           const_cast<Index*>(indices_vec.data()),
+                           nouter * sizeof(Index)),
+                       nouter * sizeof(Index)));
+    OP_REQUIRES_OK(
+        context,
+        stream->Memcpy(segment_host.flat<SegmentId>().data(),
+                       stream_executor::DeviceAddressBase(
+                           const_cast<SegmentId*>(segment_vec.data()),
+                           nouter * sizeof(SegmentId)),
+                       nouter * sizeof(SegmentId)));
+    OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+    {
+      const auto indices_host_vec = indices_host.vec<Index>();
+      const auto segment_host_vec = segment_host.vec<SegmentId>();
+
+      // Fast check, matching the CPU functor: `segment_vec` is assumed
+      // sorted in non-decreasing order, so its last element is the maximum
+      // segment id. This produces the same "Invalid number of segments"
+      // message as the CPU functor for the common (sorted) case where the
+      // incoming gradient simply doesn't have enough rows.
+      const SegmentId last_segment_id =
+          internal::SubtleMustCopy(segment_host_vec(nouter - 1));
+      OP_REQUIRES(context, last_segment_id + 1 <= nsegments,
+                  absl::InvalidArgumentError("Invalid number of segments"));
+
+      for (Index i = 0; i < nouter; ++i) {
+        const Index output_idx =
+            internal::SubtleMustCopy(indices_host_vec(i));
+        OP_REQUIRES(context, FastBoundsCheck(output_idx, noutput),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Index ", output_idx, " out of range [0, ", noutput,
+                        ").")));
+        const SegmentId idx = internal::SubtleMustCopy(segment_host_vec(i));
+        OP_REQUIRES(
+            context, FastBoundsCheck(idx, nsegments),
+            absl::InvalidArgumentError(absl::StrCat(
+                "Segment id ", idx, " out of range [0, ", nsegments, ").")));
+      }
+    }
 
     // Allocate and compute segment weights (for Mean/SqrtN operations only).
     Tensor weights;
