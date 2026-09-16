@@ -240,6 +240,18 @@ class GpuCommunicator : public Communicator {
                                        RankId root,
                                        const Executor& executor) = 0;
 
+  // Reduces buffers of length `count` in `send_buffer` using `reduction_kind`
+  // and writes the result only to `recv_buffer` on the `root` rank (NCCL
+  // `ncclReduce` semantics). On non-root ranks `recv_buffer` is left untouched.
+  // Defaults to unimplemented so backends can opt in; NCCL overrides it.
+  virtual absl::Status LaunchReduce(se::DeviceAddressBase send_buffer,
+                                    se::DeviceAddressBase recv_buffer,
+                                    PrimitiveType dtype, size_t count,
+                                    ReductionKind reduction_kind, RankId root,
+                                    const Executor& executor) {
+    return Unimplemented("LaunchReduce is not implemented");
+  }
+
   virtual absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                            se::DeviceAddressBase recv_buffer,
                                            PrimitiveType dtype, size_t count,

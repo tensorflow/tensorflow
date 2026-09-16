@@ -47,8 +47,6 @@ namespace xla::gpu {
 namespace {
 
 static constexpr int kNumDevices = 2;
-static constexpr int64_t kLength = 4;
-static constexpr int64_t kByteLength = sizeof(float) * kLength;
 
 static P2PConfig MakeSendRecvConfig() {
   ReplicaGroup replica_group;
@@ -66,9 +64,9 @@ static P2PConfig MakeSendRecvConfig() {
 }
 
 static CollectiveThunk::Buffer MakeBuffer(const BufferAllocation& allocation) {
-  ShapedSlice slice{BufferAllocation::Slice(&allocation, 0, kByteLength),
-                    ShapeUtil::MakeShape(F32, {kLength})};
-  return CollectiveThunk::Buffer{.element_count = kLength,
+  ShapedSlice slice{BufferAllocation::Slice(&allocation, 0, kFloatByteLength),
+                    ShapeUtil::MakeShape(F32, {kNumElements})};
+  return CollectiveThunk::Buffer{.element_count = kNumElements,
                                  .source_buffer = slice,
                                  .destination_buffer = slice,
                                  .source_memory_space = 0,
@@ -91,12 +89,12 @@ struct DeviceTestSlot : CollectiveThunkMultiGpuTestState {
 };
 
 static std::vector<int64_t> DeviceBufferSizes() {
-  return {kByteLength, kByteLength};
+  return {kFloatByteLength, kFloatByteLength};
 }
 
 static std::vector<float> SourceValues(int device_ordinal, int phase) {
-  std::vector<float> data(kLength);
-  for (int i = 0; i < kLength; ++i) {
+  std::vector<float> data(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
     data[i] = static_cast<float>(phase * 100 + device_ordinal * 10 + i);
   }
   return data;
@@ -106,13 +104,14 @@ static std::vector<float> ExpectedRecvValues(int device_ordinal, int phase) {
   if (device_ordinal == 1) {
     return SourceValues(/*device_ordinal=*/0, phase);
   }
-  return std::vector<float>(kLength, 0.0f);
+  return std::vector<float>(kNumElements, 0.0f);
 }
 
 static absl::Status FillDeviceBufferWithValue(se::Stream& stream,
                                               se::DeviceAddressBase buffer,
                                               float value) {
-  return FillDeviceBuffer(stream, buffer, std::vector<float>(kLength, value));
+  return FillDeviceBuffer(stream, buffer,
+                          std::vector<float>(kNumElements, value));
 }
 
 static absl::Status PreparePhaseInputs(
@@ -127,9 +126,9 @@ static absl::Status VerifyRecvOutput(DeviceTestSlot& slot, int device_ordinal,
                                      int phase,
                                      se::DeviceAddressBase recv_dst) {
   ABSL_ASSIGN_OR_RETURN(std::vector<float> output,
-                   ReadDeviceBuffer(*slot.stream, recv_dst, kLength));
+                   ReadDeviceBuffer(*slot.stream, recv_dst, kNumElements));
   std::vector<float> expected = ExpectedRecvValues(device_ordinal, phase);
-  for (int i = 0; i < kLength; ++i) {
+  for (int i = 0; i < kNumElements; ++i) {
     if (output[i] != expected[i]) {
       return absl::InternalError(
           absl::StrFormat("device %d output[%d] = %g, expected %g",
@@ -253,8 +252,8 @@ TEST(SendRecvThunkMultiGpuTest, ExecuteOnStream) {
   }
 
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
-  BufferAllocation send_alloc(/*index=*/0, kByteLength, /*color=*/0);
-  BufferAllocation recv_alloc(/*index=*/1, kByteLength, /*color=*/0);
+  BufferAllocation send_alloc(/*index=*/0, kFloatByteLength, /*color=*/0);
+  BufferAllocation recv_alloc(/*index=*/1, kFloatByteLength, /*color=*/0);
   SendThunk send_thunk = MakeSendThunk(send_alloc);
   RecvThunk recv_thunk = MakeRecvThunk(recv_alloc);
   std::vector<DeviceTestSlot> slots(kNumDevices);
@@ -276,8 +275,8 @@ TEST(SendRecvThunkMultiGpuTest, RecordCommandBufferCreate) {
   }
 
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
-  BufferAllocation send_alloc(/*index=*/0, kByteLength, /*color=*/0);
-  BufferAllocation recv_alloc(/*index=*/1, kByteLength, /*color=*/0);
+  BufferAllocation send_alloc(/*index=*/0, kFloatByteLength, /*color=*/0);
+  BufferAllocation recv_alloc(/*index=*/1, kFloatByteLength, /*color=*/0);
   SendThunk send_thunk = MakeSendThunk(send_alloc);
   RecvThunk recv_thunk = MakeRecvThunk(recv_alloc);
   std::vector<DeviceTestSlot> slots(kNumDevices);
@@ -299,8 +298,8 @@ TEST(SendRecvThunkMultiGpuTest, RecordCommandBufferUpdate) {
   }
 
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
-  BufferAllocation send_alloc(/*index=*/0, kByteLength, /*color=*/0);
-  BufferAllocation recv_alloc(/*index=*/1, kByteLength, /*color=*/0);
+  BufferAllocation send_alloc(/*index=*/0, kFloatByteLength, /*color=*/0);
+  BufferAllocation recv_alloc(/*index=*/1, kFloatByteLength, /*color=*/0);
   SendThunk send_thunk = MakeSendThunk(send_alloc);
   RecvThunk recv_thunk = MakeRecvThunk(recv_alloc);
   std::vector<DeviceTestSlot> slots(kNumDevices);
