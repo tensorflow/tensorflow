@@ -142,7 +142,8 @@ std::vector<AotTestParam> GetTestParamsOrDie(
 INSTANTIATE_TEST_SUITE_P(
     BackwardsCompatibility, CollectiveOpsAotTest,
     ValuesIn(GetTestParamsOrDie(GetAotTestParamsForBackwardsCompatibility(
-        "collective_ops_aot_test_2gpu", AOTTestPlatform::kGpu))),
+        absl::StrCat("collective_ops_aot_test_2gpu_", DetectGpuArchToken()),
+        AOTTestPlatform::kGpu))),
     [](const TestParamInfo<AotTestParam>& info) {
       return absl::StrCat("v", info.param.version);
     });
@@ -150,7 +151,8 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     GoldenFileVerification, CollectiveOpsAotTest,
     ValuesIn(GetTestParamsOrDie(GetAotTestParamsForGoldenFileVerification(
-        "collective_ops_aot_test_2gpu", AOTTestPlatform::kGpu))),
+        absl::StrCat("collective_ops_aot_test_2gpu_", DetectGpuArchToken()),
+        AOTTestPlatform::kGpu))),
     [](const TestParamInfo<AotTestParam>& info) {
       return absl::StrCat("v", info.param.version);
     });

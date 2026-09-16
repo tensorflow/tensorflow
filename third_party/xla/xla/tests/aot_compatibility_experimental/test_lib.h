@@ -48,6 +48,13 @@ struct AotTestParam {
   }
 };
 
+// Returns the golden-directory token for the GPU this process is running on:
+// one of "h100", "b200", "gb200". `XLA_AOT_GOLDEN_ARCH`, when set, is returned
+// verbatim and skips device detection; this is what update_goldens.py uses.
+// Crashes with LOG(FATAL) if the device cannot be queried or its name matches
+// no known token.
+std::string DetectGpuArchToken();
+
 // Returns the path to the executables directory for the given test target and
 // platform.
 std::string GetExecutablesDirectory(absl::string_view target_name,
