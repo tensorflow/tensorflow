@@ -1821,7 +1821,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
   CopyRemover copy_remover(*module, *alias_analysis, alias_info_,
-                           ordering.get(), execution_threads);
+                           ordering.get(), execution_threads, view_color_);
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Removing unnecessary copies in " << module->name();
     LOG(INFO) << "Buffer values, in dependency order: ";
