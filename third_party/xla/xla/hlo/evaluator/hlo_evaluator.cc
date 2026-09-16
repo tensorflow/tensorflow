@@ -898,6 +898,10 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations,
     : max_loop_iterations_(max_loop_iterations),
       cache_call_computation_evals_(cache_call_computation_evals),
       is_embedded_(is_embedded) {
+  // Each HandleCall creates its own child evaluator, and in order to have one
+  // shared cache for all call hierarchy, child evaluators need to borrow caches
+  // from their parents. Child evaluators has is_embedded true and the
+  // main/entry one false.
   if (cache_call_computation_evals_ && !is_embedded_) {
     specialization_cache_ = std::make_shared<SpecializationCache>();
   }
