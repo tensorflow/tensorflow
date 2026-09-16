@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/graph/edgeset.h"
 
+#include <cstddef>
+#include <iterator>
+#include <utility>
+
 namespace tensorflow {
 
 std::pair<EdgeSet::const_iterator, bool> EdgeSet::insert(value_type value) {
