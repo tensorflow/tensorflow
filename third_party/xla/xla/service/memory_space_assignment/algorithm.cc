@@ -6041,8 +6041,7 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           }
         }
         if (allocate_segment_result == AllocationResult::kSuccess &&
-            NeedsMirroredAllocation(allocation_value_to_update, use,
-                                    previous_use)) {
+            ShouldBeMirrored(allocation_value_to_update, use, previous_use)) {
           CreateMirroredAllocations(
               allocation_value_to_update, use, previous_use, allocation_values,
               already_processed_allocation_values_inside_a_conditional);
@@ -6772,19 +6771,19 @@ void MsaAlgorithm::SynchronizeAliasedWhileLoopOffsets(
       {hlo_use.instruction, hlo_use.operand_index}, offset);
 }
 
-bool MsaAlgorithm::NeedsMirroredAllocation(
+bool MsaAlgorithm::ShouldBeMirrored(
     const AllocationValue& allocation_value,
     const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use) const {
-  // We create mirrored allocations for allocation values, inside
-  // conditional branches, by verifying that all of the following conditions
-  // are met:
+  // If all of the following conditions are met, we need mirrored allocations
+  // for the aliasing, nested allocation values in the time range
+  // [time(`previous_use`), time(`current_use`)]:
   // 1. The previous use is a conditional and the current use is strictly after
   //    the conditional.
-  // 2. The last allocation in the AllocationSequence is in the alternate
+  // 2. The previous allocation in the AllocationSequence is in the alternate
   //    memory.
-  // 3. The last allocation serves the previous use and the current use.
-  // 4. The last allocation extends throughout the conditional live range.
+  // 3. The previous allocation serves the previous use and the current use.
+  // 4. The previous allocation extends throughout the conditional live range.
 
   // Check conditions 1 and 2.
   const AllocationSequence* allocation_sequence =
