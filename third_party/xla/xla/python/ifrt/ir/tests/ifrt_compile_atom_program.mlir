@@ -71,3 +71,38 @@ module @call_hlo_sdy_lowered attributes {
     }
   }
 }
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [2,3]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK-LABEL: @call_hlo_multiple_calls_same_target_module
+module @call_hlo_multiple_calls_same_target_module {
+  func.func @main(%arg0: !array0, %arg1: !array1) -> (!array0, !array1) attributes {ifrt.function} {
+    // CHECK: ifrt.CallLoadedExecutable @{{.*}}(%arg0)
+    %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
+        {ifrt.module_type = "xla"} : (!array0) -> !array0
+    // CHECK: ifrt.CallLoadedExecutable @{{.*}}(%arg1)
+    %1, %ctrl_1 = ifrt.Call @add_one::@main(%arg1) on devices [2,3]
+        {ifrt.module_type = "xla"} : (!array1) -> !array1
+    return %0, %1 : !array0, !array1
+  }
+
+  // CHECK: ifrt.LoadedExecutable @
+  // CHECK-SAME: on devices [2, 3]
+  // CHECK: ifrt.LoadedExecutable @
+  // CHECK-SAME: on devices [0, 1]
+  module @add_one attributes {sym_visibility = "private"} {
+    func.func @main(
+        %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
+        -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
+      %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+      %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+      return %1 : tensor<2x2xi32>
+    }
+  }
+}
+
