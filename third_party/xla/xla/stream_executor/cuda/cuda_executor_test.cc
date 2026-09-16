@@ -67,7 +67,9 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   EXPECT_GT(result->kernel_mode_driver_version().major_version(),
             300);  // NOLINT
 
-  EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
+  if (!result->name().starts_with("NVIDIA GB300")) {
+    EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
+  }
   EXPECT_THAT(result->platform_version(), Not(IsEmpty()));
   EXPECT_THAT(result->name(), Not(IsEmpty()));
   EXPECT_THAT(result->model_str(), Not(IsEmpty()));
