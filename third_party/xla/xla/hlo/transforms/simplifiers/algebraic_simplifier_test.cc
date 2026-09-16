@@ -6026,14 +6026,13 @@ TEST_F(AlgebraicSimplifierTest,
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 28, 4, 4}), "param"));
+          0, ShapeUtil::MakeShape(F32, {8, 100, 64}), "param"));
   HloInstruction* original_reshape = builder.AddInstruction(
-      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {448}), param));
-
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {51200}), param));
   builder.AddInstruction(HloInstruction::CreateSlice(
-      ShapeUtil::MakeShape(F32, {112}), original_reshape,
-      /*start_indices=*/{112},
-      /*limit_indices=*/{224}, /*strides=*/{1}));
+      ShapeUtil::MakeShape(F32, {3200}), original_reshape,
+      /*start_indices=*/{7040},
+      /*limit_indices=*/{10240}, /*strides=*/{1}));
   auto module = CreateNewVerifiedModule();
   HloComputation* computation =
       module->AddEntryComputationWithLayouts(builder.Build());
@@ -6064,6 +6063,34 @@ TEST_F(AlgebraicSimplifierTest,
       ShapeUtil::MakeShape(F32, {448}), original_reshape,
       /*start_indices=*/{448},
       /*limit_indices=*/{896}, /*strides=*/{1}));
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation =
+      module->AddEntryComputationWithLayouts(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Reshape(m::Parameter(0)))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Slice(m::Parameter(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfReshapeToReshapeOfSliceSqueezeDims) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {1, 64, 64}), "param"));
+  HloInstruction* original_reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {64, 64}), param));
+
+  builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {1, 64}), original_reshape,
+      /*start_indices=*/{0, 0},
+      /*limit_indices=*/{1, 64}, /*strides=*/{1, 1}));
   auto module = CreateNewVerifiedModule();
   HloComputation* computation =
       module->AddEntryComputationWithLayouts(builder.Build());
