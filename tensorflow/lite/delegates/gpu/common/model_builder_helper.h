@@ -91,7 +91,7 @@ inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
       op_params.zero_point = zero_points.data();
     } else {
       op_params.zero_point =
-          quant_params->zero_point ? quant_params->zero_point->data : 0;
+          quant_params->zero_point ? quant_params->zero_point->data : nullptr;
     }
     op_params.scale = quant_params->scale->data;
     op_params.quantized_dimension = quant_params->quantized_dimension;
