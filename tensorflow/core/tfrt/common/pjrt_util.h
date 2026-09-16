@@ -40,6 +40,8 @@ absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
 absl::Status SetPjRtGpuClientCreationInfoInTFGlobalResourceManager(
     std::unique_ptr<PjRtGpuClientCreationInfo> info);
 absl::StatusOr<PjRtGpuClientCreationInfo*> GetPjRtGpuClientCreationInfo();
+absl::Status ResetPjRtClientInTFGlobalResourceManager(
+    const DeviceType& device_type);
 
 }  // namespace tensorflow
 
