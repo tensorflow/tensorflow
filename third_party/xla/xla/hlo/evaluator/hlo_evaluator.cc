@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -4248,6 +4249,46 @@ absl::Status HloEvaluator::HandleReverse(const HloInstruction* reverse) {
 
   SetEvaluatedLiteralFor(reverse, std::move(result));
   return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::HandleShuffle(const HloInstruction* shuffle_hlo) {
+  auto* shuffle = Cast<HloShuffleInstruction>(shuffle_hlo);
+  switch (shuffle->mode()) {
+    case ShuffleMode::kRotate: {
+      const Shape& result_shape = shuffle->shape();
+      const Literal& operand_literal =
+          GetEvaluatedLiteralFor(shuffle->operand(0));
+      Literal result = Literal::CreateFromShape(result_shape);
+      const size_t element_byte_size =
+          primitive_util::ByteWidth(result_shape.element_type());
+      auto* operand_base =
+          static_cast<const char*>(operand_literal.untyped_data());
+      ABSL_RETURN_IF_ERROR(result.PopulateInplaceParallel(
+          [&](void* dest, absl::Span<const int64_t> out_index, int) {
+            std::vector<int64_t> operand_index(out_index.begin(),
+                                               out_index.end());
+            for (size_t i = 0; i < shuffle->dimensions().size(); ++i) {
+              int64_t dim = shuffle->dimensions()[i];
+              int64_t shift = shuffle->rotate().shifts(i);
+              int64_t dim_size = result_shape.dimensions(dim);
+              int64_t norm_shift = shuffle::NormalizeShift(shift, dim_size);
+              // Element at i comes from (i + shift) % dim_size.
+              operand_index[dim] = (operand_index[dim] + norm_shift) % dim_size;
+            }
+            auto* src =
+                operand_base + (element_byte_size *
+                                IndexUtil::MultidimensionalIndexToLinearIndex(
+                                    operand_literal.shape(), operand_index));
+            std::memcpy(dest, src, element_byte_size);
+          }));
+
+      SetEvaluatedLiteralFor(shuffle, std::move(result));
+      return absl::OkStatus();
+    }
+    default:
+      return Unimplemented("Unsupported shuffle mode: %s",
+                           ShuffleModeToString(shuffle->mode()));
+  }
 }
 
 absl::Status HloEvaluator::HandleSelectAndScatter(
