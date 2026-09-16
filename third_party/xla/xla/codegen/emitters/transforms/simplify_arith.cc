@@ -429,8 +429,8 @@ struct RefineConstraints : public OpRewritePattern<ApplyIndexingOp> {
       return rewriter.notifyMatchFailure(indexing_op, "No bounds to refine");
     }
     indexing_map.Simplify();
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, indexing_op.getOperands(), indexing_map);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, indexing_op.getOperands(),
+                           indexing_map);
     return mlir::success();
   }
 };
