@@ -27,13 +27,20 @@ namespace hexagon {
 TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
+  TF_LITE_ENSURE(context, inputs != nullptr);
+  TF_LITE_ENSURE(context, outputs != nullptr);
+  TF_LITE_ENSURE(context, inputs->size >= 2);
+  TF_LITE_ENSURE(context, outputs->size >= 1);
+
   // First input data tensor.
   int tensor_id = inputs->data[0];
+  TF_LITE_ENSURE(context, tensor_id >= 0 && tensor_id < context->tensors_size);
   const auto& input1_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
 
   // Second input data tensor.
   tensor_id = inputs->data[1];
+  TF_LITE_ENSURE(context, tensor_id >= 0 && tensor_id < context->tensors_size);
   const auto& input2_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
 
@@ -106,6 +113,8 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
 
 TfLiteStatus ArithmeticOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
                                                   TfLiteContext* context) {
+  TF_LITE_ENSURE(context, outputs != nullptr);
+  TF_LITE_ENSURE(context, outputs->size >= 1);
   // Should be only 1 output.
   graph_builder_->AddTensorWithID(outputs->data[0], node_output_.first,
                                   node_output_.second);

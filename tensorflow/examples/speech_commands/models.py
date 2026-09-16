@@ -120,7 +120,7 @@ def create_model(fingerprint_input, model_settings, model_architecture,
     placeholder.
 
   Raises:
-    Exception: If the architecture type isn't recognized.
+    ValueError: If the architecture type isn't recognized.
   """
   if model_architecture == 'single_fc':
     return create_single_fc_model(fingerprint_input, model_settings,
@@ -140,10 +140,13 @@ def create_model(fingerprint_input, model_settings, model_architecture,
     return create_tiny_embedding_conv_model(fingerprint_input, model_settings,
                                             is_training)
   else:
-    raise Exception('model_architecture argument "' + model_architecture +
-                    '" not recognized, should be one of "single_fc", "conv",' +
-                    ' "low_latency_conv, "low_latency_svdf",' +
-                    ' "tiny_conv", or "tiny_embedding_conv"')
+    raise ValueError(
+        'model_architecture argument "'
+        + model_architecture
+        + '" not recognized, should be one of "single_fc", "conv",'
+        + ' "low_latency_conv, "low_latency_svdf",'
+        + ' "tiny_conv", or "tiny_embedding_conv"'
+    )
 
 
 def load_variables_from_checkpoint(sess, start_checkpoint):

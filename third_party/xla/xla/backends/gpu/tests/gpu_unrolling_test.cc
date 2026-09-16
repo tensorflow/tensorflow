@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -66,14 +67,14 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 
   EXPECT_OK(CompileAndVerifyIr(
       std::move(hlo_module),
-      absl::Substitute(R"(
+      absl::Substitute(MakePlatformSpecificLlvm(R"(
 ; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
 ; CHECK: load <$0 x float>
 ; CHECK: load <4 x float>
-; CHECK: store <$0 x float>
-      )",
+; CHECK: STORE_v$0FLOAT
+      )"),
                        GetExpectedUnrollFactor(device_description())),
       /*match_optimized_ir=*/true));
 }
@@ -95,14 +96,14 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 
   EXPECT_OK(CompileAndVerifyIr(
       std::move(hlo_module),
-      absl::Substitute(R"(
+      absl::Substitute(MakePlatformSpecificLlvm(R"(
 ; CHECK-LABEL: @wrapped_add
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
 ; CHECK: load <$0 x float>
 ; CHECK: load <4 x float>
-; CHECK: store <$0 x float>
-      )",
+; CHECK: STORE_v$0FLOAT
+  )"),
                        GetExpectedUnrollFactor(device_description())),
       /*match_optimized_ir=*/true));
 }
@@ -122,15 +123,20 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  EXPECT_OK(CompileAndVerifyIr(
-      std::move(hlo_module),
-      absl::Substitute(R"(
+  const int unroll = GetExpectedUnrollFactor(device_description());
+  const std::string store_pattern =
+      IsBuiltWithOneAPI()
+          ? absl::Substitute("@llvm.spv.store.v$0f32.p1(<$0 x float>", unroll)
+          : absl::Substitute("store <$0 x {{(float|i32)}}>", unroll);
+
+  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               absl::Substitute(R"(
 ; CHECK: load <$0 x float>
 ; CHECK-NOT: load <$0 x float>
-; CHECK: store <$0 x float>
+; CHECK: $1
       )",
-                       GetExpectedUnrollFactor(device_description())),
-      /*match_optimized_ir=*/true));
+                                                unroll, store_pattern),
+                               /*match_optimized_ir=*/true));
 }
 
 TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
@@ -162,15 +168,16 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
       ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config).value();
 
   EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               R"(
+                               absl::Substitute(MakePlatformSpecificLlvm(R"(
 ; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
 ; CHECK: load <4 x float>
 ; CHECK: load <4 x float>
-; CHECK: store <4 x float>
-; CHECK: store <4 x float>
-      )",
+; CHECK: STORE_v$0FLOAT
+; CHECK: STORE_v$0FLOAT
+      )"),
+                                                4),
                                /*match_optimized_ir=*/true));
 }
 

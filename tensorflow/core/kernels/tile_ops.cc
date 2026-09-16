@@ -80,25 +80,25 @@ struct ReduceAndReshape {
 // below are their declarations.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-extern template struct Tile<GPUDevice, bool, int32>;
+extern template struct Tile<GPUDevice, bool, int32_t>;
 extern template struct Tile<GPUDevice, bool, int64_t>;
-extern template struct Tile<GPUDevice, float, int32>;
+extern template struct Tile<GPUDevice, float, int32_t>;
 extern template struct Tile<GPUDevice, float, int64_t>;
-extern template struct Tile<GPUDevice, double, int32>;
+extern template struct Tile<GPUDevice, double, int32_t>;
 extern template struct Tile<GPUDevice, double, int64_t>;
-extern template struct Tile<GPUDevice, complex64, int32>;
+extern template struct Tile<GPUDevice, complex64, int32_t>;
 extern template struct Tile<GPUDevice, complex64, int64_t>;
-extern template struct Tile<GPUDevice, complex128, int32>;
+extern template struct Tile<GPUDevice, complex128, int32_t>;
 extern template struct Tile<GPUDevice, complex128, int64_t>;
-extern template struct Tile<GPUDevice, Eigen::half, int32>;
+extern template struct Tile<GPUDevice, Eigen::half, int32_t>;
 extern template struct Tile<GPUDevice, Eigen::half, int64_t>;
-extern template struct Tile<GPUDevice, Eigen::bfloat16, int32>;
+extern template struct Tile<GPUDevice, Eigen::bfloat16, int32_t>;
 extern template struct Tile<GPUDevice, Eigen::bfloat16, int64_t>;
-extern template struct Tile<GPUDevice, int16, int32>;
-extern template struct Tile<GPUDevice, int16, int64_t>;
-extern template struct Tile<GPUDevice, int32, int32>;
-extern template struct Tile<GPUDevice, int32, int64_t>;
-extern template struct Tile<GPUDevice, int64_t, int32>;
+extern template struct Tile<GPUDevice, int16_t, int32_t>;
+extern template struct Tile<GPUDevice, int16_t, int64_t>;
+extern template struct Tile<GPUDevice, int32_t, int32_t>;
+extern template struct Tile<GPUDevice, int32_t, int64_t>;
+extern template struct Tile<GPUDevice, int64_t, int32_t>;
 extern template struct Tile<GPUDevice, int64_t, int64_t>;
 #define DECLARE_CUDA_DIM(T, NDIM)                      \
   extern template struct TileGrad<GPUDevice, T, NDIM>; \
@@ -166,14 +166,14 @@ class TileOp : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& multiples = context->input(1);
 
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(multiples.shape()),
-        errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
-                                multiples.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(multiples.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected multiples to be 1-D, but got shape ",
+                                 multiples.shape().DebugString())));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Expected multiples argument to be a vector of length ",
-                    input.dims(), " but got length ", multiples.dim_size(0)));
+                    input.dims(), " but got length ", multiples.dim_size(0))));
     const int input_dims = input.dims();
 
     // Eigen doesn't support scalars on the GPU, so handle 0-D specially
@@ -234,10 +234,10 @@ class TileOp : public OpKernel {
 
     OP_REQUIRES(
         context, false,
-        errors::Unimplemented(
+        absl::UnimplementedError(absl::StrCat(
             "TileOp : The input data type is not supported, DataType : ",
             DataTypeString(context->input(0).dtype()),
-            ", Dimension : ", input_dims));
+            ", Dimension : ", input_dims)));
   }
 
  private:
@@ -333,14 +333,14 @@ class TileGradientOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const Tensor& multiples = context->input(1);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(multiples.shape()),
-        errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
-                                multiples.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(multiples.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected multiples to be 1-D, but got shape ",
+                                 multiples.shape().DebugString())));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Expected multiples argument to be a vector of length ",
-                    input.dims(), " but got length ", multiples.dim_size(0)));
+                    input.dims(), " but got length ", multiples.dim_size(0))));
 
     const int input_dims = input.dims();
 
@@ -407,10 +407,11 @@ class TileGradientOp : public OpKernel {
 #undef HANDLE_DIM
 
     OP_REQUIRES(context, false,
-                errors::Unimplemented("TileGradientOp : The input data type or "
-                                      "dimension is not supported, DataType : ",
-                                      DataTypeString(context->input(0).dtype()),
-                                      ", Dimension : ", input_dims));
+                absl::UnimplementedError(
+                    absl::StrCat("TileGradientOp : The input data type or "
+                                 "dimension is not supported, DataType : ",
+                                 DataTypeString(context->input(0).dtype()),
+                                 ", Dimension : ", input_dims)));
   }
 
  private:

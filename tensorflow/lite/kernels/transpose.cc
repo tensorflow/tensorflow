@@ -77,7 +77,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Ensure validity of input tensor.
   TF_LITE_ENSURE_MSG(context,
                      NumDimensions(op_context.input) <= kTransposeMaxDimensions,
-                     "Transpose op only supports 1D-6D input arrays.");
+                     "Transpose op only supports 1D-8D input arrays.");
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 

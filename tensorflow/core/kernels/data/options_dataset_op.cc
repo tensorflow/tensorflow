@@ -46,7 +46,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     input_->Ref();
     Options options;
     OP_REQUIRES(ctx, options.ParseFromString(serialized_options),
-                errors::InvalidArgument(absl::StrCat(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Could not parse ", OptionsDatasetOp::kSerializedOptions,
                     " as valid Options.")));
     set_options(options);

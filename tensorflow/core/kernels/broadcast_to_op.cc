@@ -62,10 +62,10 @@ class BroadcastToOp : public OpKernel {
     }
 
     OP_REQUIRES(ctx, input_shape.dims() <= output_shape.dims(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Rank of input (", input_shape.dims(),
                     ") must be no greater than rank of output shape (",
-                    output_shape.dims(), ")."));
+                    output_shape.dims(), ").")));
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
@@ -82,9 +82,9 @@ class BroadcastToOp : public OpKernel {
     BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(output_shape),
                 /*fewer_dims_optimization=*/true);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Incompatible shapes: ", input_shape.DebugString(), " vs. ",
-                    output_shape.DebugString()));
+                    output_shape.DebugString())));
     OP_REQUIRES(ctx, BCast::ToShape(bcast.output_shape()) == output_shape,
                 errors::InvalidArgument("Unable to broadcast tensor of shape ",
                                         input_shape, " to tensor of shape ",

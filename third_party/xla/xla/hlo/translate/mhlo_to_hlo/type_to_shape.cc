@@ -55,7 +55,9 @@ namespace xla {
 std::optional<DimLevelType> ConvertDimLevelType(
     mlir::sparse_tensor::LevelType lt) {
   auto f = mlir::sparse_tensor::getLevelFormat(lt);
-  if (!f) return std::nullopt;
+  if (!f) {
+    return std::nullopt;
+  }
 
   switch (*f) {
     case mlir::sparse_tensor::LevelFormat::Singleton:
@@ -73,8 +75,9 @@ std::optional<DimLevelType> ConvertDimLevelType(
 
 Shape TypeToShape(mlir::Type type) {
   PrimitiveType ptype = ConvertMlirTypeToPrimitiveType(type);
-  if (ptype != PrimitiveType::PRIMITIVE_TYPE_INVALID)
+  if (ptype != PrimitiveType::PRIMITIVE_TYPE_INVALID) {
     return ShapeUtil::MakeShape(ptype, {});
+  }
 
   if (type.isIntOrFloat()) {
     auto* context = type.getContext();
@@ -86,8 +89,9 @@ Shape TypeToShape(mlir::Type type) {
                                        v.getShape().end());
     mlir::Type element_type = v.getElementType();
     PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
-    if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
+    if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID) {
       return ShapeUtil::MakeShape(primitive_type, span);
+    }
   } else if (auto t = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.
@@ -114,24 +118,32 @@ Shape TypeToShape(mlir::Type type) {
                          : Shape::kUnboundedSize;
         is_dynamic[dim] = true;
       } else {
-        if (bounds[dim] != ShapedType::kDynamic) return {};
+        if (bounds[dim] != ShapedType::kDynamic) {
+          return {};
+        }
         shape[dim] = size;
       }
     }
 
     PrimitiveType primitive_type =
         ConvertMlirTypeToPrimitiveType(t.getElementType());
-    if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) return {};
+    if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) {
+      return {};
+    }
 
     if (auto sparse = mlir::sparse_tensor::getSparseTensorEncoding(type)) {
       // In this case `shape` has no bounds, because MHLO doesn't support
       // sparse tensors with bounded dynamism. This works out for us, because
       // neither does the shape_util MakeShape API.
-      if (!t.hasStaticShape()) return {};
+      if (!t.hasStaticShape()) {
+        return {};
+      }
 
       // TODO(atondwal): Handle $posWidth, $crdWidth after they're
       // added to xla
-      if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
+      if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) {
+        return {};
+      }
 
       std::vector<int64_t> ordering(rank);
       std::iota(ordering.rbegin(), ordering.rend(), 0);

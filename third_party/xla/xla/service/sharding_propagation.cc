@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -240,6 +241,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
@@ -256,6 +258,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
@@ -271,7 +274,6 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSin:
     case HloOpcode::kSinh:
     case HloOpcode::kTopK:
-    case HloOpcode::kScan:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
@@ -349,6 +351,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kScaledDot:
+    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
@@ -1379,6 +1382,65 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
   return changed;
 }
 
+bool InferScanShardingFromOperands(HloInstruction* instruction,
+                                   bool may_combine_partial_sharding,
+                                   bool is_spmd) {
+  // A scan's result is a tuple (outputs..., final carries...): output i has
+  // input i's shape and carry i has that shape with the scan dimension
+  // removed. Propagate per tuple element: a non tuple sharding proposed for
+  // the tuple shaped scan trips IsShardingStrictlyBetter's tupleness CHECK.
+  auto* scan = Cast<HloScanInstruction>(instruction);
+  const int64_t scan_dim = scan->scan_dimension();
+  const int64_t num_inputs = scan->inputs().size();
+  const bool aggressive_resharding = ComputeNonRootUsers(instruction) == 1;
+  bool changed = false;
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    const HloInstruction* input = scan->inputs()[i];
+    if (!IsSpatiallyPartitioned(input)) {
+      continue;
+    }
+    const HloSharding& input_sharding = input->sharding();
+    // Output i has the same shape as input i.
+    changed |= MaybeImproveInstructionSubSharding(
+        input_sharding, instruction, {i}, may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/aggressive_resharding);
+    // Carry i drops the scan dimension. Non-tiled shardings (manual,
+    // replicated, unknown) carry no per-dimension tiles and pass through
+    // unchanged.
+    if (!input_sharding.IsTiled()) {
+      changed |= MaybeImproveInstructionSubSharding(
+          input_sharding, instruction, {num_inputs + i},
+          may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/aggressive_resharding);
+      continue;
+    }
+    if (!is_spmd && input_sharding.dimension(scan_dim) > 1) {
+      // Replicating the sharded scan dimension is only supported in SPMD.
+      continue;
+    }
+    HloSharding carry_sharding = hlo_sharding_util::RemoveShapeDimensions(
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(input_sharding,
+                                                                 {scan_dim}),
+        {scan_dim});
+    changed |= MaybeImproveInstructionSubSharding(
+        std::move(carry_sharding), instruction, {num_inputs + i},
+        may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/aggressive_resharding);
+  }
+  // An init has the same shape as its carry element.
+  for (int64_t i = 0; i < scan->inits().size(); ++i) {
+    const HloInstruction* init = scan->inits()[i];
+    if (!IsSpatiallyPartitioned(init)) {
+      continue;
+    }
+    changed |= MaybeImproveInstructionSubSharding(
+        init->sharding(), instruction, {num_inputs + i},
+        may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/aggressive_resharding);
+  }
+  return changed;
+}
+
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
 // copy node for reshard.
@@ -1485,7 +1547,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         HloSharding original_sharding = instruction->sharding();
 
         std::vector<int64_t> unspec_dims;
-        TF_RETURN_IF_ERROR(sharding_op_util::ParseAttributes(
+        ABSL_RETURN_IF_ERROR(sharding_op_util::ParseAttributes(
             Cast<HloCustomCallInstruction>(instruction)->opaque(),
             &unspec_dims));
 
@@ -1499,8 +1561,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
           auto copy = computation->AddInstruction(HloInstruction::CreateUnary(
               instruction->shape(), HloOpcode::kCopy,
               instruction->mutable_operand(0)));
-          TF_ASSIGN_OR_RETURN(
-              std::ignore, computation->ReplaceInstruction(
+          ABSL_ASSIGN_OR_RETURN(std::ignore,
+                           computation->ReplaceInstruction(
                                instruction, copy, /*preserve_sharding=*/false,
                                /*relay_control_dependency=*/false,
                                /*remove_unused_operands=*/false));
@@ -1509,7 +1571,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
           changed = true;
         }
 
-        TF_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             bool shard_group_remove_instruction,
             process_shard_group_instruction(instruction, replaced_with_copy));
         if (!unspec_dims.empty()) {
@@ -1520,17 +1582,17 @@ absl::StatusOr<bool> ProcessShardingInstruction(
               instruction->sharding());
         }
         if (shard_group_remove_instruction) {
-          TF_ASSIGN_OR_RETURN(std::ignore,
-                              computation->ReplaceInstruction(
-                                  instruction, instruction->mutable_operand(0),
-                                  /*preserve_sharding=*/false,
-                                  /*relay_control_dependency=*/false,
-                                  /*remove_unused_operands=*/false));
+          ABSL_ASSIGN_OR_RETURN(std::ignore,
+                           computation->ReplaceInstruction(
+                               instruction, instruction->mutable_operand(0),
+                               /*preserve_sharding=*/false,
+                               /*relay_control_dependency=*/false,
+                               /*remove_unused_operands=*/false));
         }
       } else {
-        TF_ASSIGN_OR_RETURN(std::ignore,
-                            process_shard_group_instruction(
-                                instruction, /*replaced_with_copy=*/false));
+        ABSL_ASSIGN_OR_RETURN(std::ignore,
+                         process_shard_group_instruction(
+                             instruction, /*replaced_with_copy=*/false));
       }
     }
   }
@@ -1571,8 +1633,8 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
 /*static*/ absl::Status ShardingPropagation::NormalizeDomain(
     const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
   if (metadata != nullptr) {
-    TF_ASSIGN_OR_RETURN(const auto& sharding_metadata,
-                        ShardingMetadata::ToShardingMetadata(metadata));
+    ABSL_ASSIGN_OR_RETURN(const auto& sharding_metadata,
+                     ShardingMetadata::ToShardingMetadata(metadata));
     const auto& sharding = sharding_metadata->sharding();
     if (sharding != nullptr) {
       bool is_spatially_partitioned = !sharding->IsSingleDevice();
@@ -2128,6 +2190,7 @@ bool ShardingPropagation::InferShardingFromOperands(
        instruction->sharding().IsReplicatedOrSingleDevice()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
+       instruction->opcode() == HloOpcode::kScan ||
        instruction->opcode() == HloOpcode::kSort ||
        instruction->opcode() == HloOpcode::kReduceWindow ||
        custom_call_condition || async_instr_condition)) {
@@ -2471,6 +2534,10 @@ bool ShardingPropagation::InferShardingFromOperands(
         default:
           return false;
       }
+    }
+    case HloOpcode::kScan: {
+      return InferScanShardingFromOperands(
+          instruction, may_combine_partial_sharding, is_spmd_);
     }
     case HloOpcode::kSort: {
       const HloInstruction* operand = PickRepresentativeOperand(instruction);
@@ -3127,10 +3194,11 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
 absl::StatusOr<bool> ShardingPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  LOG(WARNING) << "GSPMD sharding propagation is going to be deprecated and "
-                  "not supported in the future. Please consider migrating to "
-                  "Shardy (https://openxla.org/shardy). For reference, Shardy "
-                  "is already the default partitioner in JAX.";
+  LOG_FIRST_N(WARNING, 1)
+      << "GSPMD sharding propagation is going to be deprecated and "
+         "not supported in the future. Please consider migrating to "
+         "Shardy (https://openxla.org/shardy). For reference, Shardy "
+         "is already the default partitioner in JAX.";
   // Register custom-call partitioner for SharBarrierFrom and ShardBarrierTo.
   ABSL_CONST_INIT static absl::once_flag did_registration;
   absl::call_once(did_registration, [] {
@@ -3182,7 +3250,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
       shard_group_id_to_shard_as_group;
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>
       shard_group_id_to_shard_like_group;
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       bool changed,
       ProcessShardingInstruction(
           module, execution_threads, !cse_prevention_only_, &unspecified_dims,
@@ -3250,7 +3318,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
-        TF_RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             CheckAndUpdateDeviceAssignmentsInWhileBody(instruction));
       }
     }
@@ -3350,7 +3418,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   int64_t iterations = 0;
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool changed,
         RunToFixPoint(aggressiveness, /*propagate_shard_group=*/true,
                       computation_map, provided_shardings, *call_graph, module,
@@ -3429,7 +3497,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
     }
   }
   {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool changed,
         RunToFixPoint(/*aggressiveness=*/3, /*propagate_shard_group=*/true,
                       computation_map, provided_shardings, *call_graph, module,
@@ -3459,12 +3527,12 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
       }
       if (instruction->IsCustomCall(spmd::kShardBarrierFrom) ||
           instruction->IsCustomCall(spmd::kShardBarrierTo)) {
-        TF_ASSIGN_OR_RETURN(std::ignore,
-                            computation->ReplaceInstruction(
-                                instruction, instruction->mutable_operand(0),
-                                /*preserve_sharding=*/false,
-                                /*relay_control_dependency=*/false,
-                                /*remove_unused_operands=*/false));
+        ABSL_ASSIGN_OR_RETURN(std::ignore,
+                         computation->ReplaceInstruction(
+                             instruction, instruction->mutable_operand(0),
+                             /*preserve_sharding=*/false,
+                             /*relay_control_dependency=*/false,
+                             /*remove_unused_operands=*/false));
       }
     }
   }
@@ -3547,10 +3615,9 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
       module, allow_spmd_sharding_propagation_to_output_vector_,
       allow_spmd_sharding_propagation_to_parameters_vector_);
 
-  TF_RETURN_IF_ERROR(
-      hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-          module, allow_spmd_sharding_propagation_to_output_vector_,
-          allow_spmd_sharding_propagation_to_parameters_vector_));
+  ABSL_RETURN_IF_ERROR(hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
+      module, allow_spmd_sharding_propagation_to_output_vector_,
+      allow_spmd_sharding_propagation_to_parameters_vector_));
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";

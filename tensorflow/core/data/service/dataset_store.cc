@@ -62,7 +62,8 @@ absl::Status MemoryDatasetStore::Get(
     const std::string& key, std::shared_ptr<const DatasetDef>& dataset_def) {
   auto& stored_dataset = datasets_[key];
   if (!stored_dataset) {
-    return errors::NotFound("Dataset with key ", key, " not found");
+    return absl::NotFoundError(
+        absl::StrCat("Dataset with key ", key, " not found"));
   }
   dataset_def = stored_dataset;
   return absl::OkStatus();

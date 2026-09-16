@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tsl/platform/random.h"
 
+#include <cstdint>
 #include <memory>
 #include <random>
 

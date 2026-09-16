@@ -28,9 +28,10 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -38,13 +39,16 @@ namespace xla::gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::testing::ElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
 TEST(SelectKThunkTest, ToProto) {
   auto c1 = HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{.125f, 0.875f, .5f, .25f, 0.75f}}));
   auto topKInst = HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {1, 5}), {c1.get()}, "__gpu$TopK");
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 3}),
+                                 ShapeUtil::MakeShape(S32, {1, 3})}),
+      {c1.get()}, "__gpu$TopK");
 
   Thunk::ThunkInfo thunk_info =
       Thunk::ThunkInfo::WithProfileAnnotation(topKInst.get(), ThunkId{456});
@@ -63,13 +67,13 @@ TEST(SelectKThunkTest, ToProto) {
 
   emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {1, 5}), slice0);
   emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {1, 3}), slice1);
-  emitters::KernelArgument arg2(ShapeUtil::MakeShape(U32, {1, 3}), slice2);
+  emitters::KernelArgument arg2(ShapeUtil::MakeShape(S32, {1, 3}), slice2);
 
   emitters::KernelArguments kernel_arguments({arg0, arg1, arg2});
 
   SelectKThunk thunk(std::move(thunk_info), 1, 5, 3, F32, kernel_arguments);
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info { profile_annotation: "custom-call" thunk_id: 456 }
                 select_k_thunk {
@@ -83,11 +87,53 @@ TEST(SelectKThunkTest, ToProto) {
                 }
               )pb"));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SelectKThunk> deserialized,
       SelectKThunk::FromProto(thunk.thunk_info(), proto.select_k_thunk(),
                               buffer_allocations));
   EXPECT_THAT(deserialized->ToProto(), IsOkAndHolds(EqualsProto(proto)));
+}
+
+TEST(SelectKThunkTest, BufferUses) {
+  auto c1 = HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{.125f, 0.875f, .5f, .25f, 0.75f}}));
+  auto topKInst = HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 3}),
+                                 ShapeUtil::MakeShape(S32, {1, 3})}),
+      {c1.get()}, "__gpu$TopK");
+
+  Thunk::ThunkInfo thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(topKInst.get(), ThunkId{456});
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      {/*index=*/0, /*size=*/20, /*color=*/0},
+      {/*index=*/1, /*size=*/12, /*color=*/0},
+      {/*index=*/2, /*size=*/12, /*color=*/0}};
+
+  BufferAllocation::Slice slice0(&buffer_allocations[0], /*offset=*/0,
+                                 /*size=*/20);
+  BufferAllocation::Slice slice1(&buffer_allocations[1], /*offset=*/0,
+                                 /*size=*/12);
+  BufferAllocation::Slice slice2(&buffer_allocations[2], /*offset=*/0,
+                                 /*size=*/12);
+
+  Shape shape0 = ShapeUtil::MakeShape(F32, {1, 5});
+  Shape shape1 = ShapeUtil::MakeShape(F32, {1, 3});
+  Shape shape2 = ShapeUtil::MakeShape(S32, {1, 3});
+
+  emitters::KernelArgument arg0(shape0, slice0);
+  emitters::KernelArgument arg1(shape1, slice1);
+  emitters::KernelArgument arg2(shape2, slice2);
+  emitters::KernelArguments kernel_arguments({arg0, arg1, arg2});
+
+  SelectKThunk thunk(std::move(thunk_info), /*batch_size=*/1,
+                     /*num_elements=*/5, /*k=*/3, /*dtype=*/F32,
+                     kernel_arguments);
+
+  EXPECT_THAT(thunk.buffer_uses(),
+              ElementsAre(BufferUse::Read(slice0, shape0),
+                          BufferUse::Write(slice1, shape1),
+                          BufferUse::Write(slice2, shape2)));
 }
 
 }  // namespace

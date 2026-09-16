@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -505,6 +506,45 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
               absl::StrFormat("/home/tf_programs/program_%.3ld.py", i));
     EXPECT_EQ(host_names[i], "localhost.localdomain");
   }
+}
+
+TEST_F(DebugEventsWriterTest, ConcurrentWriteAndCloseCallsAreSafe) {
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+  TF_ASSERT_OK(writer->Init());
+
+  constexpr int kWriterThreads = 8;
+  constexpr int kWritesPerThread = 100;
+  thread::ThreadPool* thread_pool =
+      new thread::ThreadPool(Env::Default(), "test_pool", kWriterThreads + 1);
+
+  absl::Notification start;
+  std::atomic_int_fast32_t writes_attempted(0);
+
+  for (int thread_id = 0; thread_id < kWriterThreads; ++thread_id) {
+    thread_pool->Schedule([writer, &start, &writes_attempted, thread_id]() {
+      start.WaitForNotification();
+      for (int i = 0; i < kWritesPerThread; ++i) {
+        SourceFile* source_file = new SourceFile();
+        source_file->set_file_path(absl::StrFormat(
+            "/home/tf_programs/program_%d_%d.py", thread_id, i));
+        source_file->set_host_name("localhost.localdomain");
+        writer->WriteSourceFile(source_file).IgnoreError();
+        writes_attempted.fetch_add(1);
+      }
+    });
+  }
+
+  thread_pool->Schedule([writer, &start]() {
+    start.WaitForNotification();
+    writer->Close().IgnoreError();
+  });
+
+  start.Notify();
+  delete thread_pool;
+
+  EXPECT_EQ(writes_attempted.load(), kWriterThreads * kWritesPerThread);
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {

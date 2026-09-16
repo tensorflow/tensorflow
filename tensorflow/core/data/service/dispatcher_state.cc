@@ -89,7 +89,7 @@ absl::Status DispatcherState::Apply(const Update& update) {
       CompressionDisabledAtRuntime(update.compression_disabled_at_runtime());
       break;
     case Update::UPDATE_TYPE_NOT_SET:
-      return errors::Internal("Update type not set.");
+      return absl::InternalError("Update type not set.");
   }
 
   return absl::OkStatus();
@@ -138,7 +138,8 @@ absl::Status DispatcherState::JobFromId(int64_t job_id,
                                         std::shared_ptr<const Job>& job) const {
   auto it = jobs_by_id_.find(job_id);
   if (it == jobs_by_id_.end()) {
-    return errors::NotFound("Job with id ", job_id, " not found");
+    return absl::NotFoundError(
+        absl::StrCat("Job with id ", job_id, " not found"));
   }
   job = it->second;
   return absl::OkStatus();
@@ -148,7 +149,8 @@ absl::Status DispatcherState::JobByName(const std::string& job_name,
                                         std::shared_ptr<const Job>& job) const {
   auto it = jobs_by_name_.find(job_name);
   if (it == jobs_by_name_.end()) {
-    return errors::NotFound("Job with name ", job_name, " not found");
+    return absl::NotFoundError(
+        absl::StrCat("Job with name ", job_name, " not found"));
   }
   job = it->second;
   return absl::OkStatus();
@@ -201,6 +203,9 @@ void DispatcherState::AcquireIterationClient(
   iteration->num_clients++;
   next_available_iteration_client_id_ =
       std::max(next_available_iteration_client_id_, iteration_client_id + 1);
+  VLOG(3) << "Acquired iteration client for iteration "
+          << iteration->iteration_id
+          << " num_clients: " << iteration->num_clients;
 }
 
 void DispatcherState::ReleaseIterationClient(
@@ -213,6 +218,9 @@ void DispatcherState::ReleaseIterationClient(
   DCHECK_GE(iteration->num_clients, 0);
   iteration->last_client_released_micros =
       release_iteration_client.time_micros();
+  VLOG(3) << "Released iteration client for iteration "
+          << iteration->iteration_id
+          << " num_clients: " << iteration->num_clients;
   iterations_for_client_ids_.erase(iteration_client_id);
 }
 
@@ -327,7 +335,7 @@ absl::Status DispatcherState::DatasetFromId(
     const std::string& id, std::shared_ptr<const Dataset>& dataset) const {
   auto it = datasets_by_id_.find(id);
   if (it == datasets_by_id_.end()) {
-    return errors::NotFound("Dataset id ", id, " not found");
+    return absl::NotFoundError(absl::StrCat("Dataset id ", id, " not found"));
   }
   dataset = it->second;
   return absl::OkStatus();
@@ -337,7 +345,8 @@ absl::Status DispatcherState::WorkerFromAddress(
     const std::string& address, std::shared_ptr<const Worker>& worker) const {
   auto it = workers_.find(address);
   if (it == workers_.end()) {
-    return errors::NotFound("Worker with address ", address, " not found.");
+    return absl::NotFoundError(
+        absl::StrCat("Worker with address ", address, " not found."));
   }
   worker = it->second;
   return absl::OkStatus();
@@ -367,7 +376,7 @@ absl::Status DispatcherState::IterationFromId(
     int64_t id, std::shared_ptr<const Iteration>& iteration) const {
   auto it = iterations_.find(id);
   if (it == iterations_.end()) {
-    return errors::NotFound("Iteration id ", id, " not found");
+    return absl::NotFoundError(absl::StrCat("Iteration id ", id, " not found"));
   }
   iteration = it->second;
   return absl::OkStatus();
@@ -378,8 +387,8 @@ absl::Status DispatcherState::IterationByKey(
     std::shared_ptr<const Iteration>& iteration) const {
   auto it = iterations_by_key_.find(iteration_key);
   if (it == iterations_by_key_.end()) {
-    return errors::NotFound("Iteration key ", iteration_key.DebugString(),
-                            " not found");
+    return absl::NotFoundError(absl::StrCat(
+        "Iteration key ", iteration_key.DebugString(), " not found"));
   }
   iteration = it->second;
   return absl::OkStatus();
@@ -397,8 +406,8 @@ absl::Status DispatcherState::IterationForIterationClientId(
     int64_t iteration_client_id, std::shared_ptr<const Iteration>& iteration) {
   iteration = iterations_for_client_ids_[iteration_client_id];
   if (!iteration) {
-    return errors::NotFound("Iteration client id not found: ",
-                            iteration_client_id);
+    return absl::NotFoundError(
+        absl::StrCat("Iteration client id not found: ", iteration_client_id));
   }
   return absl::OkStatus();
 }
@@ -421,7 +430,7 @@ absl::Status DispatcherState::TaskFromId(
     int64_t id, std::shared_ptr<const Task>& task) const {
   auto it = tasks_.find(id);
   if (it == tasks_.end()) {
-    return errors::NotFound("Task ", id, " not found");
+    return absl::NotFoundError(absl::StrCat("Task ", id, " not found"));
   }
   task = it->second;
   return absl::OkStatus();
@@ -432,7 +441,8 @@ absl::Status DispatcherState::TasksForIteration(
     std::vector<std::shared_ptr<const Task>>& tasks) const {
   auto it = tasks_by_iteration_.find(iteration_id);
   if (it == tasks_by_iteration_.end()) {
-    return errors::NotFound("Iteration ", iteration_id, " not found");
+    return absl::NotFoundError(
+        absl::StrCat("Iteration ", iteration_id, " not found"));
   }
   tasks.clear();
   tasks.reserve(it->second.size());
@@ -448,7 +458,8 @@ absl::Status DispatcherState::TasksForWorker(
   tasks.clear();
   auto it = tasks_by_worker_.find(worker_address);
   if (it == tasks_by_worker_.end()) {
-    return errors::NotFound("Worker ", worker_address, " not found");
+    return absl::NotFoundError(
+        absl::StrCat("Worker ", worker_address, " not found"));
   }
   const absl::flat_hash_map<int64_t, std::shared_ptr<Task>>& worker_tasks =
       it->second;

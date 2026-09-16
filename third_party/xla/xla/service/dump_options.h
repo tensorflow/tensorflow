@@ -45,6 +45,7 @@ struct DumpOptions {
 
   bool dump_as_text;
   bool dump_as_proto;
+  bool dump_as_riegeli;
   bool dump_as_dot;
   bool dump_as_html;
   bool dump_as_url;

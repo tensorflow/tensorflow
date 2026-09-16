@@ -197,9 +197,9 @@ class SymbolicMap {
   SymbolicMap(mlir::MLIRContext* ctx, int64_t num_dimensions,
               int64_t num_symbols, llvm::SmallVector<SymbolicExpr> exprs);
 
-  mlir::MLIRContext* ctx_;
-  int64_t num_dimensions_;
-  int64_t num_symbols_;
+  mlir::MLIRContext* ctx_ = nullptr;
+  int64_t num_dimensions_ = 0;
+  int64_t num_symbols_ = 0;
   llvm::SmallVector<SymbolicExpr> exprs_;
 };
 

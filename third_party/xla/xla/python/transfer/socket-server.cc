@@ -316,9 +316,13 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
       start_bulk_transport_ = nullptr;
     } else {
       auto info = factory_->RecvBulkTransport(req);
-      bulk_transport_ = std::move(info.bulk_transport);
+      if (!info.ok()) {
+        SendClosed(std::move(info).status());
+        return;
+      }
+      bulk_transport_ = std::move(info->bulk_transport);
       SocketTransferRequest response;
-      *response.mutable_bulk_transport() = std::move(info.request);
+      *response.mutable_bulk_transport() = std::move(info->request);
       SendFrame(response);
     }
   }

@@ -36,9 +36,10 @@ class TensorToHashBucketOp : public OpKernel {
                     dtype == DT_UINT16 || dtype == DT_INT32 ||
                     dtype == DT_UINT32 || dtype == DT_INT64 ||
                     dtype == DT_UINT64,
-                errors::InvalidArgument("TensorToHashBucketOp doesn't support "
-                                        "datatype ",
-                                        DataTypeString(dtype)));
+                absl::InvalidArgumentError(
+                    absl::StrCat("TensorToHashBucketOp doesn't support "
+                                 "datatype ",
+                                 DataTypeString(dtype))));
   }
 
   void Compute(OpKernelContext* context) override {

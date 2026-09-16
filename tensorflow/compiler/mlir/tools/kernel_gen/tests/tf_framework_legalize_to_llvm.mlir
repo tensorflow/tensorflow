@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: kernel-gen-opt %s -tf-kernel-to-llvm -reconcile-unrealized-casts -split-input-file | FileCheck %s
 
 // CHECK: llvm.func @_mlir_ciface_tf_alloc
@@ -13,8 +27,8 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
   func.return %buf : memref<?x10x?xf32>
 }
 // Compute number of elements.
-// CHECK: [[SIZE_1A:%.*]] = llvm.mlir.constant(10 : index) : i64
-// CHECK: [[SIZE_1B:%.*]] = llvm.mlir.constant(10 : index) : i64
+// CHECK: [[SIZE_1A:%.*]] = llvm.mlir.constant(10 : i64) : i64
+// CHECK: [[SIZE_1B:%.*]] = llvm.mlir.constant(10 : i64) : i64
 // CHECK: [[NUM_ELEM_0:%.*]] = llvm.mul [[SIZE_0]], [[SIZE_1B]] : i64
 // CHECK: [[NUM_ELEMS:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : i64
 
@@ -41,11 +55,11 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // Set pointers and offset.
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[BYTES_PTR]], [[DESC_0]][0]
 // CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[BYTES_PTR]], [[DESC_1]][1]
-// CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
+// CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : i64) : i64
 // CHECK: [[DESC_3:%.*]] = llvm.insertvalue [[C0]], [[DESC_2]][2] : [[DESC_TY]]
 
 // Set sizes and strides.
-// CHECK: [[STRIDE_2:%.*]] = llvm.mlir.constant(1 : index) : i64
+// CHECK: [[STRIDE_2:%.*]] = llvm.mlir.constant(1 : i64) : i64
 // CHECK: [[DESC_4:%.*]] = llvm.insertvalue [[SIZE_2]], [[DESC_3]][3, 2]
 // CHECK: [[DESC_5:%.*]] = llvm.insertvalue [[STRIDE_2]], [[DESC_4]][4, 2]
 // CHECK: [[STRIDE_1:%.*]] = llvm.mul [[STRIDE_2]], [[SIZE_2]] : i64
@@ -97,7 +111,7 @@ func.func @unranked_null_memref() {
   %null = tf_framework.null_memref : memref<*xf32>
   func.return
 }
-// CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
+// CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : i64) : i64
 // CHECK: [[DESC_0:%.*]] = llvm.mlir.poison : !llvm.struct<(i64, ptr)>
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[C0]], [[DESC_0]][0]
 // CHECK: [[PTR:%.*]] = llvm.alloca {{.*}} x i8
@@ -110,10 +124,10 @@ func.func @ranked_null_memref() {
   %null = tf_framework.null_memref : memref<2x?xf32>
   func.return
 }
-// CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
-// CHECK-NEXT: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
-// CHECK-NEXT: %[[C2:.*]] = llvm.mlir.constant(2 : index) : i64
-// CHECK-NEXT: %[[C1_:.*]] = llvm.mlir.constant(1 : index) : i64
+// CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i64) : i64
+// CHECK-NEXT: %[[C1:.*]] = llvm.mlir.constant(1 : i64) : i64
+// CHECK-NEXT: %[[C2:.*]] = llvm.mlir.constant(2 : i64) : i64
+// CHECK-NEXT: %[[C1_:.*]] = llvm.mlir.constant(1 : i64) : i64
 
 // CHECK: llvm.mlir.zero
 // CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
@@ -137,7 +151,7 @@ func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 // CHECK: %[[MEMREF:.*]] = llvm.insertvalue %{{.*}}, %{{.*}}[4, 0]
 
 // CHECK-NEXT: %[[IS_EMPTY:.*]] = llvm.mlir.constant(false) : i1
-// CHECK-NEXT: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
+// CHECK-NEXT: %[[C0:.*]] = llvm.mlir.constant(0 : i64) : i64
 // CHECK-NEXT: %[[SIZE:.*]] = llvm.extractvalue %[[MEMREF]][3, 0]
 // CHECK-NEXT: %[[IS_ZERO:.*]] = llvm.icmp "eq" %[[SIZE]], %[[C0]] : i64
 // CHECK-NEXT: %[[IS_EMPTY_:.*]] =  llvm.or %[[IS_EMPTY]], %[[IS_ZERO]] : i1

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,10 @@ limitations under the License.
 
 #include <ostream>
 #include <string>
+#include <vector>
 
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -47,6 +48,14 @@ absl::Status SaveGzippedToolData(const std::string& repository_root,
                                  const std::string& host,
                                  const std::string& tool_name,
                                  const std::string& data);
+
+// Saves multiple XSpace chunks sequentially into a single Riegeli file
+// at <repository_root>/<run>/<host>.xplane.riegeli where each XSpace is written
+// as a separate record. As each XSpace is written, it is cleared from xspaces
+// to conserve memory.
+absl::Status SaveXSpaceChunks(
+    absl::string_view repository_root, absl::string_view run,
+    absl::string_view host, std::vector<tensorflow::profiler::XSpace>& xspaces);
 
 // Save XSpace to <repository_root>/<run>/<host>_<port>.<kXPlanePb>.
 absl::Status SaveXSpace(const std::string& repository_root,

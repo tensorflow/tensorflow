@@ -102,7 +102,7 @@ absl::Status AddCostNode(
     for (const auto& dim : output.shape().dim()) {
       size = MultiplyWithoutOverflow(size, std::max<int64_t>(1, dim.size()));
       if (size < 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Integer overflow encountered in dimension size.");
       }
     }

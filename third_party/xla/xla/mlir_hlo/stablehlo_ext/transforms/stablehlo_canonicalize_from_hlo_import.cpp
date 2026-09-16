@@ -16,11 +16,13 @@ limitations under the License.
 // This file implements logic for some optimizations to reduce size on export.
 
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
-#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Region.h"
@@ -48,6 +51,89 @@ namespace stablehlo_ext {
 #include "stablehlo_ext/transforms/passes.h.inc"
 
 namespace {
+
+// Projects the original value attribute by removing the elements at indices
+// specified by `removedBitVector` and shifting the remaining elements' shape
+// indices accordingly.
+mlir::mhlo::OriginalValueAttr projectOriginalValueAttr(
+    mlir::mhlo::OriginalValueAttr original_value_attr,
+    const mlir::BitVector& removedBitVector, mlir::MLIRContext* context) {
+  if (!original_value_attr) {
+    return {};
+  }
+
+  if (original_value_attr.getIsSyntheticCall()) {
+    return original_value_attr;
+  }
+
+  llvm::ArrayRef<mlir::mhlo::OriginalValueElementAttr> elements =
+      original_value_attr.getElements();
+  llvm::SmallVector<bool> kept(elements.size(), false);
+  for (size_t i = 0; i < elements.size(); ++i) {
+    if (i < removedBitVector.size() && !removedBitVector[i]) {
+      kept[i] = true;
+    }
+  }
+
+  auto is_completely_removed = [&](llvm::ArrayRef<int64_t> path) {
+    for (size_t i = 0; i < elements.size(); ++i) {
+      if (!kept[i]) {
+        continue;
+      }
+      llvm::ArrayRef<int64_t> leaf_path = elements[i].getShapeIndex();
+      if (leaf_path.size() >= path.size() &&
+          leaf_path.take_front(path.size()) == path) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // Copy original value elements from the input original value attribute with
+  // updated shape indices by accounting for removed elements, e.g. take a tuple
+  // tree with the following structure:
+  //   ((0, 1, ((2, 0), (2, 1)))
+  // If we remove the second element, it becomes
+  //   (0, ((1, 0), (1, 1)))
+  // Note that the original value element with shape index (2, 0) and (2, 1)
+  // are updated to (1, 0) and (1, 1) respectively.
+  llvm::SmallVector<mlir::mhlo::OriginalValueElementAttr> new_elements;
+  for (size_t i = 0; i < elements.size(); ++i) {
+    if (!kept[i]) {
+      continue;
+    }
+
+    auto element = elements[i];
+    llvm::ArrayRef<int64_t> shape_index = element.getShapeIndex();
+
+    llvm::SmallVector<int64_t> new_shape_index;
+    new_shape_index.reserve(shape_index.size());
+
+    llvm::SmallVector<int64_t> parent_prefix;
+    parent_prefix.reserve(shape_index.size());
+    for (int64_t child_idx : shape_index) {
+      int64_t removed_siblings = 0;
+      for (int64_t s = 0; s < child_idx; ++s) {
+        llvm::SmallVector<int64_t> sibling_path = parent_prefix;
+        sibling_path.reserve(parent_prefix.size() + 1);
+        sibling_path.push_back(s);
+        if (is_completely_removed(sibling_path)) {
+          removed_siblings++;
+        }
+      }
+
+      new_shape_index.push_back(child_idx - removed_siblings);
+      parent_prefix.push_back(child_idx);
+    }
+
+    auto new_element = mlir::mhlo::OriginalValueElementAttr::get(
+        context, new_shape_index, element.getOriginalArray());
+    new_elements.push_back(new_element);
+  }
+
+  return mlir::mhlo::OriginalValueAttr::get(
+      context, /*is_synthetic_call=*/false, new_elements);
+}
 
 /////////////
 // Flatten Tuples in entry computation
@@ -240,6 +326,91 @@ struct FlattenCustomCallOp : public OpRewritePattern<stablehlo::CustomCallOp> {
   }
 };
 
+/////////////////////////////////
+// WhileOp
+/////////////////////////////////
+
+// This is a copy of the StableHLO pattern with the same name, but specialized
+// for the HLO import case to be able to handle original value.
+//
+// Turn loop invariant values into implicit capture.
+// Check if there is at least one value is forwarded from one iteration to
+// the next, or one of the yielded value is an implicit capture already.
+// Otherwise there is nothing to do here.
+//
+// Pattern: while -> while (loop invariants as implicit captures)
+struct WhileOpImplicitCapture : public OpRewritePattern<stablehlo::WhileOp> {
+  using OpRewritePattern<stablehlo::WhileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::WhileOp whileOp,
+                                PatternRewriter& rewriter) const override {
+    Block* cond = whileOp.SingleBlock::getBody(0);
+    Block* body = whileOp.SingleBlock::getBody(1);
+    auto bodyReturnOp = cast<stablehlo::ReturnOp>(body->getTerminator());
+    if (!llvm::any_of(llvm::zip(whileOp->getOperands(), body->getArguments(),
+                                bodyReturnOp->getOperands()),
+                      [&](auto zip) {
+                        return (std::get<0>(zip) == std::get<2>(zip) ||
+                                std::get<1>(zip) == std::get<2>(zip));
+                      })) {
+      return rewriter.notifyMatchFailure(whileOp, "no loop invariant found");
+    }
+
+    SmallVector<Value> newOperands, resultsToReplace;
+    SmallVector<unsigned> invariantArgIdxs;
+    BitVector invariantArgIdxBitVector(cond->getNumArguments());
+    for (const auto& enumeratedOperands : llvm::enumerate(llvm::zip(
+             whileOp.getOperands(), cond->getArguments(), body->getArguments(),
+             bodyReturnOp->getOperands(), whileOp->getResults()))) {
+      const auto& operands = enumeratedOperands.value();
+      Value whileOperand = std::get<0>(operands);
+      BlockArgument condBlockArg = std::get<1>(operands);
+      BlockArgument bodyBlockArg = std::get<2>(operands);
+      Value bodyReturnOperand = std::get<3>(operands);
+      Value whileResult = std::get<4>(operands);
+
+      bool forwarded = (whileOperand == bodyReturnOperand ||
+                        bodyBlockArg == bodyReturnOperand);
+      if (forwarded) {
+        invariantArgIdxs.push_back(enumeratedOperands.index());
+        invariantArgIdxBitVector.set(enumeratedOperands.index());
+        condBlockArg.replaceAllUsesWith(whileOperand);
+        bodyBlockArg.replaceAllUsesWith(whileOperand);
+        whileResult.replaceAllUsesWith(whileOperand);
+        continue;
+      }
+      newOperands.push_back(whileOperand);
+      resultsToReplace.push_back(whileResult);
+    }
+    cond->eraseArguments(invariantArgIdxBitVector);
+    body->eraseArguments(invariantArgIdxBitVector);
+    for (int idx : llvm::reverse(invariantArgIdxs)) {
+      bodyReturnOp->eraseOperand(idx);
+    }
+
+    stablehlo::WhileOp newWhileOp = stablehlo::WhileOp::create(
+        rewriter, whileOp.getLoc(), bodyReturnOp->getOperandTypes(),
+        newOperands, whileOp->getAttrs());
+    newWhileOp.getBodyRegion(0).takeBody(whileOp.getBodyRegion(0));
+    newWhileOp.getBodyRegion(1).takeBody(whileOp.getBodyRegion(1));
+    for (auto results : llvm::zip(resultsToReplace, newWhileOp->getResults())) {
+      std::get<0>(results).replaceAllUsesWith(std::get<1>(results));
+    }
+
+    auto original_value_attr =
+        whileOp->getAttrOfType<mlir::mhlo::OriginalValueAttr>(
+            "mhlo.original_value");
+    if (original_value_attr) {
+      auto new_original_value_attr = projectOriginalValueAttr(
+          original_value_attr, invariantArgIdxBitVector, whileOp->getContext());
+      newWhileOp->setAttr("mhlo.original_value", new_original_value_attr);
+    }
+
+    rewriter.eraseOp(whileOp);
+    return success();
+  }
+};
+
 // Simplify a model after HLO import.
 struct StablehloCanonicalizeFromHloImportPass
     : public impl::StablehloCanonicalizeFromHloImportPassBase<
@@ -266,6 +437,7 @@ struct StablehloCanonicalizeFromHloImportPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     patterns.add<FlattenCustomCallOp>(context);
+    patterns.add<WhileOpImplicitCapture>(context, /*benefit=*/2);
     stablehlo::populateStablehloHloImportCanonicalizationPatterns(context,
                                                                   &patterns);
 

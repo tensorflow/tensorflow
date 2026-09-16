@@ -167,12 +167,12 @@ absl::StatusOr<stablehlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
       xla::HloModule::CreateFromProto(computation.proto(), hlo_module_config));
 
   if (!RootInstructionIsTuple(*hlo_module)) {
-    return tsl::errors::InvalidArgument("Imported XLA Root is not a tuple op");
+    return absl::InvalidArgumentError("Imported XLA Root is not a tuple op");
   }
 
   if (op_->getNumOperands() !=
       hlo_module->entry_computation()->num_parameters()) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Entry computation does not have equal number of parameters to op "
         "operands");
   }
@@ -198,7 +198,7 @@ absl::StatusOr<stablehlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
   stablehlo::TupleOp root_tuple =
       mlir::dyn_cast_or_null<stablehlo::TupleOp>(root_value.getDefiningOp());
   if (!root_tuple) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Imported XLA Root Value is not a tuple op");
   }
 

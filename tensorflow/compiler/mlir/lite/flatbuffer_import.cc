@@ -403,6 +403,56 @@ Status ParseDebugMetadata(Builder builder, const char* data, size_t size,
   return absl::OkStatus();
 }
 
+std::string GetTfliteOpNameForLoc(const tflite::OperatorCodeT& op_code) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    if (!op_code.custom_code.empty()) return op_code.custom_code;
+    return "CUSTOM";
+  }
+  return tflite::EnumNameBuiltinOperator(builtin_code);
+}
+
+Location AttachTfliteOpLoc(Builder builder, int subgraph_index, int op_index,
+                           const tflite::OperatorCodeT& op_code,
+                           Location child_loc) {
+  std::string op_name = GetTfliteOpNameForLoc(op_code);
+  std::string loc_name = absl::StrCat("tflite.subgraph=", subgraph_index,
+                                      ".op=", op_index, ":", op_name);
+  // Attach as FusedLoc metadata so name extractors (e.g. GetNameFromLoc used
+  // by the exporter to derive tensor names) keep resolving names from the
+  // original child location.
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
+}
+
+Location AttachTfliteTensorLoc(Builder builder, int subgraph_index,
+                               int tensor_index, Location child_loc) {
+  std::string loc_name = absl::StrCat("tflite.subgraph=", subgraph_index,
+                                      ".tensor=", tensor_index, ":CONST");
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
+}
+
+Location MaybeAttachFusedActivationLoc(Location loc, Builder builder,
+                                       int subgraph_index, int op_index,
+                                       const tflite::OperatorCodeT& op_code,
+                                       Location child_loc, Operation* mlir_op) {
+  auto fused_attr =
+      mlir_op->getAttrOfType<mlir::StringAttr>("fused_activation_function");
+  if (!fused_attr) return loc;
+
+  llvm::StringRef fused = fused_attr.getValue();
+  if (fused.empty() || fused == "NONE") return loc;
+
+  std::string op_name = GetTfliteOpNameForLoc(op_code);
+  std::string fused_name = fused.str();
+  std::string loc_name =
+      absl::StrCat("tflite.subgraph=", subgraph_index, ".op=", op_index, ":",
+                   op_name, "_fused_", fused_name);
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
+}
+
 // Return MLIR location if it exists in the debug metadata. Otherwise, create a
 // MLIR location by fusing its output tensor names.
 Location OpLoc(const OperatorT& op, Builder builder,
@@ -527,7 +577,7 @@ StatusOr<Operation*> BuildExternalConstOpWithBufferIndex(
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
   auto op = tfl::ExternalConstOp::create(
       builder, loc, shaped_type,
@@ -544,7 +594,7 @@ StatusOr<Operation*> BuildExternalConstOpWithExternalBuffer(
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   tflite::ExternalBufferT* external_buffer = nullptr;
@@ -555,7 +605,7 @@ StatusOr<Operation*> BuildExternalConstOpWithExternalBuffer(
     }
   }
   if (external_buffer == nullptr) {
-    return errors::Internal("External buffer not found");
+    return absl::InternalError("External buffer not found");
   }
 
   std::string group_name =
@@ -584,7 +634,7 @@ StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   static int stateful_variable_idx = 0;
@@ -625,7 +675,7 @@ static StatusOr<std::vector<int32_t>> ConvertSparseIndexVector(
                    [](auto x) { return static_cast<int32_t>(x); });
     return outputs;
   } else {
-    return errors::Unimplemented("Unsupported SparseIndexVector type");
+    return absl::UnimplementedError("Unsupported SparseIndexVector type");
   }
 }
 
@@ -638,7 +688,7 @@ static StatusOr<Operation*> BuildSparseConstOp(const tflite::TensorT& tensor,
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   TF_ASSIGN_OR_RETURN(type, tfl::GetTensorType(tensor, builder,
@@ -683,7 +733,7 @@ static StatusOr<Operation*> BuildSparseConstOp(const tflite::TensorT& tensor,
                                             tfl::DimensionType::SPARSE_CSR),
           0, segments, indices);
     } else {
-      return errors::Unimplemented("Unsupported dimension metadata type");
+      return absl::UnimplementedError("Unsupported dimension metadata type");
     }
   }
   auto s_param = tfl::SparsityParameterAttr::get(
@@ -726,7 +776,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                          /*get_storage=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   mlir::ElementsAttr value;
@@ -767,7 +817,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 
     value = mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
   } else {
-    return errors::Unimplemented("Constant of unsupported type");
+    return absl::UnimplementedError("Constant of unsupported type");
   }
 
   if (use_stablehlo_constant) {
@@ -776,7 +826,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                  buffer.size());
     auto vhlo_val = mlir::vhlo::TensorV1Attr::get(
         builder.getContext(), vhlo_type_converter.convertType(shaped_type),
-        val_ref);
+        DenseElementsAttr::getFromRawBuffer(shaped_type, val_ref));
     auto op =
         mlir::vhlo::ConstantOpV1::create(builder, loc, shaped_type, vhlo_val);
     return op.getOperation();
@@ -792,8 +842,8 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   if (auto* opts = options.AsCallOnceOptions()) {
     uint32_t init_idx = opts->init_subgraph_index;
     if (init_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     init_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", init_idx));
     }
     auto init_attr = builder.getStringAttr(func_names.at(init_idx));
 
@@ -803,15 +853,15 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
     if (then_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     then_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", then_idx));
     }
     auto then_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(then_idx));
     uint32_t else_idx = opts->else_subgraph_index;
     if (else_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     else_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", else_idx));
     }
     auto else_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(else_idx));
@@ -825,15 +875,15 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   if (auto* opts = options.AsWhileOptions()) {
     uint32_t cond_idx = opts->cond_subgraph_index;
     if (cond_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     cond_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", cond_idx));
     }
     auto cond_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
     uint32_t body_idx = opts->body_subgraph_index;
     if (body_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     body_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", body_idx));
     }
     auto body_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
@@ -945,7 +995,7 @@ Status AddOpIntermediatesForLstm(
     OperationState& op_state, Location loc, OpBuilder& builder) {
   if (!op.intermediates.empty()) {
     if (op.intermediates.size() != 5) {
-      auto err = errors::InvalidArgument(
+      auto err = absl::InvalidArgumentError(
           "operator has intermediate tensors but the number of them is not "
           "five.");
       return emitError(loc, err.ToString()), err;
@@ -1179,8 +1229,8 @@ StatusOr<std::vector<int>> GetTensorIndices(
     if (found != name_to_index.end()) {
       indices.push_back(found->second);
     } else {
-      return errors::InvalidArgument("could not find tensor in subgraph: ",
-                                     name);
+      return absl::InvalidArgumentError(
+          absl::StrCat("could not find tensor in subgraph: ", name));
     }
   }
 
@@ -1470,7 +1520,7 @@ mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
 // inputs/outputs in signature will be attached to the FuncOp.
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::ModelT& model, const tflite::SubGraphT& subgraph,
-    llvm::StringRef name,
+    int subgraph_index, llvm::StringRef name,
     const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
@@ -1498,7 +1548,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   if (is_entry_point && !ordered_input_arrays.empty()) {
     if (!experimental_prune_unreachable_nodes_unconditionally) {
       // TODO(b/149922113): Resolve input-arrays/pruning flags interaction.
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "input-arrays should be used with experimental pruning flag");
     }
     TF_ASSIGN_OR_RETURN(func_inputs,
@@ -1573,7 +1623,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     const auto& tensor = *subgraph.tensors.at(input_tensor);
     auto loc = TensorLoc(tensor, builder, base_loc);
     if (vals_map[input_tensor]) {
-      auto err = errors::FailedPrecondition("duplicate input arguments");
+      auto err = absl::FailedPreconditionError("duplicate input arguments");
       return emitError(loc, err.ToString()), err;
     }
     Value input_value = func.getArgument(i);
@@ -1672,6 +1722,8 @@ StatusOr<FuncOp> ConvertSubgraph(
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
         }
+        op_or_err.value()->setLoc(AttachTfliteTensorLoc(builder, subgraph_index,
+                                                        input_num, const_loc));
         vals_map[input_num] = op_or_err.value()->getResult(0);
       }
     }
@@ -1689,7 +1741,11 @@ StatusOr<FuncOp> ConvertSubgraph(
       intermediate_types.emplace_back(type);
     }
 
-    auto op_loc = OpLoc(*op, builder, debug_metadata, subgraph, base_loc);
+    const tflite::OperatorCodeT& op_code = *op_codes.at(op->opcode_index);
+    auto original_op_loc =
+        OpLoc(*op, builder, debug_metadata, subgraph, base_loc);
+    auto op_loc = AttachTfliteOpLoc(builder, subgraph_index, it.index(),
+                                    op_code, original_op_loc);
 
     // If there's an optional argument, maybe_optional_arg_marker has been set
     // to a valid Value
@@ -1698,6 +1754,10 @@ StatusOr<FuncOp> ConvertSubgraph(
         ConvertOp(*op, vals_map, intermediate_types, maybe_optional_arg_marker,
                   op_codes, func_names, subgraph.tensors, op_loc, op_builder,
                   model_ptr));
+    op_loc = MaybeAttachFusedActivationLoc(op_loc, builder, subgraph_index,
+                                           it.index(), op_code, original_op_loc,
+                                           mlir_op);
+    mlir_op->setLoc(op_loc);
 
     // Add the results to the value maps. There are two cases: 1. the result
     // tensor does not have min/max values, the original op result is used
@@ -1762,6 +1822,8 @@ StatusOr<FuncOp> ConvertSubgraph(
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
       }
+      op_or_err.value()->setLoc(
+          AttachTfliteTensorLoc(builder, subgraph_index, index, const_loc));
       vals_map[index] = op_or_err.value()->getResult(0);
     }
     return_operands.push_back(vals_map[index]);
@@ -2039,8 +2101,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
         SubgraphName(set_implicit_main_func, e.index(), *subgraph);
     uint32_t subgraph_index = static_cast<uint32_t>(e.index());
     auto func_or_error = ConvertSubgraph(
-        *model, *subgraph, name, model->operator_codes, func_names,
-        model->buffers, base_loc, builder,
+        *model, *subgraph, static_cast<int>(subgraph_index), name,
+        model->operator_codes, func_names, model->buffers, base_loc, builder,
         /*is_entry_point=*/
         set_implicit_main_func
             ? e.index() == 0

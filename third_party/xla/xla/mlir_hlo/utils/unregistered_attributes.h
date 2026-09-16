@@ -63,6 +63,13 @@ inline constexpr char kXlaShape[] = "xla_shape";
 inline constexpr char kMhloOriginalValueAttr[] = "mhlo.original_value";
 inline constexpr char kBitcastResultLayout[] = "result_layout";
 inline constexpr char kBitcastSourceLayout[] = "source_layout";
+// Per-operand / per-result memory spaces of a custom-call's layout
+// constraints. These complement the custom-call operand_layouts /
+// result_layouts attributes (which only encode minor-to-major) so that
+// non-default memory spaces (e.g. VMEM, S(1)) survive the HLO<->StableHLO
+// round trip. Each is a DenseI64ArrayAttr with one entry per operand / result.
+inline constexpr char kMhloOperandMemorySpaces[] = "mhlo.operand_memory_spaces";
+inline constexpr char kMhloResultMemorySpaces[] = "mhlo.result_memory_spaces";
 
 // Returns true if the given attribute name is a known XLA discardable module
 // attribute.

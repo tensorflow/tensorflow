@@ -29,7 +29,25 @@ limitations under the License.
 #include "tensorflow/lite/op_resolver.h"
 
 namespace tflite {
+
+/// Returns the default op resolver.
+///
+/// NOTE: For the TF Lite Java and C APIs, this function may optionally be
+/// defined by the client app, rather than by the TF Lite library; if the app
+/// defines this function, it will be used to obtain the default op resolver
+/// whenever creating interpreters via the C or Java APIs.
+///
+/// However, for TensorFlow Lite in Google Play services, an app-defined
+/// `tflite::CreateOpResolver` function will be ignored.
+/// To use custom ops with TensorFlow Lite in Google Play services:
+/// * If you are using the C API, use TfLiteInterpreterOptionsAddOperator().
+/// * If you are using the C++ API, use tflite::AddOp().
+/// Apps using the Java API with TensorFlow Lite in Google Play services do
+/// not have a way to use custom ops.
+// TODO(bekzhan): Update the documentation above when the LiteRT CompiledModel
+// APIs are supported in Google Play services.
 std::unique_ptr<MutableOpResolver> CreateOpResolver();
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_CORE_CREATE_OP_RESOLVER_H_

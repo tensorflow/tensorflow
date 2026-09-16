@@ -1,42 +1,42 @@
 path: "tensorflow.train.Scaffold"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.monitored_session.Scaffold\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "init_feed_dict"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "init_fn"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "init_op"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "local_init_feed_dict"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "local_init_op"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "ready_for_local_init_op"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "ready_op"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "saver"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "summary_op"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
@@ -45,6 +45,7 @@ tf_class {
   member_method {
     name: "default_local_init_op"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "finalize"
@@ -53,5 +54,6 @@ tf_class {
   member_method {
     name: "get_or_default"
     argspec: "args=[\'arg_name\', \'collection_key\', \'default_constructor\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
 }

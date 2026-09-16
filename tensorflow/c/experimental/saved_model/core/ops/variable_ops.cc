@@ -62,7 +62,7 @@ absl::Status CreateUninitializedResourceVariable(
   AbstractTensorHandlePtr owned_var_handle(var_handle);
   if (!tensorflow::isa<ImmediateExecutionTensorHandle>(
           owned_var_handle.get())) {
-    return errors::Internal("Unexpected tensor handle kind.");
+    return absl::InternalError("Unexpected tensor handle kind.");
   }
   handle->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(
       owned_var_handle.release()));
@@ -98,7 +98,7 @@ absl::Status ReadVariable(ImmediateExecutionContext* ctx,
       read_op->Execute(absl::MakeSpan(&value, num_retvals), &num_retvals));
   AbstractTensorHandlePtr owned_value(value);
   if (!tensorflow::isa<ImmediateExecutionTensorHandle>(owned_value.get())) {
-    return errors::Internal("Unexpected tensor handle kind.");
+    return absl::InternalError("Unexpected tensor handle kind.");
   }
   output->reset(
       reinterpret_cast<ImmediateExecutionTensorHandle*>(owned_value.release()));

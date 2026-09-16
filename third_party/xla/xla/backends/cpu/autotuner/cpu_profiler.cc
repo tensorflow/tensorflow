@@ -19,9 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -81,14 +83,14 @@ absl::StatusOr<ProfileResult> CpuProfiler::Profile(
       absl::down_cast<const LiteralBackedCpuBuffers&>(buffers);
   {
     // Warm up run.
-    TF_RETURN_IF_ERROR(Execute(executable, literal_backed_buffers.buffers,
-                               /*profile=*/nullptr));
+    ABSL_RETURN_IF_ERROR(Execute(executable, literal_backed_buffers.buffers,
+                            /*profile=*/nullptr));
   }
 
   ExecutionProfile profile;
   profile.set_warmup_run_executed(true);
 
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       Execute(executable, literal_backed_buffers.buffers, &profile));
 
   return ProfileResult{absl::Nanoseconds(profile.compute_time_ns())};
@@ -103,7 +105,7 @@ absl::Status CpuProfiler::Execute(
 
   CpuExecutable* cpu_executable = absl::down_cast<CpuExecutable*>(executable);
 
-  TF_RETURN_IF_ERROR(cpu_executable->ExecuteThunks(&run_options, buffers));
+  ABSL_RETURN_IF_ERROR(cpu_executable->ExecuteThunks(&run_options, buffers));
 
   return absl::OkStatus();
 }

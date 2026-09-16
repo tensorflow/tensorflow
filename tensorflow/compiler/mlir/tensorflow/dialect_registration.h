@@ -24,10 +24,12 @@ limitations under the License.
 #include "mlir/Dialect/MLProgram/IR/MLProgramAttributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/types/dialect.h"
 
 namespace mlir {
 // Inserts all the TensorFlow dialects in the provided registry. This is

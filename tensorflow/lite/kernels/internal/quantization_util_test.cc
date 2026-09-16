@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
+#include <cmath>
 #include <limits>
 
 #include <gmock/gmock.h>
@@ -66,6 +67,20 @@ void RunSafeCastTests() {
   EXPECT_EQ(SafeCast<IntOut>(std::numeric_limits<FloatIn>::infinity()), imax);
   EXPECT_EQ(SafeCast<IntOut>(-std::numeric_limits<FloatIn>::infinity()), imin);
   EXPECT_EQ(SafeCast<IntOut>(std::numeric_limits<FloatIn>::quiet_NaN()), 0);
+
+  constexpr FloatIn max_exclusive =
+      static_cast<FloatIn>(std::numeric_limits<IntOut>::max() / 2 + 1) *
+      FloatIn{2};
+  EXPECT_EQ(SafeCast<IntOut>(max_exclusive), imax);
+  const FloatIn max_in_range =
+      std::nextafter(max_exclusive, static_cast<FloatIn>(0));
+  EXPECT_EQ(SafeCast<IntOut>(max_in_range), static_cast<IntOut>(max_in_range));
+
+  const FloatIn min_value = static_cast<FloatIn>(imin);
+  EXPECT_EQ(SafeCast<IntOut>(min_value), imin);
+  EXPECT_EQ(SafeCast<IntOut>(std::nextafter(
+                min_value, std::numeric_limits<FloatIn>::lowest())),
+            imin);
 
   // Some larger numbers.
   if (sizeof(IntOut) >= 4 && sizeof(FloatIn) > 4) {
@@ -150,6 +165,13 @@ TEST(QuantizationUtilTest, SafeCast) {
   RunSafeCastTests<double, uint32_t>();
   RunSafeCastTests<float, uint64_t>();
   RunSafeCastTests<double, uint64_t>();
+}
+
+TEST(QuantizationUtilTest, SafeCastUsesProvidedNaNResult) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_EQ(SafeCast<int32_t>(nan, std::numeric_limits<int32_t>::max()),
+            std::numeric_limits<int32_t>::max());
+  EXPECT_EQ(SafeCast<uint8_t>(nan, uint8_t{42}), 42);
 }
 
 // Example taken from http://www.tensorflow.org/performance/quantization

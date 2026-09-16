@@ -30,18 +30,18 @@ using ::ml_adj::data::TypeWidth;
 
 void FlipUpDown(dim_t batches, dim_t input_height, dim_t input_width,
                 const char* input_data, char* output_data, dim_t chunk_size) {
-  const dim_t row_stride = input_width * chunk_size;
-  const dim_t batch_stride = row_stride * input_height;
+  const ind_t row_stride = static_cast<ind_t>(input_width) * chunk_size;
+  const ind_t batch_stride = row_stride * input_height;
 
   // Iterate over batches to flip multi-channel image.
-  for (int b = 0; b < batches; ++b) {
-    const char* src_data_prt = input_data + b * batch_stride;
-    char* dst_data_prt = output_data + b * batch_stride;
+  for (ind_t b = 0; b < batches; ++b) {
+    const char* src_data_ptr = input_data + b * batch_stride;
+    char* dst_data_ptr = output_data + b * batch_stride;
 
-    for (int y = 0; y < input_height; ++y) {
+    for (ind_t y = 0; y < input_height; ++y) {
       const char* src_ptr_row =
-          src_data_prt + (input_height - y - 1) * row_stride;
-      char* dst_ptr_row = dst_data_prt + y * row_stride;
+          src_data_ptr + static_cast<ind_t>(input_height - y - 1) * row_stride;
+      char* dst_ptr_row = dst_data_ptr + y * row_stride;
       std::memcpy(dst_ptr_row, src_ptr_row, row_stride);
     }
   }
@@ -49,17 +49,20 @@ void FlipUpDown(dim_t batches, dim_t input_height, dim_t input_width,
 
 // Flips the given input vertically. Supports any datatype.
 void ComputeFlipUpDown(const InputPack& inputs, const OutputPack& outputs) {
-  TFLITE_DCHECK(inputs.size() == 1);
-  TFLITE_DCHECK(outputs.size() == 1);
+  TFLITE_CHECK_EQ(inputs.size(), 1);
+  TFLITE_CHECK_EQ(outputs.size(), 1);
 
   // Extract input image data.
   const DataRef* img = inputs[0];
+  TFLITE_CHECK_EQ(img->Dims().size(), 4);
   const char* img_data = reinterpret_cast<const char*>(img->Data());
   const dim_t num_batches = img->Dims()[0];
   const dim_t height = img->Dims()[1];
   const dim_t width = img->Dims()[2];
   const dim_t num_channels = img->Dims()[3];
   const dim_t chunk_size = TypeWidth(img->Type()) * num_channels;
+
+  if (num_batches == 0 || height == 0 || width == 0) return;
 
   // Resize output buffer.
   MutableDataRef* output = outputs[0];
@@ -72,8 +75,8 @@ void ComputeFlipUpDown(const InputPack& inputs, const OutputPack& outputs) {
 }  // namespace
 
 const Algo* Impl_FlipUpDown() {
-  static const Algo flip_up_down = {&ComputeFlipUpDown, nullptr};
-  return &flip_up_down;
+  static constexpr Algo kFlipUpDown = {&ComputeFlipUpDown, nullptr};
+  return &kFlipUpDown;
 }
 
 }  // namespace flip_up_down

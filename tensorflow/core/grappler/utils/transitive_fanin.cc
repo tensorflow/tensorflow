@@ -43,8 +43,8 @@ absl::Status ComputeTransitiveFanin(
   for (const std::string& root : terminal_nodes) {
     const NodeDef* node = name_to_node[NodeName(root)];
     if (!node) {
-      return errors::InvalidArgument("Graph does not contain terminal node ",
-                                     root, ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Graph does not contain terminal node ", root, "."));
     }
     queue.push_back(node);
   }
@@ -66,9 +66,9 @@ absl::Status ComputeTransitiveFanin(
     for (const std::string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];
       if (!in) {
-        return errors::InvalidArgument("Graph does not contain input ",
-                                       NodeName(input), " of node ",
-                                       node->name(), ".");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Graph does not contain input ", NodeName(input),
+                         " of node ", node->name(), "."));
       }
       queue.push_back(in);
     }

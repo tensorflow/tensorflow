@@ -326,7 +326,7 @@ std::map<int, llvm::MDNode*> MergeMetadata(
     const std::map<int, llvm::MDNode*>& b);
 
 // Dumps out `llvm_module` to the path specified in DebugOptions, if dumping is
-// enabled for the given HLO module.
+// enabled for the given HLO module and the "llvm" emitter.
 //
 // A sanitized version of `hlo_module_name` is incorporated into the file name.
 // If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix

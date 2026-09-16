@@ -31,6 +31,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// TODO(b/517046878): Remove GemmThunk.
 // GemmThunk implements both Thunk (via ExecuteOnStream) and Command (via
 // TracedCommand) so it can be used directly in command buffers without
 // a separate GemmCmd wrapper. The default Record() inherited from

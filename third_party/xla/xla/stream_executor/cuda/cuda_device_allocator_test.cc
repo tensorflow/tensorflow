@@ -22,38 +22,49 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
 
-TEST(CudaDeviceAllocatorTest, AllocateAndFree) {
+CudaDeviceAllocator::Options MakeTestOptions(bool enable_rdma) {
+  CudaDeviceAllocator::Options options;
+  options.enable_rdma = enable_rdma;
+  return options;
+}
+
+class CudaDeviceAllocatorTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(CudaDeviceAllocatorTest, AllocateAndFree) {
   ASSERT_OK_AND_ASSIGN(Platform * platform,
                        PlatformManager::PlatformWithName("CUDA"));
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                        platform->ExecutorForDevice(0));
 
-  CudaDeviceAllocator allocator(executor);
+  CudaDeviceAllocator allocator(executor, MakeTestOptions(GetParam()));
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                        allocator.Allocate(1024));
   ASSERT_NE(allocation, nullptr);
   EXPECT_NE(allocation->address().opaque(), nullptr);
-  EXPECT_EQ(allocation->address().size(), 1024);
+  EXPECT_GE(allocation->address().size(), 1024);
 }
 
-TEST(CudaDeviceAllocatorTest, AllocateZeroBytes) {
+TEST_P(CudaDeviceAllocatorTest, AllocateZeroBytes) {
   ASSERT_OK_AND_ASSIGN(Platform * platform,
                        PlatformManager::PlatformWithName("CUDA"));
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                        platform->ExecutorForDevice(0));
 
-  CudaDeviceAllocator allocator(executor);
+  CudaDeviceAllocator allocator(executor, MakeTestOptions(GetParam()));
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                        allocator.Allocate(0));
@@ -61,7 +72,7 @@ TEST(CudaDeviceAllocatorTest, AllocateZeroBytes) {
   EXPECT_EQ(allocation->address().opaque(), nullptr);
 }
 
-TEST(CudaDeviceAllocatorTest, MemcpyRoundTrip) {
+TEST_P(CudaDeviceAllocatorTest, MemcpyRoundTrip) {
   ASSERT_OK_AND_ASSIGN(Platform * platform,
                        PlatformManager::PlatformWithName("CUDA"));
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
@@ -69,7 +80,7 @@ TEST(CudaDeviceAllocatorTest, MemcpyRoundTrip) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
                        executor->CreateStream());
 
-  CudaDeviceAllocator allocator(executor);
+  CudaDeviceAllocator allocator(executor, MakeTestOptions(GetParam()));
 
   constexpr int kSize = 1024;
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
@@ -81,7 +92,10 @@ TEST(CudaDeviceAllocatorTest, MemcpyRoundTrip) {
     host_src[i] = static_cast<uint8_t>(i);
   }
 
-  DeviceAddress<uint8_t> addr(allocation->address());
+  // Use a DeviceAddress sized to kSize (not the padded allocation size) so
+  // the memcpy transfers exactly the bytes we care about.
+  DeviceAddress<uint8_t> addr(
+      DeviceAddressBase(allocation->address().opaque(), kSize));
   ASSERT_OK(stream->MemcpyH2D(absl::MakeConstSpan(host_src), &addr));
 
   // Copy back from device to host.
@@ -91,6 +105,60 @@ TEST(CudaDeviceAllocatorTest, MemcpyRoundTrip) {
 
   EXPECT_EQ(host_src, host_dst);
 }
+
+TEST_P(CudaDeviceAllocatorTest, PeerAccessEnabled) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  CudaDeviceAllocator::Options options = MakeTestOptions(GetParam());
+  options.enable_peer_access = true;
+  CudaDeviceAllocator allocator(executor, options);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator.Allocate(4096));
+  ASSERT_NE(allocation, nullptr);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_GE(allocation->address().size(), 4096);
+}
+
+TEST_P(CudaDeviceAllocatorTest, DeallocateDuringStreamCapture) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  CudaDeviceAllocator allocator(executor, MakeTestOptions(GetParam()));
+
+  // Allocate two buffers prior to stream capture: one to be freed during
+  // active stream capture, and one to be used inside the captured graph.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> alloc_to_free,
+                       allocator.Allocate(4096));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> alloc_for_graph,
+                       allocator.Allocate(1024));
+
+  DeviceAddress<uint8_t> dst(
+      DeviceAddressBase(alloc_for_graph->address().opaque(), 1024));
+
+  // Trace a command buffer while freeing `alloc_to_free` mid-capture.
+  // Without capture-aware queued VMM deallocation, `alloc_to_free.reset()`
+  // calls `cuCtxSynchronize()` during active stream capture, which fails with
+  // CUDA_ERROR_STREAM_CAPTURE_UNSUPPORTED and invalidates the graph capture.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CommandBuffer> cmd_buf,
+      TraceCommandBufferFactory::Create(
+          executor, [&](Stream* capture_stream) -> absl::Status {
+            alloc_to_free.reset();
+            return capture_stream->MemZero(&dst, 1024);
+          }));
+  EXPECT_NE(cmd_buf, nullptr);
+}
+
+INSTANTIATE_TEST_SUITE_P(RdmaSupport, CudaDeviceAllocatorTest,
+                         ::testing::Bool(), [](const auto& info) {
+                           return info.param ? "RdmaEnabled" : "RdmaDisabled";
+                         });
 
 }  // namespace
 }  // namespace stream_executor::gpu

@@ -1,10 +1,10 @@
 path: "tensorflow.train.Saver"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.saver.Saver\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "last_checkpoints"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
@@ -25,6 +25,7 @@ tf_class {
   member_method {
     name: "from_proto"
     argspec: "args=[\'saver_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "recover_last_checkpoints"

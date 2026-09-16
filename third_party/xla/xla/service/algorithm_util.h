@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
@@ -58,6 +59,14 @@ absl::StatusOr<std::vector<PrimitiveType>> GetAllowedOperandsTypeForAlgorithm(
 absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
     PrecisionConfig::Algorithm algorithm);
 
+// Get the default GEMM algorithm accumulator type for floating-point dots when
+// precision_config.algorithm() == ALG_UNSET.
+absl::StatusOr<PrimitiveType> GetDefaultGemmAlgorithmAccumulatorType(
+    const HloInstruction* dot);
+
+// Get the accumulator type of a dot instruction.
+absl::StatusOr<PrimitiveType> GetDotAccumulatorType(const HloInstruction* dot);
+
 // Are the AType & BType TF32?
 bool HasTf32InputType(PrecisionConfig::Algorithm algorithm);
 
@@ -90,6 +99,10 @@ bool IsSupportedDotAlgorithmOnGpu(
     const stream_executor::GpuComputeCapability& gpu_compute_capability,
     PrimitiveType lhs_storage_type, PrimitiveType rhs_storage_type,
     PrimitiveType output_storage_type);
+
+// Checks if the instruction requests ALG_DOT_BF16_BF16_F32 and has F32 operands
+// and output.
+bool IsBf16ToF32AlgorithmRequested(const HloInstruction* instr);
 
 }  // namespace algorithm_util
 }  // namespace xla

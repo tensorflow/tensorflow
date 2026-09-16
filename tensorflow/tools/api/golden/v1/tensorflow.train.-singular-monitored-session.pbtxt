@@ -2,14 +2,22 @@ path: "tensorflow.train.SingularMonitoredSession"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.monitored_session.SingularMonitoredSession\'>"
   is_instance: "<class \'tensorflow.python.training.monitored_session._MonitoredSession\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "StepContext"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "graph"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'exception_type\', \'exception_value\', \'traceback\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"

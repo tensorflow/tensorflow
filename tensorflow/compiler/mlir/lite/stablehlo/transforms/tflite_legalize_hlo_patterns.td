@@ -31,9 +31,20 @@ def CreateTFLCastToInt32Op : NativeCodeCall<
 def ConstDefaultResultAccuracyAttr :
   ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
 
+def IsBuildableWithArithConstant : Constraint<
+  CPred<"::mlir::arith::ConstantOp::isBuildableWith($0, $1.getType())">
+>;
+
 def : Pat<
   (MHLO_ConstantOp:$output $value),
   (Arith_ConstantOp $value),
+  [(IsBuildableWithArithConstant $value, $output)],
+  [],
+  (addBenefit 10)>;
+
+def : Pat<
+  (MHLO_ConstantOp:$output $value),
+  (TFL_ConstOp $value),
   [(TFL_TensorOf<[AnyType]> $output)]>;
 
 
@@ -182,17 +193,17 @@ def : Pat<(MHLO_NotOp I32Tensor:$input),
 // Unsigned: 0xFFF... has a 1 in every bit position.
 def : Pat<(MHLO_NotOp TensorOf<[UI8]>:$input),
             (TFL_BitwiseXorOp $input,
-              (Arith_ConstantOp
+              (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 8, ", false", "0xFFU">)))>;
 
 def : Pat<(MHLO_NotOp TensorOf<[UI16]>:$input),
             (TFL_BitwiseXorOp $input,
-              (Arith_ConstantOp
+              (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 16, ", false", "0xFFFFU">)))>;
 
 def : Pat<(MHLO_NotOp TensorOf<[UI32]>:$input),
             (TFL_BitwiseXorOp $input,
-              (Arith_ConstantOp
+              (TFL_ConstOp
                 (GetRankedScalarAttr<"u", 32, ", false", "0xFFFFFFFFUL">)))>;
 
 foreach pair = [

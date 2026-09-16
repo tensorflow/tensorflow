@@ -80,8 +80,8 @@ absl::Status ParseActivationMode(
     *activation_mode = FusedBatchNormActivationMode::kRelu;
     return absl::OkStatus();
   }
-  return errors::InvalidArgument("Unsupported activation mode: ",
-                                 activation_mode_str);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported activation mode: ", activation_mode_str));
 }
 
 // Functor used by FusedBatchNormOp to do the computations.
@@ -105,13 +105,13 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
                   Tensor* saved_batch_var_output, TensorFormat tensor_format,
                   bool use_reserved_space) {
     OP_REQUIRES(context, side_input == nullptr,
-                errors::Internal(
+                absl::InternalError(
                     "The CPU implementation of FusedBatchNorm does not support "
                     "side input."));
     OP_REQUIRES(context,
                 activation_mode == FusedBatchNormActivationMode::kIdentity,
-                errors::Internal("The CPU implementation of FusedBatchNorm "
-                                 "does not support activations."));
+                absl::InternalError("The CPU implementation of FusedBatchNorm "
+                                    "does not support activations."));
 
     if (use_reserved_space) {
       Tensor* dummy_reserve_space = nullptr;
@@ -231,7 +231,8 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
       const absl::Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
-        context->SetStatus(errors::InvalidArgument("Transpose failed: ", s));
+        context->SetStatus(
+            absl::InvalidArgumentError(absl::StrCat("Transpose failed: ", s)));
       }
     }
   }
@@ -250,13 +251,13 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
                   Tensor* saved_var_output, TensorFormat tensor_format,
                   bool use_reserved_space) {
     OP_REQUIRES(context, side_input == nullptr,
-                errors::Internal(
+                absl::InternalError(
                     "The CPU implementation of FusedBatchNorm does not support "
                     "side input."));
     OP_REQUIRES(context,
                 activation_mode == FusedBatchNormActivationMode::kIdentity,
-                errors::Internal("The CPU implementation of FusedBatchNorm "
-                                 "does not support activations."));
+                absl::InternalError("The CPU implementation of FusedBatchNorm "
+                                    "does not support activations."));
 
     if (use_reserved_space) {
       Tensor* dummy_reserve_space = nullptr;
@@ -319,7 +320,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
     const int depth = x.dimension(3);
     OP_REQUIRES(
         context, depth != 0,
-        errors::Internal("The 4th element in the input shape cannot be 0."));
+        absl::InternalError("The 4th element in the input shape cannot be 0."));
     const int size = x.size();
     const int rest_size = size / depth;
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
@@ -351,7 +352,8 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
       const absl::Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
-        context->SetStatus(errors::InvalidArgument("Transpose failed: ", s));
+        context->SetStatus(
+            absl::InvalidArgumentError(absl::StrCat("Transpose failed: ", s)));
       }
     }
   }
@@ -371,12 +373,13 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     OP_REQUIRES(context,
                 y_input == nullptr &&
                     activation_mode == FusedBatchNormActivationMode::kIdentity,
-                errors::Internal(
+                absl::InternalError(
                     "The CPU implementation of FusedBatchNormGrad does not "
                     "support activations."));
-    OP_REQUIRES(context, side_input_backprop_output == nullptr,
-                errors::Internal("The CPU implementation of FusedBatchNormGrad "
-                                 "does not support side input."));
+    OP_REQUIRES(
+        context, side_input_backprop_output == nullptr,
+        absl::InternalError("The CPU implementation of FusedBatchNormGrad "
+                            "does not support side input."));
 
     Tensor transformed_y_backprop_input;
     Tensor transformed_x_input;
@@ -479,7 +482,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
       OP_REQUIRES(context,
                   scratch_rest_by_depth.CopyFrom(transformed_x_backprop_output,
                                                  {rest_size, depth}),
-                  errors::Internal("Failed to copy a tensor"));
+                  absl::InternalError("Failed to copy a tensor"));
     } else {
       OP_REQUIRES_OK(context,
                      context->allocate_temp(scratch_dtype, {rest_size, depth},
@@ -584,7 +587,7 @@ struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
       OP_REQUIRES(
           context,
           scratch3_tensor.CopyFrom(*x_backprop_output, {rest_size, depth}),
-          errors::Internal("Failed to copy a tensor"));
+          absl::InternalError("Failed to copy a tensor"));
     } else {
       OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<U>::value,
                                                      {rest_size, depth},
@@ -802,7 +805,8 @@ struct FusedBatchNormImplGPU {
                   Tensor* saved_inv_var, TensorFormat tensor_format,
                   bool use_reserved_space) {
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available"));
 
     const int64_t batch_size = GetTensorDim(x, tensor_format, 'N');
     const int64_t channels = GetTensorDim(x, tensor_format, 'C');
@@ -919,9 +923,9 @@ struct FusedBatchNormImplGPU {
                                           y_transformed_shape, &y_transformed));
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(y_transformed);
     } else {
-      context->SetStatus(errors::Internal(
-          "Unsupported tensor format: ", ToString(tensor_format),
-          " and compute format: ", ToString(compute_format)));
+      context->SetStatus(absl::InternalError(
+          absl::StrCat("Unsupported tensor format: ", ToString(tensor_format),
+                       " and compute format: ", ToString(compute_format))));
       return;
     }
 
@@ -999,9 +1003,9 @@ struct FusedBatchNormImplGPU {
         reserve_space_allocator.get(), workspace_allocator.get());
 
     if (!cudnn_launch_status) {
-      context->SetStatus(
-          errors::Internal("cuDNN launch failure : input shape (",
-                           x.shape().DebugString(), ")"));
+      context->SetStatus(absl::InternalError(
+          absl::StrCat("cuDNN launch failure : input shape (",
+                       x.shape().DebugString(), ")")));
       return;
     }
 
@@ -1100,7 +1104,8 @@ struct FusedBatchNormGradImplGPU {
                   Tensor* offset_backprop, Tensor* side_input_backprop,
                   bool use_reserved_space, TensorFormat tensor_format) {
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available"));
 
     const int64_t batch_size = GetTensorDim(x, tensor_format, 'N');
     const int64_t channels = GetTensorDim(x, tensor_format, 'C');
@@ -1191,9 +1196,9 @@ struct FusedBatchNormGradImplGPU {
       x_backprop_ptr =
           StreamExecutorUtil::AsDeviceMemory<T>(x_backprop_transformed);
     } else {
-      context->SetStatus(errors::Internal(
-          "Unsupported tensor format: ", ToString(tensor_format),
-          " and compute format: ", ToString(compute_format)));
+      context->SetStatus(absl::InternalError(
+          absl::StrCat("Unsupported tensor format: ", ToString(tensor_format),
+                       " and compute format: ", ToString(compute_format))));
       return;
     }
 
@@ -1269,9 +1274,9 @@ struct FusedBatchNormGradImplGPU {
         workspace_allocator.get());
 
     if (!cudnn_launch_status) {
-      context->SetStatus(
-          errors::Internal("cuDNN launch failure : input shape (",
-                           x.shape().DebugString(), ")"));
+      context->SetStatus(absl::InternalError(
+          absl::StrCat("cuDNN launch failure : input shape (",
+                       x.shape().DebugString(), ")")));
     }
     if (tensor_format == FORMAT_NHWC && compute_format == FORMAT_NCHW) {
       functor::NCHWToNHWC<GPUDevice, T, 4>()(
@@ -1422,7 +1427,7 @@ class FusedBatchNormOpBase : public OpKernel {
     std::string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
 
     if (!is_batch_norm_ex) {
@@ -1435,14 +1440,14 @@ class FusedBatchNormOpBase : public OpKernel {
       OP_REQUIRES_OK(context,
                      context->GetAttr("num_side_inputs", &num_side_inputs));
       OP_REQUIRES(context, num_side_inputs >= 0 && num_side_inputs <= 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "FusedBatchNorm accepts at most one side input."));
       has_side_input_ = (num_side_inputs == 1);
       if (has_side_input_ && is_training_) {
-        OP_REQUIRES(
-            context, activation_mode_ != FbnActivationMode::kIdentity,
-            errors::InvalidArgument("Identity activation is not supported with "
-                                    "non-empty side input"));
+        OP_REQUIRES(context, activation_mode_ != FbnActivationMode::kIdentity,
+                    absl::InvalidArgumentError(
+                        "Identity activation is not supported with "
+                        "non-empty side input"));
       }
     }
 
@@ -1451,14 +1456,16 @@ class FusedBatchNormOpBase : public OpKernel {
       // details of cudnnBatchNormalizationForwardTrainingEx used in training
       // mode. In inference mode we call custom CUDA kernel that supports all
       // data formats and data types.
-      OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
-                  errors::InvalidArgument("FusedBatchNorm with activation "
-                                          "supports only DT_HALF data type."));
-      OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
-                  errors::InvalidArgument("FusedBatchNorm with activation "
-                                          "supports only NHWC tensor format."));
+      OP_REQUIRES(
+          context, DataTypeToEnum<T>::value == DT_HALF,
+          absl::InvalidArgumentError("FusedBatchNorm with activation "
+                                     "supports only DT_HALF data type."));
+      OP_REQUIRES(
+          context, tensor_format_ == FORMAT_NHWC,
+          absl::InvalidArgumentError("FusedBatchNorm with activation "
+                                     "supports only NHWC tensor format."));
       OP_REQUIRES(context, functor::BatchnormSpatialPersistentEnabled(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "FusedBatchNorm with activation must run with cuDNN "
                       "spatial persistence mode enabled."));
     }
@@ -1476,22 +1483,26 @@ class FusedBatchNormOpBase : public OpKernel {
     const Tensor& estimated_variance = context->input(4);
     const Tensor* side_input = has_side_input_ ? &context->input(5) : nullptr;
 
-    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
-                errors::InvalidArgument("input must be 4 or 5-dimensional",
-                                        x.shape().DebugString()));
-    OP_REQUIRES(context, scale.dims() == 1,
-                errors::InvalidArgument("scale must be 1-dimensional",
-                                        scale.shape().DebugString()));
-    OP_REQUIRES(context, offset.dims() == 1,
-                errors::InvalidArgument("offset must be 1-dimensional",
-                                        offset.shape().DebugString()));
-    OP_REQUIRES(context, estimated_mean.dims() == 1,
-                errors::InvalidArgument("estimated_mean must be 1-dimensional",
-                                        estimated_mean.shape().DebugString()));
     OP_REQUIRES(
-        context, estimated_variance.dims() == 1,
-        errors::InvalidArgument("estimated_variance must be 1-dimensional",
-                                estimated_variance.shape().DebugString()));
+        context, x.dims() == 4 || x.dims() == 5,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input must be 4 or 5-dimensional", x.shape().DebugString())));
+    OP_REQUIRES(
+        context, scale.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat("scale must be 1-dimensional",
+                                                scale.shape().DebugString())));
+    OP_REQUIRES(
+        context, offset.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat("offset must be 1-dimensional",
+                                                offset.shape().DebugString())));
+    OP_REQUIRES(context, estimated_mean.dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("estimated_mean must be 1-dimensional",
+                                 estimated_mean.shape().DebugString())));
+    OP_REQUIRES(context, estimated_variance.dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("estimated_variance must be 1-dimensional",
+                                 estimated_variance.shape().DebugString())));
     bool use_reshape = (x.dims() == 5);
     auto x_shape = x.shape();
     TensorShape dest_shape;
@@ -1506,52 +1517,53 @@ class FusedBatchNormOpBase : public OpKernel {
                                                {{in_planes, in_rows * in_cols}},
                                                in_depth, &dest_shape));
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
-                  errors::InvalidArgument("Error during tensor copy."));
+                  absl::InvalidArgumentError("Error during tensor copy."));
     }
 
     const auto num_channels = GetTensorDim(x, tensor_format_, 'C');
-    OP_REQUIRES(
-        context, scale.NumElements() == num_channels,
-        errors::InvalidArgument("scale must have the same number of elements "
-                                "as the channels of x, got ",
-                                scale.NumElements(), " and ", num_channels));
-    OP_REQUIRES(
-        context, offset.NumElements() == num_channels,
-        errors::InvalidArgument("offset must have the same number of elements "
-                                "as the channels of x, got ",
-                                offset.NumElements(), " and ", num_channels));
+    OP_REQUIRES(context, scale.NumElements() == num_channels,
+                absl::InvalidArgumentError(
+                    absl::StrCat("scale must have the same number of elements "
+                                 "as the channels of x, got ",
+                                 scale.NumElements(), " and ", num_channels)));
+    OP_REQUIRES(context, offset.NumElements() == num_channels,
+                absl::InvalidArgumentError(
+                    absl::StrCat("offset must have the same number of elements "
+                                 "as the channels of x, got ",
+                                 offset.NumElements(), " and ", num_channels)));
     if (!is_training_ || exponential_avg_factor_ != 1.) {
       std::string prefix_msg = is_training_ ? "When exponential_avg_factor != 1"
                                             : "When is_training=false";
       OP_REQUIRES(context, estimated_mean.NumElements() == num_channels,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       prefix_msg,
                       ", mean must have the same number "
                       "of elements as the channels of x, got ",
-                      estimated_mean.NumElements(), " and ", num_channels));
-      OP_REQUIRES(context, estimated_variance.NumElements() == num_channels,
-                  errors::InvalidArgument(
-                      prefix_msg,
-                      ", variance must have the same "
-                      "number of elements as the channels of x, got ",
-                      estimated_variance.NumElements(), " and ", num_channels));
+                      estimated_mean.NumElements(), " and ", num_channels)));
+      OP_REQUIRES(
+          context, estimated_variance.NumElements() == num_channels,
+          absl::InvalidArgumentError(absl::StrCat(
+              prefix_msg,
+              ", variance must have the same "
+              "number of elements as the channels of x, got ",
+              estimated_variance.NumElements(), " and ", num_channels)));
     }
 
     if (has_side_input_) {
       OP_REQUIRES(context, side_input->shape() == x.shape(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "side_input shape must be equal to input shape: ",
                       side_input->shape().DebugString(),
-                      " != ", x.shape().DebugString()));
+                      " != ", x.shape().DebugString())));
     }
 
     if (activation_mode_ != FbnActivationMode::kIdentity) {
       // NOTE(ezhulenev): This requirement is coming from implementation
       // details of cudnnBatchNormalizationForwardTrainingEx.
-      OP_REQUIRES(
-          context, !is_training_ || num_channels % 4 == 0,
-          errors::InvalidArgument("FusedBatchNorm with activation requires "
-                                  "channel dimension to be a multiple of 4."));
+      OP_REQUIRES(context, !is_training_ || num_channels % 4 == 0,
+                  absl::InvalidArgumentError(
+                      "FusedBatchNorm with activation requires "
+                      "channel dimension to be a multiple of 4."));
     }
 
     Tensor* y = nullptr;
@@ -1587,7 +1599,7 @@ class FusedBatchNormOpBase : public OpKernel {
     }
     if (use_reshape) {
       OP_REQUIRES(context, y->CopyFrom(*y, x_shape),
-                  errors::InvalidArgument("Error during tensor copy."));
+                  absl::InvalidArgumentError("Error during tensor copy."));
     }
   }
 
@@ -1651,7 +1663,7 @@ class FusedBatchNormGradOpBase : public OpKernel {
     std::string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
     if (!is_batch_norm_grad_ex) {
       has_side_input_ = false;
@@ -1663,14 +1675,14 @@ class FusedBatchNormGradOpBase : public OpKernel {
       OP_REQUIRES_OK(context,
                      context->GetAttr("num_side_inputs", &num_side_inputs));
       OP_REQUIRES(context, num_side_inputs >= 0 && num_side_inputs <= 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "FusedBatchNormGrad accepts at most one side input."));
       has_side_input_ = (num_side_inputs == 1);
       if (has_side_input_ && is_training_) {
-        OP_REQUIRES(
-            context, activation_mode_ != FbnActivationMode::kIdentity,
-            errors::InvalidArgument("Identity activation is not supported with "
-                                    "non-empty side input"));
+        OP_REQUIRES(context, activation_mode_ != FbnActivationMode::kIdentity,
+                    absl::InvalidArgumentError(
+                        "Identity activation is not supported with "
+                        "non-empty side input"));
       }
     }
 
@@ -1678,14 +1690,16 @@ class FusedBatchNormGradOpBase : public OpKernel {
       // NOTE(kaixih@nvidia): Following requirements are coming from
       // implementation details of cudnnBatchNormalizationBackwardEx used in
       // training mode.
-      OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
-                  errors::InvalidArgument("FusedBatchNormGrad with activation "
-                                          "supports only DT_HALF data type."));
-      OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
-                  errors::InvalidArgument("FusedBatchNormGrad with activation "
-                                          "supports only NHWC tensor format."));
+      OP_REQUIRES(
+          context, DataTypeToEnum<T>::value == DT_HALF,
+          absl::InvalidArgumentError("FusedBatchNormGrad with activation "
+                                     "supports only DT_HALF data type."));
+      OP_REQUIRES(
+          context, tensor_format_ == FORMAT_NHWC,
+          absl::InvalidArgumentError("FusedBatchNormGrad with activation "
+                                     "supports only NHWC tensor format."));
       OP_REQUIRES(context, functor::BatchnormSpatialPersistentEnabled(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "FusedBatchNormGrad with activation must run with cuDNN "
                       "spatial persistence mode enabled."));
     }
@@ -1709,35 +1723,39 @@ class FusedBatchNormGradOpBase : public OpKernel {
     const Tensor* y = use_activation ? &context->input(7) : nullptr;
 
     OP_REQUIRES(context, y_backprop.dims() == 4 || y_backprop.dims() == 5,
-                errors::InvalidArgument("input must be 4 or 5-dimensional",
-                                        y_backprop.shape().DebugString()));
-    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
-                errors::InvalidArgument("input must be 4 or 5-dimensional",
-                                        x.shape().DebugString()));
-    OP_REQUIRES(context, scale.dims() == 1,
-                errors::InvalidArgument("scale must be 1-dimensional",
-                                        scale.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be 4 or 5-dimensional",
+                                 y_backprop.shape().DebugString())));
     OP_REQUIRES(
-        context, saved_mean_or_pop_mean.dims() == 1,
-        errors::InvalidArgument("saved mean must be 1-dimensional",
-                                saved_mean_or_pop_mean.shape().DebugString()));
+        context, x.dims() == 4 || x.dims() == 5,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input must be 4 or 5-dimensional", x.shape().DebugString())));
+    OP_REQUIRES(
+        context, scale.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat("scale must be 1-dimensional",
+                                                scale.shape().DebugString())));
+    OP_REQUIRES(context, saved_mean_or_pop_mean.dims() == 1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "saved mean must be 1-dimensional",
+                    saved_mean_or_pop_mean.shape().DebugString())));
     OP_REQUIRES(context, saved_maybe_inv_var_or_pop_var.dims() == 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "saved variance must be 1-dimensional",
-                    saved_maybe_inv_var_or_pop_var.shape().DebugString()));
+                    saved_maybe_inv_var_or_pop_var.shape().DebugString())));
     OP_REQUIRES(
         context, x.shape() == y_backprop.shape(),
         errors::InvalidArgument(
             "x and y_backprop must have same shape, but x has shape ",
             x.shape(), " and y_backprop has shape ", y_backprop.shape()));
     if (use_activation) {
+      OP_REQUIRES(context, x.dim_size(3) % 4 == 0,
+                  absl::InvalidArgumentError(
+                      "FusedBatchNormGrad with activation requires "
+                      "channel dimension to be a multiple of 4."));
       OP_REQUIRES(
-          context, x.dim_size(3) % 4 == 0,
-          errors::InvalidArgument("FusedBatchNormGrad with activation requires "
-                                  "channel dimension to be a multiple of 4."));
-      OP_REQUIRES(context, offset->dims() == 1,
-                  errors::InvalidArgument("offset must be 1-dimensional",
-                                          offset->shape().DebugString()));
+          context, offset->dims() == 1,
+          absl::InvalidArgumentError(absl::StrCat(
+              "offset must be 1-dimensional", offset->shape().DebugString())));
     }
     bool use_reshape = (x.dims() == 5);
     auto x_shape = x.shape();
@@ -1753,29 +1771,30 @@ class FusedBatchNormGradOpBase : public OpKernel {
                                                {{in_planes, in_rows * in_cols}},
                                                in_depth, &dest_shape));
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
-                  errors::InvalidArgument("Error during tensor copy."));
+                  absl::InvalidArgumentError("Error during tensor copy."));
       OP_REQUIRES(context, y_backprop.CopyFrom(y_backprop, dest_shape),
-                  errors::InvalidArgument("Error during tensor copy."));
+                  absl::InvalidArgumentError("Error during tensor copy."));
     }
 
     const auto num_channels = GetTensorDim(x, tensor_format_, 'C');
-    OP_REQUIRES(
-        context, scale.NumElements() == num_channels,
-        errors::InvalidArgument("scale must have the same number of elements "
-                                "as the channels of x, got ",
-                                scale.NumElements(), " and ", num_channels));
+    OP_REQUIRES(context, scale.NumElements() == num_channels,
+                absl::InvalidArgumentError(
+                    absl::StrCat("scale must have the same number of elements "
+                                 "as the channels of x, got ",
+                                 scale.NumElements(), " and ", num_channels)));
     OP_REQUIRES(
         context, saved_mean_or_pop_mean.NumElements() == num_channels,
-        errors::InvalidArgument("reserve_space_1 must have the same number of "
-                                "elements as the channels of x, got ",
-                                saved_mean_or_pop_mean.NumElements(), " and ",
-                                num_channels));
-    OP_REQUIRES(
-        context, saved_maybe_inv_var_or_pop_var.NumElements() == num_channels,
-        errors::InvalidArgument("reserve_space_2 must have the same number of "
-                                "elements as the channels of x, got ",
-                                saved_maybe_inv_var_or_pop_var.NumElements(),
-                                " and ", num_channels));
+        absl::InvalidArgumentError(absl::StrCat(
+            "reserve_space_1 must have the same number of "
+            "elements as the channels of x, got ",
+            saved_mean_or_pop_mean.NumElements(), " and ", num_channels)));
+    OP_REQUIRES(context,
+                saved_maybe_inv_var_or_pop_var.NumElements() == num_channels,
+                absl::InvalidArgumentError(
+                    absl::StrCat("reserve_space_2 must have the same number of "
+                                 "elements as the channels of x, got ",
+                                 saved_maybe_inv_var_or_pop_var.NumElements(),
+                                 " and ", num_channels)));
 
     Tensor* x_backprop = nullptr;
     auto alloc_shape = use_reshape ? dest_shape : x_shape;
@@ -1823,12 +1842,12 @@ class FusedBatchNormGradOpBase : public OpKernel {
       OP_REQUIRES(
           context,
           activation_mode_ == FbnActivationMode::kIdentity && !has_side_input_,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "FusedBatchNormGrad with activation is only supported "
               "when is_training=True."));
       // Necessary layout conversion is currently done in python.
       OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "The implementation of "
                       "FusedBatchNormGrad with is_training=False only support "
                       "NHWC tensor format for now."));
@@ -1839,7 +1858,7 @@ class FusedBatchNormGradOpBase : public OpKernel {
     }
     if (use_reshape) {
       OP_REQUIRES(context, x_backprop->CopyFrom(*x_backprop, x_shape),
-                  errors::InvalidArgument("Error during tensor copy."));
+                  absl::InvalidArgumentError("Error during tensor copy."));
     }
   }
 

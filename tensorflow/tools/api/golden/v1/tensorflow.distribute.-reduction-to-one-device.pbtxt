@@ -2,7 +2,7 @@ path: "tensorflow.distribute.ReductionToOneDevice"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.ReductionToOneDevice\'>"
   is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.CrossDeviceOps\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'reduce_to_device\', \'accumulation_fn\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "

@@ -90,7 +90,7 @@ absl::Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
   // Iterate through the input dataset.
   while (true) {
     if (ctx->cancellation_manager()->IsCancelled()) {
-      return errors::Cancelled("Operation was cancelled");
+      return absl::CancelledError("Operation was cancelled");
     }
     std::vector<Tensor> next_input_element;
     bool end_of_input;
@@ -111,11 +111,11 @@ absl::Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
     TF_RETURN_IF_ERROR(instantiated_captured_func->Run(
         &iter_ctx, std::move(args), &reduce_func_output, /*node=*/nullptr));
     if (reduce_func_output.size() != state.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "The number of components of the initial state and the "
           "reduce "
           "function output does not match. (initial_state=",
-          state.size(), ", output=", reduce_func_output.size(), ").");
+          state.size(), ", output=", reduce_func_output.size(), ")."));
     }
     std::swap(reduce_func_output, state);
   }

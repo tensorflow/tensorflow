@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/pjrt/extensions/abi_version/abi_version_extension.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
-#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
 #include "xla/stream_executor/abi/runtime_abi_version_manager.h"
 
 namespace pjrt {

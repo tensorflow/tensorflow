@@ -30,6 +30,9 @@ class gebp_traits<QInt8, QInt8, _ConjLhs, _ConjRhs> {
   typedef QInt8 RhsScalar;
   typedef QInt32 ResScalar;
 
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
+
   enum {
     // register block size along the M and N directions
     // One for the current implementation
@@ -104,6 +107,9 @@ class gebp_traits<QInt8, QUInt8, _ConjLhs, _ConjRhs> {
   typedef QUInt8 RhsScalar;
   typedef QInt32 ResScalar;
 
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
+
   enum {
     // register block size along the M and N directions
     nr = 4,
@@ -176,6 +182,9 @@ class gebp_traits<QUInt8, QInt8, _ConjLhs, _ConjRhs> {
   typedef QInt8 RhsScalar;
   typedef QInt32 ResScalar;
 
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
+
   enum {
     // register block size along the M and N directions
     nr = 4,
@@ -246,6 +255,9 @@ class gebp_traits<QInt16, QInt16, _ConjLhs, _ConjRhs> {
   typedef QInt16 LhsScalar;
   typedef QInt16 RhsScalar;
   typedef QInt32 ResScalar;
+
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
 
   enum {
     // register block size along the M and N directions

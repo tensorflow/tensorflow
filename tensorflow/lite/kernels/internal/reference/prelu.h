@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -31,47 +32,30 @@ inline void BroadcastPrelu4DSlow(
     const PreluParams& params, const RuntimeShape& input_shape,
     const T* input_data, const RuntimeShape& alpha_shape, const U* alpha_data,
     const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(alpha_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input_shape, alpha_shape, &desc1, &desc2);
+  const int32_t quantized_min = std::numeric_limits<T>::min();
+  const int32_t quantized_max = std::numeric_limits<T>::max();
 
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          int output_index = Offset(extended_output_shape, b, y, x, c);
-          int input_index = SubscriptToIndex(desc1, b, y, x, c);
-          const int32_t input_value =
-              params.input_offset + input_data[input_index];
-          int32_t output_value;
-          if (input_value >= 0) {
-            output_value = MultiplyByQuantizedMultiplier(
-                input_value, params.output_multiplier_1, params.output_shift_1);
-          } else {
-            auto alpha_index = SubscriptToIndex(desc2, b, y, x, c);
-            const int32_t alpha_value =
-                params.alpha_offset + alpha_data[alpha_index];
-
-            output_value = MultiplyByQuantizedMultiplier(
-                input_value * alpha_value, params.output_multiplier_2,
-                params.output_shift_2);
-          }
-          output_value += params.output_offset;
-
-          const int32_t quantized_min = std::numeric_limits<T>::min();
-          const int32_t quantized_max = std::numeric_limits<T>::max();
-          const int32_t clamped_output =
-              std::min(quantized_max, std::max(quantized_min, output_value));
-          output_data[output_index] = static_cast<T>(clamped_output);
-        }
-      }
+  auto op = [&params, quantized_min, quantized_max](T input_val, U alpha_val) {
+    const int32_t input_value = params.input_offset + input_val;
+    int32_t output_value;
+    if (input_value >= 0) {
+      output_value = MultiplyByQuantizedMultiplier(
+          input_value, params.output_multiplier_1, params.output_shift_1);
+    } else {
+      const int32_t alpha_value = params.alpha_offset + alpha_val;
+      output_value = MultiplyByQuantizedMultiplier(input_value * alpha_value,
+                                                   params.output_multiplier_2,
+                                                   params.output_shift_2);
     }
-  }
+    output_value += params.output_offset;
+
+    const int32_t clamped_output =
+        std::min(quantized_max, std::max(quantized_min, output_value));
+    return static_cast<T>(clamped_output);
+  };
+
+  BroadcastBinaryOpSimple(input_shape, input_data, alpha_shape, alpha_data,
+                          output_shape, output_data, op);
 }
 
 template <typename T, typename U>

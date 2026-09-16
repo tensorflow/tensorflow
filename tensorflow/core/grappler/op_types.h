@@ -74,6 +74,7 @@ bool IsDequeueOp(const NodeDef& node);
 bool IsDiv(const NodeDef& node);
 bool IsDivNoNan(const NodeDef& node);
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing);
+bool IsElementWiseStrictlyInjective(const NodeDef& node);
 bool IsElu(const NodeDef& node);
 bool IsEluGrad(const NodeDef& node);
 bool IsQuantizationEmulation(const NodeDef& node);

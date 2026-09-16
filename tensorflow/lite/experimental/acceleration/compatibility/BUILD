@@ -18,7 +18,6 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "gpu_compatibility_without_gl_deps_internal_visibility_allowlist", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
@@ -226,7 +225,7 @@ cc_library(
         ":gpu_compatibility_binary_embed",
         "//tensorflow/lite/delegates/gpu:delegate_options",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
@@ -235,8 +234,11 @@ cc_library(
 cc_test(
     name = "gpu_compatibility_test",
     srcs = ["gpu_compatibility_test.cc"],
-    tags = tf_gpu_tests_tags() + [
+    tags = [
+        "gpu",
         "no_cuda_asan",  # TODO(b/181032551).
+        "notsan",
+        "requires-gpu-sm70",
     ],
     deps = [
         ":devicedb_sample",

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -40,6 +55,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf_lite",
@@ -50,11 +66,11 @@ cc_library(
 xla_cc_test(
     name = "library_rewriter_test",
     srcs = ["library_rewriter_test.cc"],
-    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
         ":library_rewriter",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:custom_fusion_configs",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen:target_machine_test_base",
         "//xla/hlo/ir:hlo",
@@ -65,6 +81,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -74,6 +91,7 @@ cc_library(
     hdrs = ["library_matcher.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:custom_fusion_configs",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -90,9 +108,11 @@ onednn_graph_cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":library_matcher",
+        "//xla/backends/cpu:custom_fusion_configs",
         "//xla/backends/cpu:onednn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -105,6 +125,8 @@ cc_library(
     hdrs = ["ynn_matcher.h"],
     deps = [
         ":library_matcher",
+        "//xla:shape_util",
+        "//xla/backends/cpu:custom_fusion_configs",
         "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
@@ -123,6 +145,7 @@ xla_test(
     deps = [
         "//xla:xla_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

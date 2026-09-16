@@ -55,7 +55,7 @@ XlaDeviceCompilerClient::BuildExecutable(
 absl::StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
     const xla::LocalExecutable& executable) {
   if (executable.executable() == nullptr) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Executable not found for serialization.");
   }
 

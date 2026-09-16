@@ -73,6 +73,7 @@ def Ifrt_CopyArraysOp
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$donated,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$reuse,
     Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
@@ -291,7 +292,7 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
 }
 
 def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
-    [DeclareOpInterfaceMethods<Symbol>]> {
+    [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declare a loaded executable";
   let description = [{
     The inputs/outputs of `function_type` should be IFRT arrays. They should be
@@ -299,13 +300,14 @@ def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
   }];
 
   let arguments = (ins
-    SymbolNameAttr: $sym_name,
-    TypeAttrOf<FunctionType>: $function_type,
+    SymbolNameAttr:$sym_name,
+    OptionalAttr<StrAttr>:$sym_visibility,
+    TypeAttrOf<FunctionType>:$function_type,
     Ifrt_DevicesAttr:$devices
   );
 
   let assemblyFormat = [{
-    $sym_name `on` `devices` $devices attr-dict `:` $function_type
+    ($sym_visibility^)? $sym_name `on` `devices` $devices attr-dict `:` $function_type
   }];
   let hasVerifier = 1;
 }

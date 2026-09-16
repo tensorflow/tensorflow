@@ -18,8 +18,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 struct SP_Stream_st {
-  explicit SP_Stream_st(int id) : stream_id(id) {}
+  explicit SP_Stream_st(int stream_id, int priority = 0)
+      : stream_id(stream_id), priority(priority) {}
   int stream_id;
+  int priority;
 };
 
 struct SP_Event_st {

@@ -17,10 +17,10 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_ASM_COMPILER_H_
 
 #include <cstdint>
-#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
@@ -33,7 +33,7 @@ namespace stream_executor {
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    const CudaComputeCapability& cc, const std::string& ptx_contents,
+    const CudaComputeCapability& cc, absl::string_view ptx_contents,
     GpuAsmOpts options);
 
 // Bundles the GPU machine code (cubins) and PTX if requested and returns the

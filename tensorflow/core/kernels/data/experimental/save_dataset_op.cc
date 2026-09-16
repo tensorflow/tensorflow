@@ -126,7 +126,7 @@ absl::Status SaveDatasetOp::WriteData(
       writers;
   while (true) {
     if (ctx->cancellation_manager()->IsCancelled()) {
-      return errors::Cancelled("Operation was cancelled");
+      return absl::CancelledError("Operation was cancelled");
     }
     std::vector<Tensor> element;
     bool end_of_input;
@@ -180,7 +180,8 @@ absl::Status SaveDatasetOp::GetShardIndex(
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {
-    return errors::InvalidArgument("`shard_func` must return a scalar int64.");
+    return absl::InvalidArgumentError(
+        "`shard_func` must return a scalar int64.");
   }
   *shard_index = output_tensors[0].flat<int64_t>()(0);
   return absl::OkStatus();
@@ -456,7 +457,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
 
       if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
           output_tensors[0].NumElements() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "`shard_func` must return a scalar int64.");
       }
       *shard_index = output_tensors[0].flat<int64_t>()(0);

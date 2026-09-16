@@ -211,8 +211,10 @@ SymbolicExpr SymbolicExprSimplifier::RewriteMod(SymbolicExpr mod) {
     return expr;
   });
 
-  if (extracted_constant % m != 0) {
-    new_lhs = new_lhs + (extracted_constant % m);
+  int64_t count = llvm::divideFloorSigned(extracted_constant, m);
+  int64_t rem = extracted_constant - count * m;
+  if (rem != 0) {
+    new_lhs = new_lhs + rem;
   }
 
   // Split the sum into `multiplied * multiplier_gcd + not_multiplied`.
@@ -276,6 +278,18 @@ SymbolicExpr SymbolicExprSimplifier::SimplifySumDiv(SymbolicExpr dividend,
         extracted = extracted + GetLhs(expr) * factor;
         // Remove from dividend.
         return zero_;
+      }
+    }
+    // Extract constant multiples of divisor from plain constant summands.
+    if (expr.GetType() == SymbolicExprType::kConstant) {
+      int64_t val = expr.GetValue();
+      int64_t count = llvm::divideFloorSigned(val, divisor);
+      if (count != 0) {
+        int64_t remainder = val - count * divisor;
+        extracted = extracted + CreateSymbolicConstant(
+                                    count, range_evaluator_->GetMLIRContext());
+        return CreateSymbolicConstant(remainder,
+                                      range_evaluator_->GetMLIRContext());
       }
     }
     // Not a constant multiplier, keep in dividend.
@@ -526,6 +540,34 @@ SymbolicExpr SymbolicExprSimplifier::SimplifyOnce(SymbolicExpr expr) {
   }
 
   switch (expr.GetType()) {
+    case SymbolicExprType::kMin: {
+      auto lhs_range = range_evaluator_->ComputeExpressionRange(expr.GetLHS());
+      auto rhs_range = range_evaluator_->ComputeExpressionRange(expr.GetRHS());
+      if (expr.GetLHS() == expr.GetRHS()) {
+        return expr.GetLHS();
+      }
+      if (lhs_range.upper <= rhs_range.lower) {
+        return expr.GetLHS();
+      }
+      if (rhs_range.upper <= lhs_range.lower) {
+        return expr.GetRHS();
+      }
+      return expr;
+    }
+    case SymbolicExprType::kMax: {
+      auto lhs_range = range_evaluator_->ComputeExpressionRange(expr.GetLHS());
+      auto rhs_range = range_evaluator_->ComputeExpressionRange(expr.GetRHS());
+      if (lhs_range.lower >= rhs_range.upper) {
+        return expr.GetLHS();
+      }
+      if (rhs_range.lower >= lhs_range.upper) {
+        return expr.GetRHS();
+      }
+      if (expr.GetLHS() == expr.GetRHS()) {
+        return expr.GetLHS();
+      }
+      return expr;
+    }
     case SymbolicExprType::kMul:
       return RewriteMul(expr);
     case SymbolicExprType::kAdd:
@@ -1085,6 +1127,12 @@ Interval RangeEvaluator::ComputeExpressionRange(SymbolicExpr expr) {
       result = {std::min(a, b), std::max(a, b)};
       break;
     }
+    case SymbolicExprType::kMin:
+      result = lhs.min(rhs);
+      break;
+    case SymbolicExprType::kMax:
+      result = lhs.max(rhs);
+      break;
     default:
       // We don't use ceildiv, so we don't support it.
       LOG(FATAL) << "Unsupported expression type: "
@@ -1382,7 +1430,6 @@ SmallBitVector ConcatenateBitVectors(const SmallBitVector& lhs,
 }
 
 void GetUsedParametersImpl(const SymbolicExpr& expr,
-
                            SmallVector<int64_t>& dimension_ids,
                            SmallVector<int64_t>& symbol_ids, int64_t num_dims) {
   if (IsDimension(expr, num_dims)) {
@@ -1401,7 +1448,6 @@ void GetUsedParametersImpl(const SymbolicExpr& expr,
 
 }  // namespace
 
-// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
 UsedParameters GetUsedParameters(absl::Span<const SymbolicExpr> exprs,
                                  int64_t num_dims) {
   SmallVector<int64_t> dimension_ids, symbol_ids;

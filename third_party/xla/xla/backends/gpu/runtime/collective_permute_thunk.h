@@ -30,42 +30,29 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/core/collectives/rank_id.h"
-#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 // Thunk that performs a collective permute.
 class CollectivePermuteThunk : public CollectiveThunk {
  public:
-  // LocalPermuteState keeps a state of collective permute operation which
-  // is executed on a local GPU clique using p2p memory access.
-  //
-  // When collective permute is done with a local GPU clique, we can perform
-  // it as a sequence of simple D2D copies between ranks. To be able to do that,
-  // first we need to exchange source and target buffers from all participating
-  // ranks. We do it in thunk initialization time, when buffers allocations are
-  // already available.
-  struct LocalPermuteState {
-    absl::flat_hash_map<RankId, std::vector<DeviceBufferPair>> buffer_pairs;
-  };
-
   CollectivePermuteThunk(ThunkInfo thunk_info,
                          const HloCollectivePermuteInstruction* instr,
                          int64_t replica_count, int64_t partition_count,
                          const std::vector<Buffer>& buffers,
-                         bool p2p_memcpy_enabled,
+                         CollectivesMode collectives_mode,
                          bool connected_components_enabled);
   CollectivePermuteThunk(ThunkInfo thunk_info, const P2PConfig& config,
                          const std::vector<Buffer>& buffers,
-                         bool p2p_memcpy_enabled,
+                         CollectivesMode collectives_mode,
                          bool connected_components_enabled);
 
   static P2PConfig GetP2PConfig(const HloCollectivePermuteInstruction* instr,
@@ -89,19 +76,20 @@ class CollectivePermuteThunk : public CollectiveThunk {
   }
 
   static absl::StatusOr<std::unique_ptr<CollectivePermuteThunk>> FromProto(
-      ThunkInfo thunk_info, const CollectivePermuteStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const CollectivePermuteThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
-  // No rendezvous needed when using P2P memcpy in local mode instead of NCCL.
-  bool RequiresRendezvous() const override { return !p2p_memcpy_enabled_; }
+  // No rendezvous needed for peer-memory mode (uses its own event-based sync).
+  // Symmetric and private memory modes still require rendezvous.
+  bool RequiresRendezvous() const override { return !use_peer_memory(); }
 
   bool CanUseSymmetricBuffer() const override { return buffers().size() == 1; }
 
-  absl::Status InitializeCollective(const InitializeParams& params,
-                                    const GpuCliqueKey& clique_key) override;
+  absl::Status PrepareCollective(const PrepareParams& params,
+                                 const GpuCliqueKey& clique_key) override;
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
@@ -109,7 +97,6 @@ class CollectivePermuteThunk : public CollectiveThunk {
 
  private:
   const P2PConfig config_;
-  bool p2p_memcpy_enabled_ = false;
   bool connected_components_enabled_ = false;
 };
 

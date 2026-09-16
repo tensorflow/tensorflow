@@ -59,7 +59,9 @@ class InterpreterWrapper {
       std::string* error_msg, bool preserve_all_tensors,
       bool disable_delegate_clustering, int num_threads,
       bool default_delegate_latest_features,
-      bool compress_quantization_zero_points);
+      bool compress_quantization_zero_points,
+      bool disable_delegate_node_fusion = false,
+      bool force_delegate_node_profiling = false);
 
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
@@ -73,7 +75,9 @@ class InterpreterWrapper {
       std::string* error_msg, bool preserve_all_tensors,
       bool disable_delegate_clustering, int num_threads,
       bool default_delegate_latest_features,
-      bool compress_quantization_zero_points);
+      bool compress_quantization_zero_points,
+      bool disable_delegate_node_fusion = false,
+      bool force_delegate_node_profiling = false);
 
   ~InterpreterWrapper();
   PyObject* AllocateTensors(int subgraph_index);
@@ -133,7 +137,9 @@ class InterpreterWrapper {
       std::string* error_msg, bool preserve_all_tensors,
       bool disable_delegate_clustering, int num_threads,
       bool default_delegate_latest_features,
-      bool compress_quantization_zero_points);
+      bool compress_quantization_zero_points,
+      bool disable_delegate_node_fusion = false,
+      bool force_delegate_node_profiling = false);
 
   InterpreterWrapper(std::unique_ptr<Model> model,
                      std::unique_ptr<PythonErrorReporter> error_reporter,

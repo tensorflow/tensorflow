@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -23,9 +25,8 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -68,14 +69,13 @@ ENTRY %main (param: s32[2,8], param.1: s32[8,8]) -> s32[2,8] {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* entry_computation = module->entry_computation();
   HloInstruction* root = entry_computation->root_instruction();
   HloInstruction* new_root = entry_computation->AddInstruction(root->Clone());
   new_root->set_original_value(nullptr);
 
-  TF_ASSERT_OK(root->ReplaceAllUsesWith(new_root));
+  ASSERT_OK(root->ReplaceAllUsesWith(new_root));
   EXPECT_NE(new_root->original_value(), nullptr);
 }
 
@@ -98,8 +98,8 @@ TEST_F(PropagateOriginalValueTest, CallInlinerMultipleCallSites) {
 
   ENTRY main () -> f32[] {
     lhs = f32[] constant(42)
-    call.1 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.1"}}
-    call.2 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.2"}}
+    call.1 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.1"},["call.1"]}
+    call.2 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.2"},["call.2"]}
     ROOT add = f32[] add(f32[] call.1, f32[] call.2)
   })";
 
@@ -217,5 +217,28 @@ ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
   RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
+TEST_F(OriginalValueRecoveryTableTest,
+       ReplicatedShardingPropagatesOriginalValue) {
+  constexpr absl::string_view hlo_string = R"hlo(
+// CHECK-NOT: origin_recovery_table
+// CHECK:       ENTRY %[[COMPUTATION:.*]] (param: f32[4]) -> f32[4]
+// CHECK:       parameter(0), sharding={replicated}, origin={{[{]}}{"param_origin"}
+// CHECK:       negate(%param), origin={{[{]}}{"negate_origin"}
+
+HloModule test, entry_computation_layout={(f32[4]{0})->f32[4]{0}}, num_partitions=2
+
+ENTRY %main (a: f32[4]) -> f32[4] {
+  %a = f32[4]{0} parameter(0), sharding={replicated}, origin={{"param_origin"}}
+  ROOT %negate = f32[4]{0} negate(%a), sharding={replicated}, origin={{"negate_origin"}}
+}
+  )hlo";
+
+  spmd::SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
+  options.bidirectional_windowed_einsum = true;
+  options.allow_module_signature_change = true;
+
+  RunAndFilecheckHloRewrite(hlo_string, spmd::SpmdPartitioner(2, 1, options));
+}
 }  // namespace
 }  // namespace xla

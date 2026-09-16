@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/propagate_call_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
@@ -46,8 +47,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -67,7 +66,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(24.0f)));
   HloInstruction* one = inner.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  TF_ASSERT_OK(zero->AddControlDependencyTo(one));
+  ASSERT_OK(zero->AddControlDependencyTo(one));
   auto module = CreateNewVerifiedModule();
   HloComputation* inner_computation =
       module->AddEmbeddedComputation(inner.Build());
@@ -81,7 +80,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   auto computation = module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
   EXPECT_THAT(computation->root_instruction(), op::Constant());
   EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<float>(),
@@ -124,7 +123,7 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
   auto computation = module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
   EXPECT_THAT(
       computation->root_instruction()->while_condition()->root_instruction(),
@@ -144,7 +143,7 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<bool>({true})));
   auto* false_constant = just_false.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  TF_ASSERT_OK(false_constant->AddControlDependencyTo(true_constant));
+  ASSERT_OK(false_constant->AddControlDependencyTo(true_constant));
   HloComputation* false_computation =
       module->AddEmbeddedComputation(just_false.Build());
 
@@ -153,7 +152,7 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
       HloInstruction::CreateCall(pred, {}, false_computation));
   auto computation = module->AddEntryComputation(call_false_builder.Build());
 
-  TF_ASSERT_OK(CallInliner::Inline(call).status());
+  ASSERT_OK(CallInliner::Inline(call).status());
   EXPECT_THAT(computation->root_instruction(), op::Constant());
   EXPECT_THAT(computation->root_instruction()->control_successors(),
               ElementsAre(op::Constant()));
@@ -193,7 +192,7 @@ TEST_F(CallInlinerTest, InlineWithEmptyComputation) {
   auto computation = module->AddEntryComputation(entry.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 
   EXPECT_THAT(computation->root_instruction(), op::Constant());
@@ -220,7 +219,7 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 }
 
@@ -245,7 +244,7 @@ TEST_F(CallInlinerTest, InlineSingleUseCalleesOnly) {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   CallInliner call_inliner(/*single_call_site=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 
   ASSERT_EQ(module->entry_computation()->instruction_count(), 4);
@@ -294,8 +293,7 @@ ENTRY %main_outer (p0: u32[]) -> u32[] {
   ROOT %add.3 = add(%p.0, %call.0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   auto module_clone = module->Clone(/*suffix=*/"");
 
   // When we don't restrict the CallInliner to any one thread, we expect that
@@ -304,7 +302,7 @@ ENTRY %main_outer (p0: u32[]) -> u32[] {
     VLOG(1) << "Module BEFORE CallInliner\n" << module->ToString();
 
     CallInliner call_inliner;
-    TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
     VLOG(1) << "Module AFTER CallInliner\n" << module->ToString();
     EXPECT_TRUE(mutated);
 
@@ -330,9 +328,8 @@ ENTRY %main_outer (p0: u32[]) -> u32[] {
   VLOG(1) << "Restricting CallInliner to the secondary thread.";
   {
     CallInliner call_inliner;
-    TF_ASSERT_OK_AND_ASSIGN(
-        bool mutated,
-        call_inliner.Run(module_clone.get(), {"secondary_thread"}));
+    ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module_clone.get(),
+                                                        {"secondary_thread"}));
     VLOG(1) << "Module AFTER CallInliner\n" << module_clone->ToString();
     EXPECT_TRUE(mutated);
 
@@ -379,7 +376,7 @@ TEST_F(CallInlinerTest, PropagateFrontendAttributes) {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
@@ -414,7 +411,7 @@ TEST_F(CallInlinerTest, InlineCompositeCall) {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   CallInliner call_inliner(/*single_call_site=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 
   ASSERT_EQ(module->entry_computation()->instruction_count(), 3);
@@ -446,7 +443,7 @@ TEST_F(CallInlinerTest, PreserveCompositeCall) {
   CallInliner call_inliner(
       /*single_call_site=*/true, /*update_domain=*/false,
       /*composites_to_preserve=*/{"foo.bar"});
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_FALSE(mutated);
 
   auto inst = module->entry_computation()->instructions().begin();
@@ -469,9 +466,33 @@ TEST_F(CallInlinerTest, DontInlineCallWithAttributeInlineableFalse) {
       %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%test, frontend_attributes={inlineable="false"}
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
+  // The single call in the module is not inlined.
+  EXPECT_FALSE(changed);
+
+  HloInstruction* call = FindInstruction(module.get(), xla::HloOpcode::kCall);
+  EXPECT_NE(call, nullptr);
+  EXPECT_TRUE(call->has_to_apply());
+}
+
+TEST_F(CallInlinerTest, DontInlineCallWithAttributeInlineableXlaLate) {
+  const char* const hloString = R"(
+    HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
+    %test (Arg_0.5: f32[1,8]) -> f32[1,8] {
+      %Arg_0.5 = f32[1,8]{1,0} parameter(0)
+      ROOT %add.6 = f32[1,8]{1,0} add(f32[1,8]{1,0} %Arg_0.5, f32[1,8]{1,0} %Arg_0.5), metadata={source_file="-" source_line=11}
+    }
+    ENTRY %main.10 (Arg_0.1: f32[8,8]) -> f32[8,8] {
+      %Arg_0.1 = f32[8,8]{1,0} parameter(0)
+      %custom-call.3 = f32[1,8]{1,0} custom-call(f32[8,8]{1,0} %Arg_0.1), custom_call_target="SPMDFullToShardShape", sharding={manual}, metadata={source_file="-" source_line=4}
+      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%test, frontend_attributes={inlineable="xla_late"}
+      ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  module->mutable_config().set_use_shardy_partitioner(true);
+  ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);
 
@@ -479,6 +500,53 @@ TEST_F(CallInlinerTest, DontInlineCallWithAttributeInlineableFalse) {
   EXPECT_NE(call, nullptr);
   EXPECT_TRUE(call->has_to_apply());
   EXPECT_EQ(call->to_apply()->name(), "test");
+}
+
+TEST_F(CallInlinerTest, InlineCallWithAttributeInlineableXlaEarly) {
+  const char* const hloString = R"(
+    HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
+    %test (Arg_0.5: f32[1,8]) -> f32[1,8] {
+      %Arg_0.5 = f32[1,8]{1,0} parameter(0)
+      ROOT %add.6 = f32[1,8]{1,0} add(f32[1,8]{1,0} %Arg_0.5, f32[1,8]{1,0} %Arg_0.5), metadata={source_file="-" source_line=11}
+    }
+    ENTRY %main.10 (Arg_0.1: f32[8,8]) -> f32[8,8] {
+      %Arg_0.1 = f32[8,8]{1,0} parameter(0)
+      %custom-call.3 = f32[1,8]{1,0} custom-call(f32[8,8]{1,0} %Arg_0.1), custom_call_target="SPMDFullToShardShape", sharding={manual}, metadata={source_file="-" source_line=4}
+      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%test, frontend_attributes={inlineable="xla_early"}
+      ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  module->mutable_config().set_use_shardy_partitioner(true);
+  ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
+  // The single call in the module is inlined.
+  EXPECT_TRUE(changed);
+
+  HloInstruction* call = FindInstruction(module.get(), xla::HloOpcode::kCall);
+  EXPECT_EQ(call, nullptr);
+}
+
+TEST_F(CallInlinerTest, InlineCallWithAttributeInlineableAuto) {
+  const char* const hloString = R"(
+    HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
+    %test (Arg_0.5: f32[1,8]) -> f32[1,8] {
+      %Arg_0.5 = f32[1,8]{1,0} parameter(0)
+      ROOT %add.6 = f32[1,8]{1,0} add(f32[1,8]{1,0} %Arg_0.5, f32[1,8]{1,0} %Arg_0.5), metadata={source_file="-" source_line=11}
+    }
+    ENTRY %main.10 (Arg_0.1: f32[8,8]) -> f32[8,8] {
+      %Arg_0.1 = f32[8,8]{1,0} parameter(0)
+      %custom-call.3 = f32[1,8]{1,0} custom-call(f32[8,8]{1,0} %Arg_0.1), custom_call_target="SPMDFullToShardShape", sharding={manual}, metadata={source_file="-" source_line=4}
+      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%test, frontend_attributes={inlineable="auto"}
+      ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  module->mutable_config().set_use_shardy_partitioner(true);
+  ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
+  // "auto" allows inlining and since it's a single call site it will be
+  // inlined.
+  EXPECT_TRUE(changed);
+
+  HloInstruction* call = FindInstruction(module.get(), xla::HloOpcode::kCall);
+  EXPECT_EQ(call, nullptr);
 }
 
 TEST_F(CallInlinerTest, InlineCallWithOverriddenAttributeInlineableFalse) {
@@ -494,9 +562,9 @@ TEST_F(CallInlinerTest, InlineCallWithOverriddenAttributeInlineableFalse) {
       %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%test, frontend_attributes={inlineable="false"}
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       CallInliner(
           /*single_call_site=*/false, /*update_domain=*/false,
@@ -531,9 +599,9 @@ TEST_F(CallInlinerTest, UseShardyMhloToHloShmapBodyNotInlined) {
       %custom-call.8 = f32[1,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="Sharding", sharding={manual}, metadata={source_file="-" source_line=6}
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %custom-call.8), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
   VLOG(1) << module->ToString();
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);
@@ -560,9 +628,9 @@ TEST_F(CallInlinerTest, UseShardManualComputationBodyNotInlined) {
       %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%xla.sdy.manual_computation_body.4
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);
 
@@ -589,9 +657,9 @@ TEST_F(CallInlinerTest, UseShardManualComputationBodySurroundedNotInlined) {
       %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%my_model.___call__.fwd.xla.sdy.manual_computation_body_14.1234
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);
 
@@ -622,12 +690,12 @@ TEST_F(CallInlinerTest, ControlDepsPropagateToRootOfInlinedInstructions) {
     ROOT res = (s32[], s32[], s32[]) tuple(call1, call2, call3)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(m.get()));
   EXPECT_TRUE(mutated);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool filecheck_result,
       RunFileCheck(m->ToString(HloPrintOptions{}
                                    .set_print_result_shape(false)
@@ -680,13 +748,13 @@ ENTRY main {
     ROOT tuple.0 = tuple(call-done.0, add.0)
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
   // Inline the main thread.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool modified,
       CallInliner().Run(module.get(), {HloInstruction::kMainExecutionThread}));
   EXPECT_TRUE(modified);
@@ -694,13 +762,13 @@ ENTRY main {
   // Module should still be sequenced and valid on all threads after inlining.
   ASSERT_TRUE(module->has_schedule());
   const HloSchedule& schedule = module->schedule();
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   // A side effect of copying async ops is that the trampoline computation will
   // be cloned, but the original will not be removed, since it resides on a
   // thread that the pass did not run on. We need to run an extra pass of DCE to
   // clean up the async thread.
-  TF_ASSERT_OK(HloDCE().Run(module.get(), {"thread"}));
+  ASSERT_OK(HloDCE().Run(module.get(), {"thread"}));
 
   // The post-inline instruction sequence should mimic that of the pre-inline
   // computations - we expect to see the same scheduling overlap with respect to
@@ -733,8 +801,8 @@ ENTRY main {
   call-done.1.0 = s32[] call-done(call-start.1.0)
   ROOT tuple.1.0 = tuple(call-done.1.0, add.1.0)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
-                          ParseAndReturnVerifiedModule(kExpectedHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
+                       ParseAndReturnVerifiedModule(kExpectedHlo));
   const HloPrintOptions options =
       HloPrintOptions().set_syntax_sugar_async_ops(false).set_print_ids(false);
   EXPECT_EQ(module->ToFingerprint(options),
@@ -757,18 +825,18 @@ ENTRY main {
     }
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
   EXPECT_TRUE(modified);
 
   // Module should still be sequenced and valid after inlining.
   ASSERT_TRUE(module->has_schedule());
   const HloSchedule& schedule = module->schedule();
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   // The post-inline instruction sequence should mimic that of the pre-inline
   // computations.
@@ -781,8 +849,8 @@ ENTRY main {
   gte.1 = get-tuple-element(arg.0), index=1
   ROOT add.0 = add(gte.0, gte.1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
-                          ParseAndReturnVerifiedModule(kExpectedHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
+                       ParseAndReturnVerifiedModule(kExpectedHlo));
   const HloPrintOptions options = HloPrintOptions().set_print_ids(false);
   EXPECT_EQ(module->ToFingerprint(options),
             expected_module->ToFingerprint(options));
@@ -802,18 +870,18 @@ ENTRY main {
   call.0 = call(arg.0), to_apply=comp
   ROOT call.1 = call(call.0), to_apply=comp
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
   EXPECT_TRUE(modified);
 
   // Module should still be sequenced and valid after inlining.
   ASSERT_TRUE(module->has_schedule());
   const HloSchedule& schedule = module->schedule();
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   // The post-inline instruction sequence should mimic that of the pre-inline
   // computations.
@@ -825,8 +893,8 @@ ENTRY main {
   abs.0 = abs(arg.0)
   ROOT abs.1 = abs(abs.0)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
-                          ParseAndReturnVerifiedModule(kExpectedHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
+                       ParseAndReturnVerifiedModule(kExpectedHlo));
   const HloPrintOptions options = HloPrintOptions().set_print_ids(false);
   EXPECT_EQ(module->ToFingerprint(options),
             expected_module->ToFingerprint(options));
@@ -856,8 +924,8 @@ ENTRY main {
   ROOT result = f32[128,32] call(input), to_apply=callee, metadata={op_name="x"}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   ASSERT_THAT(CallInliner().Run(m.get()), absl_testing::IsOkAndHolds(true));
 
   auto root = m->entry_computation()->root_instruction();
@@ -889,8 +957,8 @@ ENTRY main {
   ROOT result = f32[128] call(input), to_apply=callee, metadata={op_name="x"}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   CallInliner call_inliner;
   EXPECT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
 
@@ -898,6 +966,38 @@ ENTRY main {
   EXPECT_THAT(root, op::Reduce());
   EXPECT_EQ(root->metadata().op_name(), "x/reduce");
   EXPECT_EQ(root->to_apply()->root_instruction()->metadata().op_name(), "");
+}
+
+TEST_F(CallInlinerTest, PropagateCallMetadataThenInlineDoesNotDuplicate) {
+  const char* hlo = R"(
+callee {
+  input = f32[128,32] parameter(0)
+  ROOT neg = f32[128,32] negate(input), metadata={op_name="neg"}
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  ROOT result = f32[128,32] call(input), to_apply=callee, metadata={op_name="x"}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  // First run the standalone pass — this propagates "x" into callee.
+  ASSERT_OK_AND_ASSIGN(bool propagated, PropagateCallMetadata().Run(m.get()));
+  EXPECT_TRUE(propagated);
+
+  // Callee instruction should already have "x/neg".
+  HloComputation* callee = m->GetComputationWithName("callee");
+  EXPECT_EQ(callee->root_instruction()->metadata().op_name(), "x/neg");
+
+  // Now inline — the inliner also propagates metadata by default.
+  // Because "x/neg" already starts with "x", UpdateOpName should be a no-op.
+  ASSERT_THAT(CallInliner().Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  auto root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Negate());
+  EXPECT_EQ(root->metadata().op_name(), "x/neg");
 }
 
 TEST_F(CallInlinerTest, GetInlinedModule) {
@@ -920,10 +1020,10 @@ ENTRY main {
   ROOT result = f32[128] call(input), to_apply=callee, metadata={op_name="x"}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto inlined_module, GetInlinedModule(m.get()));
+  ASSERT_OK_AND_ASSIGN(auto inlined_module, GetInlinedModule(m.get()));
   auto root = inlined_module.module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reduce());
   EXPECT_EQ(root->metadata().op_name(), "x/reduce");
@@ -942,8 +1042,8 @@ ENTRY main {
   ROOT result = f32[128,32] call(input), to_apply=callee
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   auto root = m->entry_computation()->root_instruction();
   ASSERT_THAT(root, op::Call());
   OpMetadata metadata = root->metadata();
@@ -974,8 +1074,8 @@ ENTRY main {
   ROOT result = subtract(call.negate, call.trivial)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
 
   using InlineOverridePolicy = CallInliner::InlineOverridePolicy;
   auto inline_trivial_only = [](const CallGraph& call_graph,
@@ -1046,7 +1146,7 @@ TEST_F(CallInlinerTest, InlinedStackFrameConcatenation) {
   call_metadata.set_stack_frame_id(id1.value);
   m.call->set_metadata(call_metadata);
 
-  TF_ASSERT_OK(CallInliner::Inline(m.call).status());
+  ASSERT_OK(CallInliner::Inline(m.call).status());
 
   HloInstruction* inlined_neg = nullptr;
   for (auto* inst : m.module->entry_computation()->instructions()) {
@@ -1094,7 +1194,7 @@ TEST_F(CallInlinerTest, InlinedStackFrameRedundantPrefixSkipsConcatenation) {
   neg_metadata.set_stack_frame_id(id2.value);
   m.neg->set_metadata(neg_metadata);
 
-  TF_ASSERT_OK(CallInliner::Inline(m.call).status());
+  ASSERT_OK(CallInliner::Inline(m.call).status());
 
   HloInstruction* inlined_neg = nullptr;
   for (auto* inst : m.module->entry_computation()->instructions()) {
@@ -1146,7 +1246,7 @@ TEST_F(CallInlinerTest, ReproduceDanglingPointerWithSchedule) {
   callee_seq.push_back(const_val);
   schedule.set_sequence(callee, HloInstructionSequence(callee_seq));
 
-  TF_ASSERT_OK(module->set_schedule(std::move(schedule)));
+  ASSERT_OK(module->set_schedule(std::move(schedule)));
 
   // Now modify the schedule to be INVALID (call before op).
   std::vector<HloInstruction*> caller_seq_invalid;
@@ -1158,7 +1258,7 @@ TEST_F(CallInlinerTest, ReproduceDanglingPointerWithSchedule) {
                                   HloInstructionSequence(caller_seq_invalid));
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   EXPECT_TRUE(mutated);
 }
 TEST_F(CallInlinerTest, InlinedOperandsAreCleanedUp) {
@@ -1188,7 +1288,7 @@ TEST_F(CallInlinerTest, InlinedOperandsAreCleanedUp) {
       module->AddEntryComputation(caller_builder.Build(call));
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 
   // Verify that `op` (Negate) is gone.
@@ -1200,6 +1300,415 @@ TEST_F(CallInlinerTest, InlinedOperandsAreCleanedUp) {
     }
   }
   EXPECT_FALSE(found_negate);
+}
+
+TEST_F(CallInlinerTest, InlineDiamondCallGraph) {
+  const absl::string_view hlo_string = R"(
+  HloModule diamond
+
+  D (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT add = s32[] add(p, s32[] constant(1))
+  }
+
+  B (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callB = s32[] call(p), to_apply=D
+  }
+
+  C (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callC = s32[] call(p), to_apply=D
+  }
+
+  ENTRY main () -> s32[] {
+    p0 = s32[] constant(10)
+    p1 = s32[] constant(20)
+    call1 = s32[] call(p0), to_apply=B
+    call2 = s32[] call(p1), to_apply=C
+    ROOT add = s32[] add(call1, call2)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner call_inliner;
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  ASSERT_OK_AND_ASSIGN(
+      bool filecheck_result,
+      RunFileCheck(module->ToString(HloPrintOptions{}
+                                        .set_print_result_shape(false)
+                                        .set_print_operand_shape(false)),
+                   R"(
+  // CHECK: ENTRY %main
+  // CHECK-NOT: call
+  // CHECK-DAG: %[[p0:.+]] = constant(10)
+  // CHECK-DAG: %[[c1:.+]] = constant(1)
+  // CHECK-DAG: %[[add1:.+]] = add(%[[p0]], %[[c1]])
+  // CHECK-DAG: %[[p1:.+]] = constant(20)
+  // CHECK-DAG: %[[c2:.+]] = constant(1)
+  // CHECK-DAG: %[[add2:.+]] = add(%[[p1]], %[[c2]])
+  // CHECK-DAG: %[[res:.+]] = add(%[[add1]], %[[add2]])
+  )"));
+  EXPECT_TRUE(filecheck_result);
+  EXPECT_EQ(module->computation_count(), 1);
+}
+
+TEST_F(CallInlinerTest, InlineDiamondCallGraphSingleCallSite) {
+  const absl::string_view hlo_string = R"(
+  HloModule diamond
+
+  D (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT add = s32[] add(p, s32[] constant(1))
+  }
+
+  B (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callB = s32[] call(p), to_apply=D
+  }
+
+  C (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callC = s32[] call(p), to_apply=D
+  }
+
+  ENTRY main () -> s32[] {
+    p0 = s32[] constant(10)
+    p1 = s32[] constant(20)
+    call1 = s32[] call(p0), to_apply=B
+    call2 = s32[] call(p1), to_apply=C
+    ROOT add = s32[] add(call1, call2)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner call_inliner(/*single_call_site=*/true);
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  ASSERT_OK_AND_ASSIGN(
+      bool filecheck_result,
+      RunFileCheck(module->ToString(HloPrintOptions{}
+                                        .set_print_result_shape(false)
+                                        .set_print_operand_shape(false)),
+                   R"(
+  // CHECK: ENTRY %main
+  // CHECK-DAG: %[[p0:.+]] = constant(10)
+  // CHECK-DAG: %[[p1:.+]] = constant(20)
+  // CHECK-DAG: %[[call1:.+]] = call(%[[p0]]), to_apply=%D
+  // CHECK-DAG: %[[call2:.+]] = call(%[[p1]]), to_apply=%D
+  // CHECK-DAG: %[[res:.+]] = add(%[[call1]], %[[call2]])
+  )"));
+  EXPECT_TRUE(filecheck_result);
+  EXPECT_EQ(module->computation_count(), 2);
+}
+
+TEST_F(CallInlinerTest, InlineDoubleDiamondAll) {
+  const absl::string_view hlo_string = R"(
+  HloModule double_diamond
+
+  G (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT addG = s32[] add(p, s32[] constant(1))
+  }
+
+  E (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callE = s32[] call(p), to_apply=G
+  }
+
+  F (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callF = s32[] call(p), to_apply=G
+  }
+
+  D (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    callD_E = s32[] call(p0), to_apply=E
+    callD_F = s32[] call(p1), to_apply=F
+    ROOT addD = s32[] add(callD_E, callD_F)
+  }
+
+  B (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    ROOT callB = s32[] call(p0, p1), to_apply=D
+  }
+
+  C (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    ROOT callC = s32[] call(p0, p1), to_apply=D
+  }
+
+  ENTRY main () -> s32[] {
+    c10 = s32[] constant(10)
+    c20 = s32[] constant(20)
+    call_B = s32[] call(c10, c20), to_apply=B
+    call_C = s32[] call(c10, c20), to_apply=C
+    ROOT add_main = s32[] add(call_B, call_C)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner call_inliner;
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  ASSERT_OK_AND_ASSIGN(
+      bool filecheck_result,
+      RunFileCheck(module->ToString(HloPrintOptions{}
+                                        .set_print_result_shape(false)
+                                        .set_print_operand_shape(false)),
+                   R"(
+  // CHECK: ENTRY %main
+  // CHECK-NOT: call
+  // CHECK-DAG: %[[c10:.+]] = constant(10)
+  // CHECK-DAG: %[[c20:.+]] = constant(20)
+  // CHECK-DAG: %[[c1:.+]] = constant(1)
+  // CHECK-DAG: %[[add1:.+]] = add(%[[c10]], %[[c1]])
+  // CHECK-DAG: %[[c2:.+]] = constant(1)
+  // CHECK-DAG: %[[add2:.+]] = add(%[[c20]], %[[c2]])
+  // CHECK-DAG: %[[add3:.+]] = add(%[[add1]], %[[add2]])
+  // CHECK-DAG: %[[c3:.+]] = constant(1)
+  // CHECK-DAG: %[[add4:.+]] = add(%[[c10]], %[[c3]])
+  // CHECK-DAG: %[[c4:.+]] = constant(1)
+  // CHECK-DAG: %[[add5:.+]] = add(%[[c20]], %[[c4]])
+  // CHECK-DAG: %[[add6:.+]] = add(%[[add4]], %[[add5]])
+  // CHECK-DAG: %[[res:.+]] = add(%[[add3]], %[[add6]])
+  )"));
+  EXPECT_TRUE(filecheck_result);
+  EXPECT_EQ(module->computation_count(), 1);
+}
+
+TEST_F(CallInlinerTest, InlineDoubleDiamondSingleCallSite) {
+  const absl::string_view hlo_string = R"(
+  HloModule double_diamond
+
+  G (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT addG = s32[] add(p, s32[] constant(1))
+  }
+
+  E (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callE = s32[] call(p), to_apply=G
+  }
+
+  F (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callF = s32[] call(p), to_apply=G
+  }
+
+  D (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    callD_E = s32[] call(p0), to_apply=E
+    callD_F = s32[] call(p1), to_apply=F
+    ROOT addD = s32[] add(callD_E, callD_F)
+  }
+
+  B (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    ROOT callB = s32[] call(p0, p1), to_apply=D
+  }
+
+  C (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    ROOT callC = s32[] call(p0, p1), to_apply=D
+  }
+
+  ENTRY main () -> s32[] {
+    c10 = s32[] constant(10)
+    c20 = s32[] constant(20)
+    call_B = s32[] call(c10, c20), to_apply=B
+    call_C = s32[] call(c10, c20), to_apply=C
+    ROOT add_main = s32[] add(call_B, call_C)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner call_inliner(/*single_call_site=*/true);
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  ASSERT_OK_AND_ASSIGN(
+      bool filecheck_result,
+      RunFileCheck(module->ToString(HloPrintOptions{}
+                                        .set_print_result_shape(false)
+                                        .set_print_operand_shape(false)),
+                   R"(
+  // CHECK: %D ({{.+}}) -> s32[] {
+  // CHECK-DAG: %[[p0:.+]] = parameter(0)
+  // CHECK-DAG: %[[p1:.+]] = parameter(1)
+  // CHECK-DAG: %[[call_E:.+]] = call(%[[p0]]), to_apply=%G
+  // CHECK-DAG: %[[call_F:.+]] = call(%[[p1]]), to_apply=%G
+  // CHECK-DAG: %[[res:.+]] = add(%[[call_E]], %[[call_F]])
+
+  // CHECK: ENTRY %main
+  // CHECK-DAG: %[[c10:.+]] = constant(10)
+  // CHECK-DAG: %[[c20:.+]] = constant(20)
+  // CHECK-DAG: %[[call_B:.+]] = call(%[[c10]], %[[c20]]), to_apply=%D
+  // CHECK-DAG: %[[call_C:.+]] = call(%[[c10]], %[[c20]]), to_apply=%D
+  // CHECK-DAG: %[[res:.+]] = add(%[[call_B]], %[[call_C]])
+  )"));
+  EXPECT_TRUE(filecheck_result);
+  EXPECT_EQ(module->computation_count(), 3);
+}
+
+TEST_F(CallInlinerTest, InlineDoubleDiamondOverride) {
+  const absl::string_view hlo_string = R"(
+  HloModule double_diamond
+
+  G (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT addG = s32[] add(p, s32[] constant(1))
+  }
+
+  E (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callE = s32[] call(p), to_apply=G
+  }
+
+  F (p: s32[]) -> s32[] {
+    p = s32[] parameter(0)
+    ROOT callF = s32[] call(p), to_apply=G
+  }
+
+  D (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    callD_E = s32[] call(p0), to_apply=E
+    callD_F = s32[] call(p1), to_apply=F
+    ROOT addD = s32[] add(callD_E, callD_F)
+  }
+
+  B (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    ROOT callB = s32[] call(p0, p1), to_apply=D
+  }
+
+  C (p0: s32[], p1: s32[]) -> s32[] {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    ROOT callC = s32[] call(p0, p1), to_apply=D
+  }
+
+  ENTRY main () -> s32[] {
+    c10 = s32[] constant(10)
+    c20 = s32[] constant(20)
+    call_B = s32[] call(c10, c20), to_apply=B
+    call_C = s32[] call(c10, c20), to_apply=C
+    ROOT add_main = s32[] add(call_B, call_C)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner call_inliner(
+      /*single_call_site=*/false, /*update_domain=*/false,
+      /*composites_to_preserve=*/{},
+      /*override_policy=*/
+      [](const CallGraph&, const HloInstruction* instruction) {
+        if (instruction->to_apply()->name() == "D" ||
+            instruction->to_apply()->name() == "E") {
+          return CallInliner::InlineOverridePolicy::kAllowInline;
+        }
+        return CallInliner::InlineOverridePolicy::kProhibitInline;
+      });
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  ASSERT_OK_AND_ASSIGN(
+      bool filecheck_result,
+      RunFileCheck(module->ToString(HloPrintOptions{}
+                                        .set_print_result_shape(false)
+                                        .set_print_operand_shape(false)),
+                   R"(
+  // CHECK: %F ({{.+}}) -> s32[] {
+  // CHECK-DAG: %[[p:.+]] = parameter(0)
+  // CHECK-DAG: %[[call_G:.+]] = call(%[[p]]), to_apply=%G
+
+  // CHECK: %B ({{.+}}) -> s32[] {
+  // CHECK-DAG: %[[p0:.+]] = parameter(0)
+  // CHECK-DAG: %[[p1:.+]] = parameter(1)
+  // CHECK-DAG: %[[call_G:.+]] = call(%[[p0]]), to_apply=%G
+  // CHECK-DAG: %[[call_F:.+]] = call(%[[p1]]), to_apply=%F
+  // CHECK-DAG: %[[res:.+]] = add(%[[call_G]], %[[call_F]])
+
+  // CHECK: %C ({{.+}}) -> s32[] {
+  // CHECK-DAG: %[[p0:.+]] = parameter(0)
+  // CHECK-DAG: %[[p1:.+]] = parameter(1)
+  // CHECK-DAG: %[[call_G:.+]] = call(%[[p0]]), to_apply=%G
+  // CHECK-DAG: %[[call_F:.+]] = call(%[[p1]]), to_apply=%F
+  // CHECK-DAG: %[[res:.+]] = add(%[[call_G]], %[[call_F]])
+
+  // CHECK: ENTRY %main
+  // CHECK-DAG: %[[c10:.+]] = constant(10)
+  // CHECK-DAG: %[[c20:.+]] = constant(20)
+  // CHECK-DAG: %[[call_B:.+]] = call(%[[c10]], %[[c20]]), to_apply=%B
+  // CHECK-DAG: %[[call_C:.+]] = call(%[[c10]], %[[c20]]), to_apply=%C
+  // CHECK-DAG: %[[res:.+]] = add(%[[call_B]], %[[call_C]])
+  )"));
+  EXPECT_TRUE(filecheck_result);
+  EXPECT_EQ(module->computation_count(), 5);
+}
+
+TEST_F(CallInlinerTest, InliningDoesNotPropagateFrontendAttributesToOperands) {
+  absl::string_view hlo_string = R"(
+HloModule test
+
+%identity (p: f32[]) -> f32[] {
+  ROOT %p = f32[] parameter(0)
+}
+
+ENTRY %main (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %call = f32[] call(%param), to_apply=%identity, frontend_attributes={_xla_compute_type="host"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner call_inliner;
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kParameter);
+  EXPECT_TRUE(root->frontend_attributes().map().empty());
+}
+
+TEST_F(CallInlinerTest,
+       InliningPropagatesFrontendAttributesToClonedInstructions) {
+  absl::string_view hlo_string = R"(
+HloModule test
+
+%add (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}
+
+ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %call = f32[] call(%p0, %p1), to_apply=%add, frontend_attributes={_xla_compute_type="host"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner call_inliner;
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(root->frontend_attributes().map().at("_xla_compute_type"), "host");
 }
 
 }  // namespace

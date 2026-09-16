@@ -28,7 +28,7 @@ namespace xla {
 namespace {
 
 class FloorCeilTest : public ClientLibraryTestRunnerMixin<
-                          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                          HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   enum Function {
     kFloor,

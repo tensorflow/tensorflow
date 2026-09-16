@@ -71,7 +71,7 @@ class ReserveSemantic {
     TF_LITE_ENSURE_OK(
         context_,
         GetInputSafe(context_, node_, kElementShapeInput, &element_shape));
-    TF_LITE_ENSURE(context_, element_shape->type == kTfLiteInt32);
+    TF_LITE_ENSURE_TYPES_EQ(context_, element_shape->type, kTfLiteInt32);
     const TfLiteTensor* num_elements;
     TF_LITE_ENSURE_OK(context_, GetInputSafe(context_, node_, kNumElementsInput,
                                              &num_elements));
@@ -81,6 +81,9 @@ class ReserveSemantic {
 
   TfLiteStatus Compute(SemanticOutType& result) const {
     // Parse element type from custom options.
+    TF_LITE_ENSURE(context_, node_->custom_initial_data != nullptr);
+    TF_LITE_ENSURE(context_, node_->custom_initial_data_size >=
+                                 sizeof(ListReserveOptions));
     auto* options =
         reinterpret_cast<const ListReserveOptions*>(node_->custom_initial_data);
     TfLiteType element_type = ConvertTensorType(options->element_type);
@@ -91,6 +94,7 @@ class ReserveSemantic {
                                              &num_elements));
     TF_LITE_ENSURE_TYPES_EQ(context_, num_elements->type, kTfLiteInt32);
     TF_LITE_ENSURE_EQ(context_, num_elements->dims->size, 0);
+    TF_LITE_ENSURE(context_, num_elements->data.data != nullptr);
     const int num_elements_value = num_elements->data.i32[0];
     TF_LITE_ENSURE(context_, num_elements_value >= 0);
 
@@ -99,7 +103,10 @@ class ReserveSemantic {
     TF_LITE_ENSURE_OK(context_,
                       GetInputSafe(context_, node_, kElementShapeInput,
                                    &element_shape_tensor));
-    IntArrayUniquePtr element_shape = TensorAsShape(*element_shape_tensor);
+    IntArrayUniquePtr element_shape;
+    TF_LITE_ENSURE_OK(context_, TensorAsShape(context_, *element_shape_tensor,
+                                              element_shape));
+    TF_LITE_ENSURE(context_, element_shape != nullptr);
 
     result = SemanticOutType{element_type, std::move(element_shape),
                              num_elements_value};
@@ -127,7 +134,7 @@ class ZerosLikeSemantic {
     const TfLiteTensor* list_input;
     TF_LITE_ENSURE_OK(context_,
                       GetInputSafe(context_, node_, kListInput, &list_input));
-    TF_LITE_ENSURE(context_, list_input->type == kTfLiteVariant);
+    TF_LITE_ENSURE_TYPES_EQ(context_, list_input->type, kTfLiteVariant);
     return kTfLiteOk;
   }
 
@@ -135,11 +142,14 @@ class ZerosLikeSemantic {
     const TfLiteTensor* list_input;
     TF_LITE_ENSURE_OK(context_,
                       GetInputSafe(context_, node_, kListInput, &list_input));
-    const TensorArray* const input =
-        reinterpret_cast<const TensorArray*>(list_input->data.data);
+    TF_LITE_ENSURE(context_, list_input->data.data != nullptr);
+    const TensorArray* const input = static_cast<const TensorArray*>(
+        static_cast<const VariantData*>(list_input->data.data));
+    TF_LITE_ENSURE(context_, input->ElementShape() != nullptr);
+    IntArrayUniquePtr element_shape = BuildTfLiteArray(*input->ElementShape());
+    TF_LITE_ENSURE(context_, element_shape != nullptr);
 
-    result = SemanticOutType{input->ElementType(),
-                             BuildTfLiteArray(*input->ElementShape()),
+    result = SemanticOutType{input->ElementType(), std::move(element_shape),
                              input->NumElements()};
     return kTfLiteOk;
   }
@@ -148,8 +158,9 @@ class ZerosLikeSemantic {
     const TfLiteTensor* list_input;
     TF_LITE_ENSURE_OK(context_,
                       GetInputSafe(context_, node_, kListInput, &list_input));
-    const TensorArray* const input =
-        reinterpret_cast<const TensorArray*>(list_input->data.data);
+    TF_LITE_ENSURE(context_, list_input->data.data != nullptr);
+    const TensorArray* const input = static_cast<const TensorArray*>(
+        static_cast<const VariantData*>(list_input->data.data));
     for (int i = 0; i < input->NumElements(); ++i) {
       const TfLiteTensor* const at = input->At(i);
       if (at == nullptr) continue;
@@ -159,7 +170,11 @@ class ZerosLikeSemantic {
       // for later.
       TensorUniquePtr output_at = BuildTfLiteTensor(
           at->type, BuildTfLiteArray(*at->dims), kTfLiteDynamic);
-      memset(output_at->data.data, 0, output_at->bytes);
+      TF_LITE_ENSURE(context_, output_at != nullptr);
+      if (output_at->bytes > 0) {
+        TF_LITE_ENSURE(context_, output_at->data.data != nullptr);
+        memset(output_at->data.data, 0, output_at->bytes);
+      }
       TF_LITE_ENSURE(context_, output->Set(i, std::move(output_at)));
     }
     return kTfLiteOk;
@@ -199,7 +214,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Set size of array.
   TensorArray* const arr =
       static_cast<TensorArray*>(static_cast<VariantData*>(output->data.data));
-  arr->Resize(data.num_elements);
+  TF_LITE_ENSURE(context, arr->Resize(data.num_elements));
   TF_LITE_ENSURE_OK(context, sem.PopulateOutput(arr));
 
   return kTfLiteOk;

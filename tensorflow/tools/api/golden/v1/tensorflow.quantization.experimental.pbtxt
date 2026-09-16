@@ -14,7 +14,7 @@ tf_module {
   }
   member {
     name: "TfRecordRepresentativeDatasetSaver"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "UnitWiseQuantizationSpec"

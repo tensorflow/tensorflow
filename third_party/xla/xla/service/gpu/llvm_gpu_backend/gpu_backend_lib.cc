@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Any.h"
@@ -209,7 +210,9 @@ void DumpModule(const std::string output_filename, const llvm::Module* module) {
 }
 
 const llvm::Module* GetModule(llvm::Any IR) {
-  if (const auto** M = llvm::any_cast<const llvm::Module*>(&IR)) return *M;
+  if (const auto** M = llvm::any_cast<const llvm::Module*>(&IR)) {
+    return *M;
+  }
 
   if (const auto** F = llvm::any_cast<const llvm::Function*>(&IR)) {
     return (*F)->getParent();
@@ -255,7 +258,7 @@ absl::Status LinkAndOptimizeModule(
     return absl::StrFormat("XlaOptimizeLlvmIr:#module=%s#",
                            module->getName().str());
   });
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       module_linker(module, gpu_version, debug_options, device_bitcode_path));
 
   llvm::LoopAnalysisManager lam;

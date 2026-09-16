@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Tests of TensorFlow NN kernels written using the Python API.
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
@@ -812,6 +827,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["softmax_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -829,6 +845,7 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["softplus_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
@@ -888,6 +905,13 @@ cuda_py_strict_test(
     name = "xent_op_test",
     size = "small",
     srcs = ["xent_op_test.py"],
+    env = {
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
+    tags = [
+        "exclusive-if-local",
+    ],
     deps = [
         ":xent_op_test_base",
         "//tensorflow/python/client:session",

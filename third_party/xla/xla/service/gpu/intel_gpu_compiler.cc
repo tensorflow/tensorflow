@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/intel_gpu_compiler.h"
 
+#include "absl/status/status_macros.h"
+#include "xla/backends/gpu/transforms/sycl_gemm_workspace_pass.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 
 namespace xla {
@@ -36,15 +40,38 @@ absl::Status IntelGpuCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
-absl::Status IntelGpuCompiler::AddConvAndGemmAutotuningPass(
+absl::Status IntelGpuCompiler::OptimizeHloPostLayoutAssignment(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    const CompileOptions& options, const GpuTopology& gpu_topology,
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+    CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
+  ABSL_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+      hlo_module, stream_exec, options, gpu_topology, alias_info, thread_pool,
+      compilation_stats, mlir_context));
+
+  HloPassPipeline post_pipeline("Intel GPU post-layout_assignment",
+                                compilation_stats);
+  post_pipeline.AddPass<SyclGemmWorkspacePass>(
+      gpu_topology.gpu_target_config()
+          .device_description.gpu_compute_capability());
+  return post_pipeline.Run(hlo_module).status();
+}
+
+void IntelGpuCompiler::AddPaddingForGpublasGemms(
+    HloPassPipeline& pipeline, const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version) {
+  // Stub for Intel GPUs
+}
+
+absl::Status IntelGpuCompiler::AddConfigAssignerPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
-    tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
-    const Compiler::GpuTargetConfig* target_config,
-    const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+    tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor,
+    const GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
   // Return OkStatus as a stub.
   return absl::OkStatus();
 }
@@ -55,15 +82,19 @@ IntelGpuCompiler::CompileTargetBinary(
     const stream_executor::DeviceDescription& device_description,
     bool relocatable, const HloModule* debug_module,
     std::optional<int> shard_number) {
-  TF_ASSIGN_OR_RETURN(
-      auto spirv_str,
-      spirv::CompileToSPIRV(llvm_module,
-                            device_description.gpu_compute_capability(),
-                            module_config.debug_options()));
+  ABSL_ASSIGN_OR_RETURN(auto spirv_str,
+                   spirv::CompileToSPIRV(
+                       llvm_module, device_description.gpu_compute_capability(),
+                       module_config.debug_options()));
   if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                 module_config.debug_options())) {
+                                 module_config.debug_options()) &&
+      DumpingEnabledForEmitter("spirv", module_config.debug_options())) {
     if (debug_module) {
-      DumpToFileInDirOrStdout(*debug_module, "", "spv", spirv_str);
+      DumpToFileInDirOrStdout(*debug_module, "",
+                              shard_number.has_value()
+                                  ? (std::to_string(*shard_number) + ".spv")
+                                  : "spv",
+                              spirv_str);
     } else {
       LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
                     "inferred. Please implement (potentially MLIR) module -> "

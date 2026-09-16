@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <string>
+
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/string_util.h"
@@ -39,12 +43,12 @@ class StringLengthOp : public OpKernel {
 
     switch (unit_) {
       case CharUnit::BYTE:
-        for (int n = 0; n < src.size(); ++n) {
+        for (Eigen::Index n = 0; n < src.size(); ++n) {
           dst(n) = src(n).size();
         }
         break;
       case CharUnit::UTF8_CHAR:
-        for (int n = 0; n < src.size(); ++n) {
+        for (Eigen::Index n = 0; n < src.size(); ++n) {
           dst(n) = UTF8StrLen(src(n));
         }
         break;

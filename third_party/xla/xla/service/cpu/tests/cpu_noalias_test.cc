@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -181,7 +180,7 @@ TEST_F(CpuNoAliasTest, Concat) {
     CHECK-DAG: [[concat1_noalias]] = !{[[buf_size48]]}
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool filecheck_match,
       RunFileCheck(llvm_ir::DumpToString(&ir_module), filecheck_pattern));
   EXPECT_TRUE(filecheck_match);

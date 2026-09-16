@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
@@ -80,13 +78,6 @@ class SinkConstantsToControlFlowPass
 };
 
 }  // anonymous namespace
-
-// TODO(hinsu): Rename this pass and move to a different file along with the
-// generalization to make all ops isolated from above.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createSinkConstantsToControlFlowPass() {
-  return std::make_unique<SinkConstantsToControlFlowPass>();
-}
 
 }  // namespace mhlo
 }  // namespace mlir

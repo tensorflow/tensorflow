@@ -119,12 +119,4 @@ class AddLoopUnrollFlagsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateAddLoopUnrollFlagsPass(
-    int32_t max_nested_iterations) {
-  AddLoopUnrollFlagsPassOptions options;
-  options.max_nested_iterations_ = max_nested_iterations;
-  return std::make_unique<AddLoopUnrollFlagsPass>(options);
-}
-
 }  // namespace xla::cpu

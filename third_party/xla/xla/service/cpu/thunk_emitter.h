@@ -60,13 +60,10 @@ namespace xla::cpu {
 class ThunkEmitter {
  public:
   struct Options {
-    // Whether to compile copy as LLVM kernel. This is used to avoid
-    // dependencies on pjrt/transpose for tfcompiled models.
-    bool compile_copy_as_llvm_kernel;
     // Wheter the thunk emitter is used for AOT compilation. AOT compiled
     // kernels get linked together and might have to respect certain
     // restrictions, such as having the same module flags.
-    bool is_aot_compilation;
+    bool is_aot_compilation = false;
   };
 
   struct EmittedKernel {
@@ -81,8 +78,7 @@ class ThunkEmitter {
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
                const HloModule& hlo_module,
-               const Options& options = {/*compile_copy_as_llvm_kernel=*/false,
-                                         /*is_aot_compilation=*/false});
+               const Options& options = {/*is_aot_compilation=*/false});
 
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
@@ -159,6 +155,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitRngSeedThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitStochasticConvertThunk(
       const HloInstruction* instruction);
 
@@ -210,9 +209,6 @@ class ThunkEmitter {
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitSliceThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitDynamicUpdateSliceThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitSortThunk(
@@ -279,6 +275,9 @@ class ThunkEmitter {
 
   ParallelFusionEmitter parallel_fusion_emitter_;
 };
+
+bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
+                               const HloFusionInstruction* fusion);
 
 }  // namespace xla::cpu
 

@@ -119,8 +119,8 @@ class ScopedStepContainer {
 
   // Pass through to MakeResourceHandle with the container name
   template <typename T>
-  ResourceHandle MakeResourceHandle(
-      const std::string& name, const DeviceBase& device) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT ResourceHandle
+  MakeResourceHandle(const std::string& name, const DeviceBase& device);
   // Pass through to ResourceMgr::Create with the container name
   template <typename T>
   absl::Status Create(ResourceMgr* rm, const std::string& name, T* resource);
@@ -340,18 +340,17 @@ class ResourceMgr {
 
 // Makes a resource handle with the specified type for a given container /
 // name.
-ResourceHandle MakeResourceHandle(
+TF_MUST_USE_RESULT ResourceHandle MakeResourceHandle(
     const std::string& container, const std::string& name,
     const DeviceBase& device, const TypeIndex& type_index,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const absl::optional<ManagedStackTrace>& definition_stack_trace = {})
-    TF_MUST_USE_RESULT;
+    const std::optional<ManagedStackTrace>& definition_stack_trace = {});
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelContext* ctx, const std::string& container, const std::string& name,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+    const std::optional<ManagedStackTrace>& definition_stack_trace = {}) {
   return MakeResourceHandle(container.empty()
                                 ? ctx->resource_manager()->default_container()
                                 : container,
@@ -364,7 +363,7 @@ ResourceHandle MakeResourceHandle(
     OpKernelConstruction* ctx, const std::string& container,
     const std::string& name,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+    const std::optional<ManagedStackTrace>& definition_stack_trace = {}) {
   return MakeResourceHandle(container.empty()
                                 ? ctx->resource_manager()->default_container()
                                 : container,
@@ -745,7 +744,7 @@ absl::Status ResourceMgr::LookupOrCreate(
   s = DoCreate(container, TypeIndex::Make<T>(), name, *resource,
                /* owns_resource */ true);
   if (!s.ok()) {
-    return errors::Internal("LookupOrCreate failed unexpectedly");
+    return absl::InternalError("LookupOrCreate failed unexpectedly");
   }
   (*resource)->Ref();
   return s;
@@ -778,9 +777,9 @@ absl::Status GetResourceFromContext(OpKernelContext* ctx,
     Tensor tensor;
     TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, true));
     if (tensor.NumElements() != 2) {
-      return errors::InvalidArgument(
-          "Resource handle must have 2 elements, but had shape: ",
-          tensor.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Resource handle must have 2 elements, but had shape: ",
+                       tensor.shape().DebugString()));
     }
     container = tensor.flat<tstring>()(0);
     shared_name = tensor.flat<tstring>()(1);
@@ -974,13 +973,14 @@ ResourceHandlesOp<T>::ResourceHandlesOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context, context->GetAttr("N", &n));
   OP_REQUIRES_OK(context, context->GetAttr("containers", &containers_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_names", &names_));
-  OP_REQUIRES(
-      context, containers_.size() == n,
-      errors::InvalidArgument("Number of containers (", containers_.size(),
-                              ") must be equal to N (", n, ")"));
+  OP_REQUIRES(context, containers_.size() == n,
+              absl::InvalidArgumentError(
+                  absl::StrCat("Number of containers (", containers_.size(),
+                               ") must be equal to N (", n, ")")));
   OP_REQUIRES(context, names_.size() == n,
-              errors::InvalidArgument("Number of names (", containers_.size(),
-                                      ") must be equal to N (", n, ")"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("Number of names (", containers_.size(),
+                               ") must be equal to N (", n, ")")));
   resources_.resize(n);
 }
 

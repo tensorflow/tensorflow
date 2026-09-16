@@ -63,6 +63,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
 struct XlaCompileOptions {
   // Fully backend-independent options.
   std::string module_path;
+  std::string module_config_path;
   std::string output_file;
   std::string platform;
   std::string result_output_file;
@@ -92,6 +93,7 @@ struct XlaCompileOptions {
     std::string target_cpu;
     std::string target_features;
     std::string target_triple;
+    std::string cpu_target_config_path;
   };
 
   SymbolRepoOptions repo_options;

@@ -36,6 +36,9 @@ else:
   # Remove this branch once TF drops support for Python < 3.9.
   _TUPLE = typing.Tuple
 
+_INT_FLOAT_UNION_PATTERN = r'(?:typing\.Union\[int, float\]|int \| float)'
+_INT_STR_UNION_PATTERN = r'(?:typing\.Union\[int, str\]|int \| str)'
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
@@ -86,10 +89,10 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
        "default value for x: expected 'int', got 'str'"),
       ('seq', typing.Tuple[typing.Union[int, float], ...], [33, 12.8, 'zero'],
        (r'default value for seq\[2\]: expected '
-        r"typing.Union\[int, float\], got 'str'")),
+        + _INT_FLOAT_UNION_PATTERN + r", got 'str'")),
       ('seq', _TUPLE[typing.Union[int, float], ...], [33, 12.8, 'zero'],
        (r'default value for seq\[2\]: expected '
-        r"typing.Union\[int, float\], got 'str'")),
+        + _INT_FLOAT_UNION_PATTERN + r", got 'str'")),
       ('t', tensor.TensorSpec(None, dtypes.int32),
        lambda: constant_op.constant(0.0),
        'Unsupported type annotation TensorSpec.*'),
@@ -106,21 +109,22 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       extension_type_field.ExtensionTypeField(name, value_type, default)
 
   @parameterized.parameters([
-      ("ExtensionTypeField(name='i', value_type=<class 'int'>, "
-       'default=ExtensionTypeField.NO_DEFAULT)', 'i', int),
-      ("ExtensionTypeField(name='x', value_type=typing.Tuple"
-       '[typing.Union[int, str], ...], default=ExtensionTypeField.NO_DEFAULT)',
+      (r"ExtensionTypeField\(name='i', value_type=<class 'int'>, " +
+       r'default=ExtensionTypeField\.NO_DEFAULT\)', 'i', int),
+      (r"ExtensionTypeField\(name='x', value_type=(?:typing\.Tuple|tuple)\["
+       + _INT_STR_UNION_PATTERN
+       + r', \.\.\.\], default=ExtensionTypeField\.NO_DEFAULT\)',
        'x', typing.Tuple[typing.Union[int, str], ...]),
-      ("ExtensionTypeField(name='j', value_type=<class 'int'>, default=3)", 'j',
-       int, 3),
+      (r"ExtensionTypeField\(name='j', value_type=<class 'int'>, default=3\)",
+       'j', int, 3),
   ])
   def testRepr(self,
-               expected,
+               expected_pattern,
                name,
                value_type,
                default=extension_type_field.ExtensionTypeField.NO_DEFAULT):
     field = extension_type_field.ExtensionTypeField(name, value_type, default)
-    self.assertEqual(repr(field), expected)
+    self.assertRegex(repr(field), expected_pattern)
 
   @parameterized.parameters([
       ('Spec', True),

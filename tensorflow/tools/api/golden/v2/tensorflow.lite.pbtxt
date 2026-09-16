@@ -2,7 +2,7 @@ path: "tensorflow.lite"
 tf_module {
   member {
     name: "Interpreter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "OpsSet"
@@ -14,18 +14,18 @@ tf_module {
   }
   member {
     name: "RepresentativeDataset"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TFLiteConverter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TargetSpec"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
 }

@@ -76,8 +76,9 @@ absl::Status GetOutputDataType(
     DataType* dtype) {
   int output_props_size = output_props.size();
   if (output_index >= output_props_size) {
-    return errors::Internal("Invalid output index ", output_index,
-                            " size of output_props ", output_props.size());
+    return absl::InternalError(
+        absl::StrCat("Invalid output index ", output_index,
+                     " size of output_props ", output_props.size()));
   }
   *dtype = output_props[output_index].dtype();
   return absl::OkStatus();
@@ -106,31 +107,34 @@ absl::Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
             << shapes->size();
     if (!graph_properties.HasOutputProperties(n->name())) {
       LOG(ERROR) << "Node " << n->DebugString() << " lacks output shape.";
-      return errors::Aborted("Node ", n->name(), " lacks output shape.");
+      return absl::AbortedError(
+          absl::StrCat("Node ", n->name(), " lacks output shape."));
     }
     const std::vector<OpInfo::TensorProperties>& prop_list =
         graph_properties.GetOutputProperties(n->name());
     if (prop_list.size() != 1) {
-      return errors::Aborted("Node ", n->name(),
-                             " does not have exactly one output as expected "
-                             "by ScopedAllocatorOptimizer");
+      return absl::AbortedError(
+          absl::StrCat("Node ", n->name(),
+                       " does not have exactly one output as expected "
+                       "by ScopedAllocatorOptimizer"));
     }
     const OpInfo::TensorProperties& props = prop_list[0];
     if (shapes->empty()) {
       *type = props.dtype();
     } else if (*type != props.dtype()) {
-      return errors::Aborted("Group ops don't all have same type");
+      return absl::AbortedError("Group ops don't all have same type");
     }
     if (*type != dtype) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Type mismatch: type in op attr = ", DataTypeString(dtype),
-          ", type in output props = ", DataTypeString(*type));
+          ", type in output props = ", DataTypeString(*type)));
     }
     if (!TensorShape::IsValid(props.shape()) || props.shape().unknown_rank()) {
       // TensorShape::IsValid may return true if unknown_rank is True, i.e.
       // number of dimensions is unknown.  But for ScopedAllocatorOptimizer we
       // need to know the shape fully.
-      return errors::Aborted("Complete shape not known for ", n->name());
+      return absl::AbortedError(
+          absl::StrCat("Complete shape not known for ", n->name()));
     }
     VLOG(2) << "Adding shape " << props.shape().DebugString();
     shapes->push_back(TensorShape(props.shape()));
@@ -179,8 +183,9 @@ absl::Status RemoveEdge(const std::string& input_edge_name,
     }
   }
   if (edge_index >= inputs->size()) {
-    return errors::Internal("Could not find input name ", input_edge_name,
-                            " at node ", to_node->name());
+    return absl::InternalError(absl::StrCat("Could not find input name ",
+                                            input_edge_name, " at node ",
+                                            to_node->name()));
   }
   if (node_map) {
     node_map->RemoveOutput(from_node_name, to_node->name());
@@ -273,13 +278,14 @@ absl::Status GetInputs(ScopedAllocatorOptimizer* sa_opti,
     for (const auto& input_name : n->input()) {
       if (!IsControlInput(input_name)) {
         if (inode) {
-          return errors::Internal("Found more than one input for node ",
-                                  n->name());
+          return absl::InternalError(
+              absl::StrCat("Found more than one input for node ", n->name()));
         }
         ParseNodeName(input_name, &output_index);
         inode = node_map->GetNode(input_name);
         if (inode == nullptr) {
-          return errors::Internal("Did not find node ", input_name);
+          return absl::InternalError(
+              absl::StrCat("Did not find node ", input_name));
         }
         VLOG(2) << "inode " << inode->DebugString() << " output_index "
                 << output_index;
@@ -297,12 +303,12 @@ absl::Status GetInputs(ScopedAllocatorOptimizer* sa_opti,
       }
     }
     if (inode == nullptr) {
-      return errors::Internal("Did not find node");
+      return absl::InternalError("Did not find node");
     }
     if (inode_dtype == DT_INVALID) {
       if (!graph_properties.HasOutputProperties(inode->name())) {
-        return errors::Internal("Input node ", inode->name(),
-                                " does not have output properties");
+        return absl::InternalError(absl::StrCat(
+            "Input node ", inode->name(), " does not have output properties"));
       }
       const auto& inode_output_props =
           graph_properties.GetOutputProperties(inode->name());
@@ -310,8 +316,9 @@ absl::Status GetInputs(ScopedAllocatorOptimizer* sa_opti,
           GetOutputDataType(inode_output_props, output_index, &inode_dtype));
     }
     if (inode_dtype != dtype) {
-      return errors::Aborted("ScopedAllocatorOptimizer expected input type ",
-                             dtype, " but found ", inode_dtype);
+      return absl::AbortedError(
+          absl::StrCat("ScopedAllocatorOptimizer expected input type ", dtype,
+                       " but found ", inode_dtype));
     }
     inputs->emplace_back(inode, output_index, n);
   }
@@ -332,7 +339,8 @@ absl::Status GetDataInputs(GraphDef* graph, NodeMap* node_map, NodeDef* op,
     inode = nullptr;
     inode = node_map->GetNode(input_name);
     if (inode == nullptr) {
-      return errors::Internal("Did not find node ", input_name);
+      return absl::InternalError(
+          absl::StrCat("Did not find node ", input_name));
     }
     VLOG(2) << "inode " << inode->DebugString() << " output_index "
             << output_index;
@@ -377,10 +385,10 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       const std::vector<InputDesc>& inputs) {
     for (const InputDesc& nd : inputs) {
       if (IsConstant(*nd.from_node_def)) {
-        return errors::Aborted(
+        return absl::AbortedError(absl::StrCat(
             "Abandoning ScopedAllocatorOptimizer because input ",
             nd.from_node_def->name(),
-            " is a Const op which does not use AllocatorAttributes");
+            " is a Const op which does not use AllocatorAttributes"));
       }
     }
     return absl::OkStatus();
@@ -405,10 +413,10 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
         LOG(INFO) << "Abandoning ScopedAllocatorOptimizer because input "
                   << nd.from_node_def->name() << " output " << scope_ids[0]
                   << " is already assigned to scope_id " << scope_ids[1];
-        return errors::Aborted(
+        return absl::AbortedError(absl::StrCat(
             "Abandoning ScopedAllocatorOptimizer because input ",
             nd.from_node_def->name(), " output ", scope_ids[0], " is already ",
-            "assigned to scope_id ", scope_ids[1]);
+            "assigned to scope_id ", scope_ids[1]));
       }
     }
     return absl::OkStatus();
@@ -421,10 +429,10 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     for (const InputDesc& nd : inputs) {
       if (op_set.find(nd.from_node_def->name()) != op_set.end()) {
         if (nd.output_slot != tensorflow::Graph::kControlSlot) {
-          return errors::Aborted("Data edge exists between ",
-                                 nd.from_node_def->name(),
-                                 " and another "
-                                 "node in the set");
+          return absl::AbortedError(absl::StrCat("Data edge exists between ",
+                                                 nd.from_node_def->name(),
+                                                 " and another "
+                                                 "node in the set"));
         }
       }
     }
@@ -551,7 +559,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     for (int i = 0, end = inputs.size(); i < end; ++i) {
       auto& nd = inputs[i];
       if (IsArg(*nd.from_node_def)) {
-        return errors::Aborted(
+        return absl::AbortedError(
             "ScopedAllocatorOptimizer does not work well when the op inputs "
             "are _Arg ops; skipping this optimizer for this function");
       }
@@ -631,9 +639,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
           if (op_instance_names.find(old_op_input) != op_instance_names.end()) {
             LOG(ERROR) << "Data edge between " << old_op_input << " and "
                        << old_op->name() << " cannot build ScopedAllocator.";
-            return errors::Aborted("Data edge between ", old_op_input, " and ",
-                                   old_op->name(),
-                                   " cannot build ScopedAllocator.");
+            return absl::AbortedError(
+                absl::StrCat("Data edge between ", old_op_input, " and ",
+                             old_op->name(), " cannot build ScopedAllocator."));
           }
           sac_inputs->push_back(
               NodeDefBuilder::NodeOut(old_op_input, 0, dtype));
@@ -967,7 +975,7 @@ int ScopedAllocatorOptimizer::NewScopedAllocatorId(int num_fields) {
 absl::Status ScopedAllocatorOptimizer::NewIdentityId(int* id) {
   *id = next_identity_id_++;
   if (next_identity_id_ < 0) {
-    return errors::Aborted("NewIdentityId overflow");
+    return absl::AbortedError("NewIdentityId overflow");
   }
   return absl::OkStatus();
 }

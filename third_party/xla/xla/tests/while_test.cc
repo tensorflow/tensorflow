@@ -68,7 +68,7 @@ namespace {
 using ::testing::SizeIs;
 
 class WhileTest : public ClientLibraryTestRunnerMixin<
-                      HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+                      HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 // Tests a while node when the result type T is S32.
 //
@@ -1295,7 +1295,7 @@ std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
 // HloRunnerPjRt is not thread-safe, so provide an easy way to get a new
 // runner for each execution thread in the ParallelExecution test.
 std::unique_ptr<HloRunnerInterface> NewTestRunner() {
-  return MakeHloRunnerPjRtAotAware(GetPjRtClientForTest());
+  return MakeAotAwareHloRunner(GetPjRtClientForTest());
 }
 
 using HloWhileTest = HloHardwareIndependentTestBase;

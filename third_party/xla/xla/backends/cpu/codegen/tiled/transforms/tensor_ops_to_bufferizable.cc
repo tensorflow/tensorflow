@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -68,9 +67,4 @@ class TensorOpsToBufferizablePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateTensorOpsToBufferizablePass() {
-  return std::make_unique<TensorOpsToBufferizablePass>();
-}
-
 }  // namespace xla::cpu

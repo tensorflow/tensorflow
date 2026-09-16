@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -155,6 +158,85 @@ TEST_F(TensorResponseTest, Simple) {
 }
 
 TEST_F(TensorResponseTest, StringTensor) { DoTestForStrings(DT_STRING); }
+
+TEST_F(TensorResponseTest, InitPartialOverflow) {
+  RecvTensorResponse response;
+  TensorProto* tensor_proto = response.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+
+  // Set shape dimensions that cause integer overflow.
+  TensorShapeProto* shape_proto = tensor_proto->mutable_tensor_shape();
+  shape_proto->add_dim()->set_size(2147483647);
+  shape_proto->add_dim()->set_size(2147483647);
+  shape_proto->add_dim()->set_size(2147483647);
+
+  TensorResponse tensor_response;
+  DummyDevice cpu_device(Env::Default());
+  tensor_response.InitAlloc(&cpu_device, AllocatorAttributes());
+
+  absl::Status s =
+      tensor_response.InitPartial(response, AllocationAttributes());
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
+}
+
+TEST_F(TensorResponseTest, ZeroLengthTensorMissingContentAccepted) {
+  RecvTensorResponse proto;
+  proto.set_is_dead(false);
+  proto.set_send_start_micros(123456);
+  TensorProto* tensor_proto = proto.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+  tensor_proto->mutable_tensor_shape()->add_dim()->set_size(0);
+
+  std::string encoded;
+  proto.AppendToString(&encoded);
+  StringSource source(&encoded, 1024);
+  TensorResponse response;
+  DummyDevice cpu_device(Env::Default());
+  response.InitAlloc(&cpu_device, AllocatorAttributes());
+  EXPECT_TRUE(response.ParseFrom(&source).ok());
+  EXPECT_EQ(response.tensor().NumElements(), 0);
+}
+
+TEST_F(TensorResponseTest,
+       NonEmptyTensorMissingContentZeroInitializedViaSlowPath) {
+  RecvTensorResponse proto;
+  proto.set_is_dead(false);
+  proto.set_send_start_micros(123456);
+  TensorProto* tensor_proto = proto.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+  tensor_proto->mutable_tensor_shape()->add_dim()->set_size(10);
+
+  std::string encoded;
+  proto.AppendToString(&encoded);
+  StringSource source(&encoded, 1024);
+  TensorResponse response;
+  DummyDevice cpu_device(Env::Default());
+  response.InitAlloc(&cpu_device, AllocatorAttributes());
+  EXPECT_TRUE(response.ParseFrom(&source).ok());
+  EXPECT_EQ(response.tensor().NumElements(), 10);
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(response.tensor().flat<float>()(i), 0.0f);
+  }
+}
+
+TEST_F(TensorResponseTest, AmplificationProtoWithoutContentRejected) {
+  RecvTensorResponse proto;
+  proto.set_is_dead(false);
+  proto.set_send_start_micros(123456);
+  TensorProto* tensor_proto = proto.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+  // 1 billion floats = 4GB (> 2GB safe limit) with no tensor_content
+  tensor_proto->mutable_tensor_shape()->add_dim()->set_size(1000000000);
+
+  std::string encoded;
+  proto.AppendToString(&encoded);
+  StringSource source(&encoded, 1024);
+  TensorResponse response;
+  DummyDevice cpu_device(Env::Default());
+  response.InitAlloc(&cpu_device, AllocatorAttributes());
+  EXPECT_FALSE(response.ParseFrom(&source).ok());
+}
 
 std::string MakeFloatTensorTestCase(int num_elems) {
   std::vector<int8_t> v(num_elems);

@@ -17,10 +17,12 @@ limitations under the License.
 #define XLA_PJRT_CPU_CPU_PJRT_COMPILER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
-#include <utility>
 
 #include "absl/status/statusor.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -40,6 +42,17 @@ class CpuPjRtCompiler : public PjRtCompiler {
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+  // Deserializes a serialized executable.
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const PjRtTopologyDescription& topology,
+      riegeli::Any<riegeli::Reader*> reader,
+      std::optional<CompileOptions>&& options) override;
+
+  // Deserializes a PjRtTopologyDescription from a string.
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(
+      const std::string& serialized_topology) override;
 };
 
 }  // namespace xla::cpu

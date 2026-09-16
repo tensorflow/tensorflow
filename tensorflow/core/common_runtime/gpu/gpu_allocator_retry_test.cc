@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <chrono>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/lib/core/notification.h"

@@ -153,9 +153,9 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   GroupRec* gr = GetCachedGroup(request->group_key());
   if (gr == nullptr) {
-    done(errors::FailedPrecondition(
+    done(absl::FailedPreconditionError(absl::StrCat(
         "group ", request->group_key(),
-        " not found. This normally means the server has restarted"));
+        " not found. This normally means the server has restarted")));
     return;
   }
   CollectiveParams* cp = new CollectiveParams;
@@ -165,9 +165,9 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
       done(gr->status);
       return;
     } else if (gr->group.members.size() != gr->group.group_size) {
-      done(errors::FailedPrecondition(
+      done(absl::FailedPreconditionError(absl::StrCat(
           "group ", request->group_key(),
-          " failed to resolve. This normally means the server has restarted"));
+          " failed to resolve. This normally means the server has restarted")));
       return;
     }
     cp->group = gr->group;
@@ -227,12 +227,12 @@ absl::Status CollectiveParamResolverDistributed::UpdateGroupCache(
     gr->group.group_size = resp.group_size();
     gr->group.num_tasks = resp.num_tasks();
     if (resp.device_attributes().empty()) {
-      return errors::Internal(
+      return absl::InternalError(
           "CompleteGroupResponse device_attributes is empty. Make sure you're "
           "running the same version of Tensorflow on all workers.");
     }
     if (resp.device_attributes_size() != gr->group.group_size) {
-      return errors::Internal(
+      return absl::InternalError(
           "CompleteGroupResponse group_size doesn't match device_name list");
     }
     gr->group.members.reserve(resp.device_attributes().size());
@@ -263,12 +263,12 @@ absl::Status CollectiveParamResolverDistributed::UpdateGroupCache(
     mutex_lock grl(previous_gr->mu);
     if (previous_gr->group.runtime_details.communicator_key !=
         resp.communicator_key()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "UpdateGroupCache: CompleteGroupResponse for group ",
           resp.group_key(),
           " gives communicator_key=", absl::CEscape(resp.communicator_key()),
           " but cache already holds communicator_key=",
-          absl::CEscape(previous_gr->group.runtime_details.communicator_key));
+          absl::CEscape(previous_gr->group.runtime_details.communicator_key)));
     }
   }
   return absl::OkStatus();
@@ -292,7 +292,7 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
     bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
         abortion_token, [call] { call->Cancel(); });
     if (already_aborted) {
-      done(errors::Cancelled("collective ops already aborted"));
+      done(absl::CancelledError("collective ops already aborted"));
       delete call;
       return;
     }
@@ -340,10 +340,10 @@ absl::Status CollectiveParamResolverDistributed::UpdateInstanceCache(
   }
   if (ir->source_rank != source_rank) {
     if (ir->source_rank >= 0) {
-      ir->status = errors::Internal(
+      ir->status = absl::InternalError(absl::StrCat(
           "UpdateInstanceCache: CompleteInstanceResponse for instance ",
           cp->instance.instance_key, " gives source_rank=", source_rank,
-          " but cache already holds value=", ir->source_rank);
+          " but cache already holds value=", ir->source_rank));
       return ir->status;
     }
     ir->source_rank = source_rank;
@@ -352,10 +352,10 @@ absl::Status CollectiveParamResolverDistributed::UpdateInstanceCache(
     ir->known_count = cp->group.group_size;
     const int ir_known_size = ir->known.size();
     if (ir_known_size != cp->group.group_size) {
-      ir->status = errors::Internal(
+      ir->status = absl::InternalError(absl::StrCat(
           "UpdateInstanceCache:: CompleteInstanceResponse for instance ",
           cp->instance.instance_key, " has known.size()=", ir->known.size(),
-          " < group_size=", cp->group.group_size);
+          " < group_size=", cp->group.group_size));
       return ir->status;
     }
     for (int i = 0; i < ir_known_size; ++i) {
@@ -382,7 +382,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
     bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
         abortion_token, [call] { call->Cancel(); });
     if (already_aborted) {
-      done(errors::Cancelled("collective ops already aborted"));
+      done(absl::CancelledError("collective ops already aborted"));
       delete call;
       return;
     }

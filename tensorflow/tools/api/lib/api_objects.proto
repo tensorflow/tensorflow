@@ -1,30 +1,52 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto2";
 
-import "google/protobuf/descriptor.proto";
-
 package third_party.tensorflow.tools.api;
+
+import "google/protobuf/descriptor.proto";
 
 message TFAPIMember {
   optional string name = 1;
   optional string mtype = 2;
-};
+}
 
 message TFAPIMethod {
+  enum MethodKind {
+    INSTANCE = 0;
+    CLASS = 1;
+    STATIC = 2;
+  }
+
   optional string name = 1;
   optional string path = 2;
   optional string argspec = 3;
-};
+  optional MethodKind method_kind = 4;
+}
 
 message TFAPIModule {
   repeated TFAPIMember member = 1;
   repeated TFAPIMethod member_method = 2;
-};
+}
 
 message TFAPIClass {
   repeated string is_instance = 1;
   repeated TFAPIMember member = 2;
   repeated TFAPIMethod member_method = 3;
-};
+}
 
 message TFAPIProto {
   // Suppress generation of the proto API's descriptor() method lest it
@@ -32,11 +54,11 @@ message TFAPIProto {
   option no_standard_descriptor_accessor = true;
 
   optional google.protobuf.DescriptorProto descriptor = 1;
-};
+}
 
 message TFAPIObject {
   optional string path = 1;
   optional TFAPIModule tf_module = 2;
   optional TFAPIClass tf_class = 3;
   optional TFAPIProto tf_proto = 4;
-};
+}

@@ -93,7 +93,7 @@ TEST_F(OpSegmentTest, Basic) {
   }
 
   auto reterr = [](OpKernel** kernel) {
-    return errors::Internal("Should not be called");
+    return absl::InternalError("Should not be called");
   };
   for (int i = 0; i < 10; ++i) {
     // Lookup op in session A.

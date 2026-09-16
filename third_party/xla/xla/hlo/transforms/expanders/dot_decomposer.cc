@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -31,10 +32,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -249,32 +248,41 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
 
 }  // namespace
 
-absl::StatusOr<bool> DotDecomposer::RunImpl(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+absl::StatusOr<bool> DotDecomposer::RunOnComputation(
+    HloComputation* computation) {
   // Gather all Non-canonical Dot operations.
-  std::vector<HloInstruction*> non_canonical_dots;
-  for (auto* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
-    for (auto* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kDot) {
-        continue;
-      }
-      const DotDimensionNumbers& dnums = instruction->dot_dimension_numbers();
-      if (!IsCanonical(instruction->operand(0)->shape(),
-                       dnums.lhs_contracting_dimensions(),
-                       dnums.lhs_batch_dimensions()) ||
-          !IsCanonical(instruction->operand(1)->shape(),
-                       dnums.rhs_contracting_dimensions(),
-                       dnums.rhs_batch_dimensions())) {
-        non_canonical_dots.push_back(instruction);
-      }
+  std::vector<HloDotInstruction*> non_canonical_dots;
+  for (auto* instruction : computation->instructions()) {
+    auto* dot = DynCast<HloDotInstruction>(instruction);
+    if (dot == nullptr) {
+      continue;
+    }
+    const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
+    if (!IsCanonical(dot->operand(0)->shape(),
+                     dnums.lhs_contracting_dimensions(),
+                     dnums.lhs_batch_dimensions()) ||
+        !IsCanonical(dot->operand(1)->shape(),
+                     dnums.rhs_contracting_dimensions(),
+                     dnums.rhs_batch_dimensions())) {
+      non_canonical_dots.push_back(dot);
     }
   }
   bool changed = false;
   for (auto* dot : non_canonical_dots) {
-    TF_RETURN_IF_ERROR(CanonicalizeDot(Cast<HloDotInstruction>(dot)));
+    ABSL_RETURN_IF_ERROR(CanonicalizeDot(dot));
     changed = true;
+  }
+  return changed;
+}
+
+absl::StatusOr<bool> DotDecomposer::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(computation));
+    changed |= comp_changed;
   }
   return changed;
 }

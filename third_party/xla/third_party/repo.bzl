@@ -76,6 +76,11 @@ def _tf_http_archive_impl(ctx):
             type = ctx.attr.type,
             stripPrefix = ctx.attr.strip_prefix,
         )
+        if hasattr(ctx.attr, "patch_cmds") and ctx.attr.patch_cmds:
+            for cmd in ctx.attr.patch_cmds:
+                res = ctx.execute(["bash", "-c", cmd])
+                if res.return_code != 0:
+                    fail("patch_cmd failed: %s\n%s" % (cmd, res.stderr))
         if patch_files:
             for patch_file in patch_files:
                 patch_file = ctx.path(Label(patch_file)) if patch_file else None
@@ -94,6 +99,7 @@ _tf_http_archive = repository_rule(
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "patch_file": attr.string_list(),
+        "patch_cmds": attr.string_list(),
         "build_file": attr.string(),
         "system_build_file": attr.string(),
         "link_files": attr.string_dict(),

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_MAXIMUM_MINIMUM_H_
 
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -37,24 +38,9 @@ void MaximumMinimumBroadcastSlow(const RuntimeShape& unextended_input1_shape,
       output_data[i] = op(input1_data[i], input2_data[i]);
     }
   } else {
-    TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
-    TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
-    TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
-
-    NdArrayDesc<N> desc1;
-    NdArrayDesc<N> desc2;
-    NdArrayDesc<N> output_desc;
-    NdArrayDescsForElementwiseBroadcast(
-        unextended_input1_shape, unextended_input2_shape, &desc1, &desc2);
-    CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                   &output_desc);
-
-    auto maxmin_func = [&](int indexes[N]) {
-      output_data[SubscriptToIndex(output_desc, indexes)] =
-          op(input1_data[SubscriptToIndex(desc1, indexes)],
-             input2_data[SubscriptToIndex(desc2, indexes)]);
-    };
-    NDOpsHelper<N>(output_desc, maxmin_func);
+    BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                            unextended_input2_shape, input2_data,
+                            unextended_output_shape, output_data, op);
   }
 }
 

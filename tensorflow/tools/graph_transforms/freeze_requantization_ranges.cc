@@ -110,7 +110,7 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
   TF_RETURN_IF_ERROR(
       context.GetOneStringParameter("min_max_log_file", "", &min_max_log_file));
   if (min_max_log_file.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "You must pass a file name to min_max_log_file");
   }
   float min_percentile;
@@ -123,7 +123,7 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
   std::vector<MinMaxRecord> records;
   TF_RETURN_IF_ERROR(ExtractMinMaxRecords(min_max_log_file, &records));
   if (records.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "No min/max range logs were found in the log file");
   }
 
@@ -139,7 +139,7 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
     }
   }
   if (any_missing_nodes) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Nodes were found in the log file that aren't present in the graph");
   }
 
@@ -174,9 +174,9 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
   for (const NodeDef& node : input_graph_def.node()) {
     if (range_for_nodes.count(node.name())) {
       if (node.op() != "RequantizationRange") {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Node is expected to be a RequantizationRange op: ", node.name(),
-            ", but is: ", node.op());
+            ", but is: ", node.op()));
       }
       const float min_value = range_for_nodes.at(node.name()).first;
       NodeDef* min_node = frozen_graph_def.mutable_node()->Add();

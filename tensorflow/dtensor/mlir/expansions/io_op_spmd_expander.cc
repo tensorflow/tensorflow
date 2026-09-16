@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -54,7 +55,7 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(const std::vector<Layout> operand_layouts,
                       ExtractRequiredLayoutFromOperands(op));
   if (!AllReplicated(output_layouts) || !AllReplicated(operand_layouts)) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         llvm::formatv("Expecting {0} to have input and output layouts to be "
                       "fully replicated but was not. ",
                       OpName(op))
@@ -138,7 +139,7 @@ StatusOr<mlir::Operation*> IOOpSPMDExpander::ExpandOp(mlir::Operation* op) {
   } else if (llvm::isa<mlir::TF::FlushSummaryWriterOp>(op)) {
     return Expand<mlir::TF::FlushSummaryWriterOp>(op);
   }
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       llvm::formatv("SPMD for op : {0} is not implemented ", OpName(op)).str());
 }
 

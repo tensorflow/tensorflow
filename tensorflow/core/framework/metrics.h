@@ -176,6 +176,28 @@ void RecordTFDataServiceDataTransferProtocolError(
     const std::string& data_transfer_protocol, error::Code code,
     const std::string& error_message);
 
+// Records that a tf.data client GetElement request from `client_id` (trainer
+// ID) thread `thread_id` to `worker_address` resulted in `action`.
+void RecordTFDataClientGetElementAction(const std::string& action,
+                                        const std::string& client_id,
+                                        const std::string& worker_address,
+                                        const std::string& thread_id);
+
+// Records the time (in microseconds) an element spent waiting in a prefetch
+// buffer.
+void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
+                                       int64_t duration_us);
+
+// Records the event of an element being enqueued into a prefetch buffer.
+void RecordTFDataPrefetchEnqueue(const std::string& node_name);
+
+// Records the event of an element being dequeued from a prefetch buffer.
+void RecordTFDataPrefetchDequeue(const std::string& node_name);
+
+// Records the current size of a prefetch buffer.
+void RecordTFDataPrefetchBufferSize(const std::string& node_name,
+                                    int64_t buffer_size);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
@@ -521,7 +543,9 @@ monitoring::Counter<2>* GetGraphOptimizationCounter();
 void UpdateTpuVariableDistributionTime(const uint64_t distribution_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
-void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs);
+void UpdateXlaCompilationTime(uint64_t compilation_time_usecs,
+                              uint64_t compile_end_us = 0);
+void UpdateXlaCompilationStartTime(uint64_t compilation_start_time_us);
 
 // Increments (by 1) a simple integer counter that is exposed for testing.
 void IncrementTestCounter(const std::string& name, const std::string& label);

@@ -41,10 +41,10 @@ limitations under the License.
 
 namespace xla::cpu {
 
-namespace {
-
 #define GEN_PASS_DEF_LOWERXLASHAREDPASS
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -137,9 +137,4 @@ struct LowerXlaSharedPass final
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass() {
-  return std::make_unique<LowerXlaSharedPass>();
-}
-
 }  // namespace xla::cpu

@@ -61,7 +61,7 @@ class UniformQuantizedClipByValueOp : public OpKernel {
   explicit UniformQuantizedClipByValueOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES(context, (std::is_same<T, qint32>()),
-                InvalidArgument("Unsupported operand type."));
+                absl::InvalidArgumentError("Unsupported operand type."));
     OP_REQUIRES_OK(context,
                    context->GetAttr("quantization_axis", &quantization_axis_));
   }
@@ -76,18 +76,20 @@ class UniformQuantizedClipByValueOp : public OpKernel {
     OP_REQUIRES_OK(context, QuantizationAxisAndShapeValid(
                                 operand.shape(), scales.shape(),
                                 zero_points.shape(), quantization_axis_));
-    OP_REQUIRES(context, (min.IsSameSize(scales)),
-                InvalidArgument("Input min shape must be same as "
-                                "scales/zero_points. Given min of shape ",
-                                min.shape().DebugString(),
-                                " and scales/zero_points of shape ",
-                                scales.shape().DebugString()));
-    OP_REQUIRES(context, (max.IsSameSize(scales)),
-                InvalidArgument("Input max shape must be same as "
-                                "scales/zero_points. Given max of shape ",
-                                max.shape().DebugString(),
-                                " and scales/zero_points of shape ",
-                                scales.shape().DebugString()));
+    OP_REQUIRES(
+        context, (min.IsSameSize(scales)),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input min shape must be same as "
+            "scales/zero_points. Given min of shape ",
+            min.shape().DebugString(), " and scales/zero_points of shape ",
+            scales.shape().DebugString())));
+    OP_REQUIRES(
+        context, (max.IsSameSize(scales)),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input max shape must be same as "
+            "scales/zero_points. Given max of shape ",
+            max.shape().DebugString(), " and scales/zero_points of shape ",
+            scales.shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

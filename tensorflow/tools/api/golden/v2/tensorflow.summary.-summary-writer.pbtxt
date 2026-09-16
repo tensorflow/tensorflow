@@ -1,7 +1,7 @@
 path: "tensorflow.summary.SummaryWriter"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.summary_ops_v2.SummaryWriter\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }

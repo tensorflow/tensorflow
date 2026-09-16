@@ -1,0 +1,57 @@
+Mark unused variables in tensor_ir as [[maybe_unused]].
+
+diff --git a/lib/Conversion/TensorToCudaTile/AffineMapImpl.cpp b/lib/Conversion/TensorToCudaTile/AffineMapImpl.cpp
+--- a/lib/Conversion/TensorToCudaTile/AffineMapImpl.cpp
++++ b/lib/Conversion/TensorToCudaTile/AffineMapImpl.cpp
+@@ -1138,7 +1138,7 @@ TensorToCudaTileConversionState::compute
+         getTensorDescriptorStaticMetadata(descriptor);
+ 
+     size_t ptrIdx = mapping->inputNo;
+-    size_t numArgsConsumed = processTensorDescriptor(
++    [[maybe_unused]] size_t numArgsConsumed = processTensorDescriptor(
+         tensorTy, tensorIRArg, cudaTileArgs, ptrIdx, metadata,
+         CudaTileTensorDescriptor::TensorKind::Input, iterSpaceMap, iterSpaceIds,
+         descriptor.allowTma, descriptor.alignment, descriptor.cost,
+diff --git a/lib/Dialect/Canonicalization.cpp b/lib/Dialect/Canonicalization.cpp
+--- a/lib/Dialect/Canonicalization.cpp
++++ b/lib/Dialect/Canonicalization.cpp
+@@ -181,7 +181,7 @@ static DenseI64ArrayAttr composeSliceSta
+        llvm::zip_equal(innerStarts.asArrayRef(), innerStrides.asArrayRef(),
+                        outerStarts.asArrayRef())) {
+     int64_t start;
+-    bool overflow =
++    [[maybe_unused]] bool overflow =
+         !checkedMultiplyAdd(outerStart, innerStride, innerStart, start);
+     assert(!overflow && "slice composition was not checked");
+     starts.push_back(start);
+@@ -206,7 +206,7 @@ static DenseI64ArrayAttr composeSliceLim
+     int64_t start;
+     int64_t limit;
+     int64_t stride;
+-    bool composed = computeComposedSliceDimension(
++    [[maybe_unused]] bool composed = computeComposedSliceDimension(
+         innerStart, innerLimit, innerStride, outerStart, outerLimit,
+         outerStride, start, limit, stride);
+     assert(composed && "slice composition was not checked");
+@@ -223,7 +223,8 @@ static DenseI64ArrayAttr composeSliceStr
+   for (auto [innerStride, outerStride] :
+        llvm::zip_equal(innerStrides.asArrayRef(), outerStrides.asArrayRef())) {
+     int64_t stride;
+-    bool overflow = llvm::MulOverflow(innerStride, outerStride, stride);
++    [[maybe_unused]] bool overflow =
++        llvm::MulOverflow(innerStride, outerStride, stride);
+     assert(!overflow && "slice composition was not checked");
+     strides.push_back(stride);
+   }
+diff --git a/lib/Dialect/TensorAttrs.cpp b/lib/Dialect/TensorAttrs.cpp
+--- a/lib/Dialect/TensorAttrs.cpp
++++ b/lib/Dialect/TensorAttrs.cpp
+@@ -1662,7 +1662,7 @@ MatmulSourceAttr::slice(ArrayRef<int64_t
+ 
+ LayoutSourceAttrInterface MatmulSourceAttr::normalize() const {
+   LLVM_DEBUG(llvm::dbgs() << "Computing iteration space for matmul\n");
+-  std::string_view tab = "    ";
++  [[maybe_unused]] std::string_view tab = "    ";
+ 
+   // [1] Compute LHS iteration space and get boundaries.
+   auto lhsIterSpace = normalizeAndSplit(getLhs(), {getB(), getM(), getK()});

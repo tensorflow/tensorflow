@@ -5,6 +5,8 @@ load(
     "tf_proto_library",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
+
 # OSS only: This target is header-only. Link `debug_options_proto_cc_impl` only to
 # `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `debug_options_proto_cc_impl`
 # directly unless the target does not link `libtensorflow_framework.so`.
@@ -23,11 +25,12 @@ cc_library(
     deps = [
         ":debug_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
-        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_googlesource_code_re2//:re2",
         "@llvm-project//llvm:Support",
@@ -37,7 +40,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:stringpiece",
         "@xla//xla/tsl/lib/io:buffered_file",
         "@xla//xla/tsl/platform:env",
     ],

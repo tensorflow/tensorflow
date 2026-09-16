@@ -21,11 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -34,7 +31,6 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -75,6 +71,13 @@ struct P2PConfig {
   CollectiveConfig config;
   IdToSourceTargetMap id_to_source_target;
 };
+
+// Returns the source-target pairs from the map, sorted deterministically by
+// source first, then target. The map id_to_source_target contains for each ID
+// an entry: current_id -> {source_id, target_id}, which means that we have data
+// channels source_id -> current_id and current_id -> target_id.
+std::vector<SourceTarget> GetSortedSourceTargetPairs(
+    const P2PConfig::IdToSourceTargetMap& id_to_source_target);
 
 // Extracts source/target pairs for send/recv from frontend attributes.
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(

@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_stat_summarizer, m) {
+PYBIND11_MODULE(_pywrap_stat_summarizer, m, pybind11::mod_gil_not_used()) {
   py::class_<tensorflow::StatSummarizer> stat_summ_class(m, "StatSummarizer",
                                                          py::dynamic_attr());
   stat_summ_class

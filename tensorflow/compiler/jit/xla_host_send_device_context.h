@@ -67,13 +67,13 @@ class XlaHostSendDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override {
-    done(errors::Internal("host->device copy not implemented."));
+    done(absl::InternalError("host->device copy not implemented."));
   }
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
                               StatusCallback done) const override {
-    done(errors::Internal("device->device copy not implemented."));
+    done(absl::InternalError("device->device copy not implemented."));
   }
 
  private:

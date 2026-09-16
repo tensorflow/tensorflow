@@ -40,10 +40,10 @@ namespace gpu {
 namespace {
 
 class ParallelReductionTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtInterpreterReferenceMixin<
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
         GpuPjRtCodegenTest>::GetDebugOptionsForTest();
     // The test contains a MOF fusion and the XLA optimizer passes
     // don't like this.
@@ -320,7 +320,7 @@ ENTRY %cluster {
 }
 
 class ParallelReductionTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {};
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {};
 
 TEST_F(ParallelReductionTestBase, ParallelReductionsWithAliasing) {
   const char* hlo_text = R"(

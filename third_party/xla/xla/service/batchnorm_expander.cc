@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -179,11 +180,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   const Shape feature_shape = scale->shape();
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   Shape scalar_broadcast_shape = ShapeUtil::MakeStaticShape(operand_shape);
   auto epsilon = add(HloInstruction::CreateBroadcast(
       scalar_broadcast_shape,
@@ -242,8 +243,15 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add_binary(feature_shape, HloOpcode::kMultiply, mean, mean);
 
   // Var[X].
-  auto var =
+  auto raw_var =
       add_binary(feature_shape, HloOpcode::kSubtract, square_mean, mean_square);
+
+  // Clamp variance to 0 to prevent negative variance due to floating-point
+  // rounding errors.
+  auto zero_feature = add(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeStaticShape(feature_shape), zero, {}));
+  auto var =
+      add_binary(feature_shape, HloOpcode::kMaximum, raw_var, zero_feature);
 
   auto var_broadcasted = feature_broadcast(var);
 
@@ -339,7 +347,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
   };
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = add(HloInstruction::CreateBroadcast(
       scalar_broadcast_shape,
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
@@ -433,11 +441,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add(DynamicElementCountPerFeature(activation, feature_index, add));
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon_scalar =
       add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
   auto epsilon_activation = add(HloInstruction::CreateBroadcast(

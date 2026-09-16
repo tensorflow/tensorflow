@@ -70,7 +70,7 @@ absl::Status DecodeThreeChars(const char* codes, char* result) {
   // Convert() return value has upper 25 bits set if input is invalid.
   // Therefore `packed` has high bits set iff at least one of code is invalid.
   if (TF_PREDICT_FALSE((packed & 0xFF000000) != 0)) {
-    return errors::InvalidArgument("Invalid character found in base64.");
+    return absl::InvalidArgumentError("Invalid character found in base64.");
   }
   result[0] = static_cast<char>(packed >> 16);
   result[1] = static_cast<char>(packed >> 8);
@@ -82,7 +82,7 @@ absl::Status DecodeThreeChars(const char* codes, char* result) {
 template <typename T>
 absl::Status Base64Decode(absl::string_view data, T* decoded) {
   if (decoded == nullptr) {
-    return errors::Internal("'decoded' cannot be nullptr.");
+    return absl::InternalError("'decoded' cannot be nullptr.");
   }
 
   if (data.empty()) {
@@ -98,7 +98,7 @@ absl::Status Base64Decode(absl::string_view data, T* decoded) {
   std::unique_ptr<char[]> buffer(new char[max_decoded_size]);
   char* current = buffer.get();
   if (current == nullptr) {
-    return errors::ResourceExhausted(
+    return absl::ResourceExhaustedError(
         "Failed to allocate buffer for decoded string.");
   }
 
@@ -125,7 +125,7 @@ absl::Status Base64Decode(absl::string_view data, T* decoded) {
   const int remain = static_cast<int>(end - b64);
   if (TF_PREDICT_FALSE(remain == 1)) {
     // We may check this condition early by checking data.size() % 4 == 1.
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Base64 string length cannot be 1 modulo 4.");
   }
 
@@ -152,7 +152,7 @@ absl::Status Base64Encode(absl::string_view source, bool with_padding,
                           T* encoded) {
   const char* const base64_chars = kBase64UrlSafeChars;
   if (encoded == nullptr) {
-    return errors::Internal("'encoded' cannot be nullptr.");
+    return absl::InternalError("'encoded' cannot be nullptr.");
   }
 
   // max_encoded_size may overestimate by up to 4 bytes.
@@ -160,7 +160,7 @@ absl::Status Base64Encode(absl::string_view source, bool with_padding,
   std::unique_ptr<char[]> buffer(new char[max_encoded_size]);
   char* current = buffer.get();
   if (current == nullptr) {
-    return errors::ResourceExhausted(
+    return absl::ResourceExhaustedError(
         "Failed to allocate buffer for encoded string.");
   }
 

@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -71,10 +70,6 @@ void PropagateSliceIndicesPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass() {
-  return std::make_unique<PropagateSliceIndicesPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

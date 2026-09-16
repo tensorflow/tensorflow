@@ -28,10 +28,11 @@ namespace {
 TEST(PjRtCApiStatusUtilsTest, PjrtErrorToStatusPayloadTest) {
   absl::Status status = absl::InternalError("test error");
   status.SetPayload("test_payload", absl::Cord("test_value"));
-  PJRT_Error error{status};
+  PJRT_Error* error = StatusToPjRtError(status);
 
   const PJRT_Api* api = GetPjrtApi();
-  absl::Status result = PjrtErrorToStatus(&error, api);
+  absl::Status result = PjrtErrorToStatus(error, api);
+  DestroyPjRtError(error);
   EXPECT_EQ(result.code(), absl::StatusCode::kInternal);
   EXPECT_EQ(result.message(), "test error");
   auto payload = result.GetPayload("test_payload");
@@ -43,6 +44,16 @@ TEST(PjRtCApiStatusUtilsTest, PjrtErrorToStatusNullError) {
   const PJRT_Api* api = GetPjrtApi();
   absl::Status result = PjrtErrorToStatus(nullptr, api);
   EXPECT_TRUE(result.ok());
+}
+
+TEST(PjRtCApiStatusUtilsTest, PjrtErrorCodeToStatusCodeFallback) {
+  EXPECT_EQ(PjrtErrorCodeToStatusCode(static_cast<PJRT_Error_Code>(-1)),
+            absl::StatusCode::kUnknown);
+}
+
+TEST(PjRtCApiStatusUtilsTest, StatusCodeToPjrtErrorCodeFallback) {
+  EXPECT_EQ(StatusCodeToPjrtErrorCode(static_cast<absl::StatusCode>(-1)),
+            PJRT_Error_Code_UNKNOWN);
 }
 
 }  // namespace

@@ -118,14 +118,14 @@ HloStackFrame StackFrames::GetStackFrame(StackFrameId id) const {
 
 StackFrameId StackFrames::AddStackFrame(const HloStackFrame& frame) {
   auto [file_it, file_inserted] = file_name_to_id_.try_emplace(
-      std::string(frame.file_name), proto_.file_names_size() + 1);
+      frame.file_name, proto_.file_names_size() + 1);
   if (file_inserted) {
     proto_.add_file_names(std::string(frame.file_name));
   }
   FileNameId file_id = file_it->second;
 
   auto [func_it, func_inserted] = function_name_to_id_.try_emplace(
-      std::string(frame.function_name), proto_.function_names_size() + 1);
+      frame.function_name, proto_.function_names_size() + 1);
   if (func_inserted) {
     proto_.add_function_names(std::string(frame.function_name));
   }
@@ -165,7 +165,10 @@ bool StackFrames::IsPrefix(StackFrameId prefix, StackFrameId full) const {
     if (full == prefix) {
       return true;
     }
-    full = GetStackFrame(full).parent_frame_id;
+    if (!full.valid() || full.value > proto_.stack_frames_size()) {
+      return false;
+    }
+    full = StackFrameId{proto_.stack_frames(full.value - 1).parent_frame_id()};
   }
   return false;
 }

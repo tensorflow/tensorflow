@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -26,17 +27,27 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_longest_prefix.h"
 #include "xla/printer.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -59,6 +70,10 @@ StringHandle RegisterString(const std::string& str) {
     return tsl::profiler::RegisterString(domain, str);
   }
   return {};
+}
+
+StringHandle RegisterOptionalString(const std::string& str) {
+  return str.empty() ? nullptr : RegisterString(str);
 }
 
 // Nsight Systems supports some basic HTML markup in annotation strings. This
@@ -111,8 +126,8 @@ struct StackFrame {
 
 // Walk through the HLO graph from an instruction and collect the source
 // file/line information we see along the way. This allows us to generate an
-// annotation for each kernel that shows the (merged) Python stacktraces of the
-// operations that were traced and compiled int this kernel. For example:
+// annotation for each instruction that shows the (merged) Python stacktraces of
+// the operations that are represented by this instruction. For example:
 //
 // - /opt/jax/examples/mnist_vae.py:143[<module>]
 // -- /opt/jax/examples/mnist_vae.py:127[run_epoch]
@@ -159,10 +174,11 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
     OpMetadata const& meta = inst->metadata();
     // The full op_name is split across three places: the module-level
     // annotation shows the prefix that is common to the whole module, the
-    // kernel-level annotation removes that prefix and shows whatever middle
-    // sections of the name are common to all operations in the kernel, and the
-    // individual call stack frames in the kernel-level annotation show the
-    // final parts of the op_name that have not already been shown.
+    // instruction-level annotation removes that prefix and shows whatever
+    // middle sections of the name are common to all operations in the
+    // instruction, and the individual call stack frames in the
+    // instruction-level annotation show the final parts of the op_name that
+    // have not already been shown.
     absl::string_view op_name = meta.op_name();
     if (!op_name.empty()) {
       op_name = op_name.substr(op_name_prefix_to_remove_.size());
@@ -253,15 +269,42 @@ std::string MakeTitle(const HloModule& mod, absl::string_view longest_prefix) {
 std::string FormatSourceLocations(HloInstruction const& inst,
                                   int32_t common_frames) {
   // Inside the source location/backtrace report the op_name too, but remove the
-  // kernel-wide prefix for brevity
+  // instruction-wide prefix for brevity
   SourceLocationVisitor visitor{GetLongestOpNamePrefix(inst)};
   // Visit the given instruction, and the things it calls, but not its operands
   // -- we don't want to collect the source code locations that produced the
-  // inputs to this kernel, just those corresponding to the kernel itself.
+  // inputs to this instruction, just those corresponding to the instruction
+  // itself.
   if (!VisitInstAndCalledButNotOperands(visitor, inst).ok()) {
     return "[error]";
   }
   return visitor.AsString(common_frames);
+}
+
+std::pair<std::string, int32_t> ResolveSourceLocation(
+    const HloInstruction& inst) {
+  const OpMetadata& metadata = inst.metadata();
+  if (!metadata.source_file().empty()) {
+    return {metadata.source_file(), metadata.source_line()};
+  }
+
+  StackFrameId frame_id{metadata.stack_frame_id()};
+  if (!frame_id.valid() || inst.GetModule() == nullptr) {
+    return {};
+  }
+  HloModule::StackFrame frame = inst.GetModule()->get_stack_frame(frame_id);
+  if (frame.empty()) {
+    return {};
+  }
+  return {std::string(frame.file_name), frame.line};
+}
+
+std::string GetFrontendAttribute(const HloInstruction& inst,
+                                 absl::string_view key) {
+  if (std::optional<std::string> value = inst.get_frontend_attribute(key)) {
+    return std::move(*value);
+  }
+  return {};
 }
 
 // Get the string representation of this instruction as an std::string.
@@ -302,33 +345,134 @@ std::pair<StringHandle, int32_t> GetLongestSourceLocationPrefix(
   }
   return visitor.LongestSourceLocationPrefix();
 }
+
+struct InstructionAnnotationMetadata {
+  // Basic annotation payload fields are prepared directly from the HLO
+  // instruction and do not need an intermediate representation here.
+
+  // Detailed annotation payload.
+  std::string hlo_op_name;
+  int64_t hlo_op_id = -1;
+  std::string op_type;
+  std::string op_name;
+  std::string source_file;
+  int32_t source_line = 0;
+  std::string output_shape;
+
+  // Collective annotation payload.
+  bool is_collective = false;
+  std::string replica_groups;
+  bool is_pipelined = false;
+  bool is_spmd_generated = false;
+  std::string collective_group_key;
+  std::string combiner_key;
+  std::string scheduling_group_id;
+  std::string stream_annotation;
+};
+
+InstructionAnnotationMetadata GetInstructionAnnotationMetadata(
+    const HloInstruction& inst) {
+  InstructionAnnotationMetadata metadata;
+  metadata.hlo_op_name = inst.name();
+  metadata.hlo_op_id = inst.unique_id();
+  metadata.op_type = inst.metadata().op_type();
+  metadata.op_name = inst.metadata().op_name();
+  if (metadata.op_name.empty()) {
+    metadata.op_name = GetLongestOpNamePrefix(inst);
+  }
+  std::tie(metadata.source_file, metadata.source_line) =
+      ResolveSourceLocation(inst);
+  metadata.output_shape = inst.shape().ToString();
+
+  const auto* collective = DynCast<HloCollectiveInstruction>(&inst);
+  if (collective == nullptr) {
+    return metadata;
+  }
+
+  metadata.is_collective = true;
+  metadata.replica_groups = collective->device_list()->ToString();
+  if (auto backend_config = collective->backend_config<GpuBackendConfig>();
+      backend_config.ok()) {
+    const auto& collective_config = backend_config->collective_backend_config();
+    metadata.is_pipelined = collective_config.is_pipelined();
+    metadata.is_spmd_generated = collective_config.is_spmd_generated();
+  }
+
+  metadata.collective_group_key =
+      GetFrontendAttribute(inst, kCollectiveGroupKeyAttr);
+  metadata.combiner_key = GetFrontendAttribute(inst, kCombinerKeyAttr);
+  metadata.scheduling_group_id =
+      GetFrontendAttribute(inst, kXlaSchedulingGroupIdAttr);
+  metadata.stream_annotation =
+      GetFrontendAttribute(inst, kXlaStreamAnnotationAttr);
+
+  return metadata;
+}
 }  // namespace
 
 ModuleAnnotation::ModuleAnnotation(absl::string_view module_name_)
     : title_str_(absl::StrCat("XlaModule:#hlo_module=", module_name_, "#")),
       title_(RegisterString(title_str_)),
-      module_name_(RegisterString(std::string{module_name_})) {}
+      module_name_(RegisterString(std::string{module_name_})),
+      common_src_locations_(nullptr),
+      module_id_(-1),
+      common_stack_frames_(0) {}
 
 ModuleAnnotation::ModuleAnnotation(const HloModule& mod)
     : longest_prefix_(GetLongestOpNamePrefix(mod)),
       title_str_(MakeTitle(mod, longest_prefix_)),
       title_(RegisterString(title_str_)),
       module_name_(RegisterString(mod.name())),
-      module_id_(mod.unique_id()) {
+      common_src_locations_(nullptr),
+      module_id_(mod.unique_id()),
+      common_stack_frames_(0) {
   std::tie(common_src_locations_, common_stack_frames_) =
       GetLongestSourceLocationPrefix(mod);
 }
 
 #if GOOGLE_CUDA
-namespace {
-auto schema_entry(uint64_t type, const char* name, uint64_t offset) {
+static nvtxPayloadSchemaEntry_t SchemaEntry(uint64_t type, const char* name,
+                                            uint64_t offset) {
   nvtxPayloadSchemaEntry_t r{};
   r.type = type;
   r.name = name;
   r.offset = offset;
   return r;
 }
-}  // namespace
+
+static uint64_t RegisterStaticSchema(
+    const char* name, absl::Span<const nvtxPayloadSchemaEntry_t> entries,
+    size_t payload_size) {
+  auto domain = tsl::profiler::DefaultProfilerDomain();
+  if (!domain) {
+    return 0;
+  }
+  const nvtxPayloadSchemaAttr_t schema_attr = {
+#if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
+      /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
+          NVTX_PAYLOAD_SCHEMA_ATTR_TYPE | NVTX_PAYLOAD_SCHEMA_ATTR_ENTRIES |
+          NVTX_PAYLOAD_SCHEMA_ATTR_NUM_ENTRIES |
+          NVTX_PAYLOAD_SCHEMA_ATTR_STATIC_SIZE,
+#elif defined(NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME)
+      /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME |
+          NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_TYPE |
+          NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_ENTRIES |
+          NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NUM_ENTRIES |
+          NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_STATIC_SIZE,
+#else
+#error Unknown NVTX variant.
+#endif
+      /* .name = */ name,
+      /* .type = */ NVTX_PAYLOAD_SCHEMA_TYPE_STATIC,
+      /* .flags = */ NVTX_PAYLOAD_SCHEMA_FLAG_NONE,
+      /* .entries = */ entries.data(),
+      /* .numEntries = */ entries.size(),
+      /* .payloadStaticSize = */ payload_size};
+  const uint64_t schema_id = RegisterSchema(domain, &schema_attr);
+  VLOG(1) << "Registered structured NVTX schema: name=" << name
+          << " id=" << schema_id << " payload_size=" << payload_size;
+  return schema_id;
+}
 #endif
 
 uint64_t ModuleAnnotation::NvtxSchemaId() {
@@ -338,14 +482,14 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
     if (!domain) {
       return 0;
     }
-    const nvtxPayloadSchemaEntry_t schema[] = {
-        schema_entry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                     "Name", offsetof(ModuleAnnotation, module_name_)),
-        schema_entry(NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Unique ID",
-                     offsetof(ModuleAnnotation, module_id_)),
-        schema_entry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                     "Common source locations",
-                     offsetof(ModuleAnnotation, common_src_locations_))};
+    const std::array<nvtxPayloadSchemaEntry_t, 3> schema = {
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Name", offsetof(ModuleAnnotation, module_name_)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Unique ID",
+                    offsetof(ModuleAnnotation, module_id_)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Common source locations",
+                    offsetof(ModuleAnnotation, common_src_locations_))};
     const nvtxPayloadSchemaAttr_t schemaAttr = {
 #if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
         /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
@@ -364,8 +508,8 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
         /* .name = */ "XlaModule",
         /* .type = */ NVTX_PAYLOAD_SCHEMA_TYPE_STATIC,
         /* .flags = */ NVTX_PAYLOAD_SCHEMA_FLAG_NONE,
-        /* .entries = */ schema,
-        /* .numEntries = */ sizeof(schema) / sizeof(schema[0]),
+        /* .entries = */ schema.data(),
+        /* .numEntries = */ schema.size(),
         /* .payloadStaticSize = */ sizeof(ModuleAnnotation)};
     return RegisterSchema(domain, &schemaAttr);
 #else
@@ -375,83 +519,159 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
   return schema_id;
 }
 
-namespace {
-std::string MakeKernelName(absl::string_view prefix,
-                           const HloInstruction& inst) {
+static std::string MakeInstructionTitle(absl::string_view prefix,
+                                        const HloInstruction& inst) {
   // Sometimes an instruction doesn't have metadata, but the computations that
   // it calls do have metadata. Consider all of those metadata op_name entries
   // and attach the longest prefix to this launch.
   absl::string_view op_name = GetLongestOpNamePrefix(inst);
+
+  std::string title;
   if (op_name.empty()) {
-    return absl::StrCat("Thunk:#hlo_op=", inst.name(), "#");
+    title = absl::StrCat("Thunk:#hlo_op=", inst.name(),
+                         ",unique_hlo_op_id=", inst.unique_id());
+  } else if (op_name.substr(0, prefix.size()) != prefix) {
+    // The op_name for this instruction does not start with the prefix that was
+    // common to the other instructions in the module.
+    title = absl::StrCat("Thunk:#name=", op_name, ",hlo_op=", inst.name(),
+                         ",unique_hlo_op_id=", inst.unique_id());
+  } else {
+    auto short_name = op_name.substr(prefix.size());
+    if (!short_name.empty() && short_name.front() == '/') {
+      short_name = short_name.substr(1);
+    }
+    title = absl::StrCat("Thunk:#name=", short_name, ",hlo_op=", inst.name(),
+                         ",unique_hlo_op_id=", inst.unique_id());
   }
-  if (op_name.substr(0, prefix.size()) != prefix) {
-    // the op_name we got for this instruction does not start with the prefix
-    // that we thought was common to all instructions in the module
-    return absl::StrCat("Thunk:#name=", op_name, ",hlo_op=", inst.name(), "#");
-  }
-  // remove the prefix that's in the parent module annotation
-  auto short_name = op_name.substr(prefix.size());
-  // remove the leading / if there is one (prefix might be an empty string)
-  if (!short_name.empty() && short_name.front() == '/') {
-    short_name = short_name.substr(1);
-  }
-  return absl::StrCat("Thunk:#name=", short_name, ",hlo_op=", inst.name(), "#");
-}
-}  // namespace
 
-KernelAnnotation::KernelAnnotation(const ModuleAnnotation& module_annotation,
-                                   const HloInstruction& inst)
-    : title_str(
-          MakeKernelName(module_annotation.longest_op_name_prefix(), inst)),
-      title(RegisterString(title_str)),
-      hlo_dump(RegisterString(InstructionAsString(inst))),
-      src_locations(RegisterString(FormatSourceLocations(
-          inst, module_annotation.common_stack_frames()))),
-      called_hlo_dump(RegisterString("\n" + CalledInstructionsAsString(inst))) {
+  title.push_back('#');
+  return title;
 }
 
-ModuleAnnotations::ModuleAnnotations(absl::string_view module_name)
+static std::string MakeInstructionDetails(const HloInstruction& inst) {
+  // Collect instruction metadata as a key-value suffix that can be parsed by
+  // XProf.
+  InstructionAnnotationMetadata metadata =
+      GetInstructionAnnotationMetadata(inst);
+
+  std::string details;
+  auto append = [&](absl::string_view key, std::string value) {
+    if (!value.empty()) {
+      value = absl::StrReplaceAll(value, {{",", ";"}});
+      absl::StrAppend(&details, ",", key, "=", value);
+    }
+  };
+
+  append("op_type", metadata.op_type);
+  append("op_name", metadata.op_name);
+  if (!metadata.source_file.empty()) {
+    append("source_file", metadata.source_file);
+    append("source_line", absl::StrCat(metadata.source_line));
+  }
+  append("shape", metadata.output_shape);
+
+  if (metadata.is_collective) {
+    append("replica_groups", metadata.replica_groups);
+    append("is_pipelined", absl::StrCat(metadata.is_pipelined));
+    append("is_spmd_generated", absl::StrCat(metadata.is_spmd_generated));
+    append("collective_group_key", metadata.collective_group_key);
+    append("combiner_key", metadata.combiner_key);
+    append("scheduling_group_id", metadata.scheduling_group_id);
+    append("stream_annotation", metadata.stream_annotation);
+  }
+
+  return details;
+}
+
+static std::string MakeInstructionName(absl::string_view prefix,
+                                       const HloInstruction& inst,
+                                       TraceAnnotationLevel annotation_level) {
+  std::string name = MakeInstructionTitle(prefix, inst);
+  if (annotation_level < TraceAnnotationLevel::kDetailed) {
+    return name;
+  }
+
+  name.pop_back();
+  absl::StrAppend(&name, MakeInstructionDetails(inst), "#");
+  return name;
+}
+
+InstructionAnnotation::InstructionAnnotation(
+    const ModuleAnnotation& module_annotation, const HloInstruction& inst,
+    TraceAnnotationLevel annotation_level)
+    : nvtx_name_str_(MakeInstructionTitle(
+          module_annotation.longest_op_name_prefix(), inst)),
+      xprof_name_str_(MakeInstructionName(
+          module_annotation.longest_op_name_prefix(), inst, annotation_level)),
+      nvtx_name_(RegisterString(nvtx_name_str_)) {
+  payload_ = Basic{
+      RegisterString(InstructionAsString(inst)),
+      RegisterString(
+          FormatSourceLocations(inst, module_annotation.common_stack_frames())),
+      RegisterString("\n" + CalledInstructionsAsString(inst)),
+  };
+  if (annotation_level < TraceAnnotationLevel::kDetailed) {
+    return;
+  }
+
+  InstructionAnnotationMetadata metadata =
+      GetInstructionAnnotationMetadata(inst);
+
+  payload_ = Detailed{
+      std::move(std::get<Basic>(payload_)),
+      RegisterOptionalString(metadata.hlo_op_name),
+      metadata.hlo_op_id,
+      RegisterOptionalString(metadata.op_type),
+      RegisterOptionalString(metadata.op_name),
+      RegisterOptionalString(metadata.source_file),
+      metadata.source_line,
+      RegisterOptionalString(metadata.output_shape),
+  };
+  if (!metadata.is_collective) {
+    return;
+  }
+
+  payload_ = Collective{
+      std::move(std::get<Detailed>(payload_)),
+      RegisterOptionalString(metadata.replica_groups),
+      static_cast<uint8_t>(metadata.is_pipelined),
+      static_cast<uint8_t>(metadata.is_spmd_generated),
+      RegisterOptionalString(metadata.collective_group_key),
+      RegisterOptionalString(metadata.combiner_key),
+      RegisterOptionalString(metadata.scheduling_group_id),
+      RegisterOptionalString(metadata.stream_annotation),
+  };
+}
+
+void RangePush(tsl::profiler::ProfilerDomainHandle domain,
+               const ModuleAnnotation& annotation) {
+  tsl::profiler::RangePush(domain, annotation.title(), annotation);
+}
+
+void RangePush(tsl::profiler::ProfilerDomainHandle domain,
+               const InstructionAnnotation& annotation) {
+  std::visit(
+      [&](const auto& payload) {
+        tsl::profiler::RangePush(domain, annotation.nvtx_name_, payload);
+      },
+      annotation.payload_);
+}
+
+ModuleAnnotations::ModuleAnnotations(absl::string_view module_name,
+                                     TraceAnnotationLevel /*annotation_level*/)
     : top_level(module_name) {}
 
-uint64_t KernelAnnotation::NvtxSchemaId() {
+uint64_t InstructionAnnotation::Basic::NvtxSchemaId() {
   static std::uint64_t schema_id = []() -> std::uint64_t {
 #if GOOGLE_CUDA
-    auto domain = tsl::profiler::DefaultProfilerDomain();
-    if (!domain) {
-      return 0;
-    }
-    const nvtxPayloadSchemaEntry_t schema[] = {
-        schema_entry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                     "Source locations",
-                     offsetof(KernelAnnotation, src_locations)),
-        schema_entry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                     "HLO", offsetof(KernelAnnotation, hlo_dump)),
-        schema_entry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                     "Called HLO",
-                     offsetof(KernelAnnotation, called_hlo_dump))};
-    const nvtxPayloadSchemaAttr_t schemaAttr = {
-#if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
-        /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
-            NVTX_PAYLOAD_SCHEMA_ATTR_TYPE | NVTX_PAYLOAD_SCHEMA_ATTR_ENTRIES |
-            NVTX_PAYLOAD_SCHEMA_ATTR_NUM_ENTRIES |
-            NVTX_PAYLOAD_SCHEMA_ATTR_STATIC_SIZE,
-#elif defined(NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME)
-        /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME |
-            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_TYPE |
-            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_ENTRIES |
-            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NUM_ENTRIES |
-            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_STATIC_SIZE,
-#else
-#error Unknown NVTX variant.
-#endif
-        /* .name = */ "XlaKernel",
-        /* .type = */ NVTX_PAYLOAD_SCHEMA_TYPE_STATIC,
-        /* .flags = */ NVTX_PAYLOAD_SCHEMA_FLAG_NONE,
-        /* .entries = */ schema,
-        /* .numEntries = */ sizeof(schema) / sizeof(schema[0]),
-        /* .payloadStaticSize = */ sizeof(KernelAnnotation)};
-    return RegisterSchema(domain, &schemaAttr);
+    const std::array<nvtxPayloadSchemaEntry_t, 3> schema = {
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Source locations", offsetof(Basic, src_locations)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "HLO", offsetof(Basic, hlo_dump)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Called HLO", offsetof(Basic, called_hlo_dump))};
+    return RegisterStaticSchema("XlaInstruction", schema, sizeof(Basic));
 #else
     return 0;
 #endif
@@ -459,19 +679,122 @@ uint64_t KernelAnnotation::NvtxSchemaId() {
   return schema_id;
 }
 
-ModuleAnnotations::ModuleAnnotations(const HloModule& mod) : top_level{mod} {
-  // loop through `mod` and populate `kernels` (string -> KernelAnnotation map)
-  // with the information we want to attach to individual kernels.
+uint64_t InstructionAnnotation::Detailed::NvtxSchemaId() {
+  static std::uint64_t schema_id = []() -> std::uint64_t {
+#if GOOGLE_CUDA
+    constexpr uint64_t kBasicOffset = offsetof(Detailed, basic);
+    const std::array<nvtxPayloadSchemaEntry_t, 10> schema = {
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Source locations",
+                    kBasicOffset + offsetof(Basic, src_locations)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "HLO", kBasicOffset + offsetof(Basic, hlo_dump)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Called HLO",
+                    kBasicOffset + offsetof(Basic, called_hlo_dump)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "HLO name", offsetof(Detailed, hlo_op_name)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT64, "HLO unique ID",
+                    offsetof(Detailed, hlo_op_id)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Framework op type", offsetof(Detailed, op_type)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Framework op name", offsetof(Detailed, op_name)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Source file", offsetof(Detailed, source_file)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Source line",
+                    offsetof(Detailed, source_line)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Output shape", offsetof(Detailed, output_shape))};
+    return RegisterStaticSchema("XlaInstructionDetailed", schema,
+                                sizeof(Detailed));
+#else
+    return 0;
+#endif
+  }();
+  return schema_id;
+}
+
+uint64_t InstructionAnnotation::Collective::NvtxSchemaId() {
+  static std::uint64_t schema_id = []() -> std::uint64_t {
+#if GOOGLE_CUDA
+    constexpr uint64_t kDetailedOffset = offsetof(Collective, detailed);
+    constexpr uint64_t kBasicOffset =
+        kDetailedOffset + offsetof(Detailed, basic);
+    const std::array<nvtxPayloadSchemaEntry_t, 17> schema = {
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Source locations",
+                    kBasicOffset + offsetof(Basic, src_locations)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "HLO", kBasicOffset + offsetof(Basic, hlo_dump)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Called HLO",
+                    kBasicOffset + offsetof(Basic, called_hlo_dump)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "HLO name",
+                    kDetailedOffset + offsetof(Detailed, hlo_op_name)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT64, "HLO unique ID",
+                    kDetailedOffset + offsetof(Detailed, hlo_op_id)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Framework op type",
+                    kDetailedOffset + offsetof(Detailed, op_type)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Framework op name",
+                    kDetailedOffset + offsetof(Detailed, op_name)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Source file",
+                    kDetailedOffset + offsetof(Detailed, source_file)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Source line",
+                    kDetailedOffset + offsetof(Detailed, source_line)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Output shape",
+                    kDetailedOffset + offsetof(Detailed, output_shape)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Replica groups", offsetof(Collective, replica_groups)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_UINT8, "Is pipelined",
+                    offsetof(Collective, is_pipelined)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_UINT8, "Is SPMD generated",
+                    offsetof(Collective, is_spmd_generated)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Collective group key",
+                    offsetof(Collective, collective_group_key)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Combiner key", offsetof(Collective, combiner_key)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Scheduling group ID",
+                    offsetof(Collective, scheduling_group_id)),
+        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+                    "Stream annotation",
+                    offsetof(Collective, stream_annotation))};
+    return RegisterStaticSchema("XlaCollectiveDetailed", schema,
+                                sizeof(Collective));
+#else
+    return 0;
+#endif
+  }();
+  return schema_id;
+}
+
+ModuleAnnotations::ModuleAnnotations(const HloModule& mod,
+                                     TraceAnnotationLevel annotation_level)
+    : top_level{mod} {
+  VLOG(1) << "Preparing GPU trace module annotations: module=" << mod.name()
+          << " annotation_level=" << static_cast<int32_t>(annotation_level);
+
+  // Loop through `mod` and populate `instructions` with the information we
+  // want to attach to individual instruction ranges.
   for (const HloComputation* computation : mod.computations()) {
     for (const HloInstruction* inst : computation->instructions()) {
       // e.g. inst.name is "fusion.6", inst.opcode is "kFusion" and called
       // is ["fused_computation.5"], in which case the content of
-      // "fused_computation.5" ends up under an NVTX range called
-      // "fusion.6". We want to construct a useful annotation for that NVTX
-      // range based on the content of `inst`, including `called` etc.
+      // "fused_computation.5" ends up under a profiler range called
+      // "fusion.6". We want to construct a useful annotation for that range
+      // based on the content of `inst`, including `called` etc.
       // FIXME: using try_emplace here was sensitive to
       // https://github.com/abseil/abseil-cpp/issues/388.
-      kernels.insert({inst->name(), KernelAnnotation{top_level, *inst}});
+      instructions.insert(
+          {inst->name(),
+           InstructionAnnotation{top_level, *inst, annotation_level}});
     }
   }
 }
@@ -489,20 +812,23 @@ ScopedModuleAnnotations::ScopedModuleAnnotations(
     : restore_(std::exchange(current_annotations, annotations)) {}
 
 ScopedModuleAnnotations::~ScopedModuleAnnotations() {
-  std::exchange(current_annotations, restore_);
+  current_annotations = restore_;
 }
 
-std::optional<ScopedAnnotation> GetKernelAnnotation(
+std::optional<ScopedAnnotation> GetInstructionAnnotation(
     absl::string_view profile_annotation) {
   if (profile_annotation.empty()) {
     return {};
   }
   if (current_annotations) {
-    // Have a set of pre-prepared thunk/kernel annotations to use
-    const auto iter = current_annotations->kernels.find(profile_annotation);
-    if (iter != current_annotations->kernels.end()) {
+    // Have a set of pre-prepared instruction annotations to use
+    const auto iter =
+        current_annotations->instructions.find(profile_annotation);
+    if (iter != current_annotations->instructions.end()) {
       // Have a pre-prepared annotation, use it
-      return std::optional<ScopedAnnotation>{[&] { return iter->second; }};
+      return std::optional<ScopedAnnotation>{
+          std::in_place, [&] { return iter->second.xprof_name(); },
+          [&]() -> const InstructionAnnotation& { return iter->second; }};
     }
   }
   return std::optional<ScopedAnnotation>{

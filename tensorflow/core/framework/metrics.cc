@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/sampler.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
@@ -263,6 +265,32 @@ auto* tf_data_service_data_transfer_protocol_error =
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
 
+auto* tf_data_service_client_routing_outcome_counter =
+    tsl::monitoring::Counter<4>::New(
+        "/tensorflow/data/service/client_routing_outcome",
+        "The number of times a tf.data client GetElement request resulted in "
+        "success, skip_empty_buffer, or skip_error, broken down by client ID, "
+        "worker address, and thread ID.",
+        "outcome", "client_id", "worker_address", "thread_id");
+
+auto* tf_data_prefetch_residence_time_usecs_histogram =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/prefetch_residence_time_usecs",
+         "Microseconds a specific element spent waiting in the prefetch buffer "
+         "before being consumed.",
+         "node_name"},
+        {tsl::monitoring::Buckets::Exponential(1000, 2, 30)});
+
+auto* tf_data_prefetch_buffer_counter = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/prefetch_buffer",
+    "The number of elements enqueued/dequeued into/from a prefetch buffer.",
+    "node_name", "event_type");
+
+auto* tf_data_prefetch_buffer_size_gauge =
+    tsl::monitoring::Gauge<int64_t, 1>::New(
+        "/tensorflow/data/prefetch_buffer_size",
+        "The current number of elements in a prefetch buffer.", "node_name");
+
 auto* tf_data_service_optimal_number_of_workers =
     monitoring::Gauge<int64_t, 0>::New(
         "/tensorflow/data/service/optimal_number_of_workers",
@@ -417,6 +445,14 @@ auto* xla_compilations = tsl::monitoring::Counter<0>::New(
 auto* xla_compilation_time_usecs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
+
+auto* xla_compilation_start_time = tsl::monitoring::Gauge<int64_t, 0>::New(
+    "/tensorflow/core/xla_compilation_start_time",
+    "Timestamp of when the most recent XLA compilation started.");
+
+auto* xla_compilation_end_time = tsl::monitoring::Gauge<int64_t, 0>::New(
+    "/tensorflow/core/xla_compilation_end_time",
+    "Timestamp of when the most recent XLA compilation ended.");
 
 auto* xla_tpu_spmd_cores_per_replica = tsl::monitoring::Counter<1>::New(
     "/tensorflow/tpu/xla_spmd_cores_per_replica",
@@ -664,6 +700,36 @@ void RecordTFDataServiceDataTransferProtocolError(
   tf_data_service_data_transfer_protocol_error
       ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
       ->IncrementBy(1);
+}
+
+void RecordTFDataClientGetElementAction(const std::string& action,
+                                        const std::string& client_id,
+                                        const std::string& worker_address,
+                                        const std::string& thread_id) {
+  tf_data_service_client_routing_outcome_counter
+      ->GetCell(action, client_id, worker_address, thread_id)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
+                                       int64_t duration_us) {
+  tf_data_prefetch_residence_time_usecs_histogram->GetCell(node_name)->Add(
+      duration_us);
+}
+
+void RecordTFDataPrefetchEnqueue(const std::string& node_name) {
+  tf_data_prefetch_buffer_counter->GetCell(node_name, "enqueue")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchDequeue(const std::string& node_name) {
+  tf_data_prefetch_buffer_counter->GetCell(node_name, "dequeue")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchBufferSize(const std::string& node_name,
+                                    int64_t buffer_size) {
+  tf_data_prefetch_buffer_size_gauge->GetCell(node_name)->Set(buffer_size);
 }
 
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
@@ -915,7 +981,12 @@ void UpdateTpuVariableDistributionTime(const uint64_t distribution_time_usecs) {
   }
 }
 
-void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs) {
+void UpdateXlaCompilationStartTime(const uint64_t compilation_start_time_us) {
+  xla_compilation_start_time->GetCell()->Set(compilation_start_time_us);
+}
+
+void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs,
+                              const uint64_t compile_end_us) {
   if (compilation_time_usecs > 0) {
     static auto* xla_compilations_cell = xla_compilations->GetCell();
     static auto* xla_compilation_time_usecs_cell =
@@ -923,6 +994,9 @@ void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs) {
     xla_compilations_cell->IncrementBy(1);
     xla_compilation_time_usecs_cell->IncrementBy(compilation_time_usecs);
   }
+  uint64_t final_end_us =
+      (compile_end_us > 0) ? compile_end_us : Env::Default()->NowMicros();
+  xla_compilation_end_time->GetCell()->Set(final_end_us);
 }
 
 void RecordUnusedOutput(const std::string& op_name) {
@@ -995,7 +1069,7 @@ void IncrementTfMlirBridgeSecondPhaseCounter(
       };
 
   mlir_second_phase_count
-      ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
+      ->GetCell(mlir_bridge_second_phase_metric_names->at(metric))
       ->IncrementBy(1);
 }
 
@@ -1020,8 +1094,7 @@ void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric) {
            "kCompileFunctionMlirFailure"},
       };
 
-  phase_2_xla_compiler_count->GetCell(std::string(metric_names->at(metric)))
-      ->IncrementBy(1);
+  phase_2_xla_compiler_count->GetCell(metric_names->at(metric))->IncrementBy(1);
 }
 
 void UpdateTpuErrorCounter(const std::string& op,

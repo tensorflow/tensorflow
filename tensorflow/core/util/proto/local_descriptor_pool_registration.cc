@@ -26,7 +26,8 @@ struct LocalDescriptorPool {
       std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool) {
     *desc_pool = ::tensorflow::protobuf::DescriptorPool::generated_pool();
     if (*desc_pool == nullptr) {
-      return errors::InvalidArgument("Problem loading protobuf generated_pool");
+      return absl::InvalidArgumentError(
+          "Problem loading protobuf generated_pool");
     }
     return absl::OkStatus();
   }

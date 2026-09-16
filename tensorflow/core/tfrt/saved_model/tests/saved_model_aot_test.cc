@@ -58,7 +58,6 @@ constexpr absl::string_view kGpuTargetConfig =
     cuda_compute_capability { major: 6 }
   }
   platform_name: "CUDA"
-  dnn_version_info {}
   device_description_str: "sm_6.0 with 17071734784B RAM, 56 cores, 1480500KHz clock, 715000KHz mem clock, 4194304B L2$"
     )pb";
 

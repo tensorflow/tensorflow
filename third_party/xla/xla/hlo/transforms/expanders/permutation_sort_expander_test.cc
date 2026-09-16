@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -39,7 +40,7 @@ TEST_F(PermutationSortExpanderTest, ReplacePermutationSortWithScatter) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -82,7 +83,7 @@ TEST_F(PermutationSortExpanderTest, DontReplaceIfWrongComparisonDirection) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -116,7 +117,7 @@ TEST_F(PermutationSortExpanderTest, DontReplaceIfComparingWrongParameters) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -152,7 +153,7 @@ TEST_F(PermutationSortExpanderTest, DontReplacePermutationSortIfNonIntegral) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = f32[] parameter(2)
       p.1.rhs = f32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     ENTRY sort_computation {
@@ -180,7 +181,7 @@ TEST_F(PermutationSortExpanderTest, DontReplacePermutationSortWrongDimensions) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -203,6 +204,55 @@ TEST_F(PermutationSortExpanderTest, DontReplacePermutationSortWrongDimensions) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_THAT(PermutationSortExpander().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(PermutationSortExpanderTest,
+       ScatterUpdateComputationUsesSameElementTypeAsUpdates) {
+  const char* hlo_string = R"(
+    HloModule permutation_sort_int64
+
+    lt_f32_s64 {
+      k_lhs = f32[] parameter(0)
+      k_rhs = f32[] parameter(1)
+      v_lhs = s64[] parameter(2)
+      v_rhs = s64[] parameter(3)
+      ROOT lt = pred[] compare(k_lhs, k_rhs), direction=LT, order=TOTAL
+    }
+
+    lt_s64 {
+      p0 = s64[] parameter(0)
+      p1 = s64[] parameter(1)
+      p2 = s64[] parameter(2)
+      p3 = s64[] parameter(3)
+      ROOT lt = pred[] compare(p0, p1), direction=LT
+    }
+
+    ENTRY sort_computation {
+      keys = f32[10]{0} parameter(0)
+      values = s64[10]{0} iota(), iota_dimension=0
+      sort1 = (f32[10]{0}, s64[10]{0})
+          sort(keys, values), dimensions={0}, to_apply=lt_f32_s64
+      perm = s64[10]{0} get-tuple-element(sort1), index=1
+      ROOT sort2 = (s64[10]{0}, s64[10]{0})
+          sort(perm, values), dimensions={0}, to_apply=lt_s64
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          PermutationSortExpander().Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* scatter = FindInstruction(module.get(), HloOpcode::kScatter);
+  ASSERT_NE(scatter, nullptr);
+
+  HloComputation* update_comp = scatter->to_apply();
+  ASSERT_NE(update_comp, nullptr);
+
+  EXPECT_EQ(update_comp->parameter_instruction(0)->shape().element_type(), S64);
+  EXPECT_EQ(update_comp->parameter_instruction(1)->shape().element_type(), S64);
 }
 
 }  // namespace

@@ -17,24 +17,43 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_
 
 #include <cstdint>
-#include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
+namespace xla {
+class DeviceAssignment;
+class GpuTopology;
+}  // namespace xla
+
 namespace xla::gpu {
+
+// Flattens instructions inside a > 1D collective fusion to 1D instructions
+// inplace. For example, a 2D computation with shape [2, 3] will be flattened to
+// a 1D computation with shape [6] with surrounding bitcasts inserted in the
+// parent computation.
+// NB: This should only be used if the fused computation  only contains
+// elementwise operations (and the collective itself).
+absl::Status FlattenCollectiveFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr);
 
 // Returns a tile such that each dimension is a power of two and that the total
 // number of blocks does not exceed num_blocks. Returns the tile sizes in
@@ -52,19 +71,17 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 // For now only all-reduce is supported.
 // If an std::nullopt is returned, it implies that the collective kernel is
 // not supported and cannot be emitted.
-absl::StatusOr<std::optional<xla::gpu::BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
-                                    const HloFusionInstruction* fusion_instr);
+absl::StatusOr<xla::xtile::BlockLevelFusionConfig>
+GetCollectiveBlockLevelFusionConfig(
+    const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment = nullptr);
 
 // Sets the BlockLevelFusionConfig for a collective op inside the
 // GpuBackendConfig for the fusion instruction.
-// Returns true if the collective op is supported and the config is set.
-// Returns false if the collective op is not supported. No backend config is set
-// in this case.
-// Returns an error in case of an internal error or invalid arguments.
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
-    const se::DeviceDescription& device_info,
-    HloFusionInstruction* fusion_instr);
+// Returns an error in case the collective configuration cannot be set.
+absl::Status TrySetGpuBackendConfigForCollective(
+    const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment = nullptr);
 
 // Adds the metadata arguments to the function's argument list.
 // For collective some extra metadata arguments are needed such as rank,
@@ -83,6 +100,24 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 // Rewrites stablehlo all-reduce op to a triton implementation.
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
                                      mlir::PatternRewriter& rewriter);
+
+// Creates a lightweight codegen config from the collective HLO instruction.
+// The returned config drives codegen decisions (e.g. whether the runtime must
+// copy the input to scratch before kernel launch).
+CollectiveCodegenConfig CreateCollectiveCodegenConfig(
+    const HloInstruction* instr);
+
+// Creates a CollectiveKernelSpec for a given collective or fusion instruction.
+absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+
+// Emits a collective entry barrier at the start of the entry function in
+// |module|. The barrier ensures all ranks have completed their D2D copies
+// before any rank starts reading from the symmetric scratch buffers.
+// Uses the opaque metadata args (rank, signal_value, signal_buffers) already
+// present in the EntryFuncOp.
+absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
+                                        int32_t world_size);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

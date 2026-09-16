@@ -89,9 +89,10 @@ static absl::Status HandleSubtype(absl::string_view subtype,
 
   std::vector<int> dims;
   if (shape_and_type.size() > 2) {
-    return errors::FailedPrecondition("Invalid argument: '", subtype,
-                                      "', expected a single shape and type pair"
-                                      " separated with a ':'");
+    return absl::FailedPreconditionError(
+        absl::StrCat("Invalid argument: '", subtype,
+                     "', expected a single shape and type pair"
+                     " separated with a ':'"));
   } else if (shape_and_type.size() == 2) {
     const auto& shape_str = shape_and_type[0];
     TF_ASSIGN_OR_RETURN(dims, ParseShapeStr(shape_str));
@@ -100,7 +101,7 @@ static absl::Status HandleSubtype(absl::string_view subtype,
   const auto& subtype_str = shape_and_type.back();
   DataType subtype_dtype;
   if (!DataType_Parse(subtype_str, &subtype_dtype)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("Invalid type: '", subtype_str, "'"));
   }
 
@@ -129,18 +130,18 @@ absl::Status ParseInputArrayInfo(
       } else if (dtype != DataType_Name(DT_INVALID)) {
         used_node_dtypes.push_back(dtype);
       } else {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "Use '' if want to use the type from graph.");
       }
     }
   } else {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Length of input node array and data type doesn't match (#arrays ",
         node_names.size(), ", #data_types ", node_dtypes.size(), ")"));
   }
 
   if (!node_shapes.empty() && node_names.size() != node_shapes.size()) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Length of input node array and data shape doesn't match (#arrays ",
         node_names.size(), ", #input_shapes ", node_shapes.size(), ")"));
   }
@@ -153,7 +154,7 @@ absl::Status ParseInputArrayInfo(
 
     auto it_inserted_pair = inputs->insert({name, {}});
     if (!it_inserted_pair.second)
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           absl::StrCat("tensor ", name, " is repeated in the arrays flag"));
 
     ArrayInfo& info = it_inserted_pair.first->second;
@@ -163,7 +164,8 @@ absl::Status ParseInputArrayInfo(
     // If type has subtypes then parts[0] = type, parts[1] = subtypes,
     // parts[2] = ""
     if (parts.size() != 3 && parts.size() != 1) {
-      return errors::InvalidArgument("Invalid type '", type, "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid type '", type, "'"));
     } else if (parts.size() == 3) {
       // First part is the type, second is the subtype
       ArrayInfo::SubTypeInfo subtype;
@@ -171,7 +173,7 @@ absl::Status ParseInputArrayInfo(
       info.subtypes.push_back(std::move(subtype));
     }
     if (!DataType_Parse(parts[0], &info.imported_dtype)) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           absl::StrCat("Invalid node type '", node_dtypes[i], "'"));
     }
 
@@ -223,14 +225,14 @@ static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
     // Skip parsing the subtypes of a type
     if (c == '(') {
       if (inside_subtype) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             absl::StrCat("Syntax error: unexpected '(' in input data types: '",
                          data_types_str, "'"));
       }
       inside_subtype = true;
     } else if (c == ')') {
       if (!inside_subtype) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             absl::StrCat("Syntax error: unexpected ')' in input data types: '",
                          data_types_str, "'"));
       }
@@ -244,7 +246,7 @@ static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
     }
   }
   if (inside_subtype) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("Syntax error: expected a ')' in input data types '",
                      data_types_str, "'"));
   }

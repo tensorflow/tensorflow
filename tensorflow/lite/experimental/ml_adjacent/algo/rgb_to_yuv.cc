@@ -34,20 +34,27 @@ constexpr int kRgb2YuvKernelSize =
 
 // Converts RGB to YUV. Supports `float` datatype only.
 void ComputeRgbToYuv(const InputPack& inputs, const OutputPack& outputs) {
-  TFLITE_DCHECK(inputs.size() == 1);
-  TFLITE_DCHECK(outputs.size() == 1);
+  TFLITE_CHECK_EQ(inputs.size(), 1);
+  TFLITE_CHECK_EQ(outputs.size(), 1);
 
   // Extract input image data.
   const DataRef* img = inputs[0];
+  TFLITE_CHECK_EQ(img->Dims().size(), 4);
+  MutableDataRef* output = outputs[0];
+
+  TFLITE_CHECK_EQ(img->Type(), etype_t::f32);
+  TFLITE_CHECK_EQ(output->Type(), etype_t::f32);
+
   const float* input_data = reinterpret_cast<const float*>(img->Data());
   const dim_t batches = img->Dims()[0];
   const dim_t height = img->Dims()[1];
   const dim_t width = img->Dims()[2];
   const dim_t channels = img->Dims()[3];
-  TFLITE_DCHECK(channels == 3);
+  TFLITE_CHECK_EQ(channels, 3);
+
+  if (batches == 0 || height == 0 || width == 0) return;
 
   // Resize output buffer.
-  MutableDataRef* output = outputs[0];
   output->Resize({batches, height, width, channels});
   float* output_data = reinterpret_cast<float*>(output->Data());
 
@@ -58,8 +65,8 @@ void ComputeRgbToYuv(const InputPack& inputs, const OutputPack& outputs) {
 }  // namespace
 
 const Algo* Impl_RgbToYuv() {
-  static const Algo rgb_to_yuv = {&ComputeRgbToYuv, nullptr};
-  return &rgb_to_yuv;
+  static constexpr Algo kRgbToYuv = {&ComputeRgbToYuv, nullptr};
+  return &kRgbToYuv;
 }
 
 }  // namespace rgb_to_yuv

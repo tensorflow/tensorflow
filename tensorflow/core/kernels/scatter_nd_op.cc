@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -140,6 +142,14 @@ class ScatterNdOp : public ScatterOpBase<Device> {
 
     const int64_t outer_dims = indices.shape().dims() - 1;
 
+    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Updates shape must have rank at least the number of "
+                    "outer dimensions of indices (",
+                    outer_dims,
+                    "). Found: updates shape=", updates.shape().DebugString(),
+                    ", indices shape=", indices.shape().DebugString())));
+
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(
           c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
@@ -213,6 +223,14 @@ class TensorScatterOp : public ScatterOpBase<Device> {
                     "Indices and updates specified for empty output shape"));
 
     const int64_t outer_dims = indices.shape().dims() - 1;
+
+    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Updates shape must have rank at least the number of "
+                    "outer dimensions of indices (",
+                    outer_dims,
+                    "). Found: updates shape=", updates.shape().DebugString(),
+                    ", indices shape=", indices.shape().DebugString())));
 
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
@@ -300,7 +318,9 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
       core::RefCountPtr<Var> v;
-      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      ResourceHandle handle;
+      OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+      OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
       DoCompute(c);
@@ -327,7 +347,9 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
 
     if (dtype_ == DT_RESOURCE) {
       core::RefCountPtr<Var> v;
-      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      ResourceHandle handle;
+      OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+      OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       Tensor* t = v->tensor();
       params = *t;
       params_shape = params.shape();
@@ -936,6 +958,13 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
   TF_RETURN_IF_ERROR(PrepareAndValidateInputs<Index>(
       shape, indices, updates, &slice_dim, &num_updates, &slice_size));
 
+  if (slice_dim < 1 || slice_dim > 7) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Only indices.shape[-1] values between 1 and 7 "
+                     "are currently supported.  Requested rank: ",
+                     slice_dim));
+  }
+
   IndexFlattener<Device, Index> index_flattener;
   auto indices_flat = index_flattener(c, indices);
   auto updates_flat = updates.shaped<T, 2>({num_updates, slice_size});
@@ -960,6 +989,11 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
     functor::SetZeroFunctor<Device, T> fill;
     fill(c->eigen_device<Device>(), out->flat<T>());
   }
+
+  if (num_updates == 0) {
+    return absl::OkStatus();
+  }
+
   auto output_matrix =
       out->shaped<T, 2>({shape.num_elements() / slice_size, slice_size});
 
@@ -990,7 +1024,7 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
 #undef PARAMS_CASE
       default:
         return absl::InvalidArgumentError(
-            absl::StrCat("Only indices.shape[-1] values between 1 and 5 "
+            absl::StrCat("Only indices.shape[-1] values between 1 and 7 "
                          "are currently supported.  Requested rank: ",
                          slice_dim));
     }

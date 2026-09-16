@@ -77,7 +77,7 @@ class ServerInterface {
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
   virtual absl::Status AddMasterEagerContextToEagerService(
-      const uint64_t context_id, EagerContext* context) = 0;
+      uint64_t context_id, EagerContext* context) = 0;
   // Set coordination service agent instance to coordination service RPC handler
   virtual absl::Status SetCoordinationServiceAgentInstance(
       tsl::CoordinationServiceAgent* agent) = 0;

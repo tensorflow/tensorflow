@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/service/decision.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using CodegenDecision = FusionDecision;
+using CodegenDecision = Decision;
 
 // Checks that Triton officially supports the provided compute capability.
 //
@@ -65,6 +65,11 @@ CodegenDecision IsTritonSupportedComputation(
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+// Returns `true` if `instr` is a kFusion containing exactly one kDot and
+// whose backend config kind is one of the Triton GEMM fusion kinds
+// (`kTritonGemmFusionKind` or `kTritonNestedGemmFusionKind`).
+bool IsTritonGemm(const HloInstruction& instr);
 
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via

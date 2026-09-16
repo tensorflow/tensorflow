@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -36,7 +37,7 @@ class CycleDetectionVisitor : public DfsHloVisitorWithDefault {
   // detection by default.
   absl::Status VerifyNoCycle(HloModule* module) {
     for (auto* comp : module->computations()) {
-      TF_RETURN_IF_ERROR(comp->Accept(this));
+      ABSL_RETURN_IF_ERROR(comp->Accept(this));
     }
     return absl::OkStatus();
   }
@@ -56,7 +57,7 @@ class HloCycleDetection : public HloModulePass {
   absl::StatusOr<bool> RunImpl(HloModule* module,
                                const absl::flat_hash_set<absl::string_view>&
                                    execution_threads) override {
-    TF_RETURN_IF_ERROR(visitor_.VerifyNoCycle(module));
+    ABSL_RETURN_IF_ERROR(visitor_.VerifyNoCycle(module));
     return false;
   }
 

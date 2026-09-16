@@ -56,6 +56,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 
@@ -277,13 +278,34 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                        \
   } while (0)
 
-#define TF_LITE_ENSURE_OK(context, status) \
-  do {                                     \
-    const TfLiteStatus s = (status);       \
-    if ((s) != kTfLiteOk) {                \
-      return s;                            \
-    }                                      \
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_VAR_ARG_HEAD(FIRST, ...) FIRST
+#define TF_LITE_STRINGIFY_HELPER(x) #x
+#define TF_LITE_STRINGIFY(x) TF_LITE_STRINGIFY_HELPER(x)
+// Checks that `status` evaluates to `kTfLiteOk`.
+//
+// Can take a printf style log message and its parameters after the status. The
+// message will be printed using `TF_LITE_KERNEL_LOG` in case of error.
+#define TF_LITE_ENSURE_OK(context, status, ...)                              \
+  do {                                                                       \
+    const TfLiteStatus s = (status);                                         \
+    if (s != kTfLiteOk) {                                                    \
+      if (sizeof(TF_LITE_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) {       \
+        TF_LITE_MAYBE_KERNEL_LOG((context), __FILE__ ":" TF_LITE_STRINGIFY(  \
+                                                __LINE__) ": " __VA_ARGS__); \
+      }                                                                      \
+      return s;                                                              \
+    }                                                                        \
   } while (0)
+#else
+#define TF_LITE_ENSURE_OK(context, status, ...) \
+  do {                                          \
+    const TfLiteStatus s = (status);            \
+    if ((s) != kTfLiteOk) {                     \
+      return s;                                 \
+    }                                           \
+  } while (0)
+#endif
 
 // `std::unreachable` not available until CC23.
 #ifdef __GNUC__  // GCC, Clang, ICC
@@ -334,6 +356,8 @@ typedef enum TfLiteQuantizationType {
   kTfLiteAffineQuantization = 1,
   /// Blockwise quantization.
   kTfLiteBlockwiseQuantization = 2,
+  /// Multi-axis quantization.
+  kTfLiteMultiAxisQuantization = 3,
 } TfLiteQuantizationType;
 
 /// Structure specifying the quantization used by the tensor, if-any.
@@ -372,6 +396,16 @@ typedef struct TfLiteBlockwiseQuantization {
   int32_t blocksize;
   int32_t quantized_dimension;
 } TfLiteBlockwiseQuantization;
+
+/// Parameters for multi-axis quantization. The scales and zero_points fields
+/// refer to tensor indices in the same subgraph. If zero_points is -1, zero
+/// point is assumed to be 0. For per-channel quantization, blocksize is 0.
+typedef struct TfLiteMultiAxisQuantization {
+  int32_t scales;
+  int32_t zero_points;
+  int32_t blocksize;
+  TfLiteIntArray* quantized_dimensions;
+} TfLiteMultiAxisQuantization;
 
 /// A union of pointers that points to memory for a given tensor.
 ///
@@ -494,6 +528,23 @@ typedef struct TfLiteCustomAllocation {
   void* data;
   size_t bytes;
 } TfLiteCustomAllocation;
+
+/// Defines a custom allocator used by the runtime for TFLite-owned CPU
+/// buffers. The runtime does not take ownership of this object, and it must
+/// outlive every interpreter that uses it.
+///
+/// `alignment` is the minimum byte alignment requested for the returned
+/// pointer. `reallocate` may be null; in that case the runtime allocates a new
+/// buffer, copies the preserved bytes when needed, and deallocates the old
+/// buffer. If `reallocate` is provided and returns null, the original
+/// allocation must remain valid.
+typedef struct TfLiteAllocator {
+  void* data;
+  void* (*allocate)(void* data, size_t bytes, size_t alignment);
+  void* (*reallocate)(void* data, void* ptr, size_t old_bytes, size_t new_bytes,
+                      size_t alignment);
+  void (*deallocate)(void* data, void* ptr, size_t bytes, size_t alignment);
+} TfLiteAllocator;
 
 /// The flags used in `Interpreter::SetCustomAllocationForTensor`.
 /// Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc.
@@ -734,6 +785,11 @@ typedef struct TfLiteEvalTensor {
 /// Free data memory of tensor `t`.
 void TfLiteTensorDataFree(TfLiteTensor* t);
 
+/// Same as `TfLiteTensorDataFree`, but uses `allocator` for runtime-owned
+/// buffers when non-null.
+void TfLiteTensorDataFreeWithAllocator(TfLiteTensor* t,
+                                       TfLiteAllocator* allocator);
+
 /// Free quantization data.
 void TfLiteQuantizationFree(TfLiteQuantization* quantization);
 
@@ -774,6 +830,12 @@ TfLiteTensor TfLiteTensorClone(TfLiteTensor src);
 TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
                                          bool preserve_data);
 
+/// Same as `TfLiteTensorResizeMaybeCopy`, but uses `allocator` for
+/// runtime-owned buffers when non-null.
+TfLiteStatus TfLiteTensorResizeMaybeCopyWithAllocator(
+    size_t num_bytes, TfLiteTensor* tensor, bool preserve_data,
+    TfLiteAllocator* allocator);
+
 /// Change the size of the memory block owned by `tensor` to `num_bytes`.
 /// Tensors with allocation types other than `kTfLiteDynamic` will be ignored
 /// and a `kTfLiteOk` will be returned. `tensor`'s internal data buffer will be
@@ -782,6 +844,12 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 /// start of the region up to the minimum of the old and new sizes. In the case
 /// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
 TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+
+/// Same as `TfLiteTensorRealloc`, but uses `allocator` for runtime-owned
+/// buffers when non-null.
+TfLiteStatus TfLiteTensorReallocWithAllocator(size_t num_bytes,
+                                              TfLiteTensor* tensor,
+                                              TfLiteAllocator* allocator);
 
 /// Returns the shape of the tensor, with -1 for any unknown dimension sizes.
 /// If any dimension is unknown, this is the same as `t->dims_signature`.
@@ -1060,6 +1128,13 @@ typedef struct TfLiteContext {
   /// WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*ReleaseSubgraphContext)(struct TfLiteContext* context,
                                          int subgraph_index);
+#if defined(_WIN32)
+  /// Create a array of a given `size` (uninitialized entries).
+  TfLiteIntArray* (*TfLiteIntArrayCreate)(int size);  // NOLINT
+
+  /// Free memory of array `a`.
+  void (*TfLiteIntArrayFree)(TfLiteIntArray* a);  // NOLINT
+#endif                                            // defined(_WIN32)
 } TfLiteContext;
 
 /// `TfLiteOperator` is an external version of `TfLiteRegistration`

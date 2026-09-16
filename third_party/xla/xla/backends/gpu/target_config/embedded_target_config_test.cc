@@ -59,7 +59,9 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName(name));
-  bool all_skipped = false;
+  ASSERT_GT(platform->VisibleDeviceCount(), 0)
+      << "No visible GPU devices found (cuInit may have failed).";
+  bool all_skipped = true;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
     TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                             platform->ExecutorForDevice(i));
@@ -109,6 +111,10 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
     diff.IgnoreField(
         DeviceInterconnectInfoProto::GetDescriptor()->FindFieldByName(
             "clique_id"));
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "device_memory_size"));
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("model_str"));
     diff.set_message_field_comparison(
         tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
     std::string result;

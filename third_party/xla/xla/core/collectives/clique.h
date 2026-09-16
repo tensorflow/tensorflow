@@ -55,6 +55,11 @@ class Clique {
   // Calls `fn` for each communicator in the clique.
   void ForEachComm(absl::FunctionRef<void(RankId, Communicator*)> fn) const;
 
+  // Calls `fn` for each communicator in the clique, stopping early and
+  // returning the first non-OK status `fn` produces.
+  absl::Status ForEachCommWithStatus(
+      absl::FunctionRef<absl::Status(RankId, Communicator*)> fn) const;
+
   // Checks that all communicators in the clique are in a healthy state.
   virtual absl::Status HealthCheck() const = 0;
 

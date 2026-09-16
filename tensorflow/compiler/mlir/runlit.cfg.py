@@ -14,6 +14,7 @@
 """Lit runner configuration."""
 
 import os
+import pathlib
 import platform
 import sys
 import lit.formats
@@ -30,7 +31,7 @@ from lit.llvm.subst import ToolSubst
 # name: The name of this test suite.
 config.name = 'MLIR ' + os.path.basename(config.mlir_test_dir)
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.cc', '.hlo', '.json', '.mlir', '.pbtxt', '.py']
@@ -62,6 +63,40 @@ llvm_config.config.substitutions.append(
 
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
+
+# Dynamically resolve hermetic cuda_nvcc in runfiles if present.
+runfiles_env = os.environ.get('RUNFILES_DIR')
+if runfiles_env:
+  rf_path = pathlib.Path(runfiles_env)
+  cuda_dir = None
+  # Check standard runfiles locations.
+  for candidate in [
+      rf_path / 'cuda_nvcc',
+      rf_path / 'xla' / 'cuda_nvcc',
+      rf_path.parent / 'cuda_nvcc',
+  ]:
+    if (candidate / 'bin' / 'ptxas').is_file() or (
+        candidate / 'nvvm' / 'libdevice' / 'libdevice.10.bc'
+    ).is_file():
+      cuda_dir = candidate
+      break
+  # Fallback search for Bzlmod repository names.
+  if not cuda_dir and rf_path.is_dir():
+    for p in rf_path.rglob('*cuda_nvcc*'):
+      if (p / 'bin' / 'ptxas').is_file() or (
+          p / 'nvvm' / 'libdevice' / 'libdevice.10.bc'
+      ).is_file():
+        cuda_dir = p
+        break
+
+  # Inject --xla_gpu_cuda_data_dir into XLA_FLAGS if resolved.
+  if cuda_dir:
+    existing_flags = llvm_config.config.environment.get('XLA_FLAGS', '')
+    if '--xla_gpu_cuda_data_dir' not in existing_flags:
+      flag = f'--xla_gpu_cuda_data_dir={cuda_dir}'
+      llvm_config.config.environment['XLA_FLAGS'] = (
+          f'{existing_flags} {flag}'.strip()
+      )
 
 tool_dirs = config.mlir_tf_tools_dirs + [
     config.mlir_tools_dir, config.llvm_tools_dir

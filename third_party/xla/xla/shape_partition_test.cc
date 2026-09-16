@@ -88,6 +88,14 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout210) {
             expected_partitions);
 }
 
+TEST_F(ShapePartitionAssignerTest, ScalarShape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  ShapePartitionAssigner assigner(shape);
+  std::vector<int64_t> actual_partitions =
+      assigner.Run(/*target_partition_count=*/4);
+  EXPECT_TRUE(actual_partitions.empty());
+}
+
 TEST_F(ShapePartitionAssignerTest, Shape532WithLayout201) {
   std::vector<int64_t> expected_partitions[] = {
       {1} /* 1 */,     {2} /* 2 */,     {3} /* 3 */,     {2, 2} /* 4 */,

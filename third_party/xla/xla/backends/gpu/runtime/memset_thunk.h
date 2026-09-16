@@ -43,9 +43,7 @@ namespace gpu {
 class MemzeroThunk : public Command {
  public:
   explicit MemzeroThunk(ThunkInfo thunk_info, const ShapedSlice& dest)
-      : Command(CommandType::kMemzeroCmd, Kind::kMemzero,
-                std::move(thunk_info)),
-        dest_(dest) {}
+      : Command(Kind::kMemzero, std::move(thunk_info)), dest_(dest) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -79,8 +77,7 @@ class Memset32BitValueThunk : public Command {
  public:
   explicit Memset32BitValueThunk(ThunkInfo thunk_info, uint32_t value,
                                  const BufferAllocation::Slice& dest)
-      : Command(CommandType::kMemset32Cmd, Kind::kMemset32BitValue,
-                std::move(thunk_info)),
+      : Command(Kind::kMemset32BitValue, std::move(thunk_info)),
         value_(value),
         dest_(dest) {}
 

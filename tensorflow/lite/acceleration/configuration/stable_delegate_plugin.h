@@ -21,7 +21,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
@@ -39,50 +41,70 @@ class StableDelegatePlugin : public DelegatePluginInterface {
   }
 
   explicit StableDelegatePlugin(const TFLiteSettings& tflite_settings) {
+    const StableDelegateLoaderSettings* stable_delegate_loader_settings =
+        tflite_settings.stable_delegate_loader_settings();
+    if (!stable_delegate_loader_settings ||
+        !stable_delegate_loader_settings->delegate_path() ||
+        stable_delegate_loader_settings->delegate_path()->size() == 0) {
+      TFLITE_LOG(ERROR) << "The delegate path field is not available from the "
+                           "provided stable delegate loader settings.";
+      return;
+    }
     // Creates a copy of TFLiteSettings within the stable delegate plugin.
     TFLiteSettingsT tflite_settings_t;
     tflite_settings.UnPackTo(&tflite_settings_t);
     tflite_settings_builder_.Finish(
         CreateTFLiteSettings(tflite_settings_builder_, &tflite_settings_t));
-    const StableDelegateLoaderSettings* stable_delegate_loader_settings =
-        GetTFLiteSettings()->stable_delegate_loader_settings();
-    if (!stable_delegate_loader_settings ||
-        !stable_delegate_loader_settings->delegate_path() ||
-        stable_delegate_loader_settings->delegate_path()->Length() == 0) {
-      TFLITE_LOG(ERROR) << "The delegate path field is not available from the "
-                           "provided stable delegate loader settings.";
+
+    const TfLiteStableDelegate* stable_delegate =
+        utils::LoadDelegateFromSharedLibrary(
+            stable_delegate_loader_settings->delegate_path()->str());
+    if (!stable_delegate) {
+      TFLITE_LOG(ERROR)
+          << "Failed to load stable delegate plugin symbol from "
+          << stable_delegate_loader_settings->delegate_path()->str();
       return;
     }
-    const auto* stable_delegate_ = utils::LoadDelegateFromSharedLibrary(
-        stable_delegate_loader_settings->delegate_path()->str());
-    if (!stable_delegate_) {
-      TFLITE_LOG(ERROR) << "Failed to load stable delegate plugin symbol from "
-                        << stable_delegate_loader_settings->delegate_path();
+    if (!stable_delegate->delegate_plugin || !stable_delegate->delegate_name) {
+      TFLITE_LOG(ERROR)
+          << "Invalid stable delegate struct loaded from "
+          << stable_delegate_loader_settings->delegate_path()->str();
       return;
     }
-    stable_delegate_plugin_ = stable_delegate_->delegate_plugin;
+    stable_delegate_plugin_ = stable_delegate->delegate_plugin;
     TFLITE_LOG(INFO)
         << "The stable delegate plugin has loaded delegate plugin for "
-        << stable_delegate_->delegate_name;
+        << stable_delegate->delegate_name;
   }
 
   TfLiteDelegatePtr Create() override {
+    if (!stable_delegate_plugin_ || !stable_delegate_plugin_->create ||
+        !stable_delegate_plugin_->destroy) {
+      return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+    }
     return TfLiteDelegatePtr(
-        stable_delegate_plugin_->create(GetTFLiteSettings()),
-        stable_delegate_plugin_->destroy);
+        reinterpret_cast<TfLiteDelegate*>(
+            stable_delegate_plugin_->create(GetTFLiteSettings())),
+        reinterpret_cast<void (*)(TfLiteDelegate*)>(
+            stable_delegate_plugin_->destroy));
   }
 
-  int GetDelegateErrno(TfLiteOpaqueDelegate* from_delegate) override {
-    return stable_delegate_plugin_->get_delegate_errno(from_delegate);
+  int GetDelegateErrno(TfLiteDelegate* from_delegate) override {
+    if (!stable_delegate_plugin_ ||
+        !stable_delegate_plugin_->get_delegate_errno) {
+      return 0;
+    }
+    return stable_delegate_plugin_->get_delegate_errno(
+        reinterpret_cast<TfLiteOpaqueDelegate*>(from_delegate));
   }
 
  private:
-  const TFLiteSettings* GetTFLiteSettings() {
+  const TFLiteSettings* GetTFLiteSettings() const {
     return flatbuffers::GetRoot<TFLiteSettings>(
         tflite_settings_builder_.GetBufferPointer());
   }
 
-  const TfLiteOpaqueDelegatePlugin* stable_delegate_plugin_;
+  const TfLiteOpaqueDelegatePlugin* stable_delegate_plugin_ = nullptr;
   flatbuffers::FlatBufferBuilder tflite_settings_builder_;
 };
 

@@ -126,9 +126,9 @@ absl::Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     } else if (type == "func") {
       t |= TF_ATTR_FUNC;
     } else {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(absl::StrCat(
           "TODO(agarwal): Enable support for ops with attributes of type '",
-          type, "'");
+          type, "'"));
     }
     gtl::InsertIfNotPresent(m.get(), attr.name(), t);
   }
@@ -166,8 +166,8 @@ absl::Status AttrBuilder::Get(absl::string_view attr_name,
                               absl::InlinedVector<DataType, 4>* value) const {
   auto it = encoded_attrs_.find(std::string(attr_name));
   if (it == encoded_attrs_.end()) {
-    return errors::NotFound("No attr named '", attr_name,
-                            "' found in AttrBuilder for ", op_name_);
+    return absl::NotFoundError(absl::StrCat(
+        "No attr named '", attr_name, "' found in AttrBuilder for ", op_name_));
   }
   attr_tmp_.ParseFromString(it->second);
   TF_RETURN_IF_ERROR(AttrValueHasType(attr_tmp_, "list(type)"));
@@ -265,8 +265,8 @@ absl::Status AttrTypeByName(const AttrTypeMap& m, const std::string& attr_name,
                             TF_AttrType* out, unsigned char* is_list) {
   auto* t = gtl::FindOrNull(m, attr_name);
   if (t == nullptr) {
-    return errors::InvalidArgument("Attribute '", attr_name,
-                                   "' does not exist for this operation");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Attribute '", attr_name, "' does not exist for this operation"));
   }
   *out = static_cast<TF_AttrType>(*t & ~kIsList);
   if (*t & kIsList) {

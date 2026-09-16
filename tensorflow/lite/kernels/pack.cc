@@ -48,6 +48,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, data->axis >= 0);
 
   if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+      input0->type != kTfLiteFloat8E4M3FN &&
+      input0->type != kTfLiteFloat8E5M2 &&
+#endif
       input0->type != kTfLiteUInt8 && input0->type != kTfLiteUInt32 &&
       input0->type != kTfLiteInt8 && input0->type != kTfLiteInt16 &&
       input0->type != kTfLiteInt64) {

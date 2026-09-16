@@ -37,7 +37,7 @@ namespace tensorflow {
 /// IsRunning function.
 class RunnerInterface {
  public:
-  virtual ~RunnerInterface() {}
+  virtual ~RunnerInterface() = default;
   virtual absl::Status Join() = 0;
   virtual absl::Status ExportCostGraph(CostGraphDef* cost_graph) const {
     return absl::Status(absl::StatusCode::kInvalidArgument,

@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "google/protobuf/text_format.h"
+#include "xla/service/gpu/launch_dimensions.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -79,8 +80,8 @@ TEST(LaunchDimensionsTest, FromAndToProto) {
       )pb",
       &proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(LaunchDimensions launch_dimensions,
-                          LaunchDimensions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(LaunchDimensions launch_dimensions,
+                       LaunchDimensions::FromProto(proto));
   EXPECT_THAT(launch_dimensions.ToProto(), EqualsProto(proto));
 }
 

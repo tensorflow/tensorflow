@@ -23,9 +23,9 @@ namespace lookup {
 
 absl::Status LookupInterface::CheckKeyShape(const TensorShape& shape) {
   if (!TensorShapeUtils::EndsWith(shape, key_shape())) {
-    return errors::InvalidArgument("Input key shape ", shape.DebugString(),
-                                   " must end with the table's key shape ",
-                                   key_shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Input key shape ", shape.DebugString(),
+        " must end with the table's key shape ", key_shape().DebugString()));
   }
   return absl::OkStatus();
 }
@@ -33,12 +33,12 @@ absl::Status LookupInterface::CheckKeyShape(const TensorShape& shape) {
 absl::Status LookupInterface::CheckKeyAndValueTypes(const Tensor& keys,
                                                     const Tensor& values) {
   if (keys.dtype() != key_dtype()) {
-    return errors::InvalidArgument("Key must be type ", key_dtype(),
-                                   " but got ", keys.dtype());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Key must be type ", key_dtype(), " but got ", keys.dtype()));
   }
   if (values.dtype() != value_dtype()) {
-    return errors::InvalidArgument("Value must be type ", value_dtype(),
-                                   " but got ", values.dtype());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Value must be type ", value_dtype(), " but got ", values.dtype()));
   }
   return absl::OkStatus();
 }
@@ -54,9 +54,9 @@ absl::Status LookupInterface::CheckKeyAndValueTensorsHelper(
   }
   expected_value_shape.AppendShape(value_shape());
   if (values.shape() != expected_value_shape) {
-    return errors::InvalidArgument(
-        "Expected shape ", expected_value_shape.DebugString(),
-        " for value, got ", values.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected shape ", expected_value_shape.DebugString(),
+                     " for value, got ", values.shape().DebugString()));
   }
   return absl::OkStatus();
 }
@@ -73,8 +73,8 @@ absl::Status LookupInterface::CheckKeyAndValueTensorsForImport(
 
 absl::Status LookupInterface::CheckKeyTensorForRemove(const Tensor& keys) {
   if (keys.dtype() != key_dtype()) {
-    return errors::InvalidArgument("Key must be type ", key_dtype(),
-                                   " but got ", keys.dtype());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Key must be type ", key_dtype(), " but got ", keys.dtype()));
   }
   return CheckKeyShape(keys.shape());
 }
@@ -90,10 +90,10 @@ absl::Status LookupInterface::CheckFindArguments(const Tensor& key,
   fullsize_value_shape.AppendShape(value_shape());
   if (default_value.shape() != value_shape() &&
       default_value.shape() != fullsize_value_shape) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected shape ", value_shape().DebugString(), " or ",
         fullsize_value_shape.DebugString(), " for default value, got ",
-        default_value.shape().DebugString());
+        default_value.shape().DebugString()));
   }
   return absl::OkStatus();
 }

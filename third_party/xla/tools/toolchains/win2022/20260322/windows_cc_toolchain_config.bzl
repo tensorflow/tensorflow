@@ -837,6 +837,30 @@ def _impl(ctx):
 
         no_windows_export_all_symbols_feature = feature(name = "no_windows_export_all_symbols")
 
+        includes_feature = feature(
+            name = "includes",
+            enabled = True,
+            flag_sets = [
+                flag_set(
+                    actions = [
+                        ACTION_NAMES.preprocess_assemble,
+                        ACTION_NAMES.linkstamp_compile,
+                        ACTION_NAMES.c_compile,
+                        ACTION_NAMES.cpp_compile,
+                        ACTION_NAMES.cpp_header_parsing,
+                        ACTION_NAMES.cpp_module_compile,
+                    ],
+                    flag_groups = [
+                        flag_group(
+                            flags = ["/FI%{includes}"],
+                            iterate_over = "includes",
+                            expand_if_available = "includes",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
         include_paths_feature = feature(
             name = "include_paths",
             enabled = True,
@@ -1117,6 +1141,7 @@ def _impl(ctx):
             msvc_compile_env_feature,
             msvc_link_env_feature,
             include_paths_feature,
+            includes_feature,
             external_include_paths_feature,
             preprocessor_defines_feature,
             parse_showincludes_feature,

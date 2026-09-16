@@ -17,7 +17,6 @@
 import abc
 import typing
 import warnings
-
 import typing_extensions
 
 from tensorflow.core.protobuf import struct_pb2
@@ -196,7 +195,19 @@ class ExtensionType(
       # missing import), then the constructor will raise an exception.
       type_hints = {}
       for base in reversed(cls.__mro__):
-        type_hints.update(base.__dict__.get('__annotations__', {}))
+        if hasattr(typing_extensions, 'get_annotations'):
+          get_annotations_kwargs = {'eval_str': False}
+          if hasattr(typing_extensions, 'Format'):
+            get_annotations_kwargs['format'] = (
+                typing_extensions.Format.FORWARDREF
+            )
+          type_hints.update(
+              typing_extensions.get_annotations(
+                  base, **get_annotations_kwargs
+              )
+          )
+        else:
+          type_hints.update(getattr(base, '__annotations__', {}))
       ok_to_cache = False
 
     fields = []

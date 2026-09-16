@@ -40,7 +40,17 @@ using ::tensorflow::profiler::pywrap::ProfilerSessionWrapper;
 // will increase its reference count.
 ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
   ToolOptions map;
-  for (const auto& item : dictionary) {
+
+  // PyDict_Copy takes a stable snapshot of the options before iteration.
+  // This prevents concurrent mutation of the caller's dict from invalidating
+  // the iteration on free-threaded Python.
+  PyObject* copied = PyDict_Copy(dictionary.ptr());
+  if (copied == nullptr) {
+    throw py::error_already_set();
+  }
+  py::dict snapshot = py::reinterpret_steal<py::dict>(copied);
+
+  for (const auto& item : snapshot) {
     std::variant<bool, int, std::string> value;
     try {
       value = item.second.cast<bool>();
@@ -62,7 +72,7 @@ ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
 
 }  // namespace
 
-PYBIND11_MODULE(_pywrap_profiler, m) {
+PYBIND11_MODULE(_pywrap_profiler, m, pybind11::mod_gil_not_used()) {
   py::class_<ProfilerSessionWrapper> profiler_session_class(m,
                                                             "ProfilerSession");
   profiler_session_class.def(py::init<>())

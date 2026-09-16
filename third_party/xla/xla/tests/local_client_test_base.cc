@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/const_init.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -208,11 +209,11 @@ absl::StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   for (int i = 0; i < arguments.size(); ++i) {
     argument_layouts[i] = &arguments[i]->on_device_shape();
   }
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto executables,
       local_client_->Compile(computation, argument_layouts, build_options));
   TF_RET_CHECK(executables.size() == 1);
-  TF_ASSIGN_OR_RETURN(auto ret, executables[0]->Run(arguments, run_options));
+  ABSL_ASSIGN_OR_RETURN(auto ret, executables[0]->Run(arguments, run_options));
 
   auto device_ordinal =
       build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();
@@ -222,9 +223,9 @@ absl::StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
         stream_borrowed = local_client_->mutable_backend()
                               ->BorrowStream(device_ordinal)
                               .value();
-    TF_RETURN_IF_ERROR(stream_borrowed->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream_borrowed->BlockHostUntilDone());
   } else {
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
 
   return std::move(ret);
@@ -242,7 +243,7 @@ LocalClientTestBase::ParseAndReturnVerifiedModule(
       TestName(), config, /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
       local_client_->backend().compiler()->ShapeSizeBytesFunction());
-  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  ABSL_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
   return std::move(module);
 }
 

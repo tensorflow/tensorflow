@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -237,7 +238,7 @@ TypeRegistry::TypeInfo TypeRegistry::GetTypeInfo() {
 
     deserializer = +[](absl::string_view data)
         -> absl::StatusOr<std::unique_ptr<void, TypeInfo::Deleter>> {
-      TF_ASSIGN_OR_RETURN(auto value, SerDes<T>::Deserialize(data));
+      ABSL_ASSIGN_OR_RETURN(auto value, SerDes<T>::Deserialize(data));
       return std::unique_ptr<void, TypeInfo::Deleter>(value.release(), deleter);
     };
   }
@@ -265,7 +266,7 @@ absl::StatusOr<std::unique_ptr<T>> TypeRegistry::Deserialize(
         "Type is not deserializable. Did you forget to specialize "
         "TypeRegistry::SerDes<T>?");
   }
-  TF_ASSIGN_OR_RETURN(auto ptr, type_info.deserializer(data));
+  ABSL_ASSIGN_OR_RETURN(auto ptr, type_info.deserializer(data));
   return std::unique_ptr<T>(tsl::safe_reinterpret_cast<T*>(ptr.release()));
 }
 

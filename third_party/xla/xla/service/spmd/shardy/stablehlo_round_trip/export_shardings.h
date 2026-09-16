@@ -36,7 +36,7 @@ HloSharding convertToHloSharding(
     std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
         getMeshAttr,
     mlir::ArrayRef<mlir::StringAttr> manualAxes = {},
-    bool enableHloShardingV3 = false);
+    bool enableHloShardingV3 = false, bool simplifyReplicatedShardings = false);
 
 // Convert the `shardings` into a `kXlaShardingAttr` representing
 // `xla::HloSharding` and set it on `op`.
@@ -46,7 +46,7 @@ void setHloShardingAttr(
     std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
         getMeshAttr,
     mlir::ArrayRef<mlir::StringAttr> manualAxes = {},
-    bool enableHloShardingV3 = false);
+    bool enableHloShardingV3 = false, bool simplifyReplicatedShardings = false);
 
 // Creates a pass that converts the shardings from `kShardingAttr` to
 // `kXlaShardingAttr` and removes mesh symbols. Fully or partially manual
@@ -56,7 +56,8 @@ void setHloShardingAttr(
 // hlo sharding to control flow ops (while, case, if) that have no sdy sharding.
 std::unique_ptr<mlir::Pass> createExportStablehloShardingsPass(
     bool addMissingShardingToControlFlow = false,
-    bool enableHloShardingV3 = false);
+    bool enableHloShardingV3 = false, bool simplifyReplicatedShardings = false,
+    bool clearReverseOpSharding = false);
 
 // Register the xla-sdy-stablehlo-export-shardings pass.
 void registerStablehloExportShardingsPass();

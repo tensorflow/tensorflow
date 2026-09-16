@@ -16,41 +16,37 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/xla.pb.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
-#include "third_party/gpus/cudnn/cudnn_version.h"
-#endif
-
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class CudnnNormRewriterTest : public GpuCodegenTest {
+class CudnnNormRewriterTest
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_layer_norm(true);
     return debug_options;
   }
 
  protected:
   void SetUp() override {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-    GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
+    if (device_description().runtime_version() <
+        stream_executor::SemanticVersion(12, 0, 0)) {
+      GTEST_SKIP() << "Layer norm kernels require CUDA 12.";
+    }
     if (!(GetCudaComputeCapability().major ==
           se::CudaComputeCapability::kAmpere) &&
         !(GetCudaComputeCapability().major ==
@@ -107,20 +103,20 @@ TEST_F(CudnnNormRewriterTest, LayerNorm2D1) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4], {{.*}}: f32[4], {{.*}}: f32[4]) -> f32[2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4]{1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4], {{.*}}: f32[4], {{.*}}: f32[4]) -> f32[2,4] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4]{1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT [[GTE_BITCAST:%[^ ]+]] = f32[2,4]{1,0} bitcast([[GTE]])
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT [[GTE_BITCAST:%[^ ]+]] = f32[2,4]{1,0} bitcast([[GTE]])
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -166,20 +162,20 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> f32[2,4,6,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> f32[2,4,6,8] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT [[GTE_BITCAST:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} bitcast([[GTE]])
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT [[GTE_BITCAST:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} bitcast([[GTE]])
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -225,20 +221,20 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3Degenerate0) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[1,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> f32[1,4,6,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[1,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[24,8,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[24,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[1,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> f32[1,4,6,8] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[1,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[24,8,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[24,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f32[24,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT [[GTE_BITCAST:%[^ ]+]] = f32[1,4,6,8]{3,2,1,0} bitcast([[GTE]])
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f32[24,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT [[GTE_BITCAST:%[^ ]+]] = f32[1,4,6,8]{3,2,1,0} bitcast([[GTE]])
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -284,21 +280,21 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D2) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[6], {{.*}}: f32[6]) -> f32[2,4,6,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE:%[^ ]+]] = f32[2,4,8,6]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[64,6,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[6]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[64,6,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[6], {{.*}}: f32[6]) -> f32[2,4,6,8] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE:%[^ ]+]] = f32[2,4,8,6]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[64,6,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[6]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[64,6,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f32[64,6,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT {{.*}} = f32[2,4,6,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f32[64,6,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT {{.*}} = f32[2,4,6,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -344,21 +340,21 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D2Degenerate1) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,1,6,8], {{.*}}: f32[6], {{.*}}: f32[6]) -> f32[2,1,6,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,1,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE:%[^ ]+]] = f32[1,2,8,6]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,6,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[6]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[16,6,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,1,6,8], {{.*}}: f32[6], {{.*}}: f32[6]) -> f32[2,1,6,8] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,1,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE:%[^ ]+]] = f32[1,2,8,6]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[16,6,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[6]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[16,6,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f32[16,6,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT {{.*}} = f32[2,1,6,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f32[16,6,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT {{.*}} = f32[2,1,6,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -404,21 +400,21 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D12) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4,6], {{.*}}: f32[4,6]) -> f32[2,4,6,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE:%[^ ]+]] = f32[2,8,4,6]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} bitcast([[TRANSPOSE]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[16,4,6,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4,6], {{.*}}: f32[4,6]) -> f32[2,4,6,8] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE:%[^ ]+]] = f32[2,8,4,6]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} bitcast([[TRANSPOSE]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4,6]{1,0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[16,4,6,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT {{.*}} = f32[2,4,6,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT {{.*}} = f32[2,4,6,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -464,21 +460,21 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D12Degenerate2) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,1,8], {{.*}}: f32[4,1], {{.*}}: f32[4,1]) -> f32[2,4,1,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,1,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE:%[^ ]+]] = f32[1,2,8,4]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,1]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[16,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,1,8], {{.*}}: f32[4,1], {{.*}}: f32[4,1]) -> f32[2,4,1,8] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,1,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE:%[^ ]+]] = f32[1,2,8,4]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4,1]{1,0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[16,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT {{.*}} = f32[2,4,1,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT {{.*}} = f32[2,4,1,8]{3,2,1,0} fusion([[GTE]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -524,7 +520,7 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3IncorrectScaleBroadcast) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,2,2,2], {{.*}}: f32[2], {{.*}}: f32[2]) -> f32[2,2,2,2] {
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,2,2,2], {{.*}}: f32[2], {{.*}}: f32[2]) -> f32[2,2,2,2] {
 ; CHECK-NOT:           custom_call_target="__cudnn$norm"
   )";
 
@@ -575,20 +571,20 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3TypeConversion) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[2,4,6,8], {{.*}}: f16[8], {{.*}}: f16[8]) -> f16[2,4,6,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f16[48,8,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[8]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f16[1,8,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f16[1,8,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f16[48,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f16[2,4,6,8], {{.*}}: f16[8], {{.*}}: f16[8]) -> f16[2,4,6,8] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f16[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f16[48,8,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f16[8]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f16[1,8,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f16[1,8,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f16[48,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE:%[^ ]+]] = f16[48,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:  ROOT {{.*}} = f16[2,4,6,8]{3,2,1,0} bitcast([[GTE]])
+; CHECK-DAG:    [[GTE:%[^ ]+]] = f16[48,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:  ROOT {{.*}} = f16[2,4,6,8]{3,2,1,0} bitcast([[GTE]])
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -635,7 +631,7 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D3InputOutputTypeMismatch) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> f32[2,4,6,8] {
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f16[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> f32[2,4,6,8] {
 ; CHECK-NOT:           custom_call_target="__cudnn$norm"
   )";
 
@@ -684,26 +680,26 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain2D1) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4], {{.*}}: f32[4], {{.*}}: f32[4]) -> (f32[2,4], f32[2], f32[2], f32[2]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4]{1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4], {{.*}}: f32[4], {{.*}}: f32[4]) -> (f32[2,4], f32[2], f32[2], f32[2]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4]{1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE0:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:    [[GTE0_BITCAST:%[^ ]+]] = f32[2,4]{1,0} bitcast([[GTE0]])
-; CHECK-NEXT:    [[GTE1:%[^ ]+]] = f32[2,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=1
-; CHECK-NEXT:    [[GTE1_BITCAST:%[^ ]+]] = f32[2]{0} bitcast([[GTE1]])
-; CHECK-NEXT:    [[GTE2:%[^ ]+]] = f32[2,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=2
-; CHECK-NEXT:    [[GTE2_BITCAST:%[^ ]+]] = f32[2]{0} bitcast([[GTE2]])
-; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[2]{0} fusion([[GTE2]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
-; CHECK-NEXT:  ROOT [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2]{0}, f32[2]{0}, f32[2]{0}) tuple([[GTE0_BITCAST]], [[GTE1_BITCAST]], [[GTE2_BITCAST]], [[FUSION]])
+; CHECK-DAG:    [[GTE0:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:    [[GTE0_BITCAST:%[^ ]+]] = f32[2,4]{1,0} bitcast([[GTE0]])
+; CHECK-DAG:    [[GTE1:%[^ ]+]] = f32[2,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=1
+; CHECK-DAG:    [[GTE1_BITCAST:%[^ ]+]] = f32[2]{0} bitcast([[GTE1]])
+; CHECK-DAG:    [[GTE2:%[^ ]+]] = f32[2,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=2
+; CHECK-DAG:    [[GTE2_BITCAST:%[^ ]+]] = f32[2]{0} bitcast([[GTE2]])
+; CHECK-DAG:    [[FUSION:%[^ ]+]] = f32[2]{0} fusion([[GTE2]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
+; CHECK-DAG:  ROOT [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2]{0}, f32[2]{0}, f32[2]{0}) tuple([[GTE0_BITCAST]], [[GTE1_BITCAST]], [[GTE2_BITCAST]], [[FUSION]])
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -751,26 +747,26 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D3) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> (f32[2,4,6,8], f32[2,4,6], f32[2,4,6], f32[2,4,6]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8]) -> (f32[2,4,6,8], f32[2,4,6], f32[2,4,6], f32[2,4,6]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
 ; CHECK:           }
-; CHECK-NEXT:    [[GTE0:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
-; CHECK-NEXT:    [[GTE0_BITCAST:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} bitcast([[GTE0]])
-; CHECK-NEXT:    [[GTE1:%[^ ]+]] = f32[48,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=1
-; CHECK-NEXT:    [[GTE1_BITCAST:%[^ ]+]] = f32[2,4,6]{2,1,0} bitcast([[GTE1]])
-; CHECK-NEXT:    [[GTE2:%[^ ]+]] = f32[48,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=2
-; CHECK-NEXT:    [[GTE2_BITCAST:%[^ ]+]] = f32[2,4,6]{2,1,0} bitcast([[GTE2]])
-; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[2,4,6]{2,1,0} fusion([[GTE2]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
-; CHECK-NEXT:  ROOT [[OUT:%[^ ]+]] = (f32[2,4,6,8]{3,2,1,0}, f32[2,4,6]{2,1,0}, f32[2,4,6]{2,1,0}, f32[2,4,6]{2,1,0}) tuple([[GTE0_BITCAST]], [[GTE1_BITCAST]], [[GTE2_BITCAST]], [[FUSION]])
+; CHECK-DAG:    [[GTE0:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=0
+; CHECK-DAG:    [[GTE0_BITCAST:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} bitcast([[GTE0]])
+; CHECK-DAG:    [[GTE1:%[^ ]+]] = f32[48,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=1
+; CHECK-DAG:    [[GTE1_BITCAST:%[^ ]+]] = f32[2,4,6]{2,1,0} bitcast([[GTE1]])
+; CHECK-DAG:    [[GTE2:%[^ ]+]] = f32[48,1,1,1]{3,2,1,0} get-tuple-element([[CC]]), index=2
+; CHECK-DAG:    [[GTE2_BITCAST:%[^ ]+]] = f32[2,4,6]{2,1,0} bitcast([[GTE2]])
+; CHECK-DAG:    [[FUSION:%[^ ]+]] = f32[2,4,6]{2,1,0} fusion([[GTE2]]), kind={{.*}}, calls=[[FUSED_COMPUTATION:%[^ ]+]]
+; CHECK-DAG:  ROOT [[OUT:%[^ ]+]] = (f32[2,4,6,8]{3,2,1,0}, f32[2,4,6]{2,1,0}, f32[2,4,6]{2,1,0}, f32[2,4,6]{2,1,0}) tuple([[GTE0_BITCAST]], [[GTE1_BITCAST]], [[GTE2_BITCAST]], [[FUSION]])
   )";
 
   TestNorm(hlo_text, optimized_hlo);
@@ -818,15 +814,15 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4,6], {{.*}}: f32[4,6]) -> (f32[2,4,6,8], f32[2,8], f32[2,8], f32[2,8]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE:%[^ ]+]] = f32[2,8,4,6]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} bitcast([[TRANSPOSE]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[16,4,6,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4,6], {{.*}}: f32[4,6]) -> (f32[2,4,6,8], f32[2,8], f32[2,8], f32[2,8]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE:%[^ ]+]] = f32[2,8,4,6]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} bitcast([[TRANSPOSE]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4,6]{1,0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[16,4,6,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -878,15 +874,15 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12Degenerate2) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,1,8], {{.*}}: f32[4,1], {{.*}}: f32[4,1]) -> (f32[2,4,1,8], f32[2,8], f32[2,8], f32[2,8]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,1,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE:%[^ ]+]] = f32[1,2,8,4]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,1]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC:%[^ ]+]] = (f32[16,4,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,1,8], {{.*}}: f32[4,1], {{.*}}: f32[4,1]) -> (f32[2,4,1,8], f32[2,8], f32[2,8], f32[2,8]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,1,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE:%[^ ]+]] = f32[1,2,8,4]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4,1]{1,0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC:%[^ ]+]] = (f32[16,4,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -964,14 +960,16 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward2D1) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4], {{.*}}: f32[4], {{.*}}: f32[4], {{.*}}: f32[2,4]) -> (f32[2,4], f32[2,4], f32[4], f32[4]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4]{1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4], {{.*}}: f32[4], {{.*}}: f32[4], {{.*}}: f32[2,4]) -> (f32[2,4], f32[2,4], f32[4], f32[4]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4]{1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:     [[P3:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
+; CHECK-DAG:     [[P3_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P3]])
+; CHECK-DAG:    [[CC0:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, f32[2,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -979,11 +977,9 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward2D1) {
 ; CHECK:           }
 ; CHECK-DAG:     [[GTE0:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=0
 ; CHECK-DAG:     [[GTE0_BITCAST:%[^ ]+]] = f32[2,4]{1,0} bitcast([[GTE0]])
-; CHECK-DAG:     [[P3:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
-; CHECK-DAG:     [[P3_BITCAST:%[^ ]+]] = f32[2,4,1,1]{3,2,1,0} bitcast([[P3]])
 ; CHECK-DAG:     [[GTE1:%[^ ]+]] = f32[2,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=1
 ; CHECK-DAG:     [[GTE2:%[^ ]+]] = f32[2,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=2
-; CHECK-NEXT:    [[CC1:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P3_BITCAST]], [[GTE1]], [[GTE2]]),
+; CHECK-DAG:    [[CC1:%[^ ]+]] = (f32[2,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P3_BITCAST]], [[GTE1]], [[GTE2]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0
@@ -1069,14 +1065,16 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D3) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8], {{.*}}: f32[2,4,6,8]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[8], f32[8]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[8], {{.*}}: f32[8], {{.*}}: f32[2,4,6,8]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[8], f32[8]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[8]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[8]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,8,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:     [[P3:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(3)
+; CHECK-DAG:     [[P3_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P3]])
+; CHECK-DAG:    [[CC0:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, f32[48,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -1084,11 +1082,9 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D3) {
 ; CHECK:           }
 ; CHECK-DAG:     [[GTE0:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=0
 ; CHECK-DAG:     [[GTE0_BITCAST:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} bitcast([[GTE0]])
-; CHECK-DAG:     [[P3:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(3)
-; CHECK-DAG:     [[P3_BITCAST:%[^ ]+]] = f32[48,8,1,1]{3,2,1,0} bitcast([[P3]])
 ; CHECK-DAG:     [[GTE1:%[^ ]+]] = f32[48,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=1
 ; CHECK-DAG:     [[GTE2:%[^ ]+]] = f32[48,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=2
-; CHECK-NEXT:    [[CC1:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, f32[1,8,1,1]{3,2,1,0}, f32[1,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P3_BITCAST]], [[GTE1]], [[GTE2]]),
+; CHECK-DAG:    [[CC1:%[^ ]+]] = (f32[48,8,1,1]{3,2,1,0}, f32[1,8,1,1]{3,2,1,0}, f32[1,8,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P3_BITCAST]], [[GTE1]], [[GTE2]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0
@@ -1174,15 +1170,15 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D2) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[6], {{.*}}: f32[6], {{.*}}: f32[2,4,6,8]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[6], f32[6]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE0:%[^ ]+]] = f32[2,4,8,6]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[64,6,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[6]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK:         [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[64,6,1,1]{3,2,1,0}, f32[64,1,1,1]{3,2,1,0}, f32[64,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[6], {{.*}}: f32[6], {{.*}}: f32[2,4,6,8]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[6], f32[6]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE0:%[^ ]+]] = f32[2,4,8,6]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[64,6,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[6]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC0:%[^ ]+]] = (f32[64,6,1,1]{3,2,1,0}, f32[64,1,1,1]{3,2,1,0}, f32[64,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -1267,15 +1263,15 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4,6], {{.*}}: f32[4,6], {{.*}}: f32[2,4,6,8]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[4,6], f32[4,6]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE0:%[^ ]+]] = f32[2,8,4,6]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P1]])
-; CHECK:         [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[16,4,6,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4,6], {{.*}}: f32[4,6], {{.*}}: f32[2,4,6,8]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[4,6], f32[4,6]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE0:%[^ ]+]] = f32[2,8,4,6]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4,6]{1,0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC0:%[^ ]+]] = (f32[16,4,6,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -1360,15 +1356,15 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12Degenerate2) {
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,1,8], {{.*}}: f32[4,1], {{.*}}: f32[4,1], {{.*}}: f32[2,4,1,8]) -> (f32[2,4,1,8], f32[2,4,1,8], f32[4,1], f32[4,1]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,1,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE0:%[^ ]+]] = f32[1,2,8,4]{3,2,1,0} fusion([[P0]])
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,1]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK:         [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[16,4,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,1,8], {{.*}}: f32[4,1], {{.*}}: f32[4,1], {{.*}}: f32[2,4,1,8]) -> (f32[2,4,1,8], f32[2,4,1,8], f32[4,1], f32[4,1]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,1,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE0:%[^ ]+]] = f32[1,2,8,4]{3,2,1,0} fusion([[P0]])
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4,1]{1,0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC0:%[^ ]+]] = (f32[16,4,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -1456,15 +1452,15 @@ TEST_F(CudnnNormRewriterTest,
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4], {{.*}}: f32[4], {{.*}}: f32[2,4,48]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[4], f32[4]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE0:%[^ ]+]] = f32[2,6,8,4]{3,2,1,0} transpose([[P0]]), dimensions={0,2,3,1}
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[96,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4], {{.*}}: f32[4], {{.*}}: f32[2,4,48]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[4], f32[4]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE0:%[^ ]+]] = f32[2,6,8,4]{3,2,1,0} transpose([[P0]]), dimensions={0,2,3,1}
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[96,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC0:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -1476,7 +1472,7 @@ TEST_F(CudnnNormRewriterTest,
 ; CHECK-DAG:     [[FUSION0_BITCAST:%[^ ]+]] = f32[96,4,1,1]{3,2,1,0} bitcast([[FUSION0]])
 ; CHECK-DAG:     [[GTE1:%[^ ]+]] = f32[96,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=1
 ; CHECK-DAG:     [[GTE2:%[^ ]+]] = f32[96,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=2
-; CHECK-NEXT:    [[CC1:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION0_BITCAST]], [[GTE1]], [[GTE2]]),
+; CHECK-DAG:    [[CC1:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION0_BITCAST]], [[GTE1]], [[GTE2]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0
@@ -1567,15 +1563,15 @@ TEST_F(CudnnNormRewriterTest,
 
   const char* optimized_hlo = R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4], {{.*}}: f32[4], {{.*}}: f32[2,4,6,2,2,2]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[4], f32[4]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[TRANSPOSE0:%[^ ]+]] = f32[2,6,8,4]{3,2,1,0} transpose([[P0]]), dimensions={0,2,3,1}
-; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[96,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
-; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
-; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
-; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,4,6,8], {{.*}}: f32[4], {{.*}}: f32[4], {{.*}}: f32[2,4,6,2,2,2]) -> (f32[2,4,6,8], f32[2,4,6,8], f32[4], f32[4]) {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,4,6,8]{3,2,1,0} parameter(0)
+; CHECK-DAG:    [[TRANSPOSE0:%[^ ]+]] = f32[2,6,8,4]{3,2,1,0} transpose([[P0]]), dimensions={0,2,3,1}
+; CHECK-DAG:    [[P0_BITCAST:%[^ ]+]] = f32[96,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[4]{0} parameter(1)
+; CHECK-DAG:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
+; CHECK-DAG:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-DAG:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
+; CHECK-DAG:    [[CC0:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, f32[96,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0.001
@@ -1587,7 +1583,7 @@ TEST_F(CudnnNormRewriterTest,
 ; CHECK-DAG:     [[FUSION0_BITCAST:%[^ ]+]] = f32[96,4,1,1]{3,2,1,0} bitcast([[FUSION0]])
 ; CHECK-DAG:     [[GTE1:%[^ ]+]] = f32[96,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=1
 ; CHECK-DAG:     [[GTE2:%[^ ]+]] = f32[96,1,1,1]{3,2,1,0} get-tuple-element([[CC0]]), index=2
-; CHECK-NEXT:    [[CC1:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION0_BITCAST]], [[GTE1]], [[GTE2]]),
+; CHECK-DAG:    [[CC1:%[^ ]+]] = (f32[96,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, f32[1,4,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION0_BITCAST]], [[GTE1]], [[GTE2]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "epsilon":0
@@ -1608,5 +1604,4 @@ TEST_F(CudnnNormRewriterTest,
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

@@ -30,8 +30,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-using SelectTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using SelectTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(SelectTest, SelectScalarF32True) {
   XlaBuilder builder(TestName());

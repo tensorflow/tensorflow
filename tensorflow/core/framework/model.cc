@@ -158,7 +158,7 @@ class ModelTimingPriorityQueue {
   // Pops the top item from the queue, i.e. node with the largest total time.
   absl::StatusOr<std::pair<double, Node*>> PopSlowestStageRoot() {
     if (stage_roots_queue_.empty()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Model timing priority queue is empty during stage-based "
           "optimization");
     }
@@ -181,7 +181,7 @@ class ModelTimingPriorityQueue {
 // they are requested and saves them for subsequent requests.
 class NodeParallelismParameters {
  public:
-  NodeParallelismParameters() {}
+  NodeParallelismParameters() = default;
 
   // Returns the `parallelism` parameter given a node.
   Parameter* Get(const Node* node) {
@@ -383,7 +383,7 @@ absl::Status ModelToProtoHelper(std::shared_ptr<Node> output,
 absl::Status ModelFromProtoHelper(ModelProto model,
                                   std::shared_ptr<Node>* output) {
   if (model.nodes().empty()) {
-    return errors::Internal(
+    return absl::InternalError(
         "Cannot restore model from proto because it has no nodes.");
   }
   TF_RETURN_IF_ERROR(Node::FromProto(model.nodes().at(model.output()),
@@ -420,7 +420,7 @@ class InterleaveMany : public Node {
     }
   }
 
-  ~InterleaveMany() override {}
+  ~InterleaveMany() override = default;
 
   // The ratio of an InterleaveMany node is `1/cycle_length`. If cycle length is
   // not available, we approximate it by `1/input_size`. The input size does not
@@ -576,7 +576,7 @@ class AsyncInterleaveMany : public Node {
     }
   }
 
-  ~AsyncInterleaveMany() override {}
+  ~AsyncInterleaveMany() override = default;
 
   bool IsAsync() const override { return true; }
 
@@ -788,7 +788,7 @@ class KnownRatio : public Node {
  public:
   KnownRatio(Node::Args args, double ratio) : Node(args), ratio_(ratio) {}
 
-  ~KnownRatio() override {}
+  ~KnownRatio() override = default;
 
   double Ratio() const override { return ratio_; }
 
@@ -894,7 +894,7 @@ class AsyncRatio : public Node {
     }
   }
 
-  ~AsyncRatio() override {}
+  ~AsyncRatio() override = default;
 
   bool IsAsync() const override { return true; }
 
@@ -1139,7 +1139,7 @@ class UnknownRatio : public Node {
  public:
   using Node::Node;
 
-  ~UnknownRatio() override {}
+  ~UnknownRatio() override = default;
 
   double Ratio() const override {
     tf_shared_lock l(mu_);
@@ -1260,7 +1260,7 @@ class Unknown : public Node {
  public:
   using Node::Node;
 
-  ~Unknown() override {}
+  ~Unknown() override = default;
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
@@ -1318,7 +1318,7 @@ class AsyncKnownRatio : public AsyncRatio {
       : AsyncRatio(args, ratio, memory_ratio, parameters,
                    is_legacy_prefetch_autotuned) {}
 
-  ~AsyncKnownRatio() override {}
+  ~AsyncKnownRatio() override = default;
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
@@ -1359,7 +1359,7 @@ class AsyncUnknownRatio : public AsyncRatio {
                     std::vector<std::shared_ptr<Parameter>> parameters)
       : AsyncRatio(args, /*ratio=*/0.0, /*memory_ratio=*/0.0, parameters) {}
 
-  ~AsyncUnknownRatio() override {}
+  ~AsyncUnknownRatio() override = default;
 
   double Ratio() const override {
     tf_shared_lock l(mu_);

@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Lower-level functionality for build config.
 
 The functions in this file might be referred by tensorflow.bzl. They have to
@@ -43,8 +58,21 @@ def tf_gpu_tests_tags():
         return ["requires-gpu", "gpu"] + gpu_test_tags()
 
 # terminology changes: saving tf_cuda_* for compatibility
+def tf_cuda_base_tests_tags():
+    """Base tags common to all GPU tests in OSS."""
+    return ["gpu"] + gpu_test_tags()
+
 def tf_cuda_tests_tags():
+    """Tags for single-GPU test targets in OSS (dynamically CUDA or ROCm)."""
     return tf_gpu_tests_tags()
+
+def tf_cuda_2gpu_tests_tags():
+    """Tags for 2-GPU test targets in OSS."""
+    return tf_gpu_tests_tags() + [
+        "multi_gpu",
+        "manual",
+        "no_pip",
+    ]
 
 def tf_has_tag(kwargs, tag):
     return ("tags" in kwargs and kwargs["tags"] != None and tag in kwargs["tags"])

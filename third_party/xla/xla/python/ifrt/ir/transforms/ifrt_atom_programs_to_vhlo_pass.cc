@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Support/WalkResult.h"
+#include "shardy/dialect/sdy/ir/compatibility.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
@@ -59,9 +62,10 @@ class IfrtAtomProgramsToVhloPass
  public:
   explicit IfrtAtomProgramsToVhloPass(
       tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
-      std::string vhlo_target_version)
+      std::string vhlo_target_version, std::string sdy_target_version)
       : atom_programs_(atom_programs),
-        vhlo_target_version_(std::move(vhlo_target_version)) {}
+        vhlo_target_version_(std::move(vhlo_target_version)),
+        sdy_target_version_(std::move(sdy_target_version)) {}
 
   llvm::StringRef getArgument() const override {
     return "ifrt-atom-programs-to-vhlo";
@@ -82,6 +86,7 @@ class IfrtAtomProgramsToVhloPass
  private:
   tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs_;
   std::string vhlo_target_version_;
+  std::string sdy_target_version_;
 };
 
 void IfrtAtomProgramsToVhloPass::runOnOperation() {
@@ -158,19 +163,40 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     IfrtIrAtomProgramProto* atom_program_proto = atom_programs_->Add();
     atom_program_proto->set_name(atom_program_name);
     atom_program_proto->set_version(vhlo_target_version_);
-    llvm::raw_string_ostream os(*atom_program_proto->mutable_program());
+    std::string serialized;
+    llvm::raw_string_ostream os(serialized);
     // We need to pass `allowOtherDialects=true` if
     // `stablehlo_version >= 1.11.0`, since the lowered module from JAX can
     // have a mix of StableHLO and Shardy dialects.
     vhlo::Version mixed_serialization_ok = vhlo::Version(1, 11, 0);
     bool allow_other_dialects = mixed_serialization_ok <=
                                 vhlo::Version::fromString(vhlo_target_version_);
+    if (allow_other_dialects) {
+      mlir::FailureOr<mlir::sdy::SdyDialectVersion> sdy_target_version =
+          mlir::sdy::SdyDialectVersion::fromString(sdy_target_version_);
+      if (mlir::failed(sdy_target_version)) {
+        stablehlo_module->emitOpError()
+            << "failed to parse SDY target version " << sdy_target_version_;
+        return mlir::WalkResult::interrupt();
+      }
+      if (mlir::failed(mlir::sdy::downgradeModule(tmp_module->get(),
+                                                  *sdy_target_version))) {
+        stablehlo_module->emitOpError()
+            << "failed to downgrade the module to use the SDY target version "
+               "requested";
+        return mlir::WalkResult::interrupt();
+      }
+    }
+
     if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
             tmp_module->get(), vhlo_target_version_, os,
             allow_other_dialects))) {
       stablehlo_module->emitOpError() << "failed to serialize to VHLO";
       return mlir::WalkResult::interrupt();
     }
+    // OSS requires explicit string conversion
+    // NOLINTNEXTLINE(*-redundant-string-conversions)
+    atom_program_proto->set_program(absl::Cord(std::move(serialized)));
     return mlir::WalkResult::advance();
   });
   if (result.wasInterrupted()) {
@@ -183,9 +209,10 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtAtomProgramsToVhloPass(
     tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
-    std::string vhlo_target_version) {
+    std::string vhlo_target_version, std::string sdy_target_version) {
   return std::make_unique<IfrtAtomProgramsToVhloPass>(
-      atom_programs, std::move(vhlo_target_version));
+      atom_programs, std::move(vhlo_target_version),
+      std::move(sdy_target_version));
 }
 
 }  // namespace ifrt

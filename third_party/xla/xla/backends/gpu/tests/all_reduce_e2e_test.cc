@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -433,8 +434,11 @@ class AllReduceTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(
-        GetParam().use_all_reduce_one_shot_kernel);
+    opts.clear_xla_gpu_experimental_use_collective_kernels();
+    if (GetParam().use_all_reduce_one_shot_kernel) {
+      opts.add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
+    }
     return opts;
   }
 };
@@ -449,8 +453,11 @@ class AllReduceTypesTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(
-        GetParam().use_all_reduce_one_shot_kernel);
+    opts.clear_xla_gpu_experimental_use_collective_kernels();
+    if (GetParam().use_all_reduce_one_shot_kernel) {
+      opts.add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
+    }
     return opts;
   }
 };
@@ -494,7 +501,9 @@ class AllReduceLayoutAwareTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(true);
+    opts.clear_xla_gpu_experimental_use_collective_kernels();
+    opts.add_xla_gpu_experimental_use_collective_kernels(
+        DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
     return opts;
   }
 };
@@ -1009,6 +1018,44 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_FailsOnUnsupportedGPUs) {
   // NCCL returns ncclInvalidArgument for FP8 reductions on pre-sm90 GPUs.
   EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr("FP8 reduction support begins with sm90"));
+}
+
+TEST_F(AllReduceTestNoParams, TestGlobalDeviceIdMappingWithAsyncAllReduce) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  async_computation {
+    param_0 = f32[64,128] parameter(0)
+    ROOT all-reduce = f32[64,128] all-reduce(param_0), to_apply=add, use_global_device_ids=true, channel_id=7, replica_groups=[1,2]<=[2]
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[64,128] parameter(0)
+    async_all_reduce = ((f32[64,128]), f32[64,128]) async-start(param_0), calls=async_computation
+    ROOT async_done = f32[64,128] async-done(async_all_reduce)
+  })";
+  static constexpr int64_t kNumReplicas = 2;
+  SCOPED_TRACE(::testing::Message() << "module_str: " << kModuleStr);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto test_io, BuildTestInputsOutputs<PrimitiveType::F32>(
+                                         HloOpcode::kAdd, *module, kNumReplicas,
+                                         /*num_iterations=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/test_io.InputLiteralPtrs()));
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
+        << "ExpectedOutput != Result at rank " << i;
+  }
 }
 
 }  // namespace

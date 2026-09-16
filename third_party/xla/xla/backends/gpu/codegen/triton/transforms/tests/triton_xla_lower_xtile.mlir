@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s -split-input-file -triton-xla-lower-xtile | FileCheck %s
 
 xtile.entry_func @extract_insert_no_layout(%input: memref<1024xf32, #nvvm.memory_space<global>>,
@@ -102,3 +116,18 @@ func.func @mask_lowers_to_stable_hlo(%arg0: tensor<32xf64>, %arg1: f64) -> tenso
   return %paded : tensor<32xf64>
 }
 
+// -----
+
+// CHECK-LABEL: @select_buffer_test
+func.func @select_buffer_test(%src: memref<2xi64>, %replica_id: index) -> memref<128xf32> {
+  // CHECK-SAME: (%[[SRC:.*]]: memref<2xi64>, %[[REPLICA_ID:.*]]: index) -> memref<128xf32> {
+  // CHECK: %[[PTR:.*]] = triton_xla.memref_to_ptr %[[SRC]] from memref<2xi64> to <i64>
+  // CHECK: %[[REPLICA_I64:.*]] = arith.index_cast %[[REPLICA_ID]] : index to i64
+  // CHECK: %[[ADDR:.*]] = tt.addptr %[[PTR]], %[[REPLICA_I64]] : !tt.ptr<i64>, i64
+  // CHECK: %[[LOADED_ADDR:.*]] = tt.load %[[ADDR]] : !tt.ptr<i64>
+  // CHECK: %[[FINAL_PTR:.*]] = tt.int_to_ptr %[[LOADED_ADDR]] {tt.divisibility = 16 : i32} : i64 -> !tt.ptr<f32>
+  // CHECK: %[[RES_MEMREF:.*]] = triton_xla.ptr_to_memref %[[FINAL_PTR]] from <f32> to memref<128xf32>
+  %0 = xtile.select_buffer %src[%replica_id] : memref<2xi64> -> memref<128xf32>
+  // CHECK: return %[[RES_MEMREF]] : memref<128xf32>
+  return %0 : memref<128xf32>
+}

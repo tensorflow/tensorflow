@@ -977,7 +977,7 @@ class TestUnavailableErrorOp : public tensorflow::OpKernel {
   explicit TestUnavailableErrorOp(tensorflow::OpKernelConstruction* ctx)
       : tensorflow::OpKernel(ctx) {}
   void Compute(tensorflow::OpKernelContext* ctx) override {
-    ctx->SetStatus(tensorflow::errors::Unavailable("Test error."));
+    ctx->SetStatus(absl::UnavailableError("Test error."));
   }
 };
 REGISTER_KERNEL_BUILDER(

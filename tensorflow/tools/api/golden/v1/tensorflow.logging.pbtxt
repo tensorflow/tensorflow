@@ -2,23 +2,23 @@ path: "tensorflow.logging"
 tf_module {
   member {
     name: "DEBUG"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "ERROR"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "FATAL"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "INFO"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "WARN"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member_method {
     name: "TaskLevelStatusMessage"
@@ -62,7 +62,7 @@ tf_module {
   }
   member_method {
     name: "log_if"
-    argspec: "args=[\'level\', \'msg\', \'condition\'], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[\'level\', \'msg\', \'condition\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "set_verbosity"

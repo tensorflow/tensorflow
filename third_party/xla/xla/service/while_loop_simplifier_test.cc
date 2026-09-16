@@ -22,12 +22,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -36,8 +38,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -220,7 +220,7 @@ TEST_F(WhileLoopSimplifierTest,
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* true_op = while_op->while_body()->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-  TF_ASSERT_OK(true_op->AddControlDependencyTo(
+  ASSERT_OK(true_op->AddControlDependencyTo(
       while_op->while_body()->root_instruction()));
   ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction()->control_predecessors(),
@@ -1164,6 +1164,94 @@ TEST_F(WhileLoopSimplifierTest, LoopWithUnusedNonPassthroughElementSimplified) {
               AllOf(op::While(), op::Shape("(s32[], s32[])")));
 }
 
+// Index 65 lives in the second 64 bit word of the dependency bitset. The
+// parameter at that index has no use after the loop and is kept only because a
+// live output depends on it, so the test fails if Add, Merge, or ForEachIndex
+// mishandles bits beyond the first word.
+TEST_F(WhileLoopSimplifierTest, RemoveDeadParamsAcrossBitsetWordBoundary) {
+  constexpr int64_t kTupleSize = 70;
+  constexpr int64_t kHighIndex = 65;
+  std::string tuple_shape = "(s32[]";
+  for (int64_t i = 1; i < kTupleSize; ++i) {
+    absl::StrAppend(&tuple_shape, ", s32[]");
+  }
+  absl::StrAppend(&tuple_shape, ")");
+  std::string body_gtes;
+  for (int64_t i = 2; i < kTupleSize; ++i) {
+    absl::StrAppend(&body_gtes, "    gte.", i,
+                    " = s32[] get-tuple-element(loop_var), index=", i, "\n");
+  }
+  std::string body_outputs = "counter, sum";
+  for (int64_t i = 2; i < kTupleSize; ++i) {
+    absl::StrAppend(&body_outputs, ", gte.", i);
+  }
+  std::string entry_params;
+  std::string init_elements = "p0";
+  absl::StrAppend(&entry_params, "    p0 = s32[] parameter(0)\n");
+  for (int64_t i = 1; i < kTupleSize; ++i) {
+    absl::StrAppend(&entry_params, "    p", i, " = s32[] parameter(", i, ")\n");
+    absl::StrAppend(&init_elements, ", p", i);
+  }
+  const std::string hlo_string = absl::StrCat(
+      R"(
+  HloModule BitsetWordBoundary
+  BitsetWordBoundary.body {
+    loop_var = )",
+      tuple_shape, R"( parameter(0)
+    gte.0 = s32[] get-tuple-element(loop_var), index=0
+    gte.1 = s32[] get-tuple-element(loop_var), index=1
+)",
+      body_gtes,
+      R"(    one = s32[] constant(1)
+    counter = s32[] add(gte.0, one)
+    sum = s32[] add(gte.1, gte.)",
+      kHighIndex, R"()
+    ROOT tuple = )",
+      tuple_shape, " tuple(", body_outputs, R"()
+  }
+  BitsetWordBoundary.cond {
+    cond_param = )",
+      tuple_shape, R"( parameter(0)
+    cond_counter = s32[] get-tuple-element(cond_param), index=0
+    limit = s32[] constant(100)
+    ROOT lt = pred[] compare(cond_counter, limit), direction=LT
+  }
+  ENTRY BitsetWordBoundary {
+)",
+      entry_params, "    init = ", tuple_shape, " tuple(", init_elements, R"()
+    while = )",
+      tuple_shape,
+      R"( while(init), condition=BitsetWordBoundary.cond, body=BitsetWordBoundary.body
+    ROOT result = s32[] get-tuple-element(while), index=1
+  }
+  )");
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(m.get()));
+  ASSERT_TRUE(changed);
+
+  // Kept: index 0 feeds the condition, index 1 is used after the loop, and
+  // index 65 feeds output 1. Everything else is dead.
+  const auto& instrs = m->entry_computation()->instructions();
+  auto it = absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kWhile && instr->name() != "while";
+  });
+  ASSERT_NE(it, instrs.end());
+  HloInstruction* new_while_op = *it;
+  EXPECT_EQ(ShapeUtil::TupleElementCount(new_while_op->shape()), 3);
+  EXPECT_THAT(
+      new_while_op->while_init(),
+      op::Tuple(op::Parameter(0), op::Parameter(1), op::Parameter(kHighIndex)));
+  EXPECT_THAT(
+      new_while_op->while_body()->root_instruction(),
+      op::Tuple(
+          op::Add(op::GetTupleElement(op::Parameter(0), /*tuple_index=*/0),
+                  op::Constant()),
+          op::Add(op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1),
+                  op::GetTupleElement(op::Parameter(0), /*tuple_index=*/2)),
+          op::GetTupleElement(op::Parameter(0), /*tuple_index=*/2)));
+}
+
 // Check that we can remove unused loop params even if the loop contains
 // sends/recvs.
 TEST_F(WhileLoopSimplifierTest, RemoveUnusedParamsDespiteSendRecv) {
@@ -1441,8 +1529,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[3]) -> (f32[3], f32[3], f32[3], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* new_while = FindFirstWhile(module.get());
   Shape new_while_shape = ParseShape("(f32[3], f32[3], s32[])").value();
@@ -1504,8 +1591,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* new_while = FindFirstWhile(module.get());
   Shape new_while_shape = ParseShape("(f32[3], f32[2], s32[])").value();
@@ -1552,7 +1638,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarryWithOriginalValue) {
       condition=Cond, body=Body, origin={({"w0"},{"w1"},{"w2"})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   HloInstruction* while_instr = FindFirstWhile(m.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1593,7 +1679,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarryWithOriginalValue2) {
       condition=Cond, body=Body, origin={({"w0"},{"w1"},{"w2"})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   HloInstruction* while_instr = FindFirstWhile(m.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1648,8 +1734,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1691,10 +1776,8 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
       {"while.116" {1}}, {"while.116" {2}}, ({"while.116" {3}})))}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1749,10 +1832,8 @@ const char* const kSimpleMergeInductionVariablesModuleWithOriginalValue = R"(
 TEST_F(WhileLoopSimplifierTest, MergeInductionVariablesWithOriginalValue) {
   std::string hlo_string = absl::StrReplaceAll(
       kSimpleMergeInductionVariablesModuleWithOriginalValue, {{"TYPE", "s32"}});
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1772,6 +1853,397 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariablesWithOriginalValue) {
   ASSERT_NE(induction_var_1->original_value(), nullptr);
   EXPECT_EQ(induction_var_1->original_value()->ToString(),
             R"({"induction_var_1"})");
+}
+
+TEST_F(WhileLoopSimplifierTest, WhileBodyCallsFoo) {
+  const std::string hlo_string = R"(
+  HloModule WhileBodyCallsFoo
+
+  foo {
+    param.foo = s32[3]{0} parameter(0)
+    two = s32[3]{0} constant({2, 2, 2})
+    ROOT mul = s32[3]{0} multiply(param.foo, two)
+  }
+
+  body {
+    param.body = (s32[], s32[3]{0}) parameter(0)
+    indvar = s32[] get-tuple-element(param.body), index=0
+    one = s32[] constant(1)
+    add = s32[] add(indvar, one)
+
+    arr = s32[3]{0} get-tuple-element(param.body), index=1
+    call.body = s32[3]{0} call(arr), to_apply=foo
+
+    ROOT tuple.body = (s32[], s32[3]{0}) tuple(add, call.body)
+  }
+
+  cond {
+    param.cond = (s32[], s32[3]{0}) parameter(0)
+    indvar = s32[] get-tuple-element(param.cond), index=0
+    bound = s32[] constant(43)
+    ROOT cmp = pred[] compare(indvar, bound), direction=LT
+  }
+
+  ENTRY entry {
+    init_val = s32[] constant(42)
+    init_arr = s32[3]{0} constant({1, 2, 3})
+    init_tuple = (s32[], s32[3]{0}) tuple(init_val, init_arr)
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK-NOT: while
+    // CHECK: call({{.*}}), to_apply=%foo
+    ROOT while = (s32[], s32[3]{0}) while(init_tuple), condition=cond, body=body
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopSimplifierTest, EntryAndWhileBodyCallFoo) {
+  const std::string hlo_string = R"(
+  HloModule EntryAndWhileBodyCallFoo
+
+  foo {
+    param.foo = s32[3]{0} parameter(0)
+    two = s32[3]{0} constant({2, 2, 2})
+    ROOT mul = s32[3]{0} multiply(param.foo, two)
+  }
+
+  body {
+    param.body = (s32[], s32[3]{0}) parameter(0)
+    indvar = s32[] get-tuple-element(param.body), index=0
+    one = s32[] constant(1)
+    add = s32[] add(indvar, one)
+
+    arr = s32[3]{0} get-tuple-element(param.body), index=1
+    call.body = s32[3]{0} call(arr), to_apply=foo
+
+    ROOT tuple.body = (s32[], s32[3]{0}) tuple(add, call.body)
+  }
+
+  cond {
+    param.cond = (s32[], s32[3]{0}) parameter(0)
+    indvar = s32[] get-tuple-element(param.cond), index=0
+    bound = s32[] constant(43)
+    ROOT cmp = pred[] compare(indvar, bound), direction=LT
+  }
+
+  ENTRY entry {
+    init_val = s32[] constant(42)
+    init_arr = s32[3]{0} constant({1, 2, 3})
+    call.entry = s32[3]{0} call(init_arr), to_apply=foo
+    init_tuple = (s32[], s32[3]{0}) tuple(init_val, call.entry)
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK: call({{.*}}), to_apply=%foo
+    // CHECK-NOT: while
+    // CHECK: call({{.*}}), to_apply=%foo
+    ROOT while = (s32[], s32[3]{0}) while(init_tuple), condition=cond, body=body
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopSimplifierTest, TwoWhileBodiesCallFoo) {
+  const std::string hlo_string = R"(
+  HloModule TwoWhileBodiesCallFoo
+
+  foo {
+    param.foo = s32[3]{0} parameter(0)
+    two = s32[3]{0} constant({2, 2, 2})
+    ROOT mul = s32[3]{0} multiply(param.foo, two)
+  }
+
+  body1 {
+    param.body1 = (s32[], s32[3]{0}) parameter(0)
+    indvar1 = s32[] get-tuple-element(param.body1), index=0
+    one1 = s32[] constant(1)
+    add1 = s32[] add(indvar1, one1)
+
+    arr1 = s32[3]{0} get-tuple-element(param.body1), index=1
+    call.body1 = s32[3]{0} call(arr1), to_apply=foo
+
+    ROOT tuple.body1 = (s32[], s32[3]{0}) tuple(add1, call.body1)
+  }
+
+  cond1 {
+    param.cond1 = (s32[], s32[3]{0}) parameter(0)
+    indvar1 = s32[] get-tuple-element(param.cond1), index=0
+    bound1 = s32[] constant(43)
+    ROOT cmp1 = pred[] compare(indvar1, bound1), direction=LT
+  }
+
+  body2 {
+    param.body2 = (s32[], s32[3]{0}) parameter(0)
+    indvar2 = s32[] get-tuple-element(param.body2), index=0
+    one2 = s32[] constant(1)
+    add2 = s32[] add(indvar2, one2)
+
+    arr2 = s32[3]{0} get-tuple-element(param.body2), index=1
+    call.body2 = s32[3]{0} call(arr2), to_apply=foo
+
+    ROOT tuple.body2 = (s32[], s32[3]{0}) tuple(add2, call.body2)
+  }
+
+  cond2 {
+    param.cond2 = (s32[], s32[3]{0}) parameter(0)
+    indvar2 = s32[] get-tuple-element(param.cond2), index=0
+    bound2 = s32[] constant(101)
+    ROOT cmp2 = pred[] compare(indvar2, bound2), direction=LT
+  }
+
+	// CHECK-LABEL: ENTRY %entry
+	// CHECK-NOT: while1
+  // CHECK: call({{.*}}), to_apply=%foo
+  // CHECK-NOT: while2
+  // CHECK: call({{.*}}), to_apply=%foo
+  ENTRY entry {
+    init_val1 = s32[] constant(42)
+    init_arr1 = s32[3]{0} constant({1, 2, 3})
+    init_tuple1 = (s32[], s32[3]{0}) tuple(init_val1, init_arr1)
+    while1 = (s32[], s32[3]{0}) while(init_tuple1), condition=cond1, body=body1
+
+    init_val2 = s32[] constant(100)
+    init_arr2 = s32[3]{0} constant({4, 5, 6})
+    init_tuple2 = (s32[], s32[3]{0}) tuple(init_val2, init_arr2)
+    while2 = (s32[], s32[3]{0}) while(init_tuple2), condition=cond2, body=body2
+
+    ROOT root = ((s32[], s32[3]{0}), (s32[], s32[3]{0})) tuple(while1, while2)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopSimplifierTest, WhileBodyCallsFooWithSideEffectsNotSimplified) {
+  const std::string hlo_string = R"(
+  HloModule WhileBodyCallsFooWithSideEffectsNotSimplified
+
+  foo {
+    param.foo = s32[3]{0} parameter(0)
+    tok = token[] after-all()
+    infeed = (s32[3]{0}, token[]) infeed(tok), infeed_config=""
+    infeed_data = s32[3]{0} get-tuple-element(infeed), index=0
+    ROOT mul = s32[3]{0} multiply(param.foo, infeed_data)
+  }
+
+  // CHECK-LABEL: %body
+  // CHECK: call({{.*}}), to_apply=%foo
+  body {
+    param.body = (s32[], s32[3]{0}) parameter(0)
+    indvar = s32[] get-tuple-element(param.body), index=0
+    one = s32[] constant(1)
+    add = s32[] add(indvar, one)
+
+    arr = s32[3]{0} get-tuple-element(param.body), index=1
+    call.body = s32[3]{0} call(arr), to_apply=foo
+
+    ROOT tuple.body = (s32[], s32[3]{0}) tuple(add, call.body)
+  }
+
+  cond {
+    param.cond = (s32[], s32[3]{0}) parameter(0)
+    indvar = s32[] get-tuple-element(param.cond), index=0
+    bound = s32[] constant(43)
+    ROOT cmp = pred[] compare(indvar, bound), direction=LT
+  }
+
+  ENTRY entry {
+    init_val = s32[] constant(42)
+    init_arr = s32[3]{0} constant({1, 2, 3})
+    init_tuple = (s32[], s32[3]{0}) tuple(init_val, init_arr)
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK: while({{.*}}), condition=%cond, body=%body
+    ROOT while = (s32[], s32[3]{0}) while(init_tuple), condition=cond, body=body
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopSimplifierTest, WhileBodyCallsFooConstantParameterRemoval) {
+  const std::string hlo_string = R"(
+  HloModule WhileBodyCallsFooConstantParameterRemoval
+
+  // CHECK-LABEL: %foo (param.foo: s32[]) -> s32[]
+  // CHECK: %param.foo = s32[] parameter(0)
+  // CHECK: %two = s32[] constant(2)
+  // CHECK: ROOT %mul = s32[] multiply(%param.foo, %two)
+  foo {
+    param.foo = s32[] parameter(0)
+    two = s32[] constant(2)
+    ROOT mul = s32[] multiply(param.foo, two)
+  }
+
+  // CHECK-LABEL: %body{{.*}} ({{.+}}: (s32[])) -> (s32[]) {
+  // CHECK: %[[PARAM:.+]] = (s32[]) parameter(0)
+  // CHECK: %[[CONST_10:.+]] = s32[] constant(10)
+  // CHECK: %[[FULL_TUPLE:.+]] = (s32[], s32[]) tuple(%[[PARAM]]#0, %[[CONST_10]])
+  // CHECK: %[[CALL:.+]] = s32[] call(%[[FULL_TUPLE]]#1), to_apply=%foo
+  // CHECK: %[[ADD:.+]] = s32[] add(%[[FULL_TUPLE]]#0, %[[CALL]])
+  // CHECK: %[[TUPLE_BODY:.+]] = (s32[], s32[]) tuple(%[[ADD]], {{.+}})
+  // CHECK: ROOT {{.+}} = (s32[]) tuple(%[[TUPLE_BODY]]#0)
+  body {
+    param.body = (s32[], s32[]) parameter(0)
+    indvar = s32[] get-tuple-element(param.body), index=0
+
+    const_elem = s32[] get-tuple-element(param.body), index=1
+    call.body = s32[] call(const_elem), to_apply=foo
+    add = s32[] add(indvar, call.body)
+
+    const_out = s32[] constant(10)
+    ROOT tuple.body = (s32[], s32[]) tuple(add, const_out)
+  }
+
+  cond {
+    param.cond = (s32[], s32[]) parameter(0)
+    indvar = s32[] get-tuple-element(param.cond), index=0
+    bound = s32[] constant(100)
+    ROOT cmp = pred[] compare(indvar, bound), direction=LT
+  }
+
+  ENTRY entry {
+    init_val = s32[] constant(0)
+    init_const = s32[] constant(10)
+    init_tuple = (s32[], s32[]) tuple(init_val, init_const)
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK: %[[STRIPPED_TUPLE:.+]] = (s32[]) tuple(%init_tuple#0)
+    // CHECK: %[[WHILE:.+]] = (s32[]) while(%[[STRIPPED_TUPLE]]), condition=%cond{{.*}}, body=%body{{.*}}
+    // CHECK: ROOT {{.+}} = (s32[], s32[]) tuple(%[[WHILE]]#0, %init_const)
+    ROOT while = (s32[], s32[]) while(init_tuple), condition=cond, body=body
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopSimplifierTest, TwoWhileBodiesCallFooOneBailsOneNot) {
+  const std::string hlo_string = R"(
+  HloModule TwoWhileBodiesCallFooOneBailsOneNot
+
+  foo {
+    param.foo = s32[3]{0} parameter(0)
+    two = s32[3]{0} constant({2, 2, 2})
+    ROOT mul = s32[3]{0} multiply(param.foo, two)
+  }
+
+  body1 {
+    param.body1 = (s32[], s32[3]{0}) parameter(0)
+    indvar1 = s32[] get-tuple-element(param.body1), index=0
+    one1 = s32[] constant(1)
+    add1 = s32[] add(indvar1, one1)
+
+    arr1 = s32[3]{0} get-tuple-element(param.body1), index=1
+    call.body1 = s32[3]{0} call(arr1), to_apply=foo
+
+    ROOT tuple.body1 = (s32[], s32[3]{0}) tuple(add1, call.body1)
+  }
+
+  cond1 {
+    param.cond1 = (s32[], s32[3]{0}) parameter(0)
+    indvar1 = s32[] get-tuple-element(param.cond1), index=0
+    bound1 = s32[] constant(43)
+    ROOT cmp1 = pred[] compare(indvar1, bound1), direction=LT
+  }
+
+  body2 {
+    param.body2 = (s32[], s32[3]{0}) parameter(0)
+    indvar2 = s32[] get-tuple-element(param.body2), index=0
+    one2 = s32[] constant(1)
+    add2 = s32[] add(indvar2, one2)
+
+    arr2 = s32[3]{0} get-tuple-element(param.body2), index=1
+    call.body2 = s32[3]{0} call(arr2), to_apply=foo
+
+    ROOT tuple.body2 = (s32[], s32[3]{0}) tuple(add2, call.body2)
+  }
+
+  cond2 {
+    param.cond2 = (s32[], s32[3]{0}) parameter(0)
+    indvar2 = s32[] get-tuple-element(param.cond2), index=0
+    bound2 = s32[] constant(101)
+    ROOT cmp2 = pred[] compare(indvar2, bound2), direction=LT
+  }
+
+  ENTRY entry {
+    init_val1 = s32[] constant(42)
+    init_arr1 = s32[3]{0} constant({1, 2, 3})
+    init_tuple1 = (s32[], s32[3]{0}) tuple(init_val1, init_arr1)
+    while1 = (s32[], s32[3]{0}) while(init_tuple1), condition=cond1, body=body1
+
+    init_val2 = s32[] constant(100)
+    init_arr2 = s32[3]{0} constant({4, 5, 6})
+    init_tuple2 = (s32[], s32[3]{0}) tuple(init_val2, init_arr2)
+    while2 = (s32[], s32[3]{0}) while(init_tuple2), condition=cond2, body=body2, frontend_attributes={skip-simplify-while-loops_trip-count-one="true"}
+
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK-NOT: %while1
+    // CHECK: call({{.*}}), to_apply=%foo
+    // CHECK: %while2 = (s32[], s32[3]{0}) while(%init_tuple2), condition=%cond2, body=%body2
+    // CHECK-NOT: call({{.*}}), to_apply=%foo
+    ROOT root = ((s32[], s32[3]{0}), (s32[], s32[3]{0})) tuple(while1, while2)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopSimplifierTest, SimplifierWithDisabledWhileLoopDceAttr) {
+  const std::string hlo_string = R"(
+  HloModule simplifier_disabled
+
+  while_cond {
+    state = (s32[], f32[100], f32[100]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    limit = s32[] constant(10)
+    ROOT cond = pred[] compare(i, limit), direction=LT
+  }
+
+  while_body {
+    state = (s32[], f32[100], f32[100]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    acc = f32[100] get-tuple-element(state), index=1
+    dead = f32[100] get-tuple-element(state), index=2
+    one = s32[] constant(1)
+    next_i = s32[] add(i, one)
+    ROOT next_state = (s32[], f32[100], f32[100]) tuple(next_i, acc, dead)
+  }
+
+  ENTRY main {
+    base = f32[100] parameter(0)
+    input = f32[100] parameter(1)
+    i_0 = s32[] constant(0)
+    init = (s32[], f32[100], f32[100]) tuple(i_0, base, input)
+    ROOT loop = (s32[], f32[100], f32[100]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_dce="true"}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

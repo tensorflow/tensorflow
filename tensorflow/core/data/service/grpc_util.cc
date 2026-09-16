@@ -38,8 +38,8 @@ constexpr char kStreamRemovedMessage[] = "Stream removed";
 absl::Status WrapError(const std::string& message,
                        const ::grpc::Status& status) {
   if (status.ok()) {
-    return errors::Internal("Expected a non-ok grpc status. Wrapping message: ",
-                            message);
+    return absl::InternalError(absl::StrCat(
+        "Expected a non-ok grpc status. Wrapping message: ", message));
   } else {
     // FromGrpcStatus checks for "Stream removed" as well, but only when the
     // status code is "Unknown". We have observed that sometimes stream removed

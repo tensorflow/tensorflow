@@ -581,6 +581,26 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
         # Reset to default state for other tests.
         summary_ops.set_step(None)
 
+  def testSetStep_rejectsNonCastableValue(self):
+    with context.eager_mode():
+      with self.assertRaises(errors.OpError):
+        summary_ops.set_step('not-a-step')
+
+  def testSetStep_rejectsNonScalarValue(self):
+    with self.assertRaisesRegex(ValueError, 'step.*must be a scalar'):
+      summary_ops.set_step([1, 2])
+
+  def testAsDefault_rejectsNonCastableStep(self):
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(self.get_temp_dir())
+      with self.assertRaises(errors.OpError):
+        writer.as_default(step='not-a-step')
+
+  def testAsDefault_rejectsNonScalarStep(self):
+    writer = summary_ops.create_file_writer_v2(self.get_temp_dir())
+    with self.assertRaisesRegex(ValueError, 'step.*must be a scalar'):
+      writer.as_default(step=[1, 2])
+
   def testGetSetStep_variable_fromFunction(self):
     with context.eager_mode():
       try:

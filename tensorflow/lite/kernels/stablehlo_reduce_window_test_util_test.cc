@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/stablehlo_reduce_window_test_util.h"
 
+#include <cstdint>
 #include <functional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -5935,6 +5937,31 @@ TEST(ReferenceTest, RandomJaxReference199) {
            -2147483647, -2147483647, -2147483647, -2147483647, -2147483647,
            -2147483647, -2147483647, -2147483647, -2147483647, -2147483647,
            -2147483647}));
+}
+
+TEST(ReferenceTest, SizeHandlesOverflow) {
+  // 2,000,000 * 2,000 = 4,000,000,000
+  // 4,000,000,000 > INT_MAX (2,147,483,647)
+  std::vector<int64_t> large_shape = {2000000, 2000};
+
+  reference::Tensor<int8_t> tensor;
+  tensor.shape = large_shape;
+
+  int64_t expected_size = 4000000000LL;
+  EXPECT_EQ(tensor.size(), expected_size)
+      << "Tensor::size() overflowed 32-bit integer.";
+}
+
+TEST(ReferenceTest, SizeOverflowsInt64) {
+#ifndef NDEBUG
+  // 3,000,000,000 * 4,000,000,000 = 12 * 10^18 (overflows int64_t max).
+  std::vector<int64_t> large_shape = {3000000000LL, 4000000000LL};
+
+  reference::Tensor<int8_t> tensor;
+  tensor.shape = large_shape;
+
+  EXPECT_DEATH(tensor.size(), "");
+#endif
 }
 
 }  // namespace

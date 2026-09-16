@@ -16,11 +16,16 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner_util.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <set>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
@@ -30,7 +35,34 @@ limitations under the License.
 
 namespace xla {
 namespace spmd {
+
 namespace {
+
+std::set<std::vector<int64_t>> ToCanonicalSet(
+    const std::vector<std::vector<int64_t>>& groups) {
+  std::set<std::vector<int64_t>> result;
+  for (const auto& group : groups) {
+    result.insert(group);
+  }
+  return result;
+}
+
+void v2AndV3ReplicaGroupsMatch(
+    std::optional<IotaReplicaGroupList> v2_group_list,
+    std::optional<MeshAxesReplicaGroupList> v3_group_list,
+    int64_t expected_num_replica_groups,
+    int64_t expected_num_devices_per_group) {
+  EXPECT_TRUE(v2_group_list.has_value());
+  EXPECT_TRUE(v3_group_list.has_value());
+  EXPECT_EQ(v2_group_list->num_replica_groups(), expected_num_replica_groups);
+  EXPECT_EQ(v3_group_list->num_replica_groups(), expected_num_replica_groups);
+  EXPECT_EQ(v2_group_list->num_devices_per_group(),
+            expected_num_devices_per_group);
+  EXPECT_EQ(v3_group_list->num_devices_per_group(),
+            expected_num_devices_per_group);
+  EXPECT_EQ(ToCanonicalSet(v2_group_list->flattened_replica_groups()),
+            ToCanonicalSet(v3_group_list->flattened_replica_groups()));
+}
 
 TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding1) {
   HloSharding partial_sharding =
@@ -263,6 +295,51 @@ TEST(SPMDPartitionerUtilDeathTest, ExpandPartitionGroupListAcrossReplicas) {
       "num_partitions \\(50 vs\\. 60\\)");
 }
 
+TEST(SPMDPartitionerUtilDeathTest, GetPartitionGroupsNegativeDimensions) {
+  HloSharding sharding = HloSharding::IotaTile({2, 2});
+  HloSharding sharding_v3(
+      test_utils::FromAxisNames(Mesh({2, 2}, {"x", "y"}), {{"x"}, {"y"}}));
+
+  ASSERT_DEATH(
+      {
+        auto groups =
+            GetListOfListsPartitionGroupsForReplication(sharding, {-1});
+      },
+      "Check failed: dim >= 0");
+
+  ASSERT_DEATH(
+      { auto groups = GetIotaPartitionGroupsForReplication(sharding, {-1}); },
+      "Check failed: i >= 0");
+
+  ASSERT_DEATH(
+      {
+        auto groups =
+            GetMeshAxesPartitionGroupsForReplication(sharding_v3, {-1});
+      },
+      "Check failed: dim >= 0");
+
+  ASSERT_DEATH(
+      {
+        auto groups =
+            GetListOfListsPartitionGroupsAcrossTargetDims(sharding, {-1}, {2});
+      },
+      "Check failed: target_dim >= 0");
+
+  ASSERT_DEATH(
+      {
+        auto groups =
+            GetIotaPartitionGroupsAcrossTargetDims(sharding, {-1}, {2});
+      },
+      "Check failed: target_dim >= 0");
+
+  ASSERT_DEATH(
+      {
+        auto groups =
+            GetMeshAxesPartitionGroupsAcrossTargetDims(sharding_v3, {-1}, {2});
+      },
+      "Check failed: target_dim >= 0");
+}
+
 TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsAcrossTargetDims) {
   // V2 Sharding
   HloSharding sharding_v2 = HloSharding::IotaTile({8, 8, 16});
@@ -397,8 +474,7 @@ TEST(SPMDPartitionerUtilTest,
   EXPECT_EQ(v3_group_list->ToString(), "mesh['a'=8,'b'=4] {'b':(2)2,'a':(2)4}");
 }
 
-TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplication) {
-  // V2 Sharding
+TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplicationV2) {
   HloSharding sharding_v2 = HloSharding::IotaTile({2, 2, 2});
   std::optional<MeshAxesReplicaGroupList> v3_group_list =
       GetMeshAxesPartitionGroupsForReplication(sharding_v2, {1});
@@ -407,15 +483,85 @@ TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplication) {
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 2);
   EXPECT_EQ(v3_group_list->ToString(),
             "mesh['axis_0'=2,'axis_1'=2,'axis_2'=2] {'axis_1'}");
+}
 
-  // V3 Sharding
+TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplicationV3) {
   HloSharding sharding_v3(test_utils::FromAxisNames(
       Mesh({2, 2, 2}, {"Q", "K", "V"}), {{"Q"}, {"K"}, {"V"}}));
-  v3_group_list = GetMeshAxesPartitionGroupsForReplication(sharding_v3, {1});
+  std::optional<MeshAxesReplicaGroupList> v3_group_list =
+      GetMeshAxesPartitionGroupsForReplication(sharding_v3, {1});
   EXPECT_TRUE(v3_group_list.has_value());
   EXPECT_EQ(v3_group_list->num_replica_groups(), 4);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 2);
   EXPECT_EQ(v3_group_list->ToString(), "mesh['Q'=2,'K'=2,'V'=2] {'K'}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationV1Identity) {
+  Array<int64_t> tile_array_v1({2, 2, 2});
+  tile_array_v1(0, 0, 0) = 0;
+  tile_array_v1(0, 0, 1) = 1;
+  tile_array_v1(0, 1, 0) = 2;
+  tile_array_v1(0, 1, 1) = 3;
+  tile_array_v1(1, 0, 0) = 4;
+  tile_array_v1(1, 0, 1) = 5;
+  tile_array_v1(1, 1, 0) = 6;
+  tile_array_v1(1, 1, 1) = 7;
+  HloSharding sharding_v1 = HloSharding::Tile(tile_array_v1);
+  EXPECT_FALSE(sharding_v1.tile_assignment().iota().has_value());
+  std::optional<MeshAxesReplicaGroupList> v3_group_list =
+      GetMeshAxesPartitionGroupsForReplication(sharding_v1, {1});
+  EXPECT_TRUE(v3_group_list.has_value());
+  EXPECT_EQ(v3_group_list->num_replica_groups(), 4);
+  EXPECT_EQ(v3_group_list->num_devices_per_group(), 2);
+  EXPECT_EQ(v3_group_list->ToString(),
+            "mesh['axis_0'=2,'axis_1'=2,'axis_2'=2] {'axis_1'}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationV1Transposed) {
+  Array<int64_t> tile_array_v1_transposed({2, 2});
+  tile_array_v1_transposed(0, 0) = 0;
+  tile_array_v1_transposed(0, 1) = 2;
+  tile_array_v1_transposed(1, 0) = 1;
+  tile_array_v1_transposed(1, 1) = 3;
+  HloSharding sharding_v1_transposed =
+      HloSharding::Tile(tile_array_v1_transposed);
+  EXPECT_FALSE(sharding_v1_transposed.tile_assignment().iota().has_value());
+  std::optional<MeshAxesReplicaGroupList> v3_group_list =
+      GetMeshAxesPartitionGroupsForReplication(sharding_v1_transposed, {0});
+  EXPECT_TRUE(v3_group_list.has_value());
+  EXPECT_EQ(v3_group_list->ToString(),
+            "mesh['axis_0'=2,'axis_1'=2] {'axis_1'}");
+}
+
+TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplicationComplex) {
+  // V2 Sharding with non-trivial reshape and transpose:
+  // - Original mesh: [7, 10, 3]
+  // - Transpose perm: (2, 1, 0) -> transposed mesh shape: [3, 10, 7]
+  // - Reshape to sharding dims: [6, 35]
+  //   - Dim 0 (size 6) is sharded over transposed axis 0 (size 3) and part of
+  //     transposed axis 1 (size 2, split from 10).
+  //   - Dim 1 (size 35) is sharded over the rest of transposed axis 1 (size 5,
+  //     split from 10) and transposed axis 2 (size 7).
+  //
+  // In V3 canonicalization:
+  // - The mesh is [7, 10, 3] with axis_0=7, axis_1=10, axis_2=3, but split to
+  // and equivalent mesh [7, 2, 5, 3] with axis_0=7, axis_1=2, axis_2=5,
+  // axis_3=3.
+  // - Dim 0 is sharded over axis_3 (size 3) and axis_1 (size 2).
+  // - Dim 1 is sharded over axis_2 (size 5) and axis_0 (size 7).
+  //
+  // Replicating Dim 0 should replicate across its sharding axes: {axis_3,
+  // axis_1}.
+  HloSharding sharding_complex =
+      HloSharding::IotaTile({6, 35}, {7, 10, 3}, {2, 1, 0});
+  std::optional<MeshAxesReplicaGroupList> v3_group_list =
+      GetMeshAxesPartitionGroupsForReplication(sharding_complex, {0});
+  EXPECT_TRUE(v3_group_list.has_value());
+  EXPECT_EQ(
+      v3_group_list->ToString(),
+      "mesh['axis_0'=7,'axis_1'=2,'axis_2'=5,'axis_3'=3] {'axis_3','axis_1'}");
 }
 
 TEST(SPMDPartitionerUtilTest,
@@ -424,12 +570,32 @@ TEST(SPMDPartitionerUtilTest,
       test_utils::FromAxisNames(Mesh({2, 2}, {"a", "b"}),
                                 /*dim_shardings=*/{{"b"}, {"a"}}));
 
-  // Dimension 0 is sharded on mesh axis "b" (index 1).
-  std::optional<MeshAxesReplicaGroupList> groups =
-      GetMeshAxesPartitionGroupsForReplication(sharding, {0});
+  // Replicate across dim 0 then dim 1. Expect axes order {"b", "a"}.
+  std::optional<MeshAxesReplicaGroupList> groups1 =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {0, 1});
+  EXPECT_TRUE(groups1.has_value());
+  EXPECT_EQ(groups1->ToString(), "mesh['a'=2,'b'=2] {'b','a'}");
 
+  // Replicate across dim 1 then dim 0. Expect axes order {"a", "b"}.
+  std::optional<MeshAxesReplicaGroupList> groups2 =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {1, 0});
+  EXPECT_TRUE(groups2.has_value());
+  EXPECT_EQ(groups2->ToString(), "mesh['a'=2,'b'=2] {'a','b'}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationNamedShardingMergeSubAxes) {
+  Mesh mesh({4}, {"a"});
+  NamedSharding named_sharding = test_utils::FromAxisNames(
+      mesh, /*dim_shardings=*/{{"a:(1)2"}, {"a:(2)2"}});
+  HloSharding sharding(named_sharding);
+
+  // When replicating over {0, 1}, the contiguous sub-axes a:(1)2 and a:(2)2 are
+  // merged into a.
+  std::optional<MeshAxesReplicaGroupList> groups =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {0, 1});
   EXPECT_TRUE(groups.has_value());
-  EXPECT_EQ(groups->ToString(), "mesh['a'=2,'b'=2] {'b'}");
+  EXPECT_EQ(groups->ToString(), "mesh['a'=4] {'a'}");
 }
 
 TEST(SPMDPartitionerUtilTest,
@@ -473,24 +639,6 @@ TEST(SPMDPartitionerUtilDeathTest, V3PartitionGroupsFailForInvalidInputs) {
 
 TEST(SPMDPartitionerUtilTest,
      ValidateEqualityOfV2AndV3ReplicaGroupsAcrossTargetDims) {
-  auto v2AndV3ReplicaGroupsMatch =
-      [](std::optional<IotaReplicaGroupList> v2_group_list,
-         std::optional<MeshAxesReplicaGroupList> v3_group_list,
-         int64_t expected_num_replica_groups,
-         int64_t expected_num_devices_per_group) {
-        EXPECT_TRUE(v2_group_list.has_value());
-        EXPECT_TRUE(v3_group_list.has_value());
-        EXPECT_EQ(v2_group_list->num_replica_groups(),
-                  expected_num_replica_groups);
-        EXPECT_EQ(v3_group_list->num_replica_groups(),
-                  expected_num_replica_groups);
-        EXPECT_EQ(v2_group_list->num_devices_per_group(),
-                  expected_num_devices_per_group);
-        EXPECT_EQ(v3_group_list->num_devices_per_group(),
-                  expected_num_devices_per_group);
-        EXPECT_EQ(v2_group_list->flattened_replica_groups(),
-                  v3_group_list->flattened_replica_groups());
-      };
   {
     HloSharding sharding = HloSharding::IotaTile({32, 32});
     std::optional<IotaReplicaGroupList> v2_group_list =
@@ -552,24 +700,6 @@ TEST(SPMDPartitionerUtilTest,
 
 TEST(SPMDPartitionerUtilTest,
      ValidateEqualityOfV2AndV3PartitionGroupsForReplication) {
-  auto v2AndV3ReplicaGroupsMatch =
-      [](std::optional<IotaReplicaGroupList> v2_group_list,
-         std::optional<MeshAxesReplicaGroupList> v3_group_list,
-         int64_t expected_num_replica_groups,
-         int64_t expected_num_devices_per_group) {
-        EXPECT_TRUE(v2_group_list.has_value());
-        EXPECT_TRUE(v3_group_list.has_value());
-        EXPECT_EQ(v2_group_list->num_replica_groups(),
-                  expected_num_replica_groups);
-        EXPECT_EQ(v3_group_list->num_replica_groups(),
-                  expected_num_replica_groups);
-        EXPECT_EQ(v2_group_list->num_devices_per_group(),
-                  expected_num_devices_per_group);
-        EXPECT_EQ(v3_group_list->num_devices_per_group(),
-                  expected_num_devices_per_group);
-        EXPECT_EQ(v2_group_list->flattened_replica_groups(),
-                  v3_group_list->flattened_replica_groups());
-      };
   {
     HloSharding sharding = HloSharding::IotaTile({32, 32});
     std::optional<IotaReplicaGroupList> v2_group_list =
@@ -635,31 +765,209 @@ TEST(SPMDPartitionerUtilTest,
                               /*expected_num_devices_per_group=*/35);
     EXPECT_EQ(v2_group_list->ToString(), "[6,35]<=[7,10,3]T(2,1,0)");
   }
-  // Validate order of replication dims doesn't impact groups.
-  {
-    HloSharding sharding = HloSharding::IotaTile({2, 3, 5, 7, 11});
-    std::optional<MeshAxesReplicaGroupList> v3_group_list_1 =
-        GetMeshAxesPartitionGroupsForReplication(sharding, {0, 2, 3});
-    std::optional<MeshAxesReplicaGroupList> v3_group_list_2 =
-        GetMeshAxesPartitionGroupsForReplication(sharding, {3, 0, 2});
-    EXPECT_TRUE(v3_group_list_1.has_value());
-    EXPECT_TRUE(v3_group_list_2.has_value());
-    EXPECT_EQ(v3_group_list_1->flattened_replica_groups(),
-              v3_group_list_2->flattened_replica_groups());
-  }
-  {
-    HloSharding sharding =
-        HloSharding::IotaTile({3, 7, 2, 5}, {7, 10, 3}, {1, 2, 0});
-    std::optional<MeshAxesReplicaGroupList> v3_group_list_1 =
-        GetMeshAxesPartitionGroupsForReplication(sharding, {0, 2});
-    std::optional<MeshAxesReplicaGroupList> v3_group_list_2 =
-        GetMeshAxesPartitionGroupsForReplication(sharding, {2, 0});
-    EXPECT_TRUE(v3_group_list_1.has_value());
-    EXPECT_TRUE(v3_group_list_2.has_value());
-    EXPECT_EQ(v3_group_list_1->flattened_replica_groups(),
-              v3_group_list_2->flattened_replica_groups());
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationV3OrderMatters) {
+  Mesh mesh({2, 2, 2}, {"a", "b", "c"});
+  NamedSharding named_sharding =
+      test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a"}, {"b"}, {"c"}});
+  HloSharding sharding(named_sharding);
+
+  // Replicating across dim 0 then dim 1.
+  std::optional<MeshAxesReplicaGroupList> v3_group_list_1 =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {0, 1});
+
+  // Replicating across dim 1 then dim 0.
+  std::optional<MeshAxesReplicaGroupList> v3_group_list_2 =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {1, 0});
+
+  EXPECT_TRUE(v3_group_list_1.has_value());
+  EXPECT_TRUE(v3_group_list_2.has_value());
+
+  // They should NOT be equal because order of replication dims matters.
+  EXPECT_NE(v3_group_list_1->flattened_replica_groups(),
+            v3_group_list_2->flattened_replica_groups());
+
+  auto groups1 = v3_group_list_1->flattened_replica_groups();
+  auto groups2 = v3_group_list_2->flattened_replica_groups();
+
+  ASSERT_EQ(groups1.size(), groups2.size());
+  for (int64_t i = 0; i < groups1.size(); ++i) {
+    EXPECT_THAT(groups1[i], testing::UnorderedElementsAreArray(groups2[i]));
+    EXPECT_NE(groups1[i], groups2[i]);
   }
 }
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV2Transposed) {
+  // Sharding: [2,4]<=[4,2]T(1,0)
+  HloSharding sharding = HloSharding::IotaTile({2, 4}, {4, 2}, {1, 0});
+
+  // For a sharding like [2,4]<=[4,2]T(1,0), we expect translation to a
+  // canonical V3 representation with mesh=['axis_0'=4, 'axis_1'=2] and
+  // sharding=[{"axis_1"}, {"axis_0"}].
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=4,'axis_1'=2], [{'axis_1'}, {'axis_0'}]}");
+}
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV2Trivial) {
+  HloSharding sharding = HloSharding::IotaTile({2, 2});
+
+  // Trivial iota should now be translated by HloSharding::ToNamedSharding.
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=2,'axis_1'=2], [{'axis_0'}, {'axis_1'}]}");
+}
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV1Iota) {
+  // Create a V1 sharding with iota order.
+  Array<int64_t> device_assignment({2, 2});
+  device_assignment.FillIota(0);
+  HloSharding sharding = HloSharding::Tile(device_assignment);
+
+  // CanonicalizeSharding calls ToNamedSharding which will now translate
+  // the V1 sharding to a V3 sharding.
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=2,'axis_1'=2], [{'axis_0'}, {'axis_1'}]}");
+}
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV1NonIota) {
+  // Create a V1 sharding with non-iota order.
+  Array<int64_t> device_assignment({2, 2});
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 3;
+  device_assignment(1, 0) = 1;
+  device_assignment(1, 1) = 2;
+  HloSharding sharding = HloSharding::Tile(device_assignment);
+
+  // Non-iota shardings are also translated using the physical device order.
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=2,'axis_1'=2], device_ids=(0,3,1,2), [{'axis_0'}, "
+            "{'axis_1'}]}");
+}
+
+TEST(SPMDPartitionerUtilTest, GetPartitionGroupsForReplicationGating) {
+  HloSharding sharding = HloSharding::IotaTile({8, 8, 16});
+
+  // With enable_rgv3 = true, should return kMeshAxes (V3) representation
+  std::unique_ptr<CollectiveDeviceListBase> groups_v3 =
+      GetPartitionGroupsForReplication(sharding, {0, 1}, /*enable_rgv3=*/true);
+  EXPECT_EQ(groups_v3->version(), CollectiveDeviceListVersion::kMeshAxes);
+
+  // With enable_rgv3 = false, should fall back to kIota or kListOfLists
+  // representation
+  std::unique_ptr<CollectiveDeviceListBase> groups_fallback =
+      GetPartitionGroupsForReplication(sharding, {0, 1}, /*enable_rgv3=*/false);
+  EXPECT_NE(groups_fallback->version(), CollectiveDeviceListVersion::kMeshAxes);
+  EXPECT_EQ(groups_fallback->flattened_replica_groups(),
+            groups_v3->flattened_replica_groups());
+}
+
+TEST(SPMDPartitionerUtilTest, GetPartitionGroupsAcrossTargetDimsGating) {
+  HloSharding sharding = HloSharding::IotaTile({8, 8, 16});
+
+  // With enable_rgv3 = true, should return kMeshAxes (V3) representation
+  std::unique_ptr<CollectiveDeviceListBase> groups_v3 =
+      GetPartitionGroupsAcrossTargetDims(sharding, {0, 1}, {4, 4},
+                                         /*enable_rgv3=*/true);
+  EXPECT_EQ(groups_v3->version(), CollectiveDeviceListVersion::kMeshAxes);
+
+  // With enable_rgv3 = false, should fall back to kIota or kListOfLists
+  // representation
+  std::unique_ptr<CollectiveDeviceListBase> groups_fallback =
+      GetPartitionGroupsAcrossTargetDims(sharding, {0, 1}, {4, 4},
+                                         /*enable_rgv3=*/false);
+  EXPECT_NE(groups_fallback->version(), CollectiveDeviceListVersion::kMeshAxes);
+  EXPECT_EQ(groups_fallback->flattened_replica_groups(),
+            groups_v3->flattened_replica_groups());
+}
+
+TEST(SPMDPartitionerUtilTest,
+     CanReshardWithCollectivePermuteImplicitAndExplicitReplication) {
+  Mesh mesh({2, 2, 2, 1}, {"d", "f", "e", "c"});
+  HloSharding source =
+      HloSharding(test_utils::FromAxisNames(mesh, {{"f"}, {}, {}}));
+  HloSharding target =
+      HloSharding(test_utils::FromAxisNames(mesh, {{"f"}, {}, {}},
+                                            /*replicated_axes=*/{"d"}));
+
+  // We don't want to collectively permute to a logically identical sharding as
+  // this would be a copy / identity operation.
+  EXPECT_FALSE(CanReshardWithCollectivePermute(source, target));
+}
+
+struct CanReshardWithCollectivePermuteTestCase {
+  std::string name;
+  HloSharding source;
+  HloSharding target;
+  bool expected_result;
+};
+
+class CanReshardWithCollectivePermuteEquivalenceTest
+    : public ::testing::TestWithParam<CanReshardWithCollectivePermuteTestCase> {
+};
+
+TEST_P(CanReshardWithCollectivePermuteEquivalenceTest, Equivalence) {
+  const auto& param = GetParam();
+  const HloSharding& source_v2 = param.source;
+  const HloSharding& target_v2 = param.target;
+  HloSharding source_v3 = HloSharding::ToV3Sharding(source_v2);
+  HloSharding target_v3 = HloSharding::ToV3Sharding(target_v2);
+
+  bool result_v2 = CanReshardWithCollectivePermute(source_v2, target_v2);
+  bool result_v3 = CanReshardWithCollectivePermute(source_v3, target_v3);
+
+  EXPECT_EQ(result_v2, result_v3);
+  EXPECT_EQ(result_v2, param.expected_result);
+  // We also test that CanReshardWithCollectivePermute yields the same result
+  // when mixing v2 and v3 shardings.
+  EXPECT_EQ(CanReshardWithCollectivePermute(source_v2, target_v3), result_v2);
+  EXPECT_EQ(CanReshardWithCollectivePermute(source_v3, target_v2), result_v2);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EquivalenceTests, CanReshardWithCollectivePermuteEquivalenceTest,
+    testing::Values(
+        CanReshardWithCollectivePermuteTestCase{
+            "Replicated", HloSharding::Replicate(), HloSharding::Replicate(),
+            false},
+        CanReshardWithCollectivePermuteTestCase{
+            "TileSame", HloSharding::IotaTile({2, 4}),
+            HloSharding::IotaTile({2, 4}), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "TileDiff", HloSharding::IotaTile({2, 4}),
+            HloSharding::IotaTile({2, 4}, {4, 2}, {1, 0}), true},
+        CanReshardWithCollectivePermuteTestCase{
+            "TileDiffDims", HloSharding::IotaTile({2, 4}),
+            HloSharding::IotaTile({4, 2}), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "PartialTileSame",
+            HloSharding::PartialTile(TileAssignment({1, 2, 4})),
+            HloSharding::PartialTile(TileAssignment({1, 2, 4})), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "PartialTileDiff",
+            HloSharding::PartialTile(TileAssignment({1, 2, 4})),
+            HloSharding::PartialTile(TileAssignment({1, 2, 4}, {4, 2}, {1, 0})),
+            true},
+        CanReshardWithCollectivePermuteTestCase{
+            "SingleDevice", HloSharding::SingleDevice(0),
+            HloSharding::SingleDevice(0), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "SingleDeviceDiff", HloSharding::SingleDevice(0),
+            HloSharding::SingleDevice(1), false}),
+    [](const testing::TestParamInfo<CanReshardWithCollectivePermuteTestCase>&
+           info) { return info.param.name; });
 
 }  // namespace
 }  // namespace spmd

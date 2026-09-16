@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -1254,6 +1256,120 @@ TEST_F(LayoutAssignmentTest, RaggedAllToAllLayoutSetRaggedDimToMajor) {
   // The ragged dimension (0) must be in the most major position in the layout.
   EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(
       ragged_all_to_all->shape(), 0));
+}
+
+TEST_F(LayoutAssignmentTest, ReshapeBitcastMinimizeChanges) {
+  const char* hlo_text = R"(
+  HloModule ReshapeLayout
+  ENTRY entry {
+    p0 = f32[10,20]{1,0} parameter(0)
+    ROOT reshape = f32[1,10,20]{0,2,1} reshape(p0)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Op().WithShape(F32, {10, 20}, {1, 0}))
+                             .WithShape(F32, {1, 10, 20}, {0, 2, 1})));
+}
+
+TEST_F(LayoutAssignmentTest, ReshapeBitcastMinimizeChangesMultipleOnes) {
+  const char* hlo_text = R"(
+  HloModule ReshapeLayout
+  ENTRY entry {
+    p0 = f32[10,20]{1,0} parameter(0)
+    ROOT reshape = f32[1,10,1,20]{0,2,3,1} reshape(p0)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Op().WithShape(F32, {10, 20}, {1, 0}))
+                             .WithShape(F32, {1, 10, 1, 20}, {0, 2, 3, 1})));
+}
+
+TEST_F(LayoutAssignmentTest, ReshapeBitcastMinimizeChangesAdjustNonDegenerate) {
+  const char* hlo_text = R"(
+  HloModule ReshapeLayout
+  ENTRY entry {
+    p0 = f32[10,20]{1,0} parameter(0)
+    reshape = f32[1,10,20]{0,1,2} reshape(p0)
+    ROOT out = f32[1,10,20]{0,2,1} add(reshape, reshape)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  auto reshape = FindInstruction(module.get(), HloOpcode::kReshape);
+  EXPECT_THAT(reshape, NotNull());
+  EXPECT_EQ(reshape->shape().layout().minor_to_major(),
+            (std::vector<int64_t>{0, 2, 1}));
+}
+
+TEST_F(LayoutAssignmentTest, CuDnnFusionBodyStaysLayoutConsistent) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fused_computation {
+  a = f32[2,8,768] parameter(0)
+  b = f32[2,768,768] parameter(1)
+  c = f32[2,8,768] parameter(2)
+  d = f32[2,8,768] dot(a, b),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+  m = f32[2,8,768] multiply(d, c)
+}
+
+main {
+  p0 = f32[2,8,768] parameter(0)
+  p1 = f32[2,768,768] parameter(1)
+  p2 = f32[2,8,768] parameter(2)
+  f = f32[2,8,768] fusion(p0, p1, p2),
+    kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+})"));
+
+  ComputationLayout* computation_layout =
+      module->mutable_entry_computation_layout();
+  *computation_layout->mutable_result_layout() = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 8, 768}, {1, 0, 2}));
+
+  GpuLayoutAssignment layout_assignment(computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  HloVerifier verifier(
+      HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+          LayoutAssignment::InstructionCanChangeLayout));
+  EXPECT_THAT(verifier.Run(module.get()).status(), absl_testing::IsOk())
+      << module->ToString();
 }
 
 }  // namespace

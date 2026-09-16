@@ -1,0 +1,458 @@
+HloModule jit_dynamic_slice_loop, entry_computation_layout={(bf16[1,2048,768]{2,1,0}, s32[64]{0})->bf16[64,1,32,768]{3,2,1,0}}
+
+ENTRY main.1 {
+  x.1 = bf16[1,2048,768]{2,1,0} parameter(0)
+  constant.3 = s32[] constant(0)
+  offsets.1 = s32[64]{0} parameter(1)
+  slice.64 = s32[1]{0} slice(offsets.1), slice={[0:1]}
+  squeeze.64 = s32[] reshape(slice.64)
+  lt.64 = pred[] compare(squeeze.64, constant.3), direction=LT
+  constant.2 = s32[] constant(2048)
+  add.64 = s32[] add(squeeze.64, constant.2)
+  select_n.64 = s32[] select(lt.64, add.64, squeeze.64)
+  dynamic_slice.64 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.64, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.65 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.64)
+  slice.65 = s32[1]{0} slice(offsets.1), slice={[1:2]}
+  squeeze.65 = s32[] reshape(slice.65)
+  lt.65 = pred[] compare(squeeze.65, constant.3), direction=LT
+  add.65 = s32[] add(squeeze.65, constant.2)
+  select_n.65 = s32[] select(lt.65, add.65, squeeze.65)
+  dynamic_slice.65 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.65, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.66 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.65)
+  slice.66 = s32[1]{0} slice(offsets.1), slice={[2:3]}
+  squeeze.66 = s32[] reshape(slice.66)
+  lt.66 = pred[] compare(squeeze.66, constant.3), direction=LT
+  add.66 = s32[] add(squeeze.66, constant.2)
+  select_n.66 = s32[] select(lt.66, add.66, squeeze.66)
+  dynamic_slice.66 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.66, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.67 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.66)
+  slice.67 = s32[1]{0} slice(offsets.1), slice={[3:4]}
+  squeeze.67 = s32[] reshape(slice.67)
+  lt.67 = pred[] compare(squeeze.67, constant.3), direction=LT
+  add.67 = s32[] add(squeeze.67, constant.2)
+  select_n.67 = s32[] select(lt.67, add.67, squeeze.67)
+  dynamic_slice.67 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.67, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.68 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.67)
+  slice.68 = s32[1]{0} slice(offsets.1), slice={[4:5]}
+  squeeze.68 = s32[] reshape(slice.68)
+  lt.68 = pred[] compare(squeeze.68, constant.3), direction=LT
+  add.68 = s32[] add(squeeze.68, constant.2)
+  select_n.68 = s32[] select(lt.68, add.68, squeeze.68)
+  dynamic_slice.68 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.68, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.69 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.68)
+  slice.69 = s32[1]{0} slice(offsets.1), slice={[5:6]}
+  squeeze.69 = s32[] reshape(slice.69)
+  lt.69 = pred[] compare(squeeze.69, constant.3), direction=LT
+  add.69 = s32[] add(squeeze.69, constant.2)
+  select_n.69 = s32[] select(lt.69, add.69, squeeze.69)
+  dynamic_slice.69 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.69, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.70 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.69)
+  slice.70 = s32[1]{0} slice(offsets.1), slice={[6:7]}
+  squeeze.70 = s32[] reshape(slice.70)
+  lt.70 = pred[] compare(squeeze.70, constant.3), direction=LT
+  add.70 = s32[] add(squeeze.70, constant.2)
+  select_n.70 = s32[] select(lt.70, add.70, squeeze.70)
+  dynamic_slice.70 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.70, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.71 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.70)
+  slice.71 = s32[1]{0} slice(offsets.1), slice={[7:8]}
+  squeeze.71 = s32[] reshape(slice.71)
+  lt.71 = pred[] compare(squeeze.71, constant.3), direction=LT
+  add.71 = s32[] add(squeeze.71, constant.2)
+  select_n.71 = s32[] select(lt.71, add.71, squeeze.71)
+  dynamic_slice.71 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.71, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.72 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.71)
+  slice.72 = s32[1]{0} slice(offsets.1), slice={[8:9]}
+  squeeze.72 = s32[] reshape(slice.72)
+  lt.72 = pred[] compare(squeeze.72, constant.3), direction=LT
+  add.72 = s32[] add(squeeze.72, constant.2)
+  select_n.72 = s32[] select(lt.72, add.72, squeeze.72)
+  dynamic_slice.72 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.72, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.73 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.72)
+  slice.73 = s32[1]{0} slice(offsets.1), slice={[9:10]}
+  squeeze.73 = s32[] reshape(slice.73)
+  lt.73 = pred[] compare(squeeze.73, constant.3), direction=LT
+  add.73 = s32[] add(squeeze.73, constant.2)
+  select_n.73 = s32[] select(lt.73, add.73, squeeze.73)
+  dynamic_slice.73 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.73, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.74 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.73)
+  slice.74 = s32[1]{0} slice(offsets.1), slice={[10:11]}
+  squeeze.74 = s32[] reshape(slice.74)
+  lt.74 = pred[] compare(squeeze.74, constant.3), direction=LT
+  add.74 = s32[] add(squeeze.74, constant.2)
+  select_n.74 = s32[] select(lt.74, add.74, squeeze.74)
+  dynamic_slice.74 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.74, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.75 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.74)
+  slice.75 = s32[1]{0} slice(offsets.1), slice={[11:12]}
+  squeeze.75 = s32[] reshape(slice.75)
+  lt.75 = pred[] compare(squeeze.75, constant.3), direction=LT
+  add.75 = s32[] add(squeeze.75, constant.2)
+  select_n.75 = s32[] select(lt.75, add.75, squeeze.75)
+  dynamic_slice.75 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.75, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.76 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.75)
+  slice.76 = s32[1]{0} slice(offsets.1), slice={[12:13]}
+  squeeze.76 = s32[] reshape(slice.76)
+  lt.76 = pred[] compare(squeeze.76, constant.3), direction=LT
+  add.76 = s32[] add(squeeze.76, constant.2)
+  select_n.76 = s32[] select(lt.76, add.76, squeeze.76)
+  dynamic_slice.76 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.76, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.77 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.76)
+  slice.77 = s32[1]{0} slice(offsets.1), slice={[13:14]}
+  squeeze.77 = s32[] reshape(slice.77)
+  lt.77 = pred[] compare(squeeze.77, constant.3), direction=LT
+  add.77 = s32[] add(squeeze.77, constant.2)
+  select_n.77 = s32[] select(lt.77, add.77, squeeze.77)
+  dynamic_slice.77 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.77, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.78 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.77)
+  slice.78 = s32[1]{0} slice(offsets.1), slice={[14:15]}
+  squeeze.78 = s32[] reshape(slice.78)
+  lt.78 = pred[] compare(squeeze.78, constant.3), direction=LT
+  add.78 = s32[] add(squeeze.78, constant.2)
+  select_n.78 = s32[] select(lt.78, add.78, squeeze.78)
+  dynamic_slice.78 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.78, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.79 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.78)
+  slice.79 = s32[1]{0} slice(offsets.1), slice={[15:16]}
+  squeeze.79 = s32[] reshape(slice.79)
+  lt.79 = pred[] compare(squeeze.79, constant.3), direction=LT
+  add.79 = s32[] add(squeeze.79, constant.2)
+  select_n.79 = s32[] select(lt.79, add.79, squeeze.79)
+  dynamic_slice.79 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.79, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.80 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.79)
+  slice.80 = s32[1]{0} slice(offsets.1), slice={[16:17]}
+  squeeze.80 = s32[] reshape(slice.80)
+  lt.80 = pred[] compare(squeeze.80, constant.3), direction=LT
+  add.80 = s32[] add(squeeze.80, constant.2)
+  select_n.80 = s32[] select(lt.80, add.80, squeeze.80)
+  dynamic_slice.80 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.80, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.81 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.80)
+  slice.81 = s32[1]{0} slice(offsets.1), slice={[17:18]}
+  squeeze.81 = s32[] reshape(slice.81)
+  lt.81 = pred[] compare(squeeze.81, constant.3), direction=LT
+  add.81 = s32[] add(squeeze.81, constant.2)
+  select_n.81 = s32[] select(lt.81, add.81, squeeze.81)
+  dynamic_slice.81 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.81, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.82 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.81)
+  slice.82 = s32[1]{0} slice(offsets.1), slice={[18:19]}
+  squeeze.82 = s32[] reshape(slice.82)
+  lt.82 = pred[] compare(squeeze.82, constant.3), direction=LT
+  add.82 = s32[] add(squeeze.82, constant.2)
+  select_n.82 = s32[] select(lt.82, add.82, squeeze.82)
+  dynamic_slice.82 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.82, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.83 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.82)
+  slice.83 = s32[1]{0} slice(offsets.1), slice={[19:20]}
+  squeeze.83 = s32[] reshape(slice.83)
+  lt.83 = pred[] compare(squeeze.83, constant.3), direction=LT
+  add.83 = s32[] add(squeeze.83, constant.2)
+  select_n.83 = s32[] select(lt.83, add.83, squeeze.83)
+  dynamic_slice.83 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.83, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.84 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.83)
+  slice.84 = s32[1]{0} slice(offsets.1), slice={[20:21]}
+  squeeze.84 = s32[] reshape(slice.84)
+  lt.84 = pred[] compare(squeeze.84, constant.3), direction=LT
+  add.84 = s32[] add(squeeze.84, constant.2)
+  select_n.84 = s32[] select(lt.84, add.84, squeeze.84)
+  dynamic_slice.84 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.84, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.85 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.84)
+  slice.85 = s32[1]{0} slice(offsets.1), slice={[21:22]}
+  squeeze.85 = s32[] reshape(slice.85)
+  lt.85 = pred[] compare(squeeze.85, constant.3), direction=LT
+  add.85 = s32[] add(squeeze.85, constant.2)
+  select_n.85 = s32[] select(lt.85, add.85, squeeze.85)
+  dynamic_slice.85 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.85, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.86 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.85)
+  slice.86 = s32[1]{0} slice(offsets.1), slice={[22:23]}
+  squeeze.86 = s32[] reshape(slice.86)
+  lt.86 = pred[] compare(squeeze.86, constant.3), direction=LT
+  add.86 = s32[] add(squeeze.86, constant.2)
+  select_n.86 = s32[] select(lt.86, add.86, squeeze.86)
+  dynamic_slice.86 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.86, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.87 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.86)
+  slice.87 = s32[1]{0} slice(offsets.1), slice={[23:24]}
+  squeeze.87 = s32[] reshape(slice.87)
+  lt.87 = pred[] compare(squeeze.87, constant.3), direction=LT
+  add.87 = s32[] add(squeeze.87, constant.2)
+  select_n.87 = s32[] select(lt.87, add.87, squeeze.87)
+  dynamic_slice.87 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.87, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.88 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.87)
+  slice.88 = s32[1]{0} slice(offsets.1), slice={[24:25]}
+  squeeze.88 = s32[] reshape(slice.88)
+  lt.88 = pred[] compare(squeeze.88, constant.3), direction=LT
+  add.88 = s32[] add(squeeze.88, constant.2)
+  select_n.88 = s32[] select(lt.88, add.88, squeeze.88)
+  dynamic_slice.88 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.88, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.89 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.88)
+  slice.89 = s32[1]{0} slice(offsets.1), slice={[25:26]}
+  squeeze.89 = s32[] reshape(slice.89)
+  lt.89 = pred[] compare(squeeze.89, constant.3), direction=LT
+  add.89 = s32[] add(squeeze.89, constant.2)
+  select_n.89 = s32[] select(lt.89, add.89, squeeze.89)
+  dynamic_slice.89 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.89, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.90 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.89)
+  slice.90 = s32[1]{0} slice(offsets.1), slice={[26:27]}
+  squeeze.90 = s32[] reshape(slice.90)
+  lt.90 = pred[] compare(squeeze.90, constant.3), direction=LT
+  add.90 = s32[] add(squeeze.90, constant.2)
+  select_n.90 = s32[] select(lt.90, add.90, squeeze.90)
+  dynamic_slice.90 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.90, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.91 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.90)
+  slice.91 = s32[1]{0} slice(offsets.1), slice={[27:28]}
+  squeeze.91 = s32[] reshape(slice.91)
+  lt.91 = pred[] compare(squeeze.91, constant.3), direction=LT
+  add.91 = s32[] add(squeeze.91, constant.2)
+  select_n.91 = s32[] select(lt.91, add.91, squeeze.91)
+  dynamic_slice.91 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.91, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.92 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.91)
+  slice.92 = s32[1]{0} slice(offsets.1), slice={[28:29]}
+  squeeze.92 = s32[] reshape(slice.92)
+  lt.92 = pred[] compare(squeeze.92, constant.3), direction=LT
+  add.92 = s32[] add(squeeze.92, constant.2)
+  select_n.92 = s32[] select(lt.92, add.92, squeeze.92)
+  dynamic_slice.92 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.92, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.93 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.92)
+  slice.93 = s32[1]{0} slice(offsets.1), slice={[29:30]}
+  squeeze.93 = s32[] reshape(slice.93)
+  lt.93 = pred[] compare(squeeze.93, constant.3), direction=LT
+  add.93 = s32[] add(squeeze.93, constant.2)
+  select_n.93 = s32[] select(lt.93, add.93, squeeze.93)
+  dynamic_slice.93 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.93, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.94 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.93)
+  slice.94 = s32[1]{0} slice(offsets.1), slice={[30:31]}
+  squeeze.94 = s32[] reshape(slice.94)
+  lt.94 = pred[] compare(squeeze.94, constant.3), direction=LT
+  add.94 = s32[] add(squeeze.94, constant.2)
+  select_n.94 = s32[] select(lt.94, add.94, squeeze.94)
+  dynamic_slice.94 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.94, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.95 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.94)
+  slice.95 = s32[1]{0} slice(offsets.1), slice={[31:32]}
+  squeeze.95 = s32[] reshape(slice.95)
+  lt.95 = pred[] compare(squeeze.95, constant.3), direction=LT
+  add.95 = s32[] add(squeeze.95, constant.2)
+  select_n.95 = s32[] select(lt.95, add.95, squeeze.95)
+  dynamic_slice.95 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.95, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.96 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.95)
+  slice.96 = s32[1]{0} slice(offsets.1), slice={[32:33]}
+  squeeze.96 = s32[] reshape(slice.96)
+  lt.96 = pred[] compare(squeeze.96, constant.3), direction=LT
+  add.96 = s32[] add(squeeze.96, constant.2)
+  select_n.96 = s32[] select(lt.96, add.96, squeeze.96)
+  dynamic_slice.96 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.96, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.97 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.96)
+  slice.97 = s32[1]{0} slice(offsets.1), slice={[33:34]}
+  squeeze.97 = s32[] reshape(slice.97)
+  lt.97 = pred[] compare(squeeze.97, constant.3), direction=LT
+  add.97 = s32[] add(squeeze.97, constant.2)
+  select_n.97 = s32[] select(lt.97, add.97, squeeze.97)
+  dynamic_slice.97 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.97, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.98 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.97)
+  slice.98 = s32[1]{0} slice(offsets.1), slice={[34:35]}
+  squeeze.98 = s32[] reshape(slice.98)
+  lt.98 = pred[] compare(squeeze.98, constant.3), direction=LT
+  add.98 = s32[] add(squeeze.98, constant.2)
+  select_n.98 = s32[] select(lt.98, add.98, squeeze.98)
+  dynamic_slice.98 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.98, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.99 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.98)
+  slice.99 = s32[1]{0} slice(offsets.1), slice={[35:36]}
+  squeeze.99 = s32[] reshape(slice.99)
+  lt.99 = pred[] compare(squeeze.99, constant.3), direction=LT
+  add.99 = s32[] add(squeeze.99, constant.2)
+  select_n.99 = s32[] select(lt.99, add.99, squeeze.99)
+  dynamic_slice.99 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.99, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.100 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.99)
+  slice.100 = s32[1]{0} slice(offsets.1), slice={[36:37]}
+  squeeze.100 = s32[] reshape(slice.100)
+  lt.100 = pred[] compare(squeeze.100, constant.3), direction=LT
+  add.100 = s32[] add(squeeze.100, constant.2)
+  select_n.100 = s32[] select(lt.100, add.100, squeeze.100)
+  dynamic_slice.100 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.100, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.101 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.100)
+  slice.101 = s32[1]{0} slice(offsets.1), slice={[37:38]}
+  squeeze.101 = s32[] reshape(slice.101)
+  lt.101 = pred[] compare(squeeze.101, constant.3), direction=LT
+  add.101 = s32[] add(squeeze.101, constant.2)
+  select_n.101 = s32[] select(lt.101, add.101, squeeze.101)
+  dynamic_slice.101 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.101, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.102 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.101)
+  slice.102 = s32[1]{0} slice(offsets.1), slice={[38:39]}
+  squeeze.102 = s32[] reshape(slice.102)
+  lt.102 = pred[] compare(squeeze.102, constant.3), direction=LT
+  add.102 = s32[] add(squeeze.102, constant.2)
+  select_n.102 = s32[] select(lt.102, add.102, squeeze.102)
+  dynamic_slice.102 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.102, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.103 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.102)
+  slice.103 = s32[1]{0} slice(offsets.1), slice={[39:40]}
+  squeeze.103 = s32[] reshape(slice.103)
+  lt.103 = pred[] compare(squeeze.103, constant.3), direction=LT
+  add.103 = s32[] add(squeeze.103, constant.2)
+  select_n.103 = s32[] select(lt.103, add.103, squeeze.103)
+  dynamic_slice.103 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.103, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.104 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.103)
+  slice.104 = s32[1]{0} slice(offsets.1), slice={[40:41]}
+  squeeze.104 = s32[] reshape(slice.104)
+  lt.104 = pred[] compare(squeeze.104, constant.3), direction=LT
+  add.104 = s32[] add(squeeze.104, constant.2)
+  select_n.104 = s32[] select(lt.104, add.104, squeeze.104)
+  dynamic_slice.104 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.104, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.105 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.104)
+  slice.105 = s32[1]{0} slice(offsets.1), slice={[41:42]}
+  squeeze.105 = s32[] reshape(slice.105)
+  lt.105 = pred[] compare(squeeze.105, constant.3), direction=LT
+  add.105 = s32[] add(squeeze.105, constant.2)
+  select_n.105 = s32[] select(lt.105, add.105, squeeze.105)
+  dynamic_slice.105 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.105, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.106 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.105)
+  slice.106 = s32[1]{0} slice(offsets.1), slice={[42:43]}
+  squeeze.106 = s32[] reshape(slice.106)
+  lt.106 = pred[] compare(squeeze.106, constant.3), direction=LT
+  add.106 = s32[] add(squeeze.106, constant.2)
+  select_n.106 = s32[] select(lt.106, add.106, squeeze.106)
+  dynamic_slice.106 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.106, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.107 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.106)
+  slice.107 = s32[1]{0} slice(offsets.1), slice={[43:44]}
+  squeeze.107 = s32[] reshape(slice.107)
+  lt.107 = pred[] compare(squeeze.107, constant.3), direction=LT
+  add.107 = s32[] add(squeeze.107, constant.2)
+  select_n.107 = s32[] select(lt.107, add.107, squeeze.107)
+  dynamic_slice.107 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.107, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.108 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.107)
+  slice.108 = s32[1]{0} slice(offsets.1), slice={[44:45]}
+  squeeze.108 = s32[] reshape(slice.108)
+  lt.108 = pred[] compare(squeeze.108, constant.3), direction=LT
+  add.108 = s32[] add(squeeze.108, constant.2)
+  select_n.108 = s32[] select(lt.108, add.108, squeeze.108)
+  dynamic_slice.108 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.108, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.109 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.108)
+  slice.109 = s32[1]{0} slice(offsets.1), slice={[45:46]}
+  squeeze.109 = s32[] reshape(slice.109)
+  lt.109 = pred[] compare(squeeze.109, constant.3), direction=LT
+  add.109 = s32[] add(squeeze.109, constant.2)
+  select_n.109 = s32[] select(lt.109, add.109, squeeze.109)
+  dynamic_slice.109 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.109, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.110 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.109)
+  slice.110 = s32[1]{0} slice(offsets.1), slice={[46:47]}
+  squeeze.110 = s32[] reshape(slice.110)
+  lt.110 = pred[] compare(squeeze.110, constant.3), direction=LT
+  add.110 = s32[] add(squeeze.110, constant.2)
+  select_n.110 = s32[] select(lt.110, add.110, squeeze.110)
+  dynamic_slice.110 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.110, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.111 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.110)
+  slice.111 = s32[1]{0} slice(offsets.1), slice={[47:48]}
+  squeeze.111 = s32[] reshape(slice.111)
+  lt.111 = pred[] compare(squeeze.111, constant.3), direction=LT
+  add.111 = s32[] add(squeeze.111, constant.2)
+  select_n.111 = s32[] select(lt.111, add.111, squeeze.111)
+  dynamic_slice.111 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.111, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.112 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.111)
+  slice.112 = s32[1]{0} slice(offsets.1), slice={[48:49]}
+  squeeze.112 = s32[] reshape(slice.112)
+  lt.112 = pred[] compare(squeeze.112, constant.3), direction=LT
+  add.112 = s32[] add(squeeze.112, constant.2)
+  select_n.112 = s32[] select(lt.112, add.112, squeeze.112)
+  dynamic_slice.112 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.112, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.113 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.112)
+  slice.113 = s32[1]{0} slice(offsets.1), slice={[49:50]}
+  squeeze.113 = s32[] reshape(slice.113)
+  lt.113 = pred[] compare(squeeze.113, constant.3), direction=LT
+  add.113 = s32[] add(squeeze.113, constant.2)
+  select_n.113 = s32[] select(lt.113, add.113, squeeze.113)
+  dynamic_slice.113 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.113, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.114 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.113)
+  slice.114 = s32[1]{0} slice(offsets.1), slice={[50:51]}
+  squeeze.114 = s32[] reshape(slice.114)
+  lt.114 = pred[] compare(squeeze.114, constant.3), direction=LT
+  add.114 = s32[] add(squeeze.114, constant.2)
+  select_n.114 = s32[] select(lt.114, add.114, squeeze.114)
+  dynamic_slice.114 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.114, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.115 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.114)
+  slice.115 = s32[1]{0} slice(offsets.1), slice={[51:52]}
+  squeeze.115 = s32[] reshape(slice.115)
+  lt.115 = pred[] compare(squeeze.115, constant.3), direction=LT
+  add.115 = s32[] add(squeeze.115, constant.2)
+  select_n.115 = s32[] select(lt.115, add.115, squeeze.115)
+  dynamic_slice.115 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.115, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.116 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.115)
+  slice.116 = s32[1]{0} slice(offsets.1), slice={[52:53]}
+  squeeze.116 = s32[] reshape(slice.116)
+  lt.116 = pred[] compare(squeeze.116, constant.3), direction=LT
+  add.116 = s32[] add(squeeze.116, constant.2)
+  select_n.116 = s32[] select(lt.116, add.116, squeeze.116)
+  dynamic_slice.116 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.116, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.117 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.116)
+  slice.117 = s32[1]{0} slice(offsets.1), slice={[53:54]}
+  squeeze.117 = s32[] reshape(slice.117)
+  lt.117 = pred[] compare(squeeze.117, constant.3), direction=LT
+  add.117 = s32[] add(squeeze.117, constant.2)
+  select_n.117 = s32[] select(lt.117, add.117, squeeze.117)
+  dynamic_slice.117 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.117, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.118 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.117)
+  slice.118 = s32[1]{0} slice(offsets.1), slice={[54:55]}
+  squeeze.118 = s32[] reshape(slice.118)
+  lt.118 = pred[] compare(squeeze.118, constant.3), direction=LT
+  add.118 = s32[] add(squeeze.118, constant.2)
+  select_n.118 = s32[] select(lt.118, add.118, squeeze.118)
+  dynamic_slice.118 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.118, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.119 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.118)
+  slice.119 = s32[1]{0} slice(offsets.1), slice={[55:56]}
+  squeeze.119 = s32[] reshape(slice.119)
+  lt.119 = pred[] compare(squeeze.119, constant.3), direction=LT
+  add.119 = s32[] add(squeeze.119, constant.2)
+  select_n.119 = s32[] select(lt.119, add.119, squeeze.119)
+  dynamic_slice.119 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.119, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.120 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.119)
+  slice.120 = s32[1]{0} slice(offsets.1), slice={[56:57]}
+  squeeze.120 = s32[] reshape(slice.120)
+  lt.120 = pred[] compare(squeeze.120, constant.3), direction=LT
+  add.120 = s32[] add(squeeze.120, constant.2)
+  select_n.120 = s32[] select(lt.120, add.120, squeeze.120)
+  dynamic_slice.120 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.120, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.121 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.120)
+  slice.121 = s32[1]{0} slice(offsets.1), slice={[57:58]}
+  squeeze.121 = s32[] reshape(slice.121)
+  lt.121 = pred[] compare(squeeze.121, constant.3), direction=LT
+  add.121 = s32[] add(squeeze.121, constant.2)
+  select_n.121 = s32[] select(lt.121, add.121, squeeze.121)
+  dynamic_slice.121 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.121, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.122 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.121)
+  slice.122 = s32[1]{0} slice(offsets.1), slice={[58:59]}
+  squeeze.122 = s32[] reshape(slice.122)
+  lt.122 = pred[] compare(squeeze.122, constant.3), direction=LT
+  add.122 = s32[] add(squeeze.122, constant.2)
+  select_n.122 = s32[] select(lt.122, add.122, squeeze.122)
+  dynamic_slice.122 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.122, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.123 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.122)
+  slice.123 = s32[1]{0} slice(offsets.1), slice={[59:60]}
+  squeeze.123 = s32[] reshape(slice.123)
+  lt.123 = pred[] compare(squeeze.123, constant.3), direction=LT
+  add.123 = s32[] add(squeeze.123, constant.2)
+  select_n.123 = s32[] select(lt.123, add.123, squeeze.123)
+  dynamic_slice.123 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.123, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.124 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.123)
+  slice.124 = s32[1]{0} slice(offsets.1), slice={[60:61]}
+  squeeze.124 = s32[] reshape(slice.124)
+  lt.124 = pred[] compare(squeeze.124, constant.3), direction=LT
+  add.124 = s32[] add(squeeze.124, constant.2)
+  select_n.124 = s32[] select(lt.124, add.124, squeeze.124)
+  dynamic_slice.124 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.124, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.125 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.124)
+  slice.125 = s32[1]{0} slice(offsets.1), slice={[61:62]}
+  squeeze.125 = s32[] reshape(slice.125)
+  lt.125 = pred[] compare(squeeze.125, constant.3), direction=LT
+  add.125 = s32[] add(squeeze.125, constant.2)
+  select_n.125 = s32[] select(lt.125, add.125, squeeze.125)
+  dynamic_slice.125 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.125, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.126 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.125)
+  slice.126 = s32[1]{0} slice(offsets.1), slice={[62:63]}
+  squeeze.126 = s32[] reshape(slice.126)
+  lt.126 = pred[] compare(squeeze.126, constant.3), direction=LT
+  add.126 = s32[] add(squeeze.126, constant.2)
+  select_n.126 = s32[] select(lt.126, add.126, squeeze.126)
+  dynamic_slice.126 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.126, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.127 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.126)
+  slice.127 = s32[1]{0} slice(offsets.1), slice={[63:64]}
+  squeeze.127 = s32[] reshape(slice.127)
+  lt.127 = pred[] compare(squeeze.127, constant.3), direction=LT
+  add.127 = s32[] add(squeeze.127, constant.2)
+  select_n.127 = s32[] select(lt.127, add.127, squeeze.127)
+  dynamic_slice.127 = bf16[1,32,768]{2,1,0} dynamic-slice(x.1, constant.3, select_n.127, constant.3), dynamic_slice_sizes={1,32,768}
+  stack.128 = bf16[1,1,32,768]{3,2,1,0} reshape(dynamic_slice.127)
+  ROOT stack.129 = bf16[64,1,32,768]{3,2,1,0} concatenate(stack.65, stack.66, stack.67, stack.68, stack.69, stack.70, stack.71, stack.72, stack.73, stack.74, stack.75, stack.76, stack.77, stack.78, stack.79, stack.80, stack.81, stack.82, stack.83, stack.84, stack.85, stack.86, stack.87, stack.88, stack.89, stack.90, stack.91, stack.92, stack.93, stack.94, stack.95, stack.96, stack.97, stack.98, stack.99, stack.100, stack.101, stack.102, stack.103, stack.104, stack.105, stack.106, stack.107, stack.108, stack.109, stack.110, stack.111, stack.112, stack.113, stack.114, stack.115, stack.116, stack.117, stack.118, stack.119, stack.120, stack.121, stack.122, stack.123, stack.124, stack.125, stack.126, stack.127, stack.128), dimensions={0}
+}
+

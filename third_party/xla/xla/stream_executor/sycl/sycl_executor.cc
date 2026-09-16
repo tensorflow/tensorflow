@@ -17,6 +17,13 @@ limitations under the License.
 
 #include <unistd.h>
 
+// clang-format off
+
+#include <sycl/feature_test.hpp>
+#include <sycl/usm.hpp>
+
+// clang-format on
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -29,6 +36,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,6 +49,8 @@ limitations under the License.
 #include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -116,8 +126,8 @@ void UnloadLevelZeroModule(SyclContext* context, ze_module_handle_t module) {
 absl::StatusOr<ze_module_handle_t> LoadLevelZeroModule(
     SyclContext* context, const char* spirv_binary, const size_t spirv_size) {
   const sycl::context& sycl_context = context->context();
-  TF_ASSIGN_OR_RETURN(sycl::device sycl_device,
-                      SyclDevicePool::GetDevice(context->device_ordinal()));
+  ABSL_ASSIGN_OR_RETURN(sycl::device sycl_device,
+                   SyclDevicePool::GetDevice(context->device_ordinal()));
   auto lz_device =
       sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_device);
   auto lz_context =
@@ -266,8 +276,8 @@ absl::Status GetModuleSymbol(SyclContext* context, ze_module_handle_t module,
 
 absl::Status SynchronousMemsetUint32(SyclContext* context, void* location,
                                      uint32_t value, size_t uint32_count) {
-  TF_RETURN_IF_ERROR(SyclMemfillDevice(context->device_ordinal(), location,
-                                       value, uint32_count));
+  ABSL_RETURN_IF_ERROR(SyclMemfillDevice(context->device_ordinal(), location, value,
+                                    uint32_count));
   VLOG(2) << absl::StrFormat(
       "Completed synchronous memset32: %u uint32s at %p with value 0x%08x on "
       "device %d",
@@ -277,7 +287,7 @@ absl::Status SynchronousMemsetUint32(SyclContext* context, void* location,
 
 absl::Status SynchronousMemsetUint8(SyclContext* context, void* location,
                                     uint8_t value, size_t size) {
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       SyclMemsetDevice(context->device_ordinal(), location, value, size));
   VLOG(2) << absl::StrFormat(
       "Completed synchronous memset8: %u bytes at %p with value 0x%02x on "
@@ -288,8 +298,8 @@ absl::Status SynchronousMemsetUint8(SyclContext* context, void* location,
 
 absl::Status SyclSynchronousMemcpyH2D(SyclContext* context, void* gpu_dst,
                                       const void* host_src, uint64_t size) {
-  TF_RETURN_IF_ERROR(SyclMemcpyHostToDevice(context->device_ordinal(), gpu_dst,
-                                            host_src, size));
+  ABSL_RETURN_IF_ERROR(SyclMemcpyHostToDevice(context->device_ordinal(), gpu_dst,
+                                         host_src, size));
   VLOG(2) << absl::StrFormat(
       "Completed synchronous host-to-device memcpy: %u bytes to %p", size,
       gpu_dst);
@@ -298,8 +308,8 @@ absl::Status SyclSynchronousMemcpyH2D(SyclContext* context, void* gpu_dst,
 
 absl::Status SyclSynchronousMemcpyD2H(SyclContext* context, void* host_dst,
                                       void* gpu_src, uint64_t size) {
-  TF_RETURN_IF_ERROR(SyclMemcpyDeviceToHost(context->device_ordinal(), host_dst,
-                                            gpu_src, size));
+  ABSL_RETURN_IF_ERROR(SyclMemcpyDeviceToHost(context->device_ordinal(), host_dst,
+                                         gpu_src, size));
   VLOG(2) << absl::StrFormat(
       "Completed synchronous device-to-host memcpy: %u bytes to %p", size,
       host_dst);
@@ -342,7 +352,7 @@ void DeviceDeallocate(SyclContext* context, void* location) {
 
 absl::StatusOr<void*> HostAllocate(SyclContext* context, int device_ordinal,
                                    uint64_t bytes) {
-  TF_ASSIGN_OR_RETURN(void* host_mem, SyclMallocHost(device_ordinal, bytes));
+  ABSL_ASSIGN_OR_RETURN(void* host_mem, SyclMallocHost(device_ordinal, bytes));
   if (host_mem == nullptr) {
     // Allocation failed, possibly due to out-of-memory.
     return absl::InternalError(
@@ -356,8 +366,8 @@ absl::StatusOr<void*> HostAllocate(SyclContext* context, int device_ordinal,
 // Allocate host memory accessible by the host and mappable for device access.
 absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
     SyclContext* sycl_context, int device_ordinal, uint64_t size) {
-  TF_ASSIGN_OR_RETURN(void* host_mem,
-                      HostAllocate(sycl_context, device_ordinal, size));
+  ABSL_ASSIGN_OR_RETURN(void* host_mem,
+                   HostAllocate(sycl_context, device_ordinal, size));
   VLOG(2) << "Allocated host memory for ptr " << host_mem
           << " using device ordinal " << device_ordinal << " for " << size
           << " bytes";
@@ -378,39 +388,24 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
 
 }  // namespace
 
-class OneDnnSupport : public dnn::DnnSupport {
- public:
-  absl::Status Init() override { return absl::OkStatus(); }
-
-  absl::StatusOr<dnn::VersionInfo> GetVersion() override {
-    // Return a default version since it will be implemented later.
-    return dnn::VersionInfo(0, 0, 0);
+dnn::DnnSupport* SyclExecutor::AsDnn() {
+  absl::MutexLock lock(mu_);
+  if (dnn_ != nullptr) {
+    return dnn_.get();
   }
-
-  absl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             DeviceMemoryBase input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemoryBase output_data,
-                             ScratchAllocator* workspace_allocator) override {
-    return absl::UnimplementedError(
-        "OneDnnSupport::DoPoolForward is not implemented for SYCL");
+  PluginRegistry* registry = PluginRegistry::Instance();
+  absl::StatusOr<PluginRegistry::DnnFactory> status =
+      registry->GetFactory<PluginRegistry::DnnFactory>(
+          stream_executor::sycl::kSyclPlatformId);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to retrieve DNN factory: "
+               << status.status().message();
+    return nullptr;
   }
-
-  absl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              DeviceMemoryBase input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              DeviceMemoryBase output_data,
-                              DeviceMemoryBase input_diff_data,
-                              DeviceMemoryBase output_diff_data,
-                              ScratchAllocator* workspace_allocator) override {
-    return absl::UnimplementedError(
-        "OneDnnSupport::DoPoolBackward is not implemented for SYCL");
-  }
-};
+  auto dnn = status.value()(this);
+  dnn_.reset(dnn);
+  return dnn_.get();
+}
 
 SyclExecutor::~SyclExecutor() {
   for (auto& it : in_memory_modules_) {
@@ -422,16 +417,10 @@ SyclExecutor::~SyclExecutor() {
 }
 
 absl::Status SyclExecutor::Init() {
-  TF_ASSIGN_OR_RETURN(device_, SyclDevicePool::GetDevice(device_ordinal()));
-  TF_ASSIGN_OR_RETURN(sycl_context_, SyclContext::Create(device_ordinal()));
+  ABSL_ASSIGN_OR_RETURN(device_, SyclDevicePool::GetDevice(device_ordinal()));
+  ABSL_ASSIGN_OR_RETURN(sycl_context_, SyclContext::Create(device_ordinal()));
 
   return InitBlas();
-}
-
-dnn::DnnSupport* SyclExecutor::AsDnn() {
-  static std::unique_ptr<dnn::DnnSupport> dnn =
-      std::make_unique<OneDnnSupport>();
-  return dnn.get();
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> SyclExecutor::LoadKernel(
@@ -466,8 +455,8 @@ absl::StatusOr<std::unique_ptr<Kernel>> SyclExecutor::LoadKernel(
   // Other threads reuse the cached module and unload their own redundant
   // module.
   if (module == nullptr) {
-    TF_ASSIGN_OR_RETURN(module, LoadLevelZeroModule(sycl_context_.get(),
-                                                    spirv_binary, spirv_size));
+    ABSL_ASSIGN_OR_RETURN(module, LoadLevelZeroModule(sycl_context_.get(),
+                                                 spirv_binary, spirv_size));
     {
       absl::MutexLock lock{&in_memory_modules_mu_};
       // Try to insert the newly loaded module into the cache.
@@ -500,7 +489,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> SyclExecutor::LoadKernel(
 
   // Retrieve the kernel function from the loaded module.
   VLOG(2) << "Getting function " << kernel_name << " from module " << module;
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<sycl::kernel> function,
       GetModuleFunction(sycl_context_.get(), module, kernel_name.c_str()));
   {
@@ -519,12 +508,25 @@ absl::StatusOr<std::unique_ptr<Kernel>> SyclExecutor::LoadKernel(
   // TODO (intel-tf): Once SyclKernel::GetKernelMetadata() is implemented,
   // we should use it here via set_metadata().
   sycl_kernel->set_name(kernel_name);
-  // Set argument packing function if provided.
+  // Set the kernel's argument packing callback. The KernelLoaderSpec carries
+  // it as a variant of either a user-provided packing function or a
+  // serializable packing specification; in the latter case we wrap the spec
+  // in a closure so the kernel has a uniform callback to invoke at launch.
   if (std::holds_alternative<KernelLoaderSpec::KernelArgsPackingFunc>(
           spec.kernel_args_packing())) {
     sycl_kernel->set_args_packing(
         std::get<KernelLoaderSpec::KernelArgsPackingFunc>(
             spec.kernel_args_packing()));
+  } else {
+    const auto& packing_spec =
+        std::get<KernelArgsPackingSpec>(spec.kernel_args_packing());
+    sycl_kernel->set_args_packing(
+        [packing_spec](const Kernel& kernel, const KernelArgs& args) {
+          const PackableKernelArgs& mem_args =
+              dynamic_cast<const PackableKernelArgs&>(args);
+          return packing_spec.BuildArguments(mem_args.packed_args(),
+                                             args.number_of_shared_bytes());
+        });
   }
   return std::move(sycl_kernel);
 }
@@ -598,7 +600,7 @@ SyclExecutor::CreateOrShareConstant(Stream* stream,
                           content.size()));
     }
 
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream->Memcpy(new_constant, content.data(), content.size()));
     absl::Status status = stream->BlockHostUntilDone();
     if (!status.ok()) {
@@ -658,8 +660,8 @@ SyclExecutor::CreateMemoryAllocator(MemoryType type) {
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
             // Shared memory is visible to both CPU and GPU.
-            TF_ASSIGN_OR_RETURN(void* ptr,
-                                SyclMallocShared(device_ordinal(), size));
+            ABSL_ASSIGN_OR_RETURN(void* ptr,
+                             SyclMallocShared(device_ordinal(), size));
             VLOG(2) << "Allocated shared memory for ptr " << ptr
                     << " using device_ordinal " << device_ordinal() << " for "
                     << size << " bytes";
@@ -681,8 +683,8 @@ SyclExecutor::CreateMemoryAllocator(MemoryType type) {
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
             // At the allocation level, collective memory is the same as device
             // memory.
-            TF_ASSIGN_OR_RETURN(void* ptr,
-                                SyclMallocDevice(device_ordinal(), size));
+            ABSL_ASSIGN_OR_RETURN(void* ptr,
+                             SyclMallocDevice(device_ordinal(), size));
             VLOG(2) << "Allocated collective/device memory for ptr " << ptr
                     << " using device_ordinal " << device_ordinal() << " for "
                     << size << " bytes";
@@ -717,7 +719,7 @@ bool SyclExecutor::SynchronizeAllActivity() {
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 SyclExecutor::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
-  TF_ASSIGN_OR_RETURN(SyclTimer timer, SyclTimer::Create(this, stream));
+  ABSL_ASSIGN_OR_RETURN(SyclTimer timer, SyclTimer::Create(this, stream));
   return std::make_unique<SyclTimer>(std::move(timer));
 }
 
@@ -735,6 +737,26 @@ absl::Status SyclExecutor::SynchronousMemcpy(void* host_dst,
                                   AsSyclDevicePtr(gpu_src), size);
 }
 
+absl::StatusOr<MemorySpace> SyclExecutor::GetPointerMemorySpace(
+    const void* ptr) {
+  ABSL_ASSIGN_OR_RETURN(sycl::context context, GetContext());
+  sycl::usm::alloc alloc_type = sycl::get_pointer_type(ptr, context);
+  switch (alloc_type) {
+    case sycl::usm::alloc::device:
+      return MemorySpace::kDevice;
+    case sycl::usm::alloc::host:
+      return MemorySpace::kHost;
+    case sycl::usm::alloc::shared:
+      return MemorySpace::kUnified;
+    case sycl::usm::alloc::unknown:
+    default:
+      return absl::InternalError(
+          absl::StrFormat("SyclExecutor::GetPointerMemorySpace: unknown USM "
+                          "allocation type (%d) for pointer %p",
+                          static_cast<int>(alloc_type), ptr));
+  }
+}
+
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 SyclExecutor::CreateDeviceDescription(int device_ordinal) {
   return CreateOneApiDeviceDescription(device_ordinal);
@@ -743,22 +765,75 @@ SyclExecutor::CreateDeviceDescription(int device_ordinal) {
 absl::StatusOr<std::unique_ptr<Stream>> SyclExecutor::CreateStream(
     bool enable_multiple_streams,
     std::optional<std::variant<StreamPriority, int>> priority) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<SyclStream> stream,
-      SyclStream::Create(this, enable_multiple_streams, priority));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SyclStream> stream,
+                   SyclStream::Create(this, enable_multiple_streams, priority));
   absl::MutexLock l(&alive_gpu_streams_mu_);
   alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
 }
 
 absl::StatusOr<std::unique_ptr<Event>> SyclExecutor::CreateEvent() {
-  TF_ASSIGN_OR_RETURN(auto event, SyclEvent::Create(this));
+  ABSL_ASSIGN_OR_RETURN(auto event, SyclEvent::Create(this));
   return std::make_unique<SyclEvent>(std::move(event));
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 SyclExecutor::HostMemoryAllocate(uint64_t size) {
   return AllocateHostMemory(sycl_context_.get(), device_ordinal(), size);
+}
+
+bool SyclExecutor::HostMemoryRegister(void* location, uint64_t size) {
+  VLOG(1) << "Registering host memory at " << location << " (" << size
+          << " bytes) for SYCL DMA";
+#if defined(SYCL_EXT_ONEAPI_COPY_OPTIMIZE)
+  try {
+    const sycl::context context = sycl_context_->context();
+    // TODO(intel-tf): Consider migrating to
+    // sycl_ext_oneapi_register_host_memory once the supported oneAPI toolchain
+    // provides it. At the time of writing, that extension requires the pointer
+    // and size to be host-page aligned, unlike the prepare_for_device_copy
+    // specification, and makes the registered range visible as a USM host
+    // allocation.
+    sycl::ext::oneapi::experimental::prepare_for_device_copy(location, size,
+                                                             context);
+    if (SyclIsHostMemoryRegistered(device_, location, size)) {
+      return true;
+    }
+    sycl::ext::oneapi::experimental::release_from_device_copy(location,
+                                                              context);
+    LOG(ERROR) << "SYCL did not register host memory at " << location;
+  } catch (const sycl::exception& e) {
+    LOG(ERROR) << "Failed to register host memory at " << location << ": "
+               << e.what();
+  }
+#else
+  LOG(ERROR) << "The SYCL toolchain does not support host memory import";
+#endif
+  return false;
+}
+
+bool SyclExecutor::HostMemoryUnregister(void* location) {
+  VLOG(1) << "Unregistering host memory at " << location << " from SYCL DMA";
+#if defined(SYCL_EXT_ONEAPI_COPY_OPTIMIZE)
+  try {
+    sycl::ext::oneapi::experimental::release_from_device_copy(
+        location, sycl_context_->context());
+    if (!SyclIsHostMemoryRegistered(device_, location, 1)) {
+      return true;
+    }
+    LOG(ERROR) << "SYCL did not unregister host memory at " << location;
+  } catch (const sycl::exception& e) {
+    LOG(ERROR) << "Failed to unregister host memory at " << location << ": "
+               << e.what();
+  }
+#else
+  LOG(ERROR) << "The SYCL toolchain does not support host memory import";
+#endif
+  return false;
+}
+
+bool SyclExecutor::IsHostMemoryPinned(const void* ptr, uint64_t size) {
+  return SyclIsHostMemoryRegistered(device_, ptr, size);
 }
 
 void SyclExecutor::DeallocateStream(Stream* stream) {
@@ -840,7 +915,7 @@ absl::StatusOr<ModuleHandle> SyclExecutor::LoadModuleFromSpirv(
   // NOTE: Only the first thread to load the module inserts it into the cache.
   // Concurrent threads reuse the cached module and discard their own redundant
   // module via UnloadLevelZeroModule to avoid resource leaks.
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ze_module_handle_t lz_module_handle,
       LoadLevelZeroModule(sycl_context_.get(), spirv_binary, spirv_size));
 
@@ -914,9 +989,9 @@ absl::StatusOr<DeviceAddressBase> SyclExecutor::GetSymbol(
         return absl::NotFoundError(absl::StrFormat(
             "SyclExecutor::GetSymbol: Module handle not found in cache."));
       }
-      TF_RETURN_IF_ERROR(GetModuleSymbol(sycl_context_.get(), it->second.first,
-                                         symbol_name.c_str(), &device_ptr,
-                                         &symbol_size));
+      ABSL_RETURN_IF_ERROR(GetModuleSymbol(sycl_context_.get(), it->second.first,
+                                      symbol_name.c_str(), &device_ptr,
+                                      &symbol_size));
       return DeviceAddressBase(device_ptr, symbol_size);
     }
   }
@@ -929,9 +1004,9 @@ absl::StatusOr<DeviceAddressBase> SyclExecutor::GetSymbol(
 absl::Status SyclExecutor::InitBlas() {
   absl::MutexLock lock(&mu_);
   PluginRegistry* registry = PluginRegistry::Instance();
-  TF_ASSIGN_OR_RETURN(auto factory,
-                      registry->GetFactory<PluginRegistry::BlasFactory>(
-                          stream_executor::sycl::kSyclPlatformId));
+  ABSL_ASSIGN_OR_RETURN(auto factory,
+                   registry->GetFactory<PluginRegistry::BlasFactory>(
+                       stream_executor::sycl::kSyclPlatformId));
   blas_.reset(factory(this));
   return absl::OkStatus();
 }

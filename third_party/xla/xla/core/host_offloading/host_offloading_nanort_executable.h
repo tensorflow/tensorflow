@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -46,6 +48,11 @@ class HostOffloadingNanoRtExecutable : public HostOffloadingExecutable {
       absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters,
       const xla::ShapeTree<HostOffloadingBuffer>& result,
       const ExecuteOptions& execute_options) final;
+
+  absl::StatusOr<std::vector<HloModuleConfig>> GetHloModuleConfigs() final {
+    return std::vector<HloModuleConfig>{
+        executable_->executable()->module_config()};
+  }
 
   absl::string_view name() const final { return name_; }
 

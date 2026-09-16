@@ -702,9 +702,12 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
       raise ValueError(
           "tf.function only supports singleton tf.Variables created on the "
           "first call. Make sure the tf.Variable is only created once or "
-          "created outside tf.function. See "
+          "created outside tf.function. This also applies when creating "
+          "tf.Variables in a layer or model call(), including tf.Variables "
+          "passed to ops such as tf.nn.embedding_lookup. See "
           "https://www.tensorflow.org/guide/function#creating_tfvariables "
-          "for more information.")
+          "for more information."
+      )
 
     self._no_variable_creation_config = self._generate_scoped_tracing_options(
         invalid_creator_scope,

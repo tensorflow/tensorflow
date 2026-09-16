@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <chrono>  // NOLINT(build/c++11)
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>

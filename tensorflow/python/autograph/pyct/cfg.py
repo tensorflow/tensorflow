@@ -36,11 +36,11 @@ TODO(mdan): Alternatively, consider adding an edge from try to all its excepts.
 # They should rather be called 'block statements', because they include
 # statements that may have a body, e.g. if and while.
 
+import ast
 import collections
 import enum
 import weakref
 
-import astunparse
 import gast
 
 from tensorflow.python.autograph.pyct import anno
@@ -82,9 +82,8 @@ class Node(object):
     elif isinstance(self.ast_node, gast.ClassDef):
       return 'class %s' % self.ast_node.name
     elif isinstance(self.ast_node, gast.withitem):
-      # TODO(xjun): remove use of astunparse
-      return astunparse.unparse(self.ast_node.context_expr).strip()
-    return astunparse.unparse(self.ast_node).strip()
+      return ast.unparse(self.ast_node.context_expr).strip()
+    return ast.unparse(self.ast_node).strip()
 
 
 class Graph(

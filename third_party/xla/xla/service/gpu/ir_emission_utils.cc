@@ -17,28 +17,25 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
-#include <queue>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
@@ -47,29 +44,28 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/ir_emission_utils.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/literal.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/regexp.h"
 
 namespace xla {
 namespace gpu {
@@ -91,6 +87,62 @@ bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
   return false;
 }
 
+bool IsTritonSupportedRaggedDot(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kRaggedDot) {
+    return false;
+  }
+
+  const auto* ragged_dot = Cast<HloRaggedDotInstruction>(&instr);
+  const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
+
+  // Exactly one LHS ragged dimension is required: the emitter and autotuner
+  // access lhs_ragged_dimensions(0) unconditionally.
+  if (ragged_dims.lhs_ragged_dimensions().size() != 1) {
+    return false;
+  }
+
+  // Tiling propagation must be enabled.  TritonBackend::IsSupported gates
+  // kRaggedDot fusions on this flag — the xtile pipeline needs
+  // TiledHloComputation::Tile to drive code generation.
+  if (!instr.GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_tiling_propagation()) {
+    return false;
+  }
+
+  // The xtile emitter's PrimitiveTypeToMlirType conversion supports the
+  // following element types for ragged-dot operands and output.
+  // Complex types (C64, C128) fall to the default branch and return
+  // UnimplementedError.  Nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) are
+  // ROCm-only (NaNo format not supported on NVIDIA GPUs).
+  // Triton uses power-of-two block sizes (16..256) internally; problem
+  // dimensions need not be powers of two — masking handles boundary tiles.
+  const bool is_rocm = gpu_compute_capability.IsRocm();
+  auto is_supported_element_type = [&](PrimitiveType type) -> bool {
+    switch (type) {
+      case F16:
+      case BF16:
+      case F32:
+      case F64:
+      case F8E5M2:
+      case F8E4M3FN:
+        return true;
+      case F8E4M3FNUZ:
+      case F8E5M2FNUZ:
+        return is_rocm;
+      default:
+        return false;
+    }
+  };
+
+  return is_supported_element_type(instr.operand(0)->shape().element_type()) &&
+         is_supported_element_type(instr.operand(1)->shape().element_type()) &&
+         is_supported_element_type(instr.shape().element_type());
+}
+
 absl::StatusOr<bool> IsCublasSupportedMatMul(
     const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
   if (dot.opcode() != HloOpcode::kDot) {
@@ -100,8 +152,8 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   // Number of operands that have non-trivial non-contracting dimension.
   int num_matrix_operands = 0;
   for (int operand : {0, 1}) {
-    TF_ASSIGN_OR_RETURN(DotOperandDims dims,
-                        DotOperandDims::FromDotOperand(&dot, operand));
+    ABSL_ASSIGN_OR_RETURN(DotOperandDims dims,
+                     DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
     if (dims.Rank(DotOperandDims::kContracting) != 1) {
       return false;
@@ -168,19 +220,26 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
-bool IsMosaicWithNvshmem(const HloInstruction& hlo) {
-  return IsCustomCallToMosaicGpu(hlo) &&
-         absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
+bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo) {
+  if (!IsCustomCallToMosaicGpu(hlo)) {
+    return false;
+  }
+
+  const std::string& backend_config = hlo.raw_backend_config_string();
+  // TODO(b/546817872): Remove multimem_parameters check once backward
+  // compatibility period is over.
+  return absl::StrContains(backend_config, "symmetric_memory_parameters") ||
+         absl::StrContains(backend_config, "multimem_parameters");
 }
 
-bool IsMosaicWithMultimem(const HloInstruction& hlo) {
+bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
   return IsCustomCallToMosaicGpu(hlo) &&
-         absl::StrContains(hlo.raw_backend_config_string(),
-                           "multimem_parameters");
+         RE2::PartialMatch(hlo.raw_backend_config_string(),
+                           "uses_xla_collective_metadata\\s*=\\s*[tT]rue");
 }
 
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
-  return IsMosaicWithNvshmem(hlo) || IsMosaicWithMultimem(hlo);
+  return IsMosaicWithSymmetricParameter(hlo);
 }
 
 static bool IsContiguousSlice(
@@ -516,31 +575,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
   return b->getInt32Ty();
 }
 
-absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
-    const Literal& literal) {
-  PrimitiveType element_type = literal.shape().element_type();
-  if (!primitive_util::IsArrayType(element_type)) {
-    return Internal("Unsupported type in LiteralToXlaFormat");
-  }
-
-  int64_t byte_size = literal.size_bytes();
-  if (primitive_util::IsSubByteNonPredType(element_type)) {
-    auto bit_width = primitive_util::BitWidth(element_type);
-    std::vector<uint8_t> output(CeilOfRatio<int64_t>(byte_size, 8 / bit_width));
-    absl::Span<char> output_span =
-        absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
-    PackIntN(
-        bit_width,
-        absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
-                       byte_size),
-        output_span);
-    return DenseDataIntermediate::Own(std::move(output));
-  }
-
-  return DenseDataIntermediate::Alias(absl::MakeSpan(
-      reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
-}
-
 absl::StatusOr<std::string> GetProtoFingerprint(
     const tsl::protobuf::MessageLite& proto) {
   std::string result;
@@ -565,253 +599,6 @@ std::optional<std::string> GetCustomFusionConfigName(
     return std::nullopt;
   }
   return fusion_backend_config.custom_fusion_config().name();
-}
-
-bool IsDynamicSliceFusion(const HloInstruction* instr) {
-  std::optional<std::string> name = GetCustomFusionConfigName(instr);
-  return name == kDynamicSliceFusionWithStaticAddressComputationConfigName ||
-         name == kDynamicSliceFusionWithDynamicAddressComputationConfigName;
-}
-
-namespace {
-
-// Whether the instruction is semantically a call.
-bool IsCallLike(const HloInstruction* caller) {
-  return caller->opcode() == HloOpcode::kFusion ||
-         caller->opcode() == HloOpcode::kAsyncStart ||
-         caller->opcode() == HloOpcode::kCall;
-}
-
-const HloInstruction* GetUniqueCallerOrNull(const HloComputation* callee) {
-  auto callers = callee->caller_instructions();
-  return callers.size() == 1 ? callers.front() : nullptr;
-}
-
-struct Dependencies {
-  absl::InlinedVector<const HloInstruction*, 2> parameters;
-  absl::InlinedVector<const HloInstruction*, 1> get_tuple_elements;
-};
-
-// Returns the leaf dependencies of `root`, in each frame of the call stack.
-// Here, leaves are parameters and GTEs. Returns nullopt if any dependencies
-// have side effects.
-std::optional<Dependencies> GetLeafDependencies(const HloInstruction* root) {
-  absl::flat_hash_set<const HloInstruction*> seen{root};
-  std::queue<const HloInstruction*> queue;
-  queue.push(root);
-
-  auto enqueue = [&](const HloInstruction* instr) {
-    if (seen.insert(instr).second) {
-      queue.push(instr);
-    }
-  };
-
-  Dependencies results;
-  while (!queue.empty()) {
-    const auto* instruction = queue.front();
-    VLOG(5) << "Visiting " << instruction->name() << ".";
-    queue.pop();
-
-    if (instruction->opcode() == HloOpcode::kCustomCall ||
-        instruction->HasSideEffect()) {
-      VLOG(5) << "Found an unsafe operation.";
-      return std::nullopt;
-    }
-
-    if (instruction->opcode() == HloOpcode::kParameter) {
-      results.parameters.push_back(instruction);
-      const HloInstruction* caller =
-          GetUniqueCallerOrNull(instruction->parent());
-      if (!caller) {
-        VLOG(5) << "Failed to determine unique caller, aborting traversal.";
-        return std::nullopt;
-      }
-
-      // If this is semantically a call, continue the traversal at the call
-      // site.
-      if (IsCallLike(caller)) {
-        int64_t index = instruction->parameter_number();
-        enqueue(caller->operand(index));
-      }
-    }
-
-    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
-      results.get_tuple_elements.push_back(instruction);
-    }
-
-    for (auto* operand : instruction->operands()) {
-      enqueue(operand);
-    }
-  }
-  return results;
-}
-
-struct VerifiedLoop {
-  const HloInstruction* loop;
-  const HloInstruction* parameter;
-  int64_t induction_variable_index;
-};
-
-// Checks that `loop` is a while loop from which we can derive functional
-// dependencies.
-std::optional<VerifiedLoop> VerifyFunctionalDependencyLoop(
-    const HloInstruction* loop) {
-  if (!loop) {
-    VLOG(5) << "No loop found";
-    return std::nullopt;
-  }
-  auto config = loop->backend_config<xla::WhileLoopBackendConfig>();
-  if (!config.ok() || !config->has_known_induction_variable()) {
-    VLOG(5) << "The loop has no known induction variable.";
-    return std::nullopt;
-  }
-  return VerifiedLoop{loop, loop->while_body()->parameter_instruction(0),
-                      config->known_induction_variable().tuple_index()};
-}
-
-// Returns true if `hlo` is a GTE for a loop carried variable of `loop`.
-bool IsLoopCarriedVariable(const HloInstruction* hlo,
-                           const VerifiedLoop& loop) {
-  return hlo->opcode() == HloOpcode::kGetTupleElement &&
-         hlo->operand(0) == loop.parameter;
-}
-
-// Returns true if `maybe_variable` is `loop`'s induction variable.
-bool IsInductionVariable(const HloInstruction* maybe_variable,
-                         const VerifiedLoop& loop) {
-  return IsLoopCarriedVariable(maybe_variable, loop) &&
-         maybe_variable->tuple_index() == loop.induction_variable_index;
-}
-
-// Returns true if `variable` is marked as a dynamic variable.
-bool IsDynamicVariable(const HloInstruction* variable,
-                       const VerifiedLoop& loop) {
-  auto config = loop.loop->backend_config<xla::WhileLoopBackendConfig>();
-  if (!config.ok()) {
-    return false;
-  }
-
-  int64_t tuple_idx = variable->tuple_index();
-  for (int64_t dynamic_idx : config->dynamic_variable_tuple_indices()) {
-    if (dynamic_idx == tuple_idx) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// Attempts to find the induction variable of `loop` in `dependencies`. If there
-// are any dependencies on non-induction variable loop-carried variables,
-// returns nullopt.
-std::optional<const HloInstruction*> VerifyInductionVariable(
-    const Dependencies& dependencies, const VerifiedLoop& loop) {
-  const HloInstruction* induction_var = nullptr;
-  for (const HloInstruction* gte : dependencies.get_tuple_elements) {
-    if (IsLoopCarriedVariable(gte, loop)) {
-      if (IsInductionVariable(gte, loop)) {
-        if (induction_var) {
-          // This should never happen.
-          VLOG(5) << "Found non-unique GTEs for the induction variable. Did "
-                     "HloCSE run?";
-          return std::nullopt;
-        }
-        induction_var = gte;
-      } else if (IsDynamicVariable(gte, loop)) {
-        // Dynamic variables are also acceptable because they represent tuple
-        // indices used in DS/DUS that can be optimized by
-        // FusionDynamicMemcpyRewriter.
-        if (induction_var) {
-          // This should never happen.
-          VLOG(5) << "Found non-unique GTEs for the dynamic variable. Did "
-                     "HloCSE run?";
-          return std::nullopt;
-        }
-        induction_var = gte;
-      } else {
-        // Other dependencies on loop-carried variables are not allowed.
-        VLOG(5) << "Found illegal dependency on loop-carried variable.";
-        return std::nullopt;
-      }
-    }
-    // Other GTEs are OK, as long as their tuples are ultimately just derived
-    // from the loop's induction variable. We already verified that there are no
-    // side-effecting dependencies in GetLeafDependencies.
-  }
-  if (!induction_var) {
-    VLOG(5) << "Did not find an induction variable or dynamic variable.";
-    return std::nullopt;
-  }
-  return induction_var;
-}
-
-}  // namespace
-
-std::optional<InductionVariableFunctionalDependency>
-ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr) {
-  VLOG(5) << "Looking for defining while loop of " << instr->name();
-
-  auto dependencies = GetLeafDependencies(instr);
-  // If there is a side effect in the dependencies, the result will be nullopt.
-  if (!dependencies) {
-    return std::nullopt;
-  }
-
-  // In the dependencies, there should be exactly one parameter of a while loop,
-  // and exactly one GTE for that parameter. We already verified that there are
-  // no side-effecting dependencies.
-  InductionVariableFunctionalDependency result{};
-  for (const HloInstruction* param : dependencies->parameters) {
-    const HloComputation* callee = param->parent();
-    const HloInstruction* caller = GetUniqueCallerOrNull(callee);
-    if (caller && IsCallLike(caller)) {
-      // Register the parameter as a required intermediate value.
-      auto& required = result.required_parameters[callee];
-      if (required.empty()) {
-        required.resize(callee->num_parameters());
-      }
-      required[param->parameter_number()] = true;
-    } else if (caller && caller->opcode() == HloOpcode::kWhile) {
-      if (result.loop) {
-        LOG(WARNING) << "While loop not unique. This should never happen.";
-        return std::nullopt;
-      }
-      result.loop = caller;
-    } else {
-      // We arrived at an unexpected parameter. This likely means we're not in
-      // a while loop, or there's an unsupported instruction between the while
-      // loop and `instr`.
-      VLOG(5) << "Unsupported parameter: " << param->name() << ".";
-      return std::nullopt;
-    }
-  }
-
-  auto verified_loop = VerifyFunctionalDependencyLoop(result.loop);
-  if (!verified_loop) {
-    return std::nullopt;
-  }
-
-  auto induction_var = VerifyInductionVariable(*dependencies, *verified_loop);
-  if (induction_var) {
-    result.induction_var = *induction_var;
-  } else {
-    return std::nullopt;
-  }
-
-  VLOG(5) << "While loop for " << instr->name() << ": " << result.loop->name();
-  return result;
-}
-
-DenseDataIntermediateProto DenseDataIntermediate::ToProto() const {
-  DenseDataIntermediateProto proto;
-  absl::Span<const uint8_t> data = span();
-  proto.mutable_data()->assign(data.begin(), data.end());
-  return proto;
-}
-DenseDataIntermediate DenseDataIntermediate::FromProto(
-    const DenseDataIntermediateProto& proto) {
-  const std::string& data = proto.data();
-  return DenseDataIntermediate::Own(
-      std::vector<uint8_t>(data.begin(), data.end()));
 }
 
 }  // namespace gpu

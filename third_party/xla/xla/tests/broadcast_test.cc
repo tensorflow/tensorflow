@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using BroadcastTest = HloPjRtTestBase;
+using BroadcastTest = HloTestBase;
 
 TEST_F(BroadcastTest, BroadcastScalarToScalar) {
   // Test degenerate case of broadcasting a scalar into a scalar.

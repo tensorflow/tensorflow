@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/transforms/export/passes.h"
 #include "shardy/dialect/sdy/transforms/import/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -50,6 +52,7 @@ using ::mlir::func::FuncOp;
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
                                    bool keepMeshesInlined,
                                    bool enableHloShardingV3) {
+  pm.addPass(mlir::createCanonicalizerPass());
   // Lift meshes before deduping, since the dedup meshes pass ignores inlined
   // meshes.
   if (!keepMeshesInlined) {
@@ -90,8 +93,14 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
-  pm.addPass(mlir::sdy::createFlattenCallGraphPass());
+  pm.addPass(mlir::sdy::createFlattenCallGraphPass(isManualComputation));
+  pm.addPass(mlir::createSymbolDCEPass());  // After FlattenCallGraphPass.
   pm.addPass(createSdyRoundTripShardMapImportPass());
+  // Deduplicate the functions cloned during shard map import.
+  // TODO(enver): Instead drop clone functions selectively during the shard map
+  // import and remove the unflattener below.
+  pm.addPass(mlir::sdy::createUnflattenCallGraphPass());
+  pm.addPass(mlir::createSymbolDCEPass());  // After UnflattenCallGraphPass.
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
   if (enableHloShardingV3 || liftAndDedupMeshes) {

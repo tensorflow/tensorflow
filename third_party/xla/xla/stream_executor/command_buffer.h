@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -163,24 +164,24 @@ class CommandBuffer {
 
   // Creates a kernel launch command.
   virtual absl::StatusOr<const Command*> CreateLaunch(
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
       StreamPriority priority = StreamPriority::Default) = 0;
 
   // Updates a kernel launch command.
-  virtual absl::Status UpdateLaunch(const Command* command,
-                                    const ThreadDim& threads,
-                                    const BlockDim& blocks,
-                                    const Kernel& kernel,
-                                    const KernelArgs& args) = 0;
+  virtual absl::Status UpdateLaunch(
+      const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
+      const KernelArgs& args) = 0;
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
   template <typename... Params, typename... Args>
   absl::StatusOr<const Command*> CreateLaunch(
       const TypedKernel<Params...>& kernel, const ThreadDim& threads,
-      const BlockDim& blocks, absl::Span<const Command* const> dependencies,
-      Args... args);
+      const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+      absl::Span<const Command* const> dependencies, Args... args);
 
   // Type-safe wrapper for updating typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
@@ -188,6 +189,7 @@ class CommandBuffer {
   absl::Status UpdateLaunch(const Command* command,
                             const TypedKernel<Params...>& kernel,
                             const ThreadDim& threads, const BlockDim& blocks,
+                            const std::optional<ClusterDim>& cluster_dims,
                             Args... args);
 
   // Creates a child command from a pre-recorded command buffer.
@@ -228,6 +230,26 @@ class CommandBuffer {
   virtual absl::Status UpdateMemcpyD2D(const Command* command,
                                        DeviceAddressBase* dst,
                                        const DeviceAddressBase& src,
+                                       uint64_t size) = 0;
+
+  // Creates a device-to-host memory copy.
+  virtual absl::StatusOr<const Command*> CreateMemcpyD2H(
+      void* dst, const DeviceAddressBase& src, uint64_t size,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a device-to-host memory copy.
+  virtual absl::Status UpdateMemcpyD2H(const Command* command, void* dst,
+                                       const DeviceAddressBase& src,
+                                       uint64_t size) = 0;
+
+  // Creates a host-to-device memory copy.
+  virtual absl::StatusOr<const Command*> CreateMemcpyH2D(
+      DeviceAddressBase* dst, const void* src, uint64_t size,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a host-to-device memory copy.
+  virtual absl::Status UpdateMemcpyH2D(const Command* command,
+                                       DeviceAddressBase* dst, const void* src,
                                        uint64_t size) = 0;
 
   // Creates a memset command.
@@ -306,6 +328,13 @@ class CommandBuffer {
                                    UpdateCommands update_cond,
                                    UpdateCommands update_body) = 0;
 
+  // Adds a host node (callback) to the command buffer.
+  // The `callback` will be executed on the CPU (host) when this node is
+  // processed during command buffer execution.
+  virtual absl::StatusOr<const Command*> CreateHost(
+      absl::AnyInvocable<void()> callback,
+      absl::Span<const Command* const> dependencies) = 0;
+
   // Set the priority of all nodes in the command buffer.
   virtual absl::Status SetPriority(StreamPriority priority) = 0;
 
@@ -365,6 +394,7 @@ class CommandBuffer {
   }
 
  private:
+  friend class CommandBufferTest;
   friend class TraceCommandBufferFactory;
 
   // Tracing APIs are private because they do not compose with command buffer
@@ -374,8 +404,9 @@ class CommandBuffer {
 
   // Traces `function` invocation by recording all operations on the `stream`
   // into the command buffer. Command buffer must be empty.
-  virtual absl::Status Trace(Stream* stream,
-                             absl::AnyInvocable<absl::Status()> function) = 0;
+  virtual absl::Status Trace(
+      Stream* stream,
+      absl::AnyInvocable<absl::Status(Stream* stream)> function) = 0;
 
   // We use ResourceTypeId to distinguish between different resource types.
   TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
@@ -405,19 +436,21 @@ class CommandBuffer {
 template <typename... Params, typename... Args>
 absl::StatusOr<const CommandBuffer::Command*> CommandBuffer::CreateLaunch(
     const TypedKernel<Params...>& kernel, const ThreadDim& threads,
-    const BlockDim& blocks, absl::Span<const Command* const> dependencies,
-    Args... args) {
+    const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+    absl::Span<const Command* const> dependencies, Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
-  return CreateLaunch(threads, blocks, *kernel, *kernel_args, dependencies);
+  return CreateLaunch(threads, blocks, cluster_dims, *kernel, *kernel_args,
+                      dependencies);
 }
 
 template <typename... Params, typename... Args>
-absl::Status CommandBuffer::UpdateLaunch(const Command* command,
-                                         const TypedKernel<Params...>& kernel,
-                                         const ThreadDim& threads,
-                                         const BlockDim& blocks, Args... args) {
+absl::Status CommandBuffer::UpdateLaunch(
+    const Command* command, const TypedKernel<Params...>& kernel,
+    const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
-  return UpdateLaunch(command, threads, blocks, *kernel, *kernel_args);
+  return UpdateLaunch(command, threads, blocks, cluster_dims, *kernel,
+                      *kernel_args);
 }
 
 }  // namespace stream_executor

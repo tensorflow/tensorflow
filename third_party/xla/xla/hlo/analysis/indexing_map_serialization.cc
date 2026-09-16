@@ -115,6 +115,8 @@ Token::Kind GetSingleCharTokenType(char c) {
       return Token::Kind::kMinus;
     case '*':
       return Token::Kind::kTimes;
+    case '/':
+      return Token::Kind::kFloorDiv;
     default:
       return Token::Kind::kError;
   }
@@ -223,9 +225,16 @@ bool Parser::ParseSymbolicExprString(std::string* symbolic_expr_str) {
   unsigned num_unmatched_parens = 0;
   while (true) {
     if (IsPartOfSymbolicExpr(current_token_)) {
+      bool is_variable = current_token_.kind == Token::Kind::kVarName;
       symbolic_expr_str->append(current_token_.spelling);
-      symbolic_expr_str->push_back(' ');
       Advance();
+      // Don't add a space if the current token is a variable name and the next
+      // token is a opening parenthesis. This indicates the variable is in fact
+      // an operation name like `min` or `max`, and there should not be a
+      // whitespace between the operation name and the opening parenthesis.
+      if (!is_variable || current_token_.kind != Token::Kind::kLParen) {
+        symbolic_expr_str->push_back(' ');
+      }
       continue;
     }
     if (ConsumeToken(Token::Kind::kLParen)) {

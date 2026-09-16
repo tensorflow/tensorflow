@@ -20,12 +20,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -141,6 +143,12 @@ FusionDecision LegalToFuse(const HloInstruction& instr1,
     return FusionDecision::Forbid("can't fuse multiple DUSs");
   }
 
+  if (ContainsScan(instr1, fusion_info_cache) ||
+      ContainsScan(instr2, fusion_info_cache)) {
+    return FusionDecision::Forbid(
+        "multi-output fusion for scan is not supported");
+  }
+
   // Do this check last, as it may be expensive.
   return FusionFitsInBudget(instr1, instr2, device_info,
                             /*is_consumer_producer_fusion=*/false,
@@ -201,6 +209,12 @@ FusionDecision ProducerCandidateIsFusible(
     const se::DeviceDescription& device_info,
     GpuPerformanceModel& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
+  if (ContainsScan(producer, fusion_info_cache) ||
+      ContainsScan(consumer, fusion_info_cache)) {
+    return FusionDecision::Forbid(
+        "multi-output fusion for scan is not supported");
+  }
+
   if (!IsFusibleAsMultiOutputFusionRoot(consumer, device_info)) {
     return FusionDecision::Forbid(
         "consumer not eligible as multi-output fusion root.");
@@ -430,7 +444,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
                                     /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
                                    device_info_);
-  TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
+  ABSL_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
 
@@ -438,8 +452,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
   GpuPerformanceModelCache gpu_performance_model_cache;
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModel gpu_performance_model(device_info_, fusion_analysis_cache,
-                                            gpu_performance_model_cache,
-                                            mlir_context_);
+                                            gpu_performance_model_cache);
   // Traverse the HLO in uses-before-defs order.
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {
@@ -488,8 +501,8 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     gpu_performance_model_cache.Invalidate(*consumer_for_fusion);
     fusion_analysis_cache.Invalidate(producer->unique_id());
     fusion_analysis_cache.Invalidate(consumer_for_fusion->unique_id());
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
+    ABSL_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
+    ABSL_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
     HloInstruction* input_fusion;
     if (HloPredicateIsOp<HloOpcode::kFusion>(consumer_for_fusion)) {
@@ -521,7 +534,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       CHECK_EQ(0, producer->user_count());
       CHECK_OK(computation_->RemoveInstruction(producer));
     }
-    TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
+    ABSL_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
 
     DumpFusionState(*input_fusion,
                     absl::StrCat("Fused into |", input_fusion->name(),
@@ -548,7 +561,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   bool changed = false;
   for (auto* computation : GetFusibleComputations(*module, execution_threads)) {
     computation_ = computation;
-    TF_ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
+    ABSL_ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
     changed |= computation_changed;
   }
   return changed;

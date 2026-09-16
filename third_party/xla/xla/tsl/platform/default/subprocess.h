@@ -94,7 +94,7 @@ class SubProcess {
   //    In the child process, chdir() to this directory before
   //    exec-ing.
   //    Returns false if this is not supported on the current platform.
-  ABSL_MUST_USE_RESULT virtual bool SetDirectory(const string& dir);
+  [[nodiscard]] virtual bool SetDirectory(const string& dir);
 
   // SetExitCallback()
   //    Set a callback to be run when the process exits.
@@ -184,6 +184,13 @@ class SubProcess {
   //    Returns the command's exit status.
   virtual int Communicate(const string* stdin_input, string* stdout_output,
                           string* stderr_output);
+
+  // GetArgv()
+  //    Return the argv passed to SetProgram().
+  virtual const char* const* GetArgv() const {
+    absl::MutexLock lock(&data_mu_);
+    return exec_argv_;
+  }
 
  private:
   static constexpr int kNFds = 3;

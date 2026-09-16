@@ -111,7 +111,7 @@ absl::Status PrepareArguments(
         break;
       }
       case XlaExpression::Kind::kInvalid:
-        return errors::InvalidArgument("Invalid function argument");
+        return absl::InvalidArgumentError("Invalid function argument");
     }
   }
   return absl::OkStatus();
@@ -199,8 +199,9 @@ absl::Status GraphCompiler::Compile() {
     for (int o = 0; o < n->num_outputs(); ++o) {
       outputs[o] = op_context.release_output(o);
       if (outputs[o].tensor == nullptr) {
-        return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                FormatNodeForError(*n));
+        return absl::InternalError(absl::StrCat("Missing xla_context ", o,
+                                                "-th output from ",
+                                                FormatNodeForError(*n)));
       }
     }
   }
@@ -216,9 +217,9 @@ absl::Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
     TF_RETURN_IF_ERROR(
         node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
     if (!attr_value->has_func()) {
-      return errors::InvalidArgument(
-          "The attribute value for attribute 'f' in node ", node.DebugString(),
-          " does not have 'func' field set");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The attribute value for attribute 'f' in node ",
+                       node.DebugString(), " does not have 'func' field set"));
     }
     *func = attr_value->func();
     return absl::OkStatus();

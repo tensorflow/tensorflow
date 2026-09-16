@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -60,7 +61,7 @@ class HloControlFlowFlatteningTest : public HloHardwareIndependentTestBase {
                                         options, collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    TF_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
+    ABSL_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };

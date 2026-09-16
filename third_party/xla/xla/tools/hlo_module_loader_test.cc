@@ -18,10 +18,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "riegeli/bytes/string_writer.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_proto_util.h"
+#include "xla/util/split_proto/split_hlo_writer.h"
+#include "tsl/platform/status_matchers.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -40,8 +47,8 @@ I0521 12:04:45.883483    1509 service.cc:186]   ROOT rooty = (f32[4]{0}, f32[4]{
 I0521 12:04:45.883483    1509 service.cc:186] }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          LoadModuleFromData(hlo_string, "txt"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       LoadModuleFromData(hlo_string, "txt"));
   EXPECT_NE(FindInstruction(hlo_module.get(), "p0"), nullptr);
   EXPECT_NE(FindInstruction(hlo_module.get(), "p1"), nullptr);
   EXPECT_NE(FindInstruction(hlo_module.get(), "add"), nullptr);
@@ -69,9 +76,34 @@ module @jit_slice_data attributes {mhlo.num_partitions = 1 : i32, mhlo.num_repli
     return %9 : tensor<2x5xi32>
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          LoadModuleFromData(stablehlo_string, "stablehlo"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       LoadModuleFromData(stablehlo_string, "stablehlo"));
   EXPECT_EQ(hlo_module->result_shape().ToString(), "s32[2,5]");
+}
+
+TEST_F(HloModuleLoaderTest, SupportsRiegeli) {
+  const std::string& hlo_string = R"(
+HloModule test_riegeli
+
+ENTRY entry {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  ROOT add = f32[4]{0} add(p0, p1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> original_module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloProto hlo_proto = MakeHloProto(*original_module);
+  std::string riegeli_data;
+  ASSERT_OK(WriteSplitHloProto(
+      hlo_proto, std::make_unique<riegeli::StringWriter<>>(&riegeli_data)));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       LoadModuleFromData(riegeli_data, "riegeli"));
+  EXPECT_NE(FindInstruction(hlo_module.get(), "p0"), nullptr);
+  EXPECT_NE(FindInstruction(hlo_module.get(), "p1"), nullptr);
+  EXPECT_NE(FindInstruction(hlo_module.get(), "add"), nullptr);
 }
 
 }  // namespace

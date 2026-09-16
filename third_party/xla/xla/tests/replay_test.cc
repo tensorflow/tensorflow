@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -38,7 +39,7 @@ namespace {
 using ::tsl::proto_testing::EqualsProto;
 
 class ReplayTest : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(ReplayTest, TwoPlusTwoReplay) {
   // Make 2+2 computation.

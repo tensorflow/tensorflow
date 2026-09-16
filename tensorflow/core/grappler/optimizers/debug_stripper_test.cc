@@ -40,7 +40,7 @@ TEST_F(DebugStripperTest, OutputEqualToInput) {
   DebugStripper optimizer;
   GraphDef output;
   EXPECT_EQ(optimizer.Optimize(nullptr, item, &output),
-            errors::Aborted("Nothing to do."));
+            absl::AbortedError("Nothing to do."));
 }
 
 TEST_F(DebugStripperTest, StripAssertOnTwoOutputs) {

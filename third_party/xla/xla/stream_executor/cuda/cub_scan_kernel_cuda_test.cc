@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -56,10 +58,10 @@ class CubScanKernelCudaTest
           xla::PrimitiveType, size_t, size_t, size_t, CubScanKind, bool>> {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_,
+                         se::PlatformManager::PlatformWithName("CUDA"));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
   }
@@ -90,9 +92,9 @@ class CubScanKernelCudaTest
     }
 
     // Get scratch size.
-    TF_ASSIGN_OR_RETURN(size_t temp_bytes,
-                        CubScanGetScratchSize(type, vector_length, row_length,
-                                              col_length, kind, is_reverse));
+    ABSL_ASSIGN_OR_RETURN(size_t temp_bytes,
+                     CubScanGetScratchSize(type, vector_length, row_length,
+                                           col_length, kind, is_reverse));
 
     // Allocate device buffers
     se::DeviceAddress<T> device_data =
@@ -108,18 +110,17 @@ class CubScanKernelCudaTest
 
     // Copy data to device.
     size_t size_bytes = num_elements * sizeof(T);
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream_->Memcpy(&device_data, host_data.data(), size_bytes));
 
-    TF_RETURN_IF_ERROR(CubScanLaunchKernel(
+    ABSL_RETURN_IF_ERROR(CubScanLaunchKernel(
         type, device_temp.opaque(), temp_bytes, device_data.opaque(),
         device_data.opaque(), vector_length, row_length, col_length, kind,
         is_reverse,
         static_cast<CUstream>(stream_->platform_specific_handle().stream)));
 
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
-    TF_RETURN_IF_ERROR(
-        stream_->Memcpy(host_data.data(), device_data, size_bytes));
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream_->Memcpy(host_data.data(), device_data, size_bytes));
 
     if constexpr (std::is_same_v<T, float>) {
       EXPECT_THAT(host_data,
@@ -151,7 +152,7 @@ class CubScanKernelCudaTest
 
 TEST_P(CubScanKernelCudaTest, TestPrefixSum) {
   auto impl = [&](auto value) {
-    TF_EXPECT_OK(
+    EXPECT_OK(
         std::apply(&CubScanKernelCudaTest::RunCubScanTest<decltype(value)>,
                    std::tuple_cat(std::make_tuple(this), GetParam())));
   };
@@ -181,7 +182,7 @@ TEST_P(CubScanKernelCudaTest, TestPrefixSum) {
     case xla::PrimitiveType::U64:
       return impl(uint64_t{});
     default:
-      TF_EXPECT_OK(
+      EXPECT_OK(
           absl::InvalidArgumentError("Unsupported element type for CUB scan"));
   }
 }

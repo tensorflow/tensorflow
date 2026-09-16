@@ -219,10 +219,10 @@ TF_CALL_COMPLEX_TYPES(REGISTER_ADDN_GPU);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("AddN")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("inputs")
                             .HostMemory("sum"),
-                        AddNOp<CPUDevice, int32>);
+                        AddNOp<CPUDevice, int32_t>);
 
 #undef REGISTER_ADDN
 

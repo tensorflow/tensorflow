@@ -418,7 +418,7 @@ absl::Status ReverseV2Grad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "ReverseV2Grad for int64 index are not supported.");
   }
   *g = FDH::Define(
@@ -442,7 +442,7 @@ absl::Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "SliceGrad for int64 index are not supported.");
   }
   *g = FDH::Define(
@@ -477,7 +477,7 @@ absl::Status StridedSliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "SliceGrad for int64 index are not supported.");
   }
 
@@ -514,7 +514,7 @@ absl::Status StridedSliceGradGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "SliceGrad for int64 index are not supported.");
   }
 
@@ -556,7 +556,7 @@ absl::Status BroadcastToGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
   if (itype != DT_INT32) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "BroadcastToGrad for int64 index are not supported.");
   }
   std::vector<FDH::Node> nodes = {

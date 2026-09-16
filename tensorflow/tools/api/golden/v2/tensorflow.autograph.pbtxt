@@ -2,7 +2,7 @@ path: "tensorflow.autograph"
 tf_module {
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "set_verbosity"

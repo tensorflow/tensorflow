@@ -99,12 +99,10 @@ class MultiOutputFusion : public HloModulePass {
  public:
   explicit MultiOutputFusion(
       const se::DeviceDescription& device_info, const GpuAliasInfo* alias_info,
-      HloCostAnalysis::ShapeSizeFunction shape_size_function,
-      mlir::MLIRContext* mlir_context)
+      HloCostAnalysis::ShapeSizeFunction shape_size_function)
       : device_info_(device_info),
         alias_info_(alias_info),
-        shape_size_function_(shape_size_function),
-        mlir_context_(mlir_context) {}
+        shape_size_function_(shape_size_function) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -137,7 +135,6 @@ class MultiOutputFusion : public HloModulePass {
   se::DeviceDescription device_info_;
   const GpuAliasInfo* alias_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
-  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

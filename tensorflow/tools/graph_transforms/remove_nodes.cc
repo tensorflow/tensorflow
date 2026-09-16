@@ -31,7 +31,7 @@ absl::Status RemoveNodes(const GraphDef& input_graph_def,
                          const TransformFuncContext& context,
                          GraphDef* output_graph_def) {
   if (!context.params.count("op")) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "remove_nodes expects at least one 'op'"
         "argument, e.g. remove_nodes(op=Identity)");
   }

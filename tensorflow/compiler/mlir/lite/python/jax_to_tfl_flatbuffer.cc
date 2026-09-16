@@ -48,8 +48,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace tensorflow {
@@ -118,6 +116,8 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
   }
   pass_config.unfold_large_splat_constant =
       converter_flags.unfold_large_splat_constant();
+  pass_config.fold_fp16_resource_casts =
+      converter_flags.fold_fp16_resource_casts();
   pass_config.enable_hlo_to_tf_conversion = true;
   pass_config.enable_stablehlo_conversion =
       converter_flags.convert_to_stablehlo();
@@ -139,7 +139,8 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
 
   // Set the input names.
   auto main_func = module->lookupSymbol<mlir::func::FuncOp>("main");
-  if (!main_func) return errors::Internal("Failed to find the main function.");
+  if (!main_func)
+    return absl::InternalError("Failed to find the main function.");
   // Retrieve input names from model flags.
   std::vector<std::string> input_names;
   for (const auto& input : model_flags.input_arrays()) {

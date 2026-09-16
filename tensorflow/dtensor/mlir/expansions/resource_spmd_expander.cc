@@ -150,7 +150,7 @@ absl::Status ValidateAndAssignResourceInputLayout(
 
       // TODO(hongjunchoi): Implement relayout logic for resource ops.
       if (layout_string != previous_layout.str())
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Trying to assign a variable to a resource with a different "
             "layout.");
     } else {
@@ -188,9 +188,9 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(auto input_layout,
                         ExtractLayoutFromOperand(op->getOperand(0)));
     if (!output_layout)
-      TF_RETURN_WITH_CONTEXT(errors::Internal("output layout is missing"));
+      TF_RETURN_WITH_CONTEXT(absl::InternalError("output layout is missing"));
     if (!input_layout)
-      TF_RETURN_WITH_CONTEXT(errors::Internal("input layout is missing"));
+      TF_RETURN_WITH_CONTEXT(absl::InternalError("input layout is missing"));
 
     InferSPMDExpandedLocalShape(op);
     llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
@@ -204,7 +204,7 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   if (!llvm::isa<mlir::TF::AssignVariableOp, mlir::TF::AssignAddVariableOp,
                  mlir::TF::AssignSubVariableOp>(op))
-    TF_RETURN_WITH_CONTEXT(errors::Internal("unsupported resource op"));
+    TF_RETURN_WITH_CONTEXT(absl::InternalError("unsupported resource op"));
 
   TF_ASSIGN_OR_RETURN(std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
@@ -225,9 +225,9 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto input_resource_value = op->getOpOperand(0).get();
   if (input_resource_value.getDefiningOp()) {
     if (!resource_layout)
-      TF_RETURN_WITH_CONTEXT(errors::Internal("missing layout on resource"));
+      TF_RETURN_WITH_CONTEXT(absl::InternalError("missing layout on resource"));
     if (!value_layout)
-      TF_RETURN_WITH_CONTEXT(errors::Internal("missing layout on value"));
+      TF_RETURN_WITH_CONTEXT(absl::InternalError("missing layout on value"));
     if (resource_layout != value_layout) {
       TF_ASSIGN_OR_RETURN(auto new_value,
                           EmitRelayout(op->getOperand(1), value_layout.value(),
@@ -236,14 +236,14 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
     }
   } else {
     if ((!resource_layout || resource_layout->IsEmpty()) && !value_layout)
-      TF_RETURN_WITH_CONTEXT(errors::Internal(
+      TF_RETURN_WITH_CONTEXT(absl::InternalError(
           "at least one of resource or value layout must be set"));
     // This error should not happen: if resource_layout is set, then we expect
     // a DTensorLayout op between the resource tensor and this op, so we should
     // actaully be in the if case rather than the else case.
     if (resource_layout && !resource_layout->IsEmpty() && value_layout &&
         resource_layout != value_layout)
-      TF_RETURN_WITH_CONTEXT(errors::Internal(
+      TF_RETURN_WITH_CONTEXT(absl::InternalError(
           "if both resource and value layout are set they must be equal"));
 
     auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(input_resource_value);
@@ -252,7 +252,7 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
 
     if (!enclosing_device_cluster)
       TF_RETURN_WITH_CONTEXT(
-          errors::InvalidArgument("op must be enclosed by a cluster"));
+          absl::InvalidArgumentError("op must be enclosed by a cluster"));
 
     auto block_arg_index = block_arg.getArgNumber();
 
@@ -303,7 +303,7 @@ ResourceSPMDExpander::ComputeLayoutForward(
     return llvm::DenseMap<int, Layout>();
   }
   // Return an error if not any of the ops above.
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(
       llvm::formatv(
           "Found unexpected resource op {0} during layout propagation.",
           OpName(op))
@@ -343,7 +343,7 @@ ResourceSPMDExpander::ComputeLayoutBackward(
   }
 
   // Return an error if not any of the ops above.
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(
       llvm::formatv(
           "Found unexpected resource op {0} during layout propagation.",
           OpName(op))

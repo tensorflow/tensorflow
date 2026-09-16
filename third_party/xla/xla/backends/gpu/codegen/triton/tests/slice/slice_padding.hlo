@@ -1,4 +1,6 @@
-// RUN: triton_test_correctness %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
+// TODO: b/502910372 - support multi-output fusion.
+// RUN-NOT: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
 
 fusion {
   param_0.1 = f32[64] parameter(0)

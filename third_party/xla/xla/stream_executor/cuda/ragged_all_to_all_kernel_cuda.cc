@@ -14,59 +14,62 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <cstdint>
 
 #include "absl/base/casts.h"
 #include "third_party/nccl/nccl.h"
-#include "xla/core/collectives/symmetric_memory.h"
+#include "third_party/nccl/nccl_device.h"  // IWYU pragma: keep
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel_lib.cu.h"
 
-using PtrArray = stream_executor::gpu::RaggedAllToAllOutputPtrs;
+namespace stream_executor::gpu {
 
-#define SINGLE_ARG(...) __VA_ARGS__
+template <int64_t kVectorSize>
+__global__ void __launch_bounds__(128)
+    RaggedAllToAllWithSymmetricMemoryKernelImpl(
+        const void* __restrict__ input_ptr,
+        ncclWindow_t output_ptrs_symmetric_memory, size_t output_sym_offset,
+        const int64_t* __restrict__ input_offsets_ptr,
+        const int64_t* __restrict__ send_sizes_ptr,
+        const int64_t* __restrict__ output_offsets_ptr,
+        int64_t num_updates_per_replica, int64_t num_row_elements) {
+  using T = Vec<kVectorSize>;
+  const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
+
+  T* output_ptr = static_cast<T* __restrict__>(ncclGetLsaPointer(
+      output_ptrs_symmetric_memory, output_sym_offset, blockIdx.x));
+
+  TransferDataToLsaPeer(typed_input_ptr, output_ptr, input_offsets_ptr,
+                        send_sizes_ptr, output_offsets_ptr,
+                        num_updates_per_replica, num_row_elements);
+}
+
+}  // namespace stream_executor::gpu
 
 #define REGISTER_RAGGED_ALL_TO_ALL_KERNEL(VECTOR_SIZE)                         \
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                              \
       RaggedAllToAllHostArrayPtrsKernelCuda##VECTOR_SIZE##Bytes,               \
-      SINGLE_ARG(                                                              \
-          stream_executor::gpu::RaggedAllToAllKernel<PtrArray, VECTOR_SIZE>),  \
+      stream_executor::gpu::RaggedAllToAllKernel<VECTOR_SIZE>,                 \
       stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {              \
         return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(   \
-            absl::bit_cast<void*>(&SINGLE_ARG(                                 \
-                stream_executor::gpu::RaggedAllToAllKernelImpl<PtrArray,       \
-                                                               VECTOR_SIZE>)), \
+            absl::bit_cast<void*>(                                             \
+                &stream_executor::gpu::RaggedAllToAllKernelImpl<VECTOR_SIZE>), \
             "ragged_all_to_all_kernel_host_array_ptrs_" #VECTOR_SIZE "_bytes", \
             arity);                                                            \
       }));                                                                     \
                                                                                \
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                              \
       RaggedAllToAllSymmetricMemoryKernelCuda##VECTOR_SIZE##Bytes,             \
-      SINGLE_ARG(                                                              \
-          stream_executor::gpu::RaggedAllToAllKernel<xla::SymmetricMemory*,    \
-                                                     VECTOR_SIZE>),            \
+      stream_executor::gpu::RaggedAllToAllWithSymmetricMemoryKernel<           \
+          VECTOR_SIZE>,                                                        \
       stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {              \
         return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(   \
-            absl::bit_cast<void*>(&SINGLE_ARG(                                 \
-                stream_executor::gpu::RaggedAllToAllKernelImpl<void*,          \
-                                                               VECTOR_SIZE>)), \
+            absl::bit_cast<void*>(                                             \
+                &stream_executor::gpu::                                        \
+                    RaggedAllToAllWithSymmetricMemoryKernelImpl<VECTOR_SIZE>), \
             "ragged_all_to_all_kernel_symmetric_memory_" #VECTOR_SIZE          \
-            "_bytes",                                                          \
-            arity);                                                            \
-      }));                                                                     \
-                                                                               \
-  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                              \
-      RaggedAllToAllDeviceAddressPtrsKernelCuda##VECTOR_SIZE##Bytes,           \
-      SINGLE_ARG(stream_executor::gpu::RaggedAllToAllKernel<                   \
-                 stream_executor::DeviceAddressBase, VECTOR_SIZE>),            \
-      stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {              \
-        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(   \
-            absl::bit_cast<void*>(&SINGLE_ARG(                                 \
-                stream_executor::gpu::RaggedAllToAllKernelImpl<void**,         \
-                                                               VECTOR_SIZE>)), \
-            "ragged_all_to_all_kernel_device_address_ptrs_" #VECTOR_SIZE       \
             "_bytes",                                                          \
             arity);                                                            \
       }));

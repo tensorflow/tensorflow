@@ -15,11 +15,11 @@
 """Tests for tensorflow.python.ops.special_math_ops."""
 
 from absl.testing import parameterized
-
 import numpy as np
 import opt_einsum
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -590,6 +590,38 @@ class BesselTest(test.TestCase, parameterized.TestCase):
         special_math_ops.bessel_i1e, inputs)
     self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
 
+  def test_besseli_gradient_at_zero(self):
+    inputs = [np.array([0.0], dtype=np.float32)]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_i1, inputs
+    )
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_i1e, inputs
+    )
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-3)
+
+    # Test double gradients do not yield NaN
+    x = constant_op.constant([0.0], dtype=dtypes.float32)
+    with backprop.GradientTape() as t2:
+      t2.watch(x)
+      with backprop.GradientTape() as t1:
+        t1.watch(x)
+        y = special_math_ops.bessel_i1(x)
+      dy_dx = t1.gradient(y, x)
+    d2y_dx2 = t2.gradient(dy_dx, x)
+    self.assertFalse(np.isnan(self.evaluate(d2y_dx2)))
+
+    with backprop.GradientTape() as t2:
+      t2.watch(x)
+      with backprop.GradientTape() as t1:
+        t1.watch(x)
+        y = special_math_ops.bessel_i1e(x)
+      dy_dx = t1.gradient(y, x)
+    d2y_dx2 = t2.gradient(dy_dx, x)
+    self.assertFalse(np.isnan(self.evaluate(d2y_dx2)))
+
   def test_besselj_gradient(self):
     inputs = [np.random.uniform(-50., 50., size=int(1e2))]
     analytical, numerical = gradient_checker_v2.compute_gradient(
@@ -599,6 +631,24 @@ class BesselTest(test.TestCase, parameterized.TestCase):
     analytical, numerical = gradient_checker_v2.compute_gradient(
         special_math_ops.bessel_j1, inputs)
     self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  def test_besselj_gradient_at_zero(self):
+    inputs = [np.array([0.0], dtype=np.float32)]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.bessel_j1, inputs
+    )
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+    # Test double gradients do not yield NaN
+    x = constant_op.constant([0.0], dtype=dtypes.float32)
+    with backprop.GradientTape() as t2:
+      t2.watch(x)
+      with backprop.GradientTape() as t1:
+        t1.watch(x)
+        y = special_math_ops.bessel_j1(x)
+      dy_dx = t1.gradient(y, x)
+    d2y_dx2 = t2.gradient(dy_dx, x)
+    self.assertFalse(np.isnan(self.evaluate(d2y_dx2)))
 
   def test_besselk_gradient(self):
     inputs = [np.random.uniform(1., 50., size=int(1e2))]
@@ -1068,6 +1118,119 @@ class EinsumGradTest(test.TestCase):
       for input_str in inputs.split(','):
         input_shapes.append(tuple([dimension_map[c] for c in input_str]))
       self._check_gradient(equation, *input_shapes)
+
+
+class ResolveXlaEinsumEllipsisTest(test.TestCase):
+  """Unit tests for _resolve_xla_einsum_ellipsis."""
+
+  def _fn(self, equation, shape0, shape1):
+    # Access the private helper directly for unit testing.
+    return special_math_ops._resolve_xla_einsum_ellipsis(
+        equation, shape0, shape1
+    )
+
+  def test_no_ellipsis(self):
+    """Equations without '...' should be returned unchanged."""
+    eq = 'ab,bc->ac'
+    result = self._fn(eq, [4, 5], [5, 6])
+    self.assertEqual(result, 'ab,bc->ac')
+
+  def test_same_rank_both_ellipsis(self):
+    """Both operands have the same number of batch dims."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [2, 3, 5, 6])
+    self.assertEqual(result, 'deab,debc->deac')
+
+  def test_broadcasting_left_larger(self):
+    """Left operand has more batch dims than right (broadcasting)."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [3, 5, 6])
+    # batch_ndims=2, left gets 'de', right gets 'e' (right-aligned).
+    self.assertEqual(result, 'deab,ebc->deac')
+
+  def test_broadcasting_right_larger(self):
+    """Right operand has more batch dims than left (broadcasting)."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [3, 4, 5], [2, 3, 5, 6])
+    # batch_ndims=2, left gets 'e' (right-aligned), right gets 'de'.
+    self.assertEqual(result, 'eab,debc->deac')
+
+  def test_right_no_ellipsis(self):
+    """Only left operand has ellipsis."""
+    eq = '...ab,bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [5, 6])
+    self.assertEqual(result, 'deab,bc->deac')
+
+  def test_left_no_ellipsis(self):
+    """Only right operand has ellipsis."""
+    eq = 'ab,...bc->...ac'
+    result = self._fn(eq, [4, 5], [2, 3, 5, 6])
+    self.assertEqual(result, 'ab,debc->deac')
+
+  def test_unknown_rank_input0(self):
+    """Falls back to original equation when input0 shape is unknown."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, None, [2, 3, 5, 6])
+    self.assertEqual(result, eq)
+
+  def test_unknown_rank_input1(self):
+    """Falls back to original equation when input1 shape is unknown."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], None)
+    self.assertEqual(result, eq)
+
+  def test_zero_batch_dims(self):
+    """Ellipsis covers zero dims: strip it, return explicit equation."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [4, 5], [5, 6])
+    self.assertEqual(result, 'ab,bc->ac')
+
+  def test_spaces_in_equation(self):
+    """Spaces in the equation are stripped before processing."""
+    eq = '...ab,  bc -> ...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [5, 6])
+    self.assertEqual(result, 'deab,bc->deac')
+
+  def test_no_ellipsis_with_spaces_unchanged(self):
+    """Equations without '...' are returned unchanged, even with spaces."""
+    eq = 'ab, bc -> ac'
+    result = self._fn(eq, [4, 5], [5, 6])
+    # No ellipsis: the original string (including spaces) must be returned.
+    self.assertEqual(result, eq)
+
+  def test_negative_batch_falls_back(self):
+    """Falls back when rank is less than explicit label count (malformed)."""
+    # rank0=1 but left_explicit='ab' (len 2) -> batch0 = 1-2 = -1
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [1], [3, 5, 6])
+    self.assertEqual(result, eq)
+
+  def test_uppercase_labels_used_when_lowercase_exhausted(self):
+    """Batch label is uppercase when all lowercase letters are in use."""
+    # Use all 26 lowercase letters as explicit labels so that the helper must
+    # fall back to uppercase letters for the single batch dimension.
+    # left_explicit  = 26 chars  -> rank 27 -> batch0 = 1
+    # right_explicit = 27 chars  -> rank 28 -> batch1 = 1  (no ellipsis)
+    explicit = 'abcdefghijklmnopqrstuvwxyz'
+    eq = '...{0},{0}A->...A'.format(explicit)
+    shape0 = [1] * 27  # rank 27: 1 batch dim + 26 explicit dims
+    shape1 = [1] * 28  # rank 28: 27 explicit dims (no ellipsis in right)
+    result = self._fn(eq, shape0, shape1)
+    # The ellipsis must have been resolved (no '...' remaining).
+    self.assertNotIn('...', result)
+    self.assertIn('->', result)
+    # All 26 lowercase letters are in 'used', and 'A' is also used, so the
+    # first available label is 'B' (uppercase).
+    resolved_left = result.split('->')[0].split(',')[0]
+    batch_label = resolved_left[0]  # first char of left subscript is batch
+    self.assertTrue(
+        batch_label.isupper(),
+        msg=(
+            'Expected an uppercase batch label, '
+            f'got {batch_label!r} in {result!r}'
+        ),
+    )
+    self.assertEqual(batch_label, 'B')
 
 
 class EinsumBenchmark(test.Benchmark):

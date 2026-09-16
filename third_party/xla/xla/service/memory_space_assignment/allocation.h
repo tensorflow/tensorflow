@@ -151,6 +151,7 @@ class Allocation {
   virtual bool is_window_prefetched_allocation() const = 0;
   virtual bool is_scoped_allocation() const = 0;
   virtual bool is_reserved_allocation() const = 0;
+  virtual bool is_mirrored_allocation() const = 0;
   // True if the allocation is for a copy or a sliced-copy.
   bool is_copy_like_allocation() const;
 
@@ -237,6 +238,7 @@ class PinnedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn,
                        const HloLiveRange& hlo_live_range,
                        const HloAliasAnalysis& alias_analysis) override;
@@ -274,6 +276,7 @@ class ReservedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return true; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn,
                        const HloLiveRange& hlo_live_range,
                        const HloAliasAnalysis& alias_analysis) override;
@@ -312,6 +315,10 @@ class ReservedAllocation final : public Allocation {
 //   must be null.
 // * If are `async_mem_op_start` and `async_mem_op_done` are non-null,
 //   `sync_mem_op` must be null.
+// * `source_operand_index` is the index of the operand in `sync_mem_op`
+//   (and consequently in the created `async_mem_op_start`) that represents the
+//   buffer being copied. This operand will be replaced with the actual
+//   producing instruction of the buffer (say, after tuples and GTEs are added).
 class CopyAllocation final : public Allocation {
  public:
   CopyAllocation(
@@ -322,7 +329,8 @@ class CopyAllocation final : public Allocation {
       std::optional<int64_t> cross_program_prefetch_index = std::nullopt,
       HloInstruction* sync_mem_op = nullptr,
       HloInstruction* async_mem_op_start = nullptr,
-      HloInstruction* async_mem_op_done = nullptr);
+      HloInstruction* async_mem_op_done = nullptr,
+      int64_t source_operand_index = 0);
 
   // Overridden methods
   //
@@ -337,6 +345,7 @@ class CopyAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn,
                        const HloLiveRange& hlo_live_range,
                        const HloAliasAnalysis& alias_analysis) override;
@@ -375,6 +384,9 @@ class CopyAllocation final : public Allocation {
   HloInstruction* copy_done_ = nullptr;
   // The sync data movement instruction that this copy is associated with.
   HloInstruction* sync_mem_op_ = nullptr;
+  // The index of the operand in the async start instruction that should be
+  // replaced with the producing instruction.
+  int64_t source_operand_index_ = 0;
 };
 
 // This class represents an allocation resulting from a collection of
@@ -447,6 +459,7 @@ class SlicedCopyAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous slice copies, and a bitcast-concat
   // call to glue the slices back together.
@@ -527,6 +540,7 @@ class WindowPrefetchedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return true; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous window prefetches.
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn,
@@ -567,13 +581,26 @@ class WindowPrefetchedAllocation final : public Allocation {
   int64_t bytes_;
 };
 
-// An allocation in the default memory space that mirrors another Allocation
-// object. This is useful to model an eviction that happens before a while op
-// so that we don't need to redundantly evict the buffer after the while op as
-// well.
+// An allocation that mirrors/duplicates another Allocation but does not reserve
+// any new memory. We use a mirrored allocation for an HloPosition, when another
+// allocation for a different HloPosition of the same HloValue exists, and we
+// can read the value from that allocation instead of creating a new allocation.
+// Mirrored allocations are used in the following cases:
+// * The input to a while loop is in default memory, we prefetch the input in
+//   the while loop, for one use, but other uses in the while loop, after the
+//   prefetched uses, are served from default memory. In such a case, we serve
+//   those subsequent uses from a mirrored allocation of the input (in default
+//   memory) leading into the while loop, instead of performing an unnecessary
+//   evcition (in the while loop) of the prefetched instance.
+// * If an argument to a conditional has been pinned to vmem for the duration of
+//   the conditional, we associate a mirrored allocation with the corresponding
+//   parameters in the conditional's branch computations.
 class MirroredAllocation final : public Allocation {
  public:
   MirroredAllocation(const Allocation& original_allocation, int64_t time);
+  MirroredAllocation(HloPosition defining_position,
+                     const Allocation& original_allocation, int64_t start_time,
+                     int64_t end_time);
 
   // Overridden methods
   //
@@ -586,6 +613,7 @@ class MirroredAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return true; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn,
                        const HloLiveRange& hlo_live_range,
                        const HloAliasAnalysis& alias_analysis) override;
@@ -599,8 +627,15 @@ class MirroredAllocation final : public Allocation {
 
   // New non-virtual methods
   bool operator==(const MirroredAllocation& other) const;
+  const Allocation& original_allocation() const { return original_allocation_; }
+
+  HeapSimulator::Chunk chunk() const { return original_allocation_.chunk(); }
+  std::optional<HeapSimulator::Chunk> maybe_chunk() const {
+    return original_allocation_.maybe_chunk();
+  }
 
  private:
+  const std::optional<HloPosition> defining_position_;
   const Allocation& original_allocation_;
 };
 
@@ -624,6 +659,7 @@ class ParentAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn,
                        const HloLiveRange& hlo_live_range,
                        const HloAliasAnalysis& alias_analysis) override;
@@ -660,6 +696,7 @@ class ScopedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return true; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn,
                        const HloLiveRange& hlo_live_range,
                        const HloAliasAnalysis& alias_analysis) override;

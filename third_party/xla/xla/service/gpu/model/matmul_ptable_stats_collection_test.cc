@@ -141,9 +141,9 @@ TEST_F(MatmulStatsCollectionTest,
         }
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed, MatmulPerfTableStatsCollection(profiles_path_, device_info_)
                         .Run(module.get()));
 
@@ -194,8 +194,8 @@ TEST_F(MatmulStatsCollectionTest,
         }
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, MatmulPerfTableStatsCollection(profiles_path_, device_info_)
                         .Run(module.get()));
 

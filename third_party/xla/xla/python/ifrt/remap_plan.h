@@ -16,21 +16,28 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_REMAP_PLAN_H_
 #define XLA_PYTHON_IFRT_REMAP_PLAN_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -46,84 +53,58 @@ class Client;
 // * Every output shard must have exactly one input shard mapped.
 //
 // There is no API-level constraint on their global shapes and shardings.
-struct RemapPlan {
-  // Half-open interval with optional skips. Represents elements at offset
-  // `[start, start + step, start + step * 2, ..., end)` (`end` is excluded).
-  // Using the Python slice representation, it corresponds to
-  // `[start:end:step]`. `start` and `end` must be zero or positive. `step`
-  // must be positive (reverse iteration is disallowed for simplicity).
-  struct Interval {
-    int64_t start;
-    int64_t end;
-    int64_t step;
-
-    bool operator==(const Interval& other) const {
-      return start == other.start && end == other.end && step == other.step;
-    }
-
-    std::string DebugString() const;
-  };
-
-  // Mapping of shards from an input array to an output array. The shards whose
-  // index is chosen by `from` in `arrays[in_array]` will be used for the shards
-  // whose index is chosen by `to` in `out_arrays[out_array]`. `from` and `to`
-  // must contain the same number of `Interval`s, and each corresponding pair of
-  // `Interval` from `from` and `to` must represent the same number of shards.
-  struct Mapping {
-    int in_array;
-    int out_array;
-    std::vector<Interval> from;
-    std::vector<Interval> to;
-
-    bool operator==(const Mapping& other) const {
-      return in_array == other.in_array && out_array == other.out_array &&
-             from == other.from && to == other.to;
-    }
-
-    std::string DebugString() const;
-  };
-
+class RemapPlan {
+ public:
   // List of devices that are used as the source shards for a given input array
   // contributing to a given output array.
   struct InputDeviceRange {
     int in_array;
     DeviceListRef input_devices;
+
+    bool operator==(const InputDeviceRange& other) const {
+      return in_array == other.in_array && input_devices == other.input_devices;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const InputDeviceRange& input_device_range) {
+      return H::combine(std::move(h), input_device_range.in_array,
+                        input_device_range.input_devices);
+    }
   };
 
-  // Specification of inputs.
-  std::vector<ArraySpec> input_specs;
+  RemapPlan() : rep_(std::make_shared<Rep>()) {}
 
-  // Specification of outputs.
-  std::vector<ArraySpec> output_specs;
+  RemapPlan(std::vector<ArraySpec> input_specs,
+            std::vector<ArraySpec> output_specs,
+            absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+                input_devices_for_output_map)
+      : rep_(std::make_shared<Rep>(std::move(input_specs),
+                                   std::move(output_specs),
+                                   std::move(input_devices_for_output_map))) {}
 
-  // Mappings.
-  std::shared_ptr<std::vector<Mapping>> mappings;
+  absl::Span<const ArraySpec> input_specs() const { return rep_->input_specs; }
 
-  // If a key K is present in `input_devices_for_output_map` then it describes
-  // all the inputs that contribute to the output with index K.
-  //
-  // The value lists all the input array indices that contribute to output K,
-  // and for each input array I a device list containing all of the devices that
-  // hold shards coming from I.
-  //
-  // Information must be consistent with the information in `mappings`, i.e.,
-  // `input_devices_for_output_map` must duplicate, not replace, information in
-  // `mappings`.
-  //
-  // Entries in `input_devices_for_output_map` are strictly optional, but their
-  // presence may allow some implementations to be more efficient since the
-  // implementation need not construct the device lists at execution time.
-  absl::flat_hash_map<int, std::vector<InputDeviceRange>>
-      input_devices_for_output_map;
+  absl::Span<const ArraySpec> output_specs() const {
+    return rep_->output_specs;
+  }
 
-  // Validates this plan against the requirements (see `RemapPlan` comment).
-  // This is a slow operation. It should not be performed repeatedly.
-  // Implementations of `Client::RemapArrays()` may bypass runtime checks on a
-  // plan's validity, delegating the role to this method.
+  const absl::flat_hash_map<int, std::vector<InputDeviceRange>>&
+  input_devices_for_output_map() const {
+    return rep_->input_devices_for_output_map;
+  }
+
+  // Validates array-level consistency (dtype, shard shape, memory kind, and
+  // layout) between input and output array pairs. The result will be cached
+  // within the plan. `Client::RemapArrays` implementations should at least do
+  // this validation.
+  absl::Status ValidateArraySpecs() const;
+
+  // Validates this plan against all requirements, including array-level
+  // consistency (via `ValidateArraySpecs()`) and shard-level consistency (input
+  // array shards are correctly mapped to output array shards). This is a slow
+  // operation. The result will be cached within the plan. The users building a
+  // complex `RemapPlan` are strongly encouraged to call this method.
   absl::Status Validate() const;
-
-  // Fills in `input_devices_for_output_map` from `mappings`.
-  absl::Status ComputeInputDevicesForOutputMap(Client* client);
 
   // Constructs `RemapPlan` from `RemapPlanProto`. Devices are looked up
   // using `lookup_device`. Device ids in the proto must be consistent with
@@ -140,7 +121,7 @@ struct RemapPlan {
   absl::StatusOr<RemapPlanProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     RemapPlanProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -149,6 +130,80 @@ struct RemapPlan {
   // Checks whether the RemapPlan is valid with `semantics`.
   absl::Status CheckArrayCopySemantics(
       xla::ifrt::ArrayCopySemantics semantics) const;
+
+  bool operator==(const RemapPlan& other) const {
+    return rep_ == other.rep_ ||
+           (absl::HashOf(*this) == absl::HashOf(other) &&
+            rep_->input_specs == other.rep_->input_specs &&
+            rep_->output_specs == other.rep_->output_specs &&
+            rep_->input_devices_for_output_map ==
+                other.rep_->input_devices_for_output_map);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const RemapPlan& plan) {
+    plan.Hash(absl::HashState::Create(&h));
+    return std::move(h);
+  }
+
+ private:
+  void Hash(absl::HashState state) const;
+
+  // Validates array-level consistency (dtype, shard shape, memory kind, and
+  // layout) between input and output array pairs.
+  absl::Status ValidateArraySpecsUncached() const;
+
+  // Validates shard-level consistency (input array shards are correctly mapped
+  // to output array shards).
+  //
+  // Prerequisite: `ValidateArraySpecsUncached()` must have succeeded on this
+  // plan. This method assumes that array-level consistency, non-empty inputs,
+  // and array index bounds are already validated.
+  absl::Status ValidateArrayShardMappingsUncached() const;
+
+  struct Rep {
+    // Specification of inputs.
+    std::vector<ArraySpec> input_specs;
+
+    // Specification of outputs.
+    std::vector<ArraySpec> output_specs;
+
+    // If a key K is present in `input_devices_for_output_map` then it describes
+    // all the inputs that contribute to the output with index K.
+    //
+    // The value lists all the input array indices that contribute to output K,
+    // and for each input array I a device list containing all of the devices
+    // that hold shards coming from I.
+    absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+        input_devices_for_output_map;
+
+    // Cached hash. 0 indicates the hash needs to be computed and cached. May be
+    // written multiple times with the same non-zero value.
+    static constexpr uint64_t kUnsetHash = 0;
+    mutable std::atomic<uint64_t> hash = kUnsetHash;
+
+    mutable absl::once_flag validate_array_specs_once;
+    mutable absl::Status validate_array_specs_status;
+
+    mutable absl::once_flag validate_array_shard_mappings_once;
+    mutable absl::Status validate_array_shard_mappings_status;
+
+    Rep() = default;
+
+    Rep(std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
+        absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+            input_devices_for_output_map)
+        : input_specs(std::move(input_specs)),
+          output_specs(std::move(output_specs)),
+          input_devices_for_output_map(
+              std::move(input_devices_for_output_map)) {}
+
+    // `operator==` is more efficient with shallow copies.
+    Rep(const Rep&) = delete;
+    Rep& operator=(const Rep&) = delete;
+  };
+
+  absl_nonnull std::shared_ptr<const Rep> rep_;
 };
 
 }  // namespace ifrt

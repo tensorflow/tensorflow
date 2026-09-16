@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/types/half.h"
@@ -53,6 +54,21 @@ class ReverseOpModel : public SingleOpModel {
   int axis_;
   int output_;
 };
+
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8Reverse(TensorType tensor_type) {
+  ReverseOpModel<uint8_t> model({tensor_type, {4}}, {TensorType_INT32, {1}});
+  model.PopulateTensor<uint8_t>(model.input(), {0x00, 0x38, 0xbc, 0x7e});
+  model.PopulateTensor<int32_t>(model.axis(), {0});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({0x7e, 0xbc, 0x38, 0x00}));
+}
+
+TEST(ReverseOpTest, Float8) {
+  TestFloat8Reverse(TensorType_FLOAT8_E4M3FN);
+  TestFloat8Reverse(TensorType_FLOAT8_E5M2);
+}
+#endif
 
 // float32 tests.
 TEST(ReverseOpTest, FloatOneDimension) {

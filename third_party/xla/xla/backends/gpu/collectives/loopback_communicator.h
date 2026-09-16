@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -47,14 +46,15 @@ namespace xla::gpu {
 // See LoopbackCollectives for the semantics of collective operations.
 class LoopbackCommunicator : public GpuCommunicator {
  public:
-  LoopbackCommunicator(se::StreamExecutor* executor, size_t num_ranks,
+  LoopbackCommunicator(se::StreamExecutor* stream_executor, size_t num_ranks,
                        size_t rank);
 
   absl::StatusOr<size_t> NumRanks() const final;
   absl::StatusOr<size_t> CurrentRank() final;
+
+  se::StreamExecutor* stream_executor() const final { return stream_executor_; }
+
   std::string ToString() const final;
-  Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 
   Future<> AllReduce(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
@@ -135,7 +135,7 @@ class LoopbackCommunicator : public GpuCommunicator {
                           const Executor& executor) final;
 
  private:
-  se::StreamExecutor* executor_;
+  se::StreamExecutor* stream_executor_;
   size_t num_ranks_;
   size_t rank_;
 };

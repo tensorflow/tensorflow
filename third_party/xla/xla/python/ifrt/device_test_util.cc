@@ -47,7 +47,7 @@ struct DeviceTestClientState {
   Client* client;
 
   // Shared MemoryKind objects.
-  MemoryKind host_memory_kind;
+  MemoryKind default_memory_kind;
 
   // Mapping from a memory ID to the mock memory object.
   absl::flat_hash_map<MemoryId, std::unique_ptr<Memory>> memory_map;
@@ -65,14 +65,14 @@ struct DeviceTestClientState {
 // Creates a mock client for device tests. The client will have a specified
 // number of fake addressable and non-addressable devices. Client implements
 // `devices()` and `LookupDevice()`. Device implements `id()`, with an
-// arbitrary deterministic device ids assigned. Each device has "host" memory
+// arbitrary deterministic device ids assigned. Each device has "device" memory
 // (which is also its default memory), and each memory has a single device.
 std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
                                                  int num_addressable_devices) {
   CHECK_GE(num_devices, num_addressable_devices);
   auto state = std::make_shared<DeviceTestClientState>();
 
-  state->host_memory_kind = MemoryKind("host");
+  state->default_memory_kind = MemoryKind();
 
   state->memory_map.reserve(num_devices);
   state->memories.reserve(num_devices);
@@ -87,7 +87,7 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
     const bool addressable = i < num_addressable_devices;
     auto memory = std::make_unique<MockMemory>();
     ON_CALL(*memory, Id).WillByDefault(Return(MemoryId(i + 10)));
-    ON_CALL(*memory, Kind).WillByDefault(ReturnRef(state->host_memory_kind));
+    ON_CALL(*memory, Kind).WillByDefault(ReturnRef(state->default_memory_kind));
     // memory_devices will be filled in at the end of the loop.
     ON_CALL(*memory, Devices)
         .WillByDefault(ReturnPointee(&state->memory_devices[i]));

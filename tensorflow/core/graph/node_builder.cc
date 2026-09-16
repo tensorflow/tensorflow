@@ -130,7 +130,7 @@ absl::Status NodeBuilder::Finalize(Graph* graph, Node** created_node,
     *created_node = nullptr;
   }
   if (!errors_.empty()) {
-    return errors::InvalidArgument(absl::StrJoin(errors_, "\n"));
+    return absl::InvalidArgumentError(absl::StrJoin(errors_, "\n"));
   }
 
   NodeDef node_def;

@@ -34,7 +34,8 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_ll.h"
+#include "xla/codegen/intrinsic/cpp/eigen_unary_32_ll.h"
+#include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
@@ -42,7 +43,11 @@ namespace xla::codegen {
 
 const std::string& GetCppGenIrString(
     const intrinsics::IntrinsicOptions& options) {
-  return ::llvm_ir::kEigenUnaryLlIr;
+  if (options.Contains("+avx512f") && (options.prefer_vector_width == 512 ||
+                                       options.prefer_vector_width == 0)) {
+    return ::llvm_ir::kEigenUnary64LlIr;
+  }
+  return ::llvm_ir::kEigenUnary32LlIr;
 }
 
 bool AreEigenIntrinsicsAvailable() {
@@ -62,7 +67,9 @@ llvm::Function* GetCppGenFunction(llvm::Module* module,
 
   if (!func->isDeclaration()) {
     func->setLinkage(llvm::Function::InternalLinkage);
-    func->addFnAttr(llvm::Attribute::AlwaysInline);
+    if (!func->hasFnAttribute(llvm::Attribute::NoInline)) {
+      func->addFnAttr(llvm::Attribute::AlwaysInline);
+    }
   }
   return func;
 }
@@ -140,7 +147,9 @@ void CppGenIntrinsicLibrary::LinkIntoModule(llvm::Module& dst_module) const {
     llvm::Function* linked_func = dst_module.getFunction(func);
     if (linked_func && !linked_func->isDeclaration()) {
       linked_func->setLinkage(llvm::Function::InternalLinkage);
-      linked_func->addFnAttr(llvm::Attribute::AlwaysInline);
+      if (!linked_func->hasFnAttribute(llvm::Attribute::NoInline)) {
+        linked_func->addFnAttr(llvm::Attribute::AlwaysInline);
+      }
     }
   }
 }

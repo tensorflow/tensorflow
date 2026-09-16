@@ -599,28 +599,30 @@ OpDefBuilder& OpDefBuilder::Doc(std::string text) {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetIsCommutative() {
-  op_def()->set_is_commutative(true);
+OpDefBuilder& OpDefBuilder::SetIsCommutative(bool is_commutative) {
+  op_def()->set_is_commutative(is_commutative);
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetIsAggregate() {
-  op_def()->set_is_aggregate(true);
+OpDefBuilder& OpDefBuilder::SetIsAggregate(bool is_aggregate) {
+  op_def()->set_is_aggregate(is_aggregate);
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetIsStateful() {
-  op_def()->set_is_stateful(true);
+OpDefBuilder& OpDefBuilder::SetIsStateful(bool is_stateful) {
+  op_def()->set_is_stateful(is_stateful);
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
-  op_def()->set_allows_uninitialized_input(true);
+OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput(
+    bool allows_uninitialized_input) {
+  op_def()->set_allows_uninitialized_input(allows_uninitialized_input);
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetIsDistributedCommunication() {
-  op_def()->set_is_distributed_communication(true);
+OpDefBuilder& OpDefBuilder::SetIsDistributedCommunication(
+    bool is_distributed_communication) {
+  op_def()->set_is_distributed_communication(is_distributed_communication);
   return *this;
 }
 
@@ -692,7 +694,7 @@ absl::Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   }
 
   if (errors.empty()) return absl::OkStatus();
-  return errors::InvalidArgument(absl::StrJoin(errors, "\n"));
+  return absl::InvalidArgumentError(absl::StrJoin(errors, "\n"));
 }
 
 }  // namespace tensorflow

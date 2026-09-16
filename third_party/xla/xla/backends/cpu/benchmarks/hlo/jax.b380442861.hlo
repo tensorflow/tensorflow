@@ -1,0 +1,56 @@
+HloModule jit_compute, entry_computation_layout={()->s32[]}, allow_spmd_sharding_propagation_to_output={true}
+// see b/380442861
+
+region_1.4 {
+  Arg_0.5 = s32[] parameter(0), metadata={op_name="jit(compute)/jit(main)/while/body/reduce_sum"}
+  Arg_1.6 = s32[] parameter(1), metadata={op_name="jit(compute)/jit(main)/while/body/reduce_sum"}
+  ROOT add.7 = s32[] add(Arg_0.5, Arg_1.6), metadata={op_name="jit(compute)/jit(main)/while/body/reduce_sum" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=30}
+}
+
+None.8 {
+  Arg_1.10 = s32[] parameter(1), metadata={op_name="jit(compute)/jit(main)/while/body/closed_call"}
+  iota.12 = s32[1000000]{0} iota(), iota_dimension=0, metadata={op_name="jit(compute)/jit(main)/while/body/iota" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=30}
+  multiply.13 = s32[1000000]{0} multiply(iota.12, iota.12), metadata={op_name="jit(compute)/jit(main)/while/body/integer_pow" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=30}
+  constant.11 = s32[] constant(0)
+  reduce.14 = s32[] reduce(multiply.13, constant.11), dimensions={0}, to_apply=region_1.4, metadata={op_name="jit(compute)/jit(main)/while/body/reduce_sum" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=30}
+  Arg_0.9 = s32[] parameter(0), metadata={op_name="jit(compute)/jit(main)/while/body/closed_call"}
+  add.15 = s32[] add(reduce.14, Arg_0.9), metadata={op_name="jit(compute)/jit(main)/while/body/add" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=30}
+  ROOT add.16 = s32[] add(Arg_1.10, add.15), metadata={op_name="jit(compute)/jit(main)/while/body/add" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=30}
+} // None.8
+
+region_0.17 {
+  arg_tuple.18 = (s32[], s32[], s32[1000000]{0}) parameter(0)
+  get-tuple-element.19 = s32[] get-tuple-element(arg_tuple.18), index=0
+  constant.22 = s32[] constant(1)
+  add.31 = s32[] add(get-tuple-element.19, constant.22), metadata={op_name="jit(compute)/jit(main)/while/body/add" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  get-tuple-element.20 = s32[] get-tuple-element(arg_tuple.18), index=1
+  get-tuple-element.21 = s32[1000000]{0} get-tuple-element(arg_tuple.18), index=2
+  constant.24 = s32[] constant(0)
+  compare.25 = pred[] compare(get-tuple-element.19, constant.24), direction=LT, metadata={op_name="jit(compute)/jit(main)/while/body/lt" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  constant.23 = s32[] constant(1000000)
+  add.26 = s32[] add(get-tuple-element.19, constant.23), metadata={op_name="jit(compute)/jit(main)/while/body/add" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  select.27 = s32[] select(compare.25, add.26, get-tuple-element.19), metadata={op_name="jit(compute)/jit(main)/while/body/select_n" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  dynamic-slice.28 = s32[1]{0} dynamic-slice(get-tuple-element.21, select.27), dynamic_slice_sizes={1}, metadata={op_name="jit(compute)/jit(main)/while/body/dynamic_slice" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  reshape.29 = s32[] reshape(dynamic-slice.28), metadata={op_name="jit(compute)/jit(main)/while/body/squeeze" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  call.30 = s32[] call(get-tuple-element.20, reshape.29), to_apply=None.8
+  ROOT tuple.32 = (s32[], s32[], s32[1000000]{0}) tuple(add.31, call.30, get-tuple-element.21)
+} // region_0.17
+
+region_2.33 {
+  arg_tuple.34 = (s32[], s32[], s32[1000000]{0}) parameter(0)
+  get-tuple-element.36 = s32[] get-tuple-element(arg_tuple.34), index=1
+  get-tuple-element.37 = s32[1000000]{0} get-tuple-element(arg_tuple.34), index=2
+  get-tuple-element.35 = s32[] get-tuple-element(arg_tuple.34), index=0
+  constant.38 = s32[] constant(1000000)
+  ROOT compare.39 = pred[] compare(get-tuple-element.35, constant.38), direction=LT, metadata={op_name="jit(compute)/jit(main)/while/cond/lt" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+} // region_2.33
+
+ENTRY main.43 {
+  constant.1 = s32[] constant(0)
+  iota.2 = s32[1000000]{0} iota(), iota_dimension=0, metadata={op_name="jit(compute)/jit(main)/iota" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  tuple.3 = (s32[], s32[], s32[1000000]{0}) tuple(constant.1, constant.1, iota.2), metadata={op_name="jit(compute)/jit(main)/while" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  while.40 = (s32[], s32[], s32[1000000]{0}) while(tuple.3), condition=region_2.33, body=region_0.17, metadata={op_name="jit(compute)/jit(main)/while" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  get-tuple-element.41 = s32[] get-tuple-element(while.40), index=0, metadata={op_name="jit(compute)/jit(main)/while" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+  ROOT get-tuple-element.42 = s32[] get-tuple-element(while.40), index=1, metadata={op_name="jit(compute)/jit(main)/while" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=35}
+} // main.43
+

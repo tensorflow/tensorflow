@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
-#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
@@ -132,7 +131,7 @@ DenseElementsAttr getScalarOfType(Type ty, int64_t rawValue) {
       APFloat real(floatTy.getFloatSemantics(), rawValue);
       APFloat imag = APFloat::getZero(floatTy.getFloatSemantics());
       return DenseElementsAttr::get(scalarTy,
-                                    std::complex<APFloat>(real, imag));
+                                    mlir::Complex<APFloat>(real, imag));
     }
   }
   llvm_unreachable("unsupported type");
@@ -154,7 +153,7 @@ DenseElementsAttr getScalarNegZeroOfType(Type ty) {
       APFloat negZero =
           APFloat::getZero(floatTy.getFloatSemantics(), /*Negative=*/true);
       return DenseElementsAttr::get(scalarTy,
-                                    std::complex<APFloat>(negZero, negZero));
+                                    mlir::Complex<APFloat>(negZero, negZero));
     }
   }
   llvm_unreachable("unsupported type");

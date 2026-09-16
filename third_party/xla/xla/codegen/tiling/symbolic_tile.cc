@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -251,26 +252,26 @@ bool IndexingMapConstraintsCanBeIgnored(const IndexingMap& indexing_map) {
   return SymbolicTile(std::move(tile_map), std::move(constraints));
 }
 
-std::string SymbolicTile::ToString() const {
+std::string SymbolicTile::ToString(absl::string_view separator) const {
   std::stringstream ss;
-  Print(ss);
+  Print(ss, separator);
   return ss.str();
 }
 
-void SymbolicTile::Print(std::ostream& out) const {
-  out << "Symbolic tile with\n";
-  out << "\toffset_map: " << offset_map();
-  out << "\n\tsize_map: " << size_map();
-  out << "\n\tstride_map: " << stride_map();
+void SymbolicTile::Print(std::ostream& out, absl::string_view separator) const {
+  out << "Symbolic tile with" << separator;
+  out << "offset_map: " << offset_map() << separator;
+  out << "size_map: " << size_map() << separator;
+  out << "stride_map: " << stride_map();
   const std::vector<IndexingMap::Variable>& rt_vars = tile_map_.GetRTVars();
   if (!rt_vars.empty()) {
-    out << "\n\trt_vars: ";
+    out << separator << "rt_vars: ";
     for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
       out << 's' << index << " in " << rt_var.bounds << ", ";
     }
   }
   if (!constraints_.IsAlwaysSatisfied()) {
-    out << "\n\tconstraints: ";
+    out << separator << "constraints: ";
     constraints_.Print(out, tile_map_.GetDimensionCount());
   }
 }

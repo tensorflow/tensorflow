@@ -33,7 +33,9 @@ limitations under the License.
 #include "flatbuffers/string.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -89,6 +91,12 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
   ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
+  std::unique_ptr<::tflite::profiling::BufferedProfiler> profiler;
+  if (yield_fp16_precision_) {
+    profiler = std::make_unique<::tflite::profiling::BufferedProfiler>(1024);
+    delegate_interpreter->SetProfiler(profiler.get());
+  }
+
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
@@ -98,39 +106,59 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
       delegate_interpreter->typed_input_tensor<float>(0);
   std::copy_n(default_input_data, Size(), delegate_input_data);
 
+  if (profiler) {
+    profiler->StartProfiling();
+  }
+
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+  if (profiler) {
+    profiler->StopProfiling();
+    EXPECT_TRUE(HasConvertNode(profiler.get()))
+        << "Expected Convert nodes in FP16 rewrite";
+  }
 
   float* default_output_data =
       default_interpreter->typed_output_tensor<float>(0);
   float* delegate_output_data =
       delegate_interpreter->typed_output_tensor<float>(0);
 
-  switch (unary_op) {
-    case BuiltinOperator_ABS:
-    case BuiltinOperator_CEIL:
-    case BuiltinOperator_FLOOR:
-    case BuiltinOperator_NEG:
-    case BuiltinOperator_RELU:
-    case BuiltinOperator_RELU_N1_TO_1:
-    case BuiltinOperator_RELU6:
-    case BuiltinOperator_ROUND:
-    case BuiltinOperator_SQUARE:
-      for (size_t i = 0; i < Size(); i++) {
-        ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
-      }
-      break;
-    default:
-      for (size_t i = 0; i < Size(); i++) {
-        ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
-                    std::max(std::numeric_limits<float>::epsilon() *
-                                 AbsoluteTolerance(),
-                             std::numeric_limits<float>::epsilon() *
-                                 std::max(std::abs(default_output_data[i]) *
-                                              RelativeTolerance(),
-                                          1.0f)));
-      }
-      break;
+  if (yield_fp16_precision_) {
+    const float tolerance_scale = 1.0f;
+    for (size_t i = 0; i < Size(); i++) {
+      ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
+                  std::max(AbsoluteTolerance() * tolerance_scale,
+                           std::max(std::abs(default_output_data[i]),
+                                    std::abs(delegate_output_data[i])) *
+                               RelativeTolerance() * tolerance_scale));
+    }
+  } else {
+    switch (unary_op) {
+      case BuiltinOperator_ABS:
+      case BuiltinOperator_CEIL:
+      case BuiltinOperator_FLOOR:
+      case BuiltinOperator_NEG:
+      case BuiltinOperator_RELU:
+      case BuiltinOperator_RELU_N1_TO_1:
+      case BuiltinOperator_RELU6:
+      case BuiltinOperator_ROUND:
+      case BuiltinOperator_SQUARE:
+        for (size_t i = 0; i < Size(); i++) {
+          ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
+        }
+        break;
+      default:
+        const float tolerance_scale = std::numeric_limits<float>::epsilon();
+        for (size_t i = 0; i < Size(); i++) {
+          ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
+                      std::max(AbsoluteTolerance() * tolerance_scale,
+                               std::max(std::abs(default_output_data[i]),
+                                        std::abs(delegate_output_data[i])) *
+                                   RelativeTolerance() * tolerance_scale));
+        }
+        break;
+    }
   }
 }
 

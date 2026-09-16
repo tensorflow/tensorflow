@@ -11,6 +11,7 @@ def repo():
         sha256 = "588e431f77327c39031ffbb8843c0e3bc122c211374485fa87dc5f3faff24061",
         urls = tf_mirror_urls("https://github.com/unicode-org/icu/releases/download/release-77-1/icu4c-77_1-src.tgz"),
         build_file = "//third_party/icu:icu.BUILD",
+        system_build_file = "//third_party/systemlibs:icu.BUILD",
         patch_file = ["//third_party/icu:udata.patch"],
         patch_cmds = [
             "rm -f source/common/BUILD.bazel",

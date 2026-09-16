@@ -41,8 +41,7 @@ void ExecuteOneDnnSoftmax(OneDnnSoftmaxConfig softmax_config,
   auto src_md = input_minfo.GetOneDnnMemDesc();
   auto dst_md = result_minfo.GetOneDnnMemDesc();
 
-  resources.src_mem = dnnl::memory(src_md, cpu_engine, input_minfo.Data());
-  resources.dst_mem = dnnl::memory(dst_md, cpu_engine, result_minfo.Data());
+  resources.dst_mem = dnnl::memory(src_md, cpu_engine, input_minfo.Data());
 
   int axis = softmax_config.softmax_axis();
 
@@ -53,7 +52,7 @@ void ExecuteOneDnnSoftmax(OneDnnSoftmaxConfig softmax_config,
   resources.primitive = dnnl::primitive(softmax_pd);
 
   std::unordered_map<int, dnnl::memory> softmax_args = {
-      {DNNL_ARG_SRC, resources.src_mem},
+      {DNNL_ARG_SRC, resources.dst_mem},
       {DNNL_ARG_DST, resources.dst_mem},
   };
 

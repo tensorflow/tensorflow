@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "fp16.h"  // from @FP16
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
@@ -96,25 +97,52 @@ void PadTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate_n(default_input_data, ComputeSize(InputShape()),
-                  std::ref(input_rng));
+  if (FP16()) {
+    TfLiteFloat16* default_input_data =
+        default_interpreter->typed_input_tensor<TfLiteFloat16>(0);
+    std::generate_n(
+        default_input_data, ComputeSize(InputShape()), [&]() -> TfLiteFloat16 {
+          return TfLiteFloat16{fp16_ieee_from_fp32_value(input_rng())};
+        });
 
-  float* delegate_input_data =
-      delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy_n(default_input_data, ComputeSize(InputShape()),
-              delegate_input_data);
+    TfLiteFloat16* delegate_input_data =
+        delegate_interpreter->typed_input_tensor<TfLiteFloat16>(0);
+    std::copy_n(default_input_data, ComputeSize(InputShape()),
+                delegate_input_data);
 
-  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
-  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+    ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
+    ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
 
-  float* default_output_data =
-      default_interpreter->typed_output_tensor<float>(0);
-  float* delegate_output_data =
-      delegate_interpreter->typed_output_tensor<float>(0);
+    TfLiteFloat16* default_output_data =
+        default_interpreter->typed_output_tensor<TfLiteFloat16>(0);
+    TfLiteFloat16* delegate_output_data =
+        delegate_interpreter->typed_output_tensor<TfLiteFloat16>(0);
 
-  for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
-    ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
+    for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
+      ASSERT_EQ(default_output_data[i].data, delegate_output_data[i].data);
+    }
+  } else {
+    float* default_input_data =
+        default_interpreter->typed_input_tensor<float>(0);
+    std::generate_n(default_input_data, ComputeSize(InputShape()),
+                    std::ref(input_rng));
+
+    float* delegate_input_data =
+        delegate_interpreter->typed_input_tensor<float>(0);
+    std::copy_n(default_input_data, ComputeSize(InputShape()),
+                delegate_input_data);
+
+    ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
+    ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+    float* default_output_data =
+        default_interpreter->typed_output_tensor<float>(0);
+    float* delegate_output_data =
+        delegate_interpreter->typed_output_tensor<float>(0);
+
+    for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
+      ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
+    }
   }
 }
 
@@ -144,7 +172,7 @@ std::vector<char> PadTester::CreateTfLiteModel() const {
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(InputShape().data(),
                                                  InputShape().size()),
-                   TensorType_FLOAT32),
+                   FP16() ? TensorType_FLOAT16 : TensorType_FLOAT32),
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(paddings_shape.data(),
                                                  paddings_shape.size()),
@@ -152,7 +180,7 @@ std::vector<char> PadTester::CreateTfLiteModel() const {
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(output_shape.data(),
                                                  output_shape.size()),
-                   TensorType_FLOAT32),
+                   FP16() ? TensorType_FLOAT16 : TensorType_FLOAT32),
   }};
 
   const std::array<int32_t, 2> op_inputs{{0, 1}};

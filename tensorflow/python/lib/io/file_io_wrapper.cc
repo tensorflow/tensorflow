@@ -134,7 +134,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
         auto* env = tensorflow::Env::Default();
         absl::Status status;
         if (!overwrite && env->FileExists(target).ok()) {
-          status = tensorflow::errors::AlreadyExists("file already exists");
+          status = absl::AlreadyExistsError("file already exists");
         } else {
           status = env->CopyFile(src, target);
         }
@@ -148,7 +148,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
         auto* env = tensorflow::Env::Default();
         absl::Status status;
         if (!overwrite && env->FileExists(target).ok()) {
-          status = tensorflow::errors::AlreadyExists("file already exists");
+          status = absl::AlreadyExistsError("file already exists");
         } else {
           status = env->RenameFile(src, target);
         }
@@ -164,8 +164,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
         auto status = tensorflow::Env::Default()->DeleteRecursively(
             dirname, &undeleted_files, &undeleted_dirs);
         if (status.ok() && (undeleted_files > 0 || undeleted_dirs > 0)) {
-          status = tensorflow::errors::PermissionDenied(
-              "could not fully delete dir");
+          status = absl::PermissionDeniedError("could not fully delete dir");
         }
         tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
       },

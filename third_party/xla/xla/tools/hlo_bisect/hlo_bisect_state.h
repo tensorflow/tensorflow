@@ -35,7 +35,7 @@ namespace bisect {
 // the resulting literals for the reference implementation.
 class BugCheckerInterface {
  public:
-  virtual ~BugCheckerInterface() {}
+  virtual ~BugCheckerInterface() = default;
 
   // Returns true if `module` has a bug we're interested in.
   virtual absl::StatusOr<bool> Run(const HloModule& module) = 0;

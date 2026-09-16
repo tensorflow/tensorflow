@@ -27,7 +27,7 @@ std::string AllocationValue::ToString() const {
   absl::StrAppend(
       &out, (requires_contiguous_allocation_ ? " (contiguous alloc)" : ""));
   absl::StrAppend(&out, "\n position:\n");
-  absl::StrAppend(&out, "  ", defining_position_.ToString(), "\n");
+  absl::StrAppend(&out, "  ", position_.ToString(), "\n");
   absl::StrAppend(&out, " uses:\n");
   for (const Use& use : uses_) {
     absl::StrAppend(&out, "  ", use.hlo_use.ToString(), "\n");
@@ -37,7 +37,7 @@ std::string AllocationValue::ToString() const {
 
 std::string AllocationValue::ToShortString() const {
   return absl::StrCat("computation = ", computation()->name(),
-                      ", position = ", defining_position_.ToString(),
+                      ", position = ", position_.ToString(),
                       ", value = ", value_->ToShortString(),
                       (requires_contiguous_allocation_ ? " (cont alloc)" : ""));
 }
@@ -94,14 +94,18 @@ std::string AllocationRequest::ToString() const {
                     no_copy_chunk_inclusive_start_time.has_value()
                         ? absl::StrCat(*no_copy_chunk_inclusive_start_time)
                         : "nullopt"),
-       absl::StrCat("require_start_colored_in_alternate_memmory: ",
-                    require_start_colored_in_alternate_memory,
-                    "; require_end_colored_in_alternate_memory: ",
-                    require_end_colored_in_alternate_memory,
-                    "; require_start_colored_in_default_memory: ",
-                    require_start_colored_in_default_memory,
-                    "; require_end_colored_in_default_memory: ",
-                    require_end_colored_in_default_memory)},
+       absl::StrCat(
+           "require_start_colored_in_alternate_memmory: ",
+           require_start_colored_in_alternate_memory,
+           "; require_end_colored_in_alternate_memory: ",
+           require_end_colored_in_alternate_memory,
+           "; require_start_colored_in_default_memory: ",
+           require_start_colored_in_default_memory,
+           "; require_end_colored_in_default_memory: ",
+           require_end_colored_in_default_memory,
+           "; strict_timing: ", strict_timing,
+           "; fail_on_unsatisfied_override: ", fail_on_unsatisfied_override,
+           "; is_prefetch_override: ", is_prefetch_override)},
       "\n");
 }
 

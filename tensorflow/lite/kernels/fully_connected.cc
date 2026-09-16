@@ -215,7 +215,6 @@ TfLiteStatus ValidateInt16FilterInt16Indexing(
 enum KernelType {
   kReference,
   kGenericOptimized,
-  kLegacyPie,  // Legacy path used by the PIE team and related clients.
 };
 
 struct OpData {
@@ -535,6 +534,9 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
            filter->type == kTfLiteInt2 || filter->type == kTfLiteInt16));
       TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                         per_channel_quantization_size);
+      // In Fully Connected layers, per-channel quantization is applied along
+      // the output channel dimension. so the quantized_dimension must be 0.
+      TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
       TF_LITE_ENSURE_EQ(
           context, per_channel_quantization_size,
           filter->dims->data[affine_quantization->quantized_dimension]);
@@ -740,11 +742,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8) ||
        (filter->type == kTfLiteInt4) || (filter->type == kTfLiteInt2));
   const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
-  const bool is_pie = kernel_type == kLegacyPie;
 
   // Pie and hybrid path supports all kinds of fused activations, otherwise only
   // clipping activations are supported.
-  if (!is_pie && !is_hybrid) {
+  if (!is_hybrid) {
     TF_LITE_ENSURE(context, params->activation == kTfLiteActNone ||
                                 params->activation == kTfLiteActRelu ||
                                 params->activation == kTfLiteActReluN1To1 ||
@@ -757,41 +758,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         "Unsupported filter quantization zero-point value.");
   }
   return PrepareImpl(context, node, kernel_type);
-}
-
-TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
-                     TfLiteFullyConnectedParams* params, OpData* data,
-                     const TfLiteTensor* input, const TfLiteTensor* filter,
-                     const TfLiteTensor* bias, TfLiteTensor* output) {
-  int total_input_size = 1;
-  for (int i = 0; i < input->dims->size; i++) {
-    total_input_size *= input->dims->data[i];
-  }
-
-  int input_size = filter->dims->data[1];
-  const int batch_size = total_input_size / filter->dims->data[1];
-  const int num_units = filter->dims->data[0];
-
-  // Output = bias if bias tensor exists.
-  if (bias) {
-    tensor_utils::VectorBatchVectorAssign(GetTensorData<float>(bias), num_units,
-                                          batch_size,
-                                          GetTensorData<float>(output));
-  } else {
-    std::fill_n(GetTensorData<float>(output), batch_size * num_units, 0.0f);
-  }
-
-  // Compute output += weight * input
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      GetTensorData<float>(filter), num_units, input_size,
-      GetTensorData<float>(input), batch_size, GetTensorData<float>(output));
-
-  // Apply activation function
-  tensor_utils::ApplyActivationToVector(
-      GetTensorData<float>(output), batch_size * num_units, params->activation,
-      GetTensorData<float>(output));
-
-  return kTfLiteOk;
 }
 
 TfLiteStatus EvalHybridDense(
@@ -1919,8 +1885,6 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
           GetTensorShape(bias), GetTensorData<float>(bias),
           GetTensorShape(output), GetTensorData<float>(output));
     }
-  } else if (kernel_type == kLegacyPie) {
-    return EvalPie(context, node, params, data, input, filter, bias, output);
   } else {
     FullyConnectedParams op_params;
     op_params.float_activation_min = output_activation_min;
@@ -2065,15 +2029,6 @@ TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT() {
       fully_connected::Init, fully_connected::Free,
       fully_connected::Prepare<fully_connected::kGenericOptimized>,
       fully_connected::Eval<fully_connected::kGenericOptimized>};
-  return &r;
-}
-
-// Legacy path for PIE clients.
-TfLiteRegistration* Register_FULLY_CONNECTED_PIE() {
-  static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free,
-      fully_connected::Prepare<fully_connected::kLegacyPie>,
-      fully_connected::Eval<fully_connected::kLegacyPie>};
   return &r;
 }
 

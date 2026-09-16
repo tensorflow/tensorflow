@@ -115,7 +115,7 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                       Tensor* out) {
   // oneDNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
-  if (in.dims() <= DNNL_MAX_NDIMS) {
+  if (in.dims() > 0 && in.dims() <= DNNL_MAX_NDIMS) {
     switch (in.dtype()) {
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
@@ -141,7 +141,7 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                                Tensor* out) {
   // oneDNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
-  if (in.dims() <= DNNL_MAX_NDIMS) {
+  if (in.dims() > 0 && in.dims() <= DNNL_MAX_NDIMS) {
     switch (in.dtype()) {
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);

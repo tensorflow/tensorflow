@@ -479,45 +479,45 @@ absl::Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
                               const Tensor& max_output_size,
                               const Tensor& iou_threshold) {
   if (!TensorShapeUtils::IsScalar(max_output_size.shape())) {
-    return errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                   max_output_size.shape().DebugString(),
-                                   " (Shape must be rank 0 but is ", "rank ",
-                                   max_output_size.dims(), ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "max_output_size must be 0-D, got shape ",
+        max_output_size.shape().DebugString(), " (Shape must be rank 0 but is ",
+        "rank ", max_output_size.dims(), ")"));
   }
   if (!TensorShapeUtils::IsScalar(iou_threshold.shape())) {
-    return errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                   iou_threshold.shape().DebugString(),
-                                   " (Shape must be rank 0 but is rank ",
-                                   iou_threshold.dims(), ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "iou_threshold must be 0-D, got shape ",
+        iou_threshold.shape().DebugString(),
+        " (Shape must be rank 0 but is rank ", iou_threshold.dims(), ")"));
   }
   const float iou_threshold_val = GetScalar<float>(iou_threshold);
   if (iou_threshold_val < 0 || iou_threshold_val > 1) {
-    return errors::InvalidArgument("iou_threshold must be in [0, 1]");
+    return absl::InvalidArgumentError("iou_threshold must be in [0, 1]");
   }
   if (boxes.dims() != 2) {
-    return errors::InvalidArgument(
-        "boxes must be a rank 2 tensor! (Shape must "
-        "be rank 2 but is rank ",
-        boxes.dims(), ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("boxes must be a rank 2 tensor! (Shape must "
+                     "be rank 2 but is rank ",
+                     boxes.dims(), ")"));
   }
   int num_boxes = boxes.dim_size(0);
   if (boxes.dim_size(1) != 4) {
-    return errors::InvalidArgument(
-        "boxes must be Nx4 (Dimension must be 4 but"
-        " is ",
-        boxes.dim_size(1), ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("boxes must be Nx4 (Dimension must be 4 but"
+                     " is ",
+                     boxes.dim_size(1), ")"));
   }
   if (scores.dims() != 1) {
-    return errors::InvalidArgument(
-        "scores must be a vector! (Shape must be "
-        "rank 1 but is rank ",
-        scores.dims(), ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("scores must be a vector! (Shape must be "
+                     "rank 1 but is rank ",
+                     scores.dims(), ")"));
   }
   if (scores.dim_size(0) != num_boxes) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "scores has incompatible shape "        // message must be exactly this
         "(Dimensions must be equal, but are ",  // otherwise tests fail!
-        num_boxes, " and ", scores.dim_size(0), ")");
+        num_boxes, " and ", scores.dim_size(0), ")"));
   }
   return absl::OkStatus();
 }
@@ -582,10 +582,10 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
     }
 
     const Tensor& score_threshold = context->input(4);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
-        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
-                                score_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("score_threshold must be 0-D, got shape ",
+                                 score_threshold.shape().DebugString())));
     const float score_threshold_val = GetScalar<float>(score_threshold);
     int num_boxes = boxes.dim_size(0);
     if (num_boxes == 0) {
@@ -627,10 +627,10 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
     }
 
     const Tensor& score_threshold = context->input(4);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
-        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
-                                score_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("score_threshold must be 0-D, got shape ",
+                                 score_threshold.shape().DebugString())));
     const float score_threshold_val = GetScalar<float>(score_threshold);
 
     Tensor* num_outputs_t = nullptr;
@@ -672,7 +672,7 @@ absl::Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   // we promised to the compiler.
   auto iptr = reinterpret_cast<std::uintptr_t>(d_sorted_boxes_float_ptr);
   if ((iptr & 15) != 0) {
-    return errors::InvalidArgument("Boxes should be aligned to 16 Bytes.");
+    return absl::InvalidArgumentError("Boxes should be aligned to 16 Bytes.");
   }
   // allocate bitmask arrays on host and on device
   Tensor h_num_selected, d_nms_mask;

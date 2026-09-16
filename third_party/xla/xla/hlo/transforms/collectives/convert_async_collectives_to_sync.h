@@ -32,7 +32,6 @@ namespace xla {
 
 // Convert asynchronous collectives to synchronous (after HLO scheduling) if
 // there are no compute operations overlapping with them.
-
 class ConvertAsyncCollectivesToSync : public HloModulePass {
  public:
   explicit ConvertAsyncCollectivesToSync(HloPredicate is_nop = {})
@@ -63,9 +62,6 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
           async_pairs);
-
-  static constexpr char kAsyncCollectiveNameAttributeName[] =
-      "async_collective_name";
 
  protected:
   absl::StatusOr<bool> RunImpl(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/tuple.h"
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
-  TF_ASSIGN_OR_RETURN(Shape shape, tuple.builder()->GetShape(tuple));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, tuple.builder()->GetShape(tuple));
   ShapeTree<XlaOp> result(shape);
   result.ForEachMutableElement([&](ShapeIndexView index, XlaOp* element) {
     if (index.empty()) {

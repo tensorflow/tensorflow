@@ -40,8 +40,8 @@ SimplePlanner::SimplePlanner(TfLiteContext* context,
 SimplePlanner::~SimplePlanner() { FreeAllAllocations(); }
 
 void SimplePlanner::FreeAllAllocations() {
-  for (int i = 0; i < static_cast<int>(allocs_.size()); ++i) {
-    allocs_[i].free();
+  for (SimpleAlloc& alloc : allocs_) {
+    alloc.free();
   }
 }
 
@@ -70,7 +70,6 @@ TfLiteStatus SimplePlanner::ResetAllocationsAfter(int node) {
 TfLiteStatus SimplePlanner::PlanAllocations() {
   // Invalidate any existing data.
   TF_LITE_ENSURE_STATUS(ResetAllocations());
-  // Maybe other verb instead of 'Assigned'
   alloc_node_.assign(graph_info_->num_tensors(), kNodeNotAssigned);
   dealloc_node_.assign(graph_info_->num_tensors(), kNodeNotAssigned);
 
@@ -103,7 +102,7 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
   // for deallocation.
   for (int tensor_index : graph_info_->outputs()) {
     if (tensor_index != kTfLiteOptionalTensor) {
-      refcounts[tensor_index]++;
+      ++refcounts[tensor_index];
     }
   }
 
@@ -112,7 +111,7 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
   for (int tensor_index : graph_info_->variables()) {
     // Increase the reference count for variable tensors by one, so it will
     // never be deallocated.
-    refcounts[tensor_index]++;
+    ++refcounts[tensor_index];
     // `variables` is a subgraph-level list and it should never be
     // kTfLiteOptionalTensor.
     TF_LITE_ENSURE(context_, tensor_index != kTfLiteOptionalTensor);
@@ -124,7 +123,7 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
   // overwritten.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kTfLiteOptionalTensor) {
-      refcounts[tensor_index]++;
+      ++refcounts[tensor_index];
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }
@@ -137,7 +136,7 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
     for (int j = 0; j < node_inputs->size; ++j) {
       int tensor_index = node_inputs->data[j];
       if (tensor_index != kTfLiteOptionalTensor) {
-        refcounts[tensor_index]++;
+        ++refcounts[tensor_index];
       }
     }
   }
@@ -150,7 +149,9 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
     TfLiteIntArray* node_outputs = node.outputs;
     for (int j = 0; j < node_outputs->size; ++j) {
       int tensor_index = node_outputs->data[j];
-      TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));
+      if (tensor_index != kTfLiteOptionalTensor) {
+        TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));
+      }
     }
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
@@ -159,7 +160,7 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
     for (int j = 0; j < node_inputs->size; ++j) {
       int tensor_index = node_inputs->data[j];
       if (tensor_index != kTfLiteOptionalTensor) {
-        refcounts[tensor_index]--;
+        --refcounts[tensor_index];
         if (refcounts[tensor_index] == 0) {
           TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
         }
@@ -173,9 +174,11 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
 }
 
 TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
-  alloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
-  dealloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
-  allocs_.resize(graph_info_->num_tensors());
+  const size_t num_tensors = graph_info_->num_tensors();
+  TF_LITE_ENSURE(context_, num_tensors >= alloc_node_.size());
+  alloc_node_.resize(num_tensors, kNodeNotAssigned);
+  dealloc_node_.resize(num_tensors, kNodeNotAssigned);
+  allocs_.resize(num_tensors);
   // Set allocation and deallocation for temporary tensors.
   const size_t num_execution_nodes = graph_info_->num_execution_nodes();
   for (size_t i = first_node;
@@ -184,30 +187,40 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
     TfLiteIntArray* node_temporaries = node.temporaries;
     for (int j = 0; j < node_temporaries->size; ++j) {
       int tensor_index = node_temporaries->data[j];
-      alloc_node_[tensor_index] = i;
-      dealloc_node_[tensor_index] = i;
+      if (tensor_index != kTfLiteOptionalTensor) {
+        alloc_node_[tensor_index] = i;
+        dealloc_node_[tensor_index] = i;
+      }
     }
   }
 
   // Conduct the planned allocations.
-  const int num_tensors = static_cast<int>(graph_info_->num_tensors());
+  const int total_tensors = static_cast<int>(num_tensors);
   TfLiteTensor* tensors = graph_info_->tensors();
-  for (int i = 0; i < num_tensors; ++i) {
-    bool allocated = false;
+  for (int i = 0; i < total_tensors; ++i) {
     if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
+      bool allocated = false;
       TfLiteTensor& tensor = tensors[i];
       if (tensor.allocation_type == kTfLiteArenaRw) {
         if (allocs_[i].size != 0) {
           allocs_[i].free();
+          tensor.data.raw = nullptr;
         }
         allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
-      } else if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
-                 allocs_[i].size == 0) {
-        allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+      } else if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
+        if (allocs_[i].size == 0) {
+          allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+        } else {
+          allocated = true;
+        }
       }
-    }
-    if (allocated) {
-      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+
+      if (allocated) {
+        TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+      } else if (tensor.allocation_type == kTfLiteArenaRw ||
+                 tensor.allocation_type == kTfLiteArenaRwPersistent) {
+        tensor.data.raw = nullptr;
+      }
     }
   }
   // TODO(b/191631156): Dealloc node if it's not needed.
@@ -222,7 +235,7 @@ TfLiteStatus SimplePlanner::ReleaseNonPersistentMemory() {
   for (int i = 0; i < num_tensors; ++i) {
     TfLiteTensor& tensor = tensors[i];
     if (tensor.allocation_type == kTfLiteArenaRw) {
-      allocs_[i].free();
+      allocs_[i].release();
       tensor.data.raw = nullptr;
     }
   }
@@ -235,7 +248,11 @@ TfLiteStatus SimplePlanner::AcquireNonPersistentMemory() {
   TfLiteTensor* tensors = graph_info_->tensors();
   for (int i = 0; i < num_tensors; ++i) {
     TfLiteTensor& tensor = tensors[i];
-    if (tensor.allocation_type == kTfLiteArenaRw) {
+    if (tensor.allocation_type == kTfLiteArenaRw &&
+        alloc_node_[i] != kNodeNotAssigned) {
+      if (allocs_[i].size != 0 && allocs_[i].ptr == nullptr) {
+        allocs_[i].alloc(allocs_[i].size, allocs_[i].node);
+      }
       TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
     }
   }
@@ -244,15 +261,13 @@ TfLiteStatus SimplePlanner::AcquireNonPersistentMemory() {
 
 TfLiteStatus SimplePlanner::ResolveTensorAllocation(int tensor_index) {
   TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
-  if (tensor.allocation_type == kTfLiteArenaRw) {
-    // Skip resolution if the size of the tensor is zero, leaving it as a
-    // nullptr.
+  if (tensor.allocation_type == kTfLiteArenaRw ||
+      tensor.allocation_type == kTfLiteArenaRwPersistent) {
     if (allocs_[tensor_index].size != 0) {
       tensor.data.raw = allocs_[tensor_index].ptr;
+    } else {
+      tensor.data.raw = nullptr;
     }
-  }
-  if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
-    tensor.data.raw = allocs_[tensor_index].ptr;
   }
   return kTfLiteOk;
 }

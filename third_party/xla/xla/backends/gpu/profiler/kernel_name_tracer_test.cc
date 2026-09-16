@@ -25,10 +25,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -64,8 +66,8 @@ using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
 absl::StatusOr<stream_executor::Platform*> GetPlatform() {
-  TF_ASSIGN_OR_RETURN(std::string name,
-                      PlatformUtil::CanonicalPlatformName("gpu"));
+  ABSL_ASSIGN_OR_RETURN(std::string name,
+                   PlatformUtil::CanonicalPlatformName("gpu"));
   return stream_executor::PlatformManager::PlatformWithName(
       absl::AsciiStrToUpper(name));
 }
@@ -183,7 +185,9 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream, stream, nullptr, nullptr, nullptr);
+      run_options, allocations, stream, stream, nullptr, nullptr, nullptr,
+      /*additional_compute_streams=*/{}, /*execution_scoped_state=*/nullptr,
+      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
 
   // This is where we're getting the 'AddI32' kernel from.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,

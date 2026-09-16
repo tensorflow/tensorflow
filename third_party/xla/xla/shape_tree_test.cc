@@ -429,6 +429,15 @@ TEST_F(ShapeTreeTest, CopyAssignWithPointerToShape) {
   EXPECT_EQ(&dest.shape(), &nested_tuple_shape_);
 }
 
+TEST_F(ShapeTreeTest, ReplaceShapePtrSelfReplacement) {
+  ShapeTree<int> tree(ShapeUtil::MakeTupleShape({array_shape_, array_shape_}));
+  // Self-replacement should not cause Use-After-Free.
+  tree.replace_shape_ptr(tree.shape());
+  // Accessing the shape after replacement should be safe.
+  EXPECT_TRUE(tree.shape().IsTuple());
+  EXPECT_EQ(tree.shape().tuple_shapes().size(), 2);
+}
+
 TEST_F(ShapeTreeTest, IterateSimple) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   int num_nodes = 0;

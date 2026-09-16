@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -41,9 +42,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -79,8 +78,8 @@ TEST(DumpHloIfEnabled, LargeConstantElided) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   EXPECT_EQ(paths.size(), 2);  // debug options dump + HLO dump.
@@ -109,8 +108,8 @@ TEST(DumpHloIfEnabled, LargeConstantPrinted) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   EXPECT_EQ(paths.size(), 2);
@@ -139,8 +138,8 @@ TEST(DumpHloModule, WithBufferAssignment) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -154,7 +153,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
           },
           &alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*options=*/std::move(opts))
+          /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";
   std::vector<std::string> paths =
@@ -180,6 +179,46 @@ TEST(DumpHloModule, WithBufferAssignment) {
   EXPECT_TRUE(ReadFileToString(env, paths[5], &data).ok());
 }
 
+TEST(DumpHloModule, DumpRiegeli) {
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+  tsl::Env* env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_riegeli(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[11] parameter(0)
+      c = s32[11] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+      ROOT x = s32[11] multiply(p0, c)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  std::unique_ptr<BufferAssignment> buffer_assignment =
+      BufferAssigner::Run(
+          /*module=*/&*m,
+          /*hlo_ordering=*/std::make_unique<DependencyHloOrdering>(&*m),
+          /*buffer_size=*/
+          [](const BufferValue& buffer) -> int64_t {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+          },
+          &alias_info,
+          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*opts=*/std::move(opts))
+          .value();
+  std::string dump_name = "dump";
+  std::vector<std::string> paths =
+      DumpHloModuleIfEnabled(*m, *buffer_assignment, dump_name);
+  EXPECT_EQ(paths.size(), 2);
+}
+
 TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
   std::string filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "disable_override");
@@ -190,7 +229,7 @@ TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
   DumpToFileInDir(options, "disable_override", contents);
 
   std::vector<std::string> matches;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(filename, &matches));
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(filename, &matches));
   EXPECT_THAT(matches, IsEmpty());
 }
 
@@ -204,7 +243,7 @@ TEST(DumpTest, DumpingToFileWorksWhenEnabled) {
   DumpToFileInDir(options, "enable_dumping", contents);
 
   std::string real_contents;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), filename, &real_contents));
   EXPECT_EQ(contents, real_contents);
 }
@@ -221,7 +260,7 @@ TEST(DumpTest, DumpProtobufToFileWhenEnabled) {
   DumpProtobufToFile(module, options, "enable_proto_dumping");
 
   HloModuleProto mod;
-  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), filename, &mod));
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), filename, &mod));
   EXPECT_EQ(mod.name(), module.name());
 }
 
@@ -237,7 +276,7 @@ TEST(DumpTest, DumpProtobufToFileWhenDisabled) {
   DumpProtobufToFile(module, options, "disable_proto_dumping");
 
   std::vector<std::string> matches;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(filename, &matches));
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(filename, &matches));
   EXPECT_THAT(matches, IsEmpty());
 }
 
@@ -260,8 +299,8 @@ TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   EXPECT_EQ(paths.size(), 3);
@@ -293,13 +332,12 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshot) {
   std::vector<std::string> matches;
   std::string pattern_filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "*hlo_unoptimized_snapshot*");
-  TF_ASSERT_OK(
-      tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
   EXPECT_THAT(matches, Not(IsEmpty()));
 
   HloUnoptimizedSnapshot hlo_snapshot_loaded;
-  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), matches.front(),
-                                  &hlo_snapshot_loaded));
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), matches.front(),
+                               &hlo_snapshot_loaded));
   EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
 }
 
@@ -328,8 +366,8 @@ TEST(DumpHloIfEnabled, DumpsBuildClNumber) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
 
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
@@ -359,17 +397,16 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
   std::vector<std::string> matches;
   std::string pattern_filename =
       tsl::io::JoinPath(dump_dir, "*hlo_unoptimized_snapshot*");
-  TF_ASSERT_OK(
-      tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
   EXPECT_THAT(matches, Not(IsEmpty()));
 
   std::string file_contents;
-  TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), matches.front(),
-                                     &file_contents));
+  ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), matches.front(),
+                                  &file_contents));
   tsl::protobuf::io::ArrayInputStream input_stream(file_contents.data(),
                                                    file_contents.size());
-  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot hlo_snapshot_loaded,
-                          DeserializeHloUnoptimizedSnapshot(&input_stream));
+  ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot hlo_snapshot_loaded,
+                       DeserializeHloUnoptimizedSnapshot(&input_stream));
   EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
 }
 
@@ -395,6 +432,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
   options.clear_xla_gpu_enable_command_buffer();
   options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  // Optional enum field explicitly set to a non-default value.
+  options.set_xla_gpu_pipeline_all_reduce(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   // Message field
   int gpus_per_node;
   EXPECT_TRUE(absl::SimpleAtoi(
@@ -434,6 +474,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
               testing::HasSubstr("xla_gpu_enable_command_buffer: CUBLAS"));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_command_buffer: FUSION"));
+  EXPECT_THAT(non_default_options,
+              testing::HasSubstr("xla_gpu_pipeline_all_reduce: "
+                                 "COLLECTIVE_PIPELINING_MODE_OFF"));
   EXPECT_THAT(
       non_default_options,
       testing::HasSubstr("xla_gpu_analytical_latency_estimator_options: {\n"
@@ -467,6 +510,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
             DebugOptions::CUBLAS);
   EXPECT_EQ(parsed_options.xla_gpu_enable_command_buffer(1),
             DebugOptions::FUSION);
+  EXPECT_TRUE(parsed_options.has_xla_gpu_pipeline_all_reduce());
+  EXPECT_EQ(parsed_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   EXPECT_EQ(parsed_options.xla_gpu_analytical_latency_estimator_options().at(
                 "gpus_per_node"),
             std::to_string(gpus_per_node + 1));
@@ -476,8 +522,8 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
 
   HloModuleConfig config;
   config.set_debug_options(options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule test
     ENTRY test {
       p0 = s32[11] parameter(0)
@@ -485,10 +531,10 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )",
-                                                         config));
+                                                      config));
   DumpNonDefaultDebugOptions(*m, kNonDefaultDebugOptionsDumpSuffix);
   std::string real_contents;
-  TF_ASSERT_OK(tsl::ReadFileToString(
+  ASSERT_OK(tsl::ReadFileToString(
       tsl::Env::Default(),
       tsl::io::JoinPath(dump_folder,
                         FilenameFor(*m, "", kNonDefaultDebugOptionsDumpSuffix)),
@@ -507,7 +553,7 @@ TEST(DumpTest, DumpRepeatedStringTest) {
 }
 
 TEST(DumpTest, DumpPerExecutionProtoToFile) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_folder,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
   const HloModule hlo_module("test_module", HloModuleConfig());
@@ -527,7 +573,7 @@ TEST(DumpTest, DumpPerExecutionProtoToFile) {
                                  /*text_formatter=*/nullptr);
 
   std::vector<std::string> matches;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_folder.path(), "*test_name*execution_*"),
       &matches));
   // The output of GetMatchingPaths is not stable, therefore we sort the vector.
@@ -537,8 +583,8 @@ TEST(DumpTest, DumpPerExecutionProtoToFile) {
 
   HloModuleProto loaded_proto1;
   HloModuleProto loaded_proto2;
-  TF_ASSERT_OK(tsl::ReadTextOrBinaryProto(env, matches[0], &loaded_proto1));
-  TF_ASSERT_OK(tsl::ReadTextOrBinaryProto(env, matches[1], &loaded_proto2));
+  ASSERT_OK(tsl::ReadTextOrBinaryProto(env, matches[0], &loaded_proto1));
+  ASSERT_OK(tsl::ReadTextOrBinaryProto(env, matches[1], &loaded_proto2));
   EXPECT_THAT(loaded_proto1, EqualsProto(R"pb(name: "test_module_1")pb"));
   EXPECT_THAT(loaded_proto2, EqualsProto(R"pb(name: "test_module_2")pb"));
 }
@@ -561,8 +607,8 @@ TEST(DumpHloIfEnabled, DumpsToSubfolder) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   EXPECT_EQ(paths.size(), 2);
@@ -593,8 +639,8 @@ TEST(DumpHloIfEnabled, DumpsToStdoutWhenToSubfolderIsTrueAndDumpToIsEmpty) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   // It shouldn't return any paths because it dumps to stdout, not to a file.
@@ -619,8 +665,8 @@ TEST(DumpPerModuleProtobufToFile, DumpsToSubfolder) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
 
   HloModuleProto proto;
   proto.set_name("my_proto");
@@ -633,9 +679,119 @@ TEST(DumpPerModuleProtobufToFile, DumpsToSubfolder) {
   std::vector<std::string> matches;
   std::string pattern_filename =
       tsl::io::JoinPath(expected_subfolder, "*my_name*");
-  TF_ASSERT_OK(
-      tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
   EXPECT_THAT(matches, Not(IsEmpty()));
+}
+
+TEST(DumpHloIfEnabled, CompactGte) {
+  HloModuleConfig config;
+  DebugOptions options = GetDebugOptionsFromFlags();
+  auto env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_text(true);
+  options.set_xla_dump_compact_gte(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = (f32[10], f32[20]) parameter(0)
+      gte0 = f32[10] get-tuple-element(p0), index=0
+      gte1 = f32[20] get-tuple-element(p0), index=1
+      ROOT out = (f32[10], f32[20]) tuple(gte0, gte1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  std::string dump_name = "dump";
+  auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  EXPECT_EQ(paths.size(), 2);
+  std::string data;
+  EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
+  EXPECT_FALSE(absl::StrContains(data, "get-tuple-element"));
+  EXPECT_TRUE(absl::StrContains(data, "%p0#0"));
+  EXPECT_TRUE(absl::StrContains(data, "%p0#1"));
+}
+
+class DumpModuleFilterTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    env_ = tsl::Env::Default();
+    ASSERT_TRUE(env_->LocalTempFilename(&dump_dir_));
+    options_ = GetDebugOptionsFromFlags();
+    options_.set_xla_dump_to(dump_dir_);
+    options_.set_xla_dump_hlo_as_text(true);
+  }
+
+  bool Run(absl::string_view module_re) {
+    options_.set_xla_dump_hlo_module_re(module_re);
+    HloModuleConfig config;
+    config.set_debug_options(options_);
+    auto m_or_status = ParseAndReturnUnverifiedModule(kModuleStr, config);
+    if (!m_or_status.ok()) {
+      return false;
+    }
+    auto m = std::move(m_or_status).value();
+
+    bool hlo_dumped = !DumpHloModuleIfEnabled(*m, "dump").empty();
+
+    HloModuleProto proto;
+    proto.set_name("my_proto");
+    DumpPerModuleProtobufToFile(*m, proto, options_, "my_name");
+
+    std::vector<std::string> matches;
+    if (!env_->GetMatchingPaths(tsl::io::JoinPath(dump_dir_, "*my_name*"),
+                                &matches)
+             .ok()) {
+      return false;
+    }
+    bool proto_dumped = !matches.empty();
+
+    return hlo_dumped && proto_dumped;
+  }
+
+  tsl::Env* env_;
+  std::string dump_dir_;
+  DebugOptions options_;
+  const char* const kModuleStr = R"(
+    HloModule my_module
+    test {
+      p0 = s32[11] parameter(0)
+      ROOT x = s32[11] negate(p0)
+    }
+  )";
+};
+
+TEST_F(DumpModuleFilterTest, DisablesDumpWhenFilterDoesNotMatch) {
+  EXPECT_FALSE(Run("other_module"));
+}
+
+TEST_F(DumpModuleFilterTest, EnablesDumpWhenFilterMatches) {
+  EXPECT_TRUE(Run("my_.*"));
+}
+
+TEST(DumpEmitterFilterTest, EmitterFilterControlsDumping) {
+  DebugOptions options;
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("ptx");
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm|ptx");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re(".*");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("triton-fusion", options));
 }
 
 }  // namespace

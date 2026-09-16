@@ -141,7 +141,7 @@ GraphExecutionState::~GraphExecutionState() {
   if (!(base_execution_state.session_options_->config.graph_options()
             .place_pruned_graph() &&
         options.session_options->config.graph_options().place_pruned_graph())) {
-    return errors::Internal(
+    return absl::InternalError(
         "MakeForPrunedGraph is only supported when the `place_pruned_graph` "
         "option is true.");
   }
@@ -149,7 +149,7 @@ GraphExecutionState::~GraphExecutionState() {
     // NOTE(mrry): By adding this restriction, which matches the only current
     // usage of this (fairly obscure) method, we do not need to store a
     // redundant copy of the original graph in `*out_state`.
-    return errors::Internal(
+    return absl::InternalError(
         "MakeForPrunedGraph is only supported when `base_execution_state` is "
         "the Session-level `GraphExecutionState`.");
   }
@@ -187,7 +187,7 @@ absl::Status GraphExecutionState::Extend(
     std::unique_ptr<GraphExecutionState>* out) const {
   if (!session_options_->config.experimental()
            .disable_optimize_for_static_graph()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Extending the graph is not supported when "
         "`disable_optimize_for_static_graph` is false.");
   }
@@ -211,10 +211,10 @@ absl::Status GraphExecutionState::Extend(
     if (new_names.count(node.name()) == 0) {
       *gdef.add_node() = node;
     } else {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "GraphDef argument to Extend includes node '", node.name(),
           "', which was created by a previous call to Create or Extend in this "
-          "session.");
+          "session."));
     }
   }
 
@@ -226,9 +226,9 @@ absl::Status GraphExecutionState::Extend(
   // Merge versions
   if (gdef.has_versions()) {
     if (gdef.versions().producer() != extension_def.versions().producer()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't extend GraphDef at version ", gdef.versions().producer(),
-          " with graph at version ", extension_def.versions().producer());
+          " with graph at version ", extension_def.versions().producer()));
     }
     VersionDef* versions = gdef.mutable_versions();
     versions->set_min_consumer(std::max(
@@ -325,10 +325,10 @@ class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
     absl::Status s;
     auto check_no_cycle_fn = [this, feed_tensor, &s](Node* n) {
       if (n == feed_tensor.node) {
-        s.Update(errors::InvalidArgument(
+        s.Update(absl::InvalidArgumentError(absl::StrCat(
             "Requested Tensor connection between nodes \"",
             feed_tensor.node->name(), "\" and \"", from_tensor_.node->name(),
-            "\" would create a cycle."));
+            "\" would create a cycle.")));
       }
     };
     ReverseDFSFrom(*g, {from_tensor_.node}, std::move(check_no_cycle_fn),
@@ -452,20 +452,20 @@ absl::Status ValidateFeedAndFetchDevices(
       TF_RETURN_IF_ERROR(graph.IsValidOutputTensor(node, td.tensor.second));
       const DataType dtype = node->output_type(td.tensor.second);
       if (!IsFeedAndFetchSupported(dtype, td.device->device_type())) {
-        return errors::Unimplemented(
+        return absl::UnimplementedError(absl::StrCat(
             "Cannot feed or fetch tensor '", td.tensor.ToString(),
             "' from device ", td.device->name(), " as feeding/fetching from ",
             td.device->device_type(), " devices is not yet supported for ",
-            DataTypeString(dtype), " tensors");
+            DataTypeString(dtype), " tensors"));
       }
     }
   }
   for (int i = 0; i < found.size(); ++i) {
     if (!found[i]) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Tensor ", tensors_and_devices[i].tensor.ToString(),
           ", specified in either feed_devices or fetch_devices was not found "
-          "in the Graph");
+          "in the Graph"));
     }
   }
   return absl::OkStatus();
@@ -487,9 +487,9 @@ absl::Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
   // either attribute 'dtype' or 'T'.
   if (!TryGetNodeAttr(node, "dtype", type) &&
       !TryGetNodeAttr(node, "T", type)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Could not determine output type for feed node: ", node.name(),
-        " of type ", node.op());
+        " of type ", node.op()));
   }
 
   // First handle the case of feeding a const node.
@@ -500,8 +500,9 @@ absl::Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
              kHasExplicitShapeAttribute->end()) {
     TF_RETURN_IF_ERROR(GetNodeAttr(node, "shape", shape));
   } else {
-    return errors::InvalidArgument("Could not determine shape for feed node: ",
-                                   node.name(), " of type ", node.op());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not determine shape for feed node: ", node.name(),
+                     " of type ", node.op()));
   }
   return absl::OkStatus();
 }
@@ -531,7 +532,7 @@ absl::Status GraphExecutionState::PruneGraph(
     }
     if (!options.callable_options.fetch_devices().empty() &&
         !options.callable_options.fetch_skip_sync()) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "CallableOptions.fetch_skip_sync = false is not yet implemented. You "
           "can set it to true instead, but MUST ensure that Device::Sync() is "
           "invoked on the Device corresponding to the fetched tensor before "
@@ -554,7 +555,7 @@ absl::Status GraphExecutionState::PruneGraph(
   } else {
     if (!options.callable_options.feed_devices().empty() ||
         !options.callable_options.fetch_devices().empty()) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "CallableOptions::feed_devices and CallableOptions::fetch_devices "
           "to configure feeding/fetching tensors to/from device memory is not "
           "yet supported when using a remote session.");
@@ -583,15 +584,15 @@ absl::Status GraphExecutionState::PruneGraph(
       }
     }
     if (from_node == nullptr) {
-      return errors::InvalidArgument(
-          "Requested tensor connection from unknown node: \"",
-          tensor_connection.to_tensor(), "\".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requested tensor connection from unknown node: \"",
+                       tensor_connection.to_tensor(), "\"."));
     }
     if (from_id.second >= from_node->num_outputs()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Requested tensor connection from unknown edge: \"",
           tensor_connection.to_tensor(),
-          "\" (actual number of outputs = ", from_node->num_outputs(), ").");
+          "\" (actual number of outputs = ", from_node->num_outputs(), ")."));
     }
 
     feed_rewrites.emplace_back(new TensorConnectionPruneRewrite(
@@ -663,7 +664,7 @@ absl::Status GraphExecutionState::OptimizeGraph(
   return errors::InvalidArgument("Mobile platforms not supported");
 #else
   if (session_options_->config.graph_options().place_pruned_graph()) {
-    return errors::InvalidArgument("Can't optimize a pruned graph");
+    return absl::InvalidArgumentError("Can't optimize a pruned graph");
   }
 
   if (grappler::MetaOptimizerEnabled(session_options_->config)) {
@@ -762,9 +763,9 @@ absl::Status GraphExecutionState::OptimizeGraph(
             }
           }
           if (!partial_shape.AsTensorShape(&shape)) {
-            return errors::InvalidArgument(
-                "Could not derive shape for feed node: ",
-                node->def().DebugString());
+            return absl::InvalidArgumentError(
+                absl::StrCat("Could not derive shape for feed node: ",
+                             node->def().DebugString()));
           }
         }
 
@@ -786,15 +787,15 @@ absl::Status GraphExecutionState::OptimizeGraph(
     for (auto& feed : item.feed) {
       SafeTensorId tensor_id = ParseTensorName(feed.first);
       if (node_names.find(tensor_id.node()) == node_names.end()) {
-        return errors::InvalidArgument("Invalid feed, no such node in graph: ",
-                                       std::move(feed.first));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid feed, no such node in graph: ", feed.first));
       }
     }
     for (const auto& fetch : item.fetch) {
       SafeTensorId tensor_id = ParseTensorName(fetch);
       if (node_names.find(tensor_id.node()) == node_names.end()) {
-        return errors::InvalidArgument("Invalid fetch, no such node in graph: ",
-                                       fetch);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid fetch, no such node in graph: ", fetch));
       }
     }
 
@@ -856,7 +857,7 @@ absl::Status GraphExecutionState::OptimizeGraph(
     }
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument("Meta Optimizer disabled");
+    return absl::InvalidArgumentError("Meta Optimizer disabled");
   }
 #endif  // IS_MOBILE_PLATFORM
 }
@@ -868,7 +869,7 @@ absl::Status GraphExecutionState::BuildGraph(
   if (!graph_) {
     // It is only valid to call this method directly when the original graph
     // was created with the option `place_pruned_graph == false`.
-    return errors::Internal(
+    return absl::InternalError(
         "Attempted to prune a graph that has not been fully initialized.");
   }
 

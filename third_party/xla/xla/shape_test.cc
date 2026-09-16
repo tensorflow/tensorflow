@@ -351,6 +351,11 @@ TEST_F(ShapeTest, SupportsAbslHash) {
        matrix_buffer_, tuple_, nested_tuple_, dynamic_matrix_}));
 }
 
+TEST(Shape, ClearBuffer) {
+  Shape shape(BUFFER);
+  shape.Clear();
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below.
 //===----------------------------------------------------------------------===//

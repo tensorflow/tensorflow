@@ -39,20 +39,21 @@ class ExtractJpegShapeOp : public OpKernel {
     // Get input content.
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
-                errors::InvalidArgument("contents must be scalar, got shape ",
-                                        contents.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("contents must be scalar, got shape ",
+                                 contents.shape().DebugString())));
     const absl::string_view input = contents.scalar<tstring>()();
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
-                errors::InvalidArgument("JPEG contents are too large for int: ",
-                                        input.size()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "JPEG contents are too large for int: ", input.size())));
 
     // Call GetImageInfo to get image shape.
     int width, height, components;
-    OP_REQUIRES(
-        context,
-        jpeg::GetImageInfo(input.data(), input.size(), &width, &height,
-                           &components),
-        errors::InvalidArgument("Invalid JPEG data, size ", input.size()));
+    OP_REQUIRES(context,
+                jpeg::GetImageInfo(input.data(), input.size(), &width, &height,
+                                   &components),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Invalid JPEG data, size ", input.size())));
     // Allocate tensor and set shape size.
     Tensor* image_shape = nullptr;
     OP_REQUIRES_OK(context,

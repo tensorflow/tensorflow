@@ -92,7 +92,7 @@ class RocmKernelTracer : public HloOpProfiler::KernelTracer,
   }
 
   void OnEventsDropped(const std::string& reason,
-                       uint32_t num_events) override {
+                       uint64_t num_events) override {
     LOG(WARNING) << "Dropped " << num_events << " events: " << reason;
   }
   void Flush() override {}

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -43,17 +44,17 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
     return false;
   }
   HloComputation* computation = instr->parent();
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(
           instr, {}, StreamAttributeAsyncWrapper::kParallelExecutionThread,
           /*replace=*/true));
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      done->backend_config<GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   done->backend_config<GpuBackendConfig>());
   // Set the false delay of done op to be false so it can be scheduled
   // far apart from start.
   gpu_config.set_force_earliest_schedule(false);
-  TF_RETURN_IF_ERROR(done->set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(done->set_backend_config(gpu_config));
   VLOG(5) << "Created async instruction: " << done->ToString();
   return true;
 }
@@ -68,7 +69,7 @@ absl::StatusOr<bool> StreamAttributeAsyncWrapper::RunImpl(
   for (const HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : comp->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
+      ABSL_ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
       changed |= result;
     }
   }

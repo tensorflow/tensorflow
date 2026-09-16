@@ -18,6 +18,8 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -133,7 +135,7 @@ class ExtractImagePatches(test.TestCase):
         patches=patches)
 
   def testComplexDataTypes(self):
-    """Test for complex data types"""
+    """Test for complex data types."""
     for dtype in [np.complex64, np.complex128]:
       image = (
           np.reshape(range(120), [2, 3, 4, 5]).astype(dtype) +
@@ -161,6 +163,53 @@ class ExtractImagePatches(test.TestCase):
       self.evaluate(
           array_ops.extract_image_patches(
               image, ksizes=ksizes, strides=strides, padding="SAME"))
+
+  def testLargeKsize(self):
+    """Test for integer overflow with large ksizes."""
+    for dtype in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+        np.complex64,
+        np.complex128,
+    ]:
+      image = np.ones([1, 1, 1, 3], dtype=dtype)
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          r"Output size would overflow|Negative dimension size caused by"
+          r" overflow",
+      ):
+        out_tensor = array_ops.extract_image_patches(
+            constant_op.constant(image),
+            ksizes=[1, 2147483647, 2147483647, 1],
+            strides=[1, 1, 1, 1],
+            rates=[1, 1, 1, 1],
+            padding="SAME",
+        )
+        self.evaluate(out_tensor)
+
+  def testLargeKsizeDynamic(self):
+    """Test for integer overflow during OpKernel execution by using dynamic shapes."""
+    with ops.Graph().as_default():
+      image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 1, 1, None])
+      out_tensor = array_ops.extract_image_patches(
+          image_ph,
+          ksizes=[1, 2147483647, 2147483647, 1],
+          strides=[1, 1, 1, 1],
+          rates=[1, 1, 1, 1],
+          padding="SAME",
+      )
+
+      with self.session() as sess:
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError, r"Output size would overflow"
+        ):
+          sess.run(
+              out_tensor,
+              feed_dict={image_ph: np.ones([1, 1, 1, 3], dtype=np.float32)},
+          )
+
 
 if __name__ == "__main__":
   test.main()

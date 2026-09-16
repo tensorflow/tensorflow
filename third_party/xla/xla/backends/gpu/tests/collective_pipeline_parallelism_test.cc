@@ -27,12 +27,13 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tests/test_utils.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
@@ -42,7 +43,7 @@ namespace {
 // Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
 class CollectivePipelineParallelismTest
-    : public HloTestBase,
+    : public HloTestBaseLegacy,
       public ::testing::WithParamInterface<
           DebugOptions::PipelineParallelismOptLevel> {
  public:
@@ -53,8 +54,8 @@ class CollectivePipelineParallelismTest
 
   HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
                                          int64_t num_partitions = 1) const {
-    HloModuleConfig config =
-        HloTestBase::GetModuleConfigForTest(replica_count, num_partitions);
+    HloModuleConfig config = HloTestBaseLegacy::GetModuleConfigForTest(
+        replica_count, num_partitions);
 
     // Set debug options.
     DebugOptions debug_options = GetDebugOptionsForTest();
@@ -1581,7 +1582,8 @@ TEST_P(CollectivePipelineParallelismTest,
       ((f32[16], u32[], token[]), (f32[16], u32[], token[]), (f32[16], u32[], token[]),
       (f32[16], u32[], token[])), s32[]) async-start(next_stage_slice,
         after_all_fwd, after_all_fwd, next_stage_slice,
-        after_all_bwd, after_all_bwd), calls=wrapped_send_recv_1
+        after_all_bwd, after_all_bwd), calls=wrapped_send_recv_1,
+      frontend_attributes={_collectives_group=""}
 
     async_comp_done = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
       (f32[16], u32[], token[]), (f32[16], u32[], token[])) async-done(async_comp_start)

@@ -151,7 +151,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           FullyConnectedOptionsWeightsFormat_DEFAULT,
       int input_size = -1, bool weights_per_channel_quantized = false,
       std::vector<float> per_channel_quantization_scales = {},
-      const TensorType& filter_type = TensorType_FLOAT32)
+      const TensorType& filter_type = TensorType_FLOAT32, int channel_index = 0)
       : batches_(batches),
         units_(units),
         input_size_(input_size),
@@ -177,8 +177,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
                            /*zero_point=*/0,
                            /*per_channel_quantization=*/true,
                            per_channel_quantization_scales,
-                           per_channel_quantization_offsets,
-                           /*channel_index=*/0});
+                           per_channel_quantization_offsets, channel_index});
     } else {
       // per-tensor
       float min = input.min;
@@ -189,8 +188,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           max = 7.f;
           break;
         case TensorType_INT2:
-          min = -2.f;
-          max = 2.f;
+          min = -1.f;
+          max = 1.f;
           break;
         case TensorType_INT8:
           min = -63.5f;
@@ -384,12 +383,13 @@ class PerChannelQuantizedFullyConnectedOpModel
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
-      int input_size = -1, const TensorType& filter_type = TensorType_INT8)
+      int input_size = -1, const TensorType& filter_type = TensorType_INT8,
+      int channel_index = 0)
       : BaseFullyConnectedOpModel(
             registration, units, batches, input, output, bias_type,
             keep_num_dims, bias_tensor_optional, activation_func,
             weights_format, input_size, true, per_channel_quantization_scales,
-            filter_type) {}
+            filter_type, channel_index) {}
 
   void SetBias(const std::vector<float>& data) {
     PerChannelQuantizeBias(bias_, data);
@@ -462,7 +462,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
                  BuiltinOptions_FullyConnectedOptions, options);
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
-        ops::builtin::Register_FULLY_CONNECTED_PIE());
+        ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
                      num_threads, /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/true);
@@ -502,7 +502,6 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
-    {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
 });
 
 class FloatFullyConnectedOpTest : public SingleOpTest {
@@ -512,26 +511,17 @@ class FloatFullyConnectedOpTest : public SingleOpTest {
   }
 };
 
-const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
-    {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
-    {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
-});
-
 class QuantizedFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
 const auto kKernelMapHybrid = new std::map<string, TfLiteRegistration*>({
-    {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
-    // Only Pie supports the hybrid path, so the optimized kernel should fall
-    // back to the Pie path in such cases.
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
-// Hybrid mode is used by the Pie quantized kernel.
 class HybridFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
@@ -628,13 +618,14 @@ TEST_P(FloatFullyConnectedOpTest, FilterWithZeroSecondDimension3) {
 
 TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
   // The optimized kernel assumes that the bias is specified.
-  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
-                               /*units=*/1, /*batches=*/2,
-                               /*input=*/{TensorType_FLOAT32, {2, 2}},
-                               /*output=*/{TensorType_FLOAT32},
-                               /*bias_type=*/TensorType_FLOAT32,
-                               /*keep_num_dims=*/false,
-                               /*bias_tensor_optional=*/true);
+  FloatFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*units=*/1, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 2}},
+      /*output=*/{TensorType_FLOAT32},
+      /*bias_type=*/TensorType_FLOAT32,
+      /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/true);
   m.SetWeights({
       2,
       4,  // u = 0
@@ -658,17 +649,18 @@ TEST(FloatFullyConnectedOpTest, SimpleTestEmptyOutput) {
     return;
   }
 
-  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
-                               /*units=*/1, /*batches=*/2,
-                               /*input=*/{TensorType_FLOAT32, {0, 2}},
-                               /*output=*/{TensorType_FLOAT32},
-                               /*bias_type=*/TensorType_FLOAT32,
-                               /*keep_num_dims=*/false,
-                               /*bias_tensor_optional=*/true,
-                               /*activation_func=*/ActivationFunctionType_RELU,
-                               /*weights_format=*/
-                               FullyConnectedOptionsWeightsFormat_DEFAULT,
-                               /*input_size=*/2);
+  FloatFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*units=*/1, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {0, 2}},
+      /*output=*/{TensorType_FLOAT32},
+      /*bias_type=*/TensorType_FLOAT32,
+      /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/true,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/
+      FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*input_size=*/2);
   m.SetWeights({
       2,
       4,  // u = 0
@@ -846,6 +838,27 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
 }
+
+#if GTEST_HAS_DEATH_TEST
+TEST_P(QuantizedFullyConnectedOpTest, QuantizedDimensionMustBeZero) {
+  EXPECT_DEATH(
+      {
+        PerChannelQuantizedFullyConnectedOpModel m(
+            GetRegistration(), /*units=*/3, /*batches=*/2,
+            /*input=*/{TensorType_INT8, {2, 10}, -63.5, 64},
+            /*per_channel_quantization_scales=*/
+            {0.2, 0.25, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
+            /*output=*/{TensorType_INT8, {}, -127, 128},
+            /*bias_type=*/TensorType_INT32,
+            /*keep_num_dims=*/false, /*bias_tensor_optional=*/true,
+            /*activation_func=*/ActivationFunctionType_RELU,
+            /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+            /*input_size=*/-1, /*filter_type=*/TensorType_INT8,
+            /*channel_index=*/1);
+      },
+      "Cannot allocate tensors");
+}
+#endif
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestPerChannelQuantizedInt8) {
   PerChannelQuantizedFullyConnectedOpModel m(
@@ -2150,7 +2163,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     QuantizedFullyConnectedOpTest, QuantizedFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 // TODO(ahentz): Reconsider this test. Having arbitrary weights makes it hard
 // to debug errors and doesn't necessarily test all the important details.
@@ -2289,7 +2302,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
 class SparseFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
@@ -2313,7 +2326,7 @@ class SparseHybridFullyConnectedOpTest
 
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
   TfLiteRegistration* GetRegistration() {
     return GetKernelMap().at(GetParam().kernel_tag);
@@ -2721,7 +2734,7 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16PerChannelTest) {
 
 INSTANTIATE_TEST_SUITE_P(
     SparseFullyConnectedOpTest, SparseFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 std::vector<SparseTestParam> GenerateSparseTestParam(
     std::vector<std::string> kernel_tags) {
@@ -2736,7 +2749,7 @@ std::vector<SparseTestParam> GenerateSparseTestParam(
 INSTANTIATE_TEST_SUITE_P(SparseHybridFullyConnectedOpTest,
                          SparseHybridFullyConnectedOpTest,
                          ::testing::ValuesIn(GenerateSparseTestParam(
-                             SingleOpTest::GetKernelTags(*kKernelMapNoPie))));
+                             SingleOpTest::GetKernelTags(*kKernelMap))));
 
 class SparseQuantizedFullyConnectedOpModel
     : public SparseFullyConnectedOpModel<float> {
@@ -2754,7 +2767,7 @@ class SparseQuantizedFullyConnectedOpModel
 class SparseQuantizedFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
@@ -2935,7 +2948,7 @@ TEST(FullyConnectedInt16FilterInt16IndexingTest, RejectsShapeProductOverflow) {
 
 INSTANTIATE_TEST_SUITE_P(
     SparseQuantizedFullyConnectedOpTest, SparseQuantizedFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 }  // namespace
 }  // namespace tflite

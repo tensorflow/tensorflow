@@ -87,7 +87,7 @@ absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
   std::vector<std::string> files;
   TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
   if (files.empty()) {
-    return errors::Internal(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "Failed to find the decomposition lib from path ", composite_mlir_dir));
   }
   std::string tfr_raw_text;
@@ -102,7 +102,7 @@ absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
 
   auto ctx = TFRDecomposeContext::GetFromText(tfr_raw_text, mlir_ctx);
   if (!ctx) {
-    return errors::Internal(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "Failed to load the imported decomposition lib: ", tfr_raw_text));
   }
   return ctx;
@@ -205,7 +205,7 @@ absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
 absl::Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
   // Call the decompose passes by using the external symbol table.
   if (failed(pm_.run(user_module))) {
-    return errors::Internal("Failed to run the decompose passes.");
+    return absl::InternalError("Failed to run the decompose passes.");
   }
   return absl::OkStatus();
 }

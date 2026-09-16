@@ -43,13 +43,13 @@ class DeepConv2DTransform {
  public:
   virtual ~DeepConv2DTransform() {}
 
-  virtual void GetFilterTransformMatrix(const int64_t rows, const int64_t cols,
+  virtual void GetFilterTransformMatrix(int64_t rows, int64_t cols,
                                         T* transform_matrix) const = 0;
 
-  virtual void GetInputTransformMatrix(const int64_t rows, const int64_t cols,
+  virtual void GetInputTransformMatrix(int64_t rows, int64_t cols,
                                        T* transform_matrix) const = 0;
 
-  virtual void GetOutputTransformMatrix(const int64_t rows, const int64_t cols,
+  virtual void GetOutputTransformMatrix(int64_t rows, int64_t cols,
                                         T* transform_matrix) const = 0;
 
   struct Shape {

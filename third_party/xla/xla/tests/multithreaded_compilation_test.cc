@@ -43,7 +43,7 @@ std::unique_ptr<HloRunnerInterface> CreateRunnerOrDie() {
   absl::StatusOr<std::unique_ptr<PjRtClient>> client =
       GetGlobalPjRtClientTestFactory().Get()();
   CHECK_OK(client);
-  return MakeHloRunnerPjRtAotAware(*std::move(client));
+  return MakeAotAwareHloRunner(*std::move(client));
 }
 
 //  In this test, we are taking the same module and compiling it `num_threads`

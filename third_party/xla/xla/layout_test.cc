@@ -236,5 +236,24 @@ TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromDenseLayout) {
   EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
 }
 
+TEST(Layout, DeleteDimensionUpdatesSplitConfigs) {
+  Layout layout({2, 0, 1});
+  layout.add_split_configs(SplitConfig(0, {10}));
+  layout.add_split_configs(SplitConfig(1, {20}));
+  layout.add_split_configs(SplitConfig(2, {30}));
+
+  layout.DeleteDimension(0);
+
+  EXPECT_THAT(layout.minor_to_major(), ElementsAre(1, 0));
+
+  ASSERT_EQ(layout.split_configs().size(), 2);
+
+  EXPECT_EQ(layout.split_configs(0).dimension(), 0);
+  EXPECT_THAT(layout.split_configs(0).split_indices(), ElementsAre(10));
+
+  EXPECT_EQ(layout.split_configs(1).dimension(), 1);
+  EXPECT_THAT(layout.split_configs(1).split_indices(), ElementsAre(30));
+}
+
 }  // namespace
 }  // namespace xla

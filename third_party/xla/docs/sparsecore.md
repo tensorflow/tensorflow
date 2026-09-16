@@ -214,6 +214,7 @@ significantly improved.
 
     `Loop: SC/F_i -> TC/F_i -> TC/B_i -> SC/B_i`
 * **With pipelining (simplified overlapped flow)**:
+
     ```
     Time ->
     Step i:   SC/F_i | TC/F_i | TC/B_i | SC/B_i

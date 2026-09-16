@@ -18,14 +18,19 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
 
 namespace xla {
+
+class HloEvaluator;
 
 // A pass which performs constant folding in order to avoid unnecessary
 // computation on constants.
@@ -45,7 +50,36 @@ class HloConstantFolding : public HloModulePass {
     kAggressive,
   };
 
-  explicit HloConstantFolding(Level level = Level::kDefault) : level_(level) {}
+  struct Options {
+    Level level = Level::kDefault;
+    // When false, only instructions whose operands and results are all
+    // integer or pred typed, plus pure data movement ops of any type (bitcast,
+    // slice, reshape, copy, concatenate, transpose, reverse, pad, select,
+    // dynamic-slice), are folded. Integer arithmetic evaluates identically on
+    // the host evaluator and on backends, so folding cannot change model
+    // numerics; float arithmetic may round differently. Intended for runs
+    // late in a pipeline, where the pre-layout numerics contract is already
+    // fixed.
+    bool fold_float_arithmetic = true;
+    // Post-layout mode. Producers with tuple shapes are folded by rewriting
+    // their get-tuple-element users to leaf constants, and only when every
+    // user is an array shaped get-tuple-element; a tuple shaped constant is
+    // never materialized (backends do not support them, and after layout
+    // assignment no algebraic simplifier run is guaranteed to re-expand
+    // them).
+    bool is_layout_sensitive = false;
+    // Optional filter: when set, an instruction is folded only if this
+    // returns true for its shape (also applied inside folded fusions and
+    // called computations). Lets layout sensitive pipelines skip values
+    // whose layouts a constant cannot legally carry, e.g. backend managed
+    // tilings such as TPU SparseCore layouts.
+    std::function<bool(const Shape&)> can_fold_shape;
+  };
+
+  explicit HloConstantFolding(Level level = Level::kDefault) {
+    options_.level = level;
+  }
+  explicit HloConstantFolding(const Options& options) : options_(options) {}
   absl::string_view name() const override { return "constant_folding"; }
 
  protected:
@@ -56,11 +90,15 @@ class HloConstantFolding : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  absl::StatusOr<bool> RunOnComputation(
+      HloComputation* computation, HloEvaluator* evaluator,
+      absl::flat_hash_map<HloComputation*, bool>& is_foldable_computation);
+
   // Number of slow constant-folds we've encountered.  Used for firing
   // SlowOperationAlarms.
   static std::atomic<int64_t> slow_op_counter_;
 
-  Level level_;
+  Options options_;
 };
 
 }  // namespace xla

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -108,8 +109,11 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
   return true;
 }
 
-double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-    const TiledHloInstruction& hbm_access_instr,
+namespace {
+
+template <typename TiledHloInstructionType>
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccessImpl(
+    const TiledHloInstructionType& hbm_access_instr,
     const se::DeviceDescription& device_info) {
   const HloInstruction* hlo = hbm_access_instr.hlo();
   const Shape& shape = hlo->shape();
@@ -149,44 +153,20 @@ double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
       CeilOfRatio(contiguous_bytes_accessed, transaction_size_bytes);
   return 1.0 * contiguous_bytes_accessed / effective_bytes_accessed;
 }
+}  // namespace
 
-bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,
-                                   const se::DeviceDescription& device_info) {
-  const Shape& shape = operand.hlo()->shape();
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const TiledHloInstruction& hbm_access_instr,
+    const se::DeviceDescription& device_info) {
+  return BandwidthUtilizationRateHeuristicForTiledMemoryAccessImpl(
+      hbm_access_instr, device_info);
+}
 
-  // Compute the number of elements in the contiguous part of the tile.
-  int64_t contiguous_read_elements = 1;
-  for (const auto dim_idx : shape.layout().minor_to_major()) {
-    // This dimension is strided, so it's not contiguous.
-    if (operand.tile_stride(dim_idx) != 1) {
-      break;
-    }
-
-    int64_t tile_size = operand.tile_size(dim_idx);
-    int64_t dim_size = shape.dimensions(dim_idx);
-
-    // Make sure to ignore the mask if there is one.
-    contiguous_read_elements *= std::min(tile_size, dim_size);
-
-    // This dimension is only partially captured, so more major dimensions are
-    // necessarily not captured contiguously.
-    if (tile_size < dim_size) {
-      break;
-    }
-  }
-
-  // Compute the size of the contiguous part of the tile in bytes.
-  int64_t contiguous_bytes_accessed =
-      contiguous_read_elements *
-      ShapeUtil::ByteSizeOfPrimitiveType(operand.hlo()->shape().element_type());
-
-  // We consider a read coalesced if the contiguous part of the read covers the
-  // whole DRAM->L2 cache line.
-  //
-  // TODO(b/332714755): note that we don't check that we fully exploit all the
-  // cache lines we read from if we happen to read through several of them.
-  return contiguous_bytes_accessed >=
-         device_info.dram_to_l2_transaction_size_bytes();
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const experimental::TiledHloInstruction& hbm_access_instr,
+    const se::DeviceDescription& device_info) {
+  return BandwidthUtilizationRateHeuristicForTiledMemoryAccessImpl(
+      hbm_access_instr, device_info);
 }
 
 namespace {
@@ -518,8 +498,8 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
     const HloFusionAnalysis& fusion_analysis,
     absl::Span<const HloInstruction* const> operands,
     MLIRContext* mlir_context) {
-  auto emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
   const auto* fusion_interface =
       dynamic_cast<const MlirKernelFusion*>(emitter.get());
 

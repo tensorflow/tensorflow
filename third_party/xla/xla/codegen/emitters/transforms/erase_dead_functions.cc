@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
 #include <queue>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -76,10 +75,6 @@ class EraseDeadFunctionsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass() {
-  return std::make_unique<EraseDeadFunctionsPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

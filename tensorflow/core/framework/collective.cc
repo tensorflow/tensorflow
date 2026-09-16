@@ -204,8 +204,8 @@ absl::Status CollectiveRegistry::Register(const std::string& collective_name,
   std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
   for (const RegistrationInfo& reg_info : *registry) {
     if (reg_info.name == collective_name)
-      return errors::Internal("Already registered collective ",
-                              collective_name);
+      return absl::InternalError(
+          absl::StrCat("Already registered collective ", collective_name));
   }
   registry->emplace_back(collective_name, std::move(factory));
   return absl::OkStatus();
@@ -226,9 +226,9 @@ absl::Status CollectiveRegistry::LookupHelper(
       return absl::OkStatus();
     }
   }
-  return errors::Internal(
+  return absl::InternalError(absl::StrCat(
       "CollectiveRegistry::Lookup did not find collective implementation ",
-      collective_name);
+      collective_name));
 }
 
 }  // namespace tensorflow

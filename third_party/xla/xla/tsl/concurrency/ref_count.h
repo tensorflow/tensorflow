@@ -124,6 +124,8 @@ class ReferenceCounted {
 template <typename T>
 class ABSL_NULLABILITY_COMPATIBLE RCReference {
  public:
+  using element_type = T;  // cf. `unique_ptr::element_type`
+
   RCReference() : pointer_(nullptr) {}
 
   RCReference(RCReference&& other) noexcept : pointer_(other.pointer_) {

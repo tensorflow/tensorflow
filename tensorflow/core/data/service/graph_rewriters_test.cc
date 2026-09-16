@@ -56,8 +56,8 @@ absl::StatusOr<NodeDef> GetNode(const GraphDef& graph_def,
       return node;
     }
   }
-  return errors::NotFound(absl::Substitute("Node $0 not found in graph $1.",
-                                           name, graph_def.ShortDebugString()));
+  return absl::NotFoundError(absl::Substitute(
+      "Node $0 not found in graph $1.", name, graph_def.ShortDebugString()));
 }
 
 absl::StatusOr<int64_t> GetValue(const GraphDef& graph_def,
@@ -67,8 +67,8 @@ absl::StatusOr<int64_t> GetValue(const GraphDef& graph_def,
       return node.attr().at("value").tensor().int64_val()[0];
     }
   }
-  return errors::NotFound(absl::Substitute("Node $0 not found in graph $1.",
-                                           name, graph_def.ShortDebugString()));
+  return absl::NotFoundError(absl::Substitute(
+      "Node $0 not found in graph $1.", name, graph_def.ShortDebugString()));
 }
 
 TaskDef GetTaskDef(const ProcessingModeDef::ShardingPolicy sharding_policy,

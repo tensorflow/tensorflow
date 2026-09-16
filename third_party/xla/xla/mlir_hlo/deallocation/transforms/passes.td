@@ -32,7 +32,6 @@ def BufferReusePass : Pass<"hlo-buffer-reuse", "mlir::func::FuncOp"> {
       invariants guaranteed by hlo-deallocate.
     - The IR must have been canonicalized at least once after hlo-deallocate.
   }];
-  let constructor = "::mlir::deallocation::createBufferReusePass()";
   let dependentDialects = ["::mlir::memref::MemRefDialect"];
 }
 
@@ -100,5 +99,4 @@ def BufferDeallocation : Pass<"buffer-deallocation", "func::FuncOp"> {
     }
     ```
   }];
-  let constructor = "::mlir::deallocation::createBufferDeallocationPass()";
 }

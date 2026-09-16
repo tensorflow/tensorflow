@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -215,6 +216,20 @@ TYPED_TEST(FloatDivTest, WithBroadcast5D) {
   }
 }
 
+TYPED_TEST(FloatDivTest, WithBroadcast6D) {
+  using T = TypeParam;
+  DivOpModel<T> m({GetTensorType<T>(), {1, 2, 1, 1, 2, 2}},
+                  {GetTensorType<T>(), {1, 1, 2}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {2, 6, 4, 12, 6, 18, 8, 24});
+  m.template PopulateTensor<T>(m.input2(), {2, 3});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {1, 2, 2, 4, 3, 6, 4, 8},
+                  static_cast<float>(NumericLimits<T>::epsilon() * 10))));
+}
+
 TEST(IntegerDivOpTest, NoActivation) {
   IntegerDivOpModel m({TensorType_INT32, {1, 2, 2, 1}},
                       {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
@@ -395,6 +410,74 @@ TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt8) {
 
 TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt16) {
   QuantizedWithBroadcast<TensorType_INT16, int16_t>();
+}
+
+// Tests for signed integer overflow guard (INT32_MIN / -1).
+// This exercises the fix for
+// https://github.com/tensorflow/tensorflow/issues/124409
+
+TEST(IntegerDivOpTest, Int32MinDivNegOne_Saturates) {
+  // INT32_MIN / -1 would overflow to +2147483648 which can't fit in int32.
+  // The fix saturates this to INT32_MAX (2147483647).
+  IntegerDivOpModel m({TensorType_INT32, {1, 1, 4, 1}},
+                      {TensorType_INT32, {1, 1, 4, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  const int32_t int32_min = std::numeric_limits<int32_t>::min();  // -2147483648
+  const int32_t int32_max = std::numeric_limits<int32_t>::max();  //  2147483647
+  m.PopulateTensor<int32_t>(m.input1(), {int32_min, int32_min, -10, 10});
+  m.PopulateTensor<int32_t>(m.input2(), {-1, 1, -1, -1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({int32_max, int32_min, 10, -10}));
+}
+
+TEST(IntegerDivOpTest, Int32MinDivNegOne_Broadcast) {
+  // Test the broadcast path with INT32_MIN / -1.
+  IntegerDivOpModel m({TensorType_INT32, {1, 1, 4, 1}},
+                      {TensorType_INT32, {}},  // scalar broadcast
+                      {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+  const int32_t int32_min = std::numeric_limits<int32_t>::min();
+  const int32_t int32_max = std::numeric_limits<int32_t>::max();
+  m.PopulateTensor<int32_t>(m.input1(), {int32_min, -100, 0, 100});
+  m.PopulateTensor<int32_t>(m.input2(), {-1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({int32_max, 100, 0, -100}));
+}
+
+TEST(IntegerDivOpTest, NormalNegOneDivision) {
+  // Verify that dividing normal values by -1 still works correctly.
+  IntegerDivOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {-100, 50, 0, 2147483647});
+  m.PopulateTensor<int32_t>(m.input2(), {-1, -1, -1, -1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({100, -50, 0, -2147483647}));
+}
+
+// END overflow guard tests
+
+TEST(QuantizedDivOpTest, AsymmetricQuantizedDivisorZeroCheck) {
+  // Case 1: Divisor is real 0.0 (quantized to -128). This should FAIL.
+  {
+    QuantizedDivOpModel m({TensorType_INT8, {1, 1}, -1.0, 1.0},
+                          {TensorType_INT8, {1, 1}, 0.0, 2.0},
+                          {TensorType_INT8, {}, -1.0, 1.0},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {1.0});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {0.0});
+    ASSERT_NE(m.Invoke(), kTfLiteOk);
+  }
+
+  // Case 2: Divisor is real 1.0 (quantized to ~0). This should PASS.
+  {
+    QuantizedDivOpModel m({TensorType_INT8, {1, 1}, -1.0, 1.0},
+                          {TensorType_INT8, {1, 1}, 0.0, 2.0},
+                          {TensorType_INT8, {}, -1.0, 1.0},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {1.0});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {1.0});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  }
 }
 
 }  // namespace

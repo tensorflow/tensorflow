@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -127,6 +128,32 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Operands) {
       ROOT dot = f32[32,32] dot(p0, p1),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto pass_result,
+                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  EXPECT_FALSE(pass_result);
+}
+
+TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_HighestPrecision) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0},
+        operand_precision={highest,highest}
     }
   )hlo";
 

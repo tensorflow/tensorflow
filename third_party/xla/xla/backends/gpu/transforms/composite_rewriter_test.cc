@@ -252,8 +252,20 @@ INSTANTIATE_TEST_SUITE_P(
             /*rhs_type=*/"f8e4m3fn",
             /*lhs_scale_type=*/"f8e8m0fnu",
             /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,16",  // 256 / 16 = 16 (not divisible by
-                                             // 32)
+            /*lhs_scale_shape=*/"3,128,16",  // 256 / 16 = 16 (divisible by 16)
+            /*rhs_scale_shape=*/"3,8,128",
+            /*lhs_scale_const_val=*/std::nullopt,
+            /*rhs_scale_const_val=*/std::nullopt,
+            /*expected_rewrite=*/true,
+        },
+        TestCase{
+            /*test_name=*/"FP8_ScaleFactor_Invalid",
+            /*lhs_type=*/"f8e4m3fn",
+            /*rhs_type=*/"f8e4m3fn",
+            /*lhs_scale_type=*/"f8e8m0fnu",
+            /*rhs_scale_type=*/"f8e8m0fnu",
+            /*lhs_scale_shape=*/"3,128,32",  // K=256, scale_k=32 -> block_size
+                                             // = 8 (not divisible by 16)
             /*rhs_scale_shape=*/"3,8,128",
             /*lhs_scale_const_val=*/std::nullopt,
             /*rhs_scale_const_val=*/std::nullopt,

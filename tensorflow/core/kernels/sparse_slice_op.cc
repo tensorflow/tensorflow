@@ -107,27 +107,27 @@ void SparseSliceOpImpl(OpKernelContext* context,
                            sparse_utils::IndexValidation::kNone),
                        done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input_start.shape()),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Input start should be a vector but received shape ",
-                        input_start.shape().DebugString()),
+                        input_start.shape().DebugString())),
                     done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input_size.shape()),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Input size should be a vector but received shape ",
-                        input_size.shape().DebugString()),
+                        input_size.shape().DebugString())),
                     done);
 
   const int input_dims = input_shape.NumElements();
   OP_REQUIRES_ASYNC(context, input_dims == input_start.NumElements(),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Expected start to be a vector of length ", input_dims,
-                        " but got length ", input_start.NumElements()),
+                        " but got length ", input_start.NumElements())),
                     done);
 
   OP_REQUIRES_ASYNC(context, input_dims == input_size.NumElements(),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Expected size to be a vector of length ", input_dims,
-                        " but got length ", input_size.NumElements()),
+                        " but got length ", input_size.NumElements())),
                     done);
 
   functor::SparseSliceFunctor<Device, T>()(context, input_indices, input_values,

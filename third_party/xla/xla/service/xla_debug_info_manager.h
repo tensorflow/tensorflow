@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
 
 namespace xla {
@@ -45,7 +45,7 @@ class XlaDebugInfoManager {
   // The module_id of the module is expected to be unique per process.
   void RegisterModule(
       std::shared_ptr<const HloModule> hlo_module,
-      std::shared_ptr<const BufferAssignment> buffer_assignment);
+      std::optional<BufferAssignmentProto> buffer_assignment_proto);
 
   // Unregisters an active module.
   void UnregisterModule(ModuleIdentifier module_id);
@@ -70,7 +70,7 @@ class XlaDebugInfoManager {
 
   struct XlaModuleEntry {
     std::shared_ptr<const HloModule> hlo_module;
-    std::shared_ptr<const BufferAssignment> buffer_assignment;
+    std::optional<BufferAssignmentProto> buffer_assignment_proto;
     bool active = false;
   };
 

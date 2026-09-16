@@ -424,14 +424,15 @@ absl::Status BaseFusedBatchNormGrad(const Scope& scope, const Operation& op,
                                     BatchNormGradFn grad_fn,
                                     std::vector<Output>* grad_outputs) {
   if (op.num_outputs() < 5) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "FusedBatchNorm requires at least 5 outputs");
   }
   if (grad_inputs.empty()) {
-    return errors::InvalidArgument("FusedBatchNorm grad requires 1 grad input");
+    return absl::InvalidArgumentError(
+        "FusedBatchNorm grad requires 1 grad input");
   }
   if (op.num_inputs() < 3) {
-    return errors::InvalidArgument("FusedBatchNorm has too few inputs");
+    return absl::InvalidArgumentError("FusedBatchNorm has too few inputs");
   }
 
   Output x = op.input(0);
@@ -458,7 +459,7 @@ absl::Status BaseFusedBatchNormGrad(const Scope& scope, const Operation& op,
                    data_format, is_training, grad_outputs);
   } else {
     if (op.num_inputs() < 5) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "FusedBatchNorm requires 5 inputs in eval mode");
     }
 
@@ -521,10 +522,10 @@ absl::Status Conv2DBackpropInputGrad(const Scope& scope, const Operation& op,
                                      const std::vector<Output>& grad_inputs,
                                      std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
-    return errors::InvalidArgument("Conv2DBackpropInput requires 3 inputs.");
+    return absl::InvalidArgumentError("Conv2DBackpropInput requires 3 inputs.");
   }
   if (grad_inputs.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Conv2DBackpropInput grad requires 1 grad input");
   }
 
@@ -567,10 +568,11 @@ absl::Status DepthwiseConv2dNativeGrad(const Scope& scope, const Operation& op,
                                        const std::vector<Output>& grad_inputs,
                                        std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 2) {
-    return errors::InvalidArgument("DepthwiseConv2dNative requires 2 inputs.");
+    return absl::InvalidArgumentError(
+        "DepthwiseConv2dNative requires 2 inputs.");
   }
   if (grad_inputs.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "DepthwiseConv2dNative grad requires 1 grad input");
   }
 

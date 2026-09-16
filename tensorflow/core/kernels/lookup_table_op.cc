@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_table_op.h"
 #define EIGEN_USE_THREADS
-
 #include <string>
 #include <type_traits>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
@@ -607,7 +608,13 @@ class MutableDenseHashTable final : public LookupInterface {
                             const Tensor& values) override
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    num_buckets_ = keys.dim_size(0);
+    int64_t num_buckets = keys.dim_size(0);
+    if (num_buckets < 4 || ((num_buckets & (num_buckets - 1)) != 0)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of buckets must be at least 4 and a power of 2, got: ",
+          num_buckets));
+    }
+    num_buckets_ = num_buckets;
     key_buckets_ = keys;
     value_buckets_ = values;
     // Count the number of keys that are not the empty_key or deleted_key.

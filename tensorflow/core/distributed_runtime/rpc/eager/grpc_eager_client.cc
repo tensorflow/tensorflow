@@ -27,6 +27,7 @@ limitations under the License.
 #include "grpcpp/generic/generic_stub.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
@@ -321,8 +322,8 @@ class GrpcEagerClientCache : public EagerClientCache {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
       if (shared == nullptr) {
-        return errors::InvalidArgument("Client for target ", target,
-                                       " not found.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Client for target ", target, " not found."));
       }
       int assigned_index = AssignClientToThread(target);
       GrpcEagerClientThread* thread = threads_[assigned_index].get();

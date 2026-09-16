@@ -63,9 +63,9 @@ class CopyOp : public OpKernel {
           str_util::Split(debug_op_spec, ";");
       OP_REQUIRES(
           context, items.size() == 3,
-          errors::Internal(
+          absl::InternalError(absl::StrCat(
               "Unexpected number of semicolons in debug_ops_spec element: ",
-              debug_op_spec));
+              debug_op_spec)));
       debug_op_and_url_specs_.push_back(
           DebugWatchAndURLSpec(absl::StrCat(tensor_name_, ":", items[0]),
                                items[1], items[2] == "1"));
@@ -136,14 +136,14 @@ class BaseDebugOp : public OpKernel {
     std::string node_name;
     int32_t output_slot = 0;
     OP_REQUIRES(context, name_items.size() == 1 || name_items.size() == 2,
-                errors::InvalidArgument("Failed to parse tensor name: \"",
-                                        tensor_name, "\""));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Failed to parse tensor name: \"", tensor_name, "\"")));
     if (name_items.size() == 2) {
       node_name = name_items[0];
-      OP_REQUIRES(
-          context, absl::SimpleAtoi(name_items[1], &output_slot),
-          errors::InvalidArgument("Invalid string value for output_slot: \"",
-                                  name_items[1], "\""));
+      OP_REQUIRES(context, absl::SimpleAtoi(name_items[1], &output_slot),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Invalid string value for output_slot: \"",
+                                   name_items[1], "\"")));
     } else if (name_items.size() == 1) {
       node_name = name_items[0];
     }
@@ -447,8 +447,8 @@ class DebugIdentityV2Op : public OpKernel {
         dump_roots_.emplace_back(
             debug_url.substr(strlen(DebugIO::kFileURLScheme)));
       } else {
-        context->SetStatus(
-            errors::Internal("Unsupported debug URL schema in: ", debug_url));
+        context->SetStatus(absl::InternalError(
+            absl::StrCat("Unsupported debug URL schema in: ", debug_url)));
       }
     }
     OP_REQUIRES_OK(context,
@@ -716,8 +716,8 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
       }
     } else {
       // TODO(cais): Implement other tensor debug modes in debug_event.proto.
-      context->SetStatus(errors::Unimplemented(
-          "Unimplemented tensor debug mode: ", tensor_debug_mode_));
+      context->SetStatus(absl::UnimplementedError(absl::StrCat(
+          "Unimplemented tensor debug mode: ", tensor_debug_mode_)));
     }
   }
 
@@ -774,7 +774,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        errors::Internal("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."), done);
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
@@ -802,7 +802,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, shape, &output_tensor));
       OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
-                        errors::Unimplemented(
+                        absl::UnimplementedError(
                             "Determinism is not yet supported for "
                             "DebugNumericSummaryV2 when tensor_debug_mode is "
                             "CONCISE_HEALTH."),
@@ -810,7 +810,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        errors::Internal("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."), done);
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
@@ -840,9 +840,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        errors::Internal("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."), done);
       OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
-                        errors::Unimplemented(
+                        absl::UnimplementedError(
                             "Determinism is not yet supported for "
                             "DebugNumericSummaryV2 when tensor_debug_mode is "
                             "FULL_HEALTH."),
@@ -881,7 +881,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        errors::Internal("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."), done);
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
@@ -916,7 +916,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        errors::Internal("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."), done);
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
@@ -940,8 +940,8 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else {
       // TODO(cais): Implement other tensor debug modes in debug_event.proto.
-      context->SetStatus(errors::Unimplemented(
-          "Unimplemented tensor debug mode: ", tensor_debug_mode_));
+      context->SetStatus(absl::UnimplementedError(absl::StrCat(
+          "Unimplemented tensor debug mode: ", tensor_debug_mode_)));
       done();
     }
   }

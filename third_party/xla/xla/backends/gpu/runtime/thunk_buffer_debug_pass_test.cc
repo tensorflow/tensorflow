@@ -33,25 +33,27 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -130,6 +132,10 @@ class FakeThunk : public Thunk {
 
   BufferUses buffer_uses() const override { return buffer_uses_; }
 
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("FakeThunk::ToProto is not implemented");
+  }
+
  private:
   BufferUses buffer_uses_;
 };
@@ -183,10 +189,12 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options,
-                             /*hlo_module=*/nullptr, device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed, pass->Run(&thunks, debug_options,
+                              /*hlo_module=*/nullptr, device_info, allocator));
   EXPECT_FALSE(changed);
   EXPECT_THAT(thunks, ElementsAre(Pointer(fake_thunk_ptr)));
   EXPECT_THAT(allocator.allocs(), IsEmpty());
@@ -227,10 +235,12 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -337,10 +347,12 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   //       ]
   //    ]
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Each FakeThunk is supposed to be transformed into a SequentialThunk
@@ -504,10 +516,12 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kFloatChecker, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -541,9 +555,382 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
       static_cast<const BuffersDebugFloatCheckThunk&>(*sub_thunks[1]);
   EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
               UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
-
   // 1 for the log buffer, 1 per wrapped thunk for the temp buffer
   EXPECT_THAT(allocator.allocs(), SizeIs(2));
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       OutputBuffersFloatCheckThunkNotAddedWhenFlagDisabled) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_WARNING);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      false);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 4, PrimitiveType::F32);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info, Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kFloatChecker, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(thunks, SizeIs(3));
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       OutputBuffersFloatCheckThunkNotAddedWhenBufferAssignmentNull) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_WARNING);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      true);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 4, PrimitiveType::F32);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info, Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kFloatChecker, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(thunks, SizeIs(3));
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       OutputBuffersChecksumThunkNotAddedWhenFlagDisabled) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+      true);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      false);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(U8, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 1, PrimitiveType::U8);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info, Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(thunks, SizeIs(3));
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       OutputBuffersChecksumThunkNotAddedWhenBufferAssignmentNull) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+      true);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      true);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(U8, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 1, PrimitiveType::U8);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info, Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(thunks, SizeIs(3));
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       OutputBuffersSaverThunkNotAddedWhenFlagDisabled) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_dump_to("/tmp/123");
+  debug_options.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(true);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      false);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(U8, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 1, PrimitiveType::U8);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info, Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kBufferSaver, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(thunks, SizeIs(1));
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       OutputBuffersSaverThunkNotAddedWhenBufferAssignmentNull) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_dump_to("/tmp/123");
+  debug_options.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(true);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      true);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(U8, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 1, PrimitiveType::U8);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info, Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kBufferSaver, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(thunks, SizeIs(1));
+}
+
+TEST_F(ThunkBufferDebugPassTest, InsertsOutputFloatCheckThunkWhenFlagEnabled) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_WARNING);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      true);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+
+  AliasInfo alias_info;
+  auto buffer_size = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+  };
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer_assignment,
+      BufferAssigner::Run(
+          &hlo_module, std::make_unique<DependencyHloOrdering>(&hlo_module),
+          buffer_size, &alias_info, [](LogicalBuffer::Color) { return 1; },
+          std::move(opts)));
+
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 4, PrimitiveType::F32);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info, Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  Thunk* fake_thunk_ptr = fake_thunk.get();
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto output_slices,
+      GetOutputShapedBuffers(&hlo_module, buffer_assignment.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kFloatChecker,
+                                   std::move(output_slices)));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(thunks, SizeIs(4));
+  EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCustomCall);
+  EXPECT_THAT(thunks[1].get(), Pointer(fake_thunk_ptr));
+  EXPECT_EQ(thunks[2]->kind(), Thunk::Kind::kBuffersDebugFloatCheck);
+  EXPECT_EQ(thunks[3]->kind(), Thunk::Kind::kCustomCall);
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       OutputBuffersFloatCheckAndFilteredThunksWrapped) {
+  static constexpr ThunkId kTestThunkId1 = ThunkId(1);
+  static constexpr ThunkId kTestThunkId2 = ThunkId(2);
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_WARNING);
+  debug_options.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(
+      true);
+  // Filter to instrument only thunk 2
+  IntRangeInclusive* range =
+      debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
+          ->add_thunk_id_ranges();
+  range->set_first(2);
+  range->set_last(2);
+
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+
+  AliasInfo alias_info;
+  auto buffer_size = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+  };
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer_assignment,
+      BufferAssigner::Run(
+          &hlo_module, std::make_unique<DependencyHloOrdering>(&hlo_module),
+          buffer_size, &alias_info, [](LogicalBuffer::Color) { return 1; },
+          std::move(opts)));
+
+  BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {1});
+  BufferAllocation::Slice slice_o(&alloc, 4, 4, PrimitiveType::F32);
+
+  Thunk::ThunkInfo fake_thunk1_info;
+  fake_thunk1_info.thunk_id = kTestThunkId1;
+  auto fake_thunk1 = std::make_unique<FakeThunk>(
+      fake_thunk1_info,
+      Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  Thunk* fake_thunk1_ptr = fake_thunk1.get();
+
+  Thunk::ThunkInfo fake_thunk2_info;
+  fake_thunk2_info.thunk_id = kTestThunkId2;
+  auto fake_thunk2 = std::make_unique<FakeThunk>(
+      fake_thunk2_info,
+      Thunk::BufferUses{BufferUse::Write(slice_o, arg_shape)});
+  Thunk* fake_thunk2_ptr = fake_thunk2.get();
+
+  ThunkSequence thunks;
+  thunks.push_back(std::move(fake_thunk1));
+  thunks.push_back(std::move(fake_thunk2));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto output_slices,
+      GetOutputShapedBuffers(&hlo_module, buffer_assignment.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kFloatChecker,
+                                   std::move(output_slices)));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  // Expected thunk structure:
+  // 0. init
+  // 1. fake_thunk1 (NOT wrapped)
+  // 2. SequentialThunk (fake_thunk2 wrapped)
+  // 3. output_buffers_check
+  // 4. dump
+  EXPECT_THAT(thunks, SizeIs(5));
+  EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCustomCall);
+  EXPECT_THAT(thunks[1].get(), Pointer(fake_thunk1_ptr));
+  EXPECT_EQ(thunks[2]->kind(), Thunk::Kind::kSequential);
+
+  const ThunkSequence& sub_thunks =
+      static_cast<const SequentialThunk&>(*thunks[2]).thunks();
+  EXPECT_THAT(sub_thunks, SizeIs(2));
+  EXPECT_THAT(sub_thunks[0].get(), Pointer(fake_thunk2_ptr));
+  EXPECT_EQ(sub_thunks[1]->kind(), Thunk::Kind::kBuffersDebugFloatCheck);
+
+  EXPECT_EQ(thunks[3]->kind(), Thunk::Kind::kBuffersDebugFloatCheck);
+  EXPECT_EQ(thunks[4]->kind(), Thunk::Kind::kCustomCall);
 }
 
 TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
@@ -565,8 +952,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
   Thunk::ThunkInfo fake_thunk_info;
   fake_thunk_info.thunk_id = kTestThunkId;
 
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<FakeThunk>(
+  ThunkSequence thunks = ThunkSequence::Of<FakeThunk>(
       fake_thunk_info,
       Thunk::BufferUses{
           // Write is undefined on input, but defined on output.
@@ -574,13 +960,13 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
           // Unlike Consume, Read is supposed to preserve the contents of the
           // buffer, so we check it on input *and* output.
           BufferUse::Read(slice_io, arg_shape),
-      }));
+      });
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_dump_to("/tmp/123");
   debug_options.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(true);
 
-  TF_EXPECT_OK(RunDebugSaverInserter(&thunks, debug_options, hlo_module));
+  EXPECT_OK(RunDebugSaverInserter(&thunks, debug_options, hlo_module, {}));
 
   // Expected thunk structure after the pass:
   // 1. SequentialThunk
@@ -625,10 +1011,12 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -695,10 +1083,12 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -783,10 +1173,12 @@ TEST_F(ThunkBufferDebugPassTest,
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:

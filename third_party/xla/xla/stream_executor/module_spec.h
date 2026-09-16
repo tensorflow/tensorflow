@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace stream_executor {
 

@@ -372,6 +372,15 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
   // The bytes of floats are stored little-endian.
   switch (elem_type.getIntOrFloatBitWidth()) {
+    case 8: {
+      assert(bytes_len == shaped_type.getNumElements());
+      assert(mlir::isa<mlir::Float8E4M3FNType>(elem_type) ||
+             mlir::isa<mlir::Float8E5M2Type>(elem_type));
+      return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
+          shaped_type,
+          llvm::ArrayRef<char>(reinterpret_cast<const char*>(buffer.data()),
+                               bytes_len)));
+    }
     case 16: {
       assert(bytes_len % 2 == 0);
       // Supports both BF16 and F16.
@@ -480,40 +489,32 @@ int64_t GetSizeInBits(mlir::ShapedType shaped_type) {
 }
 
 int64_t GetSizeInBits(mlir::quant::QuantizedType quant_type) {
-  const int64_t bits = std::max(quant_type.getStorageTypeIntegralWidth(),
-                                static_cast<uint32_t>(CHAR_BIT));
+  const int64_t bits = quant_type.getStorageTypeIntegralWidth();
   assert(IsPowerOfTwo(bits));
   return bits;
 }
 
 int64_t GetSizeInBits(mlir::Type type) {
   if (type.isIntOrFloat()) {
-    const int64_t bits =
-        std::max(type.getIntOrFloatBitWidth(), static_cast<uint32_t>(CHAR_BIT));
+    const int64_t bits = type.getIntOrFloatBitWidth();
     assert(IsPowerOfTwo(bits));
     return bits;
   }
-  if (mlir::isa<mlir::ShapedType>(type)) {
-    auto shaped_type = mlir::cast<mlir::ShapedType>(type);
-    if (mlir::isa<mlir::ComplexType>(shaped_type.getElementType())) {
-      auto complex_type =
-          mlir::cast<mlir::ComplexType>(shaped_type.getElementType());
-      return GetSizeInBits(complex_type.getElementType()) * 2;
-    } else if (mlir::isa<mlir::quant::QuantizedType>(
-                   shaped_type.getElementType())) {
-      auto quant_type =
-          mlir::cast<mlir::quant::QuantizedType>(shaped_type.getElementType());
-      return GetSizeInBits(quant_type);
-    } else {
-      return GetSizeInBits(shaped_type);
-    }
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
+    return GetSizeInBits(complex_type.getElementType()) * 2;
+  }
+  if (auto quant_type = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
+    return GetSizeInBits(quant_type);
+  }
+  if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(type)) {
+    return GetSizeInBits(shaped_type);
   }
 
   return 0;
 }
 
 int64_t GetSizeInBytes(mlir::Type type) {
-  return ExactIntegerDivide(GetSizeInBits(type), CHAR_BIT);
+  return (GetSizeInBits(type) + CHAR_BIT - 1) / CHAR_BIT;
 }
 
 }  // namespace TFL

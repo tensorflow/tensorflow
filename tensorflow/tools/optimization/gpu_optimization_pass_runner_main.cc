@@ -49,18 +49,20 @@ absl::Status RealMain(int argc, char** argv) {
            "Which optimization pass to run."),
   };
   if (!Flags::Parse(&argc, argv, flag_list)) {
-    return errors::FailedPrecondition("Invalid flags passed");
+    return absl::FailedPreconditionError("Invalid flags passed");
   }
   port::InitMain(argv[0], &argc, &argv);
 
   if (input_file_path.empty()) {
-    return errors::FailedPrecondition("input_file_path is a required flag.");
+    return absl::FailedPreconditionError("input_file_path is a required flag.");
   }
   if (output_file_path.empty()) {
-    return errors::FailedPrecondition("output_file_path is a required flag.");
+    return absl::FailedPreconditionError(
+        "output_file_path is a required flag.");
   }
   if (optimization_pass.empty()) {
-    return errors::FailedPrecondition("optimization_pass is a required flag.");
+    return absl::FailedPreconditionError(
+        "optimization_pass is a required flag.");
   }
 
   GraphDef graphdef_input;

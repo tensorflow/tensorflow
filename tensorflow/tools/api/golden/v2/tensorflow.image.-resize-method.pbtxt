@@ -1,38 +1,38 @@
 path: "tensorflow.image.ResizeMethod"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.image_ops_impl.ResizeMethod\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "AREA"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "BICUBIC"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "BILINEAR"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "GAUSSIAN"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "LANCZOS3"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "LANCZOS5"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "MITCHELLCUBIC"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member {
     name: "NEAREST_NEIGHBOR"
-    mtype: "<type \'str\'>"
+    mtype: "<class \'str\'>"
   }
   member_method {
     name: "__init__"

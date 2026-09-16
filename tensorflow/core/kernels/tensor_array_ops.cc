@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -91,7 +92,9 @@ absl::Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     TF_RETURN_IF_ERROR(sc->Lookup(rm, container + ta_handle, tensor_array));
     return absl::OkStatus();
   } else {
-    return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+    return LookupResource(ctx, handle, tensor_array);
   }
 }
 

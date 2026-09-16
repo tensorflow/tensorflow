@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -95,9 +96,9 @@ absl::Status ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index,
 
     int dimensions_count = lhs_array.shape().dimensions_count();
     if (dimensions_count < 2) {
-      return ::tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Inputs of MatMul should have dimension >= 2. Got %d dimensions",
-          dimensions_count);
+          dimensions_count));
     }
 
     // Create a permutation vector to exchange the last 2 dimensions.
@@ -173,7 +174,7 @@ absl::Status ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index,
   fc_op->outputs = matmul_op->outputs;
 
   // Insert the newly constructed FullyConnectedOperator.
-  model->operators.emplace(matmul_it, fc_op) + 1;
+  model->operators.emplace(matmul_it, fc_op);
 
   // Find the op producing the array passed to this MatMul
   auto previous_op_it = model->operators.begin();
@@ -226,7 +227,6 @@ absl::Status ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index,
     AddMessageF("Replacing %s by a FullyConnected operator",
                 LogName(*matmul_op));
   }
-
 
   // erase the MatMul operator
   model->operators.erase(matmul_it);

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -31,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,7 +48,6 @@ class GpuPerformanceModelBaseTest : public HloHardwareIndependentTestBase {
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   std::unique_ptr<GpuHloCostAnalysis> analysis_;
-  MLIRContext mlir_context_;
 
   GpuPerformanceModelBaseTest() {
     options_.count_multiple_input_accesses = true;
@@ -67,8 +67,7 @@ ENTRY entry_computation {
   ROOT dynamic-update-slice = f32[8,16] dynamic-update-slice(param_0, log, c_0, c_0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
   ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
@@ -96,8 +95,7 @@ ENTRY entry_computation {
   ROOT dynamic-update-slice = f32[8,16] dynamic-update-slice(log, param_1, c_0, c_0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
   ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
@@ -139,8 +137,7 @@ ENTRY entry_computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
   ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
@@ -172,8 +169,7 @@ ENTRY entry_computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
   ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
@@ -206,8 +202,7 @@ ENTRY entry_computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
   ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
@@ -238,14 +233,12 @@ ENTRY entry_computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
   EXPECT_EQ(launch_dimensions.num_blocks(), 128);
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 128);
@@ -275,14 +268,12 @@ ENTRY e {
     backend_config={"fusion_backend_config": {kind: "__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","970"]}],"num_warps":"2"}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
   EXPECT_EQ(launch_dimensions.num_blocks(), 16);
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 64);
@@ -305,14 +296,12 @@ ENTRY e {
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
   // CuNnnFusion doesn't implement KernelLaunchInsterface, so
   // EstimateFusionLaunchDimensions returns a default estimate.
@@ -380,6 +369,51 @@ TEST_F(GpuPerformanceModelBaseTest, RecordEstimatedRunTimeWithoutName) {
           EstimateRunTimeData{}, device_info_);
 
   EXPECT_TRUE(cost.name().empty());
+}
+
+TEST_F(GpuPerformanceModelBaseTest,
+       CacheContainsConsumersReturnsFalseWhenAllConsumersInvalidated) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = f32[8,16] parameter(0)
+  log = f32[8,16] log(param_0)
+  exp = f32[8,16] exponential(log)
+  neg = f32[8,16] negate(log)
+  ROOT root = tuple(exp, neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* producer = module->entry_computation()->GetInstructionWithName("log");
+  auto* consumer_1 = module->entry_computation()->GetInstructionWithName("exp");
+  auto* consumer_2 = module->entry_computation()->GetInstructionWithName("neg");
+
+  GpuPerformanceModelCache cache;
+  EXPECT_FALSE(cache.ContainsConsumers(*producer));
+
+  cache.Set(*producer, *consumer_1, absl::Microseconds(10));
+  cache.Set(*producer, *consumer_2, absl::Microseconds(20));
+  EXPECT_TRUE(cache.ContainsConsumers(*producer));
+  EXPECT_EQ(cache.GetAllConsumers(*producer).size(), 2);
+
+  // Invalidate first consumer: producer still has consumer_2.
+  cache.Invalidate(*consumer_1);
+  EXPECT_TRUE(cache.ContainsConsumers(*producer));
+  EXPECT_EQ(cache.GetAllConsumers(*producer).size(), 1);
+
+  // Invalidate second (and final) consumer: producer now has no consumers in
+  // cache.
+  cache.Invalidate(*consumer_2);
+  EXPECT_FALSE(cache.ContainsConsumers(*producer));
+  EXPECT_TRUE(cache.GetAllConsumers(*producer).empty());
+
+  // Re-populating and invalidating producer itself also resets
+  // ContainsConsumers.
+  cache.Set(*producer, *consumer_1, absl::Microseconds(10));
+  EXPECT_TRUE(cache.ContainsConsumers(*producer));
+  cache.Invalidate(*producer);
+  EXPECT_FALSE(cache.ContainsConsumers(*producer));
 }
 
 }  // namespace

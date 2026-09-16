@@ -38,7 +38,9 @@ inline std::string ProfilerJoinPathImpl(
     std::initializer_list<absl::string_view> paths) {
   std::string result;
   for (absl::string_view path : paths) {
-    if (path.empty()) continue;
+    if (path.empty()) {
+      continue;
+    }
 
     if (result.empty()) {
       result = std::string(path);

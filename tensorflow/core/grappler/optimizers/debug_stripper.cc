@@ -36,7 +36,7 @@ absl::Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
   if (!can_optimize) {
-    return errors::Aborted("Nothing to do.");
+    return absl::AbortedError("Nothing to do.");
   }
 
   *output = item.graph;

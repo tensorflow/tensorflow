@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file | FileCheck %s --dump-input=fail 
 
 // Just assert that pass is properly registered.
@@ -84,6 +98,27 @@ func.func @depthwise_transpose_conv2d_same_padding_nchw_hwoi(%input: tensor<1x2x
   // CHECK:  %8 = "mhlo.concatenate"(%4, %7) <{dimension = 3 : i64}> : (tensor<1x80x80x1xf32>, tensor<1x80x80x1xf32>) -> tensor<1x80x80x2xf32>
   // CHECK:  %9 = "mhlo.transpose"(%8) <{permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : (tensor<1x80x80x2xf32>) -> tensor<1x2x80x80xf32>
   // CHECK:  return %9 : tensor<1x2x80x80xf32>
+}
+
+// -----
+
+// CHECK-LABEL: grouped_transpose_conv2d_nhwc_ohwi
+func.func @grouped_transpose_conv2d_nhwc_ohwi(%input: tensor<1x8x8x4xf32>, %filter: tensor<8x3x3x2xf32>) -> tensor<1x17x17x8xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {pad = [[2, 2], [2, 2]], lhs_dilate = [2, 2]}
+    {batch_group_count = 1 : i64, feature_group_count = 2 : i64}
+    : (tensor<1x8x8x4xf32>, tensor<8x3x3x2xf32>) -> tensor<1x17x17x8xf32>
+  func.return %0 : tensor<1x17x17x8xf32>
+
+  // CHECK:  %0 = "mhlo.slice"(%arg0) <{limit_indices = dense<[1, 8, 8, 2]> : tensor<4xi64>, start_indices = dense<0> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<1x8x8x4xf32>) -> tensor<1x8x8x2xf32>
+  // CHECK:  %1 = "mhlo.slice"(%arg1) <{limit_indices = dense<[4, 3, 3, 2]> : tensor<4xi64>, start_indices = dense<0> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<8x3x3x2xf32>) -> tensor<4x3x3x2xf32>
+  // CHECK:  %2 = mhlo.convolution(%0, %1) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f], window = {pad = {{\[\[}}2, 2], [2, 2]], lhs_dilate = [2, 2]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x8x8x2xf32>, tensor<4x3x3x2xf32>) -> tensor<1x17x17x4xf32>
+  // CHECK:  %3 = "mhlo.slice"(%arg0) <{limit_indices = dense<[1, 8, 8, 4]> : tensor<4xi64>, start_indices = dense<[0, 0, 0, 2]> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<1x8x8x4xf32>) -> tensor<1x8x8x2xf32>
+  // CHECK:  %4 = "mhlo.slice"(%arg1) <{limit_indices = dense<[8, 3, 3, 2]> : tensor<4xi64>, start_indices = dense<[4, 0, 0, 0]> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<8x3x3x2xf32>) -> tensor<4x3x3x2xf32>
+  // CHECK:  %5 = mhlo.convolution(%3, %4) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f], window = {pad = {{\[\[}}2, 2], [2, 2]], lhs_dilate = [2, 2]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x8x8x2xf32>, tensor<4x3x3x2xf32>) -> tensor<1x17x17x4xf32>
+  // CHECK:  %6 = "mhlo.concatenate"(%2, %5) <{dimension = 3 : i64}> : (tensor<1x17x17x4xf32>, tensor<1x17x17x4xf32>) -> tensor<1x17x17x8xf32>
+  // CHECK:  return %6 : tensor<1x17x17x8xf32>
 }
 
 // -----

@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <string>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"

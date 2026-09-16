@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_proto_util.h"
 
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
@@ -89,5 +90,123 @@ TEST_F(HloProtoUtilTest, GetBackendConfigStringInvalidId) {
               ::testing::HasSubstr("Payload requested ID"));
 }
 
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsId) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        backend_config_payload { id: 1 }
+      )pb",
+      &instruction));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"pb(
+                                                           payloads: "payload_0"
+                                                           payloads: "payload_1"
+                                                         )pb",
+                                                         &module));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, &module);
+  EXPECT_TRUE(result.has_backend_config_payload());
+  EXPECT_TRUE(result.backend_config_payload().has_value());
+  EXPECT_EQ(result.backend_config_payload().value(), "payload_1");
+}
+
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsValue) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        backend_config_payload { value: "inline_config" }
+      )pb",
+      &instruction));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"pb(
+                                                           payloads: "payload_0"
+                                                         )pb",
+                                                         &module));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, &module);
+  EXPECT_TRUE(result.has_backend_config_payload());
+  EXPECT_TRUE(result.backend_config_payload().has_value());
+  EXPECT_EQ(result.backend_config_payload().value(), "inline_config");
+}
+
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsNoPayload) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        backend_config: "legacy_config"
+      )pb",
+      &instruction));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"pb(
+                                                           payloads: "payload_0"
+                                                         )pb",
+                                                         &module));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, &module);
+  EXPECT_FALSE(result.has_backend_config_payload());
+  EXPECT_EQ(result.backend_config(), "legacy_config");
+}
+
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsNullModule) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        backend_config_payload { id: 1 }
+      )pb",
+      &instruction));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, nullptr);
+  EXPECT_TRUE(result.has_backend_config_payload());
+  EXPECT_TRUE(result.backend_config_payload().has_id());
+  EXPECT_EQ(result.backend_config_payload().id(), 1);
+}
+
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsInvalidId) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        backend_config_payload { id: 5 }
+      )pb",
+      &instruction));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"pb(
+                                                           payloads: "payload_0"
+                                                         )pb",
+                                                         &module));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, &module);
+  EXPECT_TRUE(result.has_backend_config_payload());
+  EXPECT_TRUE(result.backend_config_payload().has_id());
+  EXPECT_EQ(result.backend_config_payload().id(), 5);
+}
+
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsMetadata) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        metadata { metadata_payload { id: 1 } }
+      )pb",
+      &instruction));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        payloads: "payload_0" payloads: "payload_1"
+      )pb",
+      &module));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, &module);
+  EXPECT_TRUE(result.has_metadata());
+  EXPECT_TRUE(result.metadata().has_metadata_payload());
+  EXPECT_EQ(result.metadata().metadata_payload().payload_source_case(),
+            xla::Payload::kValue);
+  EXPECT_EQ(result.metadata().metadata_payload().value(), "payload_1");
+}
+
 }  // namespace
+
 }  // namespace xla

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -127,7 +128,7 @@ absl::StatusOr<Assembly> CachingCompilationProvider::CompileAndLink(
     if (std::holds_alternative<RelocatableModule>(input)) {
       modules.push_back(std::get<RelocatableModule>(input));
     } else {
-      TF_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           RelocatableModule relocatable_module,
           CompileToRelocatableModule(cc, std::get<Ptx>(input).ptx, options));
       modules.push_back(std::move(relocatable_module));

@@ -159,7 +159,7 @@ std::optional<StringRef> UnwrapSingleFunctionCall(Region& region) {
        llvm::zip(call.getResults(), yield.getOperands())) {
     if (ret != operand) return std::nullopt;
   }
-  SymbolRefAttr symbol = call.getCallableForCallee().get<SymbolRefAttr>();
+  SymbolRefAttr symbol = dyn_cast<SymbolRefAttr>(call.getCallableForCallee());
   if (!symbol) return std::nullopt;
   return symbol.getLeafReference();
 }

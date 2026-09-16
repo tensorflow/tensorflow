@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -141,7 +142,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
 
   absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                       split_providers) const override {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Splitting is not implemented for snapshot datasets.");
   }
 
@@ -301,7 +302,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(instantiated_reader_func_->Run(
           ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
       if (reader_output.size() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "reader_func returns more than one argument.");
       }
       TF_RETURN_IF_ERROR(
@@ -497,7 +498,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
 
       if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
           output_tensors[0].NumElements() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "`shard_func` must return a scalar int64.");
       }
 
@@ -660,11 +661,11 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name(kGraphHashDirectory), &hash_dir));
         if (hash_dir != hash_dir_) {
-          return errors::DataLoss(
+          return absl::DataLossError(absl::StrCat(
               "Dataset has changed while restoring from the checkpoint. Old "
               "hash "
               "directory: ",
-              hash_dir, "; new hash directory: ", hash_dir_);
+              hash_dir, "; new hash directory: ", hash_dir_));
         }
 
         experimental::SnapshotMetadataRecord metadata;
@@ -673,8 +674,9 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
             ctx->env(), io::JoinPath(dataset()->reader_prefix_, hash_dir_),
             &metadata, &file_exists));
         if (!file_exists) {
-          return errors::DataLoss("Snapshot metadata file in ", hash_dir_,
-                                  " does not exist any more.");
+          return absl::DataLossError(absl::StrCat("Snapshot metadata file in ",
+                                                  hash_dir_,
+                                                  " does not exist any more."));
         }
 
         int64_t iterator_mode;
@@ -894,12 +896,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         compression_ == io::compression::kNone ||
             compression_ == io::compression::kGzip ||
             compression_ == io::compression::kSnappy,
-        errors::InvalidArgument("compression must be either '', 'GZIP' or "
-                                "'SNAPPY'."));
+        absl::InvalidArgumentError("compression must be either '', 'GZIP' or "
+                                   "'SNAPPY'."));
 
     OP_REQUIRES(
         ctx, pending_snapshot_expiry_seconds_ >= 1,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "pending_snapshot_expiry_seconds must be at least 1 second."));
 
     OP_REQUIRES(ctx,
@@ -907,10 +909,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                     mode_ == snapshot_util::kModeRead ||
                     mode_ == snapshot_util::kModeWrite ||
                     mode_ == snapshot_util::kModePassthrough,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "mode must be either '", snapshot_util::kModeAuto, "', '",
                     snapshot_util::kModeRead, "', '", snapshot_util::kModeWrite,
-                    "', or '", snapshot_util::kModePassthrough, "'."));
+                    "', or '", snapshot_util::kModePassthrough, "'.")));
   }
 
  protected:
@@ -996,7 +998,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                         split_providers) const override {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Splitting is not implemented for snapshot datasets.");
     }
 
@@ -1208,7 +1210,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             break;
           case snapshot_util::READER:
             if (run_id.empty() && metadata.run_id().empty()) {
-              return errors::NotFound(
+              return absl::NotFoundError(
                   "Could not find a valid snapshot to read.");
             }
             if (run_id.empty()) {
@@ -1216,17 +1218,17 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             }
             // dtypes in metadata should be the same as dataset()->output_dtypes
             if (metadata.dtype_size() != dataset()->output_dtypes().size()) {
-              return errors::Internal(
+              return absl::InternalError(absl::StrCat(
                   "Expected number of dtypes: ",
                   dataset()->output_dtypes().size(),
-                  " but number in snapshot: ", metadata.dtype_size());
+                  " but number in snapshot: ", metadata.dtype_size()));
             }
             for (int i = 0; i < metadata.dtype_size(); ++i) {
               if (metadata.dtype(i) != dataset()->output_dtypes()[i]) {
-                return errors::Internal(
+                return absl::InternalError(absl::StrCat(
                     "Type: ", i,
                     " doesn't match. Snapshot: ", metadata.dtype(i),
-                    "; dataset: ", dataset()->output_dtypes()[i]);
+                    "; dataset: ", dataset()->output_dtypes()[i]));
               }
             }
             iterator_ = std::make_unique<SnapshotReaderIterator>(
@@ -1280,8 +1282,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           std::copy(filenames_str.begin(), filenames_str.end(),
                     filenames_.begin());
           if (filenames_.empty()) {
-            return errors::NotFound("Could not find any files in dir: ",
-                                    run_dir_);
+            return absl::NotFoundError(
+                absl::StrCat("Could not find any files in dir: ", run_dir_));
           }
 
           if (dataset()->shuffle_on_read_) {
@@ -1323,7 +1325,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
 
           if (cancelled_) {
-            return errors::Cancelled(
+            return absl::CancelledError(
                 "SnapshotDatasetOp::Dataset::SnapshotReaderIterator::GetNext");
           }
 
@@ -1385,7 +1387,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             return absl::OkStatus();
           }
 
-          return errors::Internal("Unreachable point in SnapshotReader");
+          return absl::InternalError("Unreachable point in SnapshotReader");
         }
 
        protected:
@@ -1456,6 +1458,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             int64_t temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(absl::StrCat(kFilenames, kSizeSuffix)), &temp));
+            if (temp < 0 || temp > std::numeric_limits<size_t>::max()) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Invalid checkpoint for tf.data snapshot dataset: ",
+                  kFilenames, kSizeSuffix, "=", temp,
+                  " is not a valid value."));
+            }
             filenames_size = static_cast<size_t>(temp);
           }
           if (filenames_.size() != filenames_size) {
@@ -1508,7 +1516,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
 
               if (cancelled_) {
-                return errors::Cancelled(
+                return absl::CancelledError(
                     "SnapshotDatasetOp::Dataset::SnapshotReaderIterator::"
                     "ReadFile");
               }
@@ -1931,7 +1939,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           std::string max_num_str = split_snapshot_filename[0];
           uint64_t max_num;
           if (!absl::SimpleAtoi(max_num_str, &max_num)) {
-            return errors::Internal("Could not parse: ", max_num, " as uint64");
+            return absl::InternalError(
+                absl::StrCat("Could not parse: ", max_num, " as uint64"));
           }
           next_file_index_ = max_num + 1;
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumElementsWritten),
@@ -1998,14 +2007,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
 
           if (cancelled_) {
-            return errors::Cancelled(
+            return absl::CancelledError(
                 "SnapshotDatasetOp::SnapshotWriterIterator::GetNext");
           }
 
           if (buffer_.size() >= dataset()->writer_buffer_size_) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "Buffer size: ", buffer_.size(), " should be smaller than ",
-                "maximum size: ", dataset()->writer_buffer_size_);
+                "maximum size: ", dataset()->writer_buffer_size_));
           }
 
           snapshot_util::ElementOrEOF elem_copy = next_elem_;
@@ -2051,10 +2060,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           if (cancelled || snapshot_failed) {
             TF_RETURN_IF_ERROR((*writer)->Close());
             if (snapshot_failed) {
-              return errors::Internal(
+              return absl::InternalError(
                   "SnapshotDataset::SnapshotWriterIterator snapshot failed");
             }
-            return errors::Cancelled(
+            return absl::CancelledError(
                 "SnapshotDataset::SnapshotWriterIterator cancelled");
           }
 

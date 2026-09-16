@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -76,7 +77,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Stop(PLUGIN_Profiler_Stop_Args* args) {
     return nullptr;
   }
   PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->Stop());
-  args->profiler->stopped = false;
+  args->profiler->stopped = true;
   return nullptr;
 }
 
@@ -104,5 +105,51 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
   }
   return nullptr;
 }
+
+PLUGIN_Profiler_Error* PLUGIN_Profiler_Consume(
+    PLUGIN_Profiler_Consume_Args* args) {
+  VLOG(1) << "Consuming data from profiler";
+  if (args == nullptr || args->profiler == nullptr) {
+    return nullptr;
+  }
+  auto status_or_result = args->profiler->impl->Consume();
+  if (!status_or_result.ok()) {
+    PLUGIN_PROFILER_RETURN_IF_ERROR(status_or_result.status());
+  }
+  auto res = std::make_unique<PLUGIN_Profiler_ConsumeResult>();
+  res->consume_result = std::move(status_or_result.value());
+  args->result = res.release();
+  return nullptr;
+}
+
+void PLUGIN_Profiler_ConsumeResult_Destroy(
+    PLUGIN_Profiler_ConsumeResult_Destroy_Args* args) {
+  VLOG(1) << "Destroying consume result";
+  if (args != nullptr && args->consume_result != nullptr) {
+    delete args->consume_result;
+  }
+}
+
+PLUGIN_Profiler_Error* PLUGIN_Profiler_Serialize(
+    PLUGIN_Profiler_Serialize_Args* args) {
+  VLOG(1) << "Serializing consume result from profiler";
+  if (args == nullptr || args->profiler == nullptr ||
+      args->consume_result == nullptr) {
+    return nullptr;
+  }
+  tensorflow::profiler::XSpace space;
+  PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->Serialize(
+      std::move(args->consume_result->consume_result.data), &space));
+
+  const size_t profiler_data_size = space.ByteSizeLong();
+  args->consume_result->buffer =
+      std::make_unique<std::vector<uint8_t>>(profiler_data_size);
+  space.SerializeToArray(args->consume_result->buffer->data(),
+                         profiler_data_size);
+  args->serialized_bytes = args->consume_result->buffer->data();
+  args->serialized_size = profiler_data_size;
+  return nullptr;
+}
+
 }  // namespace profiler
 }  // namespace xla

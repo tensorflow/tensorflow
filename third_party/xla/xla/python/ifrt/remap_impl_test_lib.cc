@@ -19,12 +19,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -67,10 +69,9 @@ absl::StatusOr<ArraySpec> CreateArraySpec(Client* client,
                                           absl::Span<const int> device_indices,
                                           Shape shard_shape = Shape({2, 3}),
                                           DType dtype = DType(DType::kS32)) {
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      test_util::GetAddressableDevices(client, device_indices));
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      GetShape(device_indices.size(), shard_shape));
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                   test_util::GetAddressableDevices(client, device_indices));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, GetShape(device_indices.size(), shard_shape));
   return ArraySpec{/*dtype=*/dtype,
                    /*shape=*/shape,
                    /*sharding=*/
@@ -106,7 +107,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
   TF_RET_CHECK(base_values.size() == device_indices.size());
 
   DType dtype(CppTypeToDType<ValueType>::kDType);
-  TF_ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
 
   std::vector<ArrayRef> shards;
   shards.reserve(base_values.size());
@@ -121,18 +122,16 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
     devices.push_back(device);
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-    TF_ASSIGN_OR_RETURN(
-        shards.emplace_back(),
-        client->MakeArrayFromHostBuffer(
-            data.data(), dtype, shard_shape,
-            /*byte_strides=*/std::nullopt, std::move(sharding),
-            /*layout=*/nullptr,
-            Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/{}));
+    ABSL_ASSIGN_OR_RETURN(shards.emplace_back(),
+                     client->MakeArrayFromHostBuffer(
+                         data.data(), dtype, shard_shape,
+                         /*byte_strides=*/std::nullopt, std::move(sharding),
+                         /*layout=*/nullptr,
+                         Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                         /*on_done_with_host_buffer=*/{}));
   }
 
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client->MakeDeviceList(devices));
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
   ShardingRef assembled_sharding =
       ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(),
                                    /*shape=*/shape,
@@ -157,7 +156,7 @@ void AssertArrayContent(Client* client, Array* array,
   EXPECT_EQ(array->dtype(), expected_dtype);
   EXPECT_EQ(array->shape(), expected_shape);
   const auto* actual_sharding =
-      llvm::dyn_cast<ConcreteEvenSharding>(array->shared_ptr_sharding().get());
+      dyn_cast<ConcreteEvenSharding>(array->shared_ptr_sharding().get());
   ASSERT_NE(actual_sharding, nullptr);
   EXPECT_EQ(actual_sharding->shape(), expected_shape);
   EXPECT_EQ(actual_sharding->shard_shape(), expected_shard_shape);
@@ -170,8 +169,8 @@ void AssertArrayContent(Client* client, Array* array,
   for (int i = 0; i < shards.size(); ++i) {
     EXPECT_EQ(shards[i]->dtype(), expected_dtype);
     EXPECT_EQ(shards[i]->shape(), expected_shard_shape);
-    const auto* actual_shard_sharding = llvm::dyn_cast<SingleDeviceSharding>(
-        shards[i]->shared_ptr_sharding().get());
+    const auto* actual_shard_sharding =
+        dyn_cast<SingleDeviceSharding>(shards[i]->shared_ptr_sharding().get());
     ASSERT_NE(actual_shard_sharding, nullptr);
     Device* expected_device =
         client->addressable_devices().at(device_indices[i]);
@@ -191,22 +190,35 @@ void AssertArrayContent(Client* client, Array* array,
   }
 };
 
-TEST(RemapImplTest, ExtractSingleShard) {
+class RemapImplTest : public testing::Test {
+ protected:
+  absl::StatusOr<RemapPlan> CreateRemapPlan(
+      std::vector<ArraySpec> input_specs, std::vector<ArraySpec> output_specs,
+      absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+          input_devices_for_output_map) {
+    RemapPlan plan(std::move(input_specs), std::move(output_specs),
+                   std::move(input_devices_for_output_map));
+    ABSL_RETURN_IF_ERROR(plan.Validate());
+    return plan;
+  }
+};
+
+TEST_F(RemapImplTest, ExtractSingleShard) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
-  RemapPlan plan;
-  plan.input_specs.push_back(
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0, 1}).value());
-  plan.output_specs.push_back(
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{1}).value());
-  // arrays[0].shards[1:2:1] is mapped into out_arrays[0].shards[0:1:1].
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{1, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0] = {{0, output_specs[0].sharding->devices()}};
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      CreateRemapPlan(std::move(input_specs), std::move(output_specs),
+                      std::move(input_devices_for_output_map)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -236,30 +248,25 @@ TEST(RemapImplTest, ExtractSingleShard) {
   }
 }
 
-TEST(RemapImplTest, InterleaveArraysDonate) {
+TEST_F(RemapImplTest, InterleaveArraysDonate) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
-  RemapPlan plan;
-  plan.input_specs.push_back(
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0, 1}).value());
-  plan.input_specs.push_back(
+  input_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{2, 3}).value());
-  plan.output_specs.push_back(
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0, 2, 1, 3}).value());
-  // arrays[0].shards[0:2:1] is mapped into out_arrays[0].shards[0:4:2].
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->reserve(2);
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 4, 2}}});
-  // arrays[1].shards[0:2:1] is mapped into out_arrays[0].shards[1:4:2].
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{1, 4, 2}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0] = {{0, input_specs[0].sharding->devices()},
+                                     {1, input_specs[1].sharding->devices()}};
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      CreateRemapPlan(std::move(input_specs), std::move(output_specs),
+                      std::move(input_devices_for_output_map)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -285,30 +292,25 @@ TEST(RemapImplTest, InterleaveArraysDonate) {
                               /*device_indices=*/{0, 2, 1, 3});
 }
 
-TEST(RemapImplTest, InterleaveArraysReuse) {
+TEST_F(RemapImplTest, InterleaveArraysReuse) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
-  RemapPlan plan;
-  plan.input_specs.push_back(
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0, 1}).value());
-  plan.input_specs.push_back(
+  input_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{2, 3}).value());
-  plan.output_specs.push_back(
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0, 2, 1, 3}).value());
-  // arrays[0].shards[0:2:1] is mapped into out_arrays[0].shards[0:4:2].
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->reserve(2);
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 4, 2}}});
-  // arrays[1].shards[0:2:1] is mapped into out_arrays[0].shards[1:4:2].
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{1, 4, 2}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0] = {{0, input_specs[0].sharding->devices()},
+                                     {1, input_specs[1].sharding->devices()}};
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      CreateRemapPlan(std::move(input_specs), std::move(output_specs),
+                      std::move(input_devices_for_output_map)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -328,30 +330,25 @@ TEST(RemapImplTest, InterleaveArraysReuse) {
                             "are mapped to one output")));
 }
 
-TEST(RemapImplTest, DeinterleaveArrays) {
+TEST_F(RemapImplTest, DeinterleaveArrays) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
-  RemapPlan plan;
-  plan.input_specs.push_back(
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0, 2, 1, 3}).value());
-  plan.output_specs.push_back(
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0, 1}).value());
-  plan.output_specs.push_back(
+  output_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{2, 3}).value());
-  // arrays[0].shards[0:4:2] is mapped into out_arrays[0].shards[0:2:1].
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->reserve(2);
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 4, 2}},
-                         /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  // arrays[0].shards[1:4:2] is mapped into out_arrays[1].shards[0:2:1].
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/1,
-                         /*from=*/{RemapPlan::Interval{1, 4, 2}},
-                         /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0] = {{0, output_specs[0].sharding->devices()}};
+  input_devices_for_output_map[1] = {{0, output_specs[1].sharding->devices()}};
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      CreateRemapPlan(std::move(input_specs), std::move(output_specs),
+                      std::move(input_devices_for_output_map)));
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -395,7 +392,7 @@ TEST(RemapImplTest, DeinterleaveArrays) {
   }
 }
 
-TEST(RemapImplTest, BatchMappingIdentity) {
+TEST_F(RemapImplTest, BatchMappingIdentity) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client,
                           test_util::GetClient());
   Shape first_shard_shape({2, 3});
@@ -409,24 +406,17 @@ TEST(RemapImplTest, BatchMappingIdentity) {
       CreateArraySpec(client.get(), /*device_indices=*/{0, 1},
                       second_shard_shape));
 
-  RemapPlan plan;
-  plan.input_specs.push_back(all_device_spec);
-  plan.input_specs.push_back(first_two_device_spec);
-  plan.output_specs.push_back(all_device_spec);
-  plan.output_specs.push_back(first_two_device_spec);
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0,
-                         /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 4, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 4, 1}}});
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/1,
-                         /*out_array=*/1,
-                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  std::vector<ArraySpec> input_specs = {all_device_spec, first_two_device_spec};
+  std::vector<ArraySpec> output_specs = {all_device_spec,
+                                         first_two_device_spec};
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0] = {{0, output_specs[0].sharding->devices()}};
+  input_devices_for_output_map[1] = {{1, output_specs[1].sharding->devices()}};
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      CreateRemapPlan(std::move(input_specs), std::move(output_specs),
+                      std::move(input_devices_for_output_map)));
 
   std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -456,7 +446,7 @@ TEST(RemapImplTest, BatchMappingIdentity) {
 // For a specific output, kDonateInput allows mapping multiple inputs to this
 // output, whereas kReuseInput does not. See CheckArrayCopySemantics. As such,
 // only test DeinterleaveArrays situation, not InterleaveArrays.
-TEST(RemapImplTest, BatchMappingDeinterleave) {
+TEST_F(RemapImplTest, BatchMappingDeinterleave) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client,
                           test_util::GetClient());
   Shape first_shard_shape({2, 3});
@@ -483,36 +473,20 @@ TEST(RemapImplTest, BatchMappingDeinterleave) {
       ArraySpec second_output_spec_two,
       CreateArraySpec(client.get(), {1}, second_shard_shape));
 
-  RemapPlan plan;
-  plan.input_specs.push_back(first_input_spec);
-  plan.input_specs.push_back(second_input_spec);
-  plan.output_specs.push_back(first_output_spec_one);
-  plan.output_specs.push_back(first_output_spec_two);
-  plan.output_specs.push_back(second_output_spec_one);
-  plan.output_specs.push_back(second_output_spec_two);
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0,
-                         /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0,
-                         /*out_array=*/1,
-                         /*from=*/{RemapPlan::Interval{2, 4, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/1,
-                         /*out_array=*/2,
-                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/1,
-                         /*out_array=*/3,
-                         /*from=*/{RemapPlan::Interval{1, 2, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  std::vector<ArraySpec> input_specs = {first_input_spec, second_input_spec};
+  std::vector<ArraySpec> output_specs = {
+      first_output_spec_one, first_output_spec_two, second_output_spec_one,
+      second_output_spec_two};
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0] = {{0, output_specs[0].sharding->devices()}};
+  input_devices_for_output_map[1] = {{0, output_specs[1].sharding->devices()}};
+  input_devices_for_output_map[2] = {{1, output_specs[2].sharding->devices()}};
+  input_devices_for_output_map[3] = {{1, output_specs[3].sharding->devices()}};
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      CreateRemapPlan(std::move(input_specs), std::move(output_specs),
+                      std::move(input_devices_for_output_map)));
 
   std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -544,22 +518,23 @@ TEST(RemapImplTest, BatchMappingDeinterleave) {
   }
 }
 
-TEST(RemapImplTest, DetectBadInput) {
+TEST_F(RemapImplTest, DetectBadInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
   // Trivial remap plan for a single device array on device 0.
-  RemapPlan plan;
-  plan.input_specs.push_back(
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0}).value());
-  plan.output_specs.push_back(
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(
       CreateArraySpec(client.get(), /*device_indices=*/{0}).value());
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->push_back(
-      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
-                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
-                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0] = {{0, output_specs[0].sharding->devices()}};
+  ASSERT_OK_AND_ASSIGN(
+      RemapPlan plan,
+      CreateRemapPlan(std::move(input_specs), std::move(output_specs),
+                      std::move(input_devices_for_output_map)));
 
   {
     std::vector<ArrayRef> arrays;

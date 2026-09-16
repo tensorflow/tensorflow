@@ -38,11 +38,7 @@ namespace xla {
 
 using HostBufferSemantics = PjRtClient::HostBufferSemantics;
 
-TEST(StreamExecutorGpuClientBenchmarkTest, NoOp) {
-  // An empty test is needed to avoid build error.
-}
-
-static void BM_AddTwoScalars(benchmark::State& state) {
+static void RunAddTwoScalars(benchmark::State* state = nullptr) {
   constexpr absl::string_view program = R"(
     module {
       func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
@@ -73,7 +69,7 @@ static void BM_AddTwoScalars(benchmark::State& state) {
 
   float input = 42.0f;
 
-  for (auto _ : state) {
+  auto run_iteration = [&]() {
     auto input_buffer = (*client)->BufferFromHostBuffer(
         &input, F32, {},
         /*byte_strides=*/std::nullopt,
@@ -91,12 +87,28 @@ static void BM_AddTwoScalars(benchmark::State& state) {
     auto literal = result_buffer->ToLiteral().Await();
     CHECK_OK(literal) << "Failed to convert buffer to literal";
     VLOG(10) << "Result: " << **literal;
+  };
+
+  if (state != nullptr) {
+    for (auto _ : *state) {
+      run_iteration();
+    }
+  } else {
+    run_iteration();
   }
+}
+
+TEST(StreamExecutorGpuClientBenchmarkTest, AddTwoScalars) {
+  RunAddTwoScalars();
+}
+
+static void BM_AddTwoScalars(benchmark::State& state) {
+  RunAddTwoScalars(&state);
 }
 
 BENCHMARK(BM_AddTwoScalars);
 
-static void BM_AddManyScalars(benchmark::State& state) {
+static void RunAddManyScalars(benchmark::State* state = nullptr) {
   constexpr absl::string_view program = R"(
     module {
       func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>,
@@ -139,7 +151,7 @@ static void BM_AddManyScalars(benchmark::State& state) {
 
   float inputs[10] = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f};
 
-  for (auto _ : state) {
+  auto run_iteration = [&]() {
     std::array<absl::StatusOr<std::unique_ptr<PjRtBuffer>>, 10> input_buffers;
     std::array<PjRtBuffer*, 10> args;
 
@@ -164,7 +176,23 @@ static void BM_AddManyScalars(benchmark::State& state) {
       CHECK_OK(literal) << "Failed to convert buffer to literal";
       VLOG(10) << "Result [" << i << "]: " << **literal;
     }
+  };
+
+  if (state != nullptr) {
+    for (auto _ : *state) {
+      run_iteration();
+    }
+  } else {
+    run_iteration();
   }
+}
+
+TEST(StreamExecutorGpuClientBenchmarkTest, AddManyScalars) {
+  RunAddManyScalars();
+}
+
+static void BM_AddManyScalars(benchmark::State& state) {
+  RunAddManyScalars(&state);
 }
 
 BENCHMARK(BM_AddManyScalars);

@@ -17,35 +17,47 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/base/call_once.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 struct AllGatherConfig {
   CollectiveConfig config;
+  bool enable_gxl = false;
 };
 
 // Thunk that performs an All-Gather among CUDA GPU-based replicas.
 class AllGatherThunk : public CollectiveThunk {
  public:
   AllGatherThunk(ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
-                 std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
-  AllGatherThunk(ThunkInfo thunk_info, CollectiveConfig config,
                  std::vector<Buffer> buffers);
+  AllGatherThunk(ThunkInfo thunk_info, AllGatherConfig config,
+                 std::vector<Buffer> buffers,
+                 CollectivesMode collectives_mode =
+                     DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
+  AllGatherThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                 std::vector<Buffer> buffers,
+                 CollectivesMode collectives_mode =
+                     DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
 
   static const char* GetHloOpName() { return "all-gather-start"; }
 
@@ -58,8 +70,11 @@ class AllGatherThunk : public CollectiveThunk {
 
   const CollectiveConfig& config() const override { return config_.config; }
 
+  CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
+      const GpuCliqueKey& clique_key, const PrepareParams& params) override;
+
   static absl::StatusOr<std::unique_ptr<AllGatherThunk>> FromProto(
-      ThunkInfo thunk_info, const AllGatherStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const AllGatherThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
@@ -67,11 +82,14 @@ class AllGatherThunk : public CollectiveThunk {
  protected:
   bool RequiresRendezvous() const override { return true; }
 
+  bool CanUseSymmetricBuffer() const override { return true; }
+
+  absl::Status PrepareCollective(const PrepareParams& params,
+                                 const GpuCliqueKey& clique_key) override;
+
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
                              Communicator& comm) override;
-
-  bool CanUseSymmetricBuffer() const override { return true; }
 
  private:
   const AllGatherConfig config_;
@@ -81,7 +99,6 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, Communicator& comm,
                           bool use_symmetric_buffer = false);
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_THUNK_H_

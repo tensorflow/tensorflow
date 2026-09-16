@@ -233,8 +233,8 @@ absl::Status GetTaskName(const absl::string_view device_name,
                          std::string* task_name) {
   std::string ignored;
   if (!DeviceNameUtils::SplitDeviceName(device_name, task_name, &ignored)) {
-    return errors::InvalidArgument("Unable to parse device name: ",
-                                   device_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to parse device name: ", device_name));
   }
 
   return absl::OkStatus();

@@ -111,9 +111,10 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
 
     exported_keys_tensor, exported_values_tensor = table.export()
 
-    self.assertItemsEqual([b"brain", b"salad", b"surgery"],
-                          self.evaluate(exported_keys_tensor))
-    self.assertItemsEqual([0, 1, 2], self.evaluate(exported_values_tensor))
+    self.assertCountEqual(
+        [b"brain", b"salad", b"surgery"], self.evaluate(exported_keys_tensor)
+    )
+    self.assertCountEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
   def testStaticHashTableFindHighRank(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
@@ -609,6 +610,52 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
     self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
+  def testImportInvalidNumBuckets(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    table = lookup_ops.DenseHashTable(
+        dtypes.string,
+        dtypes.float32,
+        default_value=-1.5,
+        empty_key="",
+        deleted_key="$",
+        experimental_is_anonymous=is_anonymous,
+    )
+
+    # Test empty keys (num_buckets = 0)
+    empty_keys = constant_op.constant([], dtypes.string)
+    empty_values = constant_op.constant([], dtypes.float32)
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_import_v2(
+              table.resource_handle, empty_keys, empty_values
+          )
+      )
+
+    # Test num_buckets < 4 (e.g. 2)
+    invalid_keys = constant_op.constant(["a", "b"], dtypes.string)
+    invalid_values = constant_op.constant([1.0, 2.0], dtypes.float32)
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_import_v2(
+              table.resource_handle, invalid_keys, invalid_values
+          )
+      )
+
+    # Test num_buckets not power of 2 (e.g. 5)
+    invalid_keys = constant_op.constant(
+        ["a", "b", "c", "d", "e"], dtypes.string
+    )
+    invalid_values = constant_op.constant(
+        [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
+    )
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_import_v2(
+              table.resource_handle, invalid_keys, invalid_values
+          )
+      )
+
   @test_util.run_v2_only
   def testSavedModelSaveRestore(self, is_anonymous):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
@@ -887,6 +934,117 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertAllEqual([0, 1, -1], out1)
       self.assertAllEqual([0, 1, -1], out2)
       self.assertAllEqual([0, 1, -1], out3)
+
+  def testInitializeSameFileWithDifferentDtypes(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    vocabulary_file = self._createVocabFile(
+        "one_column_dtypes.txt", ("1", "2", "3")
+    )
+
+    with self.cached_session():
+      default_value = -1
+      init1 = lookup_ops.TextFileInitializer(
+          vocabulary_file,
+          dtypes.string,
+          lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.LINE_NUMBER,
+      )
+      self.assertIn(
+          "one_column_dtypes.txt_-2_-1_string_int64", init1._shared_name
+      )
+      table1 = self.getHashTable()(
+          init1, default_value, experimental_is_anonymous=is_anonymous
+      )
+      init2 = lookup_ops.TextFileInitializer(
+          vocabulary_file,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.LINE_NUMBER,
+      )
+      self.assertIn(
+          "one_column_dtypes.txt_-2_-1_int64_int64", init2._shared_name
+      )
+      self.assertNotEqual(init1._shared_name, init2._shared_name)
+      table2 = self.getHashTable()(
+          init2, default_value, experimental_is_anonymous=is_anonymous
+      )
+
+      self.evaluate(lookup_ops.tables_initializer())
+
+      output1 = table1.lookup(
+          constant_op.constant(["1", "2", "4"], dtype=dtypes.string)
+      )
+      output2 = table2.lookup(
+          constant_op.constant([1, 2, 4], dtype=dtypes.int64)
+      )
+
+      out1, out2 = self.evaluate([output1, output2])
+      self.assertAllEqual([0, 1, -1], out1)
+      self.assertAllEqual([0, 1, -1], out2)
+
+  def testTextFileInitializerSharedNameCombinations(self, is_anonymous):
+    del is_anonymous
+    filename = "test_vocab.txt"
+    key_dtype = dtypes.string
+    key_index = lookup_ops.TextFileIndex.WHOLE_LINE
+    value_dtype = dtypes.int64
+    value_index = lookup_ops.TextFileIndex.LINE_NUMBER
+
+    for vocab_size in (None, 10):
+      for offset in (0, 5):
+        init = lookup_ops.TextFileInitializer(
+            filename,
+            key_dtype,
+            key_index,
+            value_dtype,
+            value_index,
+            vocab_size=vocab_size,
+            value_index_offset=offset,
+        )
+
+        if vocab_size:
+          if offset:
+            expected = "hash_table_%s_%d_%s_%s_%s_%s_%s" % (
+                filename,
+                vocab_size,
+                key_index,
+                value_index,
+                offset,
+                key_dtype.name,
+                value_dtype.name,
+            )
+          else:
+            expected = "hash_table_%s_%d_%s_%s_%s_%s" % (
+                filename,
+                vocab_size,
+                key_index,
+                value_index,
+                key_dtype.name,
+                value_dtype.name,
+            )
+        else:
+          if offset:
+            expected = "hash_table_%s_%s_%s_%s_%s_%s" % (
+                filename,
+                key_index,
+                value_index,
+                offset,
+                key_dtype.name,
+                value_dtype.name,
+            )
+          else:
+            expected = "hash_table_%s_%s_%s_%s_%s" % (
+                filename,
+                key_index,
+                value_index,
+                key_dtype.name,
+                value_dtype.name,
+            )
+
+        self.assertEqual(expected, init._shared_name)
 
   def testInitializeTableWithNoFilename(self, is_anonymous):
     with self.cached_session():

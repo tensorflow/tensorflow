@@ -241,7 +241,7 @@ bool TiedRef<T>::Expired() const {
 
 template <typename T>
 TiedRef<T> Tied<T>::Tie(std::unique_ptr<T> value) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   // Lazy garbage collection: erase entries whose inner shared_ptr was reset
   // by a TiedRef destructor.
@@ -260,7 +260,7 @@ TiedRef<T> Tied<T>::Tie(std::unique_ptr<T> value) {
 
 template <typename T>
 TiedRef<T> TiedAny::Tie(std::unique_ptr<T> value) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto& base = entries_[&TypeId<T>::kId];
   if (!base) {
     base = std::make_unique<TiedTyped<T>>();

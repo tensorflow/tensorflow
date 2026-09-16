@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
@@ -44,8 +43,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 namespace {
 
@@ -113,7 +111,8 @@ GpuPerformanceModelCache::GetAllConsumers(const HloInstruction& producer) {
 bool GpuPerformanceModelCache::ContainsConsumers(
     const HloInstruction& producer) {
   absl::MutexLock lock(mutex_);
-  return fusion_runtime_data_.contains(&producer);
+  auto it = fusion_runtime_data_.find(&producer);
+  return it != fusion_runtime_data_.end() && !it->second.empty();
 }
 
 void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
@@ -154,9 +153,9 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    const HloFusionAnalysis& fusion_analysis, mlir::MLIRContext* mlir_context) {
-  auto emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
+    const HloFusionAnalysis& fusion_analysis) {
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();
@@ -166,7 +165,8 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   // launch dimensions only for SoftMax fusions.
   if (const auto* triton_emitter =
           dynamic_cast<const TritonFusion*>(emitter.get())) {
-    if (auto launch_config = triton_emitter->GetLaunchConfig()) {
+    if (std::optional<TritonFusion::LaunchConfig> launch_config =
+            TritonFusion::GetLaunchConfig(&fusion_analysis)) {
       return launch_config->launch_dimensions;
     }
   }
@@ -451,5 +451,4 @@ double GetCoalescingUtilizationRate(
                          gpu_device_info.dram_to_l2_transaction_size_bytes();
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

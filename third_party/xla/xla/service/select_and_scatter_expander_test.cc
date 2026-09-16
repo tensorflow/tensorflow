@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
@@ -29,7 +30,7 @@ constexpr absl::string_view kModuleStr =
   %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
     %lhs = f32[] parameter(0)
     %rhs = f32[] parameter(1)
-    ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, type=TOTALORDER
+    ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, order=TOTAL
   }
 
   %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -58,8 +59,7 @@ class SelectAndScatterExpanderTest : public HloHardwareIndependentTestBase {
 // Test for the expected primary composite ops after this transformation and
 // leave correctness to runtime tests instead of golden IR checks.
 TEST_F(SelectAndScatterExpanderTest, ReplacesSelectAndScatter) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   RunAndFilecheckHloRewrite(kModuleStr, SelectAndScatterExpander(), R"(
     CHECK-NOT: select-and-scatter
@@ -67,8 +67,7 @@ TEST_F(SelectAndScatterExpanderTest, ReplacesSelectAndScatter) {
 }
 
 TEST_F(SelectAndScatterExpanderTest, CreatesReduceAndScatter) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   RunAndFilecheckHloRewrite(kModuleStr, SelectAndScatterExpander(), R"(
     CHECK: reduce

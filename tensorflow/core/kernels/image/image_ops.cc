@@ -16,6 +16,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA
@@ -36,8 +38,8 @@ namespace functor {
 // Explicit instantiation of the CPU functor.
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template struct FillProjectiveTransform<CPUDevice, uint8>;
-template struct FillProjectiveTransform<CPUDevice, int32>;
+template struct FillProjectiveTransform<CPUDevice, uint8_t>;
+template struct FillProjectiveTransform<CPUDevice, int32_t>;
 template struct FillProjectiveTransform<CPUDevice, int64_t>;
 template struct FillProjectiveTransform<CPUDevice, Eigen::half>;
 template struct FillProjectiveTransform<CPUDevice, float>;
@@ -59,13 +61,13 @@ void DoImageProjectiveTransformOp(OpKernelContext* ctx,
   const Tensor& images_t = ctx->input(0);
   const Tensor& transform_t = ctx->input(1);
   OP_REQUIRES(ctx, images_t.shape().dims() == 4,
-              errors::InvalidArgument("Input images must have rank 4"));
+              absl::InvalidArgumentError("Input images must have rank 4"));
   OP_REQUIRES(ctx,
               (TensorShapeUtils::IsMatrix(transform_t.shape()) &&
                (transform_t.dim_size(0) == images_t.dim_size(0) ||
                 transform_t.dim_size(0) == 1) &&
                transform_t.dim_size(1) == 8),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Input transform should be num_images x 8 or 1 x 8"));
 
   int32_t out_height, out_width;
@@ -73,16 +75,19 @@ void DoImageProjectiveTransformOp(OpKernelContext* ctx,
   if (ctx->num_inputs() >= 3) {
     const Tensor& shape_t = ctx->input(2);
     OP_REQUIRES(ctx, shape_t.dims() == 1,
-                errors::InvalidArgument("output shape must be 1-dimensional",
-                                        shape_t.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("output shape must be 1-dimensional",
+                                 shape_t.shape().DebugString())));
     OP_REQUIRES(ctx, shape_t.NumElements() == 2,
-                errors::InvalidArgument("output shape must have two elements",
-                                        shape_t.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("output shape must have two elements",
+                                 shape_t.shape().DebugString())));
     auto shape_vec = shape_t.vec<int32_t>();
     out_height = shape_vec(0);
     out_width = shape_vec(1);
-    OP_REQUIRES(ctx, out_height > 0 && out_width > 0,
-                errors::InvalidArgument("output dimensions must be positive"));
+    OP_REQUIRES(
+        ctx, out_height > 0 && out_width > 0,
+        absl::InvalidArgumentError("output dimensions must be positive"));
   } else {
     // Shape is N (batch size), H (height), W (width), C (channels).
     out_height = images_t.shape().dim_size(1);
@@ -94,8 +99,9 @@ void DoImageProjectiveTransformOp(OpKernelContext* ctx,
   if (ctx->num_inputs() >= 4) {
     const Tensor& fill_value_t = ctx->input(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(fill_value_t.shape()),
-                errors::InvalidArgument("fill_value must be a scalar",
-                                        fill_value_t.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("fill_value must be a scalar",
+                                 fill_value_t.shape().DebugString())));
     fill_value = static_cast<T>(*(fill_value_t.scalar<float>().data()));
   }
 

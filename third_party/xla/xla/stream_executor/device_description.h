@@ -188,6 +188,11 @@ struct DeviceInterconnectInfo {
   // ID of the fabric clique to which this GPU belongs.
   std::string clique_id;
 
+  bool is_in_cluster() const {
+    return !cluster_uuid.empty() &&
+           cluster_uuid != "00000000-0000-0000-0000-000000000000";
+  }
+
   bool operator==(const DeviceInterconnectInfo& other) const {
     return active_links == other.active_links &&
            cluster_uuid == other.cluster_uuid && clique_id == other.clique_id;
@@ -350,6 +355,9 @@ class DeviceDescription {
   // host and device.)
   int64_t memory_bandwidth() const { return memory_bandwidth_; }
 
+  // Returns the device's memory clock rate in GHz.
+  float mem_clock_ghz() const { return mem_clock_ghz_; }
+
   // Returns the PCIe memory bandwidth in bytes/sec.
   int64_t pcie_bandwidth() const { return pcie_bandwidth_; }
 
@@ -394,6 +402,16 @@ class DeviceDescription {
   // including the dynamically allocated one.
   int64_t shared_memory_per_block_optin() const {
     return shared_memory_per_block_optin_;
+  }
+
+  // Returns the amount of shared memory reserved by the CUDA driver per block.
+  int64_t reserved_shared_memory_per_block() const {
+    return reserved_shared_memory_per_block_;
+  }
+
+  // Returns the maximum number of thread blocks (CTAs) per multiprocessor.
+  int64_t max_blocks_per_multiprocessor() const {
+    return max_blocks_per_multiprocessor_;
   }
 
   // L1 size varies because it can be dynamically
@@ -444,6 +462,10 @@ class DeviceDescription {
 
   const DeviceInterconnectInfo& device_interconnect_info() const {
     return interconnect_info_;
+  }
+
+  uint64_t collective_memory_granularity() const {
+    return collective_memory_granularity_;
   }
 
   ABSL_DEPRECATE_AND_INLINE() GpuDeviceInfoProto ToGpuProto() const {
@@ -520,6 +542,7 @@ class DeviceDescription {
   void set_l2_cache_size(int64_t value) { l2_cache_size_ = value; }
   void set_memory_bandwidth(int64_t value) { memory_bandwidth_ = value; }
   void set_pcie_bandwidth(int64_t value) { pcie_bandwidth_ = value; }
+  void set_mem_clock_ghz(float value) { mem_clock_ghz_ = value; }
 
   void set_shared_memory_per_core(int64_t value) {
     shared_memory_per_core_ = value;
@@ -529,6 +552,12 @@ class DeviceDescription {
   }
   void set_shared_memory_per_block_optin(int64_t value) {
     shared_memory_per_block_optin_ = value;
+  }
+  void set_reserved_shared_memory_per_block(int64_t value) {
+    reserved_shared_memory_per_block_ = value;
+  }
+  void set_max_blocks_per_multiprocessor(int64_t value) {
+    max_blocks_per_multiprocessor_ = value;
   }
 
   void set_clock_rate_ghz(float value) { clock_rate_ghz_ = value; }
@@ -553,6 +582,9 @@ class DeviceDescription {
   void set_core_count(int value) { core_count_ = value; }
   void set_fpus_per_core(int value) { fpus_per_core_ = value; }
   void set_ecc_enabled(bool value) { ecc_enabled_ = value; }
+  void set_collective_memory_granularity(uint64_t value) {
+    collective_memory_granularity_ = value;
+  }
 
   void set_device_interconnect_info(DeviceInterconnectInfo info) {
     interconnect_info_ = std::move(info);
@@ -612,11 +644,14 @@ class DeviceDescription {
 
   int64_t memory_bandwidth_ = kUninitialized<int64_t>;
   int64_t pcie_bandwidth_ = kUninitialized<int64_t>;
+  float mem_clock_ghz_ = kUninitialized<float>;
 
   // Shared memory limits on a given device.
   int64_t shared_memory_per_core_ = kUninitialized<int64_t>;
   int64_t shared_memory_per_block_ = kUninitialized<int64_t>;
   int64_t shared_memory_per_block_optin_ = kUninitialized<int64_t>;
+  int64_t reserved_shared_memory_per_block_ = kUninitialized<int64_t>;
+  int64_t max_blocks_per_multiprocessor_ = kUninitialized<int64_t>;
 
   float clock_rate_ghz_ = kUninitialized<float>;
 
@@ -638,6 +673,7 @@ class DeviceDescription {
   SemanticVersion cub_version_{0, 0, 0};
 
   DeviceInterconnectInfo interconnect_info_;
+  uint64_t collective_memory_granularity_ = 0;
 
   // Please keep the fields in sync with the proto.
   // LINT.ThenChange(//tensorflow/compiler/xla/stream_executor/device_description.proto)

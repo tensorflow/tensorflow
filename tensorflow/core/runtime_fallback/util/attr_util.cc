@@ -287,8 +287,8 @@ absl::Status ParseTfDataType(absl::string_view dtype, DataType* data_type) {
     *data_type = DataType::DT_DOUBLE;
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument("Unsupported dtype, ", std::string(dtype),
-                                   " in ParseTfDataType.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported dtype, ", dtype, " in ParseTfDataType."));
   }
 }
 
@@ -437,16 +437,16 @@ absl::Status ParseBoolAttrValue(absl::string_view attr_value, bool* bool_val) {
     *bool_val = true;
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument("Could not parse bool from \"", attr_value,
-                                   "\"");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not parse bool from \"", attr_value, "\""));
   }
 }
 
 absl::Status ParseIntAttrValue(absl::string_view attr_value, int64_t* int_val) {
   bool success = absl::SimpleAtoi(attr_value, int_val);
   if (!success) {
-    return errors::InvalidArgument("Could not parse int from \"", attr_value,
-                                   "\"");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not parse int from \"", attr_value, "\""));
   }
   return absl::OkStatus();
 }
@@ -466,12 +466,12 @@ absl::Status ParseTensorAttrValue(absl::string_view attr_value,
         tensor->FromProto(tensor_proto)) {
       return absl::OkStatus();
     } else {
-      return errors::InvalidArgument("Could not parse tensor value from \"",
-                                     attr_value, "\"");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not parse tensor value from \"", attr_value, "\""));
     }
   } else {
     // TextFormat does not work with portable proto implementations.
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Tensor attributes are not supported on mobile.");
   }
 }
@@ -480,10 +480,10 @@ absl::Status ParseTensorShapeAttrValue(absl::string_view attr_value,
                                        std::vector<int64_t>* shape_val) {
   if (attr_value.size() < 2 || attr_value[0] != '[' ||
       attr_value[attr_value.size() - 1] != ']') {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tensor shape attribute must be a string of the form [1,2...], instead "
         "got \"",
-        attr_value, "\"");
+        attr_value, "\""));
   }
   absl::string_view attr_value_trunc =
       attr_value.substr(1, attr_value.size() - 2);
@@ -493,8 +493,9 @@ absl::Status ParseTensorShapeAttrValue(absl::string_view attr_value,
   for (auto it = container.begin(); it != container.end(); ++it) {
     int64_t int_val;
     if (!ParseIntAttrValue(*it, &int_val).ok()) {
-      return errors::InvalidArgument("Failed to parse an integer value from ",
-                                     *it, " while parsing shape.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to parse an integer value from ", *it,
+                       " while parsing shape."));
     }
     shape_val->push_back(int_val);
   }
@@ -573,7 +574,7 @@ absl::Status SetUpScalarAttr(tfrt::TypedAttrBase bef_attr,
     tf_attr->set_s(string_attr.GetValue().data(),
                    string_attr.GetValue().size());
   } else {
-    return tensorflow::errors::Internal("Failed to set up attribute.");
+    return absl::InternalError("Failed to set up attribute.");
   }
 
   return absl::OkStatus();
@@ -615,7 +616,7 @@ absl::Status SetUpListAttr(tfrt::AggregateAttr aggregate_attr,
     } else if (auto string_attr = base.dyn_cast<tfrt::StringAttr>()) {
       list->add_s(string_attr.GetValue().data(), string_attr.GetValue().size());
     } else {
-      return tensorflow::errors::Internal("Failed to set up list attr.");
+      return absl::InternalError("Failed to set up list attr.");
     }
   }
   return absl::OkStatus();
@@ -653,7 +654,7 @@ absl::Status SetUpListAttr(tfrt::ArrayAttr array_attr,
         return absl::OkStatus();
       }
       default:
-        return tensorflow::errors::Internal(
+        return absl::InternalError(
             StrCat("Failed to set up list attr: unsupported dtype: ",
                    tfrt::DType(dtype)));
     }
@@ -664,7 +665,7 @@ absl::Status SetUpListAttr(tfrt::ArrayAttr array_attr,
     return absl::OkStatus();
   }
 
-  return tensorflow::errors::Internal("Failed to set up list attr.");
+  return absl::InternalError("Failed to set up list attr.");
 }
 
 }  // namespace

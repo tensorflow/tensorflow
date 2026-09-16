@@ -97,9 +97,9 @@ absl::Status MakeSendRecvDependencyExplicit(Graph* graph) {
     if (node->IsSend() || node->IsRecv()) {
       auto tensor_name_it = node->def().attr().find(kTensorNameAttr);
       if (tensor_name_it == node->def().attr().end()) {
-        return errors::Internal(
+        return absl::InternalError(absl::StrCat(
             "'", kTensorNameAttr,
-            "' attribute is not found from node: ", node->DebugString());
+            "' attribute is not found from node: ", node->DebugString()));
       }
       if (node->IsSend()) {
         send_recv_pairs[tensor_name_it->second.s()].send_node = node;
@@ -113,8 +113,8 @@ absl::Status MakeSendRecvDependencyExplicit(Graph* graph) {
   for (const auto& [tensor_name, send_recv_pair] : send_recv_pairs) {
     if (send_recv_pair.send_node == nullptr ||
         send_recv_pair.recv_node == nullptr) {
-      return errors::Internal(
-          "No matching Send/Recv nodes found for tensor_name = ", tensor_name);
+      return absl::InternalError(absl::StrCat(
+          "No matching Send/Recv nodes found for tensor_name = ", tensor_name));
     }
     graph->AddControlEdge(send_recv_pair.send_node, send_recv_pair.recv_node);
   }

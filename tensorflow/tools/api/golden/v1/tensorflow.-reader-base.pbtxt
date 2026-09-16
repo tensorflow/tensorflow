@@ -1,14 +1,14 @@
 path: "tensorflow.ReaderBase"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.io_ops.ReaderBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "reader_ref"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "supports_serialize"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

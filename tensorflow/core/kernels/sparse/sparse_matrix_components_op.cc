@@ -54,13 +54,15 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
                     "dtype of input is not equal to 'type': ",
                     DataTypeString(csr_sparse_matrix->dtype()), " vs. ",
                     DataTypeString(DataTypeToEnum<T>::value)));
-    OP_REQUIRES(c, index_t.dims() == 0,
-                errors::InvalidArgument("index should be a scalar, but saw: ",
-                                        index_t.DebugString()));
+    OP_REQUIRES(
+        c, index_t.dims() == 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "index should be a scalar, but saw: ", index_t.DebugString())));
     int32_t index = index_t.scalar<int32_t>()();
     OP_REQUIRES(c, index >= 0 && index < csr_sparse_matrix->batch_size(),
-                errors::InvalidArgument("index (", index, ") not in [0, ",
-                                        csr_sparse_matrix->batch_size(), ")"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("index (", index, ") not in [0, ",
+                                 csr_sparse_matrix->batch_size(), ")")));
 
     if (csr_sparse_matrix->dims() == 2) {
       c->set_output(0, csr_sparse_matrix->row_pointers());

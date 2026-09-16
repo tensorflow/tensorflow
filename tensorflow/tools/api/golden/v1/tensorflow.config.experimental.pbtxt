@@ -2,11 +2,11 @@ path: "tensorflow.config.experimental"
 tf_module {
   member {
     name: "ClusterDeviceFilters"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "VirtualDeviceConfiguration"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member_method {
     name: "disable_mlir_bridge"

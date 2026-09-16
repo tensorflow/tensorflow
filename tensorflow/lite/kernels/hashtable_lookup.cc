@@ -40,12 +40,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
-
+#include "tensorflow/lite/util.h"
 namespace tflite {
 namespace ops {
 namespace builtin {
-
-namespace {
+namespace hashtable_lookup {
 
 int greater(const void* a, const void* b) {
   return *static_cast<const int*>(a) - *static_cast<const int*>(b);
@@ -113,7 +112,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const int num_rows = SizeOfDimension(value, 0);
   TF_LITE_ENSURE(context, num_rows != 0);
-  const int row_bytes = value->bytes / num_rows;
+  const size_t row_bytes = value->bytes / num_rows;
   void* pointer = nullptr;
   DynamicBuffer buf;
 
@@ -130,15 +129,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       if (output->type == kTfLiteString) {
         buf.AddString(nullptr, 0);
       } else {
-        memset(output->data.raw + i * row_bytes, 0, row_bytes);
+        CheckedInt<size_t> offset = CheckedInt<size_t>(i) * row_bytes;
+        if (offset.Overflow()) {
+          TF_LITE_KERNEL_LOG(context, "Hashtable Lookup: offset overflow.");
+          return kTfLiteError;
+        }
+        memset(output->data.raw + offset.Value(), 0, row_bytes);
       }
       hits->data.uint8[i] = 0;
     } else {
       if (output->type == kTfLiteString) {
         buf.AddString(GetString(value, idx));
       } else {
-        memcpy(output->data.raw + i * row_bytes,
-               value->data.raw + idx * row_bytes, row_bytes);
+        CheckedInt<size_t> offset_output = CheckedInt<size_t>(i) * row_bytes;
+        CheckedInt<size_t> offset_value = CheckedInt<size_t>(idx) * row_bytes;
+        if (offset_output.Overflow() || offset_value.Overflow()) {
+          TF_LITE_KERNEL_LOG(context, "Hashtable Lookup: offset overflow.");
+          return kTfLiteError;
+        }
+        memcpy(output->data.raw + offset_output.Value(),
+               value->data.raw + offset_value.Value(), row_bytes);
       }
       hits->data.uint8[i] = 1;
     }
@@ -149,13 +159,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   return kTfLiteOk;
 }
-}  // namespace
+
+}  // namespace hashtable_lookup
 
 TfLiteRegistration* Register_HASHTABLE_LOOKUP() {
-  static TfLiteRegistration r = {nullptr, nullptr, Prepare, Eval};
+  static TfLiteRegistration r = {nullptr, nullptr, hashtable_lookup::Prepare,
+                                 hashtable_lookup::Eval};
   return &r;
 }
-
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

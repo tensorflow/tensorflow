@@ -108,6 +108,8 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Event>>, CreateEvent, (),
               (override));
   MOCK_METHOD(void, UnloadKernel, (const Kernel* kernel), (override));
+  MOCK_METHOD(absl::Status, UpdateMaxDynamicSharedMemoryBytes,
+              (const Kernel* kernel, int32_t shared_memory_bytes), (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<EventBasedTimer>>,
               CreateEventBasedTimer, (Stream * stream, bool use_delay_kernel),
               (override));

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
 
+#include <memory>
+
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
@@ -89,7 +91,7 @@ absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
   for (const NodeDef& node : graphdef.node()) {
     if (node.attr().count(kXlaClusterAttr) ||
         node.attr().count(kXlaAlreadyClusteredAttr)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Input files are already clustered, you probably copied in "
           "mark_for_compilation_<n>.pbtxt when you should have copied in "
           "before_mark_for_compilation_<n>.pbtxt");
@@ -102,7 +104,7 @@ absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
 absl::Status ReadTextProtoFromString(Env* env, const std::string& data,
                                      ::tensorflow::protobuf::Message* proto) {
   if (!::tensorflow::protobuf::TextFormat::ParseFromString(data, proto)) {
-    return errors::DataLoss("Can't parse input data as text proto");
+    return absl::DataLossError("Can't parse input data as text proto");
   }
   return absl::OkStatus();
 }
@@ -182,8 +184,8 @@ absl::Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
   std::unique_ptr<RandomAccessFile> file_reader;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
       std::string(gzipped_pbtxt_file_path), &file_reader));
-  std::unique_ptr<io::RandomAccessInputStream> input_stream(
-      new io::RandomAccessInputStream(file_reader.get()));
+  std::unique_ptr<io::RandomAccessInputStream> input_stream =
+      std::make_unique<io::RandomAccessInputStream>(file_reader.get());
   constexpr int k_buffer_size = 256 << 10;  // 256kb
   io::ZlibInputStream in(input_stream.get(),
                          /*input_buffer_bytes=*/k_buffer_size,

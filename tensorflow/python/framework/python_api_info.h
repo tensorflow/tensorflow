@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -259,7 +261,7 @@ class PythonAPIInfo {
   // Searches inputs_with_type_list_attrs_ for an input with the given name.
   InputsWithNumberAttr* FindInputsWithNumberAttr(const std::string& name);
 
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   bool InferLengthAttributes(const absl::Span<PyObject*> params,
                              std::vector<int64_t>& inferred_length_attrs) const;
 

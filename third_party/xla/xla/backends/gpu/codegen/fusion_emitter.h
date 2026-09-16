@@ -44,18 +44,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct FusionEmissionResult {
-  AsyncThunkSequence thunks;
-  std::unique_ptr<llvm::Module> module;
-};
-
 class FusionInterface {
  public:
   virtual ~FusionInterface() = default;
 
-  virtual absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const = 0;
+  virtual AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionInstruction& fusion) const = 0;
 };
 
 // Interface for fusions that are implemented using cuda kernels.
@@ -77,9 +71,20 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
+// Removes unused arguments from a Triton kernel to match the XLA ABI.
+//
+// Parameters:
+//   llvm_module: The LLVM module containing the kernel function.
+//   sanitized_kernel_name: The original name of the Triton kernel function.
+//   sanitized_kernel_impl_name: A unique name for temporary function.
+//   keep_scratch: If true, the scratch buffer argument (if present) is kept
+//     in the wrapper function signature; otherwise, it's removed.
+//
+// Returns:
+//   A pointer to the newly created function, or an error status.
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name, bool keep_scratch = false);
+    llvm::Module* llvm_module, const std::string& sanitized_kernel_name,
+    const std::string& sanitized_kernel_impl_name, bool keep_scratch = false);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

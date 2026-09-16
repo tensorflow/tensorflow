@@ -107,7 +107,7 @@ void ConvertXPlaneToTraceEvents(uint32_t device_id, const XPlaneVisitor& xplane,
 }  // namespace
 
 uint64_t GetTraceViewerMaxEvents() {
-  constexpr uint64_t kMaxEvents = 1000000;
+  constexpr uint64_t kMaxEvents = 5000000;
   // Testing only env variable, not recommended for use
   char* max_events = getenv("TF_PROFILER_TRACE_VIEWER_MAX_EVENTS");
   if (max_events != nullptr) {

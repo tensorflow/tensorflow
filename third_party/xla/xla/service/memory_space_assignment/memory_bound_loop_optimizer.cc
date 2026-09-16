@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -353,7 +354,7 @@ MemoryBoundLoopOptimizer::Create(int loop_start, int loop_end,
           options.memory_bound_loop_optimizer_options, hlo_live_range,
           alias_analysis, *options.cost_analysis, &options.size_fn,
           options.reserved_scoped_memory_fn, options.alignment_in_bytes));
-  TF_RETURN_IF_ERROR(optimizer->Initialize());
+  ABSL_RETURN_IF_ERROR(optimizer->Initialize());
   return std::move(optimizer);
 }
 
@@ -471,7 +472,8 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
     // and use fields for the current, previous, and next iterations along with
     // the loop indices.
     for (const HloPosition& position : value->positions()) {
-      if (position.instruction->opcode() == HloOpcode::kGetTupleElement) {
+      if (position.instruction->opcode() == HloOpcode::kGetTupleElement ||
+          position.instruction->opcode() == HloOpcode::kTuple) {
         continue;
       }
       std::optional<int64_t> loop_index =
@@ -624,8 +626,8 @@ float MemoryBoundLoopOptimizer::CalculateExecutionTime() const {
         value.allocations.back()->is_copy_allocation()) {
       prefetches.push_back(
           {static_cast<const CopyAllocation*>(value.allocations.back().get()),
-           cost_analysis_.GetAsyncCopyElapsed(
-               value.hlo_values.front()->shape())});
+           cost_analysis_.GetAsyncCopyElapsed(cost_analysis_.GetShapeSizeBytes(
+               value.hlo_values.front()->shape()))});
     }
   }
 
@@ -1087,8 +1089,8 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
     last_use_idx_sentinel = last_use_idx + loop_size_;
     CHECK_LT(last_use_idx, first_use_idx);
   }
-  float copy_resource =
-      cost_analysis_.GetAsyncCopyElapsed(value->hlo_values.front()->shape());
+  float copy_resource = cost_analysis_.GetAsyncCopyElapsed(
+      cost_analysis_.GetShapeSizeBytes(value->hlo_values.front()->shape()));
   VLOG(3) << "First use: " << value->loop_uses.begin()->second
           << " use idx: " << first_use_idx
           << " copy resource: " << copy_resource;

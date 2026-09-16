@@ -24,13 +24,15 @@ limitations under the License.
 #include <cub/version.cuh>  // NOLINT(build/include_order)
 #include <iostream>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/libraries/cub/scratch_space_lookup_table.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
@@ -138,10 +140,10 @@ absl::StatusOr<CubScratchSizeEntry> GenerateDataForKeySegemented(
   for (int64_t n : num_items_list) {
     int64_t size;
     if (is_segmented) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           size, (GetScratchSizeKeySegmentedSort<KeyT>(n, /*num_segments=*/2)));
     } else {
-      ASSIGN_OR_RETURN(size, (GetScratchSizeKeySort<KeyT>(n)));
+      ABSL_ASSIGN_OR_RETURN(size, (GetScratchSizeKeySort<KeyT>(n)));
     }
     sizes.push_back(size);
   }
@@ -179,12 +181,12 @@ absl::Status GenerateDataForKeyOnlySort(CubScratchSizeLookupTable& lookup_table,
   std::vector<int64_t> num_items_list =
       CreateNumItemsList(GetMaxNumOfItems(prop, sizeof(KeyT)));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       *lookup_table.add_entries(),
       (GenerateDataForKeySegemented<KeyT>(device_name, num_items_list,
                                           /*is_segmented=*/false)));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       *lookup_table.add_entries(),
       (GenerateDataForKeySegemented<KeyT>(device_name, num_items_list,
                                           /*is_segmented=*/true)));
@@ -201,10 +203,10 @@ absl::StatusOr<CubScratchSizeEntry> GenerateDataForKeyValueSegemented(
   for (int64_t n : num_items_list) {
     int64_t size;
     if (is_segmented) {
-      ASSIGN_OR_RETURN(size, (GetScratchSizeKeyValueSegmentedSort<KeyT, ValueT>(
+      ABSL_ASSIGN_OR_RETURN(size, (GetScratchSizeKeyValueSegmentedSort<KeyT, ValueT>(
                                  n, /*num_segments=*/2)));
     } else {
-      ASSIGN_OR_RETURN(size, (GetScratchSizeKeyValueSort<KeyT, ValueT>(n)));
+      ABSL_ASSIGN_OR_RETURN(size, (GetScratchSizeKeyValueSort<KeyT, ValueT>(n)));
     }
     sizes.push_back(size);
   }
@@ -221,11 +223,11 @@ absl::Status GenerateDataForKeyValueSort(
   std::vector<int64_t> num_items_list =
       CreateNumItemsList(GetMaxNumOfItems(prop, sizeof(KeyT) + sizeof(ValueT)));
 
-  ASSIGN_OR_RETURN(*lookup_table.add_entries(),
+  ABSL_ASSIGN_OR_RETURN(*lookup_table.add_entries(),
                    (GenerateDataForKeyValueSegemented<KeyT, ValueT>(
                        device_name, num_items_list, /*is_segmented=*/false)));
 
-  ASSIGN_OR_RETURN(*lookup_table.add_entries(),
+  ABSL_ASSIGN_OR_RETURN(*lookup_table.add_entries(),
                    (GenerateDataForKeyValueSegemented<KeyT, ValueT>(
                        device_name, num_items_list, /*is_segmented=*/true)));
 
@@ -254,7 +256,7 @@ absl::Status WriteLookupTableToFile(
   std::string path =
       tsl::io::JoinPath(outputs_dir, "cub_scratch_size_lookup_table.textproto");
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(tsl::WriteTextProto(env, path, lookup_table));
+  ABSL_RETURN_IF_ERROR(tsl::WriteTextProto(env, path, lookup_table));
 
   std::cout << "Wrote lookup table to " << path << std::endl;
   return absl::OkStatus();
@@ -263,61 +265,57 @@ absl::Status WriteLookupTableToFile(
 }  // namespace
 
 absl::Status GenerateCubScratchSizeData() {
-  ASSIGN_OR_RETURN(cudaDeviceProp prop, GetDeviceProperties());
+  ABSL_ASSIGN_OR_RETURN(cudaDeviceProp prop, GetDeviceProperties());
   std::string device_name(prop.name, strnlen(prop.name, sizeof(prop.name)));
 
   CubScratchSizeLookupTable lookup_table;
   // Generate the data for 8, 16, 32, 64 bit, key only sorts
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GenerateDataForKeyOnlySort<int8_t>(lookup_table, device_name, prop));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GenerateDataForKeyOnlySort<int16_t>(lookup_table, device_name, prop));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GenerateDataForKeyOnlySort<int32_t>(lookup_table, device_name, prop));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GenerateDataForKeyOnlySort<int64_t>(lookup_table, device_name, prop));
 
   // Generate the data for key value sorts for every key/value size combination.
   // I.e. keys of size 8, 16, 32, 64 bits, and values of size 8, 16, 32, 64
 
   // 8 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int8_t>(
+  // Skipping int8_t value sort since it isn't supported in XLA
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int16_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int16_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int32_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int32_t>(
-      lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int64_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int8_t, int64_t>(
       lookup_table, device_name, prop)));
 
   // 16 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int8_t>(
+  // Skipping int8_t value sort since it isn't supported in XLA
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int16_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int16_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int32_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int32_t>(
-      lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int64_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int16_t, int64_t>(
       lookup_table, device_name, prop)));
 
   // 32 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int8_t>(
+  // Skipping int8_t value sort since it isn't supported in XLA
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int16_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int16_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int32_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int32_t>(
-      lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int64_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int32_t, int64_t>(
       lookup_table, device_name, prop)));
 
   // 64 bit keys
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int8_t>(
+  // Skipping int8_t value sort since it isn't supported in XLA
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int16_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int16_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int32_t>(
       lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int32_t>(
-      lookup_table, device_name, prop)));
-  RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int64_t>(
+  ABSL_RETURN_IF_ERROR((GenerateDataForKeyValueSort<int64_t, int64_t>(
       lookup_table, device_name, prop)));
 
   return WriteLookupTableToFile(lookup_table);

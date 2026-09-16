@@ -180,16 +180,16 @@ absl::Status ParseDataTypes(absl::string_view data_types_str,
   data_types.resize(input_dtypes_vector.size(), DT_INVALID);
   for (auto data_type : llvm::enumerate(input_dtypes_vector)) {
     if (!DataType_Parse(data_type.value(), &data_types[data_type.index()]))
-      return errors::InvalidArgument("Invalid dtype at index ",
-                                     data_type.index(), ": ",
-                                     data_type.value());
+      return absl::InvalidArgumentError(absl::StrCat("Invalid dtype at index ",
+                                                     data_type.index(), ": ",
+                                                     data_type.value()));
     const auto& resolved_dtype = data_types[data_type.index()];
     if (resolved_dtype == DT_INVALID || resolved_dtype == DT_STRING ||
         resolved_dtype == DT_RESOURCE || resolved_dtype == DT_VARIANT ||
         IsRefType(resolved_dtype))
-      return errors::InvalidArgument("Unsupported dtype at index ",
-                                     data_type.index(), ": ",
-                                     data_type.value());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported dtype at index ", data_type.index(), ": ",
+                       data_type.value()));
   }
 
   return absl::OkStatus();
@@ -211,9 +211,9 @@ absl::Status ParseArgumentKinds(
     } else if (value == "resource") {
       argument_kinds.push_back(XlaArgument::Kind::kResource);
     } else {
-      return errors::InvalidArgument(
-          "Unsupported TF/XLA argument kind at index ",
-          argument_kind_str.index(), ": ", value);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported TF/XLA argument kind at index ",
+                       argument_kind_str.index(), ": ", value));
     }
   }
 
@@ -242,11 +242,11 @@ absl::Status ParseXlaArguments(
 
   if (input_shapes_vector.size() != dtypes_vector.size() ||
       input_shapes_vector.size() != arg_kinds_vector.size())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Input shapes, dtypes, and types/kinds must be of the same "
         "length, but got ",
         input_shapes_vector.size(), ", ", dtypes_vector.size(), ", and ",
-        arg_kinds_vector.size(), " respectively");
+        arg_kinds_vector.size(), " respectively"));
 
   xla_arguments.resize(input_shapes_vector.size());
   for (const auto& arg_components :

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -38,7 +39,8 @@ absl::StatusOr<std::string> EarlyExitCompilationResult::SerializeAsString()
 absl::StatusOr<std::unique_ptr<Executable>>
 EarlyExitCompilationResult::LoadExecutable(
     se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description) && {
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) && {
   return Unavailable(
       "LoadExecutable() is not supported by EarlyExitCompilationResult.");
 }

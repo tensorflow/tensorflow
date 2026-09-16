@@ -24,10 +24,10 @@ Tip: If the input generation takes too long or uses too much host memory,
 consider using `--hlo_argument_mode=uninitialized`.
 
 It is also possible to compile the same HLO without running it by setting
-`--run=false`:
+`--compile_only=true`:
 
 ```
-bazel run //xla/tools/multihost_hlo_runner:hlo_runner_main -- --run=false my-hlo.txt
+bazel run //xla/tools/multihost_hlo_runner:hlo_runner_main -- --compile_only=true my-hlo.txt
 ```
 
 In that case, a single GPU is necessary, unless the

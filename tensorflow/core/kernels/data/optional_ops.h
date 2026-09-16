@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/optional_ops_util.h"
@@ -75,10 +77,10 @@ class OptionalGetValueOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES(
         ctx, output_shapes_.size() == output_types_.size(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "output_types and output_shapes must be same length, got:\n",
             "output_types: ", output_types_.size(), "\n",
-            "output_shapes: ", output_shapes_.size()));
+            "output_shapes: ", output_shapes_.size())));
   }
 
   void Compute(OpKernelContext* ctx) override;

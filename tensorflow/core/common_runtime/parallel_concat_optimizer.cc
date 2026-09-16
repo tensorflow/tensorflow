@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -42,7 +43,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     }
     Graph* g = options.graph->get();
     if (g == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "Parallel concat removal should happen before partitioning and a "
           "graph should be available.");
     }
@@ -73,6 +74,11 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
       TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
       TensorShapeProto shape;
       TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "shape", &shape));
+      // A shape whose element count overflows int64 must be rejected here:
+      // the rewrite would otherwise materialize a TensorShape from it
+      // through code paths that CHECK-fail on overflow and abort the
+      // process.
+      TF_RETURN_IF_ERROR(TensorShape::IsValidShape(shape));
 
       // Add the start node
       Node* start;

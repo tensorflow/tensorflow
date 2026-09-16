@@ -30,13 +30,14 @@ class BCastArgsOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
-        errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
+        absl::UnimplementedError("Broadcast for n-ary operations (n > 2)"));
     absl::InlinedVector<BCast::Vec, 4UL> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const Tensor& in = ctx->input(i);
-      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in.shape()),
-                  errors::InvalidArgument("In[", i, "] must be a vector.",
-                                          in.shape().DebugString()));
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(in.shape()),
+          absl::InvalidArgumentError(absl::StrCat(
+              "In[", i, "] must be a vector.", in.shape().DebugString())));
       BCast::Vec vec;
       for (int64_t i = 0; i < in.NumElements(); ++i) {
         vec.push_back(in.vec<T>()(i));
@@ -45,9 +46,9 @@ class BCastArgsOp : public OpKernel {
     }
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
-                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]")));
     Output(ctx, 0, bcast.output_shape());
   }
 
@@ -80,13 +81,14 @@ class BCastGradArgsOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
-        errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
+        absl::UnimplementedError("Broadcast for n-ary operations (n > 2)"));
     absl::InlinedVector<BCast::Vec, 4UL> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const Tensor& in = ctx->input(i);
-      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in.shape()),
-                  errors::InvalidArgument("In[", i, "] must be a vector.",
-                                          in.shape().DebugString()));
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(in.shape()),
+          absl::InvalidArgumentError(absl::StrCat(
+              "In[", i, "] must be a vector.", in.shape().DebugString())));
       BCast::Vec vec;
       for (int64_t i = 0; i < in.NumElements(); ++i) {
         vec.push_back(in.vec<T>()(i));
@@ -95,9 +97,9 @@ class BCastGradArgsOp : public OpKernel {
     }
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
-                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]")));
     Output(ctx, 0, bcast.grad_x_reduce_idx());
     Output(ctx, 1, bcast.grad_y_reduce_idx());
   }

@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -88,9 +89,13 @@ struct IfrtIrProgramMemoryStats {
 // running the program, and can be generated as part of cross compilation.
 class ProgramMemoryTracer {
  public:
-  static absl::StatusOr<std::unique_ptr<ProgramMemoryTracer>> Create(
-      std::shared_ptr<CompiledIfrtIrProgram> program, Client* client,
-      DeviceListRef devices);
+  ProgramMemoryTracer(std::shared_ptr<CompiledIfrtIrProgram> program,
+                      Client* client, DeviceListRef devices,
+                      std::string dump_dir)
+      : program_(std::move(program)),
+        client_(client),
+        devices_(std::move(devices)),
+        dump_dir_(std::move(dump_dir)) {}
 
   // Gets the predicted memory states of the given IFRT IR program.
   absl::StatusOr<IfrtIrProgramMemoryStats> GetMemoryStats();
@@ -106,14 +111,7 @@ class ProgramMemoryTracer {
   absl::StatusOr<std::string> GetXprofUrl();
 
  private:
-  ProgramMemoryTracer(std::shared_ptr<CompiledIfrtIrProgram> program,
-                      Client* client, DeviceListRef devices,
-                      std::string dump_dir, mlir::Liveness liveness)
-      : program_(std::move(program)),
-        client_(client),
-        devices_(std::move(devices)),
-        dump_dir_(std::move(dump_dir)),
-        liveness_(std::move(liveness)) {}
+  mlir::Liveness& GetLiveness();
 
   absl::Status GenerateEvents();
   absl::Status GenerateEvents(CallLoadedExecutableOp call_loaded_op);
@@ -141,7 +139,8 @@ class ProgramMemoryTracer {
   std::string dump_dir_;
 
   // Cached liveness analysis of the IFRT IR program.
-  mlir::Liveness liveness_;
+  absl::once_flag liveness_init_once_;
+  std::optional<mlir::Liveness> liveness_;
 
   // Proto message to which the memory trace events will be added to. Lazily,
   // populate when `GetMemoryStats` or `GetXprofUrl` is first called.

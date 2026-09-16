@@ -263,6 +263,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
+      if (i_ < 0 || (dataset()->count_ >= 0 && i_ > dataset()->count_)) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Restored tf.data.Dataset.skip index ", i_,
+                         " is out of range [0, ", dataset()->count_, "]."));
+      }
+
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));

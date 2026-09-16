@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -53,7 +52,7 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
       block_barrier.getSignalValue();
   const int32_t world_size = block_barrier.getWorldSize();
   // Triton magic constant.
-  constexpr int32_t kGlobalAddressSpace = 1;
+  constexpr auto kGlobalAddressSpace = mlir::triton::PtrAddrSpace::Global;
 
   const mlir::TypedValue<mlir::Type> world_size_op =
       mlir::arith::ConstantOp::create(builder,
@@ -98,8 +97,11 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
         // Triton seems to fail to do pointer arithmetic on pointer of
         // pointers. So we cast the inner one to i64.
         // -> !tt.ptr<i64>
-        auto signal_buffers_i64 = mlir::triton::BitcastOp::create(
-            builder, ptr_to_i64_type, signal_buffers_arg);
+        mlir::Value signal_buffers_i64 = signal_buffers_arg;
+        if (signal_buffers_arg.getType() != ptr_to_i64_type) {
+          signal_buffers_i64 = mlir::triton::BitcastOp::create(
+              builder, ptr_to_i64_type, signal_buffers_arg);
+        }
         // SignalBuffers[WorldSize][BlockSize][WorldSize]
         // -> tensor<world_size x !tt.ptr<i64>>
         auto signal_buffers_tensor = mlir::triton::SplatOp::create(
@@ -139,10 +141,10 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             builder,
             /*resultTypes=*/mlir::TypeRange{},
             /*ptr=*/signal_addresses,
-            /*signal_value=*/signal_value,
+            /*value=*/signal_value,
             /*mask=*/mlir::Value{},
-            /*scope=*/mlir::triton::MemSyncScope::SYSTEM,
-            /*sem=*/mlir::triton::MemSemantic::RELEASE);
+            /*mem_sync_scope=*/mlir::triton::MemSyncScope::SYSTEM,
+            /*mem_sync_semantic=*/mlir::triton::MemSemantic::RELEASE);
         // Pointer to SignalBuffers[rank]
         // -> !tt.ptr<i64>
         auto read_address_ptr_to_i64 = mlir::triton::AddPtrOp::create(
@@ -178,9 +180,9 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             /*ptr=*/wait_addresses,
             /*expected=*/signal_value,
             /*mask=*/mlir::Value{},
-            /*scope=*/mlir::triton::MemSyncScope::SYSTEM,
-            /*sem=*/mlir::triton::MemSemantic::ACQUIRE,
-            /*comparator=*/Comparator::LT);
+            /*mem_sync_scope=*/mlir::triton::MemSyncScope::SYSTEM,
+            /*mem_sync_semantic=*/mlir::triton::MemSemantic::ACQUIRE,
+            /*comparator=*/Comparator::GE);
         // Terminate the block.
         mlir::scf::YieldOp::create(builder);
       });
@@ -206,9 +208,5 @@ class TritonXLALowerBlockBarrierPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLALowerBlockBarrierPass() {
-  return std::make_unique<TritonXLALowerBlockBarrierPass>();
-}
 
 }  // namespace mlir::triton::xla

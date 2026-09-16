@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+
+#include "absl/memory/memory.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
-#include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
-
-#include <algorithm>
 #include <vector>
 
 #include "xla/stream_executor/gpu/gpu_init.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/platform/types.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 
 namespace tensorflow {

@@ -74,7 +74,7 @@ absl::Status ReshapeSparseTensorFunctor<GPUDevice>::operator()(
       DT_INT64, TensorShape({output_rank}), &output_shape_gpu_t));
   auto output_shape_gpu = output_shape_gpu_t.flat<int64_t>();
   se::Stream* stream = context->op_device_context()->stream();
-  if (!stream) return errors::Internal("No GPU stream available.");
+  if (!stream) return absl::InternalError("No GPU stream available.");
   stream_executor::DeviceAddressBase input_shape_gpu_mem(
       input_shape_gpu.data(), input_rank * sizeof(int64_t));
   TF_RETURN_IF_ERROR(stream->Memcpy(&input_shape_gpu_mem,

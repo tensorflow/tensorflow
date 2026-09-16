@@ -63,9 +63,9 @@ void AssignOpMetadataToSharding(xla::OpSharding& sharding,
 }
 
 absl::Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
-  return errors::InvalidArgument(
-      "Invalid replicated core id: ", core,
-      "; num_cores_per_replica=", num_cores_per_replica);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Invalid replicated core id: ", core,
+                   "; num_cores_per_replica=", num_cores_per_replica));
 }
 }  // namespace
 
@@ -78,8 +78,8 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
   }
   DeviceNameUtils::ParsedName parsed_device;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_device)) {
-    return errors::InvalidArgument("Malformed assigned device '", device_name,
-                                   "'");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Malformed assigned device '", device_name, "'"));
   }
 
   if (explicit_sharding.has_value()) {
@@ -131,8 +131,8 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
     const Edge& edge, int num_cores_per_replica, bool add_metadata) {
   if (edge.src() == nullptr) {
-    return tensorflow::errors::InvalidArgument(
-        "Null src for ParseShardingFromEdgeSource edge=", edge.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Null src for ParseShardingFromEdgeSource edge=", edge.DebugString()));
   }
   TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       ParseShardingFromDevice(
@@ -141,9 +141,9 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
       sharding.value().type() == xla::OpSharding::TUPLE) {
     if (edge.src_output() < 0 ||
         edge.src_output() >= sharding.value().tuple_shardings_size()) {
-      return tensorflow::errors::InvalidArgument(
-          "Tuple index out of bound: edge=", edge.DebugString(),
-          " sharding=", sharding->DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Tuple index out of bound: edge=", edge.DebugString(),
+                       " sharding=", sharding->DebugString()));
     }
     std::optional<xla::OpSharding> subsharding =
         sharding.value().tuple_shardings(edge.src_output());

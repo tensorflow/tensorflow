@@ -15,7 +15,7 @@
 # ==============================================================================
 
 # Script for mlir-reduce to test input interestingness.
-tf-opt $1 -tf-mark-ops-for-outside-compilation 2>&1 | grep "'tf.UnsupportedOp' op isn't compilable for TPU device"
+tf-opt $1 -tf-mark-ops-for-outside-compilation 2>&1 | grep -q "'tf.UnsupportedOp' op isn't compilable for TPU device"
 
 if [ $? -eq 0 ]; then
   exit 1

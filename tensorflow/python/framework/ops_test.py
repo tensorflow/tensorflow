@@ -46,6 +46,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
@@ -912,6 +913,19 @@ class OperationTest(test_util.TensorFlowTestCase):
     tensor = constant_op.constant(42.0, dtype=dtypes.float32)
     with self.assertRaises(ValueError):
       ops.convert_to_tensor(tensor, dtype=dtypes.int32)
+
+  def testConvertCapturedEagerTensorToInvalidDtype(self):
+    tensor = constant_op.constant(42, dtype=dtypes.int32)
+
+    @def_function.function
+    def convert():
+      return ops.convert_to_tensor(tensor, dtype=dtypes.int64)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "Tensor conversion requested dtype int64 for Tensor with dtype int32",
+    ):
+      convert()
 
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorProtocol(self):
@@ -3748,6 +3762,49 @@ class TensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(NotImplementedError,
                                 "Cannot convert a symbolic tf.Tensor"):
       g()
+
+  def testSymbolicTensorIndexStaticShapeDimension(self):
+
+    @def_function.function(autograph=False)
+    def f(x):
+      features = array_ops.shape(x)[1]
+      total = 0
+      for i in range(features):
+        total += i
+      return constant_op.constant(total)
+
+    x = array_ops.zeros([4, 10])
+    self.assertEqual(self.evaluate(f(x)), 45)
+
+  def testSymbolicTensorIndexDynamicShapeDimension(self):
+
+    @def_function.function(autograph=False)
+    def f(x):
+      features = array_ops.shape(x)[1]
+      total = 0
+      for i in range(features):
+        total += i
+      return constant_op.constant(total)
+
+    with self.assertRaisesRegex(
+        TypeError, "cannot be interpreted as an integer"
+    ):
+      f.get_concrete_function(
+          tensor_spec.TensorSpec([4, None], dtype=dtypes.float32)
+      )
+
+  def testSymbolicTensorIndexNegativeStaticShapeDimension(self):
+
+    @def_function.function(autograph=False)
+    def f(x):
+      features = array_ops.shape(x)[-1]
+      total = 0
+      for i in range(features):
+        total += i
+      return constant_op.constant(total)
+
+    x = array_ops.zeros([4, 10])
+    self.assertEqual(self.evaluate(f(x)), 45)
 
 
 if __name__ == "__main__":

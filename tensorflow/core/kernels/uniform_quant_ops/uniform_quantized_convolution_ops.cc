@@ -613,9 +613,9 @@ class UniformQuantizedConvolutionOp : public OpKernel {
     int lhs_quantization_axis;
     OP_REQUIRES_OK(context, context->GetAttr("lhs_quantization_axis",
                                              &lhs_quantization_axis));
-    OP_REQUIRES(
-        context, (lhs_quantization_axis == -1),
-        InvalidArgument("lhs_quantization_axis Attr must be -1 (per-tensor)."));
+    OP_REQUIRES(context, (lhs_quantization_axis == -1),
+                absl::InvalidArgumentError(
+                    "lhs_quantization_axis Attr must be -1 (per-tensor)."));
     OP_REQUIRES_OK(context, context->GetAttr("rhs_quantization_axis",
                                              &rhs_quantization_axis_));
     OP_REQUIRES_OK(context, context->GetAttr("output_quantization_axis",
@@ -633,12 +633,14 @@ class UniformQuantizedConvolutionOp : public OpKernel {
     const Tensor& output_zero_points = context->input(7);
 
     OP_REQUIRES(context, (AllElementsPositive<float>(lhs_scales)),
-                InvalidArgument("lhs scales elements must be all positive."));
+                absl::InvalidArgumentError(
+                    "lhs scales elements must be all positive."));
     OP_REQUIRES(context, (AllElementsPositive<float>(rhs_scales)),
-                InvalidArgument("rhs scales elements must be all positive."));
-    OP_REQUIRES(
-        context, (AllElementsPositive<float>(output_scales)),
-        InvalidArgument("output scales elements must be all positive."));
+                absl::InvalidArgumentError(
+                    "rhs scales elements must be all positive."));
+    OP_REQUIRES(context, (AllElementsPositive<float>(output_scales)),
+                absl::InvalidArgumentError(
+                    "output scales elements must be all positive."));
 
     OP_REQUIRES_OK(context,
                    convolution_params_.ValidateOrFillParamsAndValidateShape(
@@ -648,10 +650,10 @@ class UniformQuantizedConvolutionOp : public OpKernel {
     OP_REQUIRES(
         context,
         (lhs_scales.IsSameSize(lhs_zero_points) && lhs_scales.dims() == 0),
-        InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "lhs scales/zero_points must be all scalar tensors. Given: ",
             lhs_scales.shape().DebugString(),
-            lhs_zero_points.shape().DebugString()));
+            lhs_zero_points.shape().DebugString())));
 
     // Check rhs axis.
     OP_REQUIRES(
@@ -659,9 +661,10 @@ class UniformQuantizedConvolutionOp : public OpKernel {
         (rhs_quantization_axis_ == -1 ||
          rhs_quantization_axis_ == convolution_params_.dimension_numbers()
                                        .kernel_output_feature_dimension()),
-        InvalidArgument("rhs_quantization_axis Attr must be -1 (per-tensor) or "
-                        "dimension_numbers.kernel_output_feature_dimension "
-                        "(per-channel)."));
+        absl::InvalidArgumentError(
+            "rhs_quantization_axis Attr must be -1 (per-tensor) or "
+            "dimension_numbers.kernel_output_feature_dimension "
+            "(per-channel)."));
     // Check rhs scales/zero_points shapes.
     OP_REQUIRES_OK(
         context, QuantizationAxisAndShapeValid(rhs.shape(), rhs_scales.shape(),
@@ -674,7 +677,7 @@ class UniformQuantizedConvolutionOp : public OpKernel {
         (output_quantization_axis_ == -1 ||
          output_quantization_axis_ == convolution_params_.dimension_numbers()
                                           .output_feature_dimension()),
-        InvalidArgument(
+        absl::InvalidArgumentError(
             "output_quantization_axis Attr must be -1 (per-tensor) or "
             "dimension_numbers.output_feature_dimension (per-channel)."));
 
@@ -688,10 +691,10 @@ class UniformQuantizedConvolutionOp : public OpKernel {
                        output_zero_points.shape(), output_quantization_axis_));
     OP_REQUIRES(
         context, (rhs_scales.dims() > 0 || output_scales.dims() == 0),
-        InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "If rhs is per-tensor quantized, output must be also per-tensor "
             "quantized. Given output scales/zero_points of rank ",
-            output_scales.dims()));
+            output_scales.dims())));
 
     Tensor* output;
     OP_REQUIRES_OK(context,
@@ -738,7 +741,8 @@ class UniformQuantizedConvolutionHybridOp : public OpKernel {
     const Tensor& rhs_zero_points = context->input(3);
 
     OP_REQUIRES(context, (AllElementsPositive<float>(rhs_scales)),
-                InvalidArgument("rhs scales elements must be all positive."));
+                absl::InvalidArgumentError(
+                    "rhs scales elements must be all positive."));
     OP_REQUIRES_OK(context,
                    convolution_params_.ValidateOrFillParamsAndValidateShape(
                        lhs.shape(), rhs.shape()));
@@ -747,9 +751,10 @@ class UniformQuantizedConvolutionHybridOp : public OpKernel {
         (rhs_quantization_axis_ == -1 ||
          rhs_quantization_axis_ == convolution_params_.dimension_numbers()
                                        .kernel_output_feature_dimension()),
-        InvalidArgument("rhs_quantization_axis Attr must be -1 (per-tensor) or "
-                        "dimension_numbers.kernel_output_feature_dimension "
-                        "(per-channel)."));
+        absl::InvalidArgumentError(
+            "rhs_quantization_axis Attr must be -1 (per-tensor) or "
+            "dimension_numbers.kernel_output_feature_dimension "
+            "(per-channel)."));
     // Check rhs scales/zero_points shapes.
     OP_REQUIRES_OK(
         context, QuantizationAxisAndShapeValid(rhs.shape(), rhs_scales.shape(),

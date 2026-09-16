@@ -15,19 +15,29 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/scatter_expander.h"
 
+#include "absl/algorithm/container.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
 
 namespace xla {
 
 bool GpuScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
+  if (!HloPredicateIsOp<HloOpcode::kScatter>(inst)) {
+    return false;
+  }
+  auto is_unsupported_element = [](const Shape& shape) {
+    return primitive_util::BitWidth(shape.element_type()) > 64;
+  };
   // TODO(b/129698548): Scattering elements larger than 64 bits is not
   // supported by XLA:GPU.
-  // TODO(b/227486631): Variadic scatter is not yet supported by GPU.
-  return HloPredicateIsOp<HloOpcode::kScatter>(inst) &&
-         (inst->shape().IsTuple() ||
-          primitive_util::BitWidth(inst->shape().element_type()) > 64);
+  // Note: Variadic scatter is only supported for unique indices.
+  if (inst->shape().IsTuple()) {
+    return !inst->unique_indices() ||
+           absl::c_any_of(inst->shape().tuple_shapes(), is_unsupported_element);
+  }
+  return is_unsupported_element(inst->shape());
 }
 
 }  // namespace xla

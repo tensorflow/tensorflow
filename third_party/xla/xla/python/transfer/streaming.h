@@ -167,7 +167,7 @@ class BulkTransportFactory {
     std::unique_ptr<BulkTransportInterface> bulk_transport;
   };
   // Receives the bulk transport request.
-  virtual BulkTransportRecvResult RecvBulkTransport(
+  virtual absl::StatusOr<BulkTransportRecvResult> RecvBulkTransport(
       const SocketTransferEstablishBulkTransport&
           remote_bulk_transport_info) = 0;
 

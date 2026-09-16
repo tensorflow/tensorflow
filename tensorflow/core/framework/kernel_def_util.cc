@@ -57,26 +57,26 @@ absl::Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
     }
 
     if (value_type_num == 0) {
-      return errors::Unimplemented(
-          "KernelDef '", kernel_def.ShortDebugString(),
-          " has constraint on attr '", constraint.name(),
-          "' with unsupported type: ",
-          SummarizeAttrValue(constraint.allowed_values()));
+      return absl::UnimplementedError(
+          absl::StrCat("KernelDef '", kernel_def.ShortDebugString(),
+                       " has constraint on attr '", constraint.name(),
+                       "' with unsupported type: ",
+                       SummarizeAttrValue(constraint.allowed_values())));
     }
     if (value_type_num > 1) {
-      return errors::InvalidArgument(
-          "KernelDef '", kernel_def.ShortDebugString(),
-          " has constraint on attr '", constraint.name(),
-          "' with more than one value type: ",
-          SummarizeAttrValue(constraint.allowed_values()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("KernelDef '", kernel_def.ShortDebugString(),
+                       " has constraint on attr '", constraint.name(),
+                       "' with more than one value type: ",
+                       SummarizeAttrValue(constraint.allowed_values())));
     }
 
     const AttrValue* attr_value = attrs.Find(constraint.name());
     if (attr_value == nullptr) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "OpKernel '", kernel_def.op(), "' has constraint on attr '",
           constraint.name(), "' not in NodeDef '", attrs.SummarizeNode(),
-          "', KernelDef: '", kernel_def.ShortDebugString(), "'");
+          "', KernelDef: '", kernel_def.ShortDebugString(), "'"));
     }
 
 #define RETURN_IF_ATTR_NOT_FOUND(n, oneof_case, type_str)          \
@@ -121,13 +121,13 @@ absl::Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
       }
     } else {
       if (!AttrValueHasType(*attr_value, "list(type)").ok()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "KernelDef '", kernel_def.ShortDebugString(),
             "' has constraint on attr '", constraint.name(),
             "' that has value '", SummarizeAttrValue(*attr_value),
             "' that does not have type 'type' or 'list(type)' in NodeDef "
             "'",
-            attrs.SummarizeNode(), "'");
+            attrs.SummarizeNode(), "'"));
       }
 
       for (int t : attr_value->list().type()) {

@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
+from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -76,6 +77,46 @@ def _ctc_loss_v2(labels, inputs, sequence_length,
       label_length=None,
       blank_index=-1,
       logits_time_major=time_major)
+
+
+class CTCLossValidationTest(test.TestCase):
+
+  def _callCtcLoss(self, ctc_loss_fn, logits, blank_index=0):
+    labels = constant_op.constant([[0]], dtype=dtypes.int32)
+    label_length = constant_op.constant([1], dtype=dtypes.int32)
+    logit_length = constant_op.constant([1], dtype=dtypes.int32)
+    return ctc_loss_fn(
+        labels=labels,
+        logits=logits,
+        label_length=label_length,
+        logit_length=logit_length,
+        blank_index=blank_index,
+    )
+
+  def testStaticLogitsRankTooSmallRejected(self):
+    logits = constant_op.constant([[1.0, 2.0]], dtype=dtypes.float32)
+    for ctc_loss_fn in [ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3]:
+      with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
+        with self.assertRaisesRegex(ValueError, "rank at least 3"):
+          self._callCtcLoss(ctc_loss_fn, logits)
+
+  def testStaticZeroClassesRejected(self):
+    logits = constant_op.constant(
+        np.zeros([1, 1, 0], dtype=np.float32), dtype=dtypes.float32
+    )
+    for ctc_loss_fn in [ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3]:
+      with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
+        with self.assertRaisesRegex(ValueError, "at least 1 class"):
+          self._callCtcLoss(ctc_loss_fn, logits)
+
+  def testStaticBlankIndexOutOfRangeRejected(self):
+    logits = constant_op.constant(
+        np.zeros([1, 1, 3], dtype=np.float32), dtype=dtypes.float32
+    )
+    for ctc_loss_fn in [ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3]:
+      with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
+        with self.assertRaisesRegex(ValueError, r"must be in range \[-3, 3\)"):
+          self._callCtcLoss(ctc_loss_fn, logits, blank_index=-4)
 
 
 class CTCLossTest(test.TestCase):
@@ -301,6 +342,42 @@ class CTCLossTest(test.TestCase):
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   "batch_size must not be 0"):
         sess.run(_ctc_loss_v2(labels, inputs, sequence_lengths))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSingleClassBlankOnlyLabel(self):
+    # Regression test for a heap out-of-bounds write (reported as an
+    # AddressSanitizer bad-free) in the native CTC loss calculator.  With
+    # num_classes == 1 the only class is the blank label (index
+    # num_classes - 1 == 0), so the label value 0 collapses to an empty target
+    # sequence and the modified sequence l_prime is a single blank (U == 1).
+    # The forward/backward initialization used to unconditionally write the
+    # second row of the alpha/beta matrices, corrupting the heap.  This must
+    # instead compute a finite loss without crashing.
+    inputs = constant_op.constant([[[-1.0]]], dtype=dtypes.float32)
+    labels_indices = constant_op.constant([[0, 0]], dtype=dtypes.int64)
+    labels_values = constant_op.constant([0], dtype=dtypes.int32)
+    sequence_length = constant_op.constant([1], dtype=dtypes.int32)
+
+    loss, gradient = gen_ctc_ops.ctc_loss(
+        inputs=inputs,
+        labels_indices=labels_indices,
+        labels_values=labels_values,
+        sequence_length=sequence_length,
+        preprocess_collapse_repeated=False,
+        ctc_merge_repeated=False,
+        ignore_longer_outputs_than_inputs=False,
+    )
+
+    loss_value, gradient_value = self.evaluate((loss, gradient))
+    self.assertAllEqual(loss_value.shape, (1,))
+    self.assertAllEqual(gradient_value.shape, (1, 1, 1))
+    self.assertAllEqual(
+        np.ones_like(loss_value, dtype=np.bool_), np.isfinite(loss_value)
+    )
+    self.assertAllEqual(
+        np.ones_like(gradient_value, dtype=np.bool_),
+        np.isfinite(gradient_value),
+    )
 
 
 class CTCLossTestV2(test.TestCase, parameterized.TestCase):

@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SOL_LATENCY_ESTIMATOR_H_
 
 #include <memory>
-#include <optional>
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
@@ -37,18 +36,18 @@ namespace gpu {
 
 // Static analytical latency estimator for GPU. It uses empirical data and
 // interpolation techniques to estimate the runtime of matrix multiplications
-// and ICI (NVLINK) collectives, it also uses the GPU performance model to
+// and ICI (NVLink/XGMI) collectives, it also uses the GPU performance model to
 // estimate runtime of fusion operations and DCN collectives.
 //
 // The rationale for this mix is that we do not have proper analytical solutions
 // to estimate the runtime of GEMMs and we have not yet developed a good enough
-// set of parameters to reconstruct a bandwidth derating curve for NVLINK.
+// set of parameters to reconstruct a bandwidth derating curve for ICI links.
 // Interpolation/collection happens at the level of the HLO instruction,
 // therefore in the case of algorithmic improvements at lower levels of
 // abstractions performance tables need to be updated.
 //
-// Currently this estimator supports H100s and standard DP collectives, that is:
-// All-Reduce, All-Gather, Reduce-Scatter.
+// The estimator is enabled for Hopper, Blackwell, and ROCm gfx942/gfx950 when a
+// module contains only supported collective operations.
 class SolLatencyEstimator : public LatencyEstimator {
  public:
   TimeCost GetLatencyBetween(const HloGraphNode& from,
@@ -65,7 +64,7 @@ class SolLatencyEstimator : public LatencyEstimator {
   static absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      const SolGPUCostModel::Config& sol_flags, mlir::MLIRContext* mlir_context,
+      const SolGPUCostModel::Config& sol_flags,
       const CollectiveInterpolator* collective_interpolator = nullptr);
 
   // Computes the time it takes to execute the given collective instruction.
@@ -77,7 +76,7 @@ class SolLatencyEstimator : public LatencyEstimator {
       const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const SolGPUCostModel::Config& sol_flags,
-      const GpuHloCostAnalysis& cost_analysis, mlir::MLIRContext* mlir_context,
+      const GpuHloCostAnalysis& cost_analysis,
       const CollectiveInterpolator* collective_interpolator = nullptr);
 
   // Factory method to create a `SolLatencyEstimator`.
@@ -86,7 +85,7 @@ class SolLatencyEstimator : public LatencyEstimator {
       std::unique_ptr<LatencyEstimator> latency_estimator,
       const se::DeviceDescription& gpu_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function,
-      const HloComputation* computation, mlir::MLIRContext* mlir_context,
+      const HloComputation* computation,
       std::unique_ptr<GpuHloCostAnalysis> cost_analysis = nullptr);
 
   // Returns true if the module is supported by the SoL latency estimator.
@@ -107,8 +106,7 @@ class SolLatencyEstimator : public LatencyEstimator {
       HloCostAnalysis::ShapeSizeFunction shape_size_function,
       SolGPUCostModel::Config sol_flags,
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
-      std::unique_ptr<MatmulInterpolator> matmul_interpolator,
-      mlir::MLIRContext* mlir_context);
+      std::unique_ptr<MatmulInterpolator> matmul_interpolator);
 
   const SchedulerConfig config_;
   const se::DeviceDescription& gpu_info_;
@@ -119,7 +117,6 @@ class SolLatencyEstimator : public LatencyEstimator {
   const SolGPUCostModel::Config sol_flags_;
   const std::unique_ptr<const CollectiveInterpolator> collective_interpolator_;
   const std::unique_ptr<const MatmulInterpolator> matmul_interpolator_;
-  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

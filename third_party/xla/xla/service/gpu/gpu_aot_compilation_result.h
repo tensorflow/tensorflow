@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla::gpu {
@@ -75,7 +76,8 @@ class GpuAotCompilationResult : public CompiledModule {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       se::Platform::Id platform_id,
-      const se::DeviceDescription& device_description) &&
+      const se::DeviceDescription& device_description,
+      const DebugOptions& debug_options) &&
       final;
 
   const HloModule* optimized_module() const final { return hlo_module_.get(); }

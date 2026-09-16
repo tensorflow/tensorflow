@@ -691,7 +691,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // cancelled. Optionally, the method waits until all threads finish
     // executing.
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
-      cancellation_manager_->StartCancel();
+      if (cancellation_manager_ != nullptr) {
+        cancellation_manager_->StartCancel();
+      }
       mutex_lock l(*mu_);
       cancelled_ = true;
       // Wake up all threads so that they can exit. This will also wake up any

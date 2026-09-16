@@ -39,7 +39,7 @@ absl::Status GradOpRegistry::Lookup(const std::string& op,
         "https://www.tensorflow.org/code/"
         "tensorflow/cc/gradients/README.md"
         " for instructions on how to add C++ gradients.";
-    return errors::NotFound(error_msg);
+    return absl::NotFoundError(error_msg);
   }
   *func = iter->second;
   return absl::OkStatus();

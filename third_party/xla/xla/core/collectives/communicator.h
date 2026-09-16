@@ -56,9 +56,20 @@ class Communicator {
     virtual ~Executor() = default;
   };
 
+  // Backend-specific descriptor used to identify a signal. It must outlive any
+  // operation that uses it; communicators do not take ownership.
   class SignalDesc {
    public:
     virtual ~SignalDesc() = default;
+  };
+
+  // Describes a counted wait for signals from a peer. `signal_desc` is not
+  // owned and must remain valid until the Future returned by WaitSignals
+  // becomes ready.
+  struct PeerWaitDesc {
+    RankId peer;
+    int op_cnt;
+    const SignalDesc& signal_desc;
   };
 
   // Register `buffer_range` once for efficient collective operations (i.e. on
@@ -173,14 +184,25 @@ class Communicator {
     return Unimplemented("Signal is not implemented");
   }
 
-  // Counted wait: completes when this rank has received op_cnt signals from
-  // peer that match signal_desc (e.g. same sigIdx/ctx). Used to synchronize
-  // after Put/Signal; the backend uses signal_desc to match which signals to
-  // wait for.
+  // Enqueues a counted wait that blocks subsequent work on the executor until
+  // this rank has received op_cnt signals from peer that match signal_desc
+  // (e.g. same sigIdx/ctx). Used to synchronize after Put/Signal; the backend
+  // uses signal_desc to match which signals to wait for.
+  // `signal_desc` must remain valid until the returned Future becomes ready.
   virtual Future<> WaitSignal(RankId peer, int op_cnt,
                               const SignalDesc& signal_desc,
                               const Executor& executor) {
     return Unimplemented("WaitSignal is not implemented");
+  }
+
+  // Enqueues counted waits that block subsequent work on the executor until
+  // every wait in `peer_wait_descs` has received the requested number of
+  // matching signals. The descriptor array is consumed before this method
+  // returns; the SignalDesc objects it references must remain valid until the
+  // returned Future becomes ready.
+  virtual Future<> WaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                               const Executor& executor) {
+    return Unimplemented("WaitSignals is not implemented");
   }
 
   // Returns the number of ranks in the communicator.
@@ -212,8 +234,5 @@ inline std::ostream& operator<<(std::ostream& os, const Communicator& comm) {
 }
 
 }  // namespace xla
-
-namespace stream_executor {
-}  // namespace stream_executor
 
 #endif  // XLA_CORE_COLLECTIVES_COMMUNICATOR_H_

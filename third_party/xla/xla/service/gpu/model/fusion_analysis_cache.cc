@@ -40,11 +40,6 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
 
   // If some other thread created an entry for this key concurrently, return
   // that instead (the other thread is likely using the instance).
-  auto it = analyses_.find(instruction.unique_id());
-  if (it != analyses_.end()) {
-    return it->second;
-  }
-
   return analyses_.emplace(instruction.unique_id(), std::move(analysis))
       .first->second;
 }

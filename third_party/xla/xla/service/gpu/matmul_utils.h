@@ -177,14 +177,14 @@ struct GroupedGemmConfig : public se::gpu::GroupedGemmConfig {
       int64_t lhs_ragged_dimension, const Shape& rhs_shape,
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims,
-      absl::Span<const int64_t> rhs_group_dimensions, const Shape& output_shape,
-      double alpha_real, double alpha_imag, double beta,
-      PrecisionConfig::Algorithm precision_algorithm,
+      absl::Span<const int64_t> rhs_group_dimensions, const Shape& c_shape,
+      const Shape& output_shape, double alpha_real, double alpha_imag,
+      double beta, PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision,
       uint64_t group_count, const se::GpuComputeCapability& gpu_version);
 
   static absl::StatusOr<GroupedGemmConfig> For(
-      const HloInstruction* groupe_gemm,
+      const HloInstruction* grouped_gemm,
       const se::GpuComputeCapability& gpu_version);
 };
 
@@ -220,7 +220,7 @@ struct TritonGemmConfig {
                              int num_stages, int num_warps, int num_ctas = 1,
                              bool is_tma_allowed = false,
                              bool is_warp_specialization_allowed = false,
-                             int waves_per_eu = 0)
+                             int waves_per_eu = 0, int group_size = 1)
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
@@ -229,7 +229,8 @@ struct TritonGemmConfig {
         num_ctas(num_ctas),
         is_tma_allowed(is_tma_allowed),
         is_warp_specialization_allowed(is_warp_specialization_allowed),
-        waves_per_eu(waves_per_eu) {}
+        waves_per_eu(waves_per_eu),
+        group_size(group_size) {}
   // LINT.IfChange
   int block_m = 0;
   int block_n = 0;
@@ -244,6 +245,9 @@ struct TritonGemmConfig {
   bool is_warp_specialization_allowed = false;
   // Number of waves per execution unit (0 = no restriction).
   int waves_per_eu = 0;
+  // Tile reordering group size for L2 locality (1 = no reordering).
+  // Only applicable to ragged-dot (group-GEMM) fusions.
+  int group_size = 1;
   // LINT.ThenChange(//tensorflow/compiler/xla/autotuning.proto)
 
   // When adding new members, please update all methods, such as ToTuple,
@@ -257,7 +261,8 @@ struct TritonGemmConfig {
   auto ToTuple() const {
     return std::make_tuple(block_m, block_n, block_k, num_stages, num_warps,
                            num_ctas, is_tma_allowed,
-                           is_warp_specialization_allowed, waves_per_eu);
+                           is_warp_specialization_allowed, waves_per_eu,
+                           group_size);
   }
 
  public:

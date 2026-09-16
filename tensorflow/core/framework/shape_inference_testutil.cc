@@ -68,9 +68,9 @@ absl::Status ShapeInferenceTestutil::InferShapes(
       op.input_tensors, {}, std::move(input_resource_handle_shapes_and_types));
   TF_RETURN_IF_ERROR(c.construction_status());
   if (op_reg_data->shape_inference_fn == nullptr) {
-    return errors::InvalidArgument(
-        "No shape inference function exists for op '", op.name,
-        "', did you forget to define it?");
+    return absl::InvalidArgumentError(
+        absl::StrCat("No shape inference function exists for op '", op.name,
+                     "', did you forget to define it?"));
   }
 
   TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
@@ -78,16 +78,17 @@ absl::Status ShapeInferenceTestutil::InferShapes(
   const int num_outputs = c.num_outputs();
 
   if (expected_outs == "e") {
-    return Unknown("Shape inference should have returned error");
+    return absl::UnknownError("Shape inference should have returned error");
   }
 
   // Verify the output shape.
   std::vector<std::string> expected_outs_v =
       str_util::Split(expected_outs, ';');
   if (num_outputs != expected_outs_v.size()) {
-    return Unknown("The expected output string lists the wrong number of ",
-                   "outputs. It lists ", expected_outs_v.size(),
-                   " but should list ", num_outputs);
+    return absl::UnknownError(
+        absl::StrCat("The expected output string lists the wrong number of ",
+                     "outputs. It lists ", expected_outs_v.size(),
+                     " but should list ", num_outputs));
   }
   for (int i = 0; i < num_outputs; ++i) {
     absl::string_view expected(expected_outs_v[i]);
@@ -106,34 +107,37 @@ absl::Status ShapeInferenceTestutil::InferShapes(
 
     if (absl::StartsWith(expected, "in")) {
       if (in_index == -1) {
-        return Unknown(err_prefix,
-                       " should have matched an input shape by "
-                       "handle, but matched no input shape. This means the ",
-                       "shape function was expected to pass an input "
-                       "ShapeHandle through for this output, but did not",
-                       err_suffix);
+        return absl::UnknownError(
+            absl::StrCat(err_prefix,
+                         " should have matched an input shape by "
+                         "handle, but matched no input shape. This means the ",
+                         "shape function was expected to pass an input "
+                         "ShapeHandle through for this output, but did not",
+                         err_suffix));
       }
       auto v = str_util::Split(expected, '|');
       if (std::find(v.begin(), v.end(), absl::StrCat("in", in_index)) ==
           v.end()) {
-        return Unknown(
+        return absl::UnknownError(absl::StrCat(
             err_prefix, " matched input ", in_index,
             " by handle, but should have matched one of (", expected,
             ") instead. This means the shape function passed the ShapeHandle ",
             "for input ", in_index,
             " to the output, but should have passed a different input ",
-            "ShapeHandle through", err_suffix);
+            "ShapeHandle through", err_suffix));
       }
       continue;
     }
     if (in_index != -1) {
-      return Unknown(err_prefix, " matched input ", in_index,
-                     " by ShapeHandle, but was expected to not match an input ",
-                     "shape by handle", err_suffix);
+      return absl::UnknownError(absl::StrCat(
+          err_prefix, " matched input ", in_index,
+          " by ShapeHandle, but was expected to not match an input ",
+          "shape by handle", err_suffix));
     }
     if (expected == "?") {
       if (c.RankKnown(out)) {
-        return Unknown(err_prefix, " expected to be unknown", err_suffix);
+        return absl::UnknownError(
+            absl::StrCat(err_prefix, " expected to be unknown", err_suffix));
       }
       continue;
     }
@@ -147,12 +151,14 @@ absl::Status ShapeInferenceTestutil::InferShapes(
     // Split expected as a dimension.
     auto expected_dims = str_util::Split(expected, ',');
     if (!c.RankKnown(out)) {
-      return Unknown(err_prefix, " expected rank ", expected_dims.size(),
-                     " but was ?", err_suffix);
+      return absl::UnknownError(absl::StrCat(err_prefix, " expected rank ",
+                                             expected_dims.size(), " but was ?",
+                                             err_suffix));
     }
     if (c.Rank(out) != expected_dims.size()) {
-      return Unknown(err_prefix, " expected rank ", expected_dims.size(),
-                     " but was ", c.Rank(out), err_suffix);
+      return absl::UnknownError(absl::StrCat(err_prefix, " expected rank ",
+                                             expected_dims.size(), " but was ",
+                                             c.Rank(out), err_suffix));
     }
     for (int j = 0; j < expected_dims.size(); ++j) {
       err_prefix = absl::StrCat("Output dim ", i, ",", j);
@@ -171,46 +177,48 @@ absl::Status ShapeInferenceTestutil::InferShapes(
 
       if (expected_dim == "?") {
         if (in_dim_idx.first != -1) {
-          return Unknown(err_prefix,
-                         " expected to be an unknown but matched input d",
-                         in_dim_idx.first, "_", in_dim_idx.second,
-                         ". The shape function passed through ",
-                         "a DimensionHandle from an input instead of making ",
-                         "a new unknown dimension", err_suffix);
+          return absl::UnknownError(absl::StrCat(
+              err_prefix, " expected to be an unknown but matched input d",
+              in_dim_idx.first, "_", in_dim_idx.second,
+              ". The shape function passed through ",
+              "a DimensionHandle from an input instead of making ",
+              "a new unknown dimension", err_suffix));
         } else if (c.ValueKnown(out_dim)) {
-          return Unknown(err_prefix, " expected to be unknown but was ",
-                         c.Value(out_dim), err_suffix);
+          return absl::UnknownError(
+              absl::StrCat(err_prefix, " expected to be unknown but was ",
+                           c.Value(out_dim), err_suffix));
         }
       } else if (absl::StartsWith(expected_dim, "d")) {
         // Compare the dimension values.
         auto v = str_util::Split(expected_dim, '|');
         if (in_dim_idx.first == -1) {
-          return Unknown(
+          return absl::UnknownError(absl::StrCat(
               err_prefix, " was expected to match the dimension of an input, ",
               "but did not match any input dimension. The shape ",
               "function was expected to pass through a ",
-              "DimensionHandle for an input, but did not", err_suffix);
+              "DimensionHandle for an input, but did not", err_suffix));
         }
         if (std::find(v.begin(), v.end(),
                       absl::StrCat("d", in_dim_idx.first, "_",
                                    in_dim_idx.second)) == v.end()) {
-          return Unknown(err_prefix, " matched input d", in_dim_idx.first, "_",
-                         in_dim_idx.second,
-                         ", but should have matched one of (", expected_dim,
-                         "). The shape function passed through "
-                         "the DimensionHandle for an input, but ",
-                         "was expected to pass a different one", err_suffix);
+          return absl::UnknownError(
+              absl::StrCat(err_prefix, " matched input d", in_dim_idx.first,
+                           "_", in_dim_idx.second,
+                           ", but should have matched one of (", expected_dim,
+                           "). The shape function passed through "
+                           "the DimensionHandle for an input, but ",
+                           "was expected to pass a different one", err_suffix));
         }
       } else {
         // Parse it as a value.
         int64_t value = -1;
         if (!absl::SimpleAtoi(expected_dim, &value)) {
-          return Unknown(err_prefix, ": the expected dimension value '",
-                         expected_dim, "' failed to parse as int64",
-                         err_suffix);
+          return absl::UnknownError(absl::StrCat(
+              err_prefix, ": the expected dimension value '", expected_dim,
+              "' failed to parse as int64", err_suffix));
         }
         if (in_dim_idx.first != -1) {
-          return Unknown(  //
+          return absl::UnknownError(absl::StrCat(
               err_prefix, " expected to be ", value, " but matched input d",
               in_dim_idx.first, "_", in_dim_idx.second,
               ". The shape function was not expected to pass a DimensionHandle "
@@ -219,10 +227,11 @@ absl::Status ShapeInferenceTestutil::InferShapes(
               "expected value, this is considered a failure for the test; "
               "switch to using d#_# syntax if passing through the "
               "DimensionHandle should be the expected behavior",
-              err_suffix);
+              err_suffix));
         } else if (value != c.Value(out_dim)) {
-          return Unknown(err_prefix, " expected to be ", value, " but was ",
-                         c.DebugString(out_dim), err_suffix);
+          return absl::UnknownError(
+              absl::StrCat(err_prefix, " expected to be ", value, " but was ",
+                           c.DebugString(out_dim), err_suffix));
         }
       }
     }
@@ -253,7 +262,8 @@ absl::Status ShapeInferenceTestutil::MakeShapeFromString(
 
       if (!scanner.GetResult(nullptr, &match) ||
           !absl::SimpleAtoi(match, &dim_size)) {
-        return errors::InvalidArgument("Could not parse number in ", spec);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Could not parse number in ", spec));
       }
 
       dims.push_back(manager->MakeDim(dim_size));
@@ -262,12 +272,13 @@ absl::Status ShapeInferenceTestutil::MakeShapeFromString(
     if (scanner.Peek() == ',') {
       scanner.OneLiteral(",");
     } else if (scanner.Peek() != ']') {
-      return errors::InvalidArgument(
-          "Invalid input spec (] not found in dim shape): ", spec);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid input spec (] not found in dim shape): ", spec));
     }
   }
   if (!scanner.OneLiteral("]").Eos().GetResult()) {
-    return errors::InvalidArgument("Malformed shape spec: did not end in ']'.");
+    return absl::InvalidArgumentError(
+        "Malformed shape spec: did not end in ']'.");
   }
   *output = manager->MakeShape(dims);
 

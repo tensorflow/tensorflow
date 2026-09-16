@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_PROGRAM_H_
 #define XLA_PYTHON_IFRT_PROGRAM_H_
 
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {
@@ -24,7 +24,7 @@ namespace ifrt {
 
 // Abstract program. A program is any serializable code that can be compiled and
 // loaded onto devices to create a `LoadedExecutable`.
-struct Program : llvm::RTTIExtends<Program, Serializable> {
+struct Program : RTTIExtends<Program, Serializable> {
   static char ID;  // NOLINT
 };
 

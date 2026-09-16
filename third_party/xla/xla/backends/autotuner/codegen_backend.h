@@ -17,40 +17,58 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_CODEGEN_BACKEND_H_
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
-#include "google/protobuf/any.pb.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
+#include "xla/backends/autotuner/backend_config.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
 
 namespace xla {
 
-using BackendConfig = google::protobuf::Any;
+using BackendConfig = autotuner::BackendConfig;
 
 // Interface for a codegen backend which can compile HLO instructions with
 // different configurations. This can be used to get the supported configs, and
 // compile HLO instructions with different configs.
 class CodegenBackend {
  public:
+  struct EstimatedConfig {
+    std::unique_ptr<BackendConfig> config;
+    std::optional<absl::Duration> estimated_runtime;
+  };
+
   virtual ~CodegenBackend() = default;
 
   virtual absl::string_view name() const = 0;
 
   virtual autotuner::Backend backend() const = 0;
 
+  virtual std::string version() const = 0;
+
   // Returns all supported configs for the given HLO instruction.
+  // May be called with null stream executor in deviceless mode.
   virtual absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) = 0;
 
+  // Returns all supported configs with estimated runtimes for the given HLO
+  // instruction.
+  // May be called with null stream executor in deviceless mode.
+  virtual absl::StatusOr<std::vector<EstimatedConfig>>
+  GetSupportedConfigsWithEstimates(const HloInstruction& instr) = 0;
+
   // Returns a default config for the given HLO instruction.
+  // Returns absl::UnimplementedError if no default config is available.
   virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) {
     return absl::UnimplementedError("Not implemented.");
-  };
+  }
 
   // Wraps the HLO instruction in a module, applies the given config, and
   // compiles it.

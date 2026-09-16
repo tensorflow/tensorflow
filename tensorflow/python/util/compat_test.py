@@ -14,6 +14,8 @@
 # ==============================================================================
 """Compat tests."""
 
+import pickle
+
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -30,6 +32,18 @@ class CompatTest(test.TestCase):
 
     with self.assertRaises(LookupError):
       compat.as_text(b"hello", "invalid")
+
+  def testCompatBufferObjects(self):
+    pb = pickle.PickleBuffer(b"hello")
+    self.assertEqual(compat.as_bytes(pb), b"hello")
+    mv = memoryview(b"world")
+    self.assertEqual(compat.as_bytes(mv), b"world")
+
+  def testCompatInvalidObjects(self):
+    with self.assertRaises(TypeError):
+      compat.as_bytes(5)
+    with self.assertRaises(TypeError):
+      compat.as_bytes([1, 2, 3])
 
 
 if __name__ == "__main__":

@@ -58,8 +58,8 @@ AssertOp::AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 void AssertOp::Compute(OpKernelContext* ctx) {
   const Tensor& cond = ctx->input(0);
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(cond.shape()),
-              errors::InvalidArgument("In[0] should be a scalar: ",
-                                      cond.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "In[0] should be a scalar: ", cond.shape().DebugString())));
 
   if (cond.scalar<bool>()()) {
     return;
@@ -69,7 +69,7 @@ void AssertOp::Compute(OpKernelContext* ctx) {
     absl::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_), "]");
     if (i < ctx->num_inputs() - 1) absl::StrAppend(&msg, " ");
   }
-  ctx->SetStatus(errors::InvalidArgument(msg));
+  ctx->SetStatus(absl::InvalidArgumentError(msg));
 }
 
 REGISTER_KERNEL_BUILDER(Name("Assert")
@@ -135,7 +135,7 @@ class PrintV2Op : public OpKernel {
       for (auto valid_stream : valid_output_streams_) {
         absl::StrAppend(&error_msg, " ", valid_stream);
       }
-      OP_REQUIRES(ctx, false, errors::InvalidArgument(error_msg));
+      OP_REQUIRES(ctx, false, absl::InvalidArgumentError(error_msg));
     }
   }
 
@@ -178,7 +178,7 @@ class PrintV2Op : public OpKernel {
         absl::StrAppend(&error_msg, " ", valid_stream);
       }
       absl::StrAppend(&error_msg, ", or file://<filename>");
-      OP_REQUIRES(ctx, false, errors::InvalidArgument(error_msg));
+      OP_REQUIRES(ctx, false, absl::InvalidArgumentError(error_msg));
     }
   }
 
@@ -211,7 +211,7 @@ class TimestampOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     OP_REQUIRES(context, !OpDeterminismRequired(),
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(
                     "Timestamp cannot be called when determinism is enabled"));
     TensorShape output_shape;  // Default shape is 0 dim, 1 element
     Tensor* output_tensor = nullptr;

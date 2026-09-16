@@ -201,19 +201,23 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
   def _linop_matmul(
       self,
-      left_operator: "LinearOperatorLowerTriangular",
+      left_operator: linear_operator.LinearOperator,
       right_operator: linear_operator.LinearOperator,
-    ) -> linear_operator.LinearOperator:
+  ) -> linear_operator.LinearOperator:
     # instance check of linear_operator_diag.LinearOperatorDiag
-    if hasattr(right_operator, "_check_diag"):
+    if (hasattr(right_operator, "_check_diag") and
+        isinstance(left_operator, LinearOperatorLowerTriangular)):
+      is_non_singular = property_hint_util.combined_non_singular_hint(
+          left_operator, right_operator)
+      is_self_adjoint = property_hint_util.combined_commuting_self_adjoint_hint(
+          left_operator, right_operator)
       return LinearOperatorLowerTriangular(
-          tril=left_operator.to_dense() * right_operator.diag,
-          is_non_singular=property_hint_util.combined_non_singular_hint(
-              right_operator, left_operator),
+          tril=left_operator.to_dense() * array_ops.expand_dims(
+              right_operator.diag, axis=-2),
+          is_non_singular=is_non_singular,
           # This is safe to do since the Triangular matrix is only self-adjoint
           # when it is a diagonal matrix, and hence commutes.
-          is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
-              right_operator, left_operator),
+          is_self_adjoint=is_self_adjoint,
           is_positive_definite=None,
           is_square=True)
     return super()._linop_matmul(left_operator, right_operator)

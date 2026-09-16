@@ -18,13 +18,27 @@ limitations under the License.
 
 #include <cstddef>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+struct NcclCommState {
+  explicit NcclCommState(ncclComm_t comm) : comm(comm) {}
+
+  ncclComm_t comm ABSL_GUARDED_BY(mutex);
+
+  // NCCL API restricts concurrent usage with the same communicator.
+  // See:
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/threadsafety.html
+  // Therefore all NCCL API calls are guarded by this mutex.
+  absl::Mutex mutex;
+};
 
 //===----------------------------------------------------------------------===//
 // Conversions between XLA and NCCL data types

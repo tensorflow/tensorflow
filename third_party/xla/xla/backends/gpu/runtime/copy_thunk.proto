@@ -40,16 +40,3 @@ message HostToDeviceCopyThunkProto {
 message DeviceToDeviceCopyThunkProto {
   CopyThunkProto copy_thunk = 1;
 }
-
-message DynamicMemcpyThunkProto {
-  message Offsets {
-    bool depends_on_loop = 1;
-    repeated int64 src_offsets = 2;
-    repeated int64 dst_offsets = 3;
-  }
-
-  ShapedSliceProto source_buffer = 1;
-  ShapedSliceProto destination_buffer = 2;
-  int64 mem_size = 3;
-  Offsets offsets = 4;
-}

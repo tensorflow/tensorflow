@@ -6,11 +6,11 @@ tf_module {
   }
   member {
     name: "Generator"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "all_candidate_sampler"

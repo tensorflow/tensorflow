@@ -34,7 +34,7 @@ namespace xla {
 namespace {
 
 class CallOpTest : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                       HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   XlaComputation CreateR0F32IdentityComputation() {
     XlaBuilder builder("Identity");

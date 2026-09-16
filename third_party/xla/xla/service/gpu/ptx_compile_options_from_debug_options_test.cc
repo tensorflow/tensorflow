@@ -20,11 +20,11 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
 using ::stream_executor::cuda::CompilationOptions;
+using ::testing::ElementsAre;
 using ::testing::Field;
 
 TEST(PtxCompileOptionsFromDebugOptionsTest,
@@ -61,6 +61,15 @@ TEST(PtxCompileOptionsFromDebugOptionsTest,
   debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(true);
   EXPECT_THAT(PtxCompileOptionsFromDebugOptions(debug_options),
               Field(&CompilationOptions::cancel_if_reg_spill, true));
+}
+
+TEST(PtxCompileOptionsFromDebugOptionsTest, ExtraFlagsCanBePassed) {
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  debug_options.add_xla_gpu_ptx_compiler_extra_flags("--verbose");
+  debug_options.add_xla_gpu_ptx_compiler_extra_flags("--warn-on-spills");
+  EXPECT_THAT(PtxCompileOptionsFromDebugOptions(debug_options),
+              Field(&CompilationOptions::additional_ptxas_flags,
+                    ElementsAre("--verbose", "--warn-on-spills")));
 }
 
 }  // namespace

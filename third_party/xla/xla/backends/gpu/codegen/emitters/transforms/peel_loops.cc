@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/log/log.h"
@@ -39,10 +38,11 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 #define GEN_PASS_DEF_PEELLOOPSPASS
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::Location;
 using mlir::OpBuilder;
@@ -143,10 +143,5 @@ struct PeelLoopsPass : public impl::PeelLoopsPassBase<PeelLoopsPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreatePeelLoopsPass() {
-  return std::make_unique<PeelLoopsPass>();
-}
-
 }  // namespace gpu
 }  // namespace xla

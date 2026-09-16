@@ -55,7 +55,7 @@ class AbstractOperation {
 
   virtual absl::Status Reset(const char* op, const char* raw_device_name) = 0;
 
-  virtual const string& Name() const = 0;
+  virtual const std::string& Name() const = 0;
 
   // Returns the operation's device name.
   //
@@ -68,7 +68,7 @@ class AbstractOperation {
   // chosen for the operation by the device placement logic in the
   // executor. After that, the value returned by DeviceName will be a full
   // device name such as "/job:localhost/replica:0/task:0/device:GPU:1".
-  virtual const string& DeviceName() const = 0;
+  virtual const std::string& DeviceName() const = 0;
 
   // Sets the operation device name.
   //
@@ -108,7 +108,7 @@ class AbstractOperation {
                                          const size_t* lengths,
                                          int num_values) = 0;
   virtual absl::Status SetAttrStringList(const char* attr_name,
-                                         absl::Span<string const> values);
+                                         absl::Span<const std::string> values);
   virtual absl::Status SetAttrFloatList(const char* attr_name,
                                         const float* values,
                                         int num_values) = 0;
@@ -140,7 +140,7 @@ inline absl::Status AbstractOperation::SetAttrShape(
 }
 
 inline absl::Status AbstractOperation::SetAttrStringList(
-    const char* attr_name, absl::Span<string const> values) {
+    const char* attr_name, absl::Span<const std::string> values) {
   std::vector<const char*> raw_strs;
   std::vector<size_t> lengths;
   raw_strs.reserve(values.size());

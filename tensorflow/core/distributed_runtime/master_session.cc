@@ -857,6 +857,12 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitions(
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
   std::unordered_map<absl::string_view, size_t, StringPieceHasher> feeds(3);
+  if (req.feed_size() < callable_opts_.feed_size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Feeds in request (", req.feed_size(),
+                     ") is less than expected by callable (",
+                     callable_opts_.feed_size(), ")"));
+  }
   for (size_t i = 0, end = callable_opts_.feed_size(); i < end; ++i) {
     if (!feeds.insert({callable_opts_.feed(i), i}).second) {
       // MakeCallable will fail if there are two feeds with the same name.

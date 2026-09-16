@@ -765,6 +765,27 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         "registered with name tf.TwoCompositesSpec"):
       type_spec_registry.register("tf.NewName")(TwoCompositesSpec)
 
+  def testRegistryReDefinition(self):
+    # Simulate first cell run
+    @type_spec_registry.register("tf.RedefineSpec")
+    class RedefineSpec(TwoCompositesSpec):
+      pass
+
+    # Simulate second run (same FQN, new class object)
+    class RedefineSpecReloaded(TwoCompositesSpec):
+      pass
+
+    RedefineSpecReloaded.__module__ = RedefineSpec.__module__
+    RedefineSpecReloaded.__name__ = RedefineSpec.__name__
+
+    # Register manually after renaming to simulate redefinition
+    type_spec_registry.register("tf.RedefineSpec")(RedefineSpecReloaded)
+
+    # Confirm it re-registered successfully
+    self.assertEqual(
+        type_spec_registry.lookup("tf.RedefineSpec"), RedefineSpecReloaded
+    )
+
   def testRegistryNameErrors(self):
     for bad_name in ["foo", "", "hello world"]:
       with self.assertRaises(ValueError):

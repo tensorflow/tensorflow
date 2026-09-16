@@ -36,6 +36,8 @@ limitations under the License.
 // //third_party/FP16/bitcasts.h respectively.
 #if !defined(FP16_H) && !defined(FP16_BITCASTS_H)
 
+namespace tflite {
+
 static inline float fp32_from_bits(uint32_t w) {
   union {
     uint32_t as_bits;
@@ -224,6 +226,8 @@ static inline uint16_t fp16_ieee_from_fp32_value(float f) {
   return (sign >> 16) |
          (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
 }
+
+}  // namespace tflite
 
 #endif  // !defined(FP16_H) && !defined(FP16_BITCASTS_H)
 

@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/unflatten_call_graph.h"
 
 int main(int argc, char** argv) {
   mlir::registerAllPasses();
@@ -66,7 +65,6 @@ int main(int argc, char** argv) {
   xla::sdy::registerStablehloExportManualReductionCollectivesPass();
   xla::sdy::registerStablehloRoundTripExportCallbackCustomCallsPass();
   xla::sdy::registerStablehloRoundTripShardMapExportPass();
-  xla::sdy::registerUnflattenCallGraphPass();
   xla::sdy::registerExportOpsPass();
 
   xla::sdy::registerSdyRoundTripStablehloToHloToStablehloPass();
@@ -79,6 +77,7 @@ int main(int argc, char** argv) {
   xla::sdy::registerSdyRoundTripShardMapImportPass();
   xla::sdy::registerSdyRoundTripImportPipeline();
   xla::sdy::registerSdyRoundTripTestingPipeline();
+  xla::sdy::registerTestFlattenCallGraphPipeline();
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "XLA SDY pass driver\n", dialects));

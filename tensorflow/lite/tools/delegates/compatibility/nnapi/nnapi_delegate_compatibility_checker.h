@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
+// WARNING: this header file is DEPRECATED.
+// See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+
 namespace tflite {
 namespace tools {
 

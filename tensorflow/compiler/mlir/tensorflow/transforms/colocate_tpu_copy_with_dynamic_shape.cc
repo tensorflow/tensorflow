@@ -88,6 +88,7 @@ class Device : public dataflow::AbstractSparseLattice {
 class DeviceDataflowAnalysis
     : public ::mlir::dataflow::SparseBackwardDataFlowAnalysis<Device> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DeviceDataflowAnalysis)
   using ::mlir::dataflow::SparseBackwardDataFlowAnalysis<
       Device>::SparseBackwardDataFlowAnalysis;
   ~DeviceDataflowAnalysis() override = default;

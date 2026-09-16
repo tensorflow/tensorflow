@@ -92,6 +92,10 @@ bool IsBroadcastOfParameter(const HloInstruction& instr);
 // instructions (bitcast, get-tuple-element).
 bool IsEffectiveParameter(const HloInstruction&);
 
+// Walks past pass-through casts (kCopy, kConvert, kBitcast) and returns the
+// underlying value-producing instruction.
+const HloInstruction* StripCastLike(const HloInstruction* instr);
+
 // Returns first HLO of the computation with the opcode, otherwise nullptr.
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);
@@ -217,6 +221,13 @@ HloInstruction* FindInstruction(const HloComputation* computation,
 // Returns true if the instruction is a fusion consisting of a single copy which
 // changes tiling. This is handled by the emitters and effectively are no-ops.
 bool IsChangeTilingCopyFusion(const HloInstruction* instr);
+
+// Returns whether the instruction is a standard associative scan: single
+// input and init, and a (output, carry) result tuple whose live users are
+// get-tuple-elements (which implies that the scan op isn't a root). The
+// scan may be reverse and its final carry may be used; callers that cannot
+// lower those forms must filter them out themselves.
+bool IsStandardAssociativeScan(const HloInstruction* instruction);
 
 }  // namespace hlo_query
 }  // namespace xla

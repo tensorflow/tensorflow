@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -25,7 +26,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -89,19 +89,19 @@ class BaseTransposeConvOpModel : public SingleOpModel {
 
     if (test_type == TestType::kDynamic) {
       PopulateTensor<int32_t>(output_shape_, output_shape_data);
-      if (!std::is_same<InputType, int16_t>::value &&
-          !std::is_same<InputType, int8_t>::value) {
+      if (!std::is_same_v<InputType, int16_t> &&
+          !std::is_same_v<InputType, int8_t>) {
         PopulateTensor<InputType>(filter_, filter_data);
       }
     }
   }
 
   void SetInput(std::initializer_list<float> data) {
-    if (std::is_same<InputType, uint8_t>::value) {
+    if (std::is_same_v<InputType, uint8_t>) {
       QuantizeAndPopulate<uint8_t>(input_, data);
-    } else if (std::is_same<InputType, int8_t>::value) {
+    } else if (std::is_same_v<InputType, int8_t>) {
       QuantizeAndPopulate<int8_t>(input_, data);
-    } else if (std::is_same<InputType, int16_t>::value) {
+    } else if (std::is_same_v<InputType, int16_t>) {
       QuantizeAndPopulate<int16_t>(input_, data);
     } else {
       PopulateTensor(input_, data);
@@ -199,6 +199,99 @@ TEST(TransposeConvPrepareSecurityTest, RejectsHybridInputOverflow) {
       {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1,
       /*stride_h=*/1, ActivationFunctionType_NONE);
 
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsUnsupportedWeightsType) {
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 1},
+      {TensorType_UINT8, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsStrideOutsideInt16Range) {
+  constexpr int kTooLarge = std::numeric_limits<int16_t>::max() + 1;
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 1},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/kTooLarge,
+      /*stride_h=*/1, ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsPaddingOutsideInt16Range) {
+  constexpr int kFilterWidth =
+      2 * (std::numeric_limits<int16_t>::max() + 1) + 1;
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 1},
+      {TensorType_FLOAT32, {1, 1, kFilterWidth, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsMismatchedOutputChannels) {
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 2},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsInconsistentSpatialShape) {
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 3, 3, 1},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+class PrepareOnlyInvalidOutputShapeTransposeConvOpModel : public SingleOpModel {
+ public:
+  explicit PrepareOnlyInvalidOutputShapeTransposeConvOpModel(
+      std::initializer_list<int> output_shape_data,
+      std::initializer_list<int> output_shape_dims) {
+    output_shape_ =
+        AddConstInput(TensorType_INT32, output_shape_data, output_shape_dims);
+    filter_ = AddInput({TensorType_FLOAT32, {1, 1, 1, 1}});
+    input_ = AddInput({TensorType_FLOAT32, {1, 1, 1, 1}});
+    output_ = AddOutput({TensorType_FLOAT32, {}});
+
+    SetBuiltinOp(
+        BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
+        CreateTransposeConvOptions(builder_, Padding_SAME, /*stride_w=*/1,
+                                   /*stride_h=*/1, ActivationFunctionType_NONE)
+            .Union());
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_TRANSPOSE_CONV,
+        ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), /*version=*/1);
+    BuildInterpreter(
+        {GetShape(output_shape_), GetShape(filter_), GetShape(input_)},
+        /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+        /*apply_delegate=*/false,
+        /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int output_shape_;
+  int filter_;
+  int input_;
+  int output_;
+};
+
+TEST(TransposeConvPrepareSecurityTest, RejectsInvalidOutputShapeTensorLength) {
+  PrepareOnlyInvalidOutputShapeTransposeConvOpModel m({1}, {1});
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
@@ -720,7 +813,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt32) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT32);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
@@ -787,7 +880,7 @@ TEST_P(TransposeConvOpTest,
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_RELU, GetTestType());
+      /*fused_activation=*/ActivationFunctionType_RELU, GetTestType());
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
       3, 2,    // batch = 0, y = 0, x = 0
@@ -848,7 +941,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt64) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*version=*/1,
       /*bias_type=*/TensorType_INT64);
   model.SetInput({
@@ -939,19 +1032,19 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
                       GetShape(input_), GetShape(bias_)});
     if (test_type == TestType::kDynamic) {
       PopulateTensor<int32_t>(output_shape_, output_shape_data);
-      if (!std::is_same<InputType, int16_t>::value &&
-          !std::is_same<InputType, int8_t>::value) {
+      if (!std::is_same_v<InputType, int16_t> &&
+          !std::is_same_v<InputType, int8_t>) {
         PopulateTensor<FilterType>(filter_, filter_data);
       }
     }
   }
 
   void SetInput(std::initializer_list<float> data) {
-    if (std::is_same<InputType, uint8_t>::value) {
+    if (std::is_same_v<InputType, uint8_t>) {
       QuantizeAndPopulate<uint8_t>(input_, data);
-    } else if (std::is_same<InputType, int8_t>::value) {
+    } else if (std::is_same_v<InputType, int8_t>) {
       QuantizeAndPopulate<int8_t>(input_, data);
-    } else if (std::is_same<InputType, int16_t>::value) {
+    } else if (std::is_same_v<InputType, int16_t>) {
       QuantizeAndPopulate<int16_t>(input_, data);
     } else {
       PopulateTensor(input_, data);
@@ -959,9 +1052,9 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
   }
 
   void SetBias(std::initializer_list<float> bias) {
-    if (std::is_same<InputType, uint8_t>::value) {
+    if (std::is_same_v<InputType, uint8_t>) {
       QuantizeAndPopulate<int32_t>(bias_, bias);
-    } else if (std::is_same<FilterType, int8_t>::value) {
+    } else if (std::is_same_v<FilterType, int8_t>) {
       PerChannelQuantizeBias(bias_, bias);
     } else {
       PopulateTensor(bias_, bias);
@@ -1008,7 +1101,7 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasTest) {
       /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
       /*output=*/{TensorType_FLOAT32, {}}, Padding_VALID,
       /*stride_w=*/2, /*stride_h=*/2,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /* version */ 3);
   model.SetInput({1, 2, 3, 4});
   model.SetBias({3, 4});
@@ -1049,7 +1142,7 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasWithFusedActivationTest) {
       /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
       /*output=*/{TensorType_FLOAT32, {}}, Padding_VALID,
       /*stride_w=*/2, /*stride_h=*/2,
-      /*fused_activation_function=*/ActivationFunctionType_RELU, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_RELU, GetTestType(),
       /* version */ 3);
   model.SetInput({1, 2, -3, 4});
   model.SetBias({3, 4});
@@ -1231,7 +1324,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias32) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT32);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
@@ -1295,7 +1388,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias64) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*fused_activation=*/ActivationFunctionType_NONE, GetTestType(),
       /*bias_type=*/TensorType_INT64);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]

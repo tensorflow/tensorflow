@@ -80,9 +80,9 @@ xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
           auto cpp_on_canceled = [user_arg = on_canceled_user_arg,
                                   on_canceled =
                                       on_canceled](absl::Status status) {
-            auto error = new PJRT_Error{status};
+            auto error = StatusToPjRtError(status);
             on_canceled(error, user_arg);
-            delete error;
+            DestroyPjRtError(error);
           };
           return cpp_cancel_notifier(std::move(serialized_descriptor_str),
                                      std::move(state),
@@ -102,10 +102,10 @@ xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
                                 on_canceled_user_arg);
         };
     if (!recv_state.ok()) {
-      auto error = new PJRT_Error{recv_state.status()};
+      auto error = StatusToPjRtError(recv_state.status());
       notifier(error, nullptr, nullptr, 0, user_arg, cancel_notifier,
                cancel_notifier_function);
-      delete error;
+      DestroyPjRtError(error);
       return;
     }
     // Convert serialized descriptors to char*.
@@ -379,9 +379,9 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
   xla::PjRtBuffer::RemoteSendCallback on_done =
       [user_arg = args->on_done.user_arg, on_done = args->on_done.on_done](
           absl::Status status, bool sends_were_enqueued) {
-        auto error = new PJRT_Error{status};
+        auto error = StatusToPjRtError(status);
         on_done(error, sends_were_enqueued, user_arg);
-        delete error;
+        DestroyPjRtError(error);
       };
 
   args->buffer->buffer->CopyToRemoteDevice(future, on_done);

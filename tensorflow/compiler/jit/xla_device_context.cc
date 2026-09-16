@@ -131,7 +131,8 @@ void XlaDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
                                               Device* device,
                                               Tensor* output_tensor,
                                               StatusCallback done) const {
-  done(errors::Unimplemented("XLA->XLA same-device copies not implemented."));
+  done(
+      absl::UnimplementedError("XLA->XLA same-device copies not implemented."));
 }
 
 void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,

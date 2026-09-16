@@ -575,8 +575,8 @@ absl::Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
     DeviceNameUtils::ParsedName parsed;
     if (!DeviceNameUtils::ParseFullName(node->assigned_device_name(),
                                         &parsed)) {
-      return errors::Internal("Malformed assigned device '",
-                              node->assigned_device_name(), "'");
+      return absl::InternalError(absl::StrCat(
+          "Malformed assigned device '", node->assigned_device_name(), "'"));
     }
 
     TF_RETURN_IF_ERROR(MemoryTypesForNode(
@@ -717,9 +717,9 @@ absl::Status AddControlFlow(const PartitionOptions& opts, Graph* g,
       // Get the frame's LoopCond.
       auto cond_it = frame_cond_map.find(curr_frame_name);
       if (cond_it == frame_cond_map.end()) {
-        return errors::InvalidArgument(
-            "A cross-device loop must have a pivot predicate: ",
-            curr_frame_name);
+        return absl::InvalidArgumentError(
+            absl::StrCat("A cross-device loop must have a pivot predicate: ",
+                         curr_frame_name));
       }
       Node* loop_cond = cond_it->second;
 
@@ -1082,9 +1082,9 @@ absl::Status Partition(const PartitionOptions& opts, Graph* g,
     }
 
     if (num_input_edges != dst->num_inputs()) {
-      return errors::InvalidArgument("Incomplete graph, missing ",
-                                     (dst->num_inputs() - num_input_edges),
-                                     " inputs for ", dst->name());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Incomplete graph, missing ", dst->num_inputs() - num_input_edges,
+          " inputs for ", dst->name()));
     }
 
     // Process in order so that all data edges are added as inputs to

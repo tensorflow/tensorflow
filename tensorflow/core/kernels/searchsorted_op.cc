@@ -38,14 +38,14 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
   static absl::Status Compute(
       OpKernelContext* context,
       const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-      const typename TTypes<T, 1>::ConstTensor& values, int batch_size,
-      int num_inputs, int num_values,
+      const typename TTypes<T, 1>::ConstTensor& values, int64_t batch_size,
+      int64_t num_inputs, int64_t num_values,
       typename TTypes<OutType, 1>::Tensor* output) {
     auto work_fn = [&](int64_t first, int64_t last) {
-      for (int b = 0; b < batch_size; ++b) {
+      for (int64_t b = 0; b < batch_size; ++b) {
         const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
         OutType* output_ptr = output->data() + b * num_values;
-        for (int i = first; i < last; ++i) {
+        for (int64_t i = first; i < last; ++i) {
           output_ptr[i] = std::upper_bound(sorted_inputs_ptr,
                                            sorted_inputs_ptr + num_inputs,
                                            values(i + b * num_values)) -
@@ -68,14 +68,14 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
   static absl::Status Compute(
       OpKernelContext* context,
       const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-      const typename TTypes<T, 1>::ConstTensor& values, int batch_size,
-      int num_inputs, int num_values,
+      const typename TTypes<T, 1>::ConstTensor& values, int64_t batch_size,
+      int64_t num_inputs, int64_t num_values,
       typename TTypes<OutType, 1>::Tensor* output) {
     auto work_fn = [&](int64_t first, int64_t last) {
-      for (int b = 0; b < batch_size; ++b) {
+      for (int64_t b = 0; b < batch_size; ++b) {
         const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
         OutType* output_ptr = output->data() + b * num_values;
-        for (int i = first; i < last; ++i) {
+        for (int64_t i = first; i < last; ++i) {
           output_ptr[i] = std::lower_bound(sorted_inputs_ptr,
                                            sorted_inputs_ptr + num_inputs,
                                            values(i + b * num_values)) -

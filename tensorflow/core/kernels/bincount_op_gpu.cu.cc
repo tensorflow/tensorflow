@@ -42,7 +42,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
                               typename TTypes<T, 1>::Tensor& output,
                               const Tidx num_bins) {
     if (weights.size() != 0) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Weights are not yet supported by the GPU implementation of Bincount."
           " Please use unsorted_segment_sum instead or put Bincount inside"
           " tf.function(jit_compile=True).");
@@ -55,7 +55,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
       // DeviceHistogram::HistogramEven is called, and it is unclear
       // if it is deterministic on floating-point inputs.
       // See https://github.com/NVIDIA/cub/issues/471#issuecomment-1194682443.
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Determinism is not yet supported in GPU implementation of "
           "Bincount.");
     }

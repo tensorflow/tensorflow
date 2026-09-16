@@ -41,6 +41,15 @@ namespace xla {
 namespace {
 
 class TiledEmitterConstraintsTest : public HloHardwareIndependentTestBase {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // TODO(b/514293537): remove the test after switching to the new tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
  public:
   TiledEmitterConstraintsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
@@ -70,8 +79,8 @@ class TiledEmitterConstraintsTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(TiledEmitterConstraintsTest, CustomReshapeConstraintsAreEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_computation {
   p = s8[36] parameter(0)
   ROOT bitcast = s8[6,6] bitcast(p)
@@ -118,8 +127,8 @@ ENTRY entry_computation {
 
 TEST_F(TiledEmitterConstraintsTest,
        CustomConcatenateSizeConstraintsAreEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 concatenate {
   p0 = bf16[8] parameter(0)
   p1 = bf16[8] parameter(1)
@@ -173,8 +182,8 @@ ENTRY main {
 
 TEST_F(TiledEmitterConstraintsTest,
        ConcatenateConstrainsOffsetToBeZeroAlongConcatenationDimension) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 concatenate {
   p0 = bf16[16] parameter(0)
   p1 = bf16[16] parameter(1)
@@ -229,8 +238,8 @@ ENTRY main {
 
 TEST_F(TiledEmitterConstraintsTest,
        ConcatenateConstrainsStrideToBeOneAlongConcatenationDimension) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 concatenate {
   p0 = bf16[16] parameter(0)
   p1 = bf16[16] parameter(1)

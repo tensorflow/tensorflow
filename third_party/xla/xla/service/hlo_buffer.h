@@ -22,9 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/xla_data.pb.h"
@@ -96,6 +98,25 @@ class HloBuffer {
   // Return all values contained in this buffer.
   const std::vector<const HloValue*>& values() const { return values_; }
 
+  // Computes the physical size of the buffer as the maximum size of its
+  // constituent HloValues according to the given size function.
+  int64_t ComputeSize(const BufferValue::SizeFunction& size_fn) const;
+
+  // Returns whether this value impacts dynamic heap allocation pressure (e.g.
+  // not an embedded constant or a buffer excluded by allocation filter).
+  static bool IsHeapPressureImpacting(
+      const HloValue& value, bool alloc_constants = false,
+      const absl::flat_hash_set<const HloValue*>* buffers_to_assign = nullptr);
+
+  // Returns whether this buffer impacts dynamic heap allocation pressure.
+  // Matches HeapSimulator's allocation logic: a buffer impacts heap pressure if
+  // any of its constituent values impacts heap pressure (i.e. is not ignored
+  // by HeapSimulator). A buffer is only exempt if all of its constituent values
+  // are ignored (e.g. purely constants or outside buffers_to_assign).
+  bool IsHeapPressureImpacting(bool alloc_constants = false,
+                               const absl::flat_hash_set<const HloValue*>*
+                                   buffers_to_assign = nullptr) const;
+
   // Memory space color. Used to indicate the memory space that the hlo buffer
   // needs to live in.
   absl::StatusOr<BufferValue::Color> color() const {
@@ -103,8 +124,16 @@ class HloBuffer {
     BufferValue::Color result = values()[0]->color();
     for (const HloValue* value : values()) {
       if (result != value->color()) {
-        return absl::FailedPreconditionError(
-            "Not all HloValues in the HloBuffer have the same color");
+        std::string details = absl::StrFormat(
+            "Not all HloValues in the HloBuffer have the same color. "
+            "Buffer id=%d has %d values:",
+            id(), values().size());
+        for (const HloValue* v : values()) {
+          absl::StrAppendFormat(&details, "\n  value %d color=%d defined at %s",
+                                v->id(), v->color(),
+                                v->defining_position().ToString());
+        }
+        return absl::FailedPreconditionError(details);
       }
     }
     return result;
@@ -119,7 +148,13 @@ class HloBuffer {
 
   std::vector<HloPosition> ComputePositions() const;
 
+  // Returns a human readable string of the HloBuffer. HloValues contained in
+  // the buffer are not represented in full.
   std::string ToString() const;
+
+  // Returns a human readable string of the HloBuffer. HloValues contained in
+  // the buffer are represented in full.
+  std::string ToDebugString() const;
 
   bool operator==(const HloBuffer& other) const;
   bool operator!=(const HloBuffer& other) const { return !(*this == other); }

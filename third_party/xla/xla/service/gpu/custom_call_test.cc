@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
@@ -94,7 +96,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   std::string PlatformName() {
     if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
@@ -201,7 +203,7 @@ TEST_F(CustomCallTest, WithStatusSucceeded) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 TEST_F(CustomCallTest, WithStatusFailed) {
@@ -318,7 +320,7 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -374,7 +376,7 @@ TEST_F(CustomCallTest, ExportedFfiIsInvoked) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_TRUE(is_ffi_invoked);
 }
 
@@ -394,9 +396,6 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
           HasSubstr(
               "No FFI handler registered for __xla_test$$unknown_target")));
 }
-
-// Memcpy and SubBuffers tests are already ported in
-// fusions/address_computation_fusion_test.cc
 
 std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
 
@@ -430,7 +429,7 @@ TEST_F(CustomCallTest, ExportedFfiOpaque) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 static absl::Status CheckTokens(std::vector<PrimitiveType> args,
@@ -501,7 +500,7 @@ TEST_P(CustomCallTokensTest, ExportedTokensTest) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(CustomCallTokensTest, CustomCallTokensTest,
@@ -526,7 +525,7 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -573,7 +572,7 @@ TEST_F(CustomCallTest, FfiAttributes) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -638,7 +637,7 @@ TEST_F(CustomCallTest, WithCalledComputation) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -662,7 +661,7 @@ TEST_F(CustomCallTest, WithCalledComputationAndLayouts) {
       /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
       /*literal=*/nullptr, /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}, &shape));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}, &shape));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -796,17 +795,17 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   ffi::ExecutionContext execution_context;
-  TF_ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
+  ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
   {
     absl::MutexLock lock(execution_context_mutex);
     global_execution_context = &execution_context;
   }
 
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 
   // Check that FFI handler was called during initialization and execution.
-  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
-                          execution_context.Lookup<SomeExtraContext>());
+  ASSERT_OK_AND_ASSIGN(auto* user_context,
+                       execution_context.Lookup<SomeExtraContext>());
   EXPECT_TRUE(user_context->prepared);
   EXPECT_TRUE(user_context->initialized);
   EXPECT_TRUE(user_context->executed);
@@ -901,7 +900,7 @@ TEST_F(CustomCallTest, FfiInitializationState) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -990,7 +989,7 @@ TEST_F(CustomCallTest, AsyncCustomCalls) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   Literal literal = LiteralUtil::CreateR0<float>(42.0f);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {&literal}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {&literal}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1007,14 +1006,14 @@ static absl::Status AddOne(se::Stream* stream, ffi::AnyBuffer src,
 
   int32_t data[2];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[0] += 1;
   data[1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1051,7 +1050,7 @@ TEST_F(CustomCallHloTest, HloBufferStraightLine) {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
   EXPECT_TRUE(module.ok());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1115,7 +1114,7 @@ TEST_F(CustomCallHloTest, HloBufferRotated) {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
   EXPECT_TRUE(module.ok());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1135,14 +1134,14 @@ absl::Status UpdateBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
   }
   int32_t data[4];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[offset] += 1;
   data[offset + 1] += 1;
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1229,7 +1228,7 @@ TEST_F(CustomCallHloTest, CallConcurrentUpdateTwoBuffers) {
   Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
   Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()),
                         {{&input_literal1, &input_literal2}}, kNumReplicas,
@@ -1304,7 +1303,7 @@ TEST_F(CustomCallHloTest, CustomCallConcurrentUpdateTwoBuffers) {
   Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
   Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()),
                         {{&input_literal1, &input_literal2}}, kNumReplicas,
@@ -1399,6 +1398,79 @@ TEST_F(CustomCallHloTest, InstantiateCanAccessTargetGpuComputeCapability) {
   } else {
     EXPECT_THAT(result.data<int32_t>(), ElementsAre(42, 24));
   }
+}
+
+//===----------------------------------------------------------------------===//
+// AOT allowlist enforcement (--xla_gpu_hlo_custom_call_allowlist) e2e tests.
+//===----------------------------------------------------------------------===//
+
+// IT-1: compiling a module whose FFI custom-call target is absent from a
+// non-empty allowlist fails with a FailedPrecondition naming the target and the
+// flag.
+TEST_F(CustomCallTest, AllowlistRejectsNonAllowlistedFfiTarget) {
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "__xla_test$$allowlist_reject",
+                                       PlatformName(), kMemcpy);
+  mutable_debug_options()->add_xla_gpu_hlo_custom_call_allowlist(
+      "__xla_test$$some_other_allowed_target");
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$allowlist_reject",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  absl::Status status = ExecuteAndTransfer(&b, {}).status();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition,
+                               HasSubstr("__xla_test$$allowlist_reject")));
+  EXPECT_THAT(status.message(), HasSubstr("xla_gpu_hlo_custom_call_allowlist"));
+}
+
+// IT-2: an allowlisted FFI target compiles and runs normally.
+TEST_F(CustomCallTest, AllowlistAllowsAllowlistedFfiTarget) {
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "__xla_test$$allowlist_allow",
+                                       PlatformName(), kMemcpy);
+  mutable_debug_options()->add_xla_gpu_hlo_custom_call_allowlist(
+      "__xla_test$$allowlist_allow");
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$allowlist_allow",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+// IT-3: with xla_gpu_mock_custom_calls=true the enforcement error is swallowed
+// (thunk_emitter returns the thunk sequence before surfacing the Create error),
+// so a non-allowlisted target does NOT fail compilation. This documents the
+// current, intended mock-mode bypass.
+TEST_F(CustomCallTest, AllowlistBypassedInMockMode) {
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "__xla_test$$allowlist_mock",
+                                       PlatformName(), kMemcpy);
+  mutable_debug_options()->add_xla_gpu_hlo_custom_call_allowlist(
+      "__xla_test$$some_other_allowed_target");
+  mutable_debug_options()->set_xla_gpu_mock_custom_calls(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$allowlist_mock",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  // The allowlist FailedPrecondition must not surface in mock mode.
+  absl::Status status = ExecuteAndTransfer(&b, {}).status();
+  EXPECT_FALSE(absl::IsFailedPrecondition(status)) << status;
 }
 
 }  // anonymous namespace

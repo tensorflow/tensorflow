@@ -36,8 +36,8 @@ TEST(XlaScopedFatalErrorHandlerTest, MultiThreadedFatalError) {
   EXPECT_DEATH(
       {
         constexpr int32_t kNumThreads = 10;
-        tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", kNumThreads);
         absl::Barrier barrier(kNumThreads);
+        tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", kNumThreads);
 
         for (int i = 0; i < kNumThreads; ++i) {
           pool.Schedule([i, &barrier]() {
@@ -62,8 +62,8 @@ TEST(XlaScopedFatalErrorHandlerTest, MultiThreadedFatalErrorDefaultHandler) {
   EXPECT_DEATH(
       {
         constexpr int32_t kNumThreads = 10;
-        tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", kNumThreads);
         absl::Barrier barrier(kNumThreads);
+        tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", kNumThreads);
 
         for (int i = 0; i < kNumThreads; ++i) {
           pool.Schedule([i, &barrier]() {
@@ -89,8 +89,8 @@ TEST(XlaScopedFatalErrorHandlerTest, MultiThreadedFatalErrorComplexObject) {
   EXPECT_DEATH(
       {
         constexpr int32_t kNumThreads = 10;
-        tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", kNumThreads);
         absl::Barrier barrier(kNumThreads);
+        tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", kNumThreads);
         for (int i = 0; i < kNumThreads; ++i) {
           pool.Schedule([i, &barrier]() {
             auto i_ptr = std::make_unique<int32_t>(i);

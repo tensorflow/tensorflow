@@ -103,7 +103,9 @@ ENTRY TestComputation {
 )";
 
   MatchOptimizedHlo(hlo, R"(
-// CHECK: (f32[8,32,4,5,5]{4,3,2,1,0}, u8[0]{0}) custom-call([[bitcast_8_0:%[^ ]+]], [[fusion_1:%[^ ]+]], [[bias_2:%[^ ]+]]), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=bf012_oi012->bf012, custom_call_target="__cudnn$convBiasActivationForward"
+// CHECK: {{.*(custom-call|convolution)\(}}
+// CHECK-SAME: window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=bf012_oi012->bf012
+// CHECK: {{(__cudnn\$convBiasActivationForward|__cudnn\$fusion)}}
   )");
 }
 

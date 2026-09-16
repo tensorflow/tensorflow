@@ -40,6 +40,10 @@ limitations under the License.
 
 namespace mlir {
 namespace deallocation {
+
+#define GEN_PASS_DEF_BUFFERREUSEPASS
+#include "deallocation/transforms/passes.h.inc"
+
 namespace {
 
 template <typename T>
@@ -347,7 +351,8 @@ SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
   return result;
 }
 
-// Hoists allocs from while and for loops.
+// Hoists allocs from operations implementing RegionBranchOpInterface (e.g.
+// loops and conditionals).
 bool hoistAllocs(Block& block) {
   auto* op = &block.front();
   bool result = false;
@@ -372,10 +377,11 @@ bool hoistAllocs(Block& block) {
           //     memref.dealloc %b : memref<f32>
           //   }
           // }
-          // There are no buffer reuse in the two separate scf.if regions but
-          // once the allocations are hoisted one level up, we could merge the
-          // allocations before hoisting them out of the outer scf.if.
-          reuseBuffers(region.front(), BufferReuseMode::CONSERVATIVE);
+          // There is no buffer reuse in the two separate scf.if regions, but
+          // once the allocations are hoisted one level up, we can iteratively
+          // merge the allocations before hoisting them out of the outer scf.if.
+          while (reuseBuffers(region.front(), BufferReuseMode::CONSERVATIVE)) {
+          }
         }
         result |= currResult;
       }
@@ -528,9 +534,6 @@ void promoteBuffers(Block& block) {
   }
 }
 
-#define GEN_PASS_DEF_BUFFERREUSEPASS
-#include "deallocation/transforms/passes.h.inc"
-
 struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
   void runOnOperation() override {
     bool result;
@@ -556,11 +559,5 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createBufferReusePass() {
-  return std::make_unique<BufferReusePass>();
-}
-
 }  // namespace deallocation
 }  // namespace mlir

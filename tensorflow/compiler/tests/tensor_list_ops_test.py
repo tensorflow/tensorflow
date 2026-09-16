@@ -19,16 +19,46 @@ import os
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.platform import test
 
 
 class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
+
+  def testGetItemFromEmptyList(self):
+    # Regression test for GitHub issue 109648. Reading from a statically
+    # empty list appears in code that never runs, such as the body of a
+    # while loop with a zero trip count, but XLA compiles that code anyway
+    # and used to reject the read at compile time. It now yields zeros of
+    # the element shape.
+    with self.session() as sess, self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_shape=[2], element_dtype=dtypes.float32, num_elements=0
+      )
+      e = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(e), [0.0, 0.0])
+
+  def testMapFnOverEmptyTensor(self):
+    # End to end case for GitHub issue 109648: map_fn over a zero length
+    # tensor compiles its loop body even though it never runs, and the
+    # TensorListGetItem in that body used to fail compilation. The whole
+    # function is jit-compiled so the list stays inside XLA rather than
+    # crossing the XLA/TF boundary at the unstack and stack ops.
+    @def_function.function(jit_compile=True)
+    def f(x):
+      return map_fn.map_fn(lambda t: t + 1.0, x)
+
+    with self.session() as sess:
+      x = array_ops.zeros([0], dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(f(x)).shape, (0,))
 
   def testElementShape(self):
     with self.session() as sess, self.test_scope():
@@ -164,6 +194,42 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       l = list_ops.tensor_list_set_item(l, 0, [3.0, 4.0])
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [[3.0, 4.0], [0., 0.]])
+
+  def testStackReservedMismatchedElementDtype(self):
+    # Regression test for GitHub issue 124872. A list reserved with an unknown
+    # element shape is uninitialized, so its buffer is built from the first
+    # element written to it. Writing an element whose dtype disagrees with the
+    # list's declared element_dtype produced a buffer of the element's dtype;
+    # reading it back as the declared, wider dtype reinterpreted the buffer's
+    # bytes and read past its end, returning uninitialized memory instead of
+    # raising the error the non-XLA kernels raise.
+    with self.session(), self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.int64, element_shape=None, num_elements=2
+      )
+      l = list_ops.tensor_list_set_item(
+          l, 0, constant_op.constant([1, 2], dtype=dtypes.int32)
+      )
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Invalid data types"
+      ):
+        self.evaluate(list_ops.tensor_list_stack(l, element_dtype=dtypes.int64))
+
+  def testGetItemReservedMismatchedElementDtype(self):
+    # Companion to the above for the TensorListGetItem read path.
+    with self.session(), self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.int64, element_shape=None, num_elements=2
+      )
+      l = list_ops.tensor_list_set_item(
+          l, 0, constant_op.constant([1, 2], dtype=dtypes.int32)
+      )
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Invalid data types"
+      ):
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.int64)
+        )
 
   def testPushInEmptyListWithUnknownElementShape(self):
     with self.session(), self.test_scope():

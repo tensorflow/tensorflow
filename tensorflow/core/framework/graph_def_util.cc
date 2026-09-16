@@ -62,10 +62,10 @@ absl::Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                        const OpRegistryInterface& op_registry,
                                        int node_offset, bool skip_unknown_ops) {
   if (node_offset > graph_def->node_size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tried to add default attrs to GraphDef "
         "starting at offset ",
-        node_offset, " with total nodes in graph: ", graph_def->node_size());
+        node_offset, " with total nodes in graph: ", graph_def->node_size()));
   }
 
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
@@ -101,10 +101,10 @@ static absl::Status RemoveNewDefaultAttrsFromNodeDef(
       const OpDef::AttrDef* producer_attr_def =
           FindAttr(attr.first, *producer_op_def);
       if (producer_attr_def == nullptr) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Attr '", attr.first,
             "' missing in producer's OpDef: ", SummarizeOpDef(*producer_op_def),
-            " but found in node: ", FormatNodeDefForError(*node_def));
+            " but found in node: ", FormatNodeDefForError(*node_def)));
       }
       // ...and it has the same value as the default in producer,
       if (producer_attr_def->has_default_value() &&

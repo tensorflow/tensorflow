@@ -1,14 +1,14 @@
 path: "tensorflow.__internal__.types.Tensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

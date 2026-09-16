@@ -128,11 +128,11 @@ class WhereCPUOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
 
-    OP_REQUIRES(
-        context, input.dtype() != DT_HALF,
-        errors::Unimplemented("No WhereOp available for float16/half type on "
-                              "CPU; dying in CPU WhereOp to avoid silently "
-                              "creating costly copies from device."));
+    OP_REQUIRES(context, input.dtype() != DT_HALF,
+                absl::UnimplementedError(
+                    "No WhereOp available for float16/half type on "
+                    "CPU; dying in CPU WhereOp to avoid silently "
+                    "creating costly copies from device."));
 
     const int input_dims = input.dims();
 
@@ -172,18 +172,18 @@ class WhereCPUOp : public OpKernel {
 
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
-                        "WhereOp : Unhandled input dimensions: ", input_dims));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "WhereOp : Unhandled input dimensions: ", input_dims)));
     }
 #undef HANDLE_DIM
 
     OP_REQUIRES(
         context, found_true == num_true_t(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "WhereOp: Race condition between counting the number of true "
             "elements and writing them.  When counting, saw ",
             num_true_t(), " elements; but when writing their indices, saw ",
-            found_true, " elements."));
+            found_true, " elements.")));
   }
 
  private:
@@ -329,8 +329,8 @@ class WhereGPUOp : public AsyncOpKernel {
           default:
             OP_REQUIRES_ASYNC(
                 context, false,
-                errors::InvalidArgument("WhereOp: Unhandled input dimensions: ",
-                                        input_dims),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "WhereOp: Unhandled input dimensions: ", input_dims)),
                 done);
         }
 #undef HANDLE_DIM

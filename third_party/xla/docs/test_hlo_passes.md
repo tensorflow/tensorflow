@@ -47,7 +47,7 @@ correspond to. Again, make sure to use `// CHECK` instead of `; CHECK` as the
 delimiter.
 
 For example, some
-[GPU tests](https://github.com/openxla/xla/tree/main/xla/service/gpu/tests) can
+[GPU tests](https://github.com/openxla/xla/tree/main/xla/backends/gpu/tests) can
 be written as follows:
 
 ```

@@ -249,7 +249,7 @@ absl::Status SummarizeGraph(const GraphDef& graph,
       std::cout << "Invalid input " << invalid_input.second << " for node "
                 << invalid_input.first << std::endl;
     }
-    return errors::Internal(
+    return absl::InternalError(
         "Invalid graph with inputs referring to nonexistent nodes");
   }
 

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "xla/tsl/platform/status.h"
@@ -67,23 +68,31 @@ FunctionDef EmptyFunctionDefGenerator(int number_of_input_arguments,
                                    body_nodes, ret_def);
 }
 
-class FuzzRuntimeClient {
+class FuzzRuntimeClient : public fuzztest::IterationRunnerFixture {
  public:
-  FuzzRuntimeClient()
-      : ctx_(InitLocalEagerContextPtr()), rt_(core::function::Runtime(*ctx_)) {}
+  void FuzzTestIterationRunner(
+      absl::AnyInvocable<void() &&> run_iteration) override {
+    ctx_ = InitLocalEagerContextPtr();
+    rt_ = std::make_unique<core::function::Runtime>(*ctx_);
+    std::move(run_iteration)();
+  }
 
   void CreateFunctionInnerFuzz(int in_args, int out_args) {
     TF_CHECK_OK(
-        rt_.CreateFunction(EmptyFunctionDefGenerator(in_args, out_args)));
+        rt_->CreateFunction(EmptyFunctionDefGenerator(in_args, out_args)));
   }
 
   void CreateFunctionOuterFuzz(FunctionDef def) {
-    TF_CHECK_OK(rt_.CreateFunction(def));
+    // Ignore errors because the fuzzer may generate invalid FunctionDef protos.
+    // Returning a non-OK status for invalid input is expected and acceptable;
+    // we are only looking for unexpected crashes, hangs, or memory safety
+    // issues.
+    rt_->CreateFunction(def).IgnoreError();
   }
 
  private:
   EagerContextPtr ctx_;
-  core::function::Runtime rt_;
+  std::unique_ptr<core::function::Runtime> rt_;
 
   EagerContextPtr InitLocalEagerContextPtr() {
     SessionOptions opts;

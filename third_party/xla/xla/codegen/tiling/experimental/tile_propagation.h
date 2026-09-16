@@ -31,7 +31,7 @@ using Tiles = llvm::SmallVector<Tile, 2>;
 
 std::string ToString(const Tiles& tiles);
 
-absl::StatusOr<Tiles> PropagateTileToInput(const TilingSpace& tiling_space,
+absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
                                            const HloInstruction& hlo,
                                            const Tile& output_tile,
                                            int64_t output_index);

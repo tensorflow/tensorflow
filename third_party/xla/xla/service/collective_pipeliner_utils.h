@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_PIPELINER_UTILS_H_
 #define XLA_SERVICE_COLLECTIVE_PIPELINER_UTILS_H_
 
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+
 namespace xla {
 namespace collective_pipeliner_utils {
 
@@ -24,6 +29,22 @@ enum PipeliningDirection {
   kForward,
   kForwardSink,
 };
+
+// Returns true if the operation is considered a default acceptable
+// formatting operation that is safe to hoist/sink.
+inline bool IsBaseAcceptableFormattingOp(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kCustomCall) {
+    return !Cast<HloCustomCallInstruction>(inst)->custom_call_has_side_effect();
+  }
+
+  return HloPredicateIsOp<
+      HloOpcode::kSlice, HloOpcode::kDynamicSlice, HloOpcode::kPad,
+      HloOpcode::kCollectivePermute, HloOpcode::kConvert, HloOpcode::kReshape,
+      HloOpcode::kAllReduce, HloOpcode::kTranspose, HloOpcode::kBroadcast,
+      HloOpcode::kAllGather, HloOpcode::kGetTupleElement, HloOpcode::kReduce,
+      HloOpcode::kConcatenate, HloOpcode::kReduceScatter, HloOpcode::kBitcast>(
+      inst);
+}
 
 }  // namespace collective_pipeliner_utils
 }  // namespace xla

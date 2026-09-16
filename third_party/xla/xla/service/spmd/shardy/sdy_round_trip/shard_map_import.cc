@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -57,15 +59,65 @@ namespace sdy {
 
 namespace {
 
+using ::llvm::ArrayRef;
+using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
+using ::mlir::Operation;
+using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
+using ::mlir::WalkOrder;
+using ::mlir::WalkResult;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
+
+// Recovers the global in shardings of a manual computation from the
+// `@Sharding` custom calls that export wraps around each operand of
+// `globalToLocalShape`, and removes those wrappers.
+//
+// Export materializes the reshard that `sdy.manual_computation` performs
+// implicitly on entry as an explicit `@Sharding` op, so that every op's
+// sharding describes its own result. Undoing it here makes the round trip an
+// identity.
+//
+// Returns an empty vector, and leaves the IR untouched, if any operand is not
+// wrapped - the shardings are only meaningful as a complete set.
+SmallVector<sdy::TensorShardingAttr> takeGlobalInShardings(
+    CustomCallOp globalToLocalShape, mlir::IRRewriter& rewriter) {
+  SmallVector<sdy::TensorShardingAttr> globalInShardings;
+  SmallVector<CustomCallOp> shardingOps;
+  for (mlir::Value globalOperand : globalToLocalShape.getOperands()) {
+    auto shardingOp = globalOperand.getDefiningOp<CustomCallOp>();
+    if (!shardingOp ||
+        shardingOp.getCallTargetName() != kShardingCustomCallTargetName) {
+      return {};
+    }
+    sdy::TensorShardingAttr sharding =
+        sdy::getSharding(shardingOp.getResult(0));
+    if (!sharding) {
+      return {};
+    }
+    globalInShardings.push_back(sharding);
+    shardingOps.push_back(shardingOp);
+  }
+
+  for (auto [i, shardingOp] : llvm::enumerate(shardingOps)) {
+    globalToLocalShape->setOperand(i, shardingOp.getOperand(0));
+  }
+  // The same wrapper can feed several operands, so only visit it once - after
+  // the first erase the handle is dangling.
+  llvm::SmallDenseSet<Operation*> seen;
+  for (CustomCallOp shardingOp : shardingOps) {
+    if (seen.insert(shardingOp).second && shardingOp.use_empty()) {
+      rewriter.eraseOp(shardingOp);
+    }
+  }
+  return globalInShardings;
+}
 
 mlir::LogicalResult rewriteManualComputation(
     CallOp callOp, mlir::IRRewriter& rewriter,
@@ -88,7 +140,7 @@ mlir::LogicalResult rewriteManualComputation(
   // `ManualComputationOp` differently depending on whether the original had
   // operands/results.
   CustomCallOp globalToLocalShape;
-  mlir::ValueRange operands = callOp.getOperands();
+  SmallVector<mlir::Value> operands(callOp.getOperands());
   if (!operands.empty()) {
     // An input to `sdy.manual_computation` can have a dimension of size 0
     // (i.e. 0 num-elements), in which case, the corresponding result of
@@ -106,7 +158,8 @@ mlir::LogicalResult rewriteManualComputation(
     globalToLocalShape = (*customCallResIt).getDefiningOp<CustomCallOp>();
     CHECK_EQ(globalToLocalShape.getCallTargetName(),
              kGlobalToLocalShapeCallTargetName);
-    operands = globalToLocalShape->getOperands();
+    operands.assign(globalToLocalShape->operand_begin(),
+                    globalToLocalShape->operand_end());
   }
 
   mlir::TypeRange resultTypes = callOp->getResultTypes();
@@ -142,10 +195,13 @@ mlir::LogicalResult rewriteManualComputation(
     if (!customCallOp) {
       return;
     }
+
     if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
-      shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
-          frontendAttrs, shardingAttrName);
-      if (manualAxes.empty()) {
+      if (hasKey(frontendAttrs, shardingAttrName)) {
+        shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+            frontendAttrs, shardingAttrName);
+      }
+      if (manualAxes.empty() && hasKey(frontendAttrs, kManualAxes)) {
         manualAxes =
             parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes);
       }
@@ -154,6 +210,45 @@ mlir::LogicalResult rewriteManualComputation(
 
   setShardingAttrs(globalToLocalShape, inShardings, kInShardings);
   setShardingAttrs(localToGlobalShape, outShardings, kOutShardings);
+
+  // Under HloShardingV3 the shardings and manual axes round trip as native
+  // attributes rather than frontend attributes, so read them directly.
+  if (outShardings.empty() && localToGlobalShape) {
+    // `LocalToGlobalShape` produces the global tensors, so its own sharding is
+    // the global out shardings.
+    if (auto sharding =
+            localToGlobalShape->getAttrOfType<sdy::TensorShardingPerValueAttr>(
+                sdy::kShardingAttr)) {
+      outShardings = sharding;
+    }
+  }
+
+  if (manualAxes.empty()) {
+    // A manual computation without operands has no `GlobalToLocalShape`, in
+    // which case the body call op is the only carrier of the manual axes.
+    for (Operation* op :
+         {globalToLocalShape.getOperation(), callOp.getOperation()}) {
+      auto axes =
+          op ? op->getAttrOfType<sdy::ManualAxesAttr>(kManualAxes) : nullptr;
+      if (axes && !axes.empty()) {
+        manualAxes = axes;
+        break;
+      }
+    }
+  }
+
+  if (inShardings.empty() && globalToLocalShape) {
+    SmallVector<sdy::TensorShardingAttr> globalInShardings =
+        takeGlobalInShardings(globalToLocalShape, rewriter);
+    if (!globalInShardings.empty()) {
+      inShardings =
+          sdy::TensorShardingPerValueAttr::get(context, globalInShardings);
+      // `takeGlobalInShardings` rewired `globalToLocalShape` past the wrappers.
+      operands.assign(globalToLocalShape->operand_begin(),
+                      globalToLocalShape->operand_end());
+    }
+  }
+
   auto manualComputationOp =
       rewriter.replaceOpWithNewOp<sdy::ManualComputationOp>(
           callOp, resultTypes, operands, inShardings, outShardings, manualAxes);
@@ -166,44 +261,15 @@ mlir::LogicalResult rewriteManualComputation(
   return mlir::success();
 }
 
-FuncOp cloneFuncRecursively(
-    FuncOp funcOp, mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
-    mlir::SymbolTable& symbolTable) {
-  mlir::StringAttr originalFuncName = mlir::sdy::getOriginalFuncName(funcOp);
-  FuncOp clonedFuncOp =
-      symbolTable.lookup<FuncOp>(originalFuncName.getValue()).clone();
-  // TODO(enver): Have a MLIR native error handling, instead of CHECK.
-  CHECK(clonedFuncOp) << "Failed to lookup function: "
-                      << originalFuncName.str();
-  clonedFuncOp->setAttr(mlir::sdy::kOriginalFuncName, originalFuncName);
-  if (callOpResultShardings) {
-    mlir::sdy::setFuncResultShardings(clonedFuncOp, callOpResultShardings);
-  }
-  clonedFuncOp->walk([&](CallOp callOp) {
-    FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
-    CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
-        funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
-  });
-  return clonedFuncOp;
-}
-
-void cloneManualComputations(
-    ModuleOp moduleOp, SymbolTable& symbolTable,
-    mlir::SymbolTableCollection& symbolTableCollection) {
-  mlir::sdy::walkCalls(moduleOp, [&](CallOp callOp) {
-    if (!isManualComputation(callOp)) {
-      return mlir::WalkResult::advance();
+SmallVector<StringAttr> getManualAxesList(
+    ArrayRef<ArrayRef<StringAttr>> manualAxesStack) {
+  SmallVector<StringAttr> manualAxesList;
+  for (ArrayRef<StringAttr> manualAxesRefs : manualAxesStack) {
+    for (StringAttr manualAxes : manualAxesRefs) {
+      manualAxesList.push_back(manualAxes);
     }
-    // TODO(b/446881697): Clone just the body on demand like in
-    // shardy/stablehlo_round_trip/shard_map_import.cc.
-    FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
-    CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
-        funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
-    return mlir::WalkResult::advance();
-  });
-  // TODO(enver): Clean up uncalled functions.
+  }
+  return manualAxesList;
 }
 
 class SdyRoundTripShardMapImportPass
@@ -218,8 +284,6 @@ class SdyRoundTripShardMapImportPass
     mlir::SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(module);
     mlir::IRRewriter rewriter(module);
-
-    cloneManualComputations(module, symbolTable, symbolTableCollection);
 
     if (!mlir::sdy::walkCalls(module, [&](CallOp callOp) {
           if (isManualComputation(callOp)) {
@@ -256,10 +320,42 @@ class SdyRoundTripShardMapImportPass
 
     // Erase all manual computation func ops as now they have no call ops.
     for (FuncOp funcOp : llvm::make_early_inc_range(module.getOps<FuncOp>())) {
-      if (isManualComputation(funcOp)) {
-        symbolTable.erase(symbolTable.lookup(funcOp.getName()));
+      StringRef funcName = funcOp.getName();
+      if (isManualComputationOnName(funcName)) {
+        symbolTable.erase(symbolTable.lookup(funcName));
       }
     }
+
+    // Set func manual axes.
+    sdy::iterateFuncs(
+        module,
+        [&](FuncOp funcOp) {
+          SmallVector<ArrayRef<StringAttr>> manualAxesStack;
+          if (auto funcManualAxes = funcOp->getAttrOfType<sdy::ManualAxesAttr>(
+                  sdy::kFuncManualAxes)) {
+            manualAxesStack.push_back(funcManualAxes.getValue());
+          }
+
+          funcOp.walk<WalkOrder::PreOrder>([&](Operation* op) {
+            if (auto manualComputationOp =
+                    mlir::dyn_cast<sdy::ManualComputationOp>(op)) {
+              manualAxesStack.push_back(manualComputationOp.getManualAxes());
+            } else if (auto callOp = mlir::dyn_cast<CallOp>(op)) {
+              if (!manualAxesStack.empty()) {
+                FuncOp calledFuncOp =
+                    sdy::getFuncOpOrDie(callOp.getCallee(), symbolTable);
+                calledFuncOp->setAttr(
+                    sdy::kFuncManualAxes,
+                    sdy::ManualAxesAttr::get(
+                        op->getContext(), getManualAxesList(manualAxesStack)));
+              }
+            } else if (op->hasTrait<mlir::OpTrait::IsTerminator>() &&
+                       mlir::isa<sdy::ManualComputationOp>(op->getParentOp())) {
+              manualAxesStack.pop_back();
+            }
+          });
+        },
+        /*preOrder=*/true);
   }
 
   StringRef getArgument() const override {
@@ -267,10 +363,12 @@ class SdyRoundTripShardMapImportPass
   }
 
   StringRef getDescription() const override {
-    return "converts a CallOp calling a @xla.sdy.manual_computation_body func "
-           "with in/out shardings and manual axes as frontend attrs, wrapped "
-           "with a pair of `CustomCallOps` that change the shape of the "
-           "arguments/results, to a ManualComputationOp";
+    return "converts a CallOp calling a @xla.sdy.manual_computation_body func, "
+           "wrapped with a pair of `CustomCallOps` that change the shape of "
+           "the arguments/results, to a ManualComputationOp. The in/out "
+           "shardings and manual axes are read from frontend attrs, or, under "
+           "HloShardingV3, from native attributes on the boundary ops and on "
+           "the `@Sharding` custom calls wrapping the operands";
   }
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<sdy::SdyDialect>();

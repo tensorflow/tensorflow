@@ -30,7 +30,7 @@ void CancellableCall::Start(const StatusCallback& done) {
       done(s);
     });
   } else {
-    done(errors::Cancelled("RPC Request was cancelled"));
+    done(absl::CancelledError("RPC Request was cancelled"));
   }
 }
 

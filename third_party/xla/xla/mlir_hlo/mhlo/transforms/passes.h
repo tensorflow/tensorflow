@@ -44,36 +44,6 @@ ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions();
 /// Returns options for the ChloLegalizeToHighLevelMhloPass for the GPU backend.
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions();
 
-// Sinks constants implicitly captured in control flow regions. This is
-// necessary to export to XLA.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createSinkConstantsToControlFlowPass();
-
-/// Lowers trigonometric operations from the standard dialect to approximations
-/// that do not use intrinsics.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeTrigonometricToApproximationPass();
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeDotToDotGeneralPass();
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeEinsumToDotGeneralPass();
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeTorchIndexSelectToGatherPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
-
-// Creates a pass for expanding mhlo.tuple ops.
-std::unique_ptr<OperationPass<ModuleOp>> createExpandHloTuplesPass(
-    const std::string& entryFunctionName = "main");
-
-// Creates a pass for collapsing the mhlo.map if the map only has elementwise
-// op.
-std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
-
-// Test passes.
-std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
-std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
-std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
-
 #define GEN_PASS_REGISTRATION
 #include "mhlo/transforms/mhlo_passes.h.inc"
 

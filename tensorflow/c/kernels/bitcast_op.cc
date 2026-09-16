@@ -68,8 +68,12 @@ static void* BitcastOp_Create(TF_OpKernelConstruction* ctx) {
     kernel->in_size = TF_DataTypeSize(kernel->input_data_type);
     kernel->out_size = TF_DataTypeSize(kernel->output_data_type);
 
-    size_t check_size = std::max(kernel->in_size, kernel->out_size) %
-                        std::min(kernel->in_size, kernel->out_size);
+    // Check that the data type sizes allow for conversion.
+    size_t check_size = 1;  // At first, assume not.
+    if (kernel->in_size != 0 && kernel->out_size != 0) {
+      check_size = std::max(kernel->in_size, kernel->out_size) %
+                   std::min(kernel->in_size, kernel->out_size);
+    }
     if (check_size != 0) {
       std::ostringstream err;
       err << "cannot convert between datatype " << kernel->input_data_type
@@ -96,7 +100,7 @@ static void BitcastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   auto* k = static_cast<BitcastOp*>(kernel);
   int dim_count = 0;
 
-  TF_Tensor* tensor;
+  TF_Tensor* tensor = nullptr;
   TF_Status* status = TF_NewStatus();
   TF_GetInput(ctx, 0, &tensor, status);
   if (TF_GetCode(status) == TF_OK) {

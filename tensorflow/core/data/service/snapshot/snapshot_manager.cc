@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -179,8 +180,28 @@ absl::StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
   return snapshot_manager;
 }
 
+absl::Status ValidateSnapshotPath(absl::string_view path) {
+  if (path.empty()) {
+    return absl::InvalidArgumentError("Snapshot path cannot be empty.");
+  }
+
+  absl::string_view scheme, host, uri_path;
+  tsl::io::ParseURI(path, &scheme, &host, &uri_path);
+
+  std::string cleaned_path = tsl::io::CleanPath(uri_path);
+  if (cleaned_path == ".." || absl::StartsWith(cleaned_path, "../") ||
+      absl::StartsWith(cleaned_path, "..\\")) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Snapshot path cannot contain path traversal characters "
+                     "(../ or ..\\): ",
+                     path));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status SnapshotManager::Start(const SnapshotRequest& request)
     TF_LOCKS_EXCLUDED(mu_) {
+  TF_RETURN_IF_ERROR(ValidateSnapshotPath(request.path()));
   LOG(INFO) << "Starting to write tf.data snapshot at " << request.path();
   if (env_->FileExists(request.path()).ok()) {
     return absl::AlreadyExistsError(absl::StrCat(

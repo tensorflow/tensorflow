@@ -15,6 +15,8 @@
 """Tests for tflite_convert.py."""
 
 import os
+import shlex
+import subprocess
 
 from absl.testing import parameterized
 import numpy as np
@@ -55,10 +57,10 @@ class TestModels(test_util.TensorFlowTestCase):
            expected_output_shapes=None):
     output_file = os.path.join(self.get_temp_dir(), 'model.tflite')
     tflite_bin = resource_loader.get_path_to_datafile('tflite_convert.par')
-    cmdline = '{0} --output_file={1} {2}'.format(tflite_bin, output_file,
-                                                 flags_str)
+    cmdline = [tflite_bin, '--output_file={}'.format(output_file)]
+    cmdline.extend(shlex.split(flags_str))
 
-    exitcode = os.system(cmdline)
+    exitcode = subprocess.call(cmdline)
     if exitcode == 0:
       with gfile.Open(output_file, 'rb') as model_file:
         content = model_file.read()

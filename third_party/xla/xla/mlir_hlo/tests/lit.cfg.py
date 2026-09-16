@@ -28,7 +28,7 @@ import lit.util
 # name: The name of this test suite.
 config.name = 'MLIR_HLO_OPT'
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.mlir']

@@ -258,9 +258,4 @@ class PeelWorkgroupLoopPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreatePeelWorkgroupLoopPass() {
-  return std::make_unique<PeelWorkgroupLoopPass>();
-}
-
 }  // namespace xla::cpu

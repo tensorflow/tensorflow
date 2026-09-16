@@ -66,8 +66,9 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
                             indices, values, dense_shape,
                             sparse_utils::IndexValidation::kUnordered));
     OP_REQUIRES(ctx, rank == 2 || rank == 3,
-                errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
-                                        "but indices has rank: ", rank));
+                absl::InvalidArgumentError(
+                    absl::StrCat("SparseTensor must have rank 2 or 3; ",
+                                 "but indices has rank: ", rank)));
     auto dense_shape_vec = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
     const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
@@ -75,21 +76,22 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t total_nnz = values.NumElements();
 
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
-    OP_REQUIRES(
-        ctx, batch_size < kInt32Max,
-        errors::InvalidArgument("dense_shape batch_size must be < Int32Max,"
-                                " but the input value is ",
-                                batch_size));
+    OP_REQUIRES(ctx, batch_size < kInt32Max,
+                absl::InvalidArgumentError(
+                    absl::StrCat("dense_shape batch_size must be < Int32Max,"
+                                 " but the input value is ",
+                                 batch_size)));
     OP_REQUIRES(ctx, total_nnz <= kInt32Max,
-                errors::InvalidArgument("values number of elements must be <="
-                                        " Int32Max, but the input value is ",
-                                        total_nnz));
-    OP_REQUIRES(
-        ctx, (num_rows + 1) * batch_size <= kInt32Max,
-        errors::InvalidArgument("The csr row index size, computed based on the"
-                                " dense_shape, must be <= Int32Max, but is too"
-                                " large. Current value is ",
-                                (num_rows + 1) * batch_size));
+                absl::InvalidArgumentError(
+                    absl::StrCat("values number of elements must be <="
+                                 " Int32Max, but the input value is ",
+                                 total_nnz)));
+    OP_REQUIRES(ctx, (num_rows + 1) * batch_size <= kInt32Max,
+                absl::InvalidArgumentError(
+                    absl::StrCat("The csr row index size, computed based on the"
+                                 " dense_shape, must be <= Int32Max, but is too"
+                                 " large. Current value is ",
+                                 (num_rows + 1) * batch_size)));
 
     // Allocate output Tensors.
     TensorShape batch_ptr_shape;
@@ -156,36 +158,36 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                              indices_t, values_t, dense_shape_t,
                              sparse_utils::IndexValidation::kNone),
                          done);
-    OP_REQUIRES_ASYNC(
-        c, rank == 2 || rank == 3,
-        errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
-                                "but indices has rank:", rank),
-        done);
+    OP_REQUIRES_ASYNC(c, rank == 2 || rank == 3,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("SparseTensor must have rank 2 or 3; ",
+                                       "but indices has rank:", rank)),
+                      done);
     auto dense_shape = dense_shape_t.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
     const int64_t cols = dense_shape((rank == 2) ? 1 : 2);
 
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
-    OP_REQUIRES_ASYNC(
-        c, batch_size < kInt32Max,
-        errors::InvalidArgument("dense_shape batch_size must be < Int32Max,"
-                                " but the input value is ",
-                                batch_size),
-        done);
-    OP_REQUIRES_ASYNC(
-        c, values_t.NumElements() <= kInt32Max,
-        errors::InvalidArgument("values number of elements must be <="
-                                " Int32Max, but the input value is ",
-                                values_t.NumElements()),
-        done);
-    OP_REQUIRES_ASYNC(
-        c, (rows + 1) * batch_size <= kInt32Max,
-        errors::InvalidArgument("The csr row index size, computed based on the"
-                                " dense_shape, must be <= Int32Max, but is too"
-                                " large. Current value is ",
-                                (rows + 1) * batch_size),
-        done);
+    OP_REQUIRES_ASYNC(c, batch_size < kInt32Max,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "dense_shape batch_size must be < Int32Max,"
+                          " but the input value is ",
+                          batch_size)),
+                      done);
+    OP_REQUIRES_ASYNC(c, values_t.NumElements() <= kInt32Max,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("values number of elements must be <="
+                                       " Int32Max, but the input value is ",
+                                       values_t.NumElements())),
+                      done);
+    OP_REQUIRES_ASYNC(c, (rows + 1) * batch_size <= kInt32Max,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "The csr row index size, computed based on the"
+                          " dense_shape, must be <= Int32Max, but is too"
+                          " large. Current value is ",
+                          (rows + 1) * batch_size)),
+                      done);
 
     ScratchSpace<int32_t> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 
@@ -245,13 +247,13 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           batch_ptr(i + 1) = batch_ptr(i) + nnz_per_batch(i);
         }
         int total_nnz = batch_ptr(batch_size);
-        OP_REQUIRES_ASYNC(
-            c, total_nnz == values_t.NumElements(),
-            errors::Internal("nnz returned by "
-                             "CalculateNNZPerBatchMatrixFromInd"
-                             "ices != len(values): ",
-                             total_nnz, " vs. ", values_t.NumElements()),
-            done);
+        OP_REQUIRES_ASYNC(c, total_nnz == values_t.NumElements(),
+                          absl::InternalError(absl::StrCat(
+                              "nnz returned by "
+                              "CalculateNNZPerBatchMatrixFromInd"
+                              "ices != len(values): ",
+                              total_nnz, " vs. ", values_t.NumElements())),
+                          done);
 
         Tensor coo_col_ind_t;
         Tensor csr_row_ptr_t;

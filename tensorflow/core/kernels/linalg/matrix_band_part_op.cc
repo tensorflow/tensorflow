@@ -15,17 +15,18 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/kernels/linalg/matrix_band_part_op.h"
-
 #include <algorithm>
-#include <memory>
-#include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/linalg/matrix_band_part_op.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -54,15 +56,16 @@ class MatrixBandPartOp : public OpKernel {
     const TensorShape& input_shape = input.shape();
     // Preliminary validation of sizes.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must be at least 2-dim, received shape: ",
-                    input.shape().DebugString()));
+                    input.shape().DebugString())));
     auto input_reshaped = input.flat_inner_dims<T, 3>();
 
     const Tensor& num_lower_in = context->input(1);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_lower_in.shape()),
-                errors::InvalidArgument("num_lower must be scalar, got shape ",
-                                        num_lower_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_lower must be scalar, got shape ",
+                                 num_lower_in.shape().DebugString())));
 
     auto as_int64_scalar = [](const Tensor& tensor) -> int64_t {
       if (tensor.dtype() == DT_INT32) {
@@ -80,8 +83,9 @@ class MatrixBandPartOp : public OpKernel {
 
     const Tensor& num_upper_in = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_upper_in.shape()),
-                errors::InvalidArgument("num_upper must be scalar, got shape ",
-                                        num_upper_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_upper must be scalar, got shape ",
+                                 num_upper_in.shape().DebugString())));
     const int64_t num_upper = as_int64_scalar(num_upper_in);
     OP_REQUIRES(context, num_upper <= input_reshaped.dimension(2),
                 errors::InvalidArgument("num_upper must be negative or less or "

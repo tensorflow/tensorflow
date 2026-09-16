@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstddef>
 #include <cstring>
+#include <utility>
 
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -56,6 +57,8 @@ class GetItemSemantic {
     TF_LITE_ENSURE_OK(ctx_,
                       GetInputSafe(ctx_, node_, kIndexInputIdx, &index_input));
     TF_LITE_ENSURE_EQ(ctx_, index_input->bytes, sizeof(int));
+    TF_LITE_ENSURE(ctx_, index_input->data.raw != nullptr);
+
     result = *GetTensorData<int>(index_input);
     return kTfLiteOk;
   }
@@ -101,7 +104,9 @@ class PopBackSemantic {
     TensorArray* output_arr = static_cast<TensorArray*>(
         arr->CloneTo(static_cast<VariantData*>(list_output->data.data)));
     output_arr->Resize(output_arr->NumElements() - 1);
-    list_output->data.data = output_arr;
+
+    list_output->data.data = static_cast<VariantData*>(output_arr);
+
     return kTfLiteOk;
   }
 
@@ -122,6 +127,7 @@ TfLiteStatus Prepare(TfLiteContext* ctx, TfLiteNode* node) {
   const TfLiteTensor* element_shape_input;
   TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, semantic.kElementShapeInputIdx,
                                       &element_shape_input));
+  TF_LITE_ENSURE_TYPES_EQ(ctx, element_shape_input->type, kTfLiteInt32);
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(
@@ -152,6 +158,8 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
   const TfLiteTensor* list_input;
   TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInput, &list_input));
   TF_LITE_ENSURE_EQ(ctx, list_input->allocation_type, kTfLiteVariantObject);
+  TF_LITE_ENSURE(ctx, list_input->data.data != nullptr);
+
   const auto* arr = static_cast<const TensorArray*>(
       static_cast<VariantData*>(list_input->data.data));
 
@@ -182,7 +190,11 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
   // list shape, and then through the elements in the list. Otherwise,
   // the shape will be known at compile time so we can just use that.
   if (!IsDynamicTensor(output)) {
-    memset(output->data.data, 0, output->bytes);
+    if (output->bytes > 0) {
+      TF_LITE_ENSURE(ctx, output->data.data != nullptr);
+      memset(output->data.data, 0, output->bytes);
+    }
+
     return semantic.HandleOutput(arr);
   }
 
@@ -190,9 +202,13 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, semantic.kElementShapeInputIdx,
                                       &element_shape_input));
 
-  IntArrayUniquePtr output_shape =
-      MergeShapesOrNull(BuildTfLiteArray(*arr->ElementShape()),
-                        TensorAsShape(*element_shape_input));
+  IntArrayUniquePtr element_shape;
+  TF_LITE_ENSURE_OK(ctx,
+                    TensorAsShape(ctx, *element_shape_input, element_shape));
+  TF_LITE_ENSURE(ctx, element_shape != nullptr);
+
+  IntArrayUniquePtr output_shape = MergeShapesOrNull(
+      BuildTfLiteArray(*arr->ElementShape()), std::move(element_shape));
   TF_LITE_ENSURE(ctx, output_shape != nullptr);
 
   const bool can_infer_shape = (element_shape_input->dims->size != 0 ||
@@ -207,8 +223,12 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
         "Failed to infer the output shape for an item which has not been set.");
   }
 
-  ctx->ResizeTensor(ctx, output, output_shape.release());
-  memset(output->data.data, 0, output->bytes);
+  TF_LITE_ENSURE_OK(ctx,
+                    ctx->ResizeTensor(ctx, output, output_shape.release()));
+  if (output->bytes > 0) {
+    TF_LITE_ENSURE(ctx, output->data.data != nullptr);
+    memset(output->data.data, 0, output->bytes);
+  }
 
   return semantic.HandleOutput(arr);
 }

@@ -18,16 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "google/protobuf/repeated_field.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
@@ -121,6 +120,9 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
                                   ->config()
                                   .debug_options()
                                   .xla_gpu_exhaustive_tiling_search();
+  has_concatenate_ = HloBfsAnyOf({dot}, [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kConcatenate;
+  });
 }
 
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
@@ -154,11 +156,23 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   return result;
 }
 
+std::vector<TritonGemmConfig>
+TritonDotFusionSearchSpace::GenerateAndOptimizeConfigs(
+    absl::Span<const TritonGemmConfig> hints,
+    bool autotune_warp_specialization) const {
+  std::vector<TritonGemmConfig> gemm_configs =
+      GenerateConfigs(autotune_warp_specialization);
+  if (hints.empty()) {
+    return gemm_configs;
+  }
+  return OptimizeConfigSet(gemm_configs, hints);
+}
+
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
-    const std::vector<TritonGemmConfig>& configs,
-    const std::vector<TritonGemmConfig>& hints) const {
+    absl::Span<const TritonGemmConfig> configs,
+    absl::Span<const TritonGemmConfig> hints) const {
   if (hints.empty() || configs.empty()) {
-    return configs;
+    return std::vector<TritonGemmConfig>(configs.begin(), configs.end());
   }
 
   absl::flat_hash_set<TritonGemmConfig> filter;
@@ -194,7 +208,7 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
                  "sufficiently match the hints. Maybe the hints set does "
                  "not contain a good representative set of valid configs? "
                  "Working around this by using the full hints set instead.";
-    return hints;
+    return std::vector<TritonGemmConfig>(hints.begin(), hints.end());
   }
   return result_configs;
 }
@@ -556,8 +570,12 @@ void TritonDotFusionSearchSpace::AddWarpSpecializationParameter(
   // > 2 also run into address misalignment issues. It might be more precise to
   // also check for a broadcast consumer, but that would complicate the code
   // here.
-  if (config.config.is_tma_allowed && config.config.num_warps <= 16 &&
-      config.config.num_warps % 4 == 0 && config.config.num_stages != 2) {
+  // - No concatenate operation in the module due to b/483385760. A
+  // CUDA_ERROR_ILLEGAL_ADDRESS error occurs due to a bug in Triton for this
+  // category of GEMMs.
+  if (!has_concatenate_ && config.config.is_tma_allowed &&
+      config.config.num_warps <= 16 && config.config.num_warps % 4 == 0 &&
+      config.config.num_stages != 2) {
     new_config.config.is_warp_specialization_allowed = true;
     VLOG(10) << "Adding warp specialization parameter: config = "
              << new_config.ToString();

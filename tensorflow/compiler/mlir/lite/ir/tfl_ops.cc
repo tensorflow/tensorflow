@@ -32,13 +32,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
-#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -86,6 +84,7 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
@@ -259,7 +258,9 @@ bool HasDenseResourceOperand(mlir::Operation* op) {
 // TODO(b/394905516): Remove this once we have a way to configure the threshold.
 bool ShouldFoldOperation(Operation* inst) {
   if (!(ENABLE_DENSE_RESOURCE_ATTR_FOLD) && HasDenseResourceOperand(inst)) {
-    return false;
+    if (!llvm::isa<TransposeOp, ReshapeOp>(inst)) {
+      return false;
+    }
   }
 
   auto get_size = [&](TypeRange types) {
@@ -543,7 +544,7 @@ bool VerifyAddOpShapeConstraints(AddOp op) {
 
   // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to four dimensions or have same shapes.
-  if (element_type.isF32() || IsQI8Type(element_type) ||
+  if (element_type.isF32() || element_type.isF16() || IsQI8Type(element_type) ||
       IsQUI8Type(element_type) || IsI16Type(element_type) ||
       IsI32Type(element_type) || IsI64Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
@@ -565,7 +566,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
 
   // Allows F32, QUI8, and QI16 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
-  if (element_type.isF32() || IsI32Type(element_type) ||
+  if (element_type.isF32() || element_type.isF16() || IsI32Type(element_type) ||
       IsI64Type(element_type) || IsQUI8Type(element_type) ||
       IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
@@ -605,7 +606,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   if (IsI32Type(element_type) || IsUI32Type(element_type) ||
       IsI64Type(element_type) || IsQI16Type(element_type) ||
       IsI16Type(element_type) || mlir::isa<ComplexType>(element_type) ||
-      element_type.isF32()) {
+      element_type.isF32() || element_type.isF16()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/6);
@@ -654,6 +655,47 @@ class FlatIndHelper {
  private:
   mlir::ShapedType type_;
 };
+
+template <typename T>
+DenseElementsAttr ConstFoldCumsumOp(ShapedType result_type,
+                                    DenseElementsAttr input_elements, int axis,
+                                    bool exclusive, bool reverse) {
+  std::vector<T> in_data(input_elements.value_begin<T>(),
+                         input_elements.value_end<T>());
+  std::vector<T> out_data(result_type.getNumElements());
+
+  auto shape = result_type.getShape();
+  int64_t outer_size = 1;
+  for (int m = 0; m < axis; ++m) {
+    outer_size *= shape[m];
+  }
+  int64_t axis_size = shape[axis];
+  int64_t inner_size = 1;
+  for (int m = axis + 1; m < shape.size(); ++m) {
+    inner_size *= shape[m];
+  }
+
+  for (int64_t o = 0; o < outer_size; ++o) {
+    for (int64_t i = 0; i < inner_size; ++i) {
+      int64_t slice_offset = o * axis_size * inner_size + i;
+      T val = 0;
+      for (int64_t j = 0; j < axis_size; ++j) {
+        int64_t d = reverse ? axis_size - 1 - j : j;
+        int64_t idx = slice_offset + d * inner_size;
+        T in_val = in_data[idx];
+        if (exclusive) {
+          out_data[idx] = val;
+          val += in_val;
+        } else {
+          val += in_val;
+          out_data[idx] = val;
+        }
+      }
+    }
+  }
+
+  return DenseElementsAttr::get(result_type, llvm::ArrayRef<T>(out_data));
+}
 
 //===----------------------------------------------------------------------===//
 // TensorFlowLiteDialect
@@ -745,6 +787,14 @@ inline bool IsTrailingDimensions(ArrayRef<int64_t> a, ArrayRef<int64_t> b) {
 inline bool IsF32ShapedType(Type t) {
   if (auto shaped_type = mlir::dyn_cast_or_null<ShapedType>(t)) {
     return shaped_type.getElementType().isF32();
+  }
+  return false;
+}
+
+// Returns true if it is a shaped type of f16 elements.
+inline bool IsF16ShapedType(Type t) {
+  if (auto shaped_type = mlir::dyn_cast_or_null<ShapedType>(t)) {
+    return shaped_type.getElementType().isF16();
   }
   return false;
 }
@@ -1123,7 +1173,8 @@ Attribute ConstFoldBinaryOp(
 /// "tfl.logical_not".
 Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
                            llvm::function_ref<APFloat(APFloat)> calculate) {
-  assert(IsF32ShapedType(result_type) || IsBF16ShapedType(result_type));
+  assert(IsF32ShapedType(result_type) || IsF16ShapedType(result_type) ||
+         IsBF16ShapedType(result_type));
   auto result_shape_type = mlir::cast<ShapedType>(result_type);
 
   if (!result_shape_type.hasStaticShape()) return {};
@@ -2758,20 +2809,8 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   } else if (auto dense_resource_elements =
                  mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
                      operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      auto key = dense_resource_elements.getRawHandle().getKey();
-      if (getInput().hasOneUse()) {
-        return DenseResourceElementsAttr::get(result_type, key,
-                                              std::move(*blob));
-      }
-      auto new_blob = mlir::HeapAsmResourceBlob::allocate(
-          blob->getData().size(), /*align=*/64, true);
-      memcpy(const_cast<char*>(new_blob.getData().data()),
-             blob->getData().data(), blob->getData().size());
-      return DenseResourceElementsAttr::get(result_type, key,
-                                            std::move(new_blob));
-    }
+    return DenseResourceElementsAttr::get(
+        result_type, dense_resource_elements.getRawHandle());
   }
 
   return nullptr;
@@ -2900,6 +2939,37 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
       output_ty = RankedTensorType::getChecked(input.getLoc(), output_ty_shape,
                                                new_element_type);
       return success();
+    }
+  }
+  if (quant::UniformQuantizedSubChannelType sub_channel_quant =
+          dyn_cast_or_null<quant::UniformQuantizedSubChannelType>(element_ty)) {
+    if (!sub_channel_quant.getQuantizedDimensions().empty()) {
+      int32_t input_quant_dim = sub_channel_quant.getQuantizedDimensions()[0];
+      auto input_shape = mlir::cast<ShapedType>(input.getType()).getShape();
+      absl::StatusOr<int32_t> new_quant_dim = GetQuantDimensionAfterReshape(
+          input_shape, output_ty_shape, input_quant_dim);
+      if (!new_quant_dim.ok()) return failure();
+      if (*new_quant_dim != input_quant_dim) {
+        llvm::SmallVector<int32_t> new_quant_dims(
+            sub_channel_quant.getQuantizedDimensions().begin(),
+            sub_channel_quant.getQuantizedDimensions().end());
+        new_quant_dims[0] = *new_quant_dim;
+        quant::UniformQuantizedSubChannelType new_element_type =
+            mlir::quant::UniformQuantizedSubChannelType::getChecked(
+                [&]() { return mlir::emitError(input.getLoc()); },
+                sub_channel_quant.getFlags(),
+                sub_channel_quant.getStorageType(),
+                sub_channel_quant.getExpressedType(),
+                sub_channel_quant.getScales(),
+                sub_channel_quant.getZeroPoints(), new_quant_dims,
+                sub_channel_quant.getBlockSizes(),
+                sub_channel_quant.getStorageTypeMin(),
+                sub_channel_quant.getStorageTypeMax());
+
+        output_ty = RankedTensorType::getChecked(
+            input.getLoc(), output_ty_shape, new_element_type);
+        return success();
+      }
     }
   }
   output_ty = tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
@@ -3942,8 +4012,10 @@ OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
 
   auto operands = adaptor.getOperands();
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/f16/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsF16ShapedType(result_type) &&
+      !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
@@ -3958,13 +4030,22 @@ OpFoldResult SinOp::fold(FoldAdaptor adaptor) {
 
   auto operands = adaptor.getOperands();
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/f16/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsF16ShapedType(result_type) &&
+      !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat {
+    bool loseInfo;
+    const llvm::fltSemantics& original_float_semantics = value.getSemantics();
+    value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
+                  &loseInfo);
     float f = value.convertToFloat();
     float result = std::sin(f);
-    return APFloat(result);
+    APFloat ap_result(result);
+    ap_result.convert(original_float_semantics, APFloat::rmNearestTiesToEven,
+                      &loseInfo);
+    return ap_result;
   };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
@@ -3978,13 +4059,22 @@ OpFoldResult CosOp::fold(FoldAdaptor adaptor) {
 
   auto operands = adaptor.getOperands();
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/f16/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsF16ShapedType(result_type) &&
+      !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat {
+    bool loseInfo;
+    const llvm::fltSemantics& original_float_semantics = value.getSemantics();
+    value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
+                  &loseInfo);
     float f = value.convertToFloat();
     float result = std::cos(f);
-    return APFloat(result);
+    APFloat ap_result(result);
+    ap_result.convert(original_float_semantics, APFloat::rmNearestTiesToEven,
+                      &loseInfo);
+    return ap_result;
   };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
@@ -5075,7 +5165,6 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
     }
   }
 }
-
 }  // namespace
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -5118,6 +5207,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     output_shape.push_back(input_shape[perms[i]]);
   }
 
+  const int bit_width = input_tensor.getElementType().getIntOrFloatBitWidth();
+
   if (auto dense_elements =
           mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0])) {
     // If the input tensor values are splat, then it has exactly one value.
@@ -5128,10 +5219,9 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     }
 
     // MLIR implementation pads elements < 8 bits to 8 bits and pads non byte
-    // aligned to the nearest byte. So this is allowed.
+    // aligned to the nearest byte.
     const char* raw_input = dense_elements.getRawData().data();
-    const int element_byte_size =
-        dense_elements.getElementType().getIntOrFloatBitWidth() / 8;
+    const int element_byte_size = std::max(1, bit_width / 8);
 
     // Hold current ND index in input tensor when computing
     // permutation.
@@ -5156,43 +5246,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
         RankedTensorType::get(output_shape, input_tensor.getElementType());
     return DenseElementsAttr::getFromRawBuffer(result_type, raw_output_arr);
 
-  } else if (auto dense_resource_elements =
-                 mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
-                     operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      const int element_byte_size =
-          input_tensor.getElementType().getIntOrFloatBitWidth() / 8;
-
-      // Hold current ND index in input tensor when computing
-      // permutation.
-      llvm::SmallVector<uint64_t> current_input_index(input_type.getRank());
-
-      // Allocate raw data and retrieve address of the first char in its raw
-      // buffer.
-      auto result_type =
-          RankedTensorType::get(output_shape, input_tensor.getElementType());
-      auto raw_output_blob =
-          mlir::HeapAsmResourceBlob::allocate(GetSizeInBytes(result_type),
-                                              /*align=*/64,
-                                              /*dataIsMutable=*/true);
-      ArrayRef<char> data = raw_output_blob.getDataAs<char>();
-      llvm::MutableArrayRef<char> raw_output_arr = mlir::MutableArrayRef<char>(
-          const_cast<char*>(data.data()), data.size());
-      char* raw_output = (char*)raw_output_arr.data();
-      const char* raw_input = blob->getData().data();
-      if (raw_input != nullptr) {
-        static absl::Mutex compute_permutation_mutex(absl::kConstInit);
-        absl::MutexLock lock(&compute_permutation_mutex);
-        // Compute the result and write to `raw_output`.
-        ComputePermutation(perms, output_shape, raw_input, element_byte_size,
-                           /*current_axis=*/0, raw_output, current_input_index,
-                           input_type);
-        return DenseResourceElementsAttr::get(result_type,
-                                              "tfl_transpose_op_fold_result",
-                                              std::move(raw_output_blob));
-      }
-    }
+  } else if (mlir::isa<DenseResourceElementsAttr>(operands[0])) {
+    return nullptr;
   }
 
   return nullptr;
@@ -5335,7 +5390,7 @@ void IfOp::getSuccessorRegions(RegionBranchPoint point,
                                SmallVectorImpl<RegionSuccessor>& regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.push_back(RegionSuccessor::parent());
+    regions.push_back(RegionSuccessor(getOperation()));
     return;
   }
 
@@ -5371,7 +5426,7 @@ void IfOp::getEntrySuccessorRegions(ArrayRef<Attribute> operands,
 }
 
 mlir::ValueRange IfOp::getSuccessorInputs(RegionSuccessor successor) {
-  return successor.isParent() ? getOperation()->getResults() : ValueRange();
+  return successor.isOperation() ? getOperation()->getResults() : ValueRange();
 }
 
 //===----------------------------------------------------------------------===//
@@ -5559,6 +5614,53 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
 }
 
 //===----------------------------------------------------------------------===//
+// CumsumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CumsumOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto input = adaptor.getInput();
+  auto axis = adaptor.getAxis();
+  if (!input || !axis) return nullptr;
+
+  auto input_elements = mlir::dyn_cast<DenseElementsAttr>(input);
+  if (!input_elements) return nullptr;
+
+  auto axis_elements = mlir::dyn_cast<DenseIntElementsAttr>(axis);
+  if (!axis_elements || axis_elements.getNumElements() != 1) return nullptr;
+  int64_t axis_val = axis_elements.getValues<APInt>()[0].getSExtValue();
+
+  auto input_type = mlir::cast<ShapedType>(getInput().getType());
+  if (!input_type.hasRank()) return nullptr;
+  int rank = input_type.getRank();
+  if (axis_val < 0) {
+    axis_val += rank;
+  }
+  if (axis_val < 0 || axis_val >= rank) return nullptr;
+
+  auto result_type = mlir::cast<ShapedType>(getType());
+  if (!result_type.hasStaticShape()) return nullptr;
+
+  bool exclusive = adaptor.getExclusive();
+  bool reverse = adaptor.getReverse();
+
+  Type elem_type = input_type.getElementType();
+  if (elem_type.isF32()) {
+    return ConstFoldCumsumOp<float>(result_type, input_elements, axis_val,
+                                    exclusive, reverse);
+  } else if (elem_type.isInteger(32)) {
+    return ConstFoldCumsumOp<int32_t>(result_type, input_elements, axis_val,
+                                      exclusive, reverse);
+  } else if (elem_type.isInteger(64)) {
+    return ConstFoldCumsumOp<int64_t>(result_type, input_elements, axis_val,
+                                      exclusive, reverse);
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // LogisticOp
 //===----------------------------------------------------------------------===//
 
@@ -5572,6 +5674,22 @@ int64_t LogisticOp::GetArithmeticCount(Operation* op) {
     return 64 * count;
 
   return -1;
+}
+
+OpFoldResult LogisticOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto operands = adaptor.getOperands();
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = 1.0f / (1.0f + std::exp(-f));
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
 
 //===----------------------------------------------------------------------===//
@@ -6075,7 +6193,16 @@ OpFoldResult BitcastOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult DynamicUpdateSliceOp::fold(FoldAdaptor) {
-  // Check if update replaces the whole tensor, meaning operand and update has
+  // Do not fold if operand 0 is from graph input and return value is to graph
+  // output.
+  if (llvm::isa<mlir::BlockArgument>(getOperand()) &&
+      llvm::any_of(getResult().getUsers(), [](Operation* user) {
+        return llvm::isa<mlir::func::ReturnOp>(user);
+      })) {
+    return {};
+  }
+
+  // Checkg if update replaces the whole tensor, meaning operand and update has
   // the same shape and all start indices are zero.
   DenseIntElementsAttr indices_attr;
   if (matchPattern(getStartIndices(), m_Constant(&indices_attr)) &&

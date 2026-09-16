@@ -1,0 +1,49 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "test_lib",
+    testonly = True,
+    srcs = ["test_lib.cc"],
+    hdrs = ["test_lib.h"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/pjrt:pjrt_client",
+        "//xla/tests:aot_interception_pjrt_client",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:pjrt_client_registry",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "test_lib_test",
+    srcs = ["test_lib_test.cc"],
+    data = ["//xla/tests/aot_compatibility_experimental/gpu:test_dummy_test_data"],
+    tags = ["no_oss"],
+    deps = [
+        ":test_lib",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/service/cpu:executable_proto_cc",
+        "//xla/tests:aot_interception_pjrt_client",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/util/split_proto:human_readable_aot_executable_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@tsl//tsl/platform:path",
+    ],
+)

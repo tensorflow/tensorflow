@@ -423,16 +423,17 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   StreamErrorReporter error_reporter(&out_stream);
   std::unique_ptr<FlatBufferModel> fb_model;
   if (input_is_filepath) {
-    fb_model = FlatBufferModel::BuildFromFile(model_file_or_buffer.c_str(),
-                                              &error_reporter);
+    fb_model = FlatBufferModel::VerifyAndBuildFromFile(
+        model_file_or_buffer.c_str(), /*extra_verifier=*/nullptr,
+        &error_reporter);
     if (!fb_model) {
       out_stream << "Failed to mmap model " << model_file_or_buffer;
       return out_stream.str();
     }
   } else {
-    fb_model = FlatBufferModel::BuildFromBuffer(model_file_or_buffer.c_str(),
-                                                model_file_or_buffer.size(),
-                                                &error_reporter);
+    fb_model = FlatBufferModel::VerifyAndBuildFromBuffer(
+        model_file_or_buffer.c_str(), model_file_or_buffer.size(),
+        /*extra_verifier=*/nullptr, &error_reporter);
     if (!fb_model) {
       out_stream << "Failed to mmap the given model buffer.";
       return out_stream.str();

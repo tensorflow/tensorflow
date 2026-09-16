@@ -17,8 +17,11 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_EXPERIMENTAL_RESHAPE_ANALYSIS_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
@@ -51,6 +54,11 @@ struct DimensionRange {
   }
 
   int64_t end() const { return start + count - 1; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DimensionRange& range) {
+    absl::Format(&sink, "[%d, %d]", range.start, range.count);
+  }
 };
 
 // Represents a "minimal" reshape (subshape from reshape), i.e. a reshape that
@@ -65,6 +73,13 @@ struct MinimalReshape {
   bool operator==(const MinimalReshape& other) const {
     return input_dim_ids == other.input_dim_ids &&
            output_dim_ids == other.output_dim_ids && category == other.category;
+  }
+
+  std::string ToString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const MinimalReshape& reshape) {
+    sink.Append(reshape.ToString());
   }
 };
 
@@ -92,6 +107,12 @@ MinimalReshapeCategory GetMinimalReshapeCategory(
 // 2. [1, 8, 1] -> [8] (Category: kDecreaseRank)
 std::vector<MinimalReshape> GetMinimalReshapes(const Shape& input_shape,
                                                const Shape& output_shape);
+
+// Extracts indices of non-trivial dimensions from a span of dimensions.
+//
+// For example, for shape [1,3,5,1,7,1,11], it returns [1, 2, 4, 6].
+llvm::SmallVector<int64_t> PositionsOfNonTrivialDims(
+    absl::Span<const int64_t> dimensions);
 
 }  // namespace xla::gpu::experimental
 

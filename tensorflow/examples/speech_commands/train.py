@@ -111,10 +111,11 @@ def main(_):
   training_steps_list = list(map(int, FLAGS.how_many_training_steps.split(',')))
   learning_rates_list = list(map(float, FLAGS.learning_rate.split(',')))
   if len(training_steps_list) != len(learning_rates_list):
-    raise Exception(
+    raise ValueError(
         '--how_many_training_steps and --learning_rate must be equal length '
-        'lists, but are %d and %d long instead' % (len(training_steps_list),
-                                                   len(learning_rates_list)))
+        'lists, but are %d and %d long instead'
+        % (len(training_steps_list), len(learning_rates_list))
+    )
 
   input_placeholder = tf.compat.v1.placeholder(
       tf.float32, [None, fingerprint_size], name='fingerprint_input')
@@ -171,7 +172,7 @@ def main(_):
           learning_rate_input, .9,
           use_nesterov=True).minimize(cross_entropy_mean)
     else:
-      raise Exception('Invalid Optimizer')
+      raise ValueError('Invalid Optimizer')
   predicted_indices = tf.argmax(input=logits, axis=1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
   confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,

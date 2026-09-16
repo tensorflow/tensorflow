@@ -14,10 +14,14 @@
 # ==============================================================================
 """Cancellation support for eager execution."""
 
+import functools
+import threading
+from typing import Any, Callable, Optional
+
 from tensorflow.python import pywrap_tfe
 
 
-class CancellationManager(object):
+class CancellationManager:
   """A mechanism for cancelling blocking computation."""
 
   __slots__ = ["_impl"]
@@ -34,17 +38,34 @@ class CancellationManager(object):
     """Cancels blocking operations that have been registered with this object."""
     pywrap_tfe.TFE_CancellationManagerStartCancel(self._impl)
 
-  def get_cancelable_function(self, concrete_function):
+  def get_cancelable_function(
+      self, concrete_function: Callable[..., Any]
+  ) -> Callable[..., Any]:
+    """Wraps a ConcreteFunction to execute within this cancellation manager's context.
+
+    Args:
+      concrete_function: The ConcreteFunction to wrap.
+
+    Returns:
+      A callable that executes the concrete_function under this cancellation
+      context.
+    """
+
+    @functools.wraps(concrete_function)
     def cancellable(*args, **kwargs):
       with CancellationManagerContext(self):
         return concrete_function(*args, **kwargs)
+
     return cancellable
 
-_active_context = None
+
+_active_context = threading.local()
 
 
-def context():
-  return _active_context
+def context() -> Optional[CancellationManager]:
+  """Returns the CancellationManager active in the current thread, or None."""
+  stack = getattr(_active_context, "manager_stack", None)
+  return stack[-1] if stack else None
 
 
 class CancellationManagerContext:
@@ -54,9 +75,9 @@ class CancellationManagerContext:
     self._cancellation_manager = cancellation_manager
 
   def __enter__(self):
-    global _active_context
-    _active_context = self._cancellation_manager
+    if not hasattr(_active_context, "manager_stack"):
+      _active_context.manager_stack = []
+    _active_context.manager_stack.append(self._cancellation_manager)
 
   def __exit__(self, exc_type, exc_value, exc_tb):
-    global _active_context
-    _active_context = None
+    _active_context.manager_stack.pop()

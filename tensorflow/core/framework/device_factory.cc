@@ -133,14 +133,14 @@ absl::Status DeviceFactory::ListAllPhysicalDevices(
   // TODO(b/183974121): Consider merge the logic into the loop below.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "CPU Factory not registered. Did you link in threadpool_device?");
   }
 
   size_t init_size = devices->size();
   TF_RETURN_IF_ERROR(cpu_factory->ListPhysicalDevices(devices));
   if (devices->size() == init_size) {
-    return errors::NotFound("No CPU devices are available in this process");
+    return absl::NotFoundError("No CPU devices are available in this process");
   }
 
   // Then the rest (including GPU).
@@ -170,15 +170,15 @@ absl::Status DeviceFactory::ListPluggablePhysicalDevices(
 absl::Status DeviceFactory::GetAnyDeviceDetails(
     int device_index, std::unordered_map<std::string, std::string>* details) {
   if (device_index < 0) {
-    return errors::InvalidArgument("Device index out of bounds: ",
-                                   device_index);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Device index out of bounds: ", device_index));
   }
   const int orig_device_index = device_index;
 
   // Iterate over devices in the same way as in ListAllPhysicalDevices.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "CPU Factory not registered. Did you link in threadpool_device?");
   }
 
@@ -206,8 +206,8 @@ absl::Status DeviceFactory::GetAnyDeviceDetails(
     }
   }
 
-  return errors::InvalidArgument("Device index out of bounds: ",
-                                 orig_device_index);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Device index out of bounds: ", orig_device_index));
 }
 
 absl::Status DeviceFactory::AddCpuDevices(
@@ -215,13 +215,13 @@ absl::Status DeviceFactory::AddCpuDevices(
     std::vector<std::unique_ptr<Device>>* devices) {
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "CPU Factory not registered. Did you link in threadpool_device?");
   }
   size_t init_size = devices->size();
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(options, name_prefix, devices));
   if (devices->size() == init_size) {
-    return errors::NotFound("No CPU devices are available in this process");
+    return absl::NotFoundError("No CPU devices are available in this process");
   }
 
   return absl::OkStatus();
@@ -238,7 +238,7 @@ absl::Status DeviceFactory::AddDevices(
   for (const auto& device_filter : options.config.device_filters()) {
     DeviceNameUtils::ParsedName parsed;
     if (!DeviceNameUtils::ParseFullOrLocalName(device_filter, &parsed)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat("Invalid device filter: ", device_filter));
     }
     if (parsed.has_type) {

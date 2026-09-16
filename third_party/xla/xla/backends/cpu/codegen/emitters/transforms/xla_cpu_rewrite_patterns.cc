@@ -256,6 +256,14 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
         rewriter, op.getLoc(), func_type.getInput(0), op.getArgument(0));
     op.getArgument(0).replaceAllUsesExcept(cast.getResult(0), cast);
     op.setFunctionType(rewriter.getFunctionType(new_operands, {ptr}));
+
+    // Annotations for the kernel call frame. Must match the annotations in
+    // KernelApiIrBuilder::SetKernelFunctionAttributes.
+    op.setArgAttr(0, mlir::LLVM::LLVMDialect::getNoUndefAttrName(),
+                  rewriter.getUnitAttr());
+    op.setArgAttr(0, mlir::LLVM::LLVMDialect::getNonNullAttrName(),
+                  rewriter.getUnitAttr());
+
     auto& entry = op->getRegion(0).front();
     for (auto [arg, arg_type] : llvm::zip(entry.getArguments(), new_operands)) {
       arg.setType(arg_type);

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "google/protobuf/descriptor.h"
@@ -79,8 +80,8 @@ GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues() {
 
 absl::Status InitializeMissingFieldsFromXLAFlags(
     GpuCompilationEnvironment& env) {
-  TF_ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
-                      CreateGpuCompEnvFromEnvVar());
+  ABSL_ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
+                   CreateGpuCompEnvFromEnvVar());
 
   auto default_env = CreateGpuCompEnvWithDefaultValues();
 

@@ -17,36 +17,30 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
 
 class MatmulTestWithCublas
-    : public HloPjRtInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase>,
-      public ::testing::WithParamInterface<bool> {
+    : public HloInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtInterpreterReferenceMixin<
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
         gpu::HloPjRtGpuTestBase>::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cublaslt(use_cublas_lt_);
     return debug_options;
   }
   void SetUp() override {
     auto dbg = GetDebugOptionsForTest();
-    if (dbg.xla_gpu_enable_cublaslt()) {
-      const auto& gpu_cc = device_description().gpu_compute_capability();
-      if (auto* rocm = gpu_cc.rocm_compute_capability();
-          rocm != nullptr && !rocm->has_hipblaslt()) {
-        GTEST_SKIP() << "No hipblas-lt support on this architecture!";
-      }
+    const auto& gpu_cc = device_description().gpu_compute_capability();
+    if (auto* rocm = gpu_cc.rocm_compute_capability();
+        rocm != nullptr && !rocm->has_hipblaslt()) {
+      GTEST_SKIP() << "No hipblas-lt support on this architecture!";
     }
   }
-
- private:
-  const bool use_cublas_lt_{GetParam()};
 };
 
-TEST_P(MatmulTestWithCublas, GemmRewriter_NonCanonicalDots) {
+TEST_F(MatmulTestWithCublas, GemmRewriter_NonCanonicalDots) {
   const char* module_str = R"(
     HloModule m
     a {
@@ -69,7 +63,7 @@ TEST_P(MatmulTestWithCublas, GemmRewriter_NonCanonicalDots) {
   EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
 }
 
-TEST_P(MatmulTestWithCublas, GemmRewriter_RegressionTestF64) {
+TEST_F(MatmulTestWithCublas, GemmRewriter_RegressionTestF64) {
   const char* module_str = R"(
 HloModule GeneralMatMulActivation.7, entry_computation_layout={(f64[2,2,2]{2,1,0}, f64[2,2,2]{2,1,0})->f64[2,2,2]{2,1,0}}
 
@@ -88,7 +82,7 @@ ENTRY GeneralMatMulActivation.7 {
 // There was an issue where the compilation process of an Inverse operation was
 // resulting in a cached cuBLASLt matmul plan which was incorrectly fetched at
 // the time of the Matmul operation
-TEST_P(MatmulTestWithCublas, InverseAndMatmul) {
+TEST_F(MatmulTestWithCublas, InverseAndMatmul) {
   const char* inverse_module_str = R"(
   HloModule MatrixInverse.26, entry_computation_layout={(f32[2,6,2,2]{3,2,1,0})->f32[2,6,2,2]{3,2,1,0}}
 
@@ -138,9 +132,6 @@ TEST_P(MatmulTestWithCublas, InverseAndMatmul) {
   EXPECT_TRUE(RunAndCompare(inverse_module_str, ErrorSpec{1e-4, 1e-4}));
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
 }
-
-INSTANTIATE_TEST_SUITE_P(UsingCublasLt, MatmulTestWithCublas,
-                         ::testing::Bool());
 
 }  // namespace
 }  // namespace xla

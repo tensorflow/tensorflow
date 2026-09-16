@@ -1326,7 +1326,8 @@ absl::Status BinaryOpTransposer::MaybeReshapeVectorFanin(
     auto* fanin_node = fanin.node_view();
     const auto* output_shape_attr = fanin_node->GetAttr(kAttrOutputShape);
     if (output_shape_attr == nullptr) {
-      return errors::InvalidArgument("Missing attribute ", kAttrOutputShape);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing attribute ", kAttrOutputShape));
     }
     int vector_size =
         output_shape_attr->list().shape(fanin.index()).dim(0).size();
@@ -1337,7 +1338,8 @@ absl::Status BinaryOpTransposer::MaybeReshapeVectorFanin(
                           fanin_node->GetName(), rank));
     const auto* t_attr = node->GetAttr(kAttrT);
     if (t_attr == nullptr) {
-      return errors::InvalidArgument("Missing attribute ", kAttrT);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing attribute ", kAttrT));
     }
     TF_RETURN_IF_ERROR(
         AddNodeReshape(mutation, reshape_node_name, node_device,
@@ -1835,7 +1837,8 @@ absl::Status SqueezeTransposer::UpdateSqueezeDims(
     TransposeContext* context, utils::MutableNodeView* node) {
   const auto* squeeze_dims_attr = node->GetAttr(kAttrSqueezeDims);
   if (squeeze_dims_attr == nullptr) {
-    return errors::InvalidArgument("Missing attribute ", kAttrSqueezeDims);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing attribute ", kAttrSqueezeDims));
   }
   const int num_input_dims = context->src_format.length();
   const int min_squeeze_dim = -num_input_dims;
@@ -1845,10 +1848,10 @@ absl::Status SqueezeTransposer::UpdateSqueezeDims(
   for (int i = 0; i < squeeze_dims_size; ++i) {
     int dim = squeeze_dims_attr->list().i(i);
     if (dim < min_squeeze_dim || dim >= num_input_dims) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Attribute '", kAttrSqueezeDims, "' contains out of range index '",
           dim, "', index must be between [", min_squeeze_dim, ", ",
-          num_input_dims, ")");
+          num_input_dims, ")"));
     }
     if (dim < 0) {
       dim += num_input_dims;
@@ -1908,7 +1911,8 @@ absl::Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
   const auto* mask_attr = node->GetAttr(mask);
   const int mask_i = mask_attr != nullptr ? mask_attr->i() : 0;
   if (mask_i < 0 || mask_i > 15) {
-    return errors::InvalidArgument("invalid mask value: ", mask_i);
+    return absl::InvalidArgumentError(
+        absl::StrCat("invalid mask value: ", mask_i));
   }
   int result = 0;
   for (int i = 0, end = context->src_to_dst.size(); i < end; i++) {

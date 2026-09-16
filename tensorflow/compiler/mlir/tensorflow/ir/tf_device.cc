@@ -151,7 +151,7 @@ LogicalResult ClusterFuncOp::verifySymbolUses(
 }
 
 void ClusterFuncOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-  SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+  SymbolRefAttr calleeAttr = cast<SymbolRefAttr>(callee);
   return setFuncAttr(cast<FlatSymbolRefAttr>(calleeAttr));
 }
 

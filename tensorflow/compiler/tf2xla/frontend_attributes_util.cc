@@ -29,7 +29,7 @@ GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
   }
   xla::FrontendAttributes attributes;
   if (!attributes.ParseFromString(attr->s())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Experimental _XlaFrontendAttributes attribute was not a valid encoded "
         "xla::FrontendAttributes proto.");
   }

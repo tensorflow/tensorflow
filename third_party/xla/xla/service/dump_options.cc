@@ -16,12 +16,20 @@ limitations under the License.
 #include "xla/service/dump_options.h"
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 
+#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -31,16 +39,37 @@ limitations under the License.
 
 namespace xla {
 
+namespace {
+
+// Process-cached compiled RE2s. The patterns come from flags, so the set
+// of distinct values is tiny; entries are never evicted.
+const RE2* GetCachedRE2(absl::string_view pattern) {
+  static absl::Mutex mu(absl::kConstInit);
+  static absl::NoDestructor<
+      absl::flat_hash_map<std::string, std::unique_ptr<RE2>>>
+      cache ABSL_GUARDED_BY(mu);
+  absl::MutexLock lock(mu);
+  auto it = cache->find(pattern);
+  if (it == cache->end()) {
+    it = cache->emplace(pattern, std::make_unique<RE2>(pattern)).first;
+  }
+  return it->second.get();
+}
+
+}  // namespace
+
 DumpOptions DumpOptions::Build(const DebugOptions& opts,
                                absl::string_view module_name) {
   DumpOptions dump_options(opts);
   if (dump_options.dump_hlo_to_subfolder && !dump_options.dump_to.empty() &&
       !dump_options.dumping_to_stdout() && !module_name.empty()) {
-    std::string pid_hostname_dir = absl::StrFormat(
-        "%s_%d", tsl::port::Hostname(), tsl::Env::Default()->GetProcessId());
+    // Hostname and pid are process constants; computed once.
+    static const absl::NoDestructor<std::string> pid_hostname_dir(
+        SanitizeFileName(absl::StrFormat("%s_%d", tsl::port::Hostname(),
+                                         tsl::Env::Default()->GetProcessId())));
     dump_options.dump_to = tsl::io::JoinPath(
         dump_options.dump_to, SanitizeFileName(std::string(module_name)),
-        SanitizeFileName(pid_hostname_dir));
+        *pid_hostname_dir);
   }
   return dump_options;
 }
@@ -49,6 +78,7 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
     : dump_to(opts.xla_dump_to()),
       dump_as_text(opts.xla_dump_hlo_as_text()),
       dump_as_proto(opts.xla_dump_hlo_as_proto()),
+      dump_as_riegeli(opts.xla_dump_hlo_as_riegeli()),
       dump_as_dot(opts.xla_dump_hlo_as_dot()),
       dump_as_html(opts.xla_dump_hlo_as_html()),
       dump_as_url(opts.xla_dump_hlo_as_url()),
@@ -70,8 +100,8 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
   // Did the user specify an explicit format for dumping?
   bool output_format_other_than_url_specified =
       opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
-      opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-      opts.xla_dump_hlo_snapshots() ||
+      opts.xla_dump_hlo_as_riegeli() || opts.xla_dump_hlo_as_dot() ||
+      opts.xla_dump_hlo_as_html() || opts.xla_dump_hlo_snapshots() ||
       opts.xla_dump_hlo_unoptimized_snapshots();
   bool output_format_specified =
       output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
@@ -102,11 +132,10 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
   //
   // Otherwise, don't dump any HLO modules.
   if (!opts.xla_dump_hlo_module_re().empty()) {
-    // RE2 object is not copyable, and we can't capture "by move", so we
-    // resort to this hack.
-    std::string pattern = opts.xla_dump_hlo_module_re();
-    should_dump_module = [pattern](absl::string_view module_name) {
-      return RE2::PartialMatch(module_name, pattern);
+    // The cached regex is immutable; the predicate captures a pointer.
+    const RE2* re = GetCachedRE2(opts.xla_dump_hlo_module_re());
+    should_dump_module = [re](absl::string_view module_name) {
+      return RE2::PartialMatch(module_name, *re);
     };
   } else if (!opts.xla_dump_hlo_pass_re().empty() ||
              !opts.xla_dump_emitter_re().empty() ||
@@ -119,18 +148,18 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
   // Initialize should_dump_pass.  This one is easy: We only dump per-pass
   // data if the user asked for it explicitly.
   if (!opts.xla_dump_hlo_pass_re().empty()) {
-    std::string pattern = opts.xla_dump_hlo_pass_re();
-    should_dump_pass = [pattern](absl::string_view pass_name) {
-      return RE2::PartialMatch(pass_name, pattern);
+    const RE2* re = GetCachedRE2(opts.xla_dump_hlo_pass_re());
+    should_dump_pass = [re](absl::string_view pass_name) {
+      return RE2::PartialMatch(pass_name, *re);
     };
   } else {
     should_dump_pass = [](absl::string_view) { return false; };
   }
 
   if (!opts.xla_dump_emitter_re().empty()) {
-    std::string pattern = opts.xla_dump_emitter_re();
-    should_dump_emitter = [pattern](absl::string_view emitter_name) {
-      return RE2::PartialMatch(emitter_name, pattern);
+    const RE2* re = GetCachedRE2(opts.xla_dump_emitter_re());
+    should_dump_emitter = [re](absl::string_view emitter_name) {
+      return RE2::PartialMatch(emitter_name, *re);
     };
   } else {
     should_dump_emitter = [](absl::string_view) { return false; };
@@ -140,9 +169,9 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
   // all pipelines. Otherwise dump only those pipelines that user asked for
   // explicitly.
   if (!opts.xla_dump_hlo_pipeline_re().empty()) {
-    std::string pattern = opts.xla_dump_hlo_pipeline_re();
-    should_dump_pipeline = [pattern](absl::string_view pipeline_name) {
-      return RE2::PartialMatch(pipeline_name, pattern);
+    const RE2* re = GetCachedRE2(opts.xla_dump_hlo_pipeline_re());
+    should_dump_pipeline = [re](absl::string_view pipeline_name) {
+      return RE2::PartialMatch(pipeline_name, *re);
     };
   } else {
     should_dump_pipeline = [](absl::string_view) { return true; };
@@ -151,9 +180,8 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
   // Output dirs "sponge" and "test_undeclared_outputs_dir" (case-insensitive)
   // have a special meaning: Dump into the directory specified by the
   // environment variable TEST_UNDECLARED_OUTPUTS_DIR.
-  std::string dump_to_lower = absl::AsciiStrToLower(dump_to);
-  if (dump_to_lower == "sponge" ||
-      dump_to_lower == "test_undeclared_outputs_dir") {
+  if (absl::EqualsIgnoreCase(dump_to, "sponge") ||
+      absl::EqualsIgnoreCase(dump_to, "test_undeclared_outputs_dir")) {
     if (!tsl::io::GetTestUndeclaredOutputsDir(&dump_to)) {
       LOG(ERROR) << "--xla_dump_to=" << opts.xla_dump_to()
                  << ", but environment variable TEST_UNDECLARED_OUTPUTS_DIR "

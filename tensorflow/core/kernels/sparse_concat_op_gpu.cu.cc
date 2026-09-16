@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_concat_op.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -145,10 +147,17 @@ struct SparseConcatFunctor<GPUDevice, T> {
     for (int i = 0; i < N; ++i) {
       ind_ptrs.Set(i, inds[i].matrix<int64_t>().data());
       val_ptrs.Set(i, vals[i].vec<T>().data());
-      nnz_sum += inds[i].dim_size(0);
+      int64_t next_nnz_sum = AddWithoutOverflow(nnz_sum, inds[i].dim_size(0));
+      OP_REQUIRES(context, next_nnz_sum >= 0,
+                  absl::InvalidArgumentError("nnz overflowed"));
+      nnz_sum = next_nnz_sum;
       nnz_scan.Set(i + 1, nnz_sum);
       const TensorShape current_shape(shapes[i].vec<int64_t>());
-      concat_size_sum += current_shape.dim_size(concat_dim);
+      int64_t next_concat_size_sum = AddWithoutOverflow(
+          concat_size_sum, current_shape.dim_size(concat_dim));
+      OP_REQUIRES(context, next_concat_size_sum >= 0,
+                  absl::InvalidArgumentError("concat_size overflowed"));
+      concat_size_sum = next_concat_size_sum;
       concat_size_scan.Set(i + 1, concat_size_sum);
     }
     OP_REQUIRES_OK(context, ind_ptrs.Finalize());
@@ -169,7 +178,11 @@ struct SparseConcatFunctor<GPUDevice, T> {
         int64_t output_dim_size =
             j == concat_dim ? output_concat_size : input_shape0.dim_size(j);
         output_shape.Set(j, output_dim_size);
-        output_dense_elements *= output_dim_size;
+        int64_t next_dense_elements =
+            MultiplyWithoutOverflow(output_dense_elements, output_dim_size);
+        OP_REQUIRES(context, next_dense_elements >= 0,
+                    absl::InvalidArgumentError("dense_elements overflowed"));
+        output_dense_elements = next_dense_elements;
       }
       OP_REQUIRES_OK(context, output_shape.Finalize());
     }

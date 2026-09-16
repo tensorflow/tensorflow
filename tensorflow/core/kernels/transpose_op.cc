@@ -48,13 +48,13 @@ class InvertPermutationOp : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(input.shape()),
-        errors::InvalidArgument("invert_permutation expects a 1D vector."));
+        absl::InvalidArgumentError("invert_permutation expects a 1D vector."));
     auto Tin = input.vec<T>();
     OP_REQUIRES(
         context,
         FastBoundsCheck(Tin.size(), std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("permutation of nonnegative int32s "
-                                "must have <= int32 max elements"));
+        absl::InvalidArgumentError("permutation of nonnegative int32s "
+                                   "must have <= int32 max elements"));
     const T N = static_cast<T>(Tin.size());  // Safe: bounds-checked above.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -131,9 +131,10 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   const Tensor& input = ctx->input(0);
   const Tensor& perm = ctx->input(1);
   // Preliminary validation of sizes.
-  OP_REQUIRES(ctx, TensorShapeUtils::IsVector(perm.shape()),
-              errors::InvalidArgument("perm must be rank 1, got shape ",
-                                      perm.shape().DebugString()));
+  OP_REQUIRES(
+      ctx, TensorShapeUtils::IsVector(perm.shape()),
+      absl::InvalidArgumentError(absl::StrCat("perm must be rank 1, got shape ",
+                                              perm.shape().DebugString())));
 
   // Although Tperm may be an int64 type, an int32 is sufficient to hold
   // dimension range values, so the narrowing here should be safe.
@@ -155,9 +156,9 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
       d += dims;
       permutation[i] = d;
     }
-    OP_REQUIRES(
-        ctx, 0 <= d && d < dims,
-        errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
+    OP_REQUIRES(ctx, 0 <= d && d < dims,
+                absl::InvalidArgumentError(
+                    absl::StrCat(d, " is out of range [0 .. ", dims, ")")));
     bits[d] = true;
     const auto dim_size = input.dim_size(d);
     OP_REQUIRES_OK(ctx, shape.AddDimWithStatus(dim_size));
@@ -166,9 +167,10 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
     }
   }
   for (int i = 0; i < dims; ++i) {
-    OP_REQUIRES(ctx, bits[i],
-                errors::InvalidArgument(i, " is missing from {",
-                                        absl::StrJoin(permutation, ","), "}."));
+    OP_REQUIRES(
+        ctx, bits[i],
+        absl::InvalidArgumentError(absl::StrCat(
+            i, " is missing from {", absl::StrJoin(permutation, ","), "}.")));
   }
 
   // 0-D, 1-D, and identity transposes do nothing.
@@ -179,7 +181,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
                                    input.shape(), permutation)) {
     Tensor output;
     OP_REQUIRES(ctx, output.CopyFrom(input, shape),
-                errors::Unknown("Error reshaping Tensor."));
+                absl::UnknownError("Error reshaping Tensor."));
     ctx->set_output(0, output);
     return;
   }
@@ -226,16 +228,15 @@ TF_CALL_float8_e5m2(REGISTER) TF_CALL_float8_e4m3fn(REGISTER)
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     absl::Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx,
                                              const Tensor& in,
-                                             absl::Span<const int32> perm,
+                                             absl::Span<const int32_t> perm,
                                              Tensor* out) {
   typedef Eigen::GpuDevice GPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<GPUDevice>(), in, perm,
                                    out);
 }
-absl::Status ConjugateTransposeGpuOp::DoTranspose(OpKernelContext* ctx,
-                                                  const Tensor& in,
-                                                  absl::Span<const int32> perm,
-                                                  Tensor* out) {
+absl::Status ConjugateTransposeGpuOp::DoTranspose(
+    OpKernelContext* ctx, const Tensor& in, absl::Span<const int32_t> perm,
+    Tensor* out) {
   typedef Eigen::GpuDevice GPUDevice;
   return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<GPUDevice>(), in,
                                             perm, out);

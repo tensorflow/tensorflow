@@ -23,6 +23,7 @@
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -95,9 +96,8 @@ GrpcServer::CreateFromIfrtClientFactory(
           std::shared_ptr<HostBufferStore> host_buffer_store,
           AttributeMap initialization_data) mutable
           -> absl::StatusOr<std::unique_ptr<BackendInterface>> {
-        TF_ASSIGN_OR_RETURN(
-            auto ifrt_client,
-            ifrt_client_factory(std::move(initialization_data)));
+        ABSL_ASSIGN_OR_RETURN(auto ifrt_client,
+                         ifrt_client_factory(std::move(initialization_data)));
         return IfrtBackend::Create(version, session_id, std::move(ifrt_client),
                                    std::move(host_buffer_store));
       });

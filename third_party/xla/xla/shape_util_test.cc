@@ -243,6 +243,48 @@ TEST(ShapeUtilTest, CompatibleTuples) {
   EXPECT_TRUE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
+TEST(ShapeUtilTest, IsPrefix) {
+  Shape f32_scalar = ShapeUtil::MakeShape(F32, {});
+  Shape s32_scalar = ShapeUtil::MakeShape(S32, {});
+  Shape f32_vector = ShapeUtil::MakeShape(F32, {4});
+
+  // Same shapes
+  EXPECT_TRUE(ShapeUtil::IsPrefix(f32_scalar, f32_scalar));
+
+  // Different non-tuple shapes
+  EXPECT_FALSE(ShapeUtil::IsPrefix(f32_scalar, s32_scalar));
+  EXPECT_FALSE(ShapeUtil::IsPrefix(f32_scalar, f32_vector));
+
+  // Tuples
+  Shape empty_tuple = ShapeUtil::MakeTupleShape({});
+  Shape tuple_f32_scalar = ShapeUtil::MakeTupleShape({f32_scalar});
+  Shape tuple_f32_scalar_f32_vector =
+      ShapeUtil::MakeTupleShape({f32_scalar, f32_vector});
+
+  // Empty tuple is prefix of any tuple
+  EXPECT_TRUE(ShapeUtil::IsPrefix(empty_tuple, tuple_f32_scalar));
+  EXPECT_TRUE(ShapeUtil::IsPrefix(empty_tuple, tuple_f32_scalar_f32_vector));
+
+  // Prefix match
+  EXPECT_TRUE(
+      ShapeUtil::IsPrefix(tuple_f32_scalar, tuple_f32_scalar_f32_vector));
+
+  // Not prefix (larger)
+  EXPECT_FALSE(
+      ShapeUtil::IsPrefix(tuple_f32_scalar_f32_vector, tuple_f32_scalar));
+
+  // Mismatched element in tuple
+  Shape tuple_s32_scalar = ShapeUtil::MakeTupleShape({s32_scalar});
+  EXPECT_FALSE(
+      ShapeUtil::IsPrefix(tuple_s32_scalar, tuple_f32_scalar_f32_vector));
+
+  // Nested tuples
+  Shape nested_tuple1 = ShapeUtil::MakeTupleShape({tuple_f32_scalar});
+  Shape nested_tuple2 =
+      ShapeUtil::MakeTupleShape({tuple_f32_scalar_f32_vector});
+  EXPECT_TRUE(ShapeUtil::IsPrefix(nested_tuple1, nested_tuple2));
+}
+
 TEST(ShapeUtilTest, MakeMaybeTupleShape) {
   Shape s1 = ShapeUtil::MakeValidatedMaybeTupleShape(
                  {ShapeUtil::MakeValidatedShape(F32, {3, 2}).value()})
@@ -1594,6 +1636,17 @@ TEST(ShapeUtilTest, ReorderDimensionsTest) {
                 {0, 2, 1, 3})
                 .ToString(true),
             "f32[16,12,3,17]{2,1,0,3}");
+
+  // Test with a permutation that is not its own inverse.
+  // Input: f32[10, 20, 30]{2, 1, 0}
+  // Permutation: {1, 2, 0}
+  // Expected output: f32[20, 30, 10]{1, 0, 2}
+  EXPECT_EQ(
+      ShapeUtil::ReorderLogicalDimensions(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0}),
+          {1, 2, 0})
+          .ToString(true),
+      "f32[20,30,10]{1,0,2}");
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

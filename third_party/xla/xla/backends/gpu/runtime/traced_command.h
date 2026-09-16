@@ -43,12 +43,11 @@ class TracedCommand : public Command {
       se::CommandBuffer* command_buffer) override;
 
  protected:
-  explicit TracedCommand(CommandType cmd_type);
+  explicit TracedCommand(Thunk::Kind kind);
 
   // Constructor for Thunk subclasses that are also TracedCommands.
   // Preserves the caller's Thunk::Kind and ThunkInfo.
-  TracedCommand(CommandType cmd_type, Thunk::Kind thunk_kind,
-                ThunkInfo thunk_info);
+  TracedCommand(Thunk::Kind thunk_kind, ThunkInfo thunk_info);
 
   // Creates a command buffer by calling a user-provided `trace` function and
   // adds it as a nested command to `command_buffer`. Traced command buffers

@@ -77,6 +77,10 @@ class CachingHloEvaluator : public HloEvaluatorInterface {
     wrapped_->set_custom_call_handler(std::move(handler));
   }
 
+  void set_eval_literal_handler(EvalLiteralHandler handler) override {
+    wrapped_->set_eval_literal_handler(std::move(handler));
+  }
+
  private:
   std::unique_ptr<HloEvaluatorInterface> wrapped_;
   std::string cache_dir_;

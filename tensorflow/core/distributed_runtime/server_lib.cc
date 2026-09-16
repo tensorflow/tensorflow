@@ -61,10 +61,10 @@ absl::Status ServerFactory::GetFactory(const ServerDef& server_def,
     server_names.push_back(server_factory.first);
   }
 
-  return errors::NotFound(
+  return absl::NotFoundError(absl::StrCat(
       "No server factory registered for the given ServerDef: ",
       server_def.DebugString(), "\nThe available server factories are: [ ",
-      absl::StrJoin(server_names, ", "), " ]");
+      absl::StrJoin(server_names, ", "), " ]"));
 }
 
 // Creates a server based on the given `server_def`, and stores it in

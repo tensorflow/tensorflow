@@ -18,14 +18,17 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/cast_bf16_ops_to_f32_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/large_constant_fold_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
@@ -122,9 +125,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
 
-// Creates an instance of the TFLite PropagateQsv pass which propagates scale
-// and zero point (QSV) information through the graph.
-std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQsvPass();
+// Creates an instance of the TFLite PropagateQParams pass which propagates
+// scale and zero point (quantization parameters) through the graph.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQParamsPass();
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateBiasQuantizerPass();
 
@@ -305,7 +308,14 @@ inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
   return Create<CleanupOptimizationBarrierPass>();
 }
 
+// Creates a pass that reduces the rank of tensors.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRankReductionPass();
+
+// Creates a pass that makes TFLite model compatible with ML Drift delegate.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuCompatibilityPass();
+
 #define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
+#define GEN_PASS_DECL_GPUCOMPATIBILITYPASS
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
 #define GEN_PASS_DECL_MODIFYIONODESPASS
@@ -316,6 +326,7 @@ inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
 #define GEN_PASS_DECL_PREPARETFPASS
 #define GEN_PASS_DECL_QUANTIZEPASS
 #define GEN_PASS_DECL_RAISECUSTOMOPSPASS
+#define GEN_PASS_DECL_RANKREDUCTIONPASS
 #define GEN_PASS_DECL_TRIMFUNCTIONSPASS
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
@@ -365,6 +376,8 @@ inline void registerTensorFlowLitePasses() {
   Register<SplitMergedOperandsPass>();
   Register<CleanupOptimizationBarrierPass>();
   Register<DowncastX64Pass>();
+  Register<CastBf16OpsToF32Pass>();
+  Register<LargeConstantFoldPass, LargeConstantFoldPassOptions>();
 
   // Utility Passes
   Register<DenseToDenseResourceElementsPass>();

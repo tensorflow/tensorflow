@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -79,11 +78,6 @@ struct LegalizeDotToDotGeneralPass
 void populateDotToDotGeneralPatterns(mlir::MLIRContext *context,
                                      RewritePatternSet *patterns) {
   patterns->add<DotToDotGeneralPattern>(context);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeDotToDotGeneralPass() {
-  return std::make_unique<LegalizeDotToDotGeneralPass>();
 }
 
 }  // namespace mhlo

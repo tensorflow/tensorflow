@@ -1,15 +1,71 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s --split-input-file \
-// RUN:   --xla-lower-to-llvm-gpu="gpu_device_info='oneapi_compute_capability { architecture: \"bmg\"}'" \
+// RUN:   --xla-gpu-test-to-llvm="gpu_device_info='oneapi_compute_capability { architecture: \"bmg\"}'" \
 // RUN: | FileCheck %s
 
 module {
   // CHECK-LABEL: func @test_log1p
   func.func @test_log1p(%arg0: f32) -> f32 {
-    // CHECK: %[[ONE:.*]] = llvm.mlir.constant(1.000000e+00 : f32) : f32
-    // CHECK: %[[ADD:.*]] = llvm.fadd %[[ONE]], %arg0 : f32
-    // CHECK: %[[LOG:.*]] = llvm.intr.log(%[[ADD]]) : (f32) -> f32
-    // CHECK: return %[[LOG]] : f32
+    // CHECK-NOT: llvm.mlir.constant(1.000000e+00 : f32) : f32
+    // CHECK-NOT: llvm.fadd %{{.*}}, %arg0 : f32
+    // CHECK-NOT: llvm.intr.log
+    // CHECK: llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_log1pf(%arg0)
+    // CHECK: return %{{.*}} : f32
     %0 = math.log1p %arg0 : f32
     return %0 : f32
   }
 }
+
+// -----
+
+module {
+  // CHECK-LABEL: func @test_exp
+  func.func @test_exp(%arg0: f16) -> f16 {
+    // CHECK-NOT: llvm.intr.exp
+    // CHECK: %[[EXT:.*]] = llvm.fpext %arg0
+    // CHECK: llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_expf(%[[EXT]])
+    // CHECK: %{{.*}} = llvm.fptrunc %{{.*}}
+    // CHECK: return %{{.*}} : f16
+    %0 = math.exp %arg0 : f16
+    return %0 : f16
+  }
+}
+
+// -----
+
+module {
+  func.func @test_tan(%arg0: complex<f32>) -> complex<f32> {
+    %0 = complex.tan %arg0 : complex<f32>
+    func.return %0 : complex<f32>
+  }
+}
+
+// CHECK-DAG: spir_funccc @_Z{{.*}}__spirv_ocl_expm1f
+// CHECK-DAG: spir_funccc @_Z{{.*}}__spirv_ocl_sinf
+// CHECK-DAG: spir_funccc @_Z{{.*}}__spirv_ocl_cosf
+// CHECK-LABEL: @test_tan
+// CHECK-SAME: %[[ARG0:.*]]: !llvm.struct<(f32, f32)>
+// CHECK: %[[V0:.*]] = llvm.extractvalue %[[ARG0]][0]
+// CHECK: %[[V1:.*]] = llvm.extractvalue %[[ARG0]][1]
+// CHECK-NOT: llvm.intr.exp
+// CHECK-NOT: llvm.intr.cos
+// CHECK-NOT: llvm.intr.sin
+// CHECK: %[[E0:.*]] = llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_expm1f
+// CHECK: %[[E1:.*]] = llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_expm1f
+// CHECK: llvm.fsub %[[E0]], %[[E1]] : f32
+// CHECK-DAG: llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_cosf(%[[V0]])
+// CHECK-DAG: llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_sinf(%[[V0]])
+// CHECK: llvm.return %{{.*}} : !llvm.struct<(f32, f32)>

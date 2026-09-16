@@ -29,9 +29,9 @@ class UniformRequantizeOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES(context,
                 (std::is_same<Tin, qint32>() || std::is_same<Tin, qint8>()),
-                InvalidArgument("Unsupported input type."));
+                absl::InvalidArgumentError("Unsupported input type."));
     OP_REQUIRES(context, (std::is_same<Tout, qint8>()),
-                InvalidArgument("Unsupported output type."));
+                absl::InvalidArgumentError("Unsupported output type."));
 
     OP_REQUIRES_OK(context, context->GetAttr("output_quantization_min_val",
                                              &output_quantization_min_val_));
@@ -42,20 +42,21 @@ class UniformRequantizeOp : public OpKernel {
                                              &input_quantization_axis_));
     OP_REQUIRES_OK(context, context->GetAttr("output_quantization_axis",
                                              &output_quantization_axis_));
-    OP_REQUIRES(
-        context, (input_quantization_axis_ >= -1),
-        InvalidArgument("input_quantization_axis must be >= -1, given: ",
-                        input_quantization_axis_));
-    OP_REQUIRES(
-        context, (output_quantization_axis_ >= -1),
-        InvalidArgument("output_quantization_axis must be >= -1, given: ",
-                        output_quantization_axis_));
+    OP_REQUIRES(context, (input_quantization_axis_ >= -1),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input_quantization_axis must be >= -1, given: ",
+                    input_quantization_axis_)));
+    OP_REQUIRES(context, (output_quantization_axis_ >= -1),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "output_quantization_axis must be >= -1, given: ",
+                    output_quantization_axis_)));
     OP_REQUIRES(
         context,
         (!(input_quantization_axis_ >= 0 && output_quantization_axis_ >= 0) ||
          input_quantization_axis_ == output_quantization_axis_),
-        InvalidArgument("If input and output is both per-axis quantized, the "
-                        "quantization axis must be same."));
+        absl::InvalidArgumentError(
+            "If input and output is both per-axis quantized, the "
+            "quantization axis must be same."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -74,11 +75,11 @@ class UniformRequantizeOp : public OpKernel {
                        input.shape(), output_scales.shape(),
                        output_zero_points.shape(), output_quantization_axis_)));
 
-    OP_REQUIRES(
-        context,
-        (AllElementsPositive<float>(input_scales) &&
-         AllElementsPositive<float>(output_scales)),
-        InvalidArgument("input/output scales elements must be all positive."));
+    OP_REQUIRES(context,
+                (AllElementsPositive<float>(input_scales) &&
+                 AllElementsPositive<float>(output_scales)),
+                absl::InvalidArgumentError(
+                    "input/output scales elements must be all positive."));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

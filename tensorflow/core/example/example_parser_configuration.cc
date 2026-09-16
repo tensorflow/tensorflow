@@ -38,7 +38,8 @@ absl::Status FindNodeIndexByName(const tensorflow::GraphDef& graph,
       return absl::OkStatus();
     }
   }
-  return errors::InvalidArgument(node_name, " not found in GraphDef");
+  return absl::InvalidArgumentError(
+      absl::StrCat(node_name, " not found in GraphDef"));
 }
 
 absl::Status ExtractExampleParserConfiguration(
@@ -51,7 +52,8 @@ absl::Status ExtractExampleParserConfiguration(
 
   const auto& node = graph.node(node_idx);
   if (node.op() != "ParseExample") {
-    return errors::InvalidArgument(node_name, " node is not a ParseExample op");
+    return absl::InvalidArgumentError(
+        absl::StrCat(node_name, " node is not a ParseExample op"));
   }
 
   auto& attr_map = node.attr();
@@ -66,21 +68,21 @@ absl::Status ExtractExampleParserConfiguration(
 
   // Consistency check attributes.
   if (tdense.list().type_size() != num_dense) {
-    return errors::InvalidArgument("Node attr Tdense has ",
-                                   tdense.list().type_size(),
-                                   " elements != Ndense attr: ", num_dense);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node attr Tdense has ", tdense.list().type_size(),
+                     " elements != Ndense attr: ", num_dense));
   }
 
   if (dense_shapes.list().shape_size() != num_dense) {
-    return errors::InvalidArgument("Node attr dense_shapes has ",
-                                   dense_shapes.list().shape_size(),
-                                   " elements != Ndense attr: ", num_dense);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Node attr dense_shapes has ", dense_shapes.list().shape_size(),
+        " elements != Ndense attr: ", num_dense));
   }
 
   if (sparse_types.list().type_size() != num_sparse) {
-    return errors::InvalidArgument("Node attr sparse_types has ",
-                                   sparse_types.list().type_size(),
-                                   " elements != NSparse attr: ", num_sparse);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Node attr sparse_types has ", sparse_types.list().type_size(),
+        " elements != NSparse attr: ", num_sparse));
   }
 
   for (int i = 0; i < tdense.list().type_size(); ++i) {
@@ -176,9 +178,9 @@ absl::Status ExampleParserConfigurationProtoToFeatureVectors(
       f.shape = TensorShape(fixed_config.shape());
       Tensor default_value(f.dtype, f.shape);
       if (!default_value.FromProto(fixed_config.default_value())) {
-        return errors::InvalidArgument(
-            "Invalid default_value in config proto ",
-            fixed_config.default_value().DebugString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid default_value in config proto ",
+                         fixed_config.default_value().DebugString()));
       }
       f.default_value = default_value;
       f.values_output_tensor_name = fixed_config.values_output_tensor_name();

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -33,6 +35,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -165,7 +169,8 @@ class RecomputeAndCompressHloRematerializationTest
           HloRematerialization::RematAlgorithm::kAlwaysRemat,
       int block_size_limit = 1,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
-          on_rematerialized = nullptr) {
+          on_rematerialized = nullptr,
+      HloRematerialization::RematerializationSizes* sizes = nullptr) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
@@ -194,8 +199,11 @@ class RecomputeAndCompressHloRematerializationTest
         /*host_memory_offload_config=*/std::nullopt,
         /*async_computation_parallelism=*/{},
         /*remat_algorithm=*/remat_algorithm);
-    HloRematerialization::RematerializationSizes sizes;
-    HloRematerialization remat(options, sizes, std::move(on_rematerialized));
+    HloRematerialization::RematerializationSizes sizes_local;
+    HloRematerialization::RematerializationSizes& sizes_ref =
+        sizes != nullptr ? *sizes : sizes_local;
+    HloRematerialization remat(options, sizes_ref,
+                               std::move(on_rematerialized));
     absl::StatusOr<bool> result = remat.Run(module);
 
     // Finally, get a set of instruction names after running remat.
@@ -2087,5 +2095,383 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
                   Contains(Property(&HloInstruction::name,
                                     StrEq("constant_source_8_user_2.remat")))));
 }
+class TestHloRematerialization : public HloRematerialization {
+ public:
+  using HloRematerialization::HloRematerialization;
+  using HloRematerialization::start_time_;
+  using HloRematerialization::warned_too_little_progress_;
+  using HloRematerialization::warned_too_long_;
+
+  bool simulate_long_run_ = false;
+
+  absl::StatusOr<RematAlgorithmFunction> GetRematAlgorithmFunction(
+      RematAlgorithm remat_algorithm) override {
+    if (simulate_long_run_) {
+      ABSL_ASSIGN_OR_RETURN(
+          RematAlgorithmFunction base_func,
+          HloRematerialization::GetRematAlgorithmFunction(remat_algorithm));
+      return
+          [this, base_func = std::move(base_func)](
+              HloComputation* computation, HloSchedule* schedule,
+              int64_t memory_limit_bytes, int64_t min_remat_size,
+              const absl::flat_hash_set<absl::string_view>& execution_threads)
+              -> absl::StatusOr<bool> {
+            start_time_ = absl::Now() - absl::Minutes(5);
+            return base_func(computation, schedule, memory_limit_bytes,
+                             min_remat_size, execution_threads);
+          };
+    }
+    return HloRematerialization::GetRematAlgorithmFunction(remat_algorithm);
+  }
+};
+
+TEST_F(RecomputeAndCompressHloRematerializationTest, WarningWhenTakingTooLong) {
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(MakeRematerializableComputation());
+
+  // Set memory limit low enough to trigger rematerialization.
+  int64_t memory_limit_bytes = 12 * 1024;
+  int block_size_limit = 1;
+
+  HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
+    return ByteSizeOf(buffer.shape());
+  });
+  EXPECT_OK(scheduler.Run(module.get()).status());
+
+  HloRematerialization::RematerializationModeConfig config(
+      /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+  auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+  HloCostAnalysis cost_analysis(shape_size_func);
+  HloRematerialization::Options options(
+      cost_analysis, config, memory_limit_bytes, block_size_limit,
+      /*block_rematerialization_factor=*/1, /*min_remat_size=*/0,
+      /*compact_shape_function=*/nullptr,
+      /*host_memory_offload_config=*/std::nullopt,
+      /*async_computation_parallelism=*/{},
+      /*remat_algorithm=*/
+      HloRematerialization::RematAlgorithm::kAlwaysRemat);
+  HloRematerialization::RematerializationSizes sizes;
+
+  TestHloRematerialization remat(options, sizes);
+  // Enable mock long run behavior to set start_time_ inside the algorithm
+  // execution.
+  remat.simulate_long_run_ = true;
+  remat.warned_too_long_ = false;
+
+  absl::StatusOr<bool> result = remat.Run(module.get());
+  EXPECT_OK(result.status());
+  EXPECT_TRUE(remat.warned_too_long_);
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       WarningWhenTooLittleProgress) {
+  // Use the module from PeakFirstRematerializesAtSamePeak, but with larger tanh
+  // shapes (131072 instead of 16384) to make peak memory around 1MB, so saving
+  // 4KB (c8_u) is < 1% and triggers the progress warning.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule fusion, is_scheduled=true
+
+%call_convoluted (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
+  %c8 = f32[] constant(8)
+  %c8_u = f32[1024]{0} broadcast(%c8), dimensions={}
+  %param_0 = f32[1024]{0} parameter(0)
+  %c8_u2 = f32[1024]{0} broadcast(%c8), dimensions={}
+  %param_1 = f32[1024]{0} parameter(1)
+  %res_param_add = f32[1024]{0} add(%param_0, %param_1)
+  %constant.anon = f32[] constant(1)
+  %constant_0 = f32[131072]{0} broadcast(%constant.anon), dimensions={}
+  %op_1 = f32[131072]{0} tanh(%constant_0)
+  %op_2 = f32[131072]{0} tanh(%op_1)
+  %op_3 = f32[131072]{0} tanh(%op_2)
+  %op_4 = f32[131072]{0} tanh(%op_3)
+  %tan_res = f32[1024]{0} slice(%op_4), slice={[0:1024]}
+  %res_1 = f32[1024]{0} add(%res_param_add, %tan_res)
+  %res_3 = f32[1024]{0} add(%c8_u, %res_1)
+  %res_3_2 = f32[1024]{0} add(%c8_u2, %res_3)
+  %constant_x = f32[1024]{0} broadcast(%c8), dimensions={}
+  %cx_add = f32[1024]{0} add(%constant_x, %res_param_add)
+  %res_4 = f32[1024]{0} add(%res_3_2, %cx_add)
+  ROOT %res = f32[1024]{0} add(%res_3, %res_4)
+}
+
+%call_comp (p: f32[1024], p_2: f32[1024]) -> f32[1024] {
+  %p = f32[1024]{0} parameter(0)
+  %p_2 = f32[1024]{0} parameter(1)
+  %call_convoluted = f32[1024]{0} call(%p, %p_2), to_apply=%call_convoluted
+  ROOT %n = f32[1024]{0} negate(%call_convoluted)
+}
+
+%add_mul_comp (p0: f32[], p1: f32[]) -> f32[1024] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p0_bcast = f32[1024]{0} broadcast(%p0), dimensions={}
+  %p1_bcast = f32[1024]{0} broadcast(%p1), dimensions={}
+  %res_comp = f32[1024]{0} call(%p0_bcast, %p1_bcast), to_apply=%call_comp
+  ROOT %res_mul = f32[1024]{0} multiply(%res_comp, %res_comp)
+}
+
+ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %res = f32[1024]{0} call(%param.0, %param.1), to_apply=%add_mul_comp
+  ROOT %res_2 = f32[1024]{0} negate(%res)
+}
+)"));
+
+  int64_t memory_limit_bytes = 0;
+  int block_size_limit = 1;
+
+  HloRematerialization::RematerializationModeConfig config(
+      /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+  auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+  HloCostAnalysis cost_analysis(shape_size_func);
+  HloRematerialization::Options options(
+      cost_analysis, config, memory_limit_bytes, block_size_limit,
+      /*block_rematerialization_factor=*/1, /*min_remat_size=*/0,
+      /*compact_shape_function=*/nullptr,
+      /*host_memory_offload_config=*/std::nullopt,
+      /*async_computation_parallelism=*/{},
+      /*remat_algorithm=*/
+      HloRematerialization::RematAlgorithm::kPeakPriority);
+  HloRematerialization::RematerializationSizes sizes;
+
+  TestHloRematerialization remat(options, sizes);
+  remat.warned_too_little_progress_ = false;
+
+  absl::StatusOr<bool> result = remat.Run(module.get());
+  EXPECT_OK(result.status());
+  EXPECT_TRUE(remat.warned_too_little_progress_);
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       EntryComputationWithExcludedExecutionThreadDoesNotCrash) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY %main {
+  %param.0 = f32[1024] parameter(0)
+  ROOT %res = f32[1024] negate(%param.0)
+}, execution_thread="host"
+)"));
+
+  int64_t memory_limit_bytes = 10000;
+  int block_size_limit = 1;
+
+  HloRematerialization::RematerializationModeConfig config(
+      /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+  auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+  HloCostAnalysis cost_analysis(shape_size_func);
+  HloRematerialization::Options options(
+      cost_analysis, config, memory_limit_bytes, block_size_limit,
+      /*block_rematerialization_factor=*/1, /*min_remat_size=*/0,
+      /*compact_shape_function=*/nullptr,
+      /*host_memory_offload_config=*/std::nullopt,
+      /*async_computation_parallelism=*/{},
+      /*remat_algorithm=*/
+      HloRematerialization::RematAlgorithm::kPeakPriority);
+  HloRematerialization::RematerializationSizes sizes;
+
+  HloRematerialization remat(options, sizes);
+  EXPECT_OK(remat.Run(module.get(), /*execution_threads=*/{"device"}).status());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       DuplicateOperandLoopFusion) {
+  const std::string& hlo_string = R"hlo(
+HloModule DuplicateOperandLoopFusion, is_scheduled=true
+
+%fused_producer {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %bcast0 = f32[16384]{0} broadcast(%p0), dimensions={}
+  %bcast1 = f32[16384]{0} broadcast(%p1), dimensions={}
+  %bcast2 = f32[16384]{0} broadcast(%p2), dimensions={}
+  ROOT %producer_tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) tuple(%bcast0, %bcast1, %bcast2)
+}
+
+%add_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}
+
+%fused_computation (param_0: (f32[16384], f32[16384], f32[16384]), param_1: (f32[16384], f32[16384], f32[16384])) -> f32[16384] {
+  %param_0 = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) parameter(0)
+  %param_1 = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) parameter(1)
+  %gte0 = f32[16384]{0} get-tuple-element(%param_0), index=0
+  %gte1 = f32[16384]{0} get-tuple-element(%param_1), index=1
+  ROOT %add = f32[16384]{0} add(%gte0, %gte1)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) fusion(%p0, %p1, %p2), kind=kLoop, calls=%fused_producer
+  %early_gte0 = f32[16384]{0} get-tuple-element(%tuple), index=0
+  %early_gte1 = f32[16384]{0} get-tuple-element(%tuple), index=1
+  %early_add = f32[16384]{0} add(%early_gte0, %early_gte1)
+  %broadcast_peak = f32[16384]{0} broadcast(%p0), dimensions={}
+  %mid_add = f32[16384]{0} add(%early_add, %broadcast_peak)
+  %c0 = f32[] constant(0)
+  %reduce = f32[] reduce(%mid_add, %c0), dimensions={0}, to_apply=%add_comp
+  %fusion = f32[16384]{0} fusion(%tuple, %tuple), kind=kLoop, calls=%fused_computation
+  ROOT %out = (f32[], f32[16384]{0}) tuple(%reduce, %fusion)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  constexpr int64_t kMemoryLimitBytes = 270 * 1024;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/1,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_TRUE(changed);
+
+  // Initial memory pressure exceeded the limit, requiring rematerialization.
+  EXPECT_GT(sizes.before_bytes, kMemoryLimitBytes);
+
+  // Rematerialization reduced the memory footprint below the limit.
+  EXPECT_GT(sizes.before_bytes, sizes.after_bytes);
+  EXPECT_LE(sizes.after_bytes, kMemoryLimitBytes);
+
+  const std::vector<HloInstruction*>& instructions =
+      module->schedule().sequence(module->entry_computation()).instructions();
+
+  // The tuple fusion should have been rematerialized, while retaining the
+  // original tuple instruction for pre-peak consumers.
+  EXPECT_THAT(
+      instructions,
+      AllOf(Contains(Property(&HloInstruction::name, StrEq("tuple"))),
+            Contains(Property(&HloInstruction::name, StrEq("tuple.remat"))),
+            Contains(Property(&HloInstruction::name, StrEq("fusion")))));
+
+  // Pre-peak consumers still use the original tuple instruction.
+  const HloInstruction* early_gte0 =
+      module->entry_computation()->GetInstructionWithName("early_gte0");
+  ASSERT_NE(early_gte0, nullptr);
+  EXPECT_EQ(early_gte0->operand(0)->name(), "tuple");
+
+  const HloInstruction* early_gte1 =
+      module->entry_computation()->GetInstructionWithName("early_gte1");
+  ASSERT_NE(early_gte1, nullptr);
+  EXPECT_EQ(early_gte1->operand(0)->name(), "tuple");
+
+  // The consumer loop fusion with duplicate operands now uses the
+  // rematerialized tuple instruction for both operands.
+  const HloInstruction* fusion =
+      module->entry_computation()->GetInstructionWithName("fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->operand(0)->name(), "tuple.remat");
+  EXPECT_EQ(fusion->operand(1)->name(), "tuple.remat");
+
+  // The rematerialized instruction should be placed immediately before the
+  // consumer fusion in the schedule.
+  auto remat_it = absl::c_find_if(instructions, [](const HloInstruction* inst) {
+    return inst->name() == "tuple.remat";
+  });
+  ASSERT_NE(remat_it, instructions.end());
+  ASSERT_NE(std::next(remat_it), instructions.end());
+  EXPECT_EQ(*std::next(remat_it), fusion);
+
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       LoopFusionRootParameterOutput) {
+  const std::string& hlo_string = R"hlo(
+HloModule LoopFusionRootParameterOutput, is_scheduled=true
+
+%fused_producer {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %bcast0 = f32[16384]{0} broadcast(%p0), dimensions={}
+  %bcast1 = f32[16384]{0} broadcast(%p1), dimensions={}
+  %bcast2 = f32[16384]{0} broadcast(%p2), dimensions={}
+  ROOT %producer_tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) tuple(%bcast0, %bcast1, %bcast2)
+}
+
+%add_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}
+
+%fused_root_consumer (param: (f32[16384], f32[16384], f32[16384])) -> f32[16384] {
+  %param = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) parameter(0)
+  ROOT %gte0 = f32[16384]{0} get-tuple-element(%param), index=0
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) fusion(%p0, %p1, %p2), kind=kLoop, calls=%fused_producer
+  %early_gte0 = f32[16384]{0} get-tuple-element(%tuple), index=0
+  %early_gte1 = f32[16384]{0} get-tuple-element(%tuple), index=1
+  %early_add = f32[16384]{0} add(%early_gte0, %early_gte1)
+  %broadcast_peak = f32[16384]{0} broadcast(%p0), dimensions={}
+  %mid_add = f32[16384]{0} add(%early_add, %broadcast_peak)
+  %c0 = f32[] constant(0)
+  %reduce = f32[] reduce(%mid_add, %c0), dimensions={0}, to_apply=%add_comp
+  %consumer_fusion = f32[16384]{0} fusion(%tuple), kind=kLoop, calls=%fused_root_consumer
+  ROOT %out = (f32[], f32[16384]{0}) tuple(%reduce, %consumer_fusion)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  constexpr int64_t kMemoryLimitBytes = 270 * 1024;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/1,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_TRUE(changed);
+
+  EXPECT_GT(sizes.before_bytes, kMemoryLimitBytes);
+  EXPECT_GT(sizes.before_bytes, sizes.after_bytes);
+  EXPECT_LE(sizes.after_bytes, kMemoryLimitBytes);
+
+  const std::vector<HloInstruction*>& instructions =
+      module->schedule().sequence(module->entry_computation()).instructions();
+
+  EXPECT_THAT(
+      instructions,
+      AllOf(
+          Contains(Property(&HloInstruction::name, StrEq("tuple"))),
+          Contains(Property(&HloInstruction::name, StrEq("tuple.remat"))),
+          Contains(Property(&HloInstruction::name, StrEq("consumer_fusion")))));
+
+  const HloInstruction* early_gte0 =
+      module->entry_computation()->GetInstructionWithName("early_gte0");
+  ASSERT_NE(early_gte0, nullptr);
+  EXPECT_EQ(early_gte0->operand(0)->name(), "tuple");
+
+  const HloInstruction* early_gte1 =
+      module->entry_computation()->GetInstructionWithName("early_gte1");
+  ASSERT_NE(early_gte1, nullptr);
+  EXPECT_EQ(early_gte1->operand(0)->name(), "tuple");
+
+  const HloInstruction* consumer_fusion =
+      module->entry_computation()->GetInstructionWithName("consumer_fusion");
+  ASSERT_NE(consumer_fusion, nullptr);
+  EXPECT_EQ(consumer_fusion->operand(0)->name(), "tuple.remat");
+
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
 }  // namespace
 }  // namespace xla

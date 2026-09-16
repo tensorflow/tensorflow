@@ -50,7 +50,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "num_replicas", &num_replicas));
     OP_REQUIRES(
         ctx, num_replicas > 0,
-        errors::InvalidArgument("num_replicas must be greater than zero."));
+        absl::InvalidArgumentError("num_replicas must be greater than zero."));
     *output =
         new Dataset(ctx, input, num_replicas, output_types_, output_shapes_);
   }
@@ -148,11 +148,11 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
           input_descriptors_.reserve(input_tensors.size());
           for (int i = 0; i < input_tensors.size(); ++i) {
             if (input_tensors[i].dims() == 0) {
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(absl::StrCat(
                   "Cannot rebatch dataset: All components must have at least "
                   "one dimension. Perhaps your input dataset is not batched? "
                   "Component ",
-                  i, " is scalar.");
+                  i, " is scalar."));
             }
 
             int64_t original_batch_dim = input_tensors[i].dim_size(0);
@@ -299,9 +299,9 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
                    DatasetBase** output) override {
     const Tensor* batch_sizes_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("batch_sizes", &batch_sizes_tensor));
-    OP_REQUIRES(
-        ctx, batch_sizes_tensor->dims() <= 1,
-        errors::InvalidArgument("`batch_sizes` must be a scalar or a vector."));
+    OP_REQUIRES(ctx, batch_sizes_tensor->dims() <= 1,
+                absl::InvalidArgumentError(
+                    "`batch_sizes` must be a scalar or a vector."));
 
     std::vector<int64_t> batch_sizes;
     batch_sizes.reserve(batch_sizes_tensor->NumElements());
@@ -522,8 +522,8 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
                                     dataset()->output_dtypes()[i],
                                     component_shape);
           if (!out_tensors->back().IsInitialized()) {
-            return errors::ResourceExhausted(
-                "Failed to allocate memory for the batch of component ", i);
+            return absl::ResourceExhaustedError(absl::StrCat(
+                "Failed to allocate memory for the batch of component ", i));
           }
           int64_t dst_offset = 0;
           for (size_t j = 0; j < slices_to_concatenate.size(); ++j) {
@@ -625,16 +625,16 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
       absl::Status ValidateInputTensors() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         for (size_t i = 0; i < tensors_.size(); ++i) {
           if (tensors_[i].dims() == 0) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(
                 "Input element must have a non-scalar value in each "
                 "component.");
           }
           if (tensors_[i].dim_size(0) != tensors_[0].dim_size(0)) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "Input element must have the same batch size in each "
                 "component. Component 0 had size ",
                 tensors_[0].dim_size(0), " but component ", i, " had size, ",
-                tensors_[i].dim_size(0), ".");
+                tensors_[i].dim_size(0), "."));
           }
         }
         return absl::OkStatus();

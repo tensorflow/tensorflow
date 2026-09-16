@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -56,9 +57,9 @@ absl::Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
     absl::StrAppend(&allowed_str,
                     DataTypeString(allowed_values.list().type(i)));
   }
-  return errors::InvalidArgument(
-      "Value for attr '", attr.name(), "' of ", DataTypeString(dt),
-      " is not in the list of allowed values: ", allowed_str);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Value for attr '", attr.name(), "' of ", DataTypeString(dt),
+                   " is not in the list of allowed values: ", allowed_str));
 }
 
 absl::Status AllowedStringValue(const std::string& str,
@@ -76,9 +77,9 @@ absl::Status AllowedStringValue(const std::string& str,
     }
     absl::StrAppend(&allowed_str, "\"", allowed, "\"");
   }
-  return errors::InvalidArgument(
-      "Value for attr '", attr.name(), "' of \"", str,
-      "\" is not in the list of allowed values: ", allowed_str);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Value for attr '", attr.name(), "' of \"", str,
+                   "\" is not in the list of allowed values: ", allowed_str));
 }
 
 }  // namespace
@@ -94,9 +95,9 @@ absl::Status ValidateAttrValue(const AttrValue& attr_value,
   if (attr.has_minimum()) {
     if (attr.type() == "int") {
       if (attr_value.i() < attr.minimum()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Value for attr '", attr.name(), "' of ", attr_value.i(),
-            " must be at least minimum ", attr.minimum());
+            " must be at least minimum ", attr.minimum()));
       }
     } else {
       int length = -1;
@@ -118,9 +119,9 @@ absl::Status ValidateAttrValue(const AttrValue& attr_value,
         length = attr_value.list().func_size();
       }
       if (length < attr.minimum()) {
-        return errors::InvalidArgument(
-            "Length for attr '", attr.name(), "' of ", length,
-            " must be at least minimum ", attr.minimum());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Length for attr '", attr.name(), "' of ", length,
+                         " must be at least minimum ", attr.minimum()));
       }
     }
   }
@@ -140,8 +141,8 @@ absl::Status ValidateAttrValue(const AttrValue& attr_value,
         TF_RETURN_IF_ERROR(AllowedStringValue(str, attr));
       }
     } else {
-      return errors::Unimplemented(
-          "Support for allowed_values not implemented for type ", attr.type());
+      return absl::UnimplementedError(absl::StrCat(
+          "Support for allowed_values not implemented for type ", attr.type()));
     }
   }
   return absl::OkStatus();
@@ -267,6 +268,64 @@ bool IsValidOpName(absl::string_view sp) {
   }
 }
 
+// Attribute and argument names are not restricted to CamelCase like op
+// names. Some code generators, such as cc_op_gen.cc and python_op_gen.cc,
+// splice a name verbatim (unescaped) into generated C++ or Python wrapper
+// source as a raw identifier; this function tells such a call site whether
+// a given name is safe to use that way as-is. It is not, and must not be
+// used as, a runtime validity check on OpDef registration: legitimate,
+// already-registered ops can and do use argument names outside this safe
+// set for reasons unrelated to code generation (see SanitizeToIdentifier's
+// comment below for a concrete example), and rejecting them at
+// registration time breaks that legitimate usage.
+bool IsValidAttrOrArgName(absl::string_view sp) {
+  if (sp.empty()) return false;
+  if (sp[0] != '_' && !absl::ascii_isalpha(sp[0])) {
+    return false;
+  }
+  for (size_t i = 1; i < sp.size(); ++i) {
+    char c = sp[i];
+    if (c != '_' && !absl::ascii_isalnum(c)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Converts `sp` into a safe identifier by replacing any character outside
+// IsValidAttrOrArgName's safe set with an underscore, and prefixing with an
+// underscore if the result would otherwise start with a digit or be empty.
+//
+// Some legitimate, already-registered OpDefs use argument names outside
+// that safe set for reasons unrelated to code generation -- for example
+// TFLite_Detection_PostProcess registers inputs like
+// "raw_outputs/box_encodings" and outputs like
+// "TFLite_Detection_PostProcess:1". Rejecting such an OpDef at
+// registration/validation time (as ValidateOpDef/ValidateArg once did)
+// breaks that legitimate usage; the actual splice-into-generated-source
+// risk IsValidAttrOrArgName exists for only applies where a name is used
+// as a raw identifier by a code generator such as cc_op_gen.cc or
+// python_op_gen.cc. This function gives those call sites a fallback that
+// is always a syntactically safe identifier, so they can sanitize instead
+// of rejecting -- callers should first check IsValidAttrOrArgName and use
+// the name as-is when it already passes, calling this only for a name
+// that doesn't.
+std::string SanitizeToIdentifier(absl::string_view sp) {
+  std::string result;
+  result.reserve(sp.size() + 1);
+  for (char c : sp) {
+    if (c == '_' || absl::ascii_isalnum(c)) {
+      result.push_back(c);
+    } else {
+      result.push_back('_');
+    }
+  }
+  if (result.empty() || (!absl::ascii_isalpha(result[0]) && result[0] != '_')) {
+    result.insert(result.begin(), '_');
+  }
+  return result;
+}
+
 absl::Status ValidateOpDef(const OpDef& op_def) {
   if (!absl::StartsWith(op_def.name(), "_")) {
     VALIDATE(IsValidOpName(op_def.name()), "Invalid name: ", op_def.name(),
@@ -354,10 +413,10 @@ absl::Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
   if (op_def.has_deprecation()) {
     const OpDeprecation& dep = op_def.deprecation();
     if (graph_def_version >= dep.version()) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(absl::StrCat(
           "Op ", op_def.name(), " is not available in GraphDef version ",
           graph_def_version, ". It has been removed in version ", dep.version(),
-          ". ", dep.explanation(), ".");
+          ". ", dep.explanation(), "."));
     } else {
       // Warn only once for each op name, and do it in a threadsafe manner.
       static mutex mu(LINKER_INITIALIZED);
@@ -706,23 +765,24 @@ absl::Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
 
     // These shouldn't happen if the op passed OpDefCompatible().
     if (new_attr == nullptr) {
-      return errors::InvalidArgument("Missing attr '", penultimate_attr.name(),
-                                     "' in op: ", SummarizeOpDef(new_op));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing attr '", penultimate_attr.name(),
+                       "' in op: ", SummarizeOpDef(new_op)));
     }
     if (!penultimate_attr.has_default_value() ||
         !new_attr->has_default_value()) {
-      return errors::InvalidArgument("Missing default for attr '",
-                                     penultimate_attr.name(),
-                                     "' in op: ", SummarizeOpDef(new_op));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing default for attr '", penultimate_attr.name(),
+                       "' in op: ", SummarizeOpDef(new_op)));
     }
 
     // Actually test that the attr's default value hasn't changed.
     if (!AreAttrValuesEqual(penultimate_attr.default_value(),
                             new_attr->default_value())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't change default value for attr '", penultimate_attr.name(),
           "' from ", SummarizeAttrValue(penultimate_attr.default_value()),
-          " in op: ", SummarizeOpDef(new_op));
+          " in op: ", SummarizeOpDef(new_op)));
     }
   }
 
@@ -743,16 +803,17 @@ absl::Status OpDefAttrDefaultsUnchanged(const OpDef& old_op,
       continue;  // Adding new default values is safe.
     }
     if (old_attr.has_default_value() && !new_attr->has_default_value()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Attr '", old_attr.name(), "' has removed it's default; ", "from ",
-          DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+          DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr)));
     }
     if (old_attr.has_default_value() &&
         !AreAttrValuesEqual(old_attr.default_value(),
                             new_attr->default_value())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Attr '", old_attr.name(), "' has changed it's default value; ",
-          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+          "from ", DefaultAttrStr(old_attr), " to ",
+          DefaultAttrStr(*new_attr)));
     }
   }
 

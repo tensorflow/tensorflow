@@ -5,6 +5,12 @@ race:libhipblaslt.so
 race:libamd_comgr.so
 race:librccl.so
 
+# ROCr's os_thread destructor intentionally calls pthread_detach (not
+# pthread_join) on worker threads that are still running at teardown, so
+# they can exit on their own without blocking shutdown.
+thread:rocr::os::os_thread::os_thread
+thread:libhsa-runtime64.so
+
 # Abseil reference counting (DropRef / RefCount init)
 race:tsl::ReferenceCounted
 race:absl::lts_*::Mutex
@@ -12,16 +18,15 @@ race:absl::lts_*::CondVar
 
 # XLA GPU RawSEDeviceMemory RCReference reuse
 race:xla::RawSEDeviceMemory
-race:xla::gpu::AllocateDestinationBuffer
 race:xla::LocalDeviceState::ThenRelease
 
 # To be fixed
+race:xla::PjRtStreamExecutorClient::~PjRtStreamExecutorClient
 race:xla::GpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer
 race:xla::LiteralBase::Piece::DeallocateBuffers
-race:xla::PjRtStreamExecutorLoadedExecutable::ExecuteHelper
-race:xla::PjRtStreamExecutorClient::BufferFromHostBufferInternal
-race:xla::PjRtStreamExecutorClient::AllocateAndRecordEvent
-race:xla::HloRunnerPjRt::TransferLiteralsFromDevice
+race:xla::CommonPjRtLoadedExecutable::ExecuteHelperOnSingleDevice
+race:xla::LocalDeviceState::AllocateAndRecordEvent
+race:xla::HloRunner::TransferLiteralsFromDevice
 race:xla::MutableLiteralBase::~MutableLiteralBase
 race:xla::MutableLiteralBase::PopulateR1<int>
 race:xla::gpu::GpuCompiler::CompileSingleModule

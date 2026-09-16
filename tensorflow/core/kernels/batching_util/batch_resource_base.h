@@ -64,7 +64,9 @@ struct BatchResourceOptions {
   MixedPriorityBatchingPolicy mixed_priority_batching_policy;
   bool enable_priority_aware_batch_scheduler;
   bool enable_priority_aware_batch_scheduler_resplit;
+  bool enable_batching_task_lazy_cancellation;
   int32_t num_warmup_batch_threads;
+  std::vector<int64_t> per_criticality_batch_timeout_micros;
 };
 
 // Base class for resource that encapsulating the state and logic for batching
@@ -123,9 +125,20 @@ class BatchResourceBase : public ResourceBase {
 
     uint64 start_time;
 
+    // Absolute RPC deadline. When set, the task is considered expired if
+    // absl::Now() > rpc_deadline. Defaults to nullopt (no enforcement).
+    std::optional<absl::Time> rpc_deadline;
+
+    // Callback: returns true if client actively cancelled the RPC.
+    std::function<bool()> is_rpc_cancelled;
+
     size_t size() const override { return inputs[0].shape().dim_size(0); }
 
     bool is_subtask() const override { return is_partial; }
+
+    bool IsDeadlineExceeded(absl::Time now) const override;
+
+    bool IsCancelled() const override;
 
     // Create a split task from this one. The caller needs to setup the inputs
     // of the new task
@@ -162,6 +175,9 @@ class BatchResourceBase : public ResourceBase {
     // Ownership is shared by individual splits and callback.
     std::shared_ptr<ThreadSafeStatus> status;
 
+    // Note the done callback MUST NOT (although unlikely in practice) attempt
+    // to acquire the queue's lock — e.g., by calling methods like Schedule() on
+    // the same queue — as this may lead to deadlock.
     void set_done_callback(AsyncOpKernel::DoneCallback callback) {
       done_callback = std::move(callback);
     }
@@ -269,7 +285,9 @@ class BatchResourceBase : public ResourceBase {
       const std::vector<int32>& low_priority_allowed_batch_sizes,
       MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_priority_aware_batch_scheduler,
-      bool enable_priority_aware_batch_scheduler_resplit);
+      bool enable_priority_aware_batch_scheduler_resplit,
+      bool enable_batching_task_lazy_cancellation,
+      const std::vector<int64_t>& per_criticality_batch_timeout_micros);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,

@@ -17,15 +17,10 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_RCCL_ERRORS_H_
 
 #include "absl/status/status.h"
+#include "rocm/include/rccl/rccl.h"
 #include "rocm/rocm_config.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/tsl/platform/logging.h"
-
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 //===----------------------------------------------------------------------===//
 // Collection of helper macros for handling RCCL errors.

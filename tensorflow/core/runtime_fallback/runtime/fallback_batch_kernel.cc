@@ -22,8 +22,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/types.h"
@@ -143,9 +146,19 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                               &enable_priority_aware_batch_scheduler_resplit_));
   }
 
+  if (c->HasAttr("enable_batching_task_lazy_cancellation")) {
+    OP_REQUIRES_OK(c, c->GetAttr("enable_batching_task_lazy_cancellation",
+                                 &enable_batching_task_lazy_cancellation_));
+  }
+
   if (c->HasAttr("num_warmup_batch_threads")) {
     OP_REQUIRES_OK(
         c, c->GetAttr("num_warmup_batch_threads", &num_warmup_batch_threads_));
+  }
+
+  if (c->HasAttr("per_criticality_batch_timeout_micros")) {
+    OP_REQUIRES_OK(c, c->GetAttr("per_criticality_batch_timeout_micros",
+                                 &per_criticality_batch_timeout_micros_));
   }
 
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls
@@ -166,6 +179,30 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
   }
 
   OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
+  OP_REQUIRES_OK(c, ValidatePerCriticalityBatchTimeoutMicros());
+}
+
+absl::Status
+BatchFunctionFallbackKernelBase::ValidatePerCriticalityBatchTimeoutMicros()
+    const {
+  if (per_criticality_batch_timeout_micros_.empty()) {
+    return absl::OkStatus();
+  }
+  if (per_criticality_batch_timeout_micros_.size() !=
+      tsl::criticality::kAllCriticalitiesDescending.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "per_criticality_batch_timeout_micros must be either empty or of size ",
+        tsl::criticality::kAllCriticalitiesDescending.size()));
+  }
+  for (const int64_t timeout : per_criticality_batch_timeout_micros_) {
+    if (timeout < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("per_criticality_batch_timeout_micros must contain "
+                       "nonnegative values; found negative timeout ",
+                       timeout));
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes()
@@ -177,13 +214,13 @@ absl::Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes()
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
     const int32_t size = allowed_batch_sizes_.at(i);
     if (i > 0 && size <= last_size) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "allowed_batch_sizes entries must be monotonically increasing");
     }
 
     if ((!enable_large_batch_splitting_) &&
         (i == allowed_batch_sizes_.size() - 1) && (size != max_batch_size_)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "final entry in allowed_batch_sizes must equal max_batch_size when "
           "enable_large_batch_splitting is False");
     }
@@ -241,7 +278,7 @@ void BatchFunctionFallbackKernelBase::SetAdaptiveBatchSchedulerOptions(
   thread::ThreadPool* thread_pool = GetOrCreateBatchThreadsPool();
   OP_REQUIRES(
       c, thread_pool != nullptr,
-      errors::FailedPrecondition("Failed to create batch threads pool"));
+      absl::FailedPreconditionError("Failed to create batch threads pool"));
 
   adaptive_batch_scheduler_options_ = options;
 }

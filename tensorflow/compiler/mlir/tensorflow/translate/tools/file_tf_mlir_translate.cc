@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -90,10 +91,10 @@ absl::Status UpdateLegacyFedInputNode(
   if (it == inputs.end()) return absl::OkStatus();
 
   if (HasNonPrimaryOutputInUse(graph_def, node_name)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "LegacyFedInput node ", node->name(),
         " has non primary output in use and can not be replaced with "
-        "Placeholder node");
+        "Placeholder node"));
   }
 
   DataType dtype = it->second.imported_dtype;

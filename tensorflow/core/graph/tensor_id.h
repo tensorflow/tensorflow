@@ -41,7 +41,7 @@ struct TensorId : public std::pair<absl::string_view, int> {
   TensorId() : Base() {}
   TensorId(const SafeTensorId& id);
 
-  const absl::string_view node() const { return first; }
+  absl::string_view node() const { return first; }
   int index() const { return second; }
 
   std::string ToString() const {

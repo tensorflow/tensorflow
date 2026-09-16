@@ -11,15 +11,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradient_checker.h"
 
-#include <memory>
+#include <cstdint>
+#include <cstring>
+#include <tuple>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/unified_api_testutil.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -67,7 +75,8 @@ absl::Status MatMulModel(AbstractContext* ctx,
                          absl::Span<AbstractTensorHandle*> outputs) {
   return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0],
                      /*transpose_a=*/false,
-                     /*transpose_b=*/false, "MatMul");
+                     /*transpose_b=*/false,
+                     /*grad_a=*/false, /*grad_b=*/false, "MatMul");
 }
 
 absl::Status MulModel(AbstractContext* ctx,
@@ -165,6 +174,49 @@ TEST_P(GradientCheckerTest, TestMul) {
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndManualGradients(
       MulModel, ctx_.get(), {x.get(), y.get()}, 0, expected_dx, 1,
       UseFunction()));
+}
+
+TEST_P(GradientCheckerTest, InputIndexOutOfBounds) {
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    absl::Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx_.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    x.reset(x_raw);
+  }
+
+  AbstractTensorHandle* numerical_grad_raw;
+  // Test input_index = -1 with 1 input tensor.
+  absl::Status s =
+      CalcNumericalGrad(ctx_.get(), MulModel, {x.get()}, /*input_index=*/-1,
+                        UseFunction(), &numerical_grad_raw);
+  ASSERT_EQ(absl::StatusCode::kInvalidArgument, s.code());
+
+  // Test input_index = 1 with 1 input tensor.
+  s = CalcNumericalGrad(ctx_.get(), MulModel, {x.get()}, /*input_index=*/1,
+                        UseFunction(), &numerical_grad_raw);
+  ASSERT_EQ(absl::StatusCode::kInvalidArgument, s.code());
+}
+
+TEST_P(GradientCheckerTest, InvalidInputType) {
+  int32_t x_vals[] = {2};
+  int64_t x_dims[] = {1};
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw;
+    absl::Status s = TestTensorHandleWithDims<int32_t, TF_INT32>(
+        ctx_.get(), x_vals, x_dims, 1, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    x.reset(x_raw);
+  }
+
+  AbstractTensorHandle* numerical_grad_raw;
+  // Pass an INT32 tensor as input 0, expecting an error.
+  absl::Status s =
+      CalcNumericalGrad(ctx_.get(), MulModel, {x.get()}, /*input_index=*/0,
+                        UseFunction(), &numerical_grad_raw);
+  ASSERT_EQ(absl::StatusCode::kInvalidArgument, s.code());
 }
 
 #ifdef PLATFORM_GOOGLE

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -277,7 +278,7 @@ absl::StatusOr<bool> FileExists(Env* env, const std::string& fname) {
   if (absl::IsNotFound(status)) {
     return false;
   }
-  TF_RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
   return true;
 }
 

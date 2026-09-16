@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/libraries/cub/scratch_space_lookup_table.pb.h"
@@ -26,15 +29,57 @@ limitations under the License.
 
 namespace xla::gpu {
 
+namespace internal {
+struct LookupKey {
+  stream_executor::SemanticVersion cub_version;
+  std::string device_name;
+  int32_t key_type_size;
+  int32_t value_type_size;
+  bool is_segmented;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const LookupKey& key) {
+    return H::combine(std::move(h), key.cub_version, key.device_name,
+                      key.key_type_size, key.value_type_size, key.is_segmented);
+  }
+
+  friend bool operator==(const LookupKey& lhs, const LookupKey& rhs) {
+    return lhs.cub_version == rhs.cub_version &&
+           lhs.device_name == rhs.device_name &&
+           lhs.key_type_size == rhs.key_type_size &&
+           lhs.value_type_size == rhs.value_type_size &&
+           lhs.is_segmented == rhs.is_segmented;
+  }
+};
+
+struct ScratchSizeRecord {
+  int64_t num_items;
+  int64_t scratch_space_bytes;
+};
+}  // namespace internal
+
 // A lookup table for that returns an estimate of the scratch space required by
 // CUB sorts without requiring a GPU.
+//
+// Note that the scratch space may depend on the device's SM occupancy, which
+// can vary in dbg vs opt builds. The internal data is based on the opt builds,
+// which (unintuitively) requires more scratch space than dbg builds.
 class CubScratchSizeDevicelessLookup {
  public:
+  // Not copyable, only movable, since this is a singleton.
+  CubScratchSizeDevicelessLookup(const CubScratchSizeDevicelessLookup&) =
+      delete;
+  CubScratchSizeDevicelessLookup& operator=(
+      const CubScratchSizeDevicelessLookup&) = delete;
+  CubScratchSizeDevicelessLookup(CubScratchSizeDevicelessLookup&&) = default;
+  CubScratchSizeDevicelessLookup& operator=(CubScratchSizeDevicelessLookup&&) =
+      default;
+
   static absl::StatusOr<CubScratchSizeDevicelessLookup> CreateFromProto(
       CubScratchSizeLookupTable proto);
 
-  // Creates a lookup instance from the data bundled in the binary.
-  static absl::StatusOr<CubScratchSizeDevicelessLookup> CreateFromBundledData();
+  // Returns the singleton instance loaded from bundled data.
+  static absl::StatusOr<const CubScratchSizeDevicelessLookup&> GetInstance();
 
   // Looks up the estimated scratch space CUB will need for the given
   // parameters. The estimated space will be >= to the actual space CUB will
@@ -60,14 +105,14 @@ class CubScratchSizeDevicelessLookup {
                  int64_t batch_size = 1) const;
 
  private:
-  explicit CubScratchSizeDevicelessLookup(CubScratchSizeLookupTable proto);
+  explicit CubScratchSizeDevicelessLookup(
+      absl::flat_hash_map<internal::LookupKey,
+                          std::vector<internal::ScratchSizeRecord>>
+          lookup_table);
 
-  const CubScratchSizeEntry* FindEntry(
-      stream_executor::SemanticVersion cub_version,
-      absl::string_view device_name, int32_t key_type_size,
-      std::optional<int32_t> value_type_size, bool is_segmented) const;
-
-  CubScratchSizeLookupTable proto_;
+  absl::flat_hash_map<internal::LookupKey,
+                      std::vector<internal::ScratchSizeRecord>>
+      lookup_table_;
 };
 
 }  // namespace xla::gpu

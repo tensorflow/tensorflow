@@ -120,7 +120,7 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
         !HloOpProfiler::Unsupported().count(op) &&
         !(is_rocm && skip_on_rocm.count(op))) {
       auto Type = FloatTypes.count(op) ? F32 : S32;
-      TF_EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
+      EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
     }
   }
 }

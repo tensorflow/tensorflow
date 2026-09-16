@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/util/dlpack_types.h"
 
 #include "absl/status/statusor.h"
-#include "include/dlpack/dlpack.h"
+#include "dlpack/dlpack.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

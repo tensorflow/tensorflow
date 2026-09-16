@@ -82,8 +82,8 @@ class NcclReduceOpBase : public NcclAsyncOpBase {
     } else if (reduction == "prod") {
       reduction_op_ = ncclProd;
     } else {
-      OP_REQUIRES_OK(c,
-                     errors::InvalidArgument("Invalid reduction: ", reduction));
+      OP_REQUIRES_OK(c, absl::InvalidArgumentError(
+                            absl::StrCat("Invalid reduction: ", reduction)));
     }
   }
 
@@ -269,7 +269,7 @@ class NcclStubKernel : public AsyncOpKernel {
  public:
   explicit NcclStubKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {}
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
-    c->SetStatus(errors::Unimplemented(
+    c->SetStatus(absl::UnimplementedError(
         "This op should be replaced during graph optimization."));
     done();
   }

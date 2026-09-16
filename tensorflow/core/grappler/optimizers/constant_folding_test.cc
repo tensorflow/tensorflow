@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/cc/ops/array_ops.h"
@@ -887,9 +888,11 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("x", node.input(0));
         EXPECT_EQ(ctrl_ones_name, node.input(1));
       } else if (name == "div2") {
-        EXPECT_EQ("Reciprocal", node.op());
-        EXPECT_EQ("y", node.input(0));
-        EXPECT_EQ(ctrl_ones_name, node.input(1));
+        // ones / y is not rewritten to Reciprocal(y): the CPU Reciprocal
+        // kernel is not exactly IEEE division for float (see issue #102771).
+        EXPECT_EQ("Div", node.op());
+        EXPECT_EQ(ones_name, node.input(0));
+        EXPECT_EQ("y", node.input(1));
       } else if (name == "floordiv") {
         EXPECT_EQ("FloorDiv", node.op());
         EXPECT_EQ("x", node.input(0));
@@ -4155,9 +4158,9 @@ TEST_F(ConstantFoldingTest, SimplifySelect) {
       tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
       std::unique_ptr<Tensor> if_t;
       if (scalar_pred) {
-        if_t.reset(new Tensor(DT_BOOL, TensorShape()));
+        if_t = std::make_unique<Tensor>(DT_BOOL, TensorShape());
       } else {
-        if_t.reset(new Tensor(DT_BOOL, TensorShape({2, 2})));
+        if_t = std::make_unique<Tensor>(DT_BOOL, TensorShape({2, 2}));
       }
       for (int i = 0; i < (scalar_pred ? 1 : 4); ++i) {
         if_t->flat<bool>()(i) = pred_val;
@@ -4220,7 +4223,7 @@ TEST_F(ConstantFoldingTest, SimplifySelect_BroadcastTo) {
     for (bool pred_val : {true, false}) {
       tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
       std::unique_ptr<Tensor> if_t;
-      if_t.reset(new Tensor(DT_BOOL, pred_shape));
+      if_t = std::make_unique<Tensor>(DT_BOOL, pred_shape);
       for (int i = 0; i < pred_shape.num_elements(); ++i) {
         if_t->flat<bool>()(i) = pred_val;
       }

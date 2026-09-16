@@ -93,6 +93,17 @@ extern "C" {
 typedef struct SP_Stream_st* SP_Stream;
 typedef struct SP_Event_st* SP_Event;
 typedef struct SP_Timer_st* SP_Timer;
+
+typedef struct SP_StreamOptions {
+  size_t struct_size;
+  void* ext;  // reserved for future use
+  TF_Bool has_priority;
+  int priority;
+} SP_StreamOptions;
+
+#define SP_STREAM_OPTIONS_STRUCT_SIZE \
+  TF_OFFSET_OF_END(SP_StreamOptions, priority)
+
 // Takes `callback_arg` passed to `host_callback` as the first argument.
 typedef void (*SE_StatusCallbackFn)(void* const, TF_Status* const);
 
@@ -412,10 +423,15 @@ typedef struct SP_StreamExecutor {
   // `callback_arg` should be passed as the first argument to `callback_fn`.
   TF_Bool (*host_callback)(const SP_Device* device, SP_Stream stream,
                            SE_StatusCallbackFn callback_fn, void* callback_arg);
+
+  // Same as create_stream but takes additional options.
+  void (*create_stream_with_options)(const SP_Device* device,
+                                     const SP_StreamOptions* options,
+                                     SP_Stream* stream, TF_Status* status);
 } SP_StreamExecutor;
 
 #define SP_STREAMEXECUTOR_STRUCT_SIZE \
-  TF_OFFSET_OF_END(SP_StreamExecutor, host_callback)
+  TF_OFFSET_OF_END(SP_StreamExecutor, create_stream_with_options)
 
 typedef struct SE_CreateStreamExecutorParams {
   size_t struct_size;

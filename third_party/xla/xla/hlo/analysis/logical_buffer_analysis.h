@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_LOGICAL_BUFFER_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_LOGICAL_BUFFER_ANALYSIS_H_
 
+#include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -26,38 +31,67 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 namespace xla {
-// A class to create all the logical buffers defined by the HLO ops in a module.
+// Identifies and instantiates all the logical buffers defined by HLO
+// instructions in an HLO module.
+//
+// This class visits HLO instructions in post-order DFS order to determine
+// which output shape indices of which HLO instructions define/create a new
+// buffer and which ones alias existing buffers. It assigns a unique
+// `LogicalBuffer::Id` to each newly defined buffer.
+//
+// Analysis steps:
+// 1. Visit each HLO instruction in DFS order.
+// 2. Identify the logical buffers defined/created by the instruction.
+// 3. Populate `logical_buffers_` (for retrieval by ID) and `output_buffers_`
+//    (for retrieval by instruction and subshape index).
 class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
  public:
-  // Runs points-to analysis on 'module'.
+  // Runs the logical buffer analysis on the given `HloModule` and returns
+  // the completed analysis result.
   static absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>> Run(
-      const HloModule* module);
+      const HloModule* module, bool alias_buffer_across_dataflow = false);
 
-  // Returns the logical buffer with the given ID.
-  LogicalBuffer& GetBuffer(LogicalBuffer::Id id) const;
+  // Returns the `LogicalBuffer` with the given ID.
+  //
+  // Returns an error status if the ID is invalid (not less than
+  // `num_logical_buffers()`).
+  absl::StatusOr<LogicalBuffer*> GetBuffer(LogicalBuffer::Id id) const;
 
-  // Returns the logical buffer that represents the output of a given HLO
-  // at a given index.
-  LogicalBuffer& GetBuffer(HloInstruction* instruction,
-                           const ShapeIndex& index) const;
+  // Returns the `LogicalBuffer` defined by the instruction at
+  // the specified `ShapeIndex` in its output.
+  //
+  // Returns an error status if the instruction does not define a
+  // logical buffer at the given index.
+  absl::StatusOr<LogicalBuffer*> GetBuffer(HloInstruction* instruction,
+                                           const ShapeIndex& index) const;
 
+  // Returns a view list of all `LogicalBuffer`s created in the module.
   const std::vector<std::unique_ptr<LogicalBuffer>>& logical_buffers() const {
     return logical_buffers_;
   }
+
+  // Returns the total number of unique `LogicalBuffer`s created.
   size_t num_logical_buffers() const { return logical_buffers_.size(); }
 
  private:
-  explicit LogicalBufferAnalysis(const HloModule* module) : module_(module) {}
+  explicit LogicalBufferAnalysis(const HloModule* module,
+                                 bool alias_buffer_across_dataflow)
+      : module_(module),
+        alias_buffer_across_dataflow_(alias_buffer_across_dataflow) {}
+
+  // Performs the DFS analysis over all non-fusion and fusion computations
+  // of the module.
   absl::Status Analyze();
 
   // The module this analysis is performed on.
   const HloModule* module_;
 
-  // Create a new logical buffer and return a reference to it. The newly created
-  // buffer is stored in an internal vector of LogicalBuffers and can be
-  // accessed with GetBuffer.
+  // Instantiates a new `LogicalBuffer` associated with `instruction` at
+  // `index` and adds it to internal collections.
   void NewLogicalBuffer(HloInstruction* instruction, const ShapeIndex& index);
 
+  // Visitor overrides that identify buffer creation points for each
+  // instruction type.
   absl::Status DefaultAction(HloInstruction* hlo_instruction) override;
   absl::Status HandleTuple(HloInstruction* tuple) override;
   absl::Status HandleGetTupleElement(
@@ -73,18 +107,33 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleFusion(HloInstruction* fusion) override;
   absl::Status HandleAsyncStart(HloInstruction* async_start) override;
+  absl::Status HandleAsyncUpdate(HloInstruction* async_update) override;
+  absl::Status HandleAsyncDone(HloInstruction* async_done) override;
 
-  // A map from the buffer ID to the logical buffer
+  // A collection of all logical buffers, indexed by their ID.
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;
 
-  // A map from an hlo + shape index to the logical buffer representing
-  // the appropriate output.
+  // A map mapping an `(HloInstruction, ShapeIndex)` pair to the `LogicalBuffer`
+  // defined at that position.
   absl::flat_hash_map<std::pair<const HloInstruction*, const ShapeIndex>,
                       LogicalBuffer*>
       output_buffers_;
-  // Whether to alias buffers defined by dataflow relations. This aliasing
-  // relation should not be recognized if copies can be inserted to break up
-  // the dataflow relation-induced aliasing.
+
+  // Flag indicating whether to respect output-to-operand aliasing annotations
+  // on custom calls (only).
+  //
+  // If true, outputs explicitly annotated to alias an operand do not define
+  // new logical buffers (the operand's buffer is forwarded). If false, new
+  // logical buffers are created for all outputs, ignoring those annotations.
+  //
+  // For example, given:
+  //   %ccall = custom-call(%param), output_to_operand_aliasing={ {}: (0, {}) }
+  //
+  // - If true: `%ccall` does not define a new buffer; it reuses `%param`'s.
+  // - If false: `%ccall` defines a new `LogicalBuffer(%ccall, {})`.
+  //
+  // Note: This does not affect Call, Fusion, AsyncStart, Parameter,
+  // or While instructions, which always define new buffers.
   const bool alias_buffer_across_dataflow_ = false;
 };
 

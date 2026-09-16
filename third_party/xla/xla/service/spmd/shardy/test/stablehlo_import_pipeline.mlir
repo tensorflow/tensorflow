@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: sdy_opt %s -xla-sdy-stablehlo-import-pipeline -split-input-file 2>&1 | FileCheck %s
 
 // CHECK-LABEL: sdy.mesh @mesh = <["_axis_0"=8, "_axis_1"=4]>
@@ -110,4 +124,15 @@ func.func @import_sharding_group_with_unused_result(%arg0: tensor<8x8xf32>) -> t
   // CHECK sdy.sharding_group %arg0 group_id = 21:  tensor<8x8xf32>
   %0 = stablehlo.custom_call @xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> tuple<>
   return %arg0 : tensor<8x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @custom_call_tuple_result_sharding
+func.func @custom_call_tuple_result_sharding(%arg0: tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>> {
+  // CHECK-NEXT: %[[CUSTOM_CALL:.*]]:2 = stablehlo.custom_call @foo(%arg0)
+  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"_axis_0"}, {}]>, <@mesh, [{}, {"_axis_0"}]>]>}
+  // CHECK-SAME: : (tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>)
+  %0 = stablehlo.custom_call @foo(%arg0) {mhlo.sharding = "{{devices=[2,1]<=[2]},{devices=[1,2]<=[1,2]T(1,0)}}"} : (tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+  return %0 : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
 }

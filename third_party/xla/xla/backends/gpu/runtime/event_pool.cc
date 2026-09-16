@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/event_pool.h"
 
-#include <memory>
-
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"

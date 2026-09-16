@@ -87,6 +87,7 @@ void ExpectGroupedGemmConfigEq(const GroupedGemmConfig& lhs,
   EXPECT_EQ(lhs.type_d, rhs.type_d);
   EXPECT_EQ(lhs.stride_ragged_dim, rhs.stride_ragged_dim);
   EXPECT_EQ(lhs.stride_group_dim, rhs.stride_group_dim);
+  EXPECT_EQ(lhs.c_stride_ragged_dim, rhs.c_stride_ragged_dim);
   EXPECT_EQ(lhs.output_stride_ragged_dim, rhs.output_stride_ragged_dim);
   EXPECT_EQ(lhs.precision_algorithm, rhs.precision_algorithm);
   EXPECT_EQ(lhs.compute_precision, rhs.compute_precision);
@@ -114,8 +115,7 @@ TEST(GemmConfigTest, ProtoConversion) {
   };
 
   xla::GemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config, GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
 }
@@ -148,8 +148,7 @@ TEST(GemmConfigTest, ProtoConversionWithOptionals) {
   };
 
   xla::GemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config, GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
 }
@@ -176,6 +175,7 @@ TEST(GroupedGemmConfigTest, ProtoConversionWithOptionals) {
       blas::DataType::kFloat,                     // type_d
       64,                                         // stride_ragged_dim
       64 * 48,                                    // stride_group_dim
+      48,                                         // c_stride_ragged_dim
       48,                                         // output_stride_ragged_dim
       xla::PrecisionConfig::ALG_DOT_F32_F32_F32,  // precision_algorithm
       1,                                          // compute_precision
@@ -184,8 +184,8 @@ TEST(GroupedGemmConfigTest, ProtoConversionWithOptionals) {
   };
 
   xla::GroupedGemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GroupedGemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
+                       GroupedGemmConfig::FromProto(proto));
 
   ExpectGroupedGemmConfigEq(original_config, round_tripped_config);
 }
@@ -221,13 +221,14 @@ using EpilogueFromProtoTest =
     ::testing::TestWithParam<xla::BlasLtEpilogueProto>;
 
 TEST_P(EpilogueFromProtoTest, SucceedsForValidValue) {
-  TF_EXPECT_OK(BlasLt::EpilogueFromProto(GetParam()));
+  EXPECT_OK(BlasLt::EpilogueFromProto(GetParam()));
 }
 
 std::vector<xla::BlasLtEpilogueProto> EnumerateBlasLtEpilogueProtoValues() {
   const google::protobuf::EnumDescriptor* descriptor =
       xla::BlasLtEpilogueProto_descriptor();
   std::vector<xla::BlasLtEpilogueProto> values;
+  values.reserve(descriptor->value_count());
   for (int i = 0; i < descriptor->value_count(); ++i) {
     values.push_back(
         static_cast<xla::BlasLtEpilogueProto>(descriptor->value(i)->number()));
@@ -274,13 +275,14 @@ using RaggedDotModeFromProtoTest =
     ::testing::TestWithParam<xla::RaggedDotModeProto>;
 
 TEST_P(RaggedDotModeFromProtoTest, SucceedsForValidValue) {
-  TF_EXPECT_OK(RaggedDotModeFromProto(GetParam()));
+  EXPECT_OK(RaggedDotModeFromProto(GetParam()));
 }
 
 std::vector<xla::RaggedDotModeProto> EnumerateRaggedDotModeValues() {
   const google::protobuf::EnumDescriptor* descriptor =
       xla::RaggedDotModeProto_descriptor();
   std::vector<xla::RaggedDotModeProto> values;
+  values.reserve(descriptor->value_count());
   for (int i = 0; i < descriptor->value_count(); ++i) {
     values.push_back(
         static_cast<xla::RaggedDotModeProto>(descriptor->value(i)->number()));

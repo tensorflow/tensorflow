@@ -27,7 +27,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class NopCustomCallTest : public HloPjRtTestBase {};
+class NopCustomCallTest : public HloTestBase {};
 
 TEST_F(NopCustomCallTest, RunAllocateBufferAndUpdate) {
   // The test uses a custom call with the AllocateBuffer target (also known as

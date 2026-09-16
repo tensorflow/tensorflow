@@ -96,8 +96,10 @@ class DType {
 
     // MX floating point types.
     kF4E2M1FN = 32,
+    kF6E3M2FN = 35,
+    kF6E2M3FN = 36,
 
-    // Next = 34
+    // Next = 37
 
     // Variable-length string represented as raw bytes, as in `bytes` in Python,
     // i.e., no encoding enforcement. String is not support in XLA. DType.Kind

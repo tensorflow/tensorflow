@@ -694,6 +694,14 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateWhileOutlinePass());
   }
   pass_manager->addPass(mlir::TFL::CreateIfOutlinePass());
+
+  if (pass_config.unsafe_single_batch_rank_reduction) {
+    pass_manager->addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateRankReductionPass());
+    pass_manager->addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateGpuCompatibilityPass());
+  }
+
   if (pass_config.runtime_verification) {
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateRuntimeVerifyPass());

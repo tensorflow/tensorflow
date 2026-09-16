@@ -40,5 +40,13 @@ TEST(PtxOptsFromDebugOptionsTest, GenerateDebugInfo) {
               Contains("--device-debug"));
 }
 
+TEST(PtxOptsFromDebugOptionsTest, ExtraFlags) {
+  xla::DebugOptions debug_options;
+  debug_options.add_xla_gpu_ptx_compiler_extra_flags("--verbose");
+
+  EXPECT_THAT(PtxOptsFromDebugOptions(debug_options).extra_flags,
+              Contains("--verbose"));
+}
+
 }  // namespace
 }  // namespace xla::gpu

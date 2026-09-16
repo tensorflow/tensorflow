@@ -96,8 +96,4 @@ struct RoundF32ToTF32ForTf32DotRewritePass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateRoundF32ToTF32ForTf32DotRewritePass() {
-  return std::make_unique<RoundF32ToTF32ForTf32DotRewritePass>();
-}
-
 }  // namespace mlir::triton::xla

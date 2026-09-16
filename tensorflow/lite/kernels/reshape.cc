@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <cstring>
 #include <memory>
 
@@ -21,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/reshape_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -41,11 +41,11 @@ struct OpData {
   bool output_shape_known = true;
 };
 
-TfLiteIntArray* GetOutputShape(TfLiteContext*, TfLiteNode*);
+IntArrayUniquePtr GetOutputShape(TfLiteContext*, TfLiteNode*);
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteIntArray* output_shape = GetOutputShape(context, node);
-  IntArrayUniquePtr scoped_output_shape(output_shape);
+  IntArrayUniquePtr output_shape = GetOutputShape(context, node);
+  TF_LITE_ENSURE(context, output_shape != nullptr);
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
@@ -53,56 +53,23 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  // Tensorflow's Reshape allows one of the shape components to have the
-  // special -1 value, meaning it will be calculated automatically based on the
-  // input. Here we calculate what that dimension should be so that the number
-  // of output elements is the same as the number of input elements.
-  int64_t non_zero_num_input_elements = 1, num_input_elements = 1;
   const RuntimeShape& input_shape = GetTensorShape(input);
-  for (int i = 0; i < input_shape.DimensionsCount(); ++i) {
-    const int value = input_shape.Dims(i);
-    num_input_elements *= value;
-    if (value != 0) {
-      non_zero_num_input_elements *= value;
-    }
-  }
-
-  int64_t non_zero_num_output_elements = 1, num_output_elements = 1;
-  int stretch_dim = -1;
-  for (int i = 0; i < output_shape->size; ++i) {
-    const int value = output_shape->data[i];
-    if (value == -1) {
-      TF_LITE_ENSURE_EQ(context, stretch_dim, -1);
-      stretch_dim = i;
-      continue;
-    } else if (value != 0) {
-      non_zero_num_output_elements *= value;
-    }
-    num_output_elements *= value;
-  }
-
-  if (stretch_dim != -1) {
-    if (num_input_elements == 0 && num_output_elements != 0) {
-      output_shape->data[stretch_dim] = 0;
-    } else {
-      output_shape->data[stretch_dim] =
-          non_zero_num_input_elements / non_zero_num_output_elements;
-    }
-    num_output_elements *= output_shape->data[stretch_dim];
-  }
-
-  TF_LITE_ENSURE_EQ(context, num_input_elements, num_output_elements);
-  return context->ResizeTensor(context, output, scoped_output_shape.release());
+  TF_LITE_ENSURE_OK(context, reshape_internal::ResolveOutputShape(
+                                 context, input_shape, *output_shape));
+  return context->ResizeTensor(context, output, output_shape.release());
 }
 
-inline TfLiteIntArray* GetOutputShapeFromTensor(TfLiteContext* context,
-                                                TfLiteNode* node) {
+inline IntArrayUniquePtr GetOutputShapeFromTensor(TfLiteContext* context,
+                                                  TfLiteNode* node) {
   const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
   if (shape == nullptr) {
     return nullptr;
   }
 
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(shape->dims->data[0]);
+  IntArrayUniquePtr output_shape = BuildTfLiteArray(shape->dims->data[0]);
+  if (output_shape == nullptr) {
+    return nullptr;
+  }
   for (int i = 0; i < output_shape->size; ++i) {
     output_shape->data[i] = shape->data.i32[i];
   }
@@ -110,8 +77,8 @@ inline TfLiteIntArray* GetOutputShapeFromTensor(TfLiteContext* context,
   return output_shape;
 }
 
-inline TfLiteIntArray* GetOutputShapeFromParam(TfLiteContext* context,
-                                               TfLiteNode* node) {
+inline IntArrayUniquePtr GetOutputShapeFromParam(TfLiteContext* context,
+                                                 TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteReshapeParams*>(node->builtin_data);
 
   // The function is returned above this line if the shape tensor is usable.
@@ -123,7 +90,10 @@ inline TfLiteIntArray* GetOutputShapeFromParam(TfLiteContext* context,
     // toco conversion.
     num_dimensions = 0;
   }
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(num_dimensions);
+  IntArrayUniquePtr output_shape = BuildTfLiteArray(num_dimensions);
+  if (output_shape == nullptr) {
+    return nullptr;
+  }
   for (int i = 0; i < num_dimensions; ++i) {
     output_shape->data[i] = params->shape[i];
   }
@@ -138,7 +108,7 @@ inline bool ShapeIsVector(TfLiteContext* context, TfLiteNode* node) {
           shape->type == kTfLiteInt32);
 }
 
-TfLiteIntArray* GetOutputShape(TfLiteContext* context, TfLiteNode* node) {
+IntArrayUniquePtr GetOutputShape(TfLiteContext* context, TfLiteNode* node) {
   if (NumInputs(node) == 2 && ShapeIsVector(context, node)) {
     return GetOutputShapeFromTensor(context, node);
   } else {
@@ -201,9 +171,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // either case, we now have all the information to calculate its shape.
   if (output->type != kTfLiteString) {
     if (!op_data->output_shape_known) {
+      // Static non-string reshapes already resolved and validated the output
+      // shape in Prepare(). Re-enter ResizeOutput() during Eval() only for the
+      // uncommon dynamic-shape path, where the shape tensor value is not known
+      // until invocation time.
       if (output->data.data != input->data.data) {
-        // If the otuput cannot overwrite the input, then we have to set the
-        // tensor to dyanmic.
+        // If the output cannot overwrite the input, then we have to set the
+        // tensor to dynamic.
         SetTensorToDynamic(output);
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
       } else {

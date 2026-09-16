@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
@@ -256,8 +257,8 @@ absl::StatusOr<std::string> GenerateDenyListEntry(
   AlgorithmDenylist list;
   AlgorithmDenylistEntry* entry = list.add_entries();
   entry->set_hlo(instr.ToString(::xla::HloPrintOptions::Fingerprint()));
-  TF_ASSIGN_OR_RETURN(*entry->mutable_backend_config(),
-                      instr.backend_config<GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(*entry->mutable_backend_config(),
+                   instr.backend_config<GpuBackendConfig>());
 
   *entry->mutable_cc() = cc;
   *entry->mutable_cudnn_version() = cudnn_version;

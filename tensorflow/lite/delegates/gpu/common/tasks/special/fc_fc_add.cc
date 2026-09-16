@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -22,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -222,7 +226,7 @@ void FCFCAdd::UploadQuantizedWeights(
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
-  std::vector<uint8_t> data(src_depth * 4 * dst_depth * 4);
+  std::vector<uint8_t> data(static_cast<size_t>(src_depth) * 4 * dst_depth * 4);
   RearrangeFCWeightsToOIO4I4(weights, data.data());
   TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
       DataType::UINT8, TensorStorageType::TEXTURE_2D, src_depth * 4, dst_depth,

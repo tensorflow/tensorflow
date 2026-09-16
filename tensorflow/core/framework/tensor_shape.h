@@ -249,8 +249,8 @@ class TensorShapeBase : public TensorShapeRep {
   /// Use if unsure is `0 <= d < dims()`, to prevent `CHECK`-crashes.
   absl::Status RemoveDimWithStatus(int64_t d) {
     if (TF_PREDICT_FALSE(d < 0)) {
-      return errors::Internal(
-          "Expected dimension index to be non-negative, got ", d);
+      return absl::InternalError(
+          absl::StrCat("Expected dimension index to be non-negative, got ", d));
     }
     return RemoveDimRangeWithStatus(d, d + 1);
   }
@@ -681,9 +681,9 @@ template <int NDIMS, typename IndexType>
 absl::Status TensorShape::AsEigenDSizesWithStatus(
     Eigen::DSizes<IndexType, NDIMS>* out) const {
   if (TF_PREDICT_FALSE(NDIMS != dims())) {
-    return errors::Internal("Asking for tensor of ", NDIMS,
-                            " dimensions from a tensor of ", dims(),
-                            " dimensions");
+    return absl::InternalError(absl::StrCat("Asking for tensor of ", NDIMS,
+                                            " dimensions from a tensor of ",
+                                            dims(), " dimensions"));
   }
   *out = AsEigenDSizesCopy<NDIMS, IndexType>();
   return absl::OkStatus();
@@ -699,9 +699,9 @@ template <int NDIMS, typename IndexType>
 absl::Status TensorShape::AsEigenDSizesWithPaddingWithStatus(
     Eigen::DSizes<IndexType, NDIMS>* out) const {
   if (TF_PREDICT_FALSE(NDIMS < dims())) {
-    return errors::Internal("Asking for tensor of at most ", NDIMS,
-                            " dimensions from a tensor of ", dims(),
-                            " dimensions");
+    return absl::InternalError(
+        absl::StrCat("Asking for tensor of at most ", NDIMS,
+                     " dimensions from a tensor of ", dims(), " dimensions"));
   }
   *out = AsEigenDSizesCopyAndPad<NDIMS, IndexType>();
   return absl::OkStatus();

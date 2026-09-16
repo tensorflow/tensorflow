@@ -55,11 +55,11 @@ bool IsStaticShard(const ProcessingModeDef& processing_mode) {
 absl::Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
   if (!IsNoShard(processing_mode) && !IsDynamicShard(processing_mode) &&
       !IsStaticShard(processing_mode)) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "ProcessingMode ", processing_mode.ShortDebugString(),
         " does not "
         "specify a valid sharding policy. Please add the policy to either "
-        "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard).");
+        "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard)."));
   }
   return absl::OkStatus();
 }
@@ -79,11 +79,11 @@ absl::StatusOr<AutoShardPolicy> ToAutoShardPolicy(
     case ProcessingModeDef::OFF:
       return AutoShardPolicy::OFF;
     default:
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "tf.data service sharding policy ",
           ProcessingModeDef::ShardingPolicy_Name(sharding_policy),
           " is not convertible to a valid auto-shard policy. If you're "
-          "defining a new sharding policy, please update the policy mapping.");
+          "defining a new sharding policy, please update the policy mapping."));
   }
 }
 
@@ -98,7 +98,8 @@ absl::StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s) {
   if (str_upper == kLocal) {
     return TARGET_WORKERS_LOCAL;
   }
-  return errors::InvalidArgument("Unrecognized target workers: ", s);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unrecognized target workers: ", s));
 }
 
 std::string TargetWorkersToString(TargetWorkers target_workers) {
@@ -126,9 +127,10 @@ absl::StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s) {
   if (str_upper == kHybrid) {
     return DEPLOYMENT_MODE_HYBRID;
   }
-  return errors::InvalidArgument("Invalid tf.data service deployment mode: ", s,
-                                 ". Supported modes are "
-                                 "COLOCATED, REMOTE, and HYBRID.");
+  return absl::InvalidArgumentError(
+      absl::StrCat("Invalid tf.data service deployment mode: ", s,
+                   ". Supported modes are "
+                   "COLOCATED, REMOTE, and HYBRID."));
 }
 
 bool IsPreemptedError(const absl::Status& status) {

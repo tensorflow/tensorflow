@@ -19,7 +19,7 @@ limitations under the License.
 // This logic allows Python to import _pywrap_tensorflow_internal.so by
 // creating a PyInit function and exposing it. It is required in opensource
 // only.
-PYBIND11_MODULE(_pywrap_tensorflow_internal, m) {
+PYBIND11_MODULE(_pywrap_tensorflow_internal, m, pybind11::mod_gil_not_used()) {
   m.def("pywrap_library_dependency_symbol",
         &tensorflow::python::pywrap_library_dependency_symbol);
 };

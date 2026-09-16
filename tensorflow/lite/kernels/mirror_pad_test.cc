@@ -12,10 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -30,13 +33,17 @@ class BaseMirrorPadOpModel : public SingleOpModel {
   BaseMirrorPadOpModel(const TensorData& input,
                        const TensorData& padding_matrix,
                        const TensorData& output,
-                       const tflite::MirrorPadMode mode) {
+                       const tflite::MirrorPadMode mode,
+                       bool allocate_and_delegate = true) {
     input_id_ = AddInput(input);
     padding_matrix_id_ = AddInput(padding_matrix);
     output_id_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_MIRROR_PAD, BuiltinOptions_MirrorPadOptions,
                  CreateMirrorPadOptions(builder_, mode).Union());
-    BuildInterpreter({GetShape(input_id_), GetShape(padding_matrix_id_)});
+    BuildInterpreter({GetShape(input_id_), GetShape(padding_matrix_id_)},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   int input_tensor_id() { return input_id_; }
@@ -61,6 +68,57 @@ float GetTolerance(float min, float max) {
       (max - min) / (std::numeric_limits<integer_type>::max() -
                      std::numeric_limits<integer_type>::min());
   return kQuantizedStep;
+}
+
+TEST(MirrorPadTest, RejectsPaddingMatrixWithWrongWidth) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {1}}, {TensorType_INT32, {1, 1}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_SYMMETRIC,
+      /*allocate_and_delegate=*/false);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(MirrorPadTest, RejectsUnsupportedPaddingMatrixType) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {1}}, {TensorType_FLOAT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_SYMMETRIC,
+      /*allocate_and_delegate=*/false);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(MirrorPadTest, RejectsMismatchedInputAndOutputTypes) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT8, {1}}, {TensorType_INT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_SYMMETRIC,
+      /*allocate_and_delegate=*/false);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(MirrorPadTest, RejectsNegativePadding) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {3}}, {TensorType_INT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_SYMMETRIC);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3});
+  model.PopulateTensor<int>(model.padding_matrix_tensor_id(), {-1, 0});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST(MirrorPadTest, RejectsReflectPaddingPastInputBounds) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {3}}, {TensorType_INT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_REFLECT);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3});
+  model.PopulateTensor<int>(model.padding_matrix_tensor_id(), {3, 0});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST(MirrorPadTest, RejectsSymmetricPaddingPastInputBounds) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {3}}, {TensorType_INT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_SYMMETRIC);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3});
+  model.PopulateTensor<int>(model.padding_matrix_tensor_id(), {4, 0});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
 }
 
 TEST(MirrorPadTest, EmptyPad) {

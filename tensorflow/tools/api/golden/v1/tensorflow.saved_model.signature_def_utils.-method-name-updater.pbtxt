@@ -1,7 +1,7 @@
 path: "tensorflow.saved_model.signature_def_utils.MethodNameUpdater"
 tf_class {
   is_instance: "<class \'tensorflow.python.saved_model.method_name_updater.MethodNameUpdater\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'export_dir\'], varargs=None, keywords=None, defaults=None"

@@ -357,7 +357,7 @@ TEST_F(LocalRendezvousTest, MultiSends) {
 TEST_F(LocalRendezvousTest, RecvAbort) {
   rendez_->Ref();
   SchedClosure([this]() {
-    rendez_->StartAbort(errors::Aborted(""));  // abort
+    rendez_->StartAbort(absl::AbortedError(""));  // abort
     rendez_->Unref();
   });
   Tensor val(DT_STRING);
@@ -373,7 +373,7 @@ TEST_F(LocalRendezvousTest, RecvSleepAbort) {
   rendez_->Ref();
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(1000000);
-    rendez_->StartAbort(errors::Aborted(""));  // abort
+    rendez_->StartAbort(absl::AbortedError(""));  // abort
     rendez_->Unref();
   });
   Tensor val(DT_STRING);
@@ -384,7 +384,7 @@ TEST_F(LocalRendezvousTest, RecvSleepAbort) {
 }
 
 TEST_F(LocalRendezvousTest, AbortThenRecvOrSend) {
-  rendez_->StartAbort(errors::Aborted(""));
+  rendez_->StartAbort(absl::AbortedError(""));
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;

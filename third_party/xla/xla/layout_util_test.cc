@@ -427,6 +427,102 @@ TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
                         "contains 3 elements, but shape has 1 dimensions"));
 }
 
+TEST_F(LayoutUtilTest, ValidateLayout_TileValidation) {
+  // Valid oversized tile: Shape rank 1, but tile has 2 dimensions.
+  // This is allowed because the shape is padded to 2D during tiling.
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {8});
+    Layout layout;
+    layout.add_minor_to_major(0);
+    *layout.add_tiles() = Tile({2, 2});
+    *shape.mutable_layout() = layout;
+    auto status = LayoutUtil::ValidateLayoutInShape(
+        shape, /*allow_missing_layouts=*/false);
+    EXPECT_TRUE(status.ok());
+
+    // Test round-trip indexing with padding
+    EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {5}), 9);
+    EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape, 9),
+                ElementsAre(5));
+  }
+
+  // Valid nested oversized tile: Shape rank 2, but nested tiles have total rank
+  // exceeding the shape rank at the step.
+  // Initially rank 2.
+  // Tile 1 (rank 2) -> no padding, rank becomes 2 + 2 = 4.
+  // Tile 2 (rank 5) -> pads rank from 4 to 5, new rank becomes 5 + 5 = 10.
+  // This is allowed because the shape is padded to rank 5 at the second step.
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {8, 8});
+    Layout layout;
+    layout.add_minor_to_major(1);
+    layout.add_minor_to_major(0);
+    *layout.add_tiles() = Tile({2, 2});
+    *layout.add_tiles() = Tile({2, 2, 2, 2, 2});
+    *shape.mutable_layout() = layout;
+    auto status = LayoutUtil::ValidateLayoutInShape(
+        shape, /*allow_missing_layouts=*/false);
+    EXPECT_TRUE(status.ok());
+  }
+
+  // Invalid: Tile with dimension <= 0 (excluding kCombineDimension)
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {8, 8});
+    Layout layout;
+    layout.add_minor_to_major(1);
+    layout.add_minor_to_major(0);
+    *layout.add_tiles() = Tile({2, -2});
+    *shape.mutable_layout() = layout;
+    auto status = LayoutUtil::ValidateLayoutInShape(
+        shape, /*allow_missing_layouts=*/false);
+    EXPECT_FALSE(status.ok());
+    EXPECT_THAT(status.message(), HasSubstr("layout has invalid tiles"));
+  }
+
+  // Invalid: Tile with dimension == 0
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {8, 8});
+    Layout layout;
+    layout.add_minor_to_major(1);
+    layout.add_minor_to_major(0);
+    *layout.add_tiles() = Tile({2, 0});
+    *shape.mutable_layout() = layout;
+    auto status = LayoutUtil::ValidateLayoutInShape(
+        shape, /*allow_missing_layouts=*/false);
+    EXPECT_FALSE(status.ok());
+    EXPECT_THAT(status.message(), HasSubstr("layout has invalid tiles"));
+  }
+
+  // Valid scalar tiling (allowed for backward compatibility / TPU vector
+  // padding)
+  {
+    Shape shape = ShapeUtil::MakeShape(U32, {});
+    Layout layout;
+    *layout.add_tiles() = Tile({128});
+    *shape.mutable_layout() = layout;
+    auto status = LayoutUtil::ValidateLayoutInShape(
+        shape, /*allow_missing_layouts=*/false);
+    EXPECT_TRUE(status.ok());
+  }
+
+  // Valid 1D shape with 2D tile (allowed due to padding logic)
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {3});
+    Layout layout;
+    layout.add_minor_to_major(0);
+    *layout.add_tiles() = Tile({8, 128});
+    *shape.mutable_layout() = layout;
+    auto status = LayoutUtil::ValidateLayoutInShape(
+        shape, /*allow_missing_layouts=*/false);
+    EXPECT_TRUE(status.ok());
+
+    // Test round-trip indexing
+    EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {2}), 2);
+    EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape, 2),
+                ElementsAre(2));
+  }
+}
+
 TEST_F(LayoutUtilTest, MoveDimToMajor) {
   const Layout layout = LayoutUtil::MakeLayout({2, 1, 0});
   Layout new_layout = LayoutUtil::MoveDimToMajor(layout, 0);
@@ -570,6 +666,63 @@ TEST_F(LayoutUtilTest, LinearIndexWithAndWithoutTiles) {
   shape_2D.mutable_layout()->clear_tiles();
   EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_2D, {3, 1}),
             linear_index_of_element_13_untiled);
+}
+
+TEST_F(LayoutUtilTest, LinearIndexForNestedTiling_OversizedTilesPadding) {
+  // Rank 0 (scalar) tiled with rank 1 tile: u32[]{:T(128)}
+  {
+    Shape shape = ShapeUtil::MakeShape(U32, {});
+    Layout layout;
+    *layout.add_tiles() = Tile({128});
+    *shape.mutable_layout() = layout;
+
+    EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {}), 0);
+    EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape, 0),
+                ElementsAre());
+  }
+
+  // Rank 1 shape with rank 2 tile: f32[3]{:T(8, 128)}
+  // Padded to [1, 3]. Tile T(8, 128) splits it:
+  // - Outer: [Ceil(1, 8), Ceil(3, 128)] = [1, 1]
+  // - Inner: [8, 128]
+  // Tiled space size = 1 * 1 * 8 * 128 = 1024.
+  // For logical index {2}, padded to {0, 2}.
+  // Outer indices: {0 / 8, 2 / 128} = {0, 0}.
+  // Inner indices: {0 % 8, 2 % 128} = {0, 2}.
+  // Linear index: 0 * (1 * 8 * 128) + 0 * (8 * 128) + 0 * 128 + 2 = 2.
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {3});
+    Layout layout;
+    layout.add_minor_to_major(0);
+    *layout.add_tiles() = Tile({8, 128});
+    *shape.mutable_layout() = layout;
+
+    EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {2}), 2);
+    EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape, 2),
+                ElementsAre(2));
+  }
+
+  // Rank 1 shape with rank 2 tile: f32[8]{:T(2, 2)}
+  // Padded to [1, 8]. Tile T(2, 2) splits it:
+  // - Outer: [Ceil(1, 2), Ceil(8, 2)] = [1, 4]
+  // - Inner: [2, 2]
+  // Tiled space size = 1 * 4 * 2 * 2 = 16.
+  // For logical index {5}, padded to {0, 5}.
+  // Outer indices: {0 / 2, 5 / 2} = {0, 2}.
+  // Inner indices: {0 % 2, 5 % 2} = {0, 1}.
+  // Linear index in 16-element space:
+  // 0 * (4 * 2 * 2) + 2 * (2 * 2) + 0 * 2 + 1 = 8 + 1 = 9.
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {8});
+    Layout layout;
+    layout.add_minor_to_major(0);
+    *layout.add_tiles() = Tile({2, 2});
+    *shape.mutable_layout() = layout;
+
+    EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {5}), 9);
+    EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape, 9),
+                ElementsAre(5));
+  }
 }
 
 struct IsUntiledLayoutTestCase {

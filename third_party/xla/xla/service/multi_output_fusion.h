@@ -204,9 +204,8 @@ class MultiOutputFusion : public HloModulePass {
     int64_t timestamp_ = 0;
   };
 
-  // Update the internal data structures before instr1 and instr2 are fused into
-  // one fusion instruction.
-  void UpdateBeforeFuse(HloInstruction* instr1, HloInstruction* instr2);
+  // Update the internal data structures before fused into fusion.
+  void UpdateBeforeFuse(HloInstruction* fusion, HloInstruction* fused);
 
   // Update the internal data structures after instructions are fused into
   // one fusion instruction.
@@ -225,6 +224,7 @@ class MultiOutputFusion : public HloModulePass {
 
   void set_is_fused(HloInstruction* instr) {
     fused_instructions_.insert(instr);
+    all_fusion_candidates_.erase(instr);
   }
 
   std::vector<FusionCandidate> candidates_;

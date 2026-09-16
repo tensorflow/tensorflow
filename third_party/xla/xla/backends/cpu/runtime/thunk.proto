@@ -268,6 +268,7 @@ message CustomCallThunkProto {
   message OpBuffers {
     repeated ShapeBufferAllocationSliceProto arguments_shapes = 1;
     repeated ShapeBufferAllocationSliceProto results_shapes = 2;
+    bool is_tuple_result = 3;
   }
   CustomCallApiVersion api_version = 1;
   string target_name = 2;
@@ -281,6 +282,10 @@ message PartitionIdThunkProto {
 
 message ReplicaIdThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto logical_id_buffer = 1;
+}
+
+message RngSeedThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
 
 message InfoProto {
@@ -313,6 +318,7 @@ message ThunkProto {
     PartitionIdThunkProto partition_id_thunk = 19;
     ReplicaIdThunkProto replica_id_thunk = 20;
     YnnFusionThunkProto ynn_fusion_thunk = 21;
+    RngSeedThunkProto rng_seed_thunk = 22;
   }
 }
 

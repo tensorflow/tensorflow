@@ -34,6 +34,11 @@ struct PLUGIN_Profiler {
   bool stopped;
 };
 
+struct PLUGIN_Profiler_ConsumeResult {
+  tsl::profiler::ConsumeResult consume_result;
+  std::unique_ptr<std::vector<uint8_t>> buffer;
+};
+
 namespace xla {
 namespace profiler {
 
@@ -49,6 +54,15 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Stop(PLUGIN_Profiler_Stop_Args* args);
 
 PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
     PLUGIN_Profiler_CollectData_Args* args);
+
+PLUGIN_Profiler_Error* PLUGIN_Profiler_Consume(
+    PLUGIN_Profiler_Consume_Args* args);
+
+void PLUGIN_Profiler_ConsumeResult_Destroy(
+    PLUGIN_Profiler_ConsumeResult_Destroy_Args* args);
+
+PLUGIN_Profiler_Error* PLUGIN_Profiler_Serialize(
+    PLUGIN_Profiler_Serialize_Args* args);
 
 }  // namespace profiler
 }  // namespace xla

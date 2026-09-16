@@ -134,8 +134,8 @@ typedef PJRT_Error* PJRT_Callback_InvokeCallback(
 
 typedef struct PJRT_Callback_Extension {
   PJRT_Extension_Base base;
-  PJRT_Register_Callback* register_callback;
-  PJRT_Callback_InvokeCallback* invoke_callback;
+  PJRT_NO_DISCARD PJRT_Register_Callback* register_callback;
+  PJRT_NO_DISCARD PJRT_Callback_InvokeCallback* invoke_callback;
 } PJRT_Callback_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Callback_Extension, invoke_callback);
 

@@ -37,13 +37,16 @@ class GpuTopology {
       int32_t num_hosts_per_partition, int32_t num_devices_per_host,
       std::optional<gpu::GpuTargetConfig> gpu_target_config = std::nullopt,
       std::optional<cpu::TargetMachineOptions> host_target_machine_options =
-          std::nullopt)
+          std::nullopt,
+      std::optional<int32_t> num_devices_per_process = std::nullopt)
       : platform_version_(platform_version),
         num_partitions_(num_partitions),
         num_hosts_per_partition_(num_hosts_per_partition),
         num_devices_per_host_(num_devices_per_host),
         gpu_target_config_(std::move(gpu_target_config)),
-        host_target_machine_options_(std::move(host_target_machine_options)) {}
+        host_target_machine_options_(std::move(host_target_machine_options)),
+        // Assume single process per host if not specified.
+        num_devices_per_process_(num_devices_per_process) {}
 
   // Returns a copy of this topology with the GpuTargetConfig field set to
   // `gpu_target_config`.
@@ -83,6 +86,18 @@ class GpuTopology {
   int32_t num_partitions() const { return num_partitions_; }
   int32_t num_hosts_per_partition() const { return num_hosts_per_partition_; }
   int32_t num_devices_per_host() const { return num_devices_per_host_; }
+  // Returns the number of devices per process. If not set, returns the number
+  // of devices per host.
+  int32_t num_devices_per_process() const {
+    return num_devices_per_process_.value_or(num_devices_per_host_);
+  }
+  // Returns the number of devices per host as loaded from the proto.
+  std::optional<int32_t> num_devices_per_process_opt() const {
+    return num_devices_per_process_;
+  }
+  bool is_single_process_per_host() const {
+    return num_devices_per_process() == num_devices_per_host_;
+  }
   int32_t slice_size() const {
     return num_hosts_per_partition() * num_devices_per_host();
   }
@@ -104,6 +119,7 @@ class GpuTopology {
   int32_t num_devices_per_host_;
   std::optional<gpu::GpuTargetConfig> gpu_target_config_;
   std::optional<cpu::TargetMachineOptions> host_target_machine_options_;
+  std::optional<int32_t> num_devices_per_process_;
 
   bool is_topology_symmetric() const {
     return num_partitions_ != -1 && num_hosts_per_partition_ != -1 &&

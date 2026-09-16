@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/functional/overload.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/arena.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/debug_options_flags.h"
@@ -52,7 +52,7 @@ namespace xla::gpu {
 
 static absl::StatusOr<std::pair<std::unique_ptr<HloModule>, tsl::Fprint128>>
 ParseHloModuleAndFingerprint(const HloModuleProtoWithConfig& proto) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProtoWithConfig(proto));
   HighwayHashPrinter printer;
   module->Print(&printer, HloPrintOptions::Canonical()
@@ -66,7 +66,7 @@ GpuAotCompilationResult::FromProto(GpuExecutableProto executable_proto) {
   tsl::Fprint128 executable_fingerprint = {
       tsl::DeterministicProtoHash64(executable_proto),
       tsl::DeterministicProtoHash64(executable_proto, /*seed=*/1)};
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto module_and_fingerprint,
       ParseHloModuleAndFingerprint(executable_proto.hlo_module_with_config()));
   auto& [module, hlo_fingerprint] = module_and_fingerprint;
@@ -82,12 +82,12 @@ GpuAotCompilationResult::FromSerialized(
   GpuExecutableProto* executable_proto =
       google::protobuf::Arena::Create<GpuExecutableProto>(arena.get());
 
-  RETURN_IF_ERROR(ReadSplitProto(std::move(reader), *executable_proto));
+  ABSL_RETURN_IF_ERROR(ReadSplitProto(std::move(reader), *executable_proto));
 
   tsl::Fprint128 executable_fingerprint = {
       tsl::DeterministicProtoHash64(*executable_proto),
       tsl::DeterministicProtoHash64(*executable_proto, /*seed=*/1)};
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto module_and_fingerprint,
       ParseHloModuleAndFingerprint(executable_proto->hlo_module_with_config()));
   auto& [module, hlo_fingerprint] = module_and_fingerprint;
@@ -99,7 +99,7 @@ GpuAotCompilationResult::FromSerialized(
 
 absl::StatusOr<std::string> GpuAotCompilationResult::SerializeAsString() const {
   std::string serialized;
-  RETURN_IF_ERROR(WriteSplitGpuExecutable(
+  ABSL_RETURN_IF_ERROR(WriteSplitGpuExecutable(
       GetExecutableProto(),
       std::make_unique<riegeli::StringWriter<>>(&serialized)));
   return serialized;
@@ -108,7 +108,8 @@ absl::StatusOr<std::string> GpuAotCompilationResult::SerializeAsString() const {
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuAotCompilationResult::LoadExecutable(
     se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description) && {
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) && {
   const auto symbol_resolver = [&](absl::string_view symbol_name) {
     stream_executor::KernelSymbolRegistry& registry =
         stream_executor::KernelSymbolRegistry::GetGlobalInstance();
@@ -124,8 +125,8 @@ GpuAotCompilationResult::LoadExecutable(
       executable_fingerprint_.low64, executable_fingerprint_.high64);
 
   return GpuExecutable::FromProto(GetExecutableProto(), device_description,
-                                  platform_id->ToName(),
-                                  GetDebugOptionsFromFlags(), symbol_resolver);
+                                  platform_id->ToName(), debug_options,
+                                  symbol_resolver);
 }
 
 const GpuExecutableProto& GpuAotCompilationResult::GetExecutableProto() const {
@@ -157,7 +158,7 @@ GpuAotCompilationResult::GetCompiledMemoryStats() const {
     alloc_ptrs.push_back(&alloc);
   }
   memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto peak_memories,
       ComputePeakMemorySizes(
           GetExecutableProto().buffer_assignment(),

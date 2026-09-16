@@ -624,6 +624,61 @@ HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
       {input_indexing_map, padding_value_indexing_map});
 }
 
+HloInstructionIndexing ComputeOutputToInputGetTupleElementOpIndexing(
+    const HloGetTupleElementInstruction* gte, MLIRContext* mlir_context) {
+  int64_t rank = gte->shape().dimensions().size();
+  IndexingMap identity_map = IndexingMap::FromTensorSizes(
+      SymbolicMap::GetMultiDimIdentityMap(rank, mlir_context),
+      gte->shape().dimensions(), {});
+
+  HloInstructionIndexing instr_indexing;
+  instr_indexing.indexing_maps.resize(1);
+  instr_indexing.indexing_maps[0].insert(OperandIndexing(identity_map));
+  return instr_indexing;
+}
+
+HloInstructionIndexing ComputeOutputToInputScanOpIndexing(
+    const HloScanInstruction* scan, int output_id, MLIRContext* mlir_context) {
+  int64_t num_carries = scan->num_carries();
+  int64_t num_inputs = scan->operand_count() - num_carries;
+
+  const Shape& output_shape = GetOutputShape(scan, output_id);
+
+  HloInstructionIndexing instr_indexing;
+  instr_indexing.indexing_maps.resize(scan->operand_count());
+
+  if (output_shape.dimensions().empty()) {
+    // It is a scalar output (carry).
+    // Map all operands to scalar indexing maps.
+    for (int64_t id = 0; id < scan->operand_count(); ++id) {
+      instr_indexing.indexing_maps[id].insert(
+          OperandIndexing(CreateScalarIndexingMap(output_shape, mlir_context)));
+    }
+    return instr_indexing;
+  }
+
+  // It is an array output.
+  // For the array inputs, the mapping is 1:1 (identity).
+  IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
+      SymbolicMap::GetMultiDimIdentityMap(output_shape.dimensions().size(),
+                                          mlir_context),
+      output_shape.dimensions(), {});
+
+  // For the carry inputs, the mapping is scalar.
+  IndexingMap carries_indexing_map =
+      CreateScalarIndexingMap(output_shape, mlir_context);
+
+  for (int64_t id = 0; id < num_inputs; ++id) {
+    instr_indexing.indexing_maps[id].insert(
+        OperandIndexing(inputs_indexing_map));
+  }
+  for (int64_t id = num_inputs; id < scan->operand_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(
+        OperandIndexing(carries_indexing_map));
+  }
+  return instr_indexing;
+}
+
 HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
     const HloReduceInstruction* reduce, MLIRContext* mlir_context) {
   const Shape& input_shape = reduce->operand(0)->shape();
@@ -734,6 +789,7 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
   IndexingMap inputs_indexing = ComposeIndexingMapsForWindow(
       input_shape.dimensions(), output_shape.dimensions(),
       reduce_window->window(), mlir_context);
+  inputs_indexing.RemoveUnusedSymbols();
 
   // Indexing map for the init value.
   IndexingMap inits_indexing_map =
@@ -752,17 +808,17 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
   return instr_indexing;
 }
 
+// Computes output-to-input indexing for Convolution.
 HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
     const HloConvolutionInstruction* convolution, MLIRContext* mlir_context) {
   const Shape& input_shape = convolution->operand(0)->shape();
   const Shape& kernel_shape = convolution->operand(1)->shape();
   const Shape& output_shape = convolution->shape();
-  const ConvolutionDimensionNumbers& dnums =
-      convolution->convolution_dimension_numbers();
+  const auto& dnums = convolution->convolution_dimension_numbers();
   size_t rank = output_shape.dimensions().size();
 
   // Collect sizes for input/output spatial dimensions.
-  size_t spatial_rank = rank - 2;
+  size_t spatial_rank = dnums.input_spatial_dimensions_size();
   std::vector<int64_t> input_spatial_sizes(spatial_rank);
   std::vector<int64_t> kernel_spatial_sizes(spatial_rank);
   std::vector<int64_t> output_spatial_sizes(spatial_rank);
@@ -792,11 +848,9 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
   int64_t current_num_dims = spatial_rank;
   int64_t new_num_dims = rank;
   int64_t num_symbols = input_spatial_indexing.GetRangeVars().size();
-
-  auto symbolic_map = input_spatial_indexing.GetSymbolicMap();
   for (int i = 0; i < spatial_rank; ++i) {
     input_exprs[dnums.input_spatial_dimensions(i)] =
-        symbolic_map.GetResult(i).ReplaceDims(
+        input_spatial_indexing.GetSymbolicMap().GetResult(i).ReplaceDims(
             replacement_dims, current_num_dims, new_num_dims, num_symbols);
   }
   llvm::MapVector<SymbolicExpr, Interval> input_constraints;
@@ -805,18 +859,28 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
     input_constraints[key.ReplaceDims(replacement_dims, current_num_dims,
                                       new_num_dims, num_symbols)] = val;
   }
+  std::vector<Interval> bounds = input_spatial_indexing.GetDimensionBounds();
+  for (int i = 0; i < spatial_rank; ++i) {
+    if (bounds[i].lower > 0 || bounds[i].upper < output_spatial_sizes[i] - 1) {
+      input_constraints[replacement_dims[i]] = bounds[i];
+    }
+  }
 
   // Build symbolic expressions for kernel spatial and output dimensions.
   SmallVector<SymbolicExpr> kernel_exprs(rank);
   for (int i = 0; i < spatial_rank; ++i) {
-    kernel_exprs[dnums.kernel_spatial_dimensions(i)] =
-        CreateSymbolExpr(i, rank, mlir_context);
+    SymbolicExpr kernel_index = CreateSymbolExpr(i, rank, mlir_context);
+    if (convolution->window().dimensions(i).window_reversal()) {
+      kernel_index =
+          CreateSymbolicConstant(kernel_spatial_sizes[i] - 1, mlir_context) -
+          kernel_index;
+    }
+    kernel_exprs[dnums.kernel_spatial_dimensions(i)] = kernel_index;
   }
   SymbolicExpr dim_expr =
       CreateDimExpr(dnums.output_feature_dimension(), mlir_context);
   kernel_exprs[dnums.kernel_output_feature_dimension()] = dim_expr;
 
-  // Build initial symbol ranges.
   std::vector<IndexingMap::Variable> input_symbols =
       input_spatial_indexing.GetRangeVars();
   std::vector<IndexingMap::Variable> kernel_symbols =
@@ -866,10 +930,7 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
       SymbolicMap::Get(mlir_context, rank, input_symbols.size(), input_exprs),
       DimVarsFromTensorSizes(output_shape.dimensions()), input_symbols,
       /*rt_vars=*/{}, input_constraints);
-  // We may need to simplify and remove unused symbols again, as the input
-  // feature dimension size may be trivial.
   inputs_indexing.Simplify();
-  inputs_indexing.RemoveUnusedSymbols();
 
   // Indexing map for the kernel value.
   IndexingMap kernel_indexing(
@@ -877,7 +938,19 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
       DimVarsFromTensorSizes(output_shape.dimensions()), kernel_symbols,
       /*rt_vars=*/{});
   kernel_indexing.Simplify();
-  kernel_indexing.RemoveUnusedSymbols();
+
+  llvm::SmallBitVector input_unused =
+      GetUnusedSymbolsBitVector(inputs_indexing.GetSymbolicMap());
+  llvm::SmallBitVector kernel_unused =
+      GetUnusedSymbolsBitVector(kernel_indexing.GetSymbolicMap());
+  llvm::SmallBitVector common_unused = input_unused;
+  common_unused.resize(kernel_unused.size());
+  common_unused &= kernel_unused;
+  common_unused.resize(inputs_indexing.GetSymbolCount(), false);
+
+  inputs_indexing.CompressVars(/*unused_dims=*/{}, common_unused);
+  common_unused.resize(kernel_indexing.GetSymbolCount());
+  kernel_indexing.CompressVars(/*unused_dims=*/{}, common_unused);
 
   return HloInstructionIndexing::FromIndexingMaps(
       {inputs_indexing, kernel_indexing});
@@ -1595,8 +1668,7 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce is an elementwise op.
-      instr->opcode() == HloOpcode::kAllReduceStart ||
-      instr->opcode() == HloOpcode::kAllReduceDone) {
+      instr->opcode() == HloOpcode::kAllReduce) {
     return ComputeOutputToInputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1635,6 +1707,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto gather = DynCast<HloGatherInstruction>(instr)) {
     return ComputeOutputToInputGatherOpIndexing(gather, mlir_context);
   }
+  if (auto gte = DynCast<HloGetTupleElementInstruction>(instr)) {
+    return ComputeOutputToInputGetTupleElementOpIndexing(gte, mlir_context);
+  }
   if (auto iota = DynCast<HloIotaInstruction>(instr)) {
     return HloInstructionIndexing{};
   }
@@ -1660,6 +1735,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto scaled_dot = DynCast<HloScaledDotInstruction>(instr)) {
     return ComputeOutputToInputScaledDotOpIndexing(scaled_dot, mlir_context);
   }
+  if (auto scan = DynCast<HloScanInstruction>(instr)) {
+    return ComputeOutputToInputScanOpIndexing(scan, output_id, mlir_context);
+  }
   if (auto slice = DynCast<HloSliceInstruction>(instr)) {
     return ComputeOutputToInputSliceOpIndexing(slice, mlir_context);
   }
@@ -1682,8 +1760,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce has 1:1 output to input mapping.
-      instr->opcode() == HloOpcode::kAllReduceStart ||
-      instr->opcode() == HloOpcode::kAllReduceDone) {
+      instr->opcode() == HloOpcode::kAllReduce) {
     return ComputeInputToOutputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {

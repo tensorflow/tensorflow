@@ -111,6 +111,7 @@ struct InvokeContext {
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;
+  const XLA_FFI_Extension* extension_start = nullptr;
 };
 
 // Invokes an XLA FFI handler with the given call frame and context. This is a

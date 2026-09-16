@@ -109,14 +109,11 @@ class KernelSpecs {
  private:
   // The signature is pattern match based.
   struct SignatureInfo : public llvm::DenseMapInfo<Signature> {
-    static inline Signature getEmptyKey() { return {}; }
-    static inline Signature getTombstoneKey() { return {nullptr}; }
+    static Signature getEmptyKey() { return {}; }
     static unsigned getHashValue(Signature val) {
       return llvm::hash_combine_range(val.begin(), val.end());
     }
     static bool isEqual(Signature LHS, Signature RHS) {
-      if (RHS == getEmptyKey()) return LHS == getEmptyKey();
-      if (RHS == getTombstoneKey()) return LHS == getTombstoneKey();
       if (LHS.size() != RHS.size()) return false;
       for (auto arg : llvm::zip(LHS, RHS)) {
         if (std::get<0>(arg) != std::get<1>(arg)) return false;

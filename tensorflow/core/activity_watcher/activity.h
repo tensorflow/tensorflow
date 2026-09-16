@@ -60,6 +60,7 @@ static std::string ToString(ActivityCategory category) {
     case ActivityCategory::kRendezvous:
       return "Rendezvous";
   }
+  return "Unknown";
 }
 
 // An activity to be recorded.

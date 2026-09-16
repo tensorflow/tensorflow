@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -126,9 +125,5 @@ class SafeIntegerArithmeticPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateSafeIntegerArithmeticPass() {
-  return std::make_unique<SafeIntegerArithmeticPass>();
-}
 
 }  // namespace xla::emitters

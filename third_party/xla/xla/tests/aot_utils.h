@@ -30,14 +30,14 @@ namespace xla {
 // XLA_TEST_HLO_RUNNER_AOT_MODE and XLA_TEST_HLO_RUNNER_AOT_DIR
 // If XLA_TEST_HLO_RUNNER_AOT_MODE is not set / set to "disabled", this
 // function returns a standard HloRunnerPjRt.
-std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtAotAware(
+std::unique_ptr<HloRunner> MakeAotAwareHloRunner(
     std::unique_ptr<PjRtClient> client);
 
 // Constructs an InterpreterClient depending on the value of env vars
 // XLA_TEST_HLO_RUNNER_AOT_MODE and XLA_TEST_HLO_RUNNER_AOT_DIR
 // If XLA_TEST_HLO_RUNNER_AOT_MODE is not set / set to "disabled", this
 // function returns a standard InterpreterClient.
-std::unique_ptr<InterpreterClient> MakeInterpreterClientAotAware(
+std::unique_ptr<InterpreterClient> MakeAotAwareInterpreterClient(
     absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
         hlo_evaluator_factory);
 

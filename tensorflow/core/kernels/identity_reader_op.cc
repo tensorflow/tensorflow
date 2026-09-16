@@ -15,9 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/io_ops.cc.
 
-#include <memory>
+#include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_base.pb.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
@@ -54,8 +56,8 @@ class IdentityReader : public ReaderBase {
   absl::Status RestoreStateLocked(const tstring& state) override {
     ReaderBaseState base_state;
     if (!ParseProtoUnlimited(&base_state, state)) {
-      return errors::InvalidArgument("Could not parse state for ", name(), ": ",
-                                     absl::CEscape(state));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not parse state for ", name(), ": ", absl::CEscape(state)));
     }
     TF_RETURN_IF_ERROR(RestoreBaseState(base_state));
     return absl::OkStatus();

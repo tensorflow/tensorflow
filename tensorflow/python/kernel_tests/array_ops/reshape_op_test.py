@@ -24,6 +24,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -162,6 +163,20 @@ class ReshapeTest(test.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 "Cannot reshape a tensor with 4096 elements"):
       array_ops.reshape(z, [4095])
+
+  def testRejectsScalarShape(self):
+    t = constant_op.constant([1, 2, 3, 4, 5, 6])
+    scalar_shapes = (
+        constant_op.constant(6),
+        variables.Variable(6),
+        6,
+        np.int32(6),
+        np.array(6),
+    )
+    for scalar_shape in scalar_shapes:
+      with self.subTest(scalar_shape=scalar_shape):
+        with self.assertRaisesRegex(ValueError, "scalar.*rank-0"):
+          array_ops.reshape(t, scalar_shape)
 
   def testPartialShapes(self):
 

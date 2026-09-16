@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: litert-opt -tfl-prepare-tf %s | FileCheck %s
 // RUN: litert-opt %s -tf-layout-optimization=force-data-format=NHWC -tfl-prepare-tf  | FileCheck --check-prefix=LAYOUT --dump-input=always %s
 
@@ -19,18 +33,18 @@ func.func @conv(tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>, tensor<256x3x32x3
   func.return %0, %1, %2, %3, %4 : tensor<256x8x7x16xf32>, tensor<256x16x32x32xf32>, tensor<256x8x6x16xf32>, tensor<256x32x32x16xf32>, tensor<256x32x32x16xf32>
 
 // CHECK-LABEL: conv
-// CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
-// CHECK-DAG:  %[[CONSTANT0:.*]] = arith.constant dense<[3, 0, 1, 2]> : tensor<4xi32>
-// CHECK-DAG:  %[[CONSTANT1:.*]] = arith.constant dense<[{{\[}}0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi32>
-// CHECK:  %0 = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
-// CHECK:  %1 = "tfl.conv_2d"(%arg0, %0, %[[CONSTANT]]) <{dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x8x7x16xf32>
-// CHECK:  %2 = "tf.Conv2D"
-// CHECK:  %3 = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
-// CHECK:  %4 = "tfl.conv_2d"(%arg0, %3, %[[CONSTANT]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x8x6x16xf32>
-// CHECK:  %5 = "tf.Pad"(%arg0, %[[CONSTANT1]]) : (tensor<256x32x32x3xf32>, tensor<4x2xi32>) -> tensor<*xf32>
-// CHECK:  %6 = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
-// CHECK:  %7 = "tfl.conv_2d"(%5, %6, %[[CONSTANT]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<*xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x32x32x16xf32>
-// CHECK:  %8 = "tf.Conv2D"(%arg0, %arg1) <{data_format = "NHWC", dilations = [1, 1, 1, 1], padding = "SAME", strides = [2, 1, 1, 1]}> {T = "tfdtype$DT_FLOAT"} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+// CHECK-DAG:  %[[CONSTANT:.*]] = "tfl.pseudo_const"() <{value = dense<0.000000e+00> : tensor<16xf32>}>
+// CHECK-DAG:  %[[CONSTANT0:.*]] = "tfl.pseudo_const"() <{value = dense<[3, 0, 1, 2]> : tensor<4xi32>}>
+// CHECK-DAG:  %[[CONSTANT1:.*]] = "tfl.pseudo_const"() <{value = dense<[{{\[}}0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi32>}>
+// CHECK:  %[[T0:.*]] = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
+// CHECK:  %[[C0:.*]] = "tfl.conv_2d"(%arg0, %[[T0]], %[[CONSTANT]]) <{dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x8x7x16xf32>
+// CHECK:  %[[C1:.*]] = "tf.Conv2D"
+// CHECK:  %[[T1:.*]] = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
+// CHECK:  %[[C2:.*]] = "tfl.conv_2d"(%arg0, %[[T1]], %[[CONSTANT]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x8x6x16xf32>
+// CHECK:  %[[P0:.*]] = "tf.Pad"(%arg0, %[[CONSTANT1]]) : (tensor<256x32x32x3xf32>, tensor<4x2xi32>) -> tensor<*xf32>
+// CHECK:  %[[T2:.*]] = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
+// CHECK:  %[[C3:.*]] = "tfl.conv_2d"(%[[P0]], %[[T2]], %[[CONSTANT]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<*xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x32x32x16xf32>
+// CHECK:  %[[C4:.*]] = "tf.Conv2D"(%arg0, %arg1) <{data_format = "NHWC", dilations = [1, 1, 1, 1], padding = "SAME", strides = [2, 1, 1, 1]}> {T = "tfdtype$DT_FLOAT"} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
 }
 
 func.func @depthwiseConv2D(tensor<256x32x32x3xf32>, tensor<3x3x3x4xf32>, tensor<256x3x32x32xf32>) -> (tensor<256x30x30x12xf32>, tensor<256x12x30x30xf32>, tensor<256x30x30x12xf32>, tensor<256x30x30x12xf32>) {
@@ -47,14 +61,14 @@ func.func @depthwiseConv2D(tensor<256x32x32x3xf32>, tensor<3x3x3x4xf32>, tensor<
   func.return %0, %1, %2, %3 : tensor<256x30x30x12xf32>, tensor<256x12x30x30xf32>, tensor<256x30x30x12xf32>, tensor<256x30x30x12xf32>
 
 // CHECK-LABEL: depthwiseConv2D
-// CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<0.000000e+00> : tensor<12xf32>
-// CHECK-DAG:  %[[CONSTANT0:.*]] = arith.constant dense<[1, 3, 3, 12]> : tensor<4xi32>
-// CHECK:  %0 = "tf.Reshape"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x4xf32>, tensor<4xi32>) -> tensor<1x3x3x12xf32>
-// CHECK:  %1 = "tfl.depthwise_conv_2d"(%arg0, %0, %[[CONSTANT]]) <{depth_multiplier = 4 : i32, dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<1x3x3x12xf32>, tensor<12xf32>) -> tensor<256x30x30x12xf32>
-// CHECK:  %2 = "tf.DepthwiseConv2dNative"
-// CHECK:  %3 = "tf.Reshape"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x4xf32>, tensor<4xi32>) -> tensor<1x3x3x12xf32>
-// CHECK:  %4 = "tfl.depthwise_conv_2d"(%arg0, %3, %[[CONSTANT]]) <{depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<1x3x3x12xf32>, tensor<12xf32>) -> tensor<256x30x30x12xf32>
-// CHECK:  %5 = "tf.DepthwiseConv2dNative"
+// CHECK-DAG:  %[[CONSTANT:.*]] = "tfl.pseudo_const"() <{value = dense<0.000000e+00> : tensor<12xf32>}>
+// CHECK-DAG:  %[[CONSTANT0:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 3, 3, 12]> : tensor<4xi32>}>
+// CHECK:  %[[R0:.*]] = "tf.Reshape"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x4xf32>, tensor<4xi32>) -> tensor<1x3x3x12xf32>
+// CHECK:  %[[C0:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[R0]], %[[CONSTANT]]) <{depth_multiplier = 4 : i32, dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<1x3x3x12xf32>, tensor<12xf32>) -> tensor<256x30x30x12xf32>
+// CHECK:  %[[C1:.*]] = "tf.DepthwiseConv2dNative"
+// CHECK:  %[[R1:.*]] = "tf.Reshape"(%arg1, %[[CONSTANT0]]) : (tensor<3x3x3x4xf32>, tensor<4xi32>) -> tensor<1x3x3x12xf32>
+// CHECK:  %[[C2:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[R1]], %[[CONSTANT]]) <{depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32}> : (tensor<256x32x32x3xf32>, tensor<1x3x3x12xf32>, tensor<12xf32>) -> tensor<256x30x30x12xf32>
+// CHECK:  %[[C3:.*]] = "tf.DepthwiseConv2dNative"
 }
 
 func.func @Conv2dNCHW(%arg0: tensor<256x3x32x32xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x16x32x32xf32> {
@@ -80,7 +94,7 @@ func.func @fusedBatchNormV3(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, t
   func.return %3, %3#1 : tensor<8x8x8x8xf32>, tensor<8xf32>
 
 // CHECK-LABEL: fusedBatchNormV3
-// CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<1.000000e-03>
+// CHECK-DAG:  %[[CONSTANT:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e-03> : tensor<f32>}>
 // CHECK-DAG:  %[[CONSTANT1:.*]] = arith.constant dense<0.000000e+00> : tensor<4xf32>
 //              variance + epsilon
 // CHECK:  %[[ADD1:.*]] = "tf.Add"(%[[ARG4:.*]], %[[CONSTANT]])
@@ -108,7 +122,7 @@ func.func @batchNormWithGlobalNormalization(
   %0 = "tf.BatchNormWithGlobalNormalization"(%t, %m, %v, %beta, %gamma) {T = "tfdtype$DT_FLOAT", variance_epsilon = 0.001 : f32, scale_after_normalization = false} : (tensor<1x10x10x3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<1x10x10x3xf32>)
   func.return %0 : tensor<1x10x10x3xf32>
 // CHECK-LABEL: batchNormWithGlobalNormalization
-// CHECK:  %[[EPSILON:.*]] = arith.constant dense<1.000000e-03>
+// CHECK:  %[[EPSILON:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e-03> : tensor<f32>}>
 // CHECK:  %[[VARIANCE:.*]] = "tf.Add"(%[[ARG_V:.*]], %[[EPSILON]])
 // CHECK:  %[[RSQRT:.*]] = "tf.Rsqrt"(%[[VARIANCE]])
 // CHECK:  %[[MUL1:.*]] = "tf.Mul"(%[[ARG_T:.*]], %[[RSQRT]])
@@ -123,7 +137,7 @@ func.func @batchNormWithGlobalNormalizationWithScaleAfterNormalization(
   %0 = "tf.BatchNormWithGlobalNormalization"(%t, %m, %v, %beta, %gamma) {T = "tfdtype$DT_FLOAT", variance_epsilon = 0.001 : f32, scale_after_normalization = true} : (tensor<1x10x10x3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<1x10x10x3xf32>)
   func.return %0 : tensor<1x10x10x3xf32>
 // CHECK-LABEL: batchNormWithGlobalNormalizationWithScaleAfterNormalization
-// CHECK:  %[[EPSILON:.*]] = arith.constant dense<1.000000e-03>
+// CHECK:  %[[EPSILON:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e-03> : tensor<f32>}>
 // CHECK:  %[[VARIANCE:.*]] = "tf.Add"(%[[ARG_V:.*]], %[[EPSILON]])
 // CHECK:  %[[RSQRT:.*]] = "tf.Rsqrt"(%[[VARIANCE]])
 // CHECK:  %[[MUL0:.*]] = "tf.Mul"(%[[RSQRT]], %[[ARG_GAMMA:.*]])
@@ -178,8 +192,8 @@ func.func @QDQFollowedByRank(%arg0: tensor<1x2xf32>) -> (tensor<i32>) {
   %2 = "tf.Rank"(%1): (tensor<1x2xf32>) -> tensor<i32>
   func.return %2 : tensor<i32>
 
-// CHECK: %[[R:.*]] = arith.constant dense<2>
-// CHECK: return %cst : tensor<i32>
+// CHECK: %[[R:.*]] = "tfl.pseudo_const"() <{value = dense<2> : tensor<i32>}>
+// CHECK: return %[[R]] : tensor<i32>
 }
 
 func.func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>, tensor<*xi32>) {
@@ -501,8 +515,8 @@ func.func @xla_conv_v2(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
   %3 = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32> loc("XlaConv/window_strides")
   %4 = "tf.XlaConvV2"(%arg0, %0, %3, %2, %3, %3, %1) {batch_group_count = 1 : i64, device = "", dimension_numbers = "\18\02 \032\02\00\01@\03P\03Z\02\01\02b\02\01\02", precision_config = ""} : (tensor<4x8x8x16xf32>, tensor<3x3x16x16xf32>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<4x8x8x16xf32>
   func.return %4 : tensor<4x8x8x16xf32>
-  // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
-  // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<1.000000e+00> : tensor<16x3x3x16xf32>
+  // CHECK-DAG: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<0.000000e+00> : tensor<16xf32>}>
+  // CHECK-DAG: %[[CST0:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e+00> : tensor<16x3x3x16xf32>}>
   // CHECK: %[[RES:.*]] = "tfl.conv_2d"(%arg0, %[[CST0]], %[[CST]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<4x8x8x16xf32>, tensor<16x3x3x16xf32>, tensor<16xf32>) -> tensor<4x8x8x16xf32>
   // CHECK: return %[[RES]]
 }
@@ -513,7 +527,7 @@ func.func @lower_rfft_to_rfft2d(%input: tensor<10x20x30xf32>, %fft_len: tensor<1
   func.return %0: tensor<10x20x30xcomplex<f64>>
 
 // CHECK-DAG:  %[[CST:.*]] = arith.constant dense<-2> : tensor<i32>
-// CHECK-DAG:  %[[CST0:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK-DAG:  %[[CST0:.*]] = "tfl.pseudo_const"() <{value = dense<1> : tensor<1xi32>}>
 // CHECK-DAG:  %[[CST1:.*]] = arith.constant dense<0> : tensor<i32>
 // CHECK:  %[[EXP:.*]] = "tf.ExpandDims"(%arg0, %[[CST]]) : (tensor<10x20x30xf32>, tensor<i32>) -> tensor<10x20x1x30xf32>
 // CHECK:  %[[CON:.*]] = "tf.ConcatV2"(%[[CST0]], %arg1, %[[CST1]]) : (tensor<1xi32>, tensor<1xi32>, tensor<i32>) -> tensor<2xi32>
@@ -528,9 +542,9 @@ func.func @xla_gather_to_strided_slice(%arg0 : tensor<1x9x104x768xf32>) -> tenso
   %2 = "tf.XlaGather"(%arg0, %0, %1) {device = "", dimension_numbers = "\0A\04\00\01\02\03\1A\01\02", indices_are_sorted = false} : (tensor<1x9x104x768xf32>, tensor<1xi32>, tensor<4xi32>) -> tensor<?x?x?x?xf32>
   func.return %2 : tensor<?x?x?x?xf32>
 
-// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<4xi64>
-// CHECK-DAG: %[[CST0:.*]] = arith.constant dense<[1, 9, 23, 768]> : tensor<4xi64>
-// CHECK-DAG: %[[CST1:.*]] = arith.constant dense<1> : tensor<4xi64>
+// CHECK-DAG: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<0> : tensor<4xi64>}>
+// CHECK-DAG: %[[CST0:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 9, 23, 768]> : tensor<4xi64>}>
+// CHECK-DAG: %[[CST1:.*]] = "tfl.pseudo_const"() <{value = dense<1> : tensor<4xi64>}>
 // CHECK: %[[V0:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST0]], %[[CST1]]) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> : (tensor<1x9x104x768xf32>, tensor<4xi64>, tensor<4xi64>, tensor<4xi64>) -> tensor<?x?x?x?xf32>
 // CHECK: return %[[V0]] : tensor<?x?x?x?xf32>
 }
@@ -604,8 +618,8 @@ func.func @fused_batch_norm_v3_training(%arg0 : tensor<1x1x6x2xf32>, %arg1 : ten
   %0, %1, %2, %3, %4, %5 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {data_format = "NHWC", epsilon = 1.000000e-03 : f32, exponential_avg_factor = 1.000000e+00 : f32, is_training = true} : (tensor<1x1x6x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<1x1x6x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<*xf32>)
   func.return %0 : tensor<1x1x6x2xf32>
   // CHECK-LABEL: fused_batch_norm_v3_training
-  // CHECK-DAG: %[[CST:.*]] = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
-  // CHECK-DAG: %[[CST1:.*]] = arith.constant dense<1.000000e-03> : tensor<f32>
+  // CHECK-DAG: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[0, 1, 2]> : tensor<3xi32>}>
+  // CHECK-DAG: %[[CST1:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e-03> : tensor<f32>}>
   // CHECK:  %[[MEAN:.*]] = "tf.Mean"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x1x6x2xf32>, tensor<3xi32>) -> tensor<2xf32>
   // CHECK:  %[[SQ:.*]] = "tf.SquaredDifference"(%arg0, %[[MEAN]]) : (tensor<1x1x6x2xf32>, tensor<2xf32>) -> tensor<1x1x6x2xf32>
   // CHECK:  %[[MEAN0:.*]] = "tf.Mean"(%[[SQ]], %[[CST]]) <{keep_dims = false}> : (tensor<1x1x6x2xf32>, tensor<3xi32>) -> tensor<2xf32>
@@ -660,7 +674,7 @@ func.func @QuantDequantTranspose(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
 
   // CHECK-LABEL: QuantDequantTranspose
   // CHECK-DAG: %[[CST:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi32>}> : () -> tensor<?xi32>
-  // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1.00392163> : tensor<3x4xf32>
+  // CHECK-DAG: %[[CST_0:.*]] = "tfl.pseudo_const"() <{value = dense<1.00392163> : tensor<3x4xf32>}>
   // CHECK: %[[QUANT:.*]] = "tfl.quantize"(%[[CST_0]]) <{qtype = tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>}> : (tensor<3x4xf32>) -> tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>
   // CHECK: %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>) -> tensor<3x4xf32>
   // CHECK: %[[TRANSPOSE:.*]] = "tf.Transpose"(%[[DEQUANT]], %[[CST]]) : (tensor<3x4xf32>, tensor<?xi32>) -> tensor<*xf32>
@@ -672,10 +686,10 @@ func.func @GroupConv(%arg0: tensor<?x1x26x14xf32>, %arg1: tensor<1x3x2x14xf32>) 
   %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x26x14xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
   func.return %0 : tensor<?x1x6x14xf32>
   // CHECK-LABEL: GroupConv
-  // CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<0.000000e+00> : tensor<14xf32>
-  // CHECK-DAG:  %[[CONSTANT0:.*]] = arith.constant dense<[3, 0, 1, 2]> : tensor<4xi32>
-  // CHECK:  %0 = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<1x3x2x14xf32>, tensor<4xi32>) -> tensor<14x1x3x2xf32>
-  // CHECK:  %1 = "tfl.conv_2d"(%arg0, %0, %[[CONSTANT]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 5 : i32}> : (tensor<?x1x26x14xf32>, tensor<14x1x3x2xf32>, tensor<14xf32>) -> tensor<?x1x6x14xf32>
+  // CHECK-DAG:  %[[CONSTANT:.*]] = "tfl.pseudo_const"() <{value = dense<0.000000e+00> : tensor<14xf32>}>
+  // CHECK-DAG:  %[[CONSTANT0:.*]] = "tfl.pseudo_const"() <{value = dense<[3, 0, 1, 2]> : tensor<4xi32>}>
+  // CHECK:  %[[T0:.*]] = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<1x3x2x14xf32>, tensor<4xi32>) -> tensor<14x1x3x2xf32>
+  // CHECK:  %[[C0:.*]] = "tfl.conv_2d"(%arg0, %[[T0]], %[[CONSTANT]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 5 : i32}> : (tensor<?x1x26x14xf32>, tensor<14x1x3x2xf32>, tensor<14xf32>) -> tensor<?x1x6x14xf32>
 }
 
 func.func @UnsupportedGroupConv_UnrankedTensorType(%arg0: tensor<*xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
@@ -714,14 +728,17 @@ func.func @MoveTransposeAcrossPerChannelQuant(%arg0 : tensor<1x224x224x3xf32>) -
   %129 = "tf.Transpose"(%127, %cst_14) : (tensor<6x3x7x7xf32>, tensor<4xi64>) -> tensor<7x7x3x6xf32>
   %130 = "tf.Conv2D"(%arg0, %129) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [0, 0, 3, 3, 3, 3, 0, 0], padding = "EXPLICIT", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<1x224x224x3xf32>, tensor<7x7x3x6xf32>) -> tensor<1x112x112x6xf32>
   return %130 : tensor<1x112x112x6xf32>
-  // CHECK: %cst = arith.constant dense<6.000000e+00> : tensor<6x7x7x3xf32>
-  // CHECK: %cst_0 = arith.constant dense<0.000000e+00> : tensor<6xf32>
-  // CHECK: %cst_1 = arith.constant dense<{{\[\[}}0, 0], [3, 3], [3, 3], [0, 0]]> : tensor<4x2xi32>
-  // CHECK: %0 = "tf.Pad"(%arg0, %cst_1) : (tensor<1x224x224x3xf32>, tensor<4x2xi32>) -> tensor<*xf32>
-  // CHECK: %1 = "tfl.quantize"(%cst) <{qtype = tensor<6x7x7x3x!quant.uniform<i8<-127:127>:f32:0, {1.412750e-03,3.503970e-04,2.441410e-04,3.823330e-04,2.441410e-04,8.950800e-04}>>}> : (tensor<6x7x7x3xf32>) -> tensor<6x7x7x3x!quant.uniform<i8<-127:127>:f32:0, {1.412750e-03,3.503970e-04,2.441410e-04,3.823330e-04,2.441410e-04,8.950800e-04}>>
-  // CHECK: %2 = "tfl.dequantize"(%1) : (tensor<6x7x7x3x!quant.uniform<i8<-127:127>:f32:0, {1.412750e-03,3.503970e-04,2.441410e-04,3.823330e-04,2.441410e-04,8.950800e-04}>>) -> tensor<6x7x7x3xf32>
-  // CHECK: %3 = "tfl.conv_2d"(%0, %2, %cst_0) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<*xf32>, tensor<6x7x7x3xf32>, tensor<6xf32>) -> tensor<1x112x112x6xf32>
-  // CHECK: return %3 : tensor<1x112x112x6xf32>
+  // CHECK-DAG: %[[PAD_CST:.*]] = "tfl.pseudo_const"() <{value = dense<{{\[\[}}0, 0], [3, 3], [3, 3], [0, 0]]> : tensor<4x2xi32>}>
+  // CHECK-DAG: %[[BIAS_CST:.*]] = "tfl.pseudo_const"() <{value = dense<0.000000e+00> : tensor<6xf32>}>
+  // CHECK-DAG: %[[PERM_CST:.*]] = "tfl.pseudo_const"() <{value = dense<[2, 3, 1, 0]> : tensor<4xi64>}>
+  // CHECK-DAG: %[[WEIGHTS_CST:.*]] = "tfl.pseudo_const"() <{value = dense<6.000000e+00> : tensor<6x3x7x7xf32>}>
+  // CHECK: %[[QUANT:.*]] = "tfl.quantize"(%[[WEIGHTS_CST]]) <{qtype = tensor<6x3x7x7x!quant.uniform<i8<-127:127>:f32:0, {1.412750e-03,3.503970e-04,2.441410e-04,3.823330e-04,2.441410e-04,8.950800e-04}>>}> : (tensor<6x3x7x7xf32>) -> tensor<6x3x7x7x!quant.uniform<i8<-127:127>:f32:0, {1.412750e-03,3.503970e-04,2.441410e-04,3.823330e-04,2.441410e-04,8.950800e-04}>>
+  // CHECK: %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<6x3x7x7x!quant.uniform<i8<-127:127>:f32:0, {1.412750e-03,3.503970e-04,2.441410e-04,3.823330e-04,2.441410e-04,8.950800e-04}>>) -> tensor<6x3x7x7xf32>
+  // CHECK: %[[TRANSPOSE:.*]] = "tf.Transpose"(%[[DEQUANT]], %[[PERM_CST]]) : (tensor<6x3x7x7xf32>, tensor<4xi64>) -> tensor<7x7x3x6xf32>
+  // CHECK: %[[PAD:.*]] = "tf.Pad"(%arg0, %[[PAD_CST]]) : (tensor<1x224x224x3xf32>, tensor<4x2xi32>) -> tensor<*xf32>
+  // CHECK: %[[TRANSPOSE2:.*]] = "tf.Transpose"(%[[TRANSPOSE]], %[[PERM2:.*]]) : (tensor<7x7x3x6xf32>, tensor<4xi32>) -> tensor<6x7x7x3xf32>
+  // CHECK: %[[CONV:.*]] = "tfl.conv_2d"(%[[PAD]], %[[TRANSPOSE2]], %[[BIAS_CST]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<*xf32>, tensor<6x7x7x3xf32>, tensor<6xf32>) -> tensor<1x112x112x6xf32>
+  // CHECK: return %[[CONV]] : tensor<1x112x112x6xf32>
 }
 
 // CHECK-LABEL: @FoldDoubleTranspose
@@ -773,11 +790,11 @@ func.func @MoveTransposeAcrossDepthwiseConvPerChannelQuant(%arg0: tensor<1x112x1
   %3 = "tfl.depthwise_conv_2d"(%arg0, %2, %cst_0) {depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x112x112x2xf32>, tensor<1x3x3x2xf32>, tensor<2xf32>) -> tensor<1x112x112x2xf32>
   return %3 : tensor<1x112x112x2xf32>
   // CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<2xf32>
-  // CHECK: %cst_0 = arith.constant dense<6.000000e+00> : tensor<1x3x3x2xf32>
-  // CHECK: %0 = "tfl.quantize"(%cst_0) <{qtype = tensor<1x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {6.587140e-03,1.888450e-02}>>}> : (tensor<1x3x3x2xf32>) -> tensor<1x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {6.587140e-03,1.888450e-02}>>
-  // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {6.587140e-03,1.888450e-02}>>) -> tensor<1x3x3x2xf32>
-  // CHECK: %2 = "tfl.depthwise_conv_2d"(%arg0, %1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x112x112x2xf32>, tensor<1x3x3x2xf32>, tensor<2xf32>) -> tensor<1x112x112x2xf32>
-  // CHECK: return %2 : tensor<1x112x112x2xf32>
+  // CHECK: %[[WEIGHTS:.*]] = "tfl.pseudo_const"() <{value = dense<6.000000e+00> : tensor<1x3x3x2xf32>}>
+  // CHECK: %[[QUANT:.*]] = "tfl.quantize"(%[[WEIGHTS]]) <{qtype = tensor<1x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {6.587140e-03,1.888450e-02}>>}> : (tensor<1x3x3x2xf32>) -> tensor<1x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {6.587140e-03,1.888450e-02}>>
+  // CHECK: %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<1x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {6.587140e-03,1.888450e-02}>>) -> tensor<1x3x3x2xf32>
+  // CHECK: %[[CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[DEQUANT]], %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x112x112x2xf32>, tensor<1x3x3x2xf32>, tensor<2xf32>) -> tensor<1x112x112x2xf32>
+  // CHECK: return %[[CONV]] : tensor<1x112x112x2xf32>
 }
 
 }

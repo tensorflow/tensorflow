@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -30,7 +31,7 @@ std::string SymbolicTiledHloInstruction::ToString(
   std::stringstream ss;
   ss << "hlo: " << hlo_->ToString() << field_separator;
   if (symbolic_tile_.has_value()) {
-    ss << symbolic_tile().ToString();
+    ss << symbolic_tile().ToString(field_separator);
   } else {
     ss << "(no symbolic tile)";
   }
@@ -48,12 +49,12 @@ std::string SymbolicTiledHloInstruction::ToString(
   }
   if (!regions_.empty()) {
     ss << field_separator;
-    ss << "regions: (";
-    for (int i = 0; i < regions_.size(); ++i) {
-      ss << absl::StrCat(field_separator, "#", i,
-                         " size: ", regions_[i].size());
-    }
-    ss << ")";
+    ss << "regions sizes: [";
+    ss << absl::StrJoin(regions_, ", ",
+                        [&](std::string* out, const auto& region) {
+                          absl::StrAppend(out, region.size());
+                        });
+    ss << "]";
   }
   return ss.str();
 }

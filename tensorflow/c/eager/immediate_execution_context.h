@@ -68,7 +68,7 @@ class ImmediateExecutionContext : public AbstractContext {
  public:
   // Optimized scalar creation functions
   virtual AbstractTensorInterface* CreateInt64Scalar(int64_t value) = 0;
-  virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
+  virtual AbstractTensorInterface* CreateUint64Scalar(uint64_t value) = 0;
   virtual AbstractTensorInterface* CreateInt32Scalar(int32_t value) = 0;
   virtual AbstractTensorInterface* CreateFloatScalar(float value) = 0;
   virtual AbstractTensorInterface* CreateDoubleScalar(double value) = 0;
@@ -124,7 +124,7 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Notifies about the function removal.
   virtual absl::Status AddRemoveFunctionNotifier(
-      const string& func, std::function<void()> notifier) = 0;
+      const std::string& func, std::function<void()> notifier) = 0;
 
   // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
   // the key of the function definition name (to be retrieved during function
@@ -133,15 +133,15 @@ class ImmediateExecutionContext : public AbstractContext {
       const FunctionDef& fdef, const StackTracesMap& stack_traces) = 0;
 
   // Find and return a added function by its name.
-  virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;
+  virtual const FunctionDef* FindFunctionDef(const std::string& name) const = 0;
 
   // Find and return a function record added by its name.
   virtual core::RefCountPtr<FunctionRecord> FindRecord(
-      const string& name) const = 0;
+      const std::string& name) const = 0;
 
   // Return the ParsedName of Host CPU device.
   virtual const DeviceNameUtils::ParsedName& HostCPUParsedName() const = 0;
-  virtual const string& HostCPUName() const = 0;
+  virtual const std::string& HostCPUName() const = 0;
 
   // Configure soft device placement policy.
   virtual void SetAllowSoftPlacement(bool enable) = 0;
@@ -179,14 +179,14 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual CustomDeviceOpHandler& GetCustomDeviceOpHandler() = 0;
 
   // Returns whether `device_name` is registered as a custom device.
-  virtual bool IsCustomDevice(const string& device_name) = 0;
+  virtual bool IsCustomDevice(const std::string& device_name) = 0;
 
   // Register a custom device. It will return error is the device name is
   // already registered.
   // TODO(tfrt-devs): Remove this method. Let caller register it directly into
   // CustomDeviceOpHandler.
   virtual absl::Status RegisterCustomDevice(
-      const string& name, std::unique_ptr<CustomDevice> device) = 0;
+      const std::string& name, std::unique_ptr<CustomDevice> device) = 0;
 
   // Return FunctionLibraryDefinition. Transformations need to use it to use it
   // to invoke MLIR compiler passes.
@@ -241,7 +241,7 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual std::vector<std::string> GetLoggedOpsTestonly() { return {}; }
 
   // Get a list of the names of functions that have been registered.
-  virtual std::vector<string> ListFunctionNames() = 0;
+  virtual std::vector<std::string> ListFunctionNames() = 0;
 
   struct CacheStats {
     int64_t kernel_cache_size;

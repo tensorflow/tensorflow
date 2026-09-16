@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/unsupported_op_spmd_expander.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -32,19 +33,19 @@ UnsupportedOpSPMDExpander::UnsupportedOpSPMDExpander(
 
 StatusOr<mlir::Operation*> UnsupportedOpSPMDExpander::ExpandOp(
     mlir::Operation* op) {
-  return errors::Unimplemented(error_message_);
+  return absl::UnimplementedError(error_message_);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
 UnsupportedOpSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  return errors::Unimplemented(error_message_);
+  return absl::UnimplementedError(error_message_);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
 UnsupportedOpSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  return errors::Unimplemented(error_message_);
+  return absl::UnimplementedError(error_message_);
 }
 
 }  // namespace dtensor

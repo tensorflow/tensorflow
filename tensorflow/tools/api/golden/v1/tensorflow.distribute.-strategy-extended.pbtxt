@@ -2,34 +2,34 @@ path: "tensorflow.distribute.StrategyExtended"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyExtendedV1\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyExtendedV2\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "experimental_between_graph"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "experimental_require_static_shapes"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "experimental_should_init"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "parameter_devices"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "should_checkpoint"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "should_save_summary"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "worker_devices"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

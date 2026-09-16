@@ -174,11 +174,11 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   *metadata = nullptr;
   XlaDevice* xla_device = dynamic_cast<XlaDevice*>(device->UnderlyingDevice());
   if (xla_device == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Cannot get XLA metadata from non-XLA device \"", device->name(),
         "\". GetMetadata must only be called on an XLA device. Either an "
         "internal bug has been triggered, or an XLA-specific op has been "
-        "placed on the wrong device.");
+        "placed on the wrong device."));
   }
   *metadata = &(xla_device->xla_metadata_);
   return absl::OkStatus();
@@ -495,7 +495,7 @@ absl::Status XlaDevice::Sync() {
   absl::Status status = stream->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(status);
   if (!stream->ok()) {
-    return errors::Internal("XlaDevice::Sync() failed.");
+    return absl::InternalError("XlaDevice::Sync() failed.");
   }
   VLOG(1) << "XlaDevice::Sync completed";
   return absl::OkStatus();
@@ -506,8 +506,8 @@ absl::Status XlaDevice::MakeTensorFromProto(
     const AllocatorAttributes alloc_attrs, Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   tensor_proto.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot parse tensor from proto: ", tensor_proto.DebugString()));
   }
 
   absl::Status status;

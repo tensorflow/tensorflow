@@ -138,13 +138,13 @@ absl::Status InspectingPlacer::ComputeIOColocationGroups(
   TF_RETURN_IF_ERROR(
       IsolatePlacerInspectionRequiredOps(flib_def_, fbody->graph));
   if (stack_.HasFunction(func.name())) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Recursive function calls are not supported. Node ",
         FormatNodeForError(node), " inside the body of ",
         errors::FormatFunctionForError(stack_.current_function_name()),
         " calls function ", errors::FormatFunctionForError(func.name()),
         " which is already present in the call stack:\n  ",
-        stack_.FormatForError());
+        stack_.FormatForError()));
   }
 
   ColocationGraph colocation_graph(

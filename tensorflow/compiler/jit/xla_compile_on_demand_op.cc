@@ -246,7 +246,7 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   DeviceCompilationProfiler* profiler;
 
   OP_REQUIRES(ctx, ctx->function_library(),
-              errors::Internal("Function library missing"));
+              absl::InternalError("Function library missing"));
 
   // Get constants, inputs and variables from the OpKernelContext.
   auto constant_indices_or = GetConstantInputIndicesFromContext(ctx);

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -123,7 +124,7 @@ StatusOr<mlir::Operation*> SqueezeSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractSingleLayoutFromOp(op));
 
   if (!layout) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout of SqueezeOp must be known before SPMD expansion.");
   }
 

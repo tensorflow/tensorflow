@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -58,12 +59,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -298,15 +295,15 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
             "HloCostAnalysis",
             CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
             /*enable_cache=*/false));
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(alias_analysis_,
+                     HloAliasAnalysis::Run(module, &alias_info_));
+    ABSL_ASSIGN_OR_RETURN(
         cost_analysis_,
         CostAnalysis::Create(*op_cost_manager_, cost_analysis_options_,
-                             &alias_info_, *module));
-    TF_ASSIGN_OR_RETURN(alias_analysis_,
-                        HloAliasAnalysis::Run(module, &alias_info_));
-    TF_ASSIGN_OR_RETURN(live_range_,
-                        HloLiveRange::Run(module->schedule(), *alias_analysis_,
-                                          module->entry_computation()));
+                             &alias_info_, *module, alias_analysis_.get()));
+    ABSL_ASSIGN_OR_RETURN(live_range_,
+                     HloLiveRange::Run(module->schedule(), *alias_analysis_,
+                                       module->entry_computation()));
     return absl::OkStatus();
   }
 
@@ -315,7 +312,7 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
       uint64_t alternate_memory_size = 256,
       const ReservedScopedMemoryFunction& reserved_scoped_memory_fn =
           ReservedScopedMemoryFn) {
-    TF_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
+    ABSL_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     MemoryBoundLoopOptimizerOptions optimizer_options;
     optimizer_options.set_enabled(true);
     optimizer_options.set_desired_copy_ratio(0.7);
@@ -328,9 +325,9 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
     options.size_fn = SizeFunction;
     options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
     options.memory_bound_loop_optimizer_options = optimizer_options;
-    TF_ASSIGN_OR_RETURN(optimizer_, MemoryBoundLoopOptimizer::Create(
-                                        loop_start, loop_end, *live_range_,
-                                        *alias_analysis_, options));
+    ABSL_ASSIGN_OR_RETURN(optimizer_, MemoryBoundLoopOptimizer::Create(
+                                     loop_start, loop_end, *live_range_,
+                                     *alias_analysis_, options));
     return optimizer_.get();
   }
 
@@ -340,12 +337,12 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
       const ReservedScopedMemoryFunction& reserved_scoped_memory_fn =
           ReservedScopedMemoryFn) {
     int loop_end_idx;
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::string module_str,
         ParseAndCreateModuleString(hlo_loop_str, loop_start_idx, loop_end_idx));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(module_str));
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(module_str));
+    ABSL_ASSIGN_OR_RETURN(
         *optimizer,
         CreateOptimizer(loop_start_idx, loop_end_idx, module.get(),
                         alternate_memory_size, reserved_scoped_memory_fn));
@@ -519,7 +516,7 @@ ENTRY Entry {
     options_.alternate_memory_space = kAlternateMemorySpace;
 
     if (!cost_analysis_) {
-      TF_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
+      ABSL_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     }
     CostAnalysis::Cache cache;
     MemoryBoundednessBufferIntervalComparator comparator(*cost_analysis_,
@@ -599,11 +596,11 @@ ENTRY Entry {
       }
     };
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                        HloAliasAnalysis::Run(module, &alias_info_));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> live_range,
-                        HloLiveRange::Run(module->schedule(), *alias_analysis,
-                                          module->entry_computation()));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                     HloAliasAnalysis::Run(module, &alias_info_));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> live_range,
+                     HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                       module->entry_computation()));
     const auto& flattened_instructions =
         live_range->flattened_instruction_sequence().instructions();
     for (int iteration = 1; iteration < 3; ++iteration) {
@@ -720,7 +717,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
   // of param0 with desired copy ratio. alternate_memory_size=80 memory will
   // ensure complete copy of param0 to alternate memory.
   int64_t alternate_memory_size = 80;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
 
@@ -767,7 +764,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch2) {
   // alternate_memory_size=64 is minimum memory needed to fit the copy of param0
   // with desired copy ratio.
   int64_t alternate_memory_size = 64;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
 
@@ -817,7 +814,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, ReservedScopedMemory) {
   )";
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndCreateOptimizer(
           hlo_loop_str,
@@ -885,12 +882,11 @@ TEST_F(MemoryBoundLoopOptimizerTest, GetTupleElement) {
 
     ROOT root = tuple(tupleparam, op4, op8, op12, op16)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   VLOG(1) << "Original module:\n"
           << module->ToString(HloPrintOptions::ShortParsable());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments, RunMsa(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto preset_assignments, RunMsa(module.get()));
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, NoAlternateMem) {
@@ -906,10 +902,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, NoAlternateMem) {
   MemoryBoundLoopOptimizer* optimizer;
   // Set alternate memory size to zero so nothing should be in the alternate
   // memory. We still expect to find an allocation for all uses.
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndCreateOptimizer(hlo_loop_str,
-                                                  /*alternate_memory_size=*/0,
-                                                  loop_start_idx, &optimizer));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndCreateOptimizer(hlo_loop_str,
+                                               /*alternate_memory_size=*/0,
+                                               loop_start_idx, &optimizer));
 
   optimizer->Optimize();
   absl::flat_hash_set<HloUse> seen_uses;
@@ -976,7 +972,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
   int64_t alternate_memory_size = 464;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
 
@@ -1116,7 +1112,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
   int64_t alternate_memory_size = 208;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
 
@@ -1200,7 +1196,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
   int64_t alternate_memory_size = 464;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
 
@@ -1287,7 +1283,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap2) {
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
   int64_t alternate_memory_size = 384;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
 
@@ -1352,16 +1348,16 @@ TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEnd) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndCreateOptimizer(hlo_loop_str,
-                                           /*alternate_memory_size=*/1024,
-                                           loop_start_idx, &optimizer));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndCreateOptimizer(hlo_loop_str,
+                                               /*alternate_memory_size=*/1024,
+                                               loop_start_idx, &optimizer));
 
   optimizer->Optimize();
-  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
-                          RunMsa(module.get(), /*alternate_memory_size=*/1024));
+  ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                       RunMsa(module.get(), /*alternate_memory_size=*/1024));
 
-  TF_ASSERT_OK(VerifyMsaEquivalence(module.get()));
+  ASSERT_OK(VerifyMsaEquivalence(module.get()));
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndUnsupportedAllocation) {
@@ -1379,17 +1375,17 @@ TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndUnsupportedAllocation) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndCreateOptimizer(hlo_loop_str,
-                                           /*alternate_memory_size=*/1024,
-                                           loop_start_idx, &optimizer));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndCreateOptimizer(hlo_loop_str,
+                                               /*alternate_memory_size=*/1024,
+                                               loop_start_idx, &optimizer));
 
   optimizer->Optimize();
-  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
-                          RunMsa(module.get(), /*alternate_memory_size=*/1024));
+  ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                       RunMsa(module.get(), /*alternate_memory_size=*/1024));
 
-  TF_ASSERT_OK(VerifyMsaEquivalence(module.get(),
-                                    /*expect_unsupported_allocations=*/true));
+  ASSERT_OK(VerifyMsaEquivalence(module.get(),
+                                 /*expect_unsupported_allocations=*/true));
 
   const HloInstruction* op2 = FindInstruction(module.get(), "op2");
   EXPECT_EQ(op2->shape().layout().memory_space(), kAlternateMemorySpace);
@@ -1441,11 +1437,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, TempAndPinnedAllocations) {
     ROOT root = f32[1,4] get-tuple-element(while), index=4
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   int64_t alternate_memory_size = 80;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto optimizer,
-      CreateOptimizer(19, 24, module.get(), alternate_memory_size));
+  ASSERT_OK_AND_ASSIGN(auto optimizer, CreateOptimizer(19, 24, module.get(),
+                                                       alternate_memory_size));
   optimizer->Optimize();
 
   std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
@@ -1512,11 +1507,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
     ROOT root = f32[1,4] get-tuple-element(while), index=4
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   int64_t alternate_memory_size = 72;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto optimizer,
-      CreateOptimizer(21, 27, module.get(), alternate_memory_size));
+  ASSERT_OK_AND_ASSIGN(auto optimizer, CreateOptimizer(21, 27, module.get(),
+                                                       alternate_memory_size));
   optimizer->Optimize();
   std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
   // We expect that pinned_prev_param0 would not get pinned due to negative
@@ -1575,18 +1569,18 @@ ENTRY entry {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
-                          RunMsa(module.get(), /*alternate_memory_size=*/512));
+  ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                       RunMsa(module.get(), /*alternate_memory_size=*/512));
 
   // We expect operand 0 of prev_op4, op4, and next_op4 to all be prefetches of
   // same distance from the user.
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
-                          HloLiveRange::Run(module->schedule(), *alias_analysis,
-                                            module->entry_computation()));
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                       HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                         module->entry_computation()));
   const HloInstruction* prev_copy_done =
       FindInstruction(module.get(), "prev_op4")->operand(0);
   const HloInstruction* copy_done =
@@ -1706,10 +1700,45 @@ ENTRY entry {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
-                          RunMsa(module.get(), /*alternate_memory_size=*/512));
+  ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                       RunMsa(module.get(), /*alternate_memory_size=*/512));
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, TuplePositionAfterUseDoesNotCrash) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[1,4] parameter(0)
+    p1 = f32[1,4] parameter(1)
+    p2 = f32[1,4] parameter(2)
+    p3 = f32[1,4] parameter(3)
+
+    // Iteration 0
+    c0 = f32[1,4] tanh(p0)
+    t0 = (f32[1,4], f32[1,4]) tuple(c0, p0)
+    op1_0 = f32[1,4] tanh(c0)
+    op2_0 = f32[1,4] add(op1_0, op1_0)
+
+    // Iteration 1
+    c1 = f32[1,4] tanh(p1)
+    t1 = (f32[1,4], f32[1,4]) tuple(c1, p1)
+    op1_1 = f32[1,4] tanh(c1)
+    op2_1 = f32[1,4] add(op1_1, op1_1)
+
+    // Iteration 2
+    c2 = f32[1,4] tanh(p2)
+    t2 = (f32[1,4], f32[1,4]) tuple(c2, p2)
+    op1_2 = f32[1,4] tanh(c2)
+    op2_2 = f32[1,4] add(op1_2, op1_2)
+
+    ROOT root = tuple(t0, t1, t2, op2_0, op2_1, op2_2)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto preset_assignments, RunMsa(module.get()));
 }
 
 }  // namespace

@@ -14,8 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
 #include <new>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
@@ -26,7 +34,10 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tsl/platform/mem.h"

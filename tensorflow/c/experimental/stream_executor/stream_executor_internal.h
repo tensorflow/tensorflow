@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -59,7 +60,7 @@ absl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
                                       std::string* platform_name);
 
 // Converts DeviceMemoryBase to a C struct.
-inline SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
+inline SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceAddressBase* mem) {
   SP_DeviceMemoryBase device_memory_base{SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
   // `opaque` field inside SP_DeviceMemoryBase is not const.
   // Therefore, we need to cast away the constness before setting it.
@@ -202,9 +203,20 @@ class CStream : public StreamCommon {
     Destroy();
   }
 
-  absl::Status Create() {
+  absl::Status Create(SP_StreamOptions* options) {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
-    stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
+    if (stream_executor_->struct_size >=
+            TF_OFFSET_OF_END(SP_StreamExecutor, create_stream_with_options) &&
+        stream_executor_->create_stream_with_options != nullptr) {
+      stream_executor_->create_stream_with_options(
+          device_, options, &stream_handle_, c_status.get());
+    } else if (options != nullptr && options->has_priority) {
+      return absl::InvalidArgumentError(
+          "Stream executor does not implement `create_stream_with_options`, "
+          "priority is not supported.");
+    } else {
+      stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
+    }
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
@@ -268,14 +280,14 @@ class CStream : public StreamCommon {
                                      c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
-  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override {
+  absl::Status MemZero(DeviceAddressBase* location, uint64_t size) override {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
     stream_executor_->mem_zero(device_, stream_handle_, &device_mem, size,
                                c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
-  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+  absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern,
                         uint64_t size) override {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
@@ -283,7 +295,7 @@ class CStream : public StreamCommon {
                                size, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                       uint64_t size) override {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_mem_dst = DeviceMemoryBaseToC(gpu_dst);
@@ -294,8 +306,9 @@ class CStream : public StreamCommon {
     }
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) override {
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst,
+                      const DeviceAddressBase& gpu_src,
+                      uint64_t size) override {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_mem_dst = DeviceMemoryBaseToC(gpu_dst);
     SP_DeviceMemoryBase device_mem_src = DeviceMemoryBaseToC(&gpu_src);
@@ -306,7 +319,7 @@ class CStream : public StreamCommon {
     }
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
-  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+  absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src,
                       uint64_t size) override {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_mem_src = DeviceMemoryBaseToC(&gpu_src);

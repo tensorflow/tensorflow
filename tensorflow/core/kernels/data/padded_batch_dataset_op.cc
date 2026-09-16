@@ -312,11 +312,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           // TODO(mrry): Perform this check in the shape function if
           // enough static information is available to do so.
           if (element_shape.dims() != padded_shape.dims()) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "All elements in a batch must have the same rank as the "
                 "padded shape for component",
                 component_index, ": expected rank ", padded_shape.dims(),
-                " but got element with rank ", element_shape.dims());
+                " but got element with rank ", element_shape.dims()));
           }
           for (int dim = 0; dim < padded_shape.dims(); ++dim) {
             if (padded_shape.dim_size(dim) == -1) {
@@ -330,7 +330,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
             } else {
               if (batch_elements[i][component_index].shape().dim_size(dim) >
                   batch_component_shape.dim_size(dim + 1)) {
-                return errors::DataLoss(
+                return absl::DataLossError(
                     "Attempted to pad to a smaller size than the input "
                     "element.");
               }
@@ -436,8 +436,9 @@ void PaddedBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int64_t batch_size;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kBatchSize, &batch_size));
-  OP_REQUIRES(ctx, batch_size > 0,
-              errors::InvalidArgument("Batch size must be greater than zero."));
+  OP_REQUIRES(
+      ctx, batch_size > 0,
+      absl::InvalidArgumentError("Batch size must be greater than zero."));
 
   bool drop_remainder = false;
   if (op_version_ > 1) {
@@ -450,14 +451,15 @@ void PaddedBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   std::vector<PartialTensorShape> padded_shapes;
   padded_shapes.reserve(padded_shape_tensors.size());
   OP_REQUIRES(ctx, padded_shape_tensors.size() == input->output_shapes().size(),
-              errors::InvalidArgument("Number of padded shapes (",
-                                      padded_shape_tensors.size(),
-                                      ") must match the number of components "
-                                      "in the input dataset's elements (",
-                                      input->output_shapes().size(), ")"));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Number of padded shapes (", padded_shape_tensors.size(),
+                  ") must match the number of components "
+                  "in the input dataset's elements (",
+                  input->output_shapes().size(), ")")));
   for (const Tensor& padded_shape_t : padded_shape_tensors) {
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(padded_shape_t.shape()),
-                errors::InvalidArgument("All padded shapes must be vectors"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(padded_shape_t.shape()),
+        absl::InvalidArgumentError("All padded shapes must be vectors"));
     PartialTensorShape padded_shape;
     OP_REQUIRES_OK(ctx, PartialTensorShape::MakePartialShape(
                             padded_shape_t.vec<int64_t>().data(),
@@ -468,21 +470,22 @@ void PaddedBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx, ctx->input_list(kPaddingValues, &padding_values_list));
   std::vector<Tensor> padding_values;
   OP_REQUIRES(ctx, padding_values_list.size() == input->output_shapes().size(),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Number of padding values (", padding_values_list.size(),
                   ") must match the number of components in the input "
                   "dataset's elements (",
-                  input->output_shapes().size(), ")"));
+                  input->output_shapes().size(), ")")));
   for (int i = 0; i < padding_values_list.size(); ++i) {
     const Tensor& padding_value_t = padding_values_list[i];
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(padding_value_t.shape()),
-                errors::InvalidArgument("All padding values must be scalars"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(padding_value_t.shape()),
+        absl::InvalidArgumentError("All padding values must be scalars"));
     OP_REQUIRES(ctx, padding_value_t.dtype() == input->output_dtypes()[i],
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Mismatched type between padding value ", i,
                     " and input dataset's component ", i, ": ",
                     DataTypeString(padding_value_t.dtype()), " vs. ",
-                    DataTypeString(input->output_dtypes()[i])));
+                    DataTypeString(input->output_dtypes()[i]))));
     padding_values.push_back(tensor::DeepCopy(padding_value_t));
   }
 

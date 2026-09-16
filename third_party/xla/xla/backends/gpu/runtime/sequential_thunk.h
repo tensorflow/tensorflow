@@ -45,7 +45,9 @@ class SequentialThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  absl::Status WalkNested(Walker callback) override;
+  BufferUses buffer_uses() const override { return {}; }
+
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;

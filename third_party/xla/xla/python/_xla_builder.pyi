@@ -14,7 +14,7 @@
 
 from collections.abc import Sequence
 
-from jax.jaxlib._jax import OpSharding_Type, ProgramShape, Shape, XlaComputation
+from ._hlo import OpSharding_Type, ProgramShape, Shape, XlaComputation
 
 class FrontendAttributes:
   def __init__(self) -> None: ...

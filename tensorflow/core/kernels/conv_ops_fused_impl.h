@@ -212,15 +212,17 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
                   const FusedComputationArgs& fusion_args,
                   const Conv2DParameters& params,
                   const Conv2DDimensions& dimensions, Tensor* output) {
-    OP_REQUIRES(context, dimensions.in_depth == filter.dim_size(2),
-                errors::Unimplemented("Fused conv implementation does not "
-                                      "support grouped convolutions for now."));
-    OP_REQUIRES(context, params.data_format == FORMAT_NHWC,
-                errors::Unimplemented("Fused conv implementation only supports "
-                                      "NHWC tensor format for now."));
+    OP_REQUIRES(
+        context, dimensions.in_depth == filter.dim_size(2),
+        absl::UnimplementedError("Fused conv implementation does not "
+                                 "support grouped convolutions for now."));
+    OP_REQUIRES(
+        context, params.data_format == FORMAT_NHWC,
+        absl::UnimplementedError("Fused conv implementation only supports "
+                                 "NHWC tensor format for now."));
     OP_REQUIRES(context, DataTypeToEnum<T>::value != DT_HALF,
-                errors::Unimplemented("Fused conv implementation with half "
-                                      "precision is not supported on CPU."));
+                absl::UnimplementedError("Fused conv implementation with half "
+                                         "precision is not supported on CPU."));
 
     BiasAddArgs<T> bias_add_args;
     if (BiasAddArgs<T>::IsSupported(fusion)) {
@@ -253,7 +255,8 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
     switch (fusion) {
       case FusedComputationType::kUndefined:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
+        OP_REQUIRES_OK(context,
+                       absl::InternalError("Fusion type is undefined"));
         break;
       case FusedComputationType::kBiasAdd:
         conv2d(WithBiasAdd<T>(bias_add_args), context, input, filter, output);
@@ -300,7 +303,8 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
                context, input, filter, output);
         break;
       default:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
+        OP_REQUIRES_OK(context,
+                       absl::InternalError("Fusion type is unsupported"));
         break;
     }
   }
@@ -333,26 +337,27 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     OP_REQUIRES(
         context,
         params.data_format == FORMAT_NHWC || params.data_format == FORMAT_NCHW,
-        errors::Unimplemented("Fused conv implementation only supports "
-                              "NHWC and HCHW tensor formats for now."));
+        absl::UnimplementedError("Fused conv implementation only supports "
+                                 "NHWC and HCHW tensor formats for now."));
 
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
-    OP_REQUIRES(
-        context, use_cudnn,
-        errors::Unimplemented("FusedConv2D for GPU is not currently supported "
-                              "without cudnn"));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available."));
+    OP_REQUIRES(context, use_cudnn,
+                absl::UnimplementedError(
+                    "FusedConv2D for GPU is not currently supported "
+                    "without cudnn"));
 
     bool is_supported_activation =
         fusion == FusedComputationType::kBiasAddWithRelu ||
         fusion == FusedComputationType::kBiasAddWithRelu6 ||
         fusion == FusedComputationType::kBiasAddWithElu ||
         fusion == FusedComputationType::kBiasAddWithLeakyRelu;
-    OP_REQUIRES(
-        context, is_supported_activation,
-        errors::Unimplemented("FusedConv2D implementation only supports "
-                              "fusing with `BiasAdd + Relu|Relu6|Elu|LeakyRlue`"
-                              " for now."));
+    OP_REQUIRES(context, is_supported_activation,
+                absl::UnimplementedError(
+                    "FusedConv2D implementation only supports "
+                    "fusing with `BiasAdd + Relu|Relu6|Elu|LeakyRlue`"
+                    " for now."));
 
     Tensor input = input_param;
 
@@ -373,11 +378,12 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     // Bias of the following dimensions: [ output_depth ]
     const Tensor& bias = context->input(2);
     OP_REQUIRES(context, bias.dims() == 1,
-                errors::InvalidArgument("bias must be 1-dimensional",
-                                        bias.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "bias must be 1-dimensional", bias.shape().DebugString())));
     OP_REQUIRES(context, bias.dim_size(0) == out_depths,
-                errors::InvalidArgument("bias depth must be equal to out depth",
-                                        bias.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("bias depth must be equal to out depth",
+                                 bias.shape().DebugString())));
 
     const int64_t common_padding_rows =
         std::min(dimensions.pad_rows_before, dimensions.pad_rows_after);
@@ -423,7 +429,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           FastBoundsCheck(input_pad_left, std::numeric_limits<int>::max()) &&
           FastBoundsCheck(input_pad_right, std::numeric_limits<int>::max());
       if (!in_bounds) {
-        context->SetStatus(errors::InvalidArgument("Padding is too large."));
+        context->SetStatus(absl::InvalidArgumentError("Padding is too large."));
         return;
       }
       functor::PadInput<GPUDevice, T, int, 4>()(

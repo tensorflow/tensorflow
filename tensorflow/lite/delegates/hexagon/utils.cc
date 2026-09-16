@@ -206,6 +206,22 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       }
 
+      const auto& filter_tensor = context->tensors[node->inputs->data[1]];
+      if (filter_tensor.quantization.type == kTfLiteBlockwiseQuantization) {
+        // Hexagon does not support blockwise quantization for MatMul.
+        return false;
+      }
+      if (filter_tensor.quantization.type == kTfLiteAffineQuantization) {
+        const auto* affine_quantization =
+            reinterpret_cast<TfLiteAffineQuantization*>(
+                filter_tensor.quantization.params);
+        if (affine_quantization && affine_quantization->scale &&
+            affine_quantization->scale->size > 1) {
+          // Hexagon does not support per-channel quantization for MatMul.
+          return false;
+        }
+      }
+
       bool bias_const_or_no_bias = true;
       if (node->inputs->data[2] != -1) {
         const auto& bias_tensor = context->tensors[node->inputs->data[2]];
@@ -222,6 +238,10 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
                   kTfLiteFullyConnectedWeightsFormatDefault);
     }
     case kTfLiteBuiltinConcatenation: {
+      // Requires at least one input and one output tensor.
+      if (node->inputs == nullptr || node->outputs == nullptr ||
+          node->inputs->size < 1 || node->outputs->size < 1)
+        return false;
       // All concatenated tensors must be 8-bit.
       for (int i = 0; i < node->inputs->size; ++i) {
         if (!TensorTypeMatch(node->inputs->data[i], context, kTfLiteUInt8) &&
@@ -422,6 +442,10 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
                                      {kTfLiteInt32, kTfLiteInt64}});
     }
     case kTfLiteBuiltinPack: {
+      // Requires at least one input and one output tensor.
+      if (node->inputs == nullptr || node->outputs == nullptr ||
+          node->inputs->size < 1 || node->outputs->size < 1)
+        return false;
       // All tensors must be 8-bit.
       for (int i = 0; i < node->inputs->size; ++i) {
         if (!TensorTypeMatch(node->inputs->data[i], context, kTfLiteUInt8) &&

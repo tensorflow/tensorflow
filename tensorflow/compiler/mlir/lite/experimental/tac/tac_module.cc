@@ -30,7 +30,7 @@ namespace mlir {
 namespace TFL {
 namespace tac {
 namespace {
-// TODO(b/177376459): We should make this configureable.
+// TODO(b/177376459): We should make this configurable.
 void AddExportTFLPass(mlir::OpPassManager* pass_manager, bool enable_inliner) {
   if (enable_inliner) pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
@@ -40,7 +40,7 @@ void AddExportTFLPass(mlir::OpPassManager* pass_manager, bool enable_inliner) {
 }
 }  // namespace
 
-// TODO(b/177376459): We should make this configureable.
+// TODO(b/177376459): We should make this configurable.
 void TacModule::AddTACPass(mlir::OpPassManager* pass_manager,
                            llvm::ArrayRef<std::string> device_specs) {
   pass_manager->addPass(mlir::TFL::tac::CreateTargetAnnotationPass(this));

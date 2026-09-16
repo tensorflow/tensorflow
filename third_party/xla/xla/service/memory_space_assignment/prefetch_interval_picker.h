@@ -43,7 +43,7 @@ class PrefetchIntervalPicker {
 
   // Returns true if the buffer can be allocated in alternate memory space
   // without any copies (prefetches).
-  virtual bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
+  virtual bool CanAllocateInAlternateMemoryNoCopy(int64_t shape_size,
                                                   int64_t start_time,
                                                   int64_t end_time) const = 0;
 
@@ -54,7 +54,7 @@ class PrefetchIntervalPicker {
                                            int64_t latest_end_time) const = 0;
 
   // Returns the latest time that a prefetch can start.
-  virtual int64_t LatestPrefetchStartTime(const Shape& shape,
+  virtual int64_t LatestPrefetchStartTime(int64_t shape_size,
                                           int64_t start_time, int64_t end_time,
                                           const HloUse* use) const = 0;
 
@@ -83,7 +83,8 @@ class PrefetchIntervalPicker {
 
   // Begins the iterator for the first start time of the prefetch.
   virtual void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
-                     std::optional<int64_t> preferred_time) = 0;
+                     std::optional<int64_t> preferred_time,
+                     bool strict_timing = false) = 0;
 
   // Advances the start time of the prefetch and returns that value.
   virtual int64_t Next() = 0;
@@ -143,14 +144,14 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
       : min_overlap_count_(min_overlap_count),
         max_overlap_count_(max_overlap_count) {}
 
-  bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
+  bool CanAllocateInAlternateMemoryNoCopy(int64_t shape_size,
                                           int64_t start_time,
                                           int64_t end_time) const override;
 
   int64_t PreferredEvictionEndTime(const Shape& shape, int64_t start_time,
                                    int64_t latest_end_time) const override;
 
-  int64_t LatestPrefetchStartTime(const Shape& shape, int64_t start_time,
+  int64_t LatestPrefetchStartTime(int64_t shape_size, int64_t start_time,
                                   int64_t end_time,
                                   const HloUse* use) const override;
 
@@ -165,7 +166,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                   int64_t end_time) const override;
 
   void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
-             std::optional<int64_t> preferred_time) override;
+             std::optional<int64_t> preferred_time,
+             bool strict_timing = false) override;
 
   int64_t Next() override;
   bool Done() const override;
@@ -181,6 +183,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t max_overlap_count_;
   int64_t end_time_;
   int64_t current_prefetch_time_;
+  bool strict_timing_ = false;
+  int64_t strict_prefetch_time_ = -1;
 };
 
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
@@ -203,9 +207,9 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
       const CostAnalysis& cost_analysis, float min_overlap_to_async_copy_ratio,
       float preferred_overlap_to_async_copy_ratio,
       float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes,
-      const Shape* shape_override = nullptr);
+      std::optional<int64_t> size_override = std::nullopt);
 
-  bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
+  bool CanAllocateInAlternateMemoryNoCopy(int64_t shape_size,
                                           int64_t start_time,
                                           int64_t end_time) const override;
 
@@ -216,7 +220,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
       int64_t original_prefetch_end_time,
       int64_t proposed_prefetch_end_time) const override;
 
-  int64_t LatestPrefetchStartTime(const Shape& shape, int64_t start_time,
+  int64_t LatestPrefetchStartTime(int64_t shape_size, int64_t start_time,
                                   int64_t end_time,
                                   const HloUse* use) const override;
 
@@ -231,7 +235,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                   int64_t end_time) const override;
 
   void Begin(const HloUse& use, int64_t start_time, int64_t end_time,
-             std::optional<int64_t> preferred_time) override;
+             std::optional<int64_t> preferred_time,
+             bool strict_timing = false) override;
 
   int64_t Next() override;
   bool Done() const override;
@@ -280,10 +285,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t decreasing_prefetch_time_iterator_;
 
   std::vector<float> while_execution_counts_;
-  // Shape override is used to override the shape of the shape of the async copy
+  // Size override is used to override the size of the shape of the async copy
   // to treat all async copies the same duration. Having an override forces
   // prefetches to be scheduled roughly in FIFO order.
-  std::optional<Shape> shape_override_;
+  std::optional<int64_t> size_override_;
 };
 
 }  // namespace memory_space_assignment

@@ -102,7 +102,7 @@ absl::Status ComputeTopologicalOrder(
         }
       }
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The graph couldn't be sorted in topological order.");
   }
   return absl::OkStatus();

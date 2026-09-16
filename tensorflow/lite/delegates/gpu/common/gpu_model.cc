@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <any>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"

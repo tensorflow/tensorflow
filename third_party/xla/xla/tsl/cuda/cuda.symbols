@@ -263,6 +263,8 @@ cuLaunchGrid
 cuLaunchGridAsync
 cuLaunchHostFunc
 cuLaunchHostFunc_ptsz
+cuLaunchHostFunc_v2
+cuLaunchHostFunc_v2_ptsz
 cuLaunchKernel
 cuLaunchKernelEx
 cuLaunchKernelEx_ptsz

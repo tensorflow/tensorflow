@@ -37,7 +37,7 @@ using random::PhiloxRandom;
 
 template <typename Distribution>
 __global__ void FillKernel(
-    Distribution dist, int64 state_size, int64 output_size,
+    Distribution dist, int64_t state_size, int64_t output_size,
     StateElementType* __restrict__ state_data,
     typename Distribution::ResultElementType* __restrict__ output_data) {
   // Threads in this block share `philox`. Thread 0 is responsible for
@@ -65,17 +65,17 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
     OpKernelContext* ctx, const GPUDevice& d, Distribution dist,
     UpdateVariableAndFill_Philox_Arg* arg,
     typename Distribution::ResultElementType* output_data) {
-  int64 output_size = arg->output_size;
-  int64 alg_tag_skip = arg->alg_tag_skip;
+  int64_t output_size = arg->output_size;
+  int64_t alg_tag_skip = arg->alg_tag_skip;
   Tensor* state_tensor = arg->state_tensor;
   OP_REQUIRES(ctx, state_tensor != 0,
-              errors::InvalidArgument("Null state tensor"));
+              absl::InvalidArgumentError("Null state tensor"));
   OP_REQUIRES(
       ctx, alg_tag_skip == 0,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "GPU kernel doesn't support reading algorithm from state variable, "
           "so alg_tag_skip must be 0; got",
-          alg_tag_skip));
+          alg_tag_skip)));
   auto state_tensor_flat = state_tensor->flat<StateElementType>();
   auto state_size = state_tensor_flat.size();
   auto state_data = state_tensor_flat.data();
@@ -100,15 +100,15 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 
 // Precondition: there is only 1 block and 1 thread.
 __global__ void SkipKernel(const StateElementType* __restrict__ in_data,
-                           uint64 delta,
+                           uint64_t delta,
                            StateElementType* __restrict__ out_data) {
-  auto counter = GetCounterFromMem(reinterpret_cast<const uint64*>(in_data));
+  auto counter = GetCounterFromMem(reinterpret_cast<const uint64_t*>(in_data));
   UpdateCounterMemWithPhiloxRandom(counter, delta, out_data);
 }
 
 void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d,
                                            const StateElementType* in_data,
-                                           uint64 delta,
+                                           uint64_t delta,
                                            StateElementType* out_data) {
   TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(), in_data, delta,
                               out_data));
@@ -151,21 +151,21 @@ template struct UpdateVariableAndFill_Philox<
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
 template struct UpdateVariableAndFill_Philox<
-    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32> >;
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32_t> >;
 template struct UpdateVariableAndFill_Philox<
-    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int64> >;
-template struct UpdateVariableAndFill_Philox<
-    GPUDevice, random::UniformFullIntDistribution<
-                 random::PhiloxRandom, int32> >;
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int64_t> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformFullIntDistribution<
-                 random::PhiloxRandom, int64> >;
+                 random::PhiloxRandom, int32_t> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformFullIntDistribution<
-                 random::PhiloxRandom, uint32> >;
+                 random::PhiloxRandom, int64_t> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformFullIntDistribution<
-                 random::PhiloxRandom, uint64> >;
+                 random::PhiloxRandom, uint32_t> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, uint64_t> >;
 // clang-format on
 
 }  // end namespace functor

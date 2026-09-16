@@ -407,6 +407,11 @@ def eig(tensor, name=None):
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
     out_dtype = dtypes.complex128
+  else:
+    raise ValueError(
+        "'tensor' must have dtype float32, float64, complex64, or "
+        f'complex128, got {tensor.dtype}'
+    )
   e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
   return e, v
 
@@ -434,6 +439,11 @@ def eigvals(tensor, name=None):
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
     out_dtype = dtypes.complex128
+  else:
+    raise ValueError(
+        "'tensor' must have dtype float32, float64, complex64, or "
+        f'complex128, got {tensor.dtype}'
+    )
   e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
   return e
 
@@ -763,9 +773,31 @@ def norm(tensor,
         # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
         # this introduces a new op that is not supported in XLA, and breaks
         # many existing TPU workloads (e.g. ResNet).
-        result = math_ops.sqrt(
-            math_ops.reduce_sum(
-                tensor * math_ops.conj(tensor), axis, keepdims=True))
+        sum_squares = math_ops.reduce_sum(
+            tensor * math_ops.conj(tensor), axis, keepdims=True
+        )
+        # Use a safe sqrt to avoid NaN/inf gradients when sum_squares is zero.
+        # maximum(sum_squares, tiny) ensures the sqrt gradient denominator is
+        # never zero, and the where mask preserves exact zero forward output.
+        real_dtype = tensor.dtype.real_dtype
+        tiny_dtype = (
+            np.float32
+            if real_dtype == dtypes.bfloat16
+            else (real_dtype.as_numpy_dtype)
+        )
+        tiny = np.finfo(tiny_dtype).tiny
+        if tensor.dtype.is_complex:
+          real_sum = math_ops.real(sum_squares)
+          safe_sum = math_ops.complex(
+              math_ops.maximum(real_sum, tiny), array_ops.zeros_like(real_sum)
+          )
+        else:
+          safe_sum = math_ops.maximum(sum_squares, tiny)
+        result = array_ops.where(
+            math_ops.equal(sum_squares, 0),
+            array_ops.zeros_like(safe_sum),
+            math_ops.sqrt(safe_sum),
+        )
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

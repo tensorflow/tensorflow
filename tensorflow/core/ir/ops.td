@@ -88,7 +88,8 @@ def TFGraph_GraphOp : TFG_IntrinsicOp<"graph",
 
 def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
     RegionKindInterface, HasOnlyGraphRegion, SingleBlock,
-    FunctionOpInterface, IsolatedFromAbove, Symbol, OpAsmOpInterface,
+    FunctionOpInterface, IsolatedFromAbove, SymbolName, SymbolVisibility,
+    Symbol, OpAsmOpInterface,
     DeclareOpInterfaceMethods<ControlArgumentInterface>]> {
   let summary = "Define a function as modeled by FunctionDef.";
   let description = [{
@@ -122,7 +123,8 @@ def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
     // Optional attributes that only appear on generic functions. On generic
     // functions, the control output names are stored on the function instead of
     // on the terminator like in non-generic functions.
-    OptionalAttr<StrArrayAttr>:$control_output
+    OptionalAttr<StrArrayAttr>:$control_output,
+    OptionalAttr<StrAttr>:$sym_visibility
   );
 
   // Allow construction of an empty function with no attributes.
@@ -594,7 +596,7 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
     ::mlir::ValueRange $cppClass::getSuccessorInputs(
         ::mlir::RegionSuccessor successor) {
-      if (successor.isParent()) return getOuts();
+      if (successor.isOperation()) return getOuts();
       return {};
     }
     void $cppClass::getEntrySuccessorRegions(
@@ -719,7 +721,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
     ::mlir::ValueRange $cppClass::getSuccessorInputs(
         ::mlir::RegionSuccessor successor) {
-      if (successor.isParent()) return getOuts();
+      if (successor.isOperation()) return getOuts();
       return {};
     }
     void $cppClass::getEntrySuccessorRegions(
@@ -889,7 +891,7 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
     ::mlir::ValueRange $cppClass::getSuccessorInputs(
         ::mlir::RegionSuccessor successor) {
-      if (successor.isParent()) return getOuts();
+      if (successor.isOperation()) return getOuts();
       return GetLoopRegionDataArgs(*successor.getSuccessor());
     }
 

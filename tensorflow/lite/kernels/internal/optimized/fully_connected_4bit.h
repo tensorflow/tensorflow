@@ -25,11 +25,11 @@ limitations under the License.
 #include <memory>
 
 #if defined(FC_4BIT_SSE) && defined(__SSSE3__)
-#include "tensorflow/lite/kernels/internal/optimized/4bit/sse_fully_connected.h"
+#include "tensorflow/lite/kernels/internal/optimized/4bit/sse_fully_connected.h"  // IWYU pragma: export
 #elif defined(FC_4BIT_NEON) && (defined(__ARM_NEON__) || defined(__ARM_NEON))
-#include "tensorflow/lite/kernels/internal/optimized/4bit/neon_fully_connected.h"
+#include "tensorflow/lite/kernels/internal/optimized/4bit/neon_fully_connected.h"  // IWYU pragma: export
 #else
-#include "tensorflow/lite/kernels/internal/optimized/4bit/fully_connected_reference.h"
+#include "tensorflow/lite/kernels/internal/optimized/4bit/fully_connected_reference.h"  // IWYU pragma: export
 #endif
 
 namespace tflite {

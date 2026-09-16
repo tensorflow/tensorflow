@@ -41,6 +41,12 @@ jobs:
       runner: 'linux-x86-n2-16'
       tfci: 'py313,linux_x86_cuda,rbe,no_docker'
 
+  build-linux-x86-cuda13:
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      runner: 'linux-x86-n2-16'
+      tfci: 'py313,linux_x86_cuda13_nvcc,rbe,no_docker'
+
   build-arm64:
     uses: ./.github/workflows/build-reusable.yml
     with:

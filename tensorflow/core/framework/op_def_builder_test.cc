@@ -609,7 +609,7 @@ attr {
 
 TEST_F(OpDefBuilderTest, SetShapeFn) {
   auto fn = [](shape_inference::InferenceContext* c) {
-    return errors::Unknown("ShapeFn was called");
+    return absl::UnknownError("ShapeFn was called");
   };
   OpShapeInferenceFn fn_out;
   ExpectSuccess(
@@ -622,7 +622,7 @@ TEST_F(OpDefBuilderTest, SetShapeFn) {
 
 TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {
   auto fn = [](shape_inference::InferenceContext* c) {
-    return errors::Unknown("ShapeFn was called");
+    return absl::UnknownError("ShapeFn was called");
   };
   ExpectFailure(b().SetShapeFn(fn).SetShapeFn(fn),
                 "SetShapeFn called twice for Op Test");

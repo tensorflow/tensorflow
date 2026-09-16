@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"
@@ -175,9 +174,4 @@ class UnpackSubByteVectorWritePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateUnpackSubByteVectorWritePass() {
-  return std::make_unique<UnpackSubByteVectorWritePass>();
-}
-
 }  // namespace xla::cpu

@@ -53,9 +53,9 @@ TEST(CollectiveMemoryRequestsTest, OrderedSymmetricRequests) {
   // ordering.
   auto ordered_requests = requests.OrderedSymmetricAllocations();
   ASSERT_EQ(ordered_requests.size(), 3);
-  EXPECT_EQ(ordered_requests[0].key, k2);
-  EXPECT_EQ(ordered_requests[1].key, k0);
-  EXPECT_EQ(ordered_requests[2].key, k1);
+  EXPECT_EQ(ordered_requests[0].clique, k2);
+  EXPECT_EQ(ordered_requests[1].clique, k0);
+  EXPECT_EQ(ordered_requests[2].clique, k1);
 }
 
 TEST(CollectiveMemoryRequestsTest, OrderedMulticastRequests) {
@@ -79,9 +79,9 @@ TEST(CollectiveMemoryRequestsTest, OrderedMulticastRequests) {
   // ordering.
   auto ordered_requests = requests.OrderedMulticastAllocations();
   ASSERT_EQ(ordered_requests.size(), 3);
-  EXPECT_EQ(ordered_requests[0].key, k2);
-  EXPECT_EQ(ordered_requests[1].key, k0);
-  EXPECT_EQ(ordered_requests[2].key, k1);
+  EXPECT_EQ(ordered_requests[0].clique, k2);
+  EXPECT_EQ(ordered_requests[1].clique, k0);
+  EXPECT_EQ(ordered_requests[2].clique, k1);
 }
 
 TEST(CollectiveMemoryRequestsTest, OrderedPeerRequests) {
@@ -105,9 +105,28 @@ TEST(CollectiveMemoryRequestsTest, OrderedPeerRequests) {
   // ordering.
   auto ordered_requests = requests.OrderedPeerAllocations();
   ASSERT_EQ(ordered_requests.size(), 3);
-  EXPECT_EQ(ordered_requests[0].key, k2);
-  EXPECT_EQ(ordered_requests[1].key, k0);
-  EXPECT_EQ(ordered_requests[2].key, k1);
+  EXPECT_EQ(ordered_requests[0].clique, k2);
+  EXPECT_EQ(ordered_requests[1].clique, k0);
+  EXPECT_EQ(ordered_requests[2].clique, k1);
+}
+
+TEST(CollectiveMemoryRequestsTest, RequestSymmetricAddresses) {
+  GpuCliqueKey k0({kD0, kD1}, 2);
+
+  std::array<char, 10> data0;
+  std::array<char, 10> data1;
+  se::DeviceAddressBase buf0(data0.data(), 10);
+  se::DeviceAddressBase buf1(data1.data(), 10);
+
+  BufferAllocations buffers({buf0, buf1}, /*device_ordinal=*/0, nullptr);
+  CollectiveMemoryRequests requests(buffers);
+
+  std::vector<se::DeviceAddressBase> addrs = {buf0, buf1};
+  TF_ASSERT_OK(requests.RequestSymmetricAddresses(k0, addrs));
+
+  auto ordered = requests.OrderedSymmetricAllocations();
+  ASSERT_EQ(ordered.size(), 1);
+  EXPECT_EQ(ordered[0].allocations.size(), 2);
 }
 
 }  // namespace xla::gpu

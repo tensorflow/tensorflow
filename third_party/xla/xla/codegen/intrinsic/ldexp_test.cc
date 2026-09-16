@@ -61,19 +61,19 @@ JitRunner CreateJitRunnerWithLdexpF64(Type type) {
 }
 
 TEST(LdexpTest, SclarIninsic) {
-  EXPECT_EQ(Ldexp::Name(Type::S(F64), Type::S(S32)), "xla.ldexp.f64.i32");
+  EXPECT_EQ(Ldexp::Name({Type::S(F64), Type::S(S32)}), "xla.ldexp.f64.i32");
 }
 
 TEST(LdexpTest, VectorIninsic) {
-  EXPECT_EQ(Ldexp::Name(Type::V(F64, 4), Type::V(S32, 4)),
+  EXPECT_EQ(Ldexp::Name({Type::V(F64, 4), Type::V(S32, 4)}),
             "xla.ldexp.v4f64.v4i32");
 }
 
 TEST(LdexpTest, EmitLdexpF64) {
   Type type = Type::S(F64);
   JitRunner runner = CreateJitRunnerWithLdexpF64(type);
-  auto fn =
-      runner.GetScalarFn<double(double, int)>(Ldexp::Name(type, Type::S(S32)));
+  auto fn = runner.GetScalarFn<double(double, int)>(
+      Ldexp::Name({type, Type::S(S32)}));
 
   double test_values[] = {1.0,
                           2.0,
@@ -106,8 +106,8 @@ TEST(LdexpTest, EmitLdexpF64) {
 TEST(LdexpTest, ClampsExponent) {
   Type type = Type::S(F64);
   JitRunner runner = CreateJitRunnerWithLdexpF64(type);
-  auto* run =
-      runner.GetScalarFn<double(double, int)>(Ldexp::Name(type, Type::S(S32)));
+  auto* run = runner.GetScalarFn<double(double, int)>(
+      Ldexp::Name({type, Type::S(S32)}));
 
   EXPECT_THAT(run(2.0, 1e9), Eq(std::numeric_limits<double>::infinity()));
   EXPECT_THAT(run(std::numeric_limits<double>::min(), 2100),
@@ -119,7 +119,7 @@ TEST(LdexpTest, EmitLdexpF64_Vector4) {
   Type type = Type::V(F64, 4);
   JitRunner runner = CreateJitRunnerWithLdexpF64(type);
   auto run = runner.GetVectorizedFn<4, double, double, int>(
-      Ldexp::Name(type, Type::V(S32, 4)));
+      Ldexp::Name({type, Type::V(S32, 4)}));
 
   using DoubleArray4 = std::array<double, 4>;
   std::vector<DoubleArray4> test_values = {

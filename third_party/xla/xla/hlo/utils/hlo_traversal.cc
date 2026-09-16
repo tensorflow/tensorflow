@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/utils/hlo_traversal.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -31,8 +30,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
@@ -544,6 +545,19 @@ absl::InlinedVector<HloInstructionAdaptor, 2> HloInstructionAdaptor::GetUsers()
   return users;
 }
 
+bool HloInstructionAdaptor::use_global_device_ids() const {
+  switch (opcode()) {
+    case HloOpcode::kAllGather:
+      return Cast<HloAllGatherInstruction>(instruction_)
+          ->use_global_device_ids();
+    case HloOpcode::kAllReduce:
+      return Cast<HloAllReduceInstruction>(instruction_)
+          ->use_global_device_ids();
+    default:
+      return false;
+  }
+}
+
 bool operator==(const HloInstructionAdaptor& lhs,
                 const HloInstructionAdaptor& rhs) {
   return lhs.instruction_->GetModule() == rhs.instruction_->GetModule() &&
@@ -711,7 +725,9 @@ std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
   std::vector<HloInstructionAdaptor> result;
   std::function<bool(HloInstructionAdaptor)> visit;
   visit = [&](HloInstructionAdaptor node) {
-    if (node == root) return true;
+    if (node == root) {
+      return true;
+    }
     for (const auto& user : node.GetUsers()) {
       if (visited.insert(user).second && visit(user)) {
         result.push_back(user);
@@ -722,7 +738,7 @@ std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
   };
   if (visit(parent)) {
     result.push_back(parent);
-    std::reverse(result.begin(), result.end());
+    absl::c_reverse(result);
   } else {
     result.clear();
   }

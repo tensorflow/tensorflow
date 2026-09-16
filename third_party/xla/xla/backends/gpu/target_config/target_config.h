@@ -38,6 +38,7 @@ enum class GpuModel {
   BMG_G21,
   H100_PCIE,
   H100_SXM,
+  H200,
   MI200,
   P100,
   PVC,
@@ -62,7 +63,6 @@ struct GpuTargetConfig {
 
   stream_executor::DeviceDescription device_description;
   std::string platform_name;
-  stream_executor::dnn::VersionInfo dnn_version_info;
   std::string device_description_str;
 
  private:

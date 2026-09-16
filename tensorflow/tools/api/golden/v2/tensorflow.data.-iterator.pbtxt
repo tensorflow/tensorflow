@@ -10,6 +10,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_next"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

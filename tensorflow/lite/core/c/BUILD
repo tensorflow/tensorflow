@@ -1,4 +1,20 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
@@ -64,6 +80,7 @@ filegroup(
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
+        "allocator_internal.h",
         "common.cc",
         "common.h",
     ],
@@ -301,7 +318,7 @@ tflite_cc_library_with_c_headers_test(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
-        # "//litert/litert:__subpackages__",  # copybara:uncomment
+        # "//litert:__subpackages__",  # copybara:uncomment
         # copybara:uncomment "//third_party/odml/litert/litert:__subpackages__",
         "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
         "//tensorflow/lite:__subpackages__",
@@ -356,15 +373,29 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "allocator_internal",
+    hdrs = ["allocator_internal.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [":common"],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "common",
-    srcs = ["common.cc"],
+    srcs = [
+        "common.cc",
+    ],
     hdrs = [
         "builtin_op_data.h",
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    textual_hdrs = [
+        "allocator_internal.h",
+    ],
     visibility = ["//tensorflow/lite:__subpackages__"] + common_header_visibility_allowlist(),
     deps = [
         ":c_api_types",

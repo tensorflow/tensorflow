@@ -303,11 +303,11 @@ absl::Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable) {
 
   const AttrValue* then_attr = n->attrs().Find("then_branch");
   if (then_attr == nullptr) {
-    return errors::InvalidArgument("Then branch function missing");
+    return absl::InvalidArgumentError("Then branch function missing");
   }
   const AttrValue* else_attr = n->attrs().Find("else_branch");
   if (else_attr == nullptr) {
-    return errors::InvalidArgument("Else branch function missing");
+    return absl::InvalidArgumentError("Else branch function missing");
   }
 
   CondBuilder cb(n, then_attr->func(), else_attr->func(), keep_node_fetchable,

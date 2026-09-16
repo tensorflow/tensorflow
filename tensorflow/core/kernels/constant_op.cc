@@ -83,9 +83,9 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
                           *proto, AllocatorAttributes(), &tensor_));
   OP_REQUIRES(
       ctx, ctx->output_type(0) == tensor_.dtype(),
-      errors::InvalidArgument("Type mismatch between value (",
-                              DataTypeString(tensor_.dtype()), ") and dtype (",
-                              DataTypeString(ctx->output_type(0)), ")"));
+      absl::InvalidArgumentError(absl::StrCat(
+          "Type mismatch between value (", DataTypeString(tensor_.dtype()),
+          ") and dtype (", DataTypeString(ctx->output_type(0)), ")")));
 }
 
 void ConstantOp::Compute(OpKernelContext* ctx) {
@@ -155,18 +155,19 @@ class FillOp : public OpKernel {
         // TODO(rmlarsen): Disallow legacy use of scalars to represent shape.
         (TensorShapeUtils::IsVector(Tdims.shape()) ||
          TensorShapeUtils::IsScalar(Tdims.shape())),
-        errors::InvalidArgument("dims must represent a vector, got shape ",
-                                Tdims.shape().DebugString()));
+        absl::InvalidArgumentError(
+            absl::StrCat("dims must represent a vector, got shape ",
+                         Tdims.shape().DebugString())));
     const Tensor& Tvalue = context->input(1);
-    OP_REQUIRES(
-        context,
-        // TODO(rmlarsen): Disallow legacy use of length-1 vector to represent
-        // scalar.
-        TensorShapeUtils::IsScalar(Tvalue.shape()) ||
-            (TensorShapeUtils::IsVector(Tvalue.shape()) &&
-             Tvalue.shape().dim_size(0) == 1),
-        errors::InvalidArgument("value must represent a scalar, got shape ",
-                                Tvalue.shape().DebugString()));
+    OP_REQUIRES(context,
+                // TODO(rmlarsen): Disallow legacy use of length-1 vector to
+                // represent scalar.
+                TensorShapeUtils::IsScalar(Tvalue.shape()) ||
+                    (TensorShapeUtils::IsVector(Tvalue.shape()) &&
+                     Tvalue.shape().dim_size(0) == 1),
+                absl::InvalidArgumentError(
+                    absl::StrCat("value must represent a scalar, got shape ",
+                                 Tvalue.shape().DebugString())));
     auto dims = Tdims.flat<Index>();
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
@@ -251,8 +252,8 @@ class ZerosLikeOp : public OpKernel {
     if (std::is_same<T, Variant>::value) {
       OP_REQUIRES(
           ctx, input.dims() == 0,
-          errors::InvalidArgument("ZerosLike non-scalar Tensor with "
-                                  "dtype=DT_VARIANT is not supported."));
+          absl::InvalidArgumentError("ZerosLike non-scalar Tensor with "
+                                     "dtype=DT_VARIANT is not supported."));
       const Variant& v = input.scalar<Variant>()();
       // DT_VARIANT tensors must be allocated on CPU since they wrap C++
       // objects which can not be efficiently represented in GPU memory.
@@ -358,15 +359,15 @@ PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 void PlaceholderOp::Compute(OpKernelContext* ctx) {
   if (expected_shape_.dims() > 0) {
     OP_REQUIRES(ctx, false,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "You must feed a value for placeholder tensor '", name(),
                     "' with dtype ", DataTypeString(output_type(0)),
-                    " and shape ", expected_shape_.DebugString()));
+                    " and shape ", expected_shape_.DebugString())));
   } else {
     OP_REQUIRES(ctx, false,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "You must feed a value for placeholder tensor '", name(),
-                    "' with dtype ", DataTypeString(output_type(0))));
+                    "' with dtype ", DataTypeString(output_type(0)))));
   }
 }
 

@@ -58,7 +58,7 @@ ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
 absl::Status ResourceHandle::BuildResourceHandle(
     const ResourceHandleProto& proto, ResourceHandle* out) {
   if (out == nullptr)
-    return errors::Internal(
+    return absl::InternalError(
         "BuildResourceHandle() was called with nullptr for the output");
   return out->FromProto(proto);
 }
@@ -130,7 +130,7 @@ ResourceHandle ResourceHandle::MakeRefCountingHandle(
     ResourceBase* resource, const std::string& device_name,
     const TypeIndex& type_index,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace) {
+    const std::optional<ManagedStackTrace>& definition_stack_trace) {
   ResourceHandle result;
   result.resource_.reset(resource, /*add_ref=*/false);
   result.set_device(device_name);

@@ -16,14 +16,16 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_CLIENT_IMPL_UTIL_H_
 #define XLA_PYTHON_IFRT_CLIENT_IMPL_UTIL_H_
 
+#include <optional>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/user_context.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -38,6 +40,28 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics);
+
+// Portable adapter for `CopyArraysToHostBufferShards`. It breaks down
+// requests into `DisassembleIntoSingleDeviceArrays` calls followed by
+// per-shard `CopyToHostBuffer`.
+//
+// TODO(spetrovic): Remove this adapter once all major IFRT implementations
+// natively support `CopyArraysToHostBufferShards`.
+absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
+    Client* client, absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
+    ArrayCopySemantics semantics);
+
+// Portable adapter of `LoadedExecutable::ExecuteBundle` that unpacks bundles,
+// calls `Execute` with individual arrays, and repacks the outputs into a
+// bundle.
+//
+// TODO(hyeontaek): Remove this function once all major IFRT implementations
+// natively support `LoadedExecutable::ExecuteBundle`.
+absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
+LoadedExecutableExecuteBundle(
+    LoadedExecutable* executable, absl::Span<BundleRef> args,
+    const ExecuteOptions& options,
+    const std::optional<std::vector<int>>& outputs_bundle_slice_sizes);
 
 }  // namespace ifrt
 }  // namespace xla

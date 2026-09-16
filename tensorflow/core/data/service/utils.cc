@@ -38,7 +38,7 @@ absl::Status WriteDatasetDef(const std::string& path,
 
 absl::Status ReadDatasetDef(const std::string& path, DatasetDef& dataset_def) {
   if (path.empty()) {
-    return errors::InvalidArgument("Path is empty");
+    return absl::InvalidArgumentError("Path is empty");
   }
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(path));
   std::unique_ptr<RandomAccessFile> file;
@@ -48,7 +48,7 @@ absl::Status ReadDatasetDef(const std::string& path, DatasetDef& dataset_def) {
   tstring record;
   TF_RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
   if (!dataset_def.ParseFromString(record)) {
-    return errors::DataLoss("Failed to parse dataset definition");
+    return absl::DataLossError("Failed to parse dataset definition");
   }
   return absl::OkStatus();
 }

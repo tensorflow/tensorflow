@@ -109,9 +109,9 @@ absl::Status DataTypeToPrimitiveType(DataType data_type,
       *type = xla::C128;
       return absl::OkStatus();
     default:
-      return errors::InvalidArgument(
-          "Unsupported type in DataTypeToPrimitiveType: '",
-          DataTypeString(data_type), "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported type in DataTypeToPrimitiveType: '",
+                       DataTypeString(data_type), "'"));
   }
 }
 
@@ -148,8 +148,8 @@ absl::StatusOr<DataType> EncodePrimitiveTypeAsDataType(
 
   auto it = data_type_map.find(type);
   if (it == data_type_map.end()) {
-    return errors::InvalidArgument(
-        "Unsupported type in PrimitiveTypeToDataType ", type);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported type in PrimitiveTypeToDataType ", type));
   }
   return it->second;
 }

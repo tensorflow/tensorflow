@@ -663,7 +663,12 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
       // There are no ops for conversions between floats of equal width, so we
       // go through the next-larger standard type.
       sourceType = dst.getWidth() == 8 ? b->getF16Type() : b->getF32Type();
-      src = mlir::arith::ExtFOp::create(*b, loc, sourceType, src).getResult();
+      mlir::Type extType = sourceType;
+      if (mlir::ShapedType shapedType =
+              mlir::dyn_cast<mlir::ShapedType>(src.getType())) {
+        extType = shapedType.clone(extType);
+      }
+      src = mlir::arith::ExtFOp::create(*b, loc, extType, src).getResult();
     }
     assert(sourceType.getIntOrFloatBitWidth() != dst.getWidth());
 
@@ -1110,6 +1115,10 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
           })
           .getResult(0);
 
+  if (IsUnsignedIntegerType{}(getElementTypeOrSelf(argTypes.front()))) {
+    return accum;
+  }
+
   Value rhsIsEven = arith::CmpIOp::create(
       lb, arith::CmpIPredicate::eq,
       arith::RemSIOp::create(lb, adaptor.getRhs(), two), zero);
@@ -1278,7 +1287,7 @@ struct MhloOpToStdScalarOp {
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  ArrayRef<NamedAttribute> attributes,
                                  OpBuilder* b) {
-    static_assert(!std::is_same<MhloOpTy, mhlo::ConvertOp>::value);
+    static_assert(!std::is_same_v<MhloOpTy, mhlo::ConvertOp>);
     typename MhloOpTy::Adaptor adaptor(args, op->getAttrDictionary(),
                                        op->getPropertiesStorage(),
                                        op->getRegions());

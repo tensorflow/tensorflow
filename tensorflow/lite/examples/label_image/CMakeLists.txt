@@ -23,6 +23,7 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/examples/label_image"
 list(APPEND TFLITE_LABEL_IMAGE_SRCS
   ${XLA_SOURCE_DIR}/xla/tsl/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
+  ${TFLITE_SOURCE_DIR}/profiling/profile_buffer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/time.cc

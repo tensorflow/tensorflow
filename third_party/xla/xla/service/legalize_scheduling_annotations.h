@@ -41,7 +41,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
  public:
   struct Config {
     HloPredicate keep_sync_annotation = HloPredicateTrue;
-    HloPredicate keep_trivial_sync_annotation = HloPredicateTrue;
+    HloPredicate keep_trivial_sync_annotation = HloPredicateFalse;
     bool propagate_annotation = false;
     bool check_start_done_annotation_consistency = true;
     bool remove_loop_iteration_annotation_only = false;
@@ -95,10 +95,12 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
  private:
   bool KeepSchedulingAnnotation(HloInstruction* instr);
   bool RemoveTrivialGroups(
-      const absl::flat_hash_map<
+      absl::flat_hash_map<
           Annotation,
           absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
-          annotation_to_instruction);
+          annotation_to_instruction,
+      absl::flat_hash_map<HloInstruction*, Annotation>&
+          instruction_to_annotation);
   Config config_;
 };
 

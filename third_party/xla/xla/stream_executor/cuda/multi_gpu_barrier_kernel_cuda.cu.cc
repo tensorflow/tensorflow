@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 
 #include "absl/base/casts.h"
 #include "third_party/nccl/nccl.h"
+#include "third_party/nccl/nccl_device.h"  // IWYU pragma: keep
 #include "xla/stream_executor/cuda/collective_signal_cuda.cu.h"  // IWYU pragma: keep
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
@@ -26,6 +29,25 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor::gpu {
+
+__global__ void MultiGpuBarrierWithNcclKernelImpl(
+    int64_t rank, int64_t num_ranks, ncclWindow_t signal_buffers_handle,
+    uint32_t* sync_counter) {
+  // 1. Get individual signal buffers pointers.
+  std::array<uint32_t* __restrict__, MultiGpuBarrierWithNcclKernel::kMaxPeers>
+      signal_buffers;
+
+#pragma unroll
+  for (int64_t i = 0; i < MultiGpuBarrierWithNcclKernel::kMaxPeers; ++i) {
+    if (i < num_ranks) {
+      signal_buffers[i] = reinterpret_cast<uint32_t*>(
+          ncclGetLsaPointer(signal_buffers_handle, 0, i));
+    }
+  }
+
+  SyncRemoteBlocksAndUpdateCounter<PlatformType::kCuda>(
+      rank, num_ranks, signal_buffers, sync_counter);
+}
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     MultiGpuBarrierKernelCuda,                    // 1. Identifier
@@ -44,8 +66,7 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     stream_executor::cuda::kCudaPlatformId,               // 3. Platform ID
     ([](size_t arity) {  // 4. Kernel Spec Creator
       return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
-          absl::bit_cast<void*>(
-              &MultiGpuBarrierWithNcclKernelImpl<PlatformType::kCuda>),
+          absl::bit_cast<void*>(&MultiGpuBarrierWithNcclKernelImpl),
           "multi_gpu_barrier_nccl_kernel", arity);
     }));
 

@@ -37,7 +37,7 @@ std::string TransformGraphWithStringInputs(std::string graph_def_string,
   GraphDef graph_def;
   if (!graph_def.ParseFromString(graph_def_string)) {
     MaybeRaiseFromStatus(
-        errors::InvalidArgument("Couldn't interpret input as a GraphDef"));
+        absl::InvalidArgumentError("Couldn't interpret input as a GraphDef"));
   }
 
   graph_transforms::TransformParameters params_list;
@@ -57,7 +57,7 @@ std::string TransformGraphWithStringInputs(std::string graph_def_string,
   std::string result;
   if (!graph_def.SerializeToString(&result)) {
     MaybeRaiseFromStatus(
-        errors::InvalidArgument("Couldn't serialize output as a GraphDef"));
+        absl::InvalidArgumentError("Couldn't serialize output as a GraphDef"));
   }
   return result;
 }

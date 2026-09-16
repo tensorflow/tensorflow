@@ -26,7 +26,7 @@ class TestRandomAccessFile : public RandomAccessFile {
     for (int i = 0; i < n; ++i) {
       if (offset + i >= 10) {
         n = i;
-        s = errors::OutOfRange("EOF");
+        s = absl::OutOfRangeError("EOF");
         break;
       }
       scratch[i] = 'A';

@@ -389,7 +389,7 @@ struct LaunchDepthwiseConvBackpropInputOp<CPUDevice, T> {
                   T* in_backprop, TensorFormat data_format) {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Depthwise convolution on CPU is only supported for NHWC format"));
 
     static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
@@ -557,13 +557,13 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
 
     std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     stride_ = GetTensorDim(strides_, data_format_, 'H');
     const int64_t stride_w = GetTensorDim(strides_, data_format_, 'W');
@@ -571,13 +571,13 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     const int64_t stride_c = GetTensorDim(strides_, data_format_, 'C');
 
     OP_REQUIRES(context, stride_ == stride_w,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(
-        context, (stride_n == 1 && stride_c == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, (stride_n == 1 && stride_c == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("explicit_paddings", &explicit_paddings_));
@@ -615,16 +615,16 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     const Tensor& filter = context->input(1);
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(input_sizes.shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
-            input_sizes.dims()));
+            input_sizes.dims())));
     TensorShape input_shape;
     const int32_t* in_sizes_data = input_sizes.template flat<int32_t>().data();
 
     for (int i = 0; i < input_sizes.NumElements(); ++i) {
       OP_REQUIRES(context, in_sizes_data[i] >= 0,
-                  errors::InvalidArgument("Dimension ", i,
-                                          " of input_sizes must be >= 0"));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Dimension ", i, " of input_sizes must be >= 0")));
       OP_REQUIRES_OK(context, input_shape.AddDimWithStatus(in_sizes_data[i]));
     }
     const TensorShape& filter_shape = filter.shape();
@@ -672,7 +672,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
       Tensor reshaped_filter(/*type=*/dtype_);
       OP_REQUIRES(
           context, reshaped_filter.CopyFrom(filter, shape),
-          errors::Internal(
+          absl::InternalError(
               "Failed to reshape filter tensor for grouped convolution."));
       // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
       // conv is supported.
@@ -880,7 +880,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
                   TensorFormat data_format) {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Depthwise convolution on CPU is only supported for NHWC format"));
 
     static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
@@ -1068,13 +1068,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
 
     std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     stride_ = GetTensorDim(strides_, data_format_, 'H');
     const int64_t stride_w = GetTensorDim(strides_, data_format_, 'W');
@@ -1082,13 +1082,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     const int64_t stride_c = GetTensorDim(strides_, data_format_, 'C');
 
     OP_REQUIRES(context, stride_ == stride_w,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(
-        context, (stride_n == 1 && stride_c == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, (stride_n == 1 && stride_c == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("explicit_paddings", &explicit_paddings_));
@@ -1125,16 +1125,16 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     const Tensor& filter_sizes = context->input(1);
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(filter_sizes.shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Conv2DBackpropFilter: filter_sizes input must be 1-dim, not ",
-            filter_sizes.dims()));
+            filter_sizes.dims())));
     TensorShape filter_shape;
     const int32_t* filter_sizes_data =
         filter_sizes.template flat<int32_t>().data();
     for (int i = 0; i < filter_sizes.NumElements(); ++i) {
       OP_REQUIRES(context, filter_sizes_data[i] >= 0,
-                  errors::InvalidArgument("Dimension ", i,
-                                          " of filter_sizes must be >= 0"));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Dimension ", i, " of filter_sizes must be >= 0")));
       OP_REQUIRES_OK(context,
                      filter_shape.AddDimWithStatus(filter_sizes_data[i]));
     }
@@ -1192,7 +1192,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
       Tensor reshaped_filter(/*type=*/dtype_);
       OP_REQUIRES(
           context, reshaped_filter.CopyFrom(*filter_backprop, shape),
-          errors::Internal(
+          absl::InternalError(
               "Failed to reshape filter tensor for grouped convolution."));
 
       // TODO(yangzihao): Send in arbitrary dilation rates after the dilated

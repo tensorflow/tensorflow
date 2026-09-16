@@ -383,6 +383,30 @@ class AlgebraicSimplifierOptions {
     enable_hoist_transpose_of_reshape_ = value;
   }
 
+  bool enable_fold_transpose_into_scatter() const {
+    return enable_fold_transpose_into_scatter_;
+  }
+
+  void set_enable_fold_transpose_into_scatter(bool value) {
+    enable_fold_transpose_into_scatter_ = value;
+  }
+
+  bool enable_folding_pad_into_convolution() const {
+    return enable_folding_pad_into_convolution_;
+  }
+
+  void set_enable_folding_pad_into_convolution(bool value) {
+    enable_folding_pad_into_convolution_ = value;
+  }
+
+  bool enable_dynamic_update_slice_to_pad_replacement() const {
+    return enable_dynamic_update_slice_to_pad_replacement_;
+  }
+
+  void set_enable_dynamic_update_slice_to_pad_replacement(bool value) {
+    enable_dynamic_update_slice_to_pad_replacement_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -411,6 +435,7 @@ class AlgebraicSimplifierOptions {
   bool enable_window_reduce_to_reduce_replacement_{true};
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
+  bool enable_dynamic_update_slice_to_pad_replacement_{true};
   bool enable_sink_broadcast_{true};
   bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
@@ -432,6 +457,8 @@ class AlgebraicSimplifierOptions {
   bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
   bool enable_conditional_simplification_{false};
   bool enable_hoist_transpose_of_reshape_{false};
+  bool enable_fold_transpose_into_scatter_{false};
+  bool enable_folding_pad_into_convolution_{true};
   Metadata metadata_;
 };
 
@@ -585,6 +612,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleMap(HloInstruction* map) override;
 
+  absl::Status HandleXor(HloInstruction* logical_xor) override;
+
   // Runs the visitor on a computation.
   bool Run(HloComputation* computation,
            const AlgebraicSimplifierOptions& options,
@@ -622,9 +651,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
   // Allow backend targets to determine whether a layout is inefficient.
-  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
-    return true;
-  }
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo);
 
  protected:
   // A method that allows various backends to specialize the propagation of
@@ -682,6 +709,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // bitcast transpose.
   absl::Status SimplifyTransposeOfBroadcast(
       HloInstruction* transpose, absl::Span<const int64_t> dimensions);
+
+  // Folds a trailing Transpose into a Scatter operation by transposing the
+  // scatter operand and updates upfront.
+  absl::StatusOr<bool> TryFoldTransposeIntoScatter(HloInstruction* transpose);
 
   // Converts to primitive type if the input hlo is not that type, otherwise
   // returns the original hlo.

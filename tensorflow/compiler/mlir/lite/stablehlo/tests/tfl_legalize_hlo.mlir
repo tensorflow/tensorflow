@@ -1,3 +1,18 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // COM: This file is there to check that the `tfl-legalize-hlo` pass exists in `odml-to-stablehlo-opt`.
 
 // RUN: odml-to-stablehlo-opt %s -tfl-legalize-hlo -split-input-file | FileCheck %s --dump-input=fail
@@ -3241,8 +3256,8 @@ func.func @not_ui8(%arg0: tensor<7x9x11xui8>) -> tensor<7x9x11xui8> {
   func.return %0 : tensor<7x9x11xui8>
 }
 
-// CHECK: %cst = arith.constant dense<255> : tensor<ui8>
-// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui8>, tensor<ui8>) -> tensor<7x9x11xui8>
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<255> : tensor<ui8>}> : () -> tensor<ui8>
+// CHECK: %{{.*}} = "tfl.bitwise_xor"(%arg0, %[[CST]]) : (tensor<7x9x11xui8>, tensor<ui8>) -> tensor<7x9x11xui8>
 
 // -----
 
@@ -3252,8 +3267,8 @@ func.func @not_ui16(%arg0: tensor<7x9x11xui16>) -> tensor<7x9x11xui16> {
   func.return %0 : tensor<7x9x11xui16>
 }
 
-// CHECK: %cst = arith.constant dense<65535> : tensor<ui16>
-// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui16>, tensor<ui16>) -> tensor<7x9x11xui16>
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<65535> : tensor<ui16>}> : () -> tensor<ui16>
+// CHECK: %{{.*}} = "tfl.bitwise_xor"(%arg0, %[[CST]]) : (tensor<7x9x11xui16>, tensor<ui16>) -> tensor<7x9x11xui16>
 
 // -----
 
@@ -3263,8 +3278,8 @@ func.func @not_ui32(%arg0: tensor<7x9x11xui32>) -> tensor<7x9x11xui32> {
   func.return %0 : tensor<7x9x11xui32>
 }
 
-// CHECK: %cst = arith.constant dense<4294967295> : tensor<ui32>
-// CHECK: %0 = "tfl.bitwise_xor"(%arg0, %cst) : (tensor<7x9x11xui32>, tensor<ui32>) -> tensor<7x9x11xui32>
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<4294967295> : tensor<ui32>}> : () -> tensor<ui32>
+// CHECK: %{{.*}} = "tfl.bitwise_xor"(%arg0, %[[CST]]) : (tensor<7x9x11xui32>, tensor<ui32>) -> tensor<7x9x11xui32>
 
 // -----
 

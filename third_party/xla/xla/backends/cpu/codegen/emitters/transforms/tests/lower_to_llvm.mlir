@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s --xla-cpu-lower-to-llvm="prefer_vector_width=128" -split-input-file -cse | FileCheck %s
 
 func.func @several_inputs(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
@@ -66,10 +80,10 @@ func.func @load_memref(%call_frame: !xla_cpu.call_frame) -> memref<2x4xi32> {
 
 // CHECK-LABEL: @load_memref(
 // CHECK-SAME:    %[[CALLFRAME:.*]]: !xla_cpu.call_frame) -> memref<2x4xi32> {
-// CHECK-DAG:  %[[C_1:.*]] = llvm.mlir.constant(1 : index) : i64
-// CHECK-DAG:  %[[C_4:.*]] = llvm.mlir.constant(4 : index) : i64
-// CHECK-DAG:  %[[C_2:.*]] = llvm.mlir.constant(2 : index) : i64
-// CHECK-DAG:  %[[C_0:.*]] = llvm.mlir.constant(0 : index) : i64
+// CHECK-DAG:  %[[C_1:.*]] = llvm.mlir.constant(1 : i64) : i64
+// CHECK-DAG:  %[[C_4:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-DAG:  %[[C_2:.*]] = llvm.mlir.constant(2 : i64) : i64
+// CHECK-DAG:  %[[C_0:.*]] = llvm.mlir.constant(0 : i64) : i64
 // CHECK-DAG:  %[[INIT:.*]] = llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-DAG:  %[[CALLFRAME_PTR:.*]] = builtin.unrealized_conversion_cast %[[CALLFRAME]] : !xla_cpu.call_frame to !llvm.ptr
 // CHECK-DAG:  %[[ARGS_GEP:.*]] = llvm.getelementptr inbounds %[[CALLFRAME_PTR]][0, 3] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<"XLA_CPU_KernelCallFrame", (ptr, ptr, i64, ptr)>
@@ -102,7 +116,7 @@ func.func private @wrap_entry(
       : tensor<2xi32>, tensor<21x12xi32>, index, index, index
 }
 
-// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr) -> !llvm.ptr attributes
+// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> !llvm.ptr attributes
 // CHECK-SAME: frame_pointer = #llvm.framePointerKind<all>
 // CHECK-SAME: "prefer-vector-width", "128"
 // CHECK-SAME: uwtable_kind = #llvm.uwtableKind<async>

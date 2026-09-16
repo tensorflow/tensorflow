@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
@@ -63,7 +64,7 @@ absl::StatusOr<std::vector<Layout>>
 ComputationLayout::FlattenedParameterLayouts() const {
   std::vector<Layout> result;
   for (int i = 0; i < parameter_count(); ++i) {
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         parameter_shape(i),
         [this, &result](const Shape& subshape,
                         const ShapeIndex& index) -> absl::Status {
@@ -92,7 +93,7 @@ ComputationLayout::FlattenedParameterLayouts() const {
 absl::StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
     const {
   std::vector<Layout> result;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       result_shape(),
       [this, &result](const Shape& subshape,
                       const ShapeIndex& index) -> absl::Status {

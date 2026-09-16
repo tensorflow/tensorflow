@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/spacetobatch_functor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -44,24 +45,24 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
                                   const Tensor& orig_block_shape,
                                   const Tensor& orig_crops) {
   const int input_dims = orig_input_tensor.dims();
-  OP_REQUIRES(
-      context, TensorShapeUtils::IsVector(orig_block_shape.shape()),
-      errors::InvalidArgument("block_shape rank should be 1 instead of ",
-                              orig_block_shape.dims()));
+  OP_REQUIRES(context, TensorShapeUtils::IsVector(orig_block_shape.shape()),
+              absl::InvalidArgumentError(
+                  absl::StrCat("block_shape rank should be 1 instead of ",
+                               orig_block_shape.dims())));
 
   const int block_dims = orig_block_shape.dim_size(0);
-  OP_REQUIRES(
-      context, orig_input_tensor.dims() >= 1 + block_dims,
-      errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
-                              " instead of ", orig_input_tensor.dims()));
+  OP_REQUIRES(context, orig_input_tensor.dims() >= 1 + block_dims,
+              absl::InvalidArgumentError(
+                  absl::StrCat("input rank should be >= ", 1 + block_dims,
+                               " instead of ", orig_input_tensor.dims())));
 
   OP_REQUIRES(context,
               TensorShapeUtils::IsMatrix(orig_crops.shape()) &&
                   block_dims == orig_crops.dim_size(0) &&
                   2 == orig_crops.dim_size(1),
-              errors::InvalidArgument("crops should have shape [", block_dims,
-                                      ", 2] instead of ",
-                                      orig_crops.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "crops should have shape [", block_dims, ", 2] instead of ",
+                  orig_crops.shape().DebugString())));
   // To avoid out-of-bounds access in the case that the block_shape and/or
   // crops tensors are concurrently modified, we must copy the values.
   absl::InlinedVector<int64_t, 4UL> block_shape;
@@ -95,27 +96,33 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
   // Compute the product of the block_shape values.
   int64_t block_shape_product = 1;
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
-    block_shape_product *= block_shape[block_dim];
+    const int64_t block_shape_val = block_shape[block_dim];
+    OP_REQUIRES(context, block_shape_val >= 1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "All values in block_shape must be positive, got ",
+                    block_shape_val, " at index ", block_dim)));
+    block_shape_product =
+        MultiplyWithoutOverflow(block_shape_product, block_shape_val);
+    OP_REQUIRES(context, block_shape_product > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Product of block sizes must be positive, got ",
+                    block_shape_product)));
   }
-  OP_REQUIRES(
-      context, block_shape_product > 0,
-      errors::InvalidArgument("Product of block sizes must be positive, got ",
-                              block_shape_product));
 
   const int64_t orig_input_batch_size = orig_input_tensor.dim_size(0);
-  OP_REQUIRES(
-      context, orig_input_batch_size % block_shape_product == 0,
-      errors::InvalidArgument("Input batch dimension (", orig_input_batch_size,
-                              ") is not divisible by product of block sizes (",
-                              block_shape_product, ")"));
+  OP_REQUIRES(context, orig_input_batch_size % block_shape_product == 0,
+              absl::InvalidArgumentError(
+                  absl::StrCat("Input batch dimension (", orig_input_batch_size,
+                               ") is not divisible by product of block sizes (",
+                               block_shape_product, ")")));
 
   const int internal_block_dims =
       block_dims - removed_prefix_block_dims - removed_suffix_block_dims;
   OP_REQUIRES(context, internal_block_dims <= kMaxSpaceToBatchBlockDims,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Maximum number of non-combined block dimensions is ",
                   internal_block_dims, " but must not exceed ",
-                  kMaxSpaceToBatchBlockDims));
+                  kMaxSpaceToBatchBlockDims)));
 
   if (internal_block_dims == 0) {
     context->set_output(0, orig_input_tensor);
@@ -152,14 +159,29 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
     const int64_t crop_start = crops[2 * block_dim],
                   crop_end = crops[2 * block_dim + 1];
     OP_REQUIRES(context, crop_start >= 0 && crop_end >= 0,
-                errors::InvalidArgument("Crops must be non-negative"));
+                absl::InvalidArgumentError("Crops must be non-negative"));
     const int64_t input_size = orig_input_tensor.dim_size(block_dim + 1);
     const int64_t block_shape_value = block_shape[block_dim];
-    const int64_t cropped_size =
-        input_size * block_shape_value - crop_start - crop_end;
+
+    const int64_t input_size_block =
+        MultiplyWithoutOverflow(input_size, block_shape_value);
+    OP_REQUIRES(
+        context, input_size_block >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Overflow when multiplying input_size and block_shape_value: ",
+            input_size, " * ", block_shape_value)));
+
+    const int64_t crop_sum = AddWithoutOverflow(crop_start, crop_end);
+    OP_REQUIRES(
+        context, crop_sum >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Overflow when adding crops: ", crop_start, " + ", crop_end)));
+
+    const int64_t cropped_size = input_size_block - crop_sum;
     OP_REQUIRES(context, cropped_size >= 0,
-                errors::InvalidArgument("cropped_shape[", block_dim, "]=",
-                                        cropped_size, " must be non-negative"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("cropped_shape[", block_dim,
+                                 "]=", cropped_size, " must be non-negative")));
     OP_REQUIRES_OK(context, internal_input_shape.AddDimWithStatus(input_size));
     OP_REQUIRES_OK(context,
                    internal_output_shape.AddDimWithStatus(cropped_size));
@@ -224,9 +246,9 @@ class BatchToSpaceOp : public OpKernel {
  public:
   explicit BatchToSpaceOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
-    OP_REQUIRES(
-        context, block_size_ > 1,
-        errors::InvalidArgument("Block size should be > 1: ", block_size_));
+    OP_REQUIRES(context, block_size_ > 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Block size should be > 1: ", block_size_)));
     block_shape_ = Tensor(tensorflow::DT_INT64, TensorShape({2}));
     auto block_shape_vec = block_shape_.vec<int64_t>();
     block_shape_vec(0) = block_size_;
@@ -241,9 +263,10 @@ class BatchToSpaceOp : public OpKernel {
     // Check on the input dimensions first.
     // The input is presumed to be [batch, height, width, depth]
     static const int kRequiredDims = 4;
-    OP_REQUIRES(context, kRequiredDims == dims,
-                errors::InvalidArgument("Input rank should be: ", kRequiredDims,
-                                        "instead of: ", dims));
+    OP_REQUIRES(
+        context, kRequiredDims == dims,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input rank should be: ", kRequiredDims, "instead of: ", dims)));
     BatchToSpaceOpCompute<Device, T>(context, in0, block_shape_, in1);
   }
 

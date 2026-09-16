@@ -70,9 +70,9 @@ typedef PJRT_Error* PJRT_MemoryDescription_Kind(
 
 typedef struct PJRT_MemoryDescriptions_Extension {
   PJRT_Extension_Base base;
-  PJRT_DeviceDescription_MemoryDescriptions*
+  PJRT_NO_DISCARD PJRT_DeviceDescription_MemoryDescriptions*
       PJRT_DeviceDescription_MemoryDescriptions;
-  PJRT_MemoryDescription_Kind* PJRT_MemoryDescription_Kind;
+  PJRT_NO_DISCARD PJRT_MemoryDescription_Kind* PJRT_MemoryDescription_Kind;
 } PJRT_MemoryDescriptions_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_MemoryDescriptions_Extension,
                           PJRT_MemoryDescription_Kind);

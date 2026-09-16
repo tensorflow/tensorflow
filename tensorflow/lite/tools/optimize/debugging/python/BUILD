@@ -25,6 +25,7 @@ py_test(
     srcs = [
         "debugger_test.py",
     ],
+    exec_properties = {"cpp_link.mem": "16g"},
     strict_deps = True,
     deps = [
         ":debugger",

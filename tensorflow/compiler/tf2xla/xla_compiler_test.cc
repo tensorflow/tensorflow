@@ -153,7 +153,7 @@ class DummyReadResourceOp : public XlaOpKernel {
   explicit DummyReadResourceOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
     ResourceMgr* rm = ctx->op_kernel_context()->resource_manager();
-    OP_REQUIRES(ctx, rm, errors::Internal("No resource manager."));
+    OP_REQUIRES(ctx, rm, absl::InternalError("No resource manager."));
     DummyResourceForTest* dummy;
     OP_REQUIRES_OK(ctx, rm->Lookup<DummyResourceForTest>(
                             rm->default_container(), "dummy", &dummy));
@@ -2310,6 +2310,51 @@ TEST_F(XlaCompilerTest, SetShardingForTupleArguments) {
                           LoadModuleFromHloProto(result.computation->proto()));
   EXPECT_TRUE(*xla::RunFileCheck(hlo_module->ToString(xla::HloPrintOptions{}),
                                  expected));
+}
+
+TEST_F(XlaCompilerTest, DeadNodePruning) {
+  // Test that dead/unreachable nodes inside function bodies are correctly
+  // pruned and do not trigger XLA compilation errors.
+  XlaCompiler compiler(DefaultOptions());
+
+  FunctionDef dead_slice_fn = FunctionDefHelper::Define(
+      "DeadSliceFn",
+      /*arg_def=*/{"x: float"},
+      /*ret_def=*/{"y: float"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {// Valid path: y = x + x
+       {{"y"}, "Add", {"x", "x"}, {{"T", DT_FLOAT}}},
+       // Dead path inputs
+       {{"slice_begin"},
+        "Const",
+        {},
+        {{"dtype", DT_INT32}, {"value", test::AsScalar<int32_t>(0)}}},
+       {{"slice_size"},
+        "Const",
+        {},
+        {{"dtype", DT_INT32}, {"value", test::AsScalar<int32_t>(5)}}},
+       // Dead path: Slice x from 0 to 5.
+       // x has shape [1], so a slice size of 5 triggers an OOB constraint
+       // check if compiled. Since this path is dead, it must be pruned.
+       {{"dead_slice"},
+        "Slice",
+        {"x", "slice_begin", "slice_size"},
+        {{"Index", DT_INT32}, {"T", DT_FLOAT}}}});
+
+  TF_ASSERT_OK(flib_def_->AddFunctionDef(dead_slice_fn));
+
+  NameAttrList name_attr;
+  name_attr.set_name("DeadSliceFn");
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({1});
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
+                                        name_attr, args, &result));
 }
 
 }  // namespace

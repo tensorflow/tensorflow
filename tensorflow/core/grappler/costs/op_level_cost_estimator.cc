@@ -189,9 +189,11 @@ bool IsTraining(const OpInfo& op_info) {
 std::vector<int64_t> GetStrides(const OpInfo& op_info) {
   if (op_info.attr().find("strides") != op_info.attr().end()) {
     const auto strides = op_info.attr().at("strides").list().i();
-    DCHECK(strides.size() == 4)
-        << "Attr strides is not a length-4 vector: " << op_info.DebugString();
-    if (strides.size() != 4) return {1, 1, 1, 1};
+    if (strides.size() != 4) {
+      LOG(WARNING) << "Attr strides is not a length-4 vector (size="
+                   << strides.size() << "): " << op_info.DebugString();
+      return {1, 1, 1, 1};
+    }
     return {strides[0], strides[1], strides[2], strides[3]};
   }
   return {1, 1, 1, 1};
@@ -200,9 +202,11 @@ std::vector<int64_t> GetStrides(const OpInfo& op_info) {
 std::vector<int64_t> GetKernelSize(const OpInfo& op_info) {
   if (op_info.attr().find("ksize") != op_info.attr().end()) {
     const auto ksize = op_info.attr().at("ksize").list().i();
-    DCHECK(ksize.size() == 4)
-        << "Attr ksize is not a length-4 vector: " << op_info.DebugString();
-    if (ksize.size() != 4) return {1, 1, 1, 1};
+    if (ksize.size() != 4) {
+      LOG(WARNING) << "Attr ksize is not a length-4 vector (size="
+                   << ksize.size() << "): " << op_info.DebugString();
+      return {1, 1, 1, 1};
+    }
     return {ksize[0], ksize[1], ksize[2], ksize[3]};
   }
   // Note that FusedBatchNorm doesn't have ksize attr, but GetKernelSize returns
@@ -821,7 +825,8 @@ absl::Status OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context,
   if (it != elementwise_ops_.end()) {
     op_cost = it->second;
   } else {
-    return errors::InvalidArgument("Not a cwise op: ", op_info.op());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Not a cwise op: ", op_info.op()));
   }
 
   return PredictDefaultNodeCosts(op_count * op_cost, op_context,
@@ -1719,8 +1724,8 @@ absl::Status OpLevelCostEstimator::PredictConv2D(const OpContext& op_context,
   const auto& op_info = op_context.op_info;
   if (HasZeroDim(op_info)) {
     node_costs->num_nodes_with_unknown_shapes = 1;
-    return errors::InvalidArgument("Conv2D op includes zero dimension: ",
-                                   op_info.ShortDebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Conv2D op includes zero dimension: ", op_info.ShortDebugString()));
   }
   bool found_unknown_shapes = false;
   int64_t num_compute_ops =
@@ -1734,9 +1739,9 @@ absl::Status OpLevelCostEstimator::PredictConv2DBackpropInput(
   const auto& op_info = op_context.op_info;
   if (HasZeroDim(op_info)) {
     node_costs->num_nodes_with_unknown_shapes = 1;
-    return errors::InvalidArgument(
-        "Conv2DBackpropInput op includes zero dimension",
-        op_info.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Conv2DBackpropInput op includes zero dimension",
+                     op_info.ShortDebugString()));
   }
   bool found_unknown_shapes = false;
   int64_t num_compute_ops = CountConv2DBackpropInputOperations(
@@ -1750,9 +1755,9 @@ absl::Status OpLevelCostEstimator::PredictConv2DBackpropFilter(
   const auto& op_info = op_context.op_info;
   if (HasZeroDim(op_info)) {
     node_costs->num_nodes_with_unknown_shapes = 1;
-    return errors::InvalidArgument(
-        "Conv2DBackpropFilter op includes zero dimension",
-        op_info.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Conv2DBackpropFilter op includes zero dimension",
+                     op_info.ShortDebugString()));
   }
   bool found_unknown_shapes = false;
   int64_t num_compute_ops = CountConv2DBackpropFilterOperations(
@@ -1786,16 +1791,16 @@ absl::Status OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   std::string data_format = GetDataFormat(op_context.op_info);
   if (data_format != "NCHW" && data_format != "NHWC" &&
       data_format != "NCHW_VECT_C") {
-    return errors::InvalidArgument(
-        "Unsupported data format (", data_format,
-        ") for op: ", op_context.op_info.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported data format (", data_format,
+                     ") for op: ", op_context.op_info.ShortDebugString()));
   }
   std::string filter_format = GetFilterFormat(op_context.op_info);
   if (filter_format != "HWIO" && filter_format != "OIHW" &&
       filter_format != "OIHW_VECT_I") {
-    return errors::InvalidArgument(
-        "Unsupported filter format (", filter_format,
-        ") for op: ", op_context.op_info.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported filter format (", filter_format,
+                     ") for op: ", op_context.op_info.ShortDebugString()));
   }
 
   auto& conv_input = op_context.op_info.inputs(0);
@@ -1863,8 +1868,8 @@ absl::Status OpLevelCostEstimator::PredictEinsum(const OpContext& op_context,
 
   auto it = op_info.attr().find("equation");
   if (it == op_info.attr().end()) {
-    return errors::InvalidArgument("Einsum op doesn't have equation attr: ",
-                                   op_info.ShortDebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Einsum op doesn't have equation attr: ", op_info.ShortDebugString()));
   }
 
   OpContext batch_matmul_op_context;
@@ -2014,9 +2019,9 @@ absl::Status OpLevelCostEstimator::PredictGatherOrSlice(
 
   const int inputs_needed = op_info.op() == "Slice" ? 3 : 2;
   if (op_info.outputs_size() == 0 || op_info.inputs_size() < inputs_needed) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         op_info.op(),
-        " Op doesn't have valid input / output: ", op_info.ShortDebugString());
+        " Op doesn't have valid input / output: ", op_info.ShortDebugString()));
   }
 
   bool unknown_shapes = false;
@@ -2217,9 +2222,9 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   int64_t sx = strides[x_index];
   int64_t sy = strides[y_index];
   if (sx == 0 || sy == 0) {
-    return errors::InvalidArgument(
-        "Stride must be > 0 for Height and Width, but got (", sy, ", ", sx,
-        ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Stride must be > 0 for Height and Width, but got (", sy,
+                     ", ", sx, ")"));
   }
   const auto padding = GetPadding(op_info);
 
@@ -2276,8 +2281,8 @@ absl::Status OpLevelCostEstimator::PredictMaxPoolGrad(
   // y: op_info.inputs(1)
   // y_grad: op_info.inputs(2)
   if (op_info.inputs_size() < 3) {
-    return errors::InvalidArgument("MaxPoolGrad op has invalid inputs: ",
-                                   op_info.ShortDebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "MaxPoolGrad op has invalid inputs: ", op_info.ShortDebugString()));
   }
 
   TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
@@ -2330,8 +2335,8 @@ absl::Status OpLevelCostEstimator::PredictAssignVariableOps(
   const auto& op_info = op_context.op_info;
   /* First input of these ops are reference to the assignee. */
   if (op_info.inputs_size() != 2) {
-    return errors::InvalidArgument("AssignVariable op has invalid input: ",
-                                   op_info.ShortDebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "AssignVariable op has invalid input: ", op_info.ShortDebugString()));
   }
 
   const int64_t ops = op_info.op() == kAssignVariableOp
@@ -2581,8 +2586,9 @@ absl::Status OpLevelCostEstimator::PredictSoftmax(const OpContext& op_context,
   // Softmax input rank should be >=1.
   TensorShapeProto logits_shape = op_context.op_info.inputs(0).shape();
   if (logits_shape.unknown_rank() || logits_shape.dim_size() == 0) {
-    return errors::InvalidArgument("Softmax op has invalid input: ",
-                                   op_context.op_info.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Softmax op has invalid input: ",
+                     op_context.op_info.ShortDebugString()));
   }
   int64_t ops = GetSoftmaxComputeOps(op_context);
   return PredictDefaultNodeCosts(ops, op_context, &found_unknown_shapes,
@@ -2595,9 +2601,9 @@ absl::Status OpLevelCostEstimator::PredictResizeBilinear(
 
   if (op_context.op_info.outputs().empty() ||
       op_context.op_info.inputs().empty()) {
-    return errors::InvalidArgument(
-        "ResizeBilinear op has invalid input / output ",
-        op_context.op_info.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("ResizeBilinear op has invalid input / output ",
+                     op_context.op_info.ShortDebugString()));
   }
 
   const int64_t output_elements = CalculateTensorElementCount(
@@ -2730,19 +2736,19 @@ absl::Status OpLevelCostEstimator::PredictCropAndResize(
   // Since crop arguments are user controlled, check for overflow.
   int64_t crop_area = MultiplyWithoutOverflow(crop_height, crop_width);
   if (crop_area < 0)
-    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
-                                   crop_height, " with ", crop_width,
-                                   " would overflow");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot estimate cost, multiplying ", crop_height,
+                     " with ", crop_width, " would overflow"));
   int64_t crop_volume = MultiplyWithoutOverflow(crop_area, num_boxes);
   if (crop_volume < 0)
-    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
-                                   crop_area, " with ", num_boxes,
-                                   " would overflow");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot estimate cost, multiplying ", crop_area, " with ",
+                     num_boxes, " would overflow"));
   int64_t crop_depth = MultiplyWithoutOverflow(crop_height, num_boxes);
   if (crop_depth < 0)
-    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
-                                   crop_height, " with ", num_boxes,
-                                   " would overflow");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot estimate cost, multiplying ", crop_height,
+                     " with ", num_boxes, " would overflow"));
 
   // Ops for variables height_scale and width_scale.
   int64_t ops = (sub_cost * 6 + mul_cost * 2 + div_cost * 2) * num_boxes;

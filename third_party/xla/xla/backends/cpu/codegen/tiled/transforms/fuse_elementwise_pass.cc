@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
@@ -69,9 +68,4 @@ class FuseElementwisePass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateFuseElementwisePass() {
-  return std::make_unique<FuseElementwisePass>();
-}
-
 }  // namespace xla::cpu

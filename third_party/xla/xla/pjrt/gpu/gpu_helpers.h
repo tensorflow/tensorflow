@@ -44,15 +44,27 @@ absl::StatusOr<LocalClient*> GetGpuXlaClient(
 // Enables peer access between all pairs of GPUs where possible.
 void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors);
 
+// Returns a GPU pinned host memory allocator to use when staging host->GPU
+// transfers. We use a fixed pool of pinned memory.
+//
+// The pool size is controlled by XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment
+// variable, which defaults to 64GB.
+//
+// If `preallocate` is set to true, the pool will be preallocated, and the
+// preallocated size is controlled by XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB
+// environment variable, which defaults to 16GB in this case.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
-    se::StreamExecutor* executor);
+    se::StreamExecutor* executor, bool preallocate);
 
-// Builds a BFCAllocator for all local GPUs.
-absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
+// Builds a BFCAllocator for all local GPUs. When enable_spatial_partitioning
+// is set, the allocator serves collective (upper-end) and default (lower-end)
+// requests from one shared address range; this requires preallocate=true.
+absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate,
     std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
-    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors);
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
+    bool enable_spatial_partitioning = false);
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(

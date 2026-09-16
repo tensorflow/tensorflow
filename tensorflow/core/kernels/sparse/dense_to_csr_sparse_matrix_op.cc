@@ -65,18 +65,18 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
     const TensorShape& dense_tensor_shape = params.shape();
     const int rank = params.dims();
     OP_REQUIRES(ctx, rank == 2 || rank == 3,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "params must have rank == 2 or 3; ",
-                    "but saw shape: ", dense_tensor_shape.DebugString()));
-    OP_REQUIRES(
-        ctx, indices.dims() == 2,
-        errors::InvalidArgument("indices must be a matrix, but saw shape: ",
-                                indices.shape().DebugString()));
+                    "but saw shape: ", dense_tensor_shape.DebugString())));
+    OP_REQUIRES(ctx, indices.dims() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("indices must be a matrix, but saw shape: ",
+                                 indices.shape().DebugString())));
     OP_REQUIRES(
         ctx, indices.dim_size(1) == rank,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "indices.shape[1] must be equal to the rank of params, but saw: ",
-            indices.dim_size(1), " vs. ", rank));
+            indices.dim_size(1), " vs. ", rank)));
 
     Tensor dense_shape(cpu_allocator(), DT_INT64, TensorShape({rank}));
     auto dense_shape_mutable = dense_shape.vec<int64_t>();
@@ -155,20 +155,20 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const TensorShape& dense_tensor_shape = params_t.shape();
     const int rank = params_t.dims();
     OP_REQUIRES_ASYNC(c, rank == 2 || rank == 3,
-                      errors::InvalidArgument(
+                      absl::InvalidArgumentError(absl::StrCat(
                           "params must have rank == 2 or 3; ",
-                          "but saw shape: ", dense_tensor_shape.DebugString()),
+                          "but saw shape: ", dense_tensor_shape.DebugString())),
+                      done);
+    OP_REQUIRES_ASYNC(c, indices_t.dims() == 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "indices must be a matrix, but saw shape: ",
+                          indices_t.shape().DebugString())),
                       done);
     OP_REQUIRES_ASYNC(
-        c, indices_t.dims() == 2,
-        errors::InvalidArgument("indices must be a matrix, but saw shape: ",
-                                indices_t.shape().DebugString()),
-        done);
-    OP_REQUIRES_ASYNC(
         c, indices_t.dim_size(1) == rank,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "indices.shape[1] must be equal to the rank of params, but saw: ",
-            indices_t.dim_size(1), " vs. ", rank),
+            indices_t.dim_size(1), " vs. ", rank)),
         done);
     const int64_t batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
     const int64_t rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
@@ -234,9 +234,9 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
         OP_REQUIRES_ASYNC(
             c, TensorShapeUtils::IsVector(values_t.shape()),
-            errors::Internal(
+            absl::InternalError(absl::StrCat(
                 "Expected values_t to be a vector, but saw shape: ",
-                values_t.shape().DebugString()),
+                values_t.shape().DebugString())),
             done);
 
         Tensor dense_shape_t(cpu_allocator(), DT_INT64, TensorShape({rank}));
@@ -257,13 +257,13 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           batch_ptr(i + 1) = batch_ptr(i) + nnz_per_batch(i);
         }
         int total_nnz = batch_ptr(batch_size);
-        OP_REQUIRES_ASYNC(
-            c, total_nnz == values_t.NumElements(),
-            errors::Internal("nnz returned by "
-                             "CalculateNNZPerBatchMatrixFromInd"
-                             "ices != len(values): ",
-                             total_nnz, " vs. ", values_t.NumElements()),
-            done);
+        OP_REQUIRES_ASYNC(c, total_nnz == values_t.NumElements(),
+                          absl::InternalError(absl::StrCat(
+                              "nnz returned by "
+                              "CalculateNNZPerBatchMatrixFromInd"
+                              "ices != len(values): ",
+                              total_nnz, " vs. ", values_t.NumElements())),
+                          done);
 
         Tensor coo_col_ind_t;
         Tensor csr_row_ptr_t;

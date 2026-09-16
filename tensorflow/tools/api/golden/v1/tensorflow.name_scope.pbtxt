@@ -4,7 +4,15 @@ tf_class {
   is_instance: "<class \'contextlib.AbstractContextManager\'>"
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\'], varargs=exc_info, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"

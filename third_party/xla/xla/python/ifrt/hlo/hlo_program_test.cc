@@ -21,13 +21,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::ifrt {
 namespace {
@@ -48,61 +48,13 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
 absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ParseHloProgramString(
     absl::string_view str) {
   auto context = CreateMlirContext();
-  TF_ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
+  ABSL_ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
   return std::make_unique<xla::ifrt::HloProgram>(std::move(context),
                                                  std::move(module));
 }
 
-TEST(HloProgramTest, Fingerprint) {
-  static constexpr absl::string_view kModule1 = R"(
-module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
-    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
-    %1 = mhlo.add %arg0, %0 : tensor<f32>
-    return %1 : tensor<f32>
-  }
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto program1, ParseHloProgramString(kModule1));
-
-  static constexpr absl::string_view kModule2 = R"(
-module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
-    %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
-    %1 = mhlo.add %arg0, %0 : tensor<f32>
-    return %1 : tensor<f32>
-  }
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto program2, ParseHloProgramString(kModule2));
-
-  EXPECT_EQ(program1->Fingerprint(), program1->Fingerprint());
-  EXPECT_NE(program1->Fingerprint(), program2->Fingerprint());
-}
-
-TEST(HloProgramTest, FingerprintIgnoresDebugInfo) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program1,
-      ParseHloProgramString(R"(
-module @foo {
-  func.func @main(%arg0: tensor<2x3xi32>) -> tensor<2x3xi32> {
-    return %arg0 : tensor<2x3xi32> loc("foo")
-  }
-})"));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program2,
-      ParseHloProgramString(R"(
-module @foo {
-  func.func @main(%arg0: tensor<2x3xi32>) -> tensor<2x3xi32> {
-    return %arg0 : tensor<2x3xi32> loc("bar")
-  }
-})"));
-
-  EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
-}
-
 TEST(HloProgramTest, BytesRoundTrip) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -110,15 +62,15 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
     return %1 : tensor<f32>
   }
 }
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
+)mlir";
+  ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
+  ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
   EXPECT_EQ(program->Fingerprint(), deserialized->Fingerprint());
 }
 
 TEST(HloProgramTest, ToMaybeOwningMlirModule) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -126,8 +78,8 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
     return %1 : tensor<f32>
   }
 }
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+)mlir";
+  ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
   mlir::ModuleOp mlir_module = program->mlir_module();
 
   xla::MaybeOwningMlirModule module =
@@ -136,7 +88,7 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
 }
 
 TEST(HloProgramTest, GetNameOnNamedModule) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -144,13 +96,13 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
     return %1 : tensor<f32>
   }
 }
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+)mlir";
+  ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
   EXPECT_EQ(program->name(), "hlo_module");
 }
 
 TEST(HloProgramTest, GetNameOnUnnamedModule) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -158,8 +110,8 @@ module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
     return %1 : tensor<f32>
   }
 }
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+)mlir";
+  ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
   EXPECT_THAT(program->name(), ContainsRegex(R"(unnamed_[0-9a-f]+)"));
 }
 

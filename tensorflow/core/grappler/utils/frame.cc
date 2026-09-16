@@ -31,7 +31,7 @@ template <typename GraphViewT>
 inline absl::Status FrameView::InferFromGraphViewT(
     const GraphViewT& graph_view) {
   if (is_inferred_) {
-    return errors::Internal("FrameView was already inferred from the graph");
+    return absl::InternalError("FrameView was already inferred from the graph");
   }
   is_inferred_ = true;
 
@@ -71,9 +71,9 @@ inline absl::Status FrameView::InferFromGraphViewT(
             AttrSlice(*fanout_node).Find("frame_name");
 
         if (!frame_name_attr) {
-          return errors::InvalidArgument(
-              "Missing frame name for the Enter node: ",
-              SummarizeNodeDef(*fanout_node));
+          return absl::InvalidArgumentError(
+              absl::StrCat("Missing frame name for the Enter node: ",
+                           SummarizeNodeDef(*fanout_node)));
         }
 
         const std::string& frame_name = frame_name_attr->s();
@@ -108,9 +108,9 @@ inline absl::Status FrameView::InferFromGraphViewT(
       }
 
       if (frame_ids_node != frame_ids_fanout) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid graph: Frame ids for node ", ready_node->name(),
-            " does not match frame ids for it's fanout ", fanout_node->name());
+            " does not match frame ids for it's fanout ", fanout_node->name()));
       }
     }
     return absl::OkStatus();

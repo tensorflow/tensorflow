@@ -31,7 +31,7 @@ absl::Status SetUpKernelFallbackCompatRequestContext(
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<SessionMetadata>& model_metadata = std::nullopt);
+    const std::optional<SessionMetadata>& model_metadata = std::nullopt);
 
 }  // namespace tfd
 }  // namespace tensorflow
