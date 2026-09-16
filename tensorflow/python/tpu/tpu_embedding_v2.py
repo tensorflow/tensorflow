@@ -618,7 +618,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     """Applies the gradient update to the embedding tables.
 
     If a gradient of `None` is passed in any position of the nested structure,
-    then a gradient update with a zero gradient is applied for that feature.
+    then an gradient update with a zero gradient is applied for that feature.
     For optimizers like SGD or Adagrad, this is the same as applying no update
     at all. For lazy Adam and other sparsely applied optimizers with decay,
     ensure you understand the effect of applying a zero gradient.
@@ -1756,7 +1756,7 @@ def make_sharded_variable_creator(
           offset += p
         else:
           kwargs["initial_value"] = functools.partial(
-              unwrapped_initial_value, kwargs["shape"], dtype=dtype)
+              unwrapped_initial_value, kwargs["shape"], dtype=dtype)  # pyrefly: ignore[bad-argument-count, unexpected-keyword]
         variables.append(next_creator(*args, **kwargs))
     return TPUEmbeddingVariable(variables, name=name)
   return sharded_variable_creator
