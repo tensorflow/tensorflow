@@ -1545,6 +1545,23 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
   if np_utils.isscalar(axis):
     axis = [axis]
 
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error.
+  maybe_rank = m.shape.rank
+  if maybe_rank is not None and builtins.all(
+      isinstance(x, (int, np.integer)) for x in axis
+  ):
+    normalized_axes = []
+    for x in axis:
+      normalized = x + maybe_rank if x < 0 else x
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={x}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
+      normalized_axes.append(normalized)
+    axis = normalized_axes
+
   axis = np_utils._canonicalize_axes(axis, array_ops.rank(m))  # pylint: disable=protected-access
 
   return array_ops.reverse(m, axis)
