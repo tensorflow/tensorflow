@@ -1756,7 +1756,7 @@ def make_sharded_variable_creator(
           offset += p
         else:
           kwargs["initial_value"] = functools.partial(
-              unwrapped_initial_value, kwargs["shape"], dtype=dtype)
+              unwrapped_initial_value, kwargs["shape"], dtype=dtype)  # pyrefly: ignore[bad-argument-count, unexpected-keyword]
         variables.append(next_creator(*args, **kwargs))
     return TPUEmbeddingVariable(variables, name=name)
   return sharded_variable_creator

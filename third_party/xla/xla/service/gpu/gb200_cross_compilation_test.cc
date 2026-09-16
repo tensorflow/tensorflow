@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiled_module.h"
@@ -49,6 +50,7 @@ class Gb200CrossCompilationTest : public HloTestBase {
       GpuModel gpu_model) {
     // Clear any existing autotuning results.
     AutotunerCache::ClearAutotuneResults();
+    InMemoryStore::Clear();
 
     const absl::string_view hlo_string = R"hlo(
       HloModule Test
@@ -102,14 +104,18 @@ TEST_F(Gb200CrossCompilationTest, CrossCompilationToB200) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> result,
                        CrossCompileTo(GpuModel::B200));
   // Verify that the auto tuner ran.
-  EXPECT_FALSE(AutotunerCache::ResultCacheIsEmpty());
+  ASSERT_OK_AND_ASSIGN(std::vector<autotuner::AutotuneEntry> entries,
+                       InMemoryStore().ReadAll());
+  EXPECT_TRUE(!AutotunerCache::ResultCacheIsEmpty() || !entries.empty());
 }
 
 TEST_F(Gb200CrossCompilationTest, CrossCompilationToRTX6000PRO) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> result,
                        CrossCompileTo(GpuModel::RTX6000PRO));
   // Verify that the auto tuner ran.
-  EXPECT_FALSE(AutotunerCache::ResultCacheIsEmpty());
+  ASSERT_OK_AND_ASSIGN(std::vector<autotuner::AutotuneEntry> entries,
+                       InMemoryStore().ReadAll());
+  EXPECT_TRUE(!AutotunerCache::ResultCacheIsEmpty() || !entries.empty());
 }
 
 }  // namespace

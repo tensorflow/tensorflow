@@ -159,31 +159,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_device",
-    srcs = ["cpu_device.cc"],
-    hdrs = ["cpu_device.h"],
-    visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_topology_users"]),
-    deps = [
-        "//xla:literal",
-        "//xla/pjrt:common_pjrt_client",
-        "//xla/pjrt:host_memory_spaces",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_common",
-        "//xla/pjrt/plugin/xla_cpu:cpu_device_description",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "cpu_event",
     hdrs = ["cpu_event.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
@@ -203,7 +178,6 @@ cc_library(
     deps = [
         ":abstract_cpu_buffer",
         ":cpu_async_execution_tracker",
-        ":cpu_device",
         ":cpu_event",
         ":execution_stream_event_map",
         "//xla:array",
@@ -250,6 +224,7 @@ cc_library(
         "//xla/pjrt:utils",
         "//xla/pjrt/dump",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:cpu_device_description",
         "//xla/pjrt/plugin/xla_cpu:cpu_execute_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_memory",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology",

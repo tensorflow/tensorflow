@@ -77,6 +77,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
           requirements.barrier_reqs->use_cross_device_barrier;
     }
 
+    req.use_gxl_requested |= requirements.use_gxl;
+
     return absl::OkStatus();
   }
 
@@ -94,6 +96,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     req.use_cross_device_barrier_requested |=
         requirements.barrier_reqs->use_cross_device_barrier;
   }
+
+  req.use_gxl_requested |= requirements.use_gxl;
 
   cliques_.try_emplace(clique_key, std::move(req));
   return absl::OkStatus();

@@ -176,11 +176,9 @@ PjRtCApiClient::PjRtCApiClient(
       extensions_(InitExtensions(c_api)),
       host_memory_allocator_(InitHostMemoryAllocator(c_api, c_client)),
       // Example platform version string:
-      //   PJRT C API
       //   TFRT TPU v2
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_client, c_api)),
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();

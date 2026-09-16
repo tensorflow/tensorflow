@@ -1,0 +1,42 @@
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s
+// RUN: not triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
+
+// CHECK: MapSymbolIdToSequentialDimValue failed for symbolic dimension
+
+max_region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+add_region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  p = f32[16,32] parameter(0)
+  c_neg_inf = f32[] constant(-inf)
+  c_zero = f32[] constant(0)
+  max = f32[16] reduce(p, c_neg_inf), dimensions={1}, to_apply=max_region, backend_config={sizes:[8]}
+  max_bcast = f32[16,32] broadcast(max), dimensions={0}
+  sub = f32[16,32] subtract(p, max_bcast)
+  exp = f32[16,32] exponential(sub)
+  sum = f32[16] reduce(exp, c_zero), dimensions={1}, to_apply=add_region, backend_config={sizes:[8]}
+  sum_bcast = f32[16,32] broadcast(sum), dimensions={0}
+  ROOT div = f32[16,32] divide(exp, sum_bcast)
+}
+
+ENTRY main {
+  p = f32[16,32] parameter(0)
+  ROOT r = f32[16,32] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4", "8"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

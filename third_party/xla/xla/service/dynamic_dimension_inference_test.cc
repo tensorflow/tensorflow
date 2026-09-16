@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -42,8 +43,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -132,7 +131,7 @@ TEST_F(DynamicDimensionInferenceTest, ParamTest) {
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(result, {}, 1), param2);
   EXPECT_EQ(inference_->GetDynamicSize(param, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(param2, {}, 0), nullptr);
@@ -160,7 +159,7 @@ TEST_F(DynamicDimensionInferenceTest, ElementwiseTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(negate, {}, 1), size_param);
 }
 
@@ -177,9 +176,9 @@ ENTRY %OptimizationBarrierTest (data_param: f32[1,2,2], size_param: s32[]) -> f3
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   // Verify that the dynamic size of the root instruction (%opt-barrier) at
   // dimension 1 is inferred to be the input parameter %size_param (parameter
   // 1).
@@ -215,7 +214,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestI) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 0), size_param);
 }
 
@@ -247,7 +246,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestII) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 0), nullptr);
 }
@@ -289,7 +288,7 @@ TEST_F(DynamicDimensionInferenceTest, VariadicReduce) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 0), nullptr);
@@ -334,7 +333,7 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
 }
@@ -371,7 +370,7 @@ TEST_F(DynamicDimensionInferenceTest, DotTestBatch) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 2), nullptr);
@@ -418,7 +417,7 @@ TEST_F(DynamicDimensionInferenceTest, DotTestMultiContracting) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   // Nothing is dynamic in the output.
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
@@ -466,7 +465,7 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(conv, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(conv, {}, 0), nullptr);
 }
@@ -502,7 +501,7 @@ TEST_F(DynamicDimensionInferenceTest, TransposeTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 0), size_param_3);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 1), size_param_2);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 2), size_param_1);
@@ -539,7 +538,7 @@ TEST_F(DynamicDimensionInferenceTest, NonDescendingTransposeTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 0), size_param_3);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 1), size_param_1);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 2), size_param_2);
@@ -572,7 +571,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 2), nullptr);
@@ -604,7 +603,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeInferredDimensionTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
 }
 
@@ -677,9 +676,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(
                 module_->entry_computation()->root_instruction(), {}, 0),
             module_->entry_computation()->parameter_instruction(2));
@@ -707,7 +706,7 @@ TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(broadcast, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(broadcast, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(broadcast, {}, 2), nullptr);
@@ -774,7 +773,7 @@ TEST_F(DynamicDimensionInferenceTest, WhileTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   HloInstruction* while_hlo = nullptr;
   // The while hlo has been replaced, find the new one.
   for (HloInstruction* inst : module_->entry_computation()->instructions()) {
@@ -907,7 +906,7 @@ TEST_F(DynamicDimensionInferenceTest, ConditionalInputTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
 
   HloInstruction* conditional_hlo = nullptr;
   // The conditional hlo has been replaced, find the new one.
@@ -991,7 +990,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce_window, {}, 0), size_param);
 }
 
@@ -1142,7 +1141,7 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(sns, {}, 0), size_param);
 }
 
@@ -1170,7 +1169,7 @@ TEST_F(DynamicDimensionInferenceTest, ConcatTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(concat, {}, 0), size_param);
 }
 
@@ -1194,7 +1193,7 @@ TEST_F(DynamicDimensionInferenceTest, SliceTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 1), size_param);
 }
 
@@ -1222,7 +1221,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 0), size_param);
 }
 
@@ -1255,7 +1254,7 @@ TEST_F(DynamicDimensionInferenceTest, SortTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(sort, {}, 0), size_param);
 }
 
@@ -1294,7 +1293,7 @@ TEST_F(DynamicDimensionInferenceTest, MultiValueSortTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(sort, {0}, 0), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(sort, {1}, 0), size_param);
 }
@@ -1325,7 +1324,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 0), nullptr);
 }
 
@@ -1354,7 +1353,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     handler_called = true;
     return hlo->IsCustomCall("MyCustomOp");
   };
-  TF_ASSERT_OK(RunInference(/*op_supports_dynamism_handler=*/nullptr, handler));
+  ASSERT_OK(RunInference(/*op_supports_dynamism_handler=*/nullptr, handler));
 
   EXPECT_TRUE(handler_called);
 }
@@ -1383,7 +1382,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 1), dynamic_size);
 }
@@ -1408,7 +1407,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 0), six);
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 1), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 2), one);
@@ -1439,8 +1438,8 @@ HloModule test_module
   %reshape.9 = s32[] reshape(s32[1]{0} %slice.4)
   %dynamic-update-slice = c128[<=1]{0} dynamic-update-slice(c128[<=1]{0} %get-tuple-element.2,c128[1]{0} %select,s32[] %reshape.9)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(module_str));
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(module_str));
+  ASSERT_OK(RunInference());
 }
 
 TEST_F(DynamicDimensionInferenceTest, RuntimeShapeCheck) {
@@ -1462,9 +1461,9 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
 
-  TF_ASSERT_OK(RunInference(
+  ASSERT_OK(RunInference(
       /*op_supports_dynamism_handler=*/nullptr,
       /*handler=*/nullptr, DynamicDimensionInference::ShapeCheckMode::kRuntime,
       /*assertion_generator=*/[&](HloInstruction* constraint) {
@@ -1482,7 +1481,7 @@ ENTRY computation {
 // CHECK: and.2 = pred[] and(pred[] %compare, pred[] %compare.5)
 // CHECK: custom-call(pred[] %and.2), custom_call_target="__xla__assert"
                    )");
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);
 }
 
@@ -1876,9 +1875,9 @@ ENTRY tfcompile.377 {
 } // tfcompile.377
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
 
-  TF_ASSERT_OK(RunInference());
+  ASSERT_OK(RunInference());
 }
 
 }  // namespace

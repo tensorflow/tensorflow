@@ -40,8 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/codegen_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -147,9 +145,9 @@ TEST_P(CpuVectorizationTest, DoIt) {
 
   auto compiler = GetCpuCompiler();
   auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
-  TF_ASSERT_OK(CompileAheadOfTimeAndVerifyIr(llvm_compiler, options,
-                                             std::move(hlo_module), check_lines,
-                                             /*match_optimized_ir=*/true));
+  ASSERT_OK(CompileAheadOfTimeAndVerifyIr(llvm_compiler, options,
+                                          std::move(hlo_module), check_lines,
+                                          /*match_optimized_ir=*/true));
 }
 
 VectorizationTestSpec CpuVectorizationTestCases[] = {
@@ -340,9 +338,9 @@ TEST_P(JitVectorizationTest, JitX86UpToIsa) {
   auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
   Compiler::CompileOptions compile_options;
   compile_options.device_allocator = nullptr;
-  TF_ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
-                                  std::move(hlo_module), check_lines,
-                                  /*match_optimized_ir=*/true));
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
 }
 
 std::vector<JitVectorizationTestSpec> GetJitVectorizationTestCases() {
@@ -388,8 +386,8 @@ TEST_F(AtanJitVectorizationTest, AtanF32) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   auto compiler = GetCpuCompiler();
   auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
@@ -408,9 +406,9 @@ TEST_F(AtanJitVectorizationTest, AtanF32) {
   std::string check_lines =
       absl::StrFormat("CHECK: fdiv <%d x float>", num_elements);
 
-  TF_ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
-                                  std::move(hlo_module), check_lines,
-                                  /*match_optimized_ir=*/true));
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
 }
 
 }  // namespace

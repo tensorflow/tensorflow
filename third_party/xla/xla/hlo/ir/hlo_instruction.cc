@@ -467,6 +467,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         }
       }
       instruction = CreateAsyncUpdate(shape, all_operands());
+      instruction->set_output_to_operand_aliasing(output_to_operand_aliasing());
       break;
     }
     case HloOpcode::kAsyncDone: {

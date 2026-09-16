@@ -120,6 +120,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_value",
         "//xla/service:hlo_verifier",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1365,11 +1366,6 @@ xla_test(
 xla_test(
     name = "get_default_platform_test",
     srcs = ["get_default_platform_test.cc"],
-    disabled_backends = [
-        "cpu",
-        "gpu",
-        "interpreter",
-    ],
     deps = [
         ":hlo_pjrt_test_base",
         "//xla/service:platform_util",
@@ -2762,15 +2758,12 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":hlo_runner_agnostic_reference_mixin",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/pjrt/interpreter:interpreter_client",
-        "//xla/service:hlo_runner_pjrt",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:ml_dtypes",
@@ -3271,6 +3264,7 @@ xla_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )

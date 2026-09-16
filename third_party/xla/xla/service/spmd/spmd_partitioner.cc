@@ -5825,6 +5825,9 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    local_reduce->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
@@ -6586,6 +6589,9 @@ absl::Status SpmdPartitioningVisitor::HandleRaggedDot(HloInstruction* hlo) {
   } else {
     phlo = b_.AddInstruction(hlo->CloneWithNewOperands(
         pshape, {lhs.hlo(), rhs.hlo(), group_sizes.hlo()}));
+  }
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
   }
 
   if (!sharded_lhs_contracting_dims.empty()) {
@@ -7367,6 +7373,19 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
                         *module, options_.report_instruction_count));
   XLA_VLOG_LINES(1, logger.MakeReport());
 
+  // Remove boundary copies inserted for SPMDFullToShardShape and
+  // SPMDShardToFullShape.
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+      if (hlo->opcode() == HloOpcode::kCopy &&
+          hlo->frontend_attributes().map().contains(kSpmdBoundaryCopyAttr)) {
+        ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(hlo->mutable_operand(0)));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
+        changed = true;
+      }
+    }
+  }
+
   if (changed) {
     HloPassPipeline pass("spmd-cleanup");
     pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
@@ -7398,14 +7417,11 @@ absl::Status SpmdPartitioner::PreprocessSharding(
       if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
           (hlo->opcode() != HloOpcode::kCustomCall ||
            GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
-        // TODO: b/432201708 - Remove this error once Shardy is stable in JAX.
         if (hlo->opcode() == HloOpcode::kCustomCall) {
           TF_RET_CHECK(hlo->custom_call_target().rfind("xla.sdy", 0) != 0)
-              << "This is a custom call named 'xla.sdy.*' which shouldn't "
-              << "appear in the XLA partitioner, please file a bug against the "
-              << "OpenXLA Shardy team. One of the possible bugs is your model "
-              << "was lowered targeting Shardy, but Shardy was then disabled "
-              << "in XLA.";
+              << "Unexpected custom call named 'xla.sdy.*' in the XLA "
+                 "partitioner: "
+              << hlo->ToString();
         }
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();

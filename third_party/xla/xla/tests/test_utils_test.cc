@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -565,6 +566,177 @@ ENTRY main {
   ASSERT_EQ(args.size(), 1);
   args[0].EachCell<int32_t>([](absl::Span<int64_t const> indices,
                                int32_t value) { EXPECT_GE(value, 1); });
+}
+
+TEST_F(TestUtilsTest, RejectMaxBitsOfPrecision) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  ROOT param_0 = f32[4] parameter(0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 5;
+  auto status_or_args = MakeDataflowConstrainedArguments(module.get(), options);
+  EXPECT_FALSE(status_or_args.ok());
+  EXPECT_EQ(status_or_args.status().code(), absl::StatusCode::kUnimplemented);
+}
+
+TEST_F(TestUtilsTest, FakeArgsRejectParameterRanges) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  ROOT param_0 = f32[4] parameter(0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  FakeArgumentsOptions options;
+  options.parameter_ranges[0] = {0.0, 1.0};
+  auto status_or_args = MakeFakeArguments(module.get(), options);
+  EXPECT_FALSE(status_or_args.ok());
+  EXPECT_EQ(status_or_args.status().code(), absl::StatusCode::kUnimplemented);
+}
+
+TEST_F(TestUtilsTest, ParameterRangesFloat) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[4,4] parameter(0)
+  ROOT sqrt_op = f32[4,4] sqrt(param_0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  FakeArgumentsOptions options;
+  // Graph constraint for sqrt is [0, inf).
+  // User specifies range [2.0, 5.0].
+  options.parameter_ranges[0] = {2.0, 5.0};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeDataflowConstrainedArguments(module.get(), options));
+  ASSERT_EQ(args.size(), 1);
+  args[0].EachCell<float>([](absl::Span<int64_t const> indices, float value) {
+    EXPECT_GE(value, 2.0f);
+    EXPECT_LE(value, 5.0f);
+  });
+}
+
+TEST_F(TestUtilsTest, ParameterRangesTuple) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[2] parameter(0)
+  param_tuple = (f32[2], s32[3]) parameter(1)
+  gte_0 = f32[2] get-tuple-element(param_tuple), index=0
+  gte_1 = s32[3] get-tuple-element(param_tuple), index=1
+  ROOT root = (f32[2], f32[2], s32[3]) tuple(param_0, gte_0, gte_1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  // Flat index 0: param_0
+  // Flat index 1: param_tuple element 0 (f32[2])
+  // Flat index 2: param_tuple element 1 (s32[3])
+  FakeArgumentsOptions options;
+  options.parameter_ranges[1] = {10.0, 20.0};
+  options.parameter_ranges[2] = {50.0, 100.0};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeDataflowConstrainedArguments(module.get(), options));
+  ASSERT_EQ(args.size(), 2);
+  const std::vector<Literal> tuple_elems = args[1].DecomposeTuple();
+  ASSERT_EQ(tuple_elems.size(), 2);
+  tuple_elems[0].EachCell<float>(
+      [](absl::Span<int64_t const> indices, float value) {
+        EXPECT_GE(value, 10.0f);
+        EXPECT_LE(value, 20.0f);
+      });
+  tuple_elems[1].EachCell<int32_t>(
+      [](absl::Span<int64_t const> indices, int32_t value) {
+        EXPECT_GE(value, 50);
+        EXPECT_LE(value, 100);
+      });
+}
+
+TEST_F(TestUtilsTest, ParameterRangeConflict) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[4] parameter(0)
+  c_offset = f32[4] constant({10.0, 10.0, 10.0, 10.0})
+  sub = f32[4] subtract(param_0, c_offset)
+  ROOT sqrt_op = f32[4] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  // sqrt(param - 10) requires param >= 10.
+  // User specifies range [0.0, 5.0].
+  // Intersection is empty, so it should return an InvalidArgument status.
+  FakeArgumentsOptions options;
+  options.parameter_ranges[0] = {0.0, 5.0};
+  auto status_or_args = MakeDataflowConstrainedArguments(module.get(), options);
+  EXPECT_FALSE(status_or_args.ok());
+  EXPECT_EQ(status_or_args.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(TestUtilsTest, ParameterRangeOutOfBounds) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  ROOT param_0 = f32[4] parameter(0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  FakeArgumentsOptions options;
+  options.parameter_ranges[5] = {0.0,
+                                 1.0};  // Only 1 parameter exists (index 0).
+  auto status_or_args = MakeDataflowConstrainedArguments(module.get(), options);
+  EXPECT_FALSE(status_or_args.ok());
+  EXPECT_EQ(status_or_args.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(TestUtilsTest, ParameterRangeNestedTupleOutOfBounds) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  ROOT param_nested = ((f32[2], f32[2]), f32[2]) parameter(0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  // Nested tuple has 3 leaf shapes, but only 2 top-level elements (indices 0
+  // and 1). Index 2 must be rejected as out of bounds.
+  FakeArgumentsOptions options;
+  options.parameter_ranges[2] = {0.0, 1.0};
+  auto status_or_args = MakeDataflowConstrainedArguments(module.get(), options);
+  EXPECT_FALSE(status_or_args.ok());
+  EXPECT_EQ(status_or_args.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(TestUtilsTest, ParameterRangeIntegerOutOfRange) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  ROOT param_0 = s32[4] parameter(0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  {
+    // Range >= 2^63 exceeds INT64_MAX.
+    FakeArgumentsOptions options;
+    options.parameter_ranges[0] = {1e20, 1e21};
+    auto status_or_args =
+        MakeDataflowConstrainedArguments(module.get(), options);
+    EXPECT_FALSE(status_or_args.ok());
+    EXPECT_EQ(status_or_args.status().code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  {
+    // Range < -2^63 is below INT64_MIN.
+    FakeArgumentsOptions options;
+    options.parameter_ranges[0] = {-1e21, -1e20};
+    auto status_or_args =
+        MakeDataflowConstrainedArguments(module.get(), options);
+    EXPECT_FALSE(status_or_args.ok());
+    EXPECT_EQ(status_or_args.status().code(),
+              absl::StatusCode::kInvalidArgument);
+  }
 }
 
 // Probabilistic test to verify that we are randomly sampling the whole

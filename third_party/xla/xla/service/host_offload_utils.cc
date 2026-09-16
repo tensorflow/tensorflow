@@ -95,10 +95,12 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       }
     } else if (user->opcode() == HloOpcode::kGetTupleElement) {
       ShapeIndex tmp_shape_index = instruction_and_shape_index.shape_index;
-      CHECK(!tmp_shape_index.empty())
-          << "Expected shape index to be non-empty.";
-      const auto index = tmp_shape_index.front();
-      if (index == user->tuple_index()) {
+      if (tmp_shape_index.empty()) {
+        // The instruction itself produces the tuple (e.g. a variadic reduce),
+        // so the whole tuple is on host and every element read from it is a
+        // successor.
+        result.push_back({user, std::move(tmp_shape_index)});
+      } else if (tmp_shape_index.front() == user->tuple_index()) {
         // This GTE is for the buffer we're tracking.
         tmp_shape_index.pop_front();
         result.push_back({user, std::move(tmp_shape_index)});

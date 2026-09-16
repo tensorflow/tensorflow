@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
-#include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
@@ -90,6 +89,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_execute_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
@@ -374,17 +374,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
       std::move(options.customize_hlo_module_config), cpu_device_count,
       options.max_inflight_computations_per_device);
 
-  std::vector<std::unique_ptr<PjRtCpuDevice>> devices;
-  devices.reserve(topology->cpu_topology().number_of_devices());
-  for (const auto& topology_device : topology->cpu_topology().devices()) {
-    auto device = std::make_unique<PjRtCpuDevice>(
-        topology_device.process_id, topology_device.local_device_id);
-    devices.push_back(std::move(device));
-  }
-
-  return std::unique_ptr<PjRtClient>(
-      new PjRtCpuClient(options.process_id, std::move(devices),
-                        std::move(raw_client), std::move(topology)));
+  return CreatePjRtCpuClient(std::move(raw_client), std::move(topology),
+                             options.process_id);
 }
 
 // An upper bound on the number of threads to use for intra-op parallelism. It
@@ -485,29 +476,35 @@ PjRtPluginAttributes GetDefaultCpuPluginAttributes() {
   return attrs;
 }
 
-PjRtCpuClient::PjRtCpuClient(
-    int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
+std::unique_ptr<CommonPjRtClientImpl> CreatePjRtCpuClient(
     std::unique_ptr<PjRtCpuRawClient> raw_client,
-    std::unique_ptr<CpuTopologyDescription> topology)
-    : CommonPjRtClientImpl(
-          xla::CpuPlatformId(), std::string(xla::CpuPlatformName()),
-          std::string(xla::CpuPlatformVersion()), process_index,
-          std::move(topology), std::move(raw_client), /*kv_store=*/nullptr,
-          GetDefaultCpuPluginAttributes()) {
+    std::shared_ptr<const CpuTopologyDescription> topology, int process_id) {
+  auto client = std::make_unique<CommonPjRtClientImpl>(
+      xla::CpuPlatformId(), std::string(xla::CpuPlatformName()),
+      std::string(xla::CpuPlatformVersion()), process_id, topology,
+      std::move(raw_client), /*kv_store=*/nullptr,
+      GetDefaultCpuPluginAttributes());
+
   std::vector<std::unique_ptr<PjRtDevice>> generic_devices;
-  generic_devices.reserve(devices.size());
+  generic_devices.reserve(topology->cpu_topology().number_of_devices());
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
 
-  for (auto& device : devices) {
-    device->SetClient(this);
+  for (const auto& topology_device : topology->cpu_topology().devices()) {
+    auto description = std::make_unique<CpuDeviceDescription>(
+        topology_device.process_id, topology_device.local_device_id);
+    auto device = std::make_unique<CommonPjRtDevice>(
+        std::move(description), LocalDeviceId(topology_device.local_device_id),
+        LocalChipId(topology_device.local_device_id),
+        topology_device.process_id == process_id, client.get());
     if (device->IsAddressable()) {
       const int id = device->id();
 
       // The first attached memory space is returned as the default by
-      // PjRtCpuDevice, so attach the device memory space first.
+      // CommonPjRtDevice, so attach the device memory space first.
       auto cpu_device_memory_space =
           std::make_unique<CpuDeviceMemorySpace>(id * 3 + 0, device.get());
-      device->AttachMemorySpace(cpu_device_memory_space.get());
+      device->AttachMemorySpace(cpu_device_memory_space.get(),
+                                /*is_default=*/true);
       memory_spaces.push_back(std::move(cpu_device_memory_space));
 
       auto pinned_memory_space =
@@ -523,11 +520,10 @@ PjRtCpuClient::PjRtCpuClient(
     generic_devices.push_back(std::move(device));
   }
 
-  AttachDevices(std::move(generic_devices), std::move(memory_spaces));
-  VLOG(1) << "PjRtCpuClient created.";
+  client->AttachDevices(std::move(generic_devices), std::move(memory_spaces));
+  VLOG(1) << "CommonPjRtClient for CPU created.";
+  return client;
 }
-
-PjRtCpuClient::~PjRtCpuClient() { VLOG(1) << "PjRtCpuClient destroyed."; }
 
 // Find the root instruction of the entry computation.
 static const InstructionValueSet& GetRootValueSet(

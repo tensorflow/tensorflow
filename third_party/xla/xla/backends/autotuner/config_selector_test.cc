@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/config_runner.h"
 #include "xla/backends/autotuner/mock_codegen_backend.h"

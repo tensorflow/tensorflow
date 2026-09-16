@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
@@ -486,6 +487,74 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
         return Decision::Forbid(
             absl::StrCat("Number of blocks ", num_blocks, "*", blocks_in_dim,
                          " exceeds the device grid X limit of ", limit, "."));
+      }
+      num_blocks *= blocks_in_dim;
+    }
+  }
+
+  return Decision::Allow();
+}
+
+Decision VerifySubsetOfTritonConstraints(
+    absl::Span<const int64_t> padded_tile_sizes,
+    const TilingSpace& tiling_space, const se::DeviceDescription& device_info) {
+  auto dimensions = tiling_space.dimensions();
+
+  // Hardware MMA limits for Dot / ScaledDot instructions.
+  for (const auto& [idx, dim] : llvm::enumerate(dimensions)) {
+    if (dim.hlo != nullptr && (dim.hlo->opcode() == HloOpcode::kDot ||
+                               dim.hlo->opcode() == HloOpcode::kScaledDot)) {
+      if (padded_tile_sizes[idx] > kMaxMMADimSize) {
+        return Decision::Forbid(absl::StrCat(
+            "Tile size ", padded_tile_sizes[idx], " for dimension ", idx,
+            " of ", dim.hlo->name(), " exceeds the maximum MMA dimension size ",
+            kMaxMMADimSize, "."));
+      }
+    }
+  }
+
+  // Group parallel dimensions by root instruction to evaluate constraints per
+  // tiled root (supporting multi-output fusion).
+  llvm::SmallVector<llvm::SmallVector<size_t, 4>, 2> root_dim_groups;
+  const HloInstruction* current_root = nullptr;
+  for (const auto& [idx, dim] : llvm::enumerate(dimensions)) {
+    if (dim.type == TilingSpace::DimensionSemantics::kParallel) {
+      if (root_dim_groups.empty() || dim.hlo != current_root) {
+        root_dim_groups.push_back({});
+        current_root = dim.hlo;
+      }
+      root_dim_groups.back().push_back(idx);
+    }
+  }
+
+  const uint64_t grid_limit = device_info.block_dim_limit().x;
+
+  for (const auto& dim_indices : root_dim_groups) {
+    int64_t root_product = 1;
+    uint64_t num_blocks = 1;
+
+    for (size_t idx : dim_indices) {
+      const auto& dim = dimensions[idx];
+      int64_t tile_size = padded_tile_sizes[idx];
+
+      // Overflow check on cumulative root product.
+      if (tile_size > kMaxTensorNumElements / root_product) {
+        return Decision::Forbid(absl::StrCat(
+            "Padded tile size product exceeds the maximum number of elements "
+            "of a Triton tensor (",
+            kMaxTensorNumElements, ")."));
+      }
+      root_product *= tile_size;
+
+      // Launch grid block limits.
+      uint64_t blocks_in_dim =
+          CeilOfRatio<uint64_t>(static_cast<uint64_t>(dim.dimension_size),
+                                static_cast<uint64_t>(tile_size));
+      if (blocks_in_dim == 0 || blocks_in_dim > grid_limit ||
+          (num_blocks > grid_limit / blocks_in_dim)) {
+        return Decision::Forbid(absl::StrCat(
+            "Number of blocks ", num_blocks, "*", blocks_in_dim,
+            " exceeds the device grid X limit of ", grid_limit, "."));
       }
       num_blocks *= blocks_in_dim;
     }

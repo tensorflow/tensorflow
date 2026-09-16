@@ -57,7 +57,7 @@ permissions:
 jobs:
   run_benchmarks:
     name: XLA Benchmarks
-    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@887b34acdb5c70bbd2bc93bb11c2d0a103698e7f # main
+    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@887b34acdb5c70bbd2bc93bb11c2d0a103698e7f
     with:
       registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
       bap_ref: "887b34acdb5c70bbd2bc93bb11c2d0a103698e7f"

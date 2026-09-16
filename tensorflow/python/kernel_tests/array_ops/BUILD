@@ -481,6 +481,18 @@ cuda_py_strict_test(
     ],
 )
 
+tf_py_strict_test(
+    name = "large_mirror_pad_op_test",
+    size = "medium",
+    srcs = ["large_mirror_pad_op_test.py"],
+    deps = [
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
 cuda_py_strict_test(
     name = "manip_ops_test",
     size = "medium",

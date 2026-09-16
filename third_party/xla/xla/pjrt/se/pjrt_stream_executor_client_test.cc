@@ -155,10 +155,26 @@ CreateCpuTopologyDescription(size_t cpu_device_count) {
                   cpu::TargetMachineOptions(GetDebugOptionsFromFlags())));
 }
 
+std::unique_ptr<CommonPjRtDevice> MakePjRtStreamExecutorDevice(
+    int id, bool is_addressable, int local_device_id, int process_index,
+    int process_index_in_partition, int partition_index,
+    std::string device_kind, LocalChipId local_hardware_id = LocalChipId(-1)) {
+  auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
+      id, local_device_id, process_index, process_index_in_partition,
+      partition_index, device_kind);
+  description->SetPlatformName(device_kind);
+  return std::make_unique<CommonPjRtDevice>(
+      std::move(description), LocalDeviceId(local_device_id),
+      local_hardware_id.value() != -1
+          ? local_hardware_id
+          : (is_addressable ? LocalChipId(local_device_id) : LocalChipId(-1)),
+      is_addressable);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>>
 MakeTestPjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    std::vector<std::unique_ptr<CommonPjRtDevice>> devices,
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     int process_index,
     std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
@@ -182,9 +198,18 @@ MakeTestPjRtStreamExecutorClient(
                                    {/*stack_size=*/512 * 1024}),
       first_executor, std::move(gpu_run_options));
   auto platform_id = tsl::Fingerprint64(platform_name);
+  PjRtPluginAttributes attrs;
+  attrs.pjrt_c_api_major_version = 0;
+  attrs.pjrt_c_api_minor_version = 0;
+  attrs.attributes["serialize_with_sdy"] = true;
+  attrs.attributes["allows_recursion"] = false;
+  attrs.attributes["allows_execute_recursion"] = true;
+  attrs.attributes["use_stream_based_compaction"] = true;
+  attrs.attributes["dump_on_deserialize"] = true;
   auto result = std::make_unique<PjRtStreamExecutorClient>(
       platform_id, std::move(platform_name), "<unknown>", process_index,
-      std::move(topology), std::move(raw_client), std::move(kv_store));
+      std::move(topology), std::move(raw_client), std::move(kv_store),
+      std::move(attrs));
   std::vector<std::unique_ptr<PjRtDevice>> devices_copy;
   devices_copy.reserve(devices.size());
   for (auto& device : devices) {
@@ -206,8 +231,8 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       /*max_inflight_computations=*/32,
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false));
   int local_device_id = local_device_states.back()->local_device_id().value();
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
+  std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
+  devices.emplace_back(MakePjRtStreamExecutorDevice(
       0, /*is_addressable=*/true, local_device_id, /*process_index=*/0,
       /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
@@ -247,7 +272,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
   int total_devices = num_addressable_devices + num_non_addressable_devices;
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
   local_device_states.reserve(num_addressable_devices);
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+  std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
   devices.reserve(total_devices);
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.reserve(num_addressable_devices);
@@ -259,7 +284,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
         /*max_inflight_computations=*/32,
         /*allow_event_reuse=*/false, /*use_callback_stream=*/false));
     int local_device_id = local_device_states.back()->local_device_id().value();
-    devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
+    devices.emplace_back(MakePjRtStreamExecutorDevice(
         i, /*is_addressable=*/true, local_device_id,
         /*process_index=*/0,
         /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
@@ -269,7 +294,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
                                       /*is_default=*/true);
   }
   for (int i = num_addressable_devices; i < total_devices; ++i) {
-    devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
+    devices.emplace_back(MakePjRtStreamExecutorDevice(
         i, /*is_addressable=*/false, /*local_device_id=*/-1,
         /*process_index=*/1, /*process_index_in_partition=*/0,
         /*partition_index=*/0, "cpu"));
@@ -483,7 +508,7 @@ TEST(PjRtStreamExecutorClientTest, ExecutePortableRemoteDevice) {
       ToyExecutable(
           *client, shape, [](XlaBuilder& builder) {}, compile_options));
 
-  auto remote_device = std::make_unique<PjRtStreamExecutorDevice>(
+  auto remote_device = MakePjRtStreamExecutorDevice(
       1, /*is_addressable=*/false, /*local_device_id=*/-1,
       /*process_index=*/1, /*process_index_in_partition=*/1,
       /*partition_index=*/0, "cpu");
@@ -510,7 +535,7 @@ TEST(PjRtStreamExecutorClientTest, MakeAllocationReadyEventAsync) {
       auto buffer, client->BufferFromHostBuffer(
                        data.data(), S32, {1024}, /*byte_strides=*/std::nullopt,
                        PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, memory_space, /*device_layout=*/nullptr));
+                       []() {}, memory_space, /*device_layout=*/nullptr));
   TF_ASSERT_OK(buffer->GetReadyFuture().Await());
   Shape shape = buffer->on_device_shape();
   TF_ASSERT_OK_AND_ASSIGN(auto result,

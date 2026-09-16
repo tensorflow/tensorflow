@@ -61,7 +61,7 @@ RegisteredDispatchableTypes& GetRegisteredDispatchableTypes() {
       "CompositeTensor");
 
   {
-    absl::MutexLock lock(&registered_dispatchable_types->mu);
+    absl::MutexLock lock(registered_dispatchable_types->mu);
     if (registered_dispatchable_types->types.empty()) {
       if (composite_tensor != nullptr) {
         Py_INCREF(composite_tensor);
@@ -85,7 +85,7 @@ RegisteredDispatchableTypesSnapshot GetRegisteredDispatchableTypesSnapshot() {
 
   RegisteredDispatchableTypesSnapshot snapshot;
   {
-    absl::MutexLock lock(&registry.mu);
+    absl::MutexLock lock(registry.mu);
     snapshot.version = registry.version;
     snapshot.types.reserve(registry.types.size());
 
@@ -168,7 +168,7 @@ bool RegisterDispatchableType(PyObject* py_class) {
     Safe_PyObjectPtr owned_py_class(py_class);
 
     {
-      absl::MutexLock lock(&registry.mu);
+      absl::MutexLock lock(registry.mu);
 
       // A concurrent registration happened after our snapshot. Retry against
       // the new registry state rather than committing a stale decision.
@@ -196,7 +196,7 @@ void PythonAPIDispatcher::Register(PySignatureChecker signature_checker,
   Py_INCREF(dispatch_target);
   Safe_PyObjectPtr owned_target(dispatch_target);
 
-  absl::MutexLock lock(targets_mu_.get());
+  absl::MutexLock lock(*targets_mu_.get());
   targets_.emplace_back(std::move(signature_checker), std::move(owned_target));
 }
 
@@ -244,7 +244,7 @@ Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
   // CheckCanonicalizedArgs. Do not hold targets_mu_ while calling Python.
   std::vector<std::pair<PySignatureChecker, Safe_PyObjectPtr>> targets_snapshot;
   {
-    absl::MutexLock lock(targets_mu_.get());
+    absl::MutexLock lock(*targets_mu_.get());
     targets_snapshot.reserve(targets_.size());
     for (const auto& target : targets_) {
       PyObject* obj = target.second.get();
@@ -280,7 +280,7 @@ void PythonAPIDispatcher::Unregister(PyObject* func) {
   // DECREF may run arbitrary Python finalization code.
   std::vector<DispatchTargetPair> removed;
   {
-    absl::MutexLock lock(targets_mu_.get());
+    absl::MutexLock lock(*targets_mu_.get());
 
     std::vector<DispatchTargetPair> kept;
     kept.reserve(targets_.size());
@@ -304,7 +304,7 @@ std::string PythonAPIDispatcher::DebugString() const {
 
   std::vector<std::pair<PySignatureChecker, Safe_PyObjectPtr>> targets_snapshot;
   {
-    absl::MutexLock lock(targets_mu_.get());
+    absl::MutexLock lock(*targets_mu_.get());
     targets_snapshot.reserve(targets_.size());
     for (const auto& target : targets_) {
       PyObject* obj = target.second.get();
@@ -386,7 +386,7 @@ PyInstanceChecker::~PyInstanceChecker() {
 
   std::vector<PyTypeObject*> cached_types;
   {
-    absl::MutexLock lock(py_class_cache_mu_.get());
+    absl::MutexLock lock(*py_class_cache_mu_.get());
     cached_types.reserve(py_class_cache_.size());
     for (const auto& pair : py_class_cache_) {
       cached_types.push_back(pair.first);
@@ -404,7 +404,7 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   auto* type = Py_TYPE(value);
 
   {
-    absl::MutexLock lock(py_class_cache_mu_.get());
+    absl::MutexLock lock(*py_class_cache_mu_.get());
     auto it = py_class_cache_.find(type);
     if (it != py_class_cache_.end()) {
       return it->second;
@@ -428,7 +428,7 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   }
 
   {
-    absl::MutexLock lock(py_class_cache_mu_.get());
+    absl::MutexLock lock(*py_class_cache_mu_.get());
 
     auto existing = py_class_cache_.find(type);
     if (existing != py_class_cache_.end()) {

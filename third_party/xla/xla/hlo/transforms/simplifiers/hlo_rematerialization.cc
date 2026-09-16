@@ -155,7 +155,52 @@ struct RematStrategy {
   Shape compact_shape;
 };
 
-
+// Returns true if the fused parameter of 'fusion' corresponding to 'op_idx'
+// accesses the buffer at 'shape_idx'.
+bool FusedParameterUsesBuffer(const HloInstruction* fusion, int64_t op_idx,
+                              const ShapeIndex& shape_idx,
+                              const TuplePointsToAnalysis& points_to_analysis) {
+  DCHECK(fusion->IsLoopFusion());
+  DCHECK_GE(op_idx, 0);
+  DCHECK_LT(op_idx, fusion->operand_count());
+  if (op_idx >= fusion->fused_instructions_computation()->num_parameters()) {
+    return false;
+  }
+  const HloInstruction* fused_param = fusion->fused_parameter(op_idx);
+  absl::StatusOr<const LogicalBuffer*> buffer =
+      points_to_analysis.GetBufferDefinedAt(fused_param, shape_idx);
+  if (!buffer.ok()) {
+    return false;
+  }
+  for (const BufferAlias& alias :
+       points_to_analysis.GetBufferAliases(**buffer)) {
+    // If an alias of the buffer is the root of the fusion, the buffer is
+    // an output of the fusion and therefore assumed to be used.
+    if (alias.instruction() == fusion->fused_expression_root()) {
+      return true;
+    }
+    for (const HloInstruction* alias_user : alias.instruction()->users()) {
+      if (alias_user->opcode() == HloOpcode::kGetTupleElement &&
+          !alias.index().empty()) {
+        // GetTupleElement instructions only access the top-level buffer of
+        // their operand.
+        continue;
+      }
+      if (!alias_user->IsLoopFusion()) {
+        return true;
+      }
+      for (int64_t nested_op_idx = 0;
+           nested_op_idx < alias_user->operand_count(); ++nested_op_idx) {
+        if (alias_user->operand(nested_op_idx) == alias.instruction() &&
+            FusedParameterUsesBuffer(alias_user, nested_op_idx, alias.index(),
+                                     points_to_analysis)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 // Return the items which use the given LogicalBuffer. Sets
 // has_indirect_users to whether any of the uses is indirect. A use is indirect
@@ -169,34 +214,52 @@ UsesList GetUsers(const HloRematInstructionList& instruction_list,
   // To identify uses iterate through all HloInstruction users of the
   // BufferAliases of the logical buffer.
   *has_indirect_users = false;
+  const std::optional<int64_t> user_index =
+      logical_buffer->index().size() == 1
+          ? std::make_optional(logical_buffer->index().front())
+          : std::nullopt;
   for (const BufferAlias& buffer_alias :
        points_to_analysis.GetBufferAliases(*logical_buffer)) {
+    const bool is_unsupported_indirect =
+        buffer_alias.instruction() != logical_buffer->instruction() &&
+        !IsSupportedIndirectUser(buffer_alias.instruction());
     for (const HloInstruction* user : buffer_alias.instruction()->users()) {
-      if (points_to_analysis.DoesNotUseOperandBuffer(
-              buffer_alias.instruction(), buffer_alias.index(), user)) {
-        // The alias may be an operand of 'user', but the LogicalBuffer cannot
-        // possibly be used by the instruction so ignore 'user'. This is the
-        // case, for example, for the tuple element buffers in a GetTupleElement
-        // instruction (the GTE instruction only uses the pointer vector).
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          !buffer_alias.index().empty()) {
+        // GetTupleElement instructions only access the top-level buffer of
+        // their operand.
         continue;
       }
-      if (buffer_alias.instruction() != logical_buffer->instruction() &&
-          !IsSupportedIndirectUser(buffer_alias.instruction())) {
-        *has_indirect_users = true;
-      }
-      // A buffer may be used by the instruction via more than one alias. For
-      // example, a buffer which appears in more than one element of a tuple.
-      HloRematItem* user_item = instruction_list.GetItem(user);
-      std::optional<int64_t> user_index =
-          logical_buffer->index().size() != 1
-              ? std::nullopt
-              : std::make_optional(logical_buffer->index().back());
-      for (int64_t op_idx : user->OperandIndices(buffer_alias.instruction())) {
-        if (!absl::c_linear_search(
-                users, HloRematItemUse{user_item, static_cast<int>(op_idx),
-                                       user_index})) {
-          users.push_back(
-              HloRematItemUse{user_item, static_cast<int>(op_idx), user_index});
+      HloRematItem* user_item = nullptr;
+
+      auto record_use = [&](int64_t op_idx) {
+        if (is_unsupported_indirect) {
+          *has_indirect_users = true;
+        }
+        if (user_item == nullptr) {
+          user_item = instruction_list.GetItem(user);
+        }
+        HloRematItemUse item_use{user_item, op_idx, user_index};
+        if (!absl::c_linear_search(users, item_use)) {
+          users.push_back(item_use);
+        }
+      };
+
+      if (user->operand_count() == 1) {
+        if (!user->IsLoopFusion() ||
+            FusedParameterUsesBuffer(user, 0, buffer_alias.index(),
+                                     points_to_analysis)) {
+          record_use(0);
+        }
+      } else {
+        for (int64_t op_idx = 0; op_idx < user->operand_count(); ++op_idx) {
+          if (user->operand(op_idx) == buffer_alias.instruction()) {
+            if (!user->IsLoopFusion() ||
+                FusedParameterUsesBuffer(user, op_idx, buffer_alias.index(),
+                                         points_to_analysis)) {
+              record_use(op_idx);
+            }
+          }
         }
       }
     }
@@ -2443,7 +2506,8 @@ absl::StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
   return callee_usage;
 }
 
-absl::Status HloRematerialization::UpdateScheduleFromSequence(
+absl::StatusOr<HloRematerialization::MemoryUsageAndInstruction>
+HloRematerialization::UpdateScheduleFromSequence(
     HloComputation* computation, HloSchedule* schedule,
     const HloInstructionSequence& sequence,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -2455,11 +2519,12 @@ absl::Status HloRematerialization::UpdateScheduleFromSequence(
   // rematerialized instructions.
   ABSL_RETURN_IF_ERROR(UpdatePointsToAnalysis(computation->parent()));
   ABSL_ASSIGN_OR_RETURN(
-      computation_peak_memory_[computation],
-      ComputePeakMemory(computation, schedule->sequence(computation),
-                        execution_threads));
+      MemoryUsageAndInstruction peak_memory_result,
+      ComputePeakMemoryAndInstruction(
+          computation, schedule->sequence(computation), execution_threads));
+  computation_peak_memory_[computation] = peak_memory_result.memory_usage;
 
-  return absl::OkStatus();
+  return peak_memory_result;
 }
 
 absl::Status HloRematerialization::UpdatePointsToAnalysis(HloModule* module) {
@@ -2841,15 +2906,17 @@ HloRematerialization::PeakPriorityUpdateVariables(
     }
     sequence_from_list.push_back(item->instruction);
   }
-  ABSL_RETURN_IF_ERROR(HloRematerialization::UpdateScheduleFromSequence(
-      computation, schedule, sequence_from_list, execution_threads));
+  // Updates schedule and returns the peak memory usage and the instruction
+  // that caused it.
+  ABSL_ASSIGN_OR_RETURN(
+      MemoryUsageAndInstruction peak_memory_result,
+      UpdateScheduleFromSequence(computation, schedule, sequence_from_list,
+                                 execution_threads));
   VLOG(2) << "Schedule updated";
   // Update instruction list to reflect the new instruction in computation.
   ABSL_RETURN_IF_ERROR(
       instruction_list.UpdateFromSequence(schedule->sequence(computation)));
-  // Update peak memory.
-  return ComputePeakMemoryAndInstruction(
-      computation, schedule->sequence(computation), execution_threads);
+  return peak_memory_result;
 }
 
 absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
@@ -2862,7 +2929,6 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
   }
   const auto peak_memory_usage = it->second;
   if (peak_memory_usage <= memory_limit_bytes) {
-    // Nothing to do.
     VLOG(1) << "Asked to rematerialize computation of size "
             << peak_memory_usage
             << " but it already fits within the given memory limit ("

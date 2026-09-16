@@ -43,7 +43,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -846,7 +845,6 @@ class WhileLoopAnalysis {
   explicit WhileLoopAnalysis(
       HloInstruction* while_instr, int64_t max_pipelining_per_loop,
       bool pipeline_use_tree, bool process_different_sized_options,
-      TuplePointsToAnalysis* tuple_points_to_analysis,
       HloDataflowAnalysis* dataflow_analysis,
       std::optional<ConstantValue> known_start = std::nullopt,
       bool delay_sinking_large_collectives = false,
@@ -854,7 +852,6 @@ class WhileLoopAnalysis {
       : while_(while_instr),
         loop_start_(known_start),
         max_pipelining_per_loop_(max_pipelining_per_loop),
-        tuple_points_to_analysis_(tuple_points_to_analysis),
         dataflow_analysis_(dataflow_analysis),
         pipeline_use_tree_(pipeline_use_tree),
         process_different_sized_options_(process_different_sized_options),
@@ -956,9 +953,6 @@ class WhileLoopAnalysis {
   absl::flat_hash_set<const HloInstruction*> invariant_loop_instructions_;
   int64_t max_pipelining_per_loop_;
 
-  // Precomputed TuplePointsToAnalysis for the HLO module containing `while_`.
-  // May be null, in which case the analysis will be performed from scratch.
-  TuplePointsToAnalysis* tuple_points_to_analysis_;
   HloDataflowAnalysis* dataflow_analysis_;
 
   bool pipeline_use_tree_;
@@ -1002,7 +996,7 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
     return true;
   }
   std::optional<ParsedWhileLoop> parsed_loop =
-      PatternMatchParseWhileLoop(while_, {tuple_points_to_analysis_});
+      PatternMatchParseWhileLoop(while_, {dataflow_analysis_});
   if (!parsed_loop || !parsed_loop->static_while_loop) {
     return false;
   }
@@ -2096,7 +2090,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   WhileLoopAnalysis new_loop_analysis(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
-      /*tuple_points_to_analysis=*/nullptr, new_dataflow_analysis.get(),
+      new_dataflow_analysis.get(),
       loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement()));
   new_loop_analysis.ComputeLoopStatistics();
   new_loop_analysis.CollectCollectivesToMove(
@@ -3475,12 +3469,9 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  // Precompute module-scoped analyses. Because we are running a while-loop
-  // analysis over all while instructions in the module, computing them here and
-  // passing them in avoids recomputing them once for each while instruction.
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
-      TuplePointsToAnalysis::Run(module));
+  // Precompute module-scoped analysis. Because we are running a while-loop
+  // analysis over all while instructions in the module, computing it here and
+  // passing it in avoids recomputing it once for each while instruction.
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
                    HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                             /*bitcast_defines_value=*/false,
@@ -3505,8 +3496,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       auto loop_analysis = std::make_unique<WhileLoopAnalysis>(
           instruction, config_.max_pipelining_per_loop,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
-          tuple_points_to_analysis.get(), dataflow_analysis.get(),
-          /*known_start=*/std::nullopt, config_.delay_sinking_large_collectives,
+          dataflow_analysis.get(), /*known_start=*/std::nullopt,
+          config_.delay_sinking_large_collectives,
           config_.collective_size_threshold_to_delay_sinking);
       loop_analysis->ComputeLoopStatistics();
       if (loop_analysis->GetLoopIterationCount() &&

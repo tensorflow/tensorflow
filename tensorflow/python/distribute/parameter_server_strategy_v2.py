@@ -816,7 +816,7 @@ class ParameterServerStrategyV2Extended(
             shard_index == 0
             and shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS,
         )
-        return initial_value[offsets[shard_index] : offsets[shard_index + 1]]  # pyrefly: ignore[bad-index]
+        return initial_value[offsets[shard_index] : offsets[shard_index + 1]]  # pyrefly: ignore[bad-index, unsupported-operation]
       partition_shape = (
           offsets[shard_index + 1] - offsets[shard_index],
       ) + shape[1:]

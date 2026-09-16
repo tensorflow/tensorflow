@@ -585,6 +585,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/service:algorithm_util",
         "//xla/service:decision",

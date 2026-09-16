@@ -723,7 +723,9 @@ absl::Status ConstraintPropagator::SeedConstraints(
     if (inst->opcode() == HloOpcode::kFusion) {
       HloComputation* fused_computation =
           inst->fused_instructions_computation();
-      for (int i = 0; i < inst->operand_count(); ++i) {
+      int64_t count = std::min<int64_t>(inst->operand_count(),
+                                        fused_computation->num_parameters());
+      for (int i = 0; i < count; ++i) {
         ConstraintState source_state =
             states_[fused_computation->parameter_instruction(i)];
         states_[inst->operand(i)].Merge(source_state);
@@ -731,7 +733,9 @@ absl::Status ConstraintPropagator::SeedConstraints(
     } else if (inst->opcode() == HloOpcode::kCall) {
       const HloComputation* called_computation = inst->to_apply();
       if (called_computation != nullptr) {
-        for (int i = 0; i < inst->operand_count(); ++i) {
+        int64_t count = std::min<int64_t>(inst->operand_count(),
+                                          called_computation->num_parameters());
+        for (int i = 0; i < count; ++i) {
           ConstraintState source_state =
               states_[called_computation->parameter_instruction(i)];
           states_[inst->operand(i)].Merge(source_state);
@@ -1043,7 +1047,9 @@ absl::Status ConstraintPropagator::PropagateComputationBoundary(
   }
 
   // 2. Operands / Parameters binding:
-  for (int64_t i = 0; i < caller_instruction->operand_count(); ++i) {
+  int64_t count = std::min<int64_t>(caller_instruction->operand_count(),
+                                    callee_computation->num_parameters());
+  for (int64_t i = 0; i < count; ++i) {
     const HloInstruction* operand = caller_instruction->operand(i);
     const HloInstruction* callee_param =
         callee_computation->parameter_instruction(i);
@@ -1101,6 +1107,21 @@ void ConstraintPropagator::PropagateAddApprox(
           ConstraintInterval{v_min, v_max, output_interval.exclude_zero});
     }
   } else {
+    ConstraintInterval op0_interval =
+        states_[instruction->operand(0)].GetConstraintInterval();
+    ConstraintInterval op1_interval =
+        states_[instruction->operand(1)].GetConstraintInterval();
+    if (op0_interval.IsUnconstrained() && op1_interval.IsUnconstrained()) {
+      std::optional<double> max_out =
+          GetSymmetricMagnitudeBound(output_interval);
+      if (max_out.has_value()) {
+        double max_in = *max_out / 2.0;
+        ConstraintInterval target_bound{-max_in, max_in,
+                                        output_interval.exclude_zero};
+        TryAddDualConstraints(instruction->operand(0), target_bound,
+                              instruction->operand(1), target_bound);
+      }
+    }
     if (output_interval.IsNegative()) {
       // Handle constraint Add(x, y) < 0
       // Heuristic: both should be negative
@@ -1180,9 +1201,17 @@ void ConstraintPropagator::PropagateSubtractApprox(
         ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
   }
 
-  // Sign-based heuristics when both inputs are unconstrained.
+  // Symmetric magnitude and sign-based heuristics when both inputs are
+  // unconstrained.
   if (op0_interval.IsUnconstrained() && op1_interval.IsUnconstrained()) {
-    if (output_interval.IsPositive()) {
+    std::optional<double> max_out = GetSymmetricMagnitudeBound(output_interval);
+    if (max_out.has_value()) {
+      double max_in = *max_out / 2.0;
+      ConstraintInterval target_bound{-max_in, max_in,
+                                      output_interval.exclude_zero};
+      TryAddDualConstraints(instruction->operand(0), target_bound,
+                            instruction->operand(1), target_bound);
+    } else if (output_interval.IsPositive()) {
       // X - Y >= 0 => X >= 0, Y <= 0
       states_[instruction->operand(0)].AddConstraint(
           ConstraintInterval::Positive());

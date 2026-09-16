@@ -127,11 +127,13 @@ module @module_1 {
   // Test that inlined meshes are lifted and deduplicated.
 
   // CHECK-LABEL: func @inlined_mesh(
-  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>})
-  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>}) {
+  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>},
+  // CHECK-SAME: %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>})
+  // CHECK-SAME: -> tensor<32xi32> {
   func.func @inlined_mesh(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"}
-  ) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"},
+    %arg1: tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}
+  ) -> tensor<32xi32> {
     // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh_0, [{"a", "b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
     %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['c'=4], [{'c'}]}"} : (tensor<32xi32>) -> tensor<32xi32>
@@ -172,6 +174,30 @@ module @module_1 {
     %2 = stablehlo.add %0, %1 : tensor<1xi32>
     %3 = stablehlo.subtract %2, %arg2 : tensor<1xi32>
     return %3 : tensor<1xi32>
+  }
+
+  // Tests importing shard map custom calls annotated with HloShardingV3 mhlo.sharding.
+  // CHECK-LABEL: func @manual_computation_hlo_sharding_v3
+  // CHECK-SAME:     (%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  // CHECK-NEXT:    %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_2, [{"a"}, {}]>] out_shardings=[<@mesh_2, [{"a"}, {}]>] manual_axes={"a"}
+  // CHECK-SAME:        (%arg1: tensor<2x16xf32>) {
+  // CHECK-NEXT:      %[[ADD:.*]] = stablehlo.add %arg1, %arg1 : tensor<2x16xf32>
+  // CHECK-NEXT:      sdy.return %[[ADD]] : tensor<2x16xf32>
+  // CHECK-NEXT:    } : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT:    return %[[MAN_COMP]] : tensor<8x16xf32>
+  // CHECK-NEXT:  }
+  func.func @manual_computation_hlo_sharding_v3(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+    %s0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['a'=4,'b'=2], [{'a'}, {}]}"} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+    %0 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%s0) {has_side_effect = true, mhlo.sharding = "{mesh['a'=4,'b'=2], [{}, {}], manual={'a'}}"} : (tensor<8x16xf32>) -> tensor<2x16xf32>
+    %1 = call @xla.sdy.manual_computation_body_hlo_v3(%0) : (tensor<2x16xf32>) -> tensor<2x16xf32>
+    %2 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%1) {has_side_effect = true, mhlo.sharding = "{mesh['a'=4,'b'=2], [{'a'}, {}]}"} : (tensor<2x16xf32>) -> tensor<8x16xf32>
+    return %2 : tensor<8x16xf32>
+  }
+
+  func.func private @xla.sdy.manual_computation_body_hlo_v3(%arg0: tensor<2x16xf32>) -> tensor<2x16xf32> {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<2x16xf32>
+    return %0 : tensor<2x16xf32>
   }
 
   // CHECK-LABEL: func @frontend_attr_not_sharding
@@ -239,6 +265,13 @@ module @maximal_sharding_module {
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>
   }
+
+  // CHECK-LABEL: func @result_with_maximal_sharding
+  // CHECK-SAME:    (%arg0: tensor<32xi32>) -> tensor<32xi32> {
+  func.func @result_with_maximal_sharding(%arg0: tensor<32xi32>) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=0]}"}) {
+    // CHECK-NEXT: return %arg0 : tensor<32xi32>
+    return %arg0 : tensor<32xi32>
+  }
 }
 
 // -----
@@ -267,5 +300,25 @@ module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = 
   func.func @non_main_func(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
     // CHECK-NEXT: return %arg0 : tensor<32xi32>
     return %arg0 : tensor<32xi32>
+  }
+}
+
+// -----
+
+// A fully manual HLO sharding omits its dimension shardings, so their number
+// is taken from the rank of the value the sharding is on. Covers all three
+// carriers: a function argument, a function result, and an op result.
+module @fully_manual_sharding_module {
+  // CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
+  // CHECK-LABEL: func @fully_manual_sharding(
+  // CHECK-SAME:    %arg0: tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}
+  // CHECK-SAME:  ) -> (tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) {
+  func.func @fully_manual_sharding(
+    %arg0: tensor<8x16xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"}
+  ) -> (tensor<8x16xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"}) {
+    // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{}, {}]> : tensor<8x16xi32>
+    // CHECK-NEXT: return %[[SHARDING]]
+    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"} : (tensor<8x16xi32>) -> tensor<8x16xi32>
+    return %0 : tensor<8x16xi32>
   }
 }

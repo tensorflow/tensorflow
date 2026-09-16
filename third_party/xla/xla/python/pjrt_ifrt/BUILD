@@ -466,12 +466,17 @@ cc_library(
     deps = [
         ":basic_string_array",
         ":executable_metadata_proto_cc",
+        ":gpu_xla_executable_abi_version",
+        ":gpu_xla_executable_abi_version_serdes",
         ":pjrt_attribute_map_util",
         ":pjrt_buffer_hash_util",
         ":pjrt_dtype",
         ":pjrt_layout",
         ":pjrt_layout_serdes",
+        ":tpu_xla_executable_abi_version",
+        ":tpu_xla_executable_abi_version_serdes",
         ":transfer_server_interface",
+        ":xla_executable_abi_version",
         ":xla_executable_version",
         ":xla_executable_version_serdes",
         ":xla_ifrt",
@@ -987,6 +992,7 @@ cc_library(
 
 cc_library(
     name = "tpu_xla_executable_abi_version",
+    srcs = ["tpu_xla_executable_abi_version.cc"],
     hdrs = ["tpu_xla_executable_abi_version.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -1004,9 +1010,14 @@ cc_library(
         ":tpu_xla_executable_abi_version",
         ":xla_executable_abi_version",
         "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt/c:pjrt_c_api_abi_version_helpers",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/python/ifrt:rtti",
         "//xla/python/ifrt:serdes",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1022,15 +1033,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":tpu_xla_executable_abi_version_serdes",
-        "//xla/pjrt:pjrt_abi_version",
-        "//xla/pjrt:pjrt_api",
-        "//xla/pjrt/c:pjrt_c_api_abi_version_helpers",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/plugin:plugin_names",
-        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
     ],
     alwayslink = 1,
 )
@@ -1050,19 +1052,20 @@ cc_library(
 cc_library(
     name = "gpu_xla_executable_abi_version_serdes",
     srcs = ["gpu_xla_executable_abi_version_serdes.cc"],
-    hdrs = ["gpu_xla_executable_abi_version_serdes.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":gpu_xla_executable_abi_version",
         ":xla_executable_abi_version",
         "//xla/pjrt:pjrt_abi_version",
         "//xla/pjrt:pjrt_api",
+        "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt/c:pjrt_c_api_abi_version_helpers",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/python/ifrt:rtti",
         "//xla/python/ifrt:serdes",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1070,6 +1073,20 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "stream_executor_gpu_xla_executable_abi_version_serdes_register",
+    srcs = ["stream_executor_gpu_xla_executable_abi_version_serdes_register.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":gpu_xla_executable_abi_version_serdes",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/pjrt/se:stream_executor_pjrt_abi_version",
+        "@com_google_absl//absl/status:statusor",
+    ],
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -1080,8 +1097,11 @@ xla_cc_test(
         ":gpu_xla_executable_abi_version_serdes",
         ":xla_executable_abi_version",
         "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/gpu:abi_helpers",
+        "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin/xla_gpu:gpu_static_registration",  # buildcleaner: keep
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/stream_executor:semantic_version",

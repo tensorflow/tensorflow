@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/nullary_function_wrap_inliner.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/collective_permute_motion.h"
@@ -143,6 +144,7 @@ void AddSPMDPasses(
         num_partitions, hlo_module->config().replica_count(),
         std::move(spmd_options));
   }
+  spmd_pipeline.AddPass<NullaryFunctionWrapInliner>();
   if (hlo_module->config().debug_options().xla_enable_enzyme_comms_opt()) {
     spmd_pipeline.AddPass<RecognizeReduceWindow>();
     spmd_pipeline.AddPass<CollectivePermuteCSE>();

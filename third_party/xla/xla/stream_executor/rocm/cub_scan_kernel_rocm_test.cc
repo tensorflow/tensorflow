@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "rocm/include/hip/amd_detail/amd_hip_bfloat16.h"
@@ -79,10 +80,10 @@ class CubScanKernelRocmTest
           xla::PrimitiveType, size_t, size_t, size_t, CubScanKind, bool>> {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("ROCM"));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_,
+                         se::PlatformManager::PlatformWithName("ROCM"));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
   }
 
  public:
@@ -271,18 +272,18 @@ TEST_P(CubScanKernelRocmTest, TestPrefixSum) {
   auto type = std::get<xla::PrimitiveType>(params);
   switch (type) {
     case xla::PrimitiveType::BF16:
-      TF_EXPECT_OK(std::apply(&CubScanKernelRocmTest::RunCubScanTestBf16,
-                              std::tuple_cat(std::make_tuple(this), params)));
+      EXPECT_OK(std::apply(&CubScanKernelRocmTest::RunCubScanTestBf16,
+                           std::tuple_cat(std::make_tuple(this), params)));
       return;
     case xla::PrimitiveType::F16:
-      TF_EXPECT_OK(std::apply(&CubScanKernelRocmTest::RunCubScanTestF16,
-                              std::tuple_cat(std::make_tuple(this), params)));
+      EXPECT_OK(std::apply(&CubScanKernelRocmTest::RunCubScanTestF16,
+                           std::tuple_cat(std::make_tuple(this), params)));
       return;
     default:
       break;
   }
   auto impl = [&](auto value) {
-    TF_EXPECT_OK(
+    EXPECT_OK(
         std::apply(&CubScanKernelRocmTest::RunCubScanTest<decltype(value)>,
                    std::tuple_cat(std::make_tuple(this), params)));
   };

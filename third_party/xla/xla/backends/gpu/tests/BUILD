@@ -296,7 +296,6 @@ xla_test(
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:error_spec",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/stream_executor:device_description",
@@ -535,6 +534,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
+        "//xla/stream_executor:platform_manager",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -872,23 +872,18 @@ xla_test(
     name = "dynamic_shared_memory_test",
     srcs = ["dynamic_shared_memory_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = ["no-oneapi"],
     deps = [
-        "//xla:xla_proto_cc",
-        "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
+        "//xla/stream_executor/gpu:gpu_init",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1290,6 +1285,8 @@ xla_test(
     backends = [
         "gpu",
     ],
+    # TODO: Remove this workaround after the RCCL team fixes the WarpSpeed issue.
+    env = {"RCCL_WARP_SPEED_AUTO": "0"},
     deps = [
         ":collective_ops_e2e_test_base",
         "//xla:array",
@@ -1829,8 +1826,8 @@ xla_cc_test(
     name = "host_cross_compilation_test",
     srcs = ["host_cross_compilation_test.cc"],
     tags = [
-        "cuda-only",
         "gpu",
+        "no-oneapi",
     ],
     deps = [
         "//xla:xla_data_proto_cc",

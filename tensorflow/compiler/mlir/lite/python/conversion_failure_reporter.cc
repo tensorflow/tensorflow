@@ -23,8 +23,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
-#include <ios>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,7 +36,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/JSON.h"
-#include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -185,26 +182,23 @@ void ConversionFailureReporter::WriteFailureJson(
   // Dump elided MLIR text module if module is valid and artifacts requested
   if (module && write_module_artifacts) {
     std::string elided_path = absl::StrCat(dir, "/before_failure_elided.mlir");
-    std::ofstream elided_file(elided_path);
-    if (elided_file.is_open()) {
-      llvm::raw_os_ostream elided_os(elided_file);
-      mlir::OpPrintingFlags flags;
-      flags.elideLargeElementsAttrs(elide_elements_larger_than);
-      flags.elideLargeResourceString(elide_resource_strings_larger_than);
-      module.print(elided_os, flags);
-      elided_os.flush();
-      elided_file.flush();
+    std::string elided_str;
+    llvm::raw_string_ostream elided_os(elided_str);
+    mlir::OpPrintingFlags flags;
+    flags.elideLargeElementsAttrs(elide_elements_larger_than);
+    flags.elideLargeResourceString(elide_resource_strings_larger_than);
+    module.print(elided_os, flags);
+    if (tsl::WriteStringToFile(tsl::Env::Default(), elided_path, elided_str)
+            .ok()) {
       report.elided_mlir_file = elided_path;
     }
 
     // Dump non-elided binary MLIR bytecode module
     std::string bc_path = absl::StrCat(dir, "/module_bytecode.mlirbc");
-    std::ofstream bc_file(bc_path, std::ios::binary);
-    if (bc_file.is_open()) {
-      llvm::raw_os_ostream bc_os(bc_file);
-      if (mlir::succeeded(mlir::writeBytecodeToFile(module, bc_os))) {
-        bc_os.flush();
-        bc_file.flush();
+    std::string bc_str;
+    llvm::raw_string_ostream bc_os(bc_str);
+    if (mlir::succeeded(mlir::writeBytecodeToFile(module, bc_os))) {
+      if (tsl::WriteStringToFile(tsl::Env::Default(), bc_path, bc_str).ok()) {
         report.bytecode_file = bc_path;
       }
     }
@@ -266,13 +260,10 @@ void ConversionFailureReporter::WriteFailureJson(
 
   root["raw_error"] = report.raw_error;
 
-  std::ofstream json_file(file_path);
-  if (json_file.is_open()) {
-    llvm::raw_os_ostream os(json_file);
-    os << llvm::formatv("{0:2}\n", llvm::json::Value(std::move(root)));
-    os.flush();
-    json_file.flush();
-  }
+  std::string json_str;
+  llvm::raw_string_ostream os(json_str);
+  os << llvm::formatv("{0:2}\n", llvm::json::Value(std::move(root)));
+  (void)tsl::WriteStringToFile(tsl::Env::Default(), file_path, json_str);
 }
 
 }  // namespace mlir::TFL

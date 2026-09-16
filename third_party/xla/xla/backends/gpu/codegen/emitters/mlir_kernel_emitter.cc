@@ -627,7 +627,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   if (auto* cc = device.gpu_compute_capability().cuda_compute_capability()) {
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-            device.runtime_version());
+            device.runtime_version(), cc->major);
     ConvertFloatNvidiaPassOptions nv_options;
     nv_options.compute_capability_major_ = cc->major;
     nv_options.compute_capability_minor_ = cc->minor;

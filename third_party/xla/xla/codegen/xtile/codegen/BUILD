@@ -172,6 +172,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":emitter_helpers",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/hlo/ir:hlo",

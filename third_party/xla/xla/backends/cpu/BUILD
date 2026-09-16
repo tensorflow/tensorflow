@@ -59,6 +59,14 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_fusion_configs",
+    hdrs = ["custom_fusion_configs.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "buffer_allocation_info_util",
     srcs = ["buffer_allocation_info_util.cc"],
     hdrs = ["buffer_allocation_info_util.h"],

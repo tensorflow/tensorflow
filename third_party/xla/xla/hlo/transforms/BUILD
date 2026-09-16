@@ -376,8 +376,6 @@ xla_cc_test(
         "//xla/service:host_offload_utils",
         "//xla/service:memory_annotations_hdr",
         "//xla/service:pattern_matcher",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

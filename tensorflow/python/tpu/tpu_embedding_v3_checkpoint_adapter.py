@@ -234,7 +234,7 @@ class EmbeddingUnshardToShardCallback(checkpoint_adapter.ReshardCallback):
         checkpoint_key,
         shape_and_slice_spec,
     )
-    for i, layout in enumerate(self._to_shard_layout):  # pyrefly: ignore[bad-argument-type]
+    for i, layout in enumerate(self._to_shard_layout):  # pyrefly: ignore[bad-argument-type, not-iterable]
       sub_checkpoint_key = checkpoint_key.replace(
           self._main_checkpoint_name, self._checkpoint_local_names[i]
       )

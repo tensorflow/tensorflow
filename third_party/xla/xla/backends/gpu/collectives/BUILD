@@ -278,6 +278,10 @@ xla_test(
 xla_test(
     name = "gpu_cliques_test",
     srcs = ["gpu_cliques_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -389,6 +393,10 @@ cc_library(
 xla_test(
     name = "gpu_collectives_test",
     srcs = ["gpu_collectives_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -439,6 +447,10 @@ xla_test(
 xla_test(
     name = "nccl_communicator_test",
     srcs = ["nccl_communicator_test.cc"],
+    backend_args = if_google(
+        {"gpu": ["--heap_check="]},
+        {},
+    ),
     backend_tags = {
         "h100": [
             "full",
@@ -718,10 +730,7 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
-    visibility = [
-        "//xla/backends/gpu/runtime:__subpackages__",
-        "//xla/stream_executor/cuda:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":nccl_errors",
         ":nccl_types",
@@ -1173,9 +1182,7 @@ cc_library(
         "no-oneapi",
         "rocm-only",
     ],
-    visibility = [
-        "//xla/backends/gpu/runtime:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":rccl_errors",
         "//xla:util",

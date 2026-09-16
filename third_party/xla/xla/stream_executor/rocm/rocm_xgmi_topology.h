@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 
 namespace stream_executor::gpu {
@@ -26,8 +27,10 @@ struct XgmiTopologyInfo {
 
 // Queries xGMI topology information for a ROCm device.
 // pci_bus_id is the PCI bus ID string from HIP (e.g. "0000:41:00.0").
-// Returns topology info. On failure, returns default (0 links, no hive).
-XgmiTopologyInfo GetRocmXgmiTopology(absl::string_view pci_bus_id);
+// A device with no xGMI links is not a failure; it reports zero active links.
+// Does not log; the caller decides what a failure means.
+absl::StatusOr<XgmiTopologyInfo> GetRocmXgmiTopology(
+    absl::string_view pci_bus_id);
 
 }  // namespace stream_executor::gpu
 

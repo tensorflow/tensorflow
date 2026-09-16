@@ -461,7 +461,8 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
 // Lowering passes for the new tiled emitter.
 // The input IR is from the xtile dialect which uses tensors that are converted
 // first to the vector dialect and then to LLVM.
-void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
+void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
+                              int32_t vector_width) {
   // Get rid of 0d vectors.
   pm.addPass(cpu::createVectorToScalarPass());
   // Get rid of multi-dimensional vectors.
@@ -471,17 +472,18 @@ void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(true)));
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 
   pm.addPass(cpu::createUnpackSubByteVectorWritePass());
 
+  pm.addPass(cpu::createLowerToLLVMPass(
+      cpu::LowerToLLVMPassOptions{/*prefer_vector_width =*/vector_width}));
   mlir::ConvertVectorToLLVMPassOptions options;
-
-  // If the tile size is 16x16 this will generate the most efficient code for
-  // avx512 platforms.
   options.vectorTransposeLowering =
       mlir::vector::VectorTransposeLowering::Shuffle16x16;
   pm.addPass(mlir::createConvertVectorToLLVMPass(options));
-  pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
   pm.addPass(emitters::createSafeIntegerArithmeticPass());
 
@@ -525,7 +527,8 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
   }
   if (options_.use_new_xtile_lowering) {
-    AddNewVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
+    AddNewVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max,
+                             options_.vector_width);
   } else {
     AddVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
   }
