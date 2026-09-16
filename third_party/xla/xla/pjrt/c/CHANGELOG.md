@@ -1,5 +1,10 @@
 # PJRT C API changelog
 
+## 0.116
+
+*   Added `custom_options` and `num_custom_options` fields to
+    `PJRT_ExecuteOptions`.
+
 ## 0.115
 
 * Deprecated ``PJRT_Triton_Extension``.

@@ -108,6 +108,8 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       };
   std::function<MeshAttr(TensorShardingAttr)> getMeshAttr =
       [&](TensorShardingAttr sharding) {
+        CHECK(sharding) << "null sharding while exporting func @"
+                        << funcOp.getSymName().str();
         return sharding.getMesh(symbolTable);
       };
 
