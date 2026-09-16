@@ -78,11 +78,12 @@ namespace conditional_opt {
 //   When operand_source is null or has no OriginalValue, the instruction's
 //   existing OriginalValue leaves are re-indexed into the new shape.
 void UpdateInstructionOriginalValue(HloInstruction* instruction,
-                                    HloInstruction* operand_source = nullptr) {
-  // If the instruction is a tuple or GTE, derive the OriginalValue from its
-  // operands if possible.
+                                    HloInstruction* operand_source) {
+  // If the instruction is a tuple, GTE, or conditional, derive the
+  // OriginalValue from its operands or branch root if possible.
   if (instruction->opcode() == HloOpcode::kTuple ||
-      instruction->opcode() == HloOpcode::kGetTupleElement) {
+      instruction->opcode() == HloOpcode::kGetTupleElement ||
+      instruction->opcode() == HloOpcode::kConditional) {
     if (auto created = OriginalValue::CreateFromInstruction(instruction)) {
       instruction->set_original_value(created);
       return;
@@ -97,9 +98,16 @@ void UpdateInstructionOriginalValue(HloInstruction* instruction,
   // If an operand source with an OriginalValue is provided (e.g. caller
   // argument tuple with compatible shape), copy its OriginalValue directly.
   if (operand_source != nullptr &&
-      operand_source->original_value() != nullptr) {
+      operand_source->original_value() != nullptr &&
+      operand_source->original_value()->IsCompatibleWith(
+          instruction->shape())) {
     CopyOriginalValue(operand_source, instruction, /*clone=*/true,
                       /*issue_warning=*/false);
+    return;
+  }
+
+  if (instruction->original_value() != nullptr &&
+      instruction->original_value()->IsCompatibleWith(instruction->shape())) {
     return;
   }
 
@@ -112,15 +120,25 @@ void UpdateInstructionOriginalValue(HloInstruction* instruction,
   // Handle tuple-to-scalar or shape changes for non-tuple instructions.
   if (!instruction->shape().IsTuple()) {
     auto old_ov = instruction->original_value();
-    auto new_ov = std::make_shared<OriginalValue>(instruction->shape());
+    auto new_ov = std::make_shared<OriginalValue>(instruction->shape(),
+                                                  old_ov->call_hierarchy());
     if (old_ov->IsTuple()) {
       if (old_ov->tree().find({0}) != old_ov->tree().end()) {
-        new_ov->mutable_tree()->CopySubtreeFrom(old_ov->tree(), {0}, {});
+        if (new_ov->mutable_tree()
+                ->CopyCompatibleSubtreeFrom(old_ov->tree(), {0}, {})
+                .ok()) {
+          instruction->set_original_value(new_ov);
+          return;
+        }
       }
     } else {
-      new_ov->mutable_tree()->CopySubtreeFrom(old_ov->tree(), {}, {});
+      if (new_ov->mutable_tree()
+              ->CopyCompatibleSubtreeFrom(old_ov->tree(), {}, {})
+              .ok()) {
+        instruction->set_original_value(new_ov);
+        return;
+      }
     }
-    instruction->set_original_value(new_ov);
     return;
   }
 
@@ -128,9 +146,13 @@ void UpdateInstructionOriginalValue(HloInstruction* instruction,
   absl::flat_hash_map<int64_t, int64_t> old_to_new_map;
   if (!instruction->original_value()->IsTuple()) {
     auto old_ov = instruction->original_value();
-    auto new_ov = std::make_shared<OriginalValue>(instruction->shape());
-    new_ov->mutable_tree()->CopySubtreeFrom(old_ov->tree(), {}, {0});
-    instruction->set_original_value(new_ov);
+    auto new_ov = std::make_shared<OriginalValue>(instruction->shape(),
+                                                  old_ov->call_hierarchy());
+    if (new_ov->mutable_tree()
+            ->CopyCompatibleSubtreeFrom(old_ov->tree(), {}, {0})
+            .ok()) {
+      instruction->set_original_value(new_ov);
+    }
   } else {
     // Re-index existing leaves into a new OriginalValue matching the new shape.
     // Any newly added elements will be initialized to std::nullopt.
@@ -853,6 +875,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     }
     HloInstruction* tuple =
         computation->AddInstruction(HloInstruction::CreateTuple(elements));
+    conditional_opt::UpdateInstructionOriginalValue(tuple);
     computation->set_root_instruction(tuple, true);
     VLOG(2) << "computation is :" << computation->ToString() << "\n";
     // Remove hoisted instructions from the branches.
@@ -959,6 +982,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
 
     HloInstruction* new_root =
         computation->AddInstruction(HloInstruction::CreateTuple(operands));
+    conditional_opt::UpdateInstructionOriginalValue(new_root);
     VLOG(2) << "setting new root: " << new_root->ToString() << "\n";
     computation->set_root_instruction(new_root,
                                       /*accept_different_shape*/ true);

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/tsl/util/sorted_range.h"
@@ -53,14 +54,10 @@ CopyOriginalValue(const std::shared_ptr<OriginalValue>& src_original_value,
   }
   for (const auto& [old_idx, new_idx] :
        tsl::SortedRange(old_to_new_tuple_idx)) {
-    if (src_original_value->tree().find({old_idx}) ==
-            src_original_value->tree().end() ||
-        dest_original_value->tree().find({new_idx}) ==
-            dest_original_value->tree().end()) {
-      return false;
-    }
-    dest_original_value->mutable_tree()->CopySubtreeFrom(
-        src_original_value->tree(), {old_idx}, {new_idx});
+    CHECK_OK(dest_original_value->mutable_tree()->CopyCompatibleSubtreeFrom(
+        src_original_value->tree(), {old_idx}, {new_idx}))
+        << "Incompatible OriginalValue subtree when mapping from old_idx "
+        << old_idx << " to new_idx " << new_idx;
   }
   return true;
 }
@@ -78,12 +75,13 @@ CopyOriginalValue(const HloInstruction* src_instruction,
   if (!old_original_value) {
     return;
   }
-  auto new_original_value =
-      std::make_shared<xla::OriginalValue>(dest_instruction->shape());
-  if (!CopyOriginalValue(old_original_value, new_original_value,
-                         old_to_new_tuple_idx)) {
-    return;
-  }
+  auto new_original_value = std::make_shared<xla::OriginalValue>(
+      dest_instruction->shape(), old_original_value->call_hierarchy());
+  CopyOriginalValue(old_original_value, new_original_value,
+                    old_to_new_tuple_idx);
+  CHECK(new_original_value->IsCompatibleWith(dest_instruction->shape()))
+      << "OriginalValue is incompatible with destination instruction: "
+      << dest_instruction->ToString();
   dest_instruction->set_original_value(new_original_value);
 }
 

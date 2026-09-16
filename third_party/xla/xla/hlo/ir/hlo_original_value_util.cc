@@ -53,7 +53,8 @@ void CopyOriginalValue(const HloInstruction* src_instruction,
   }
 
   // Deep clone the tree.
-  auto cloned_tree = std::make_shared<OriginalValue>(original_value->tree());
+  auto cloned_tree = std::make_shared<OriginalValue>(
+      original_value->tree(), original_value->call_hierarchy());
   dest_instruction->set_original_value(cloned_tree);
 }
 

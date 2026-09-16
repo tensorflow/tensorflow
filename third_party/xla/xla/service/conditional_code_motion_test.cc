@@ -2748,6 +2748,38 @@ ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], paramet
   EXPECT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_F(ConditionalCodeMotionTest,
+       UpdateInstructionOriginalValueDerivesFromBranchRoot) {
+  absl::string_view hlo_string = R"(
+HloModule TestModule
+
+%branch_0 (param_0: f32[]) -> f32[] {
+  %param_0 = f32[] parameter(0), origin={{"p0"}}
+  ROOT %neg = f32[] negate(%param_0), origin={{"neg"}}
+}
+
+%branch_1 (param_1: f32[]) -> f32[] {
+  %param_1 = f32[] parameter(0), origin={{"p1"}}
+  ROOT %abs = f32[] abs(%param_1), origin={{"abs"}}
+}
+
+ENTRY %main (pred_param: pred[], arg: f32[]) -> f32[] {
+  %pred_ = pred[] parameter(0)
+  %arg = f32[] parameter(1)
+  ROOT %conditional = f32[] conditional(%pred_, %arg, %arg), true_computation=%branch_0, false_computation=%branch_1
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* cond = module->entry_computation()->root_instruction();
+
+  UpdateInstructionOriginalValue(cond);
+  ASSERT_NE(cond->original_value(), nullptr);
+  EXPECT_TRUE(cond->original_value()->IsCompatibleWith(cond->shape()));
+  EXPECT_THAT(cond->original_value()->original_array({}),
+              ::testing::Optional(::testing::Eq(OriginalArray{"neg"})));
+}
+
 }  // namespace conditional_opt
 
 }  // namespace xla

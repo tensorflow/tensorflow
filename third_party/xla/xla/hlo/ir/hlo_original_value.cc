@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
@@ -249,6 +250,39 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
         dest_index.insert(dest_index.end(), index.begin(), index.end());
         *original_value->mutable_tree()->mutable_element(dest_index) = value;
       });
+    }
+    return has_original_value ? original_value : nullptr;
+  }
+
+  if (instruction->opcode() == HloOpcode::kConditional) {
+    auto original_value = std::make_shared<OriginalValue>(
+        TupleTree<std::optional<OriginalArray>>(instruction->shape()));
+    bool has_original_value = false;
+    for (const HloComputation* branch : instruction->branch_computations()) {
+      const HloInstruction* root = branch->root_instruction();
+      if (!root) {
+        continue;
+      }
+      std::shared_ptr<OriginalValue> root_original_value =
+          root->original_value();
+      if (!root_original_value || root_original_value->is_synthetic_call() ||
+          !root_original_value->IsCompatibleWith(instruction->shape())) {
+        continue;
+      }
+      has_original_value = true;
+      root_original_value->tree().ForEachElement(
+          [&](const ShapeIndex& index,
+              const std::optional<OriginalArray>& value) {
+            if (value.has_value() &&
+                !original_value->tree().element(index).has_value()) {
+              *original_value->mutable_tree()->mutable_element(index) = value;
+            }
+          });
+      if (!original_value->call_hierarchy().has_value() &&
+          root_original_value->call_hierarchy().has_value()) {
+        original_value->set_call_hierarchy(
+            root_original_value->call_hierarchy());
+      }
     }
     return has_original_value ? original_value : nullptr;
   }

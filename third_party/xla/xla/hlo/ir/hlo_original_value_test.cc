@@ -390,6 +390,60 @@ ENTRY main {
   EXPECT_EQ(tuple->original_value()->ToString(), "({\"p0\"}, {})");
 }
 
+TEST_F(OriginalValueHloTest, CreateFromInstructionConditional) {
+  const char* hlo_string = R"(
+HloModule test
+
+branch_0 {
+  p0 = f32[] parameter(0), origin={{"p0"}}
+  ROOT neg = f32[] negate(p0), origin={{"neg"}}
+}
+
+branch_1 {
+  p1 = f32[] parameter(0), origin={{"p1"}}
+  ROOT abs = f32[] abs(p1), origin={{"abs"}}
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  arg = f32[] parameter(1)
+  ROOT conditional = f32[] conditional(pred_param, arg, arg),
+    true_computation=branch_0, false_computation=branch_1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* conditional = module->entry_computation()->root_instruction();
+  auto created = OriginalValue::CreateFromInstruction(conditional);
+  ASSERT_NE(created, nullptr);
+  EXPECT_EQ(created->ToString(), "{\"neg\"}");
+}
+
+TEST_F(OriginalValueHloTest, CreateFromInstructionConditionalTuple) {
+  const char* hlo_string = R"(
+HloModule test
+
+branch_0 {
+  ROOT root0 = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+}
+
+branch_1 {
+  ROOT root1 = (f32[], f32[]) parameter(0), origin={({"q0"}, {"q1"})}
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  arg = (f32[], f32[]) parameter(1)
+  ROOT conditional = (f32[], f32[]) conditional(pred_param, arg, arg),
+    true_computation=branch_0, false_computation=branch_1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* conditional = module->entry_computation()->root_instruction();
+  auto created = OriginalValue::CreateFromInstruction(conditional);
+  ASSERT_NE(created, nullptr);
+  EXPECT_EQ(created->ToString(), "({\"p0\"}, {\"p1\"})");
+}
+
 TEST_F(OriginalValueHloTest, CopyOriginalValue) {
   const char* hlo_string = R"(
 HloModule test
@@ -629,6 +683,102 @@ TEST_F(OriginalValueHloTest, CallHierarchyAccessor) {
 
   value.set_call_hierarchy(std::nullopt);
   EXPECT_FALSE(value.call_hierarchy().has_value());
+}
+
+TEST_F(OriginalValueHloTest, CopyOriginalValuePreservesCallHierarchy) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0), origin={{"p0"},["hierarchy#$"]}
+  ROOT p1 = f32[] parameter(1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* p0 =
+      module->entry_computation()->parameter_instruction(0);
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+
+  CopyOriginalValue(p0, p1, /*clone=*/true, /*issue_warning=*/false);
+  ASSERT_NE(p1->original_value(), nullptr);
+  ASSERT_TRUE(p1->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*p1->original_value()->call_hierarchy(), "hierarchy#$");
+}
+
+TEST_F(OriginalValueHloTest, CopyOriginalValueWithVectorPreservesNestedTuple) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  inner = (f32[], f32[]) tuple(p0, p1), origin={({"p0"}, {"p1"})}
+  ROOT outer = ((f32[], f32[]), f32[]) tuple(inner, p2), origin={(({"p0"}, {"p1"}), {"p2"})}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* dest =
+      module->entry_computation()->AddInstruction(HloInstruction::CreateTuple(
+          {root->mutable_operand(1), root->mutable_operand(0)}));
+
+  std::vector<int64_t> old_to_new = {1, 0};
+  CopyOriginalValue(root, dest, old_to_new);
+
+  ASSERT_NE(dest->original_value(), nullptr);
+  EXPECT_TRUE(dest->original_value()->IsCompatibleWith(dest->shape()));
+  EXPECT_THAT(dest->original_value()->original_array({0}),
+              Optional(Eq(OriginalArray{"p2"})));
+  EXPECT_THAT(dest->original_value()->original_array({1, 0}),
+              Optional(Eq(OriginalArray{"p0"})));
+  EXPECT_THAT(dest->original_value()->original_array({1, 1}),
+              Optional(Eq(OriginalArray{"p1"})));
+}
+
+TEST_F(OriginalValueHloTest, CopyOriginalValueIncompatibleShapeCrashes) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT root = (f32[], f32[]) tuple(p0, p1), origin={({"p0"}, {"p1"})}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* dest = module->entry_computation()->parameter_instruction(0);
+
+  std::vector<int64_t> old_to_new = {0};
+  EXPECT_DEATH(
+      CopyOriginalValue(root, dest, old_to_new),
+      "Incompatible OriginalValue subtree when mapping from old_idx 0 to "
+      "new_idx 0");
+}
+
+TEST_F(OriginalValueHloTest, CopyOriginalValueIncompatibleSubtreeShapeCrashes) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  inner = (f32[], f32[]) tuple(p0, p1), origin={({"p0"}, {"p1"})}
+  ROOT outer = ((f32[], f32[]), f32[]) tuple(inner, p0), origin={(({"p0"}, {"p1"}), {"p0"})}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* dest =
+      module->entry_computation()->AddInstruction(HloInstruction::CreateTuple(
+          {root->mutable_operand(1), root->mutable_operand(1)}));
+
+  std::vector<int64_t> old_to_new = {0, 1};
+  EXPECT_DEATH(
+      CopyOriginalValue(root, dest, old_to_new),
+      "Incompatible OriginalValue subtree when mapping from old_idx 0 to "
+      "new_idx 0");
 }
 
 }  // namespace
