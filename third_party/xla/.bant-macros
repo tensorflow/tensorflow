@@ -24,6 +24,7 @@
 # XLA tests
 xla_test = bant_forward_args(cc_test())
 xla_cc_test = bant_forward_args(cc_test())
+tsl_cc_test = bant_forward_args(cc_test())
 
 # tf_proto_library() wraps proto_library() and cc_proto_library().
 # It generates a proto_library with the given name and a cc_proto_library

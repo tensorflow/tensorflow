@@ -12,11 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+import contextlib
+import io
+import os
+import pathlib
+import subprocess
+import tempfile
 import unittest
 
+from build_tools.lint import check_dwyu
 from build_tools.lint.check_dwyu import extract_targets
 
-ALLOWED_RULES = {"cc_library", "xla_test", "xla_cc_test"}
+ALLOWED_RULES = set(check_dwyu.DEFAULT_ALLOWED_RULES)
 
 
 class ExtractTargetsTest(unittest.TestCase):
@@ -134,6 +141,254 @@ cc_library(
     self.assertEqual(len(result), 1)
     self.assertEqual(result[0][0], "multi")
     self.assertEqual(result[0][1], {"a.cc", "b.cc", "a.h", "b.h"})
+
+
+class WorkspaceTest(unittest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    workspace = tempfile.TemporaryDirectory()
+    self.addCleanup(workspace.cleanup)
+    self.addCleanup(os.chdir, os.getcwd())
+    os.chdir(workspace.name)
+
+  def write_file(self, path, content):
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+
+  def affected_targets(self, changed_files):
+    packages = check_dwyu.find_packages(changed_files)
+    grouped = check_dwyu._group_changed_files_by_package(
+        changed_files, packages
+    )
+    return check_dwyu.find_affected_targets(packages, ALLOWED_RULES, grouped)
+
+
+class FindAffectedTargetsTest(WorkspaceTest):
+
+  def setUp(self):
+    super().setUp()
+    self.write_file(
+        "xla/pkg/BUILD",
+        """\
+cc_library(
+    name = "foo",
+    srcs = ["foo.cc"],
+    hdrs = ["foo.h"],
+)
+cc_library(
+    name = "bar",
+    srcs = ["bar.cc"],
+    deps = [":foo"],
+)
+xla_test(
+    name = "foo_test",
+    srcs = ["foo_test.cc"],
+    deps = [":foo"],
+)
+""",
+    )
+
+  def test_only_direct_source_owner(self):
+    self.assertEqual(
+        self.affected_targets(["xla/pkg/foo.cc"]), ["//xla/pkg:foo"]
+    )
+
+  def test_header_does_not_select_dependents(self):
+    self.assertEqual(
+        self.affected_targets(["xla/pkg/foo.h"]), ["//xla/pkg:foo"]
+    )
+
+  def test_build_only_change_selects_nothing(self):
+    self.assertEqual(self.affected_targets(["xla/pkg/BUILD"]), [])
+
+  def test_build_and_source_change_selects_only_source_owner(self):
+    self.assertEqual(
+        self.affected_targets(["xla/pkg/BUILD", "xla/pkg/foo.cc"]),
+        ["//xla/pkg:foo"],
+    )
+
+  def test_unowned_file_selects_nothing(self):
+    self.assertEqual(self.affected_targets(["xla/pkg/README.md"]), [])
+
+  def test_subdirectory_does_not_match_same_basename(self):
+    self.assertEqual(self.affected_targets(["xla/pkg/subdir/foo.cc"]), [])
+
+  def test_subdirectory_source_paths_and_labels(self):
+    self.write_file(
+        "xla/pkg/BUILD.bazel",
+        """\
+cc_library(name = "relative", srcs = ["subdir/foo.cc"])
+cc_library(name = "local_label", srcs = [":subdir/foo.cc"])
+cc_library(name = "full_label", srcs = ["//xla/pkg:subdir/foo.cc"])
+cc_library(name = "other", srcs = ["elsewhere/foo.cc"])
+""",
+    )
+    self.assertEqual(
+        self.affected_targets(["xla/pkg/subdir/foo.cc"]),
+        ["//xla/pkg:relative", "//xla/pkg:local_label", "//xla/pkg:full_label"],
+    )
+
+  def test_build_bazel_takes_precedence(self):
+    self.write_file(
+        "xla/pkg/BUILD.bazel",
+        """\
+cc_library(name = "bazel_foo", srcs = ["foo.cc"])
+""",
+    )
+    self.assertEqual(
+        self.affected_targets(["xla/pkg/foo.cc"]), ["//xla/pkg:bazel_foo"]
+    )
+    self.assertEqual(self.affected_targets(["xla/pkg/BUILD.bazel"]), [])
+
+  def test_nested_package_is_not_grouped_with_parent(self):
+    self.write_file(
+        "xla/pkg/nested/BUILD",
+        """\
+cc_library(name = "nested_foo", srcs = ["foo.cc"])
+""",
+    )
+    self.assertEqual(
+        self.affected_targets(["xla/pkg/nested/foo.cc", "xla/pkg/bar.cc"]),
+        ["//xla/pkg:bar", "//xla/pkg/nested:nested_foo"],
+    )
+
+  def test_root_package(self):
+    self.write_file(
+        "BUILD.bazel",
+        """\
+cc_library(name = "root", srcs = ["root.cc", "subdir/root.cc"])
+""",
+    )
+    self.assertEqual(self.affected_targets(["root.cc"]), ["//:root"])
+    self.assertEqual(self.affected_targets(["subdir/root.cc"]), ["//:root"])
+    self.assertEqual(self.affected_targets(["BUILD.bazel"]), [])
+
+  def test_no_package(self):
+    self.assertEqual(self.affected_targets(["unowned/foo.cc"]), [])
+
+  def test_include_tsl_and_other_third_party_packages(self):
+    for package in ("third_party/tsl", "third_party/tsl_extra"):
+      self.write_file(
+          f"{package}/BUILD",
+          """\
+cc_library(name = "foo", srcs = ["foo.cc"])
+""",
+      )
+    self.assertEqual(
+        self.affected_targets([
+            "third_party/tsl/BUILD",
+            "third_party/tsl/foo.cc",
+            "third_party/tsl_extra/foo.cc",
+            "xla/pkg/foo.cc",
+        ]),
+        ["@tsl//:foo", "//third_party/tsl_extra:foo", "//xla/pkg:foo"],
+    )
+
+  def test_tsl_package_source_labels_and_test_rules(self):
+    self.write_file(
+        "third_party/tsl/tsl/profiler/BUILD",
+        """\
+cc_library(name = "relative", srcs = ["//tsl/profiler:controller.cc"])
+cc_library(name = "qualified", srcs = ["@tsl//tsl/profiler:controller.cc"])
+tsl_cc_test(name = "controller_test", srcs = ["controller_test.cc"])
+""",
+    )
+    self.assertEqual(
+        self.affected_targets([
+            "third_party/tsl/tsl/profiler/controller.cc",
+            "third_party/tsl/tsl/profiler/controller_test.cc",
+        ]),
+        [
+            "@tsl//tsl/profiler:relative",
+            "@tsl//tsl/profiler:qualified",
+            "@tsl//tsl/profiler:controller_test",
+        ],
+    )
+
+
+class ChangedFilesTest(WorkspaceTest):
+
+  def git(self, *args):
+    return subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=DWYU test",
+            "-c",
+            "user.email=dwyu-test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            *args,
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+
+  def commit(self):
+    self.git("add", ".")
+    self.git("commit", "-qm", "Test change")
+
+  def setUp(self):
+    super().setUp()
+    self.git("init", "-q", "-b", "main")
+    self.write_file(
+        "xla/pkg/BUILD",
+        """\
+cc_library(name = "foo", srcs = ["foo.cc"])
+cc_library(name = "bar", srcs = ["bar.cc"])
+""",
+    )
+    self.write_file("xla/pkg/foo.cc", "// Original foo\n")
+    self.write_file("xla/pkg/bar.cc", "// Original bar\n")
+    self.commit()
+
+  def test_base_branch_changes_are_excluded(self):
+    self.git("branch", "topic")
+    self.write_file("xla/pkg/bar.cc", "// Unrelated upstream change\n")
+    self.commit()
+    self.git("checkout", "-q", "topic")
+    self.write_file("xla/pkg/foo.cc", "// PR change\n")
+    self.commit()
+    self.assertEqual(check_dwyu.get_changed_files("main"), ["xla/pkg/foo.cc"])
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+      check_dwyu.main(["check_dwyu.py", "--base_ref", "main"])
+    self.assertEqual(output.getvalue(), "//xla/pkg:foo\n")
+
+  def test_push_compares_with_previous_commit(self):
+    self.write_file("xla/pkg/foo.cc", "// Pushed change\n")
+    self.commit()
+    self.assertEqual(check_dwyu.get_changed_files("HEAD^"), ["xla/pkg/foo.cc"])
+
+  def test_rename_includes_old_and_new_paths(self):
+    self.git("mv", "xla/pkg/foo.cc", "xla/pkg/new foo.cc")
+    self.commit()
+    self.assertEqual(
+        check_dwyu.get_changed_files("HEAD^"),
+        ["xla/pkg/foo.cc", "xla/pkg/new foo.cc"],
+    )
+
+  def test_empty_and_binary_files_do_not_require_diff_hunks(self):
+    self.write_file("xla/pkg/empty.cc", "")
+    self.write_file("xla/pkg/binary.cc", "\0data")
+    self.commit()
+    self.assertEqual(
+        check_dwyu.get_changed_files("HEAD^"),
+        ["xla/pkg/binary.cc", "xla/pkg/empty.cc"],
+    )
+
+  def test_deleted_file(self):
+    self.git("rm", "xla/pkg/foo.cc")
+    self.commit()
+    self.assertEqual(check_dwyu.get_changed_files("HEAD^"), ["xla/pkg/foo.cc"])
+
+  def test_no_changes(self):
+    self.assertEqual(check_dwyu.get_changed_files("HEAD"), [])
 
 
 if __name__ == "__main__":
