@@ -574,6 +574,20 @@ ConvertThunksToCommandBuffer(
       debug_options.xla_enable_command_buffers_during_profiling());
 }
 
+int64_t CountCommandBufferSize(ThunkSequence& thunks) {
+  int64_t count = 0;
+  (void)thunks.WalkNested([&](Thunk* nested) -> absl::Status {
+    if (nested->kind() != Thunk::kAsyncDone &&
+        nested->kind() != Thunk::kAsyncStart &&
+        nested->kind() != Thunk::kGroup &&
+        nested->kind() != Thunk::kSequential) {
+      ++count;
+    }
+    return absl::OkStatus();
+  });
+  return std::max<int64_t>(thunks.size(), count);
+}
+
 absl::Status FlushCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options,
@@ -581,7 +595,7 @@ absl::Status FlushCommandBuffer(
     bool& changed) {
   // If we don't have enough thunks to form a command buffer, we just add
   // them to the new thunks sequence as is.
-  if (current_command_buffer_thunks.size() <
+  if (CountCommandBufferSize(current_command_buffer_thunks) <
       std::max(1, debug_options.xla_gpu_graph_min_graph_size())) {
     if (VLOG_IS_ON(2)) {
       for (const auto& thunk : current_command_buffer_thunks) {

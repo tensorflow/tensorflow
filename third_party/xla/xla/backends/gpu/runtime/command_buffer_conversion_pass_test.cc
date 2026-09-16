@@ -609,6 +609,37 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
 }
 
 TEST(CommandBufferConversionPassTest,
+     CountsCommandBufferSizeInsideAsyncStartForMinGraphSize) {
+  ThunkSequence thunks;
+  BufferAllocation alloc0(0, 1024, 0);
+
+  ThunkSequence nested_sequence;
+  for (int i = 0; i < 4; ++i) {
+    nested_sequence.push_back(CreateCopyThunk(alloc0));
+  }
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.thunk_id = ThunkId(999);
+  thunks.push_back(std::make_unique<AsyncStartThunk>(
+      thunk_info, ComputationStreamId(1), std::move(nested_sequence)));
+  thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  // Top-level sequence only has 2 thunks (AsyncStart, AsyncDone), but
+  // CountCommandBufferSize counts the 4 nested CopyThunks = 4.
+  debug_options.set_xla_gpu_graph_min_graph_size(4);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test");
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(true));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+}
+
+TEST(CommandBufferConversionPassTest,
      DontConvertAsyncsIfNonConvertibleThunkInBetween) {
   ThunkSequence thunks;
   // Create a start thunk
