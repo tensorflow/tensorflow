@@ -54,6 +54,29 @@ TEST(SemaphoreTest, UnthreadedTests) {
     auto d = semaphore.ScopedAcquire(2);
     EXPECT_EQ(d.amount(), 2);
   }
+
+  // Move assignment leak test
+  {
+    Semaphore sem2(10);
+    {
+      auto r1 = sem2.ScopedAcquire(5);
+      auto r2 = sem2.ScopedAcquire(3);
+      r1 = std::move(r2);
+      // Wait, without fix this leaked 5.
+    }
+    EXPECT_EQ(sem2.value(), 10);
+  }
+
+  // Self assignment test
+  {
+    Semaphore sem2(10);
+    {
+      auto r1 = sem2.ScopedAcquire(5);
+      auto* pr1 = &r1;
+      r1 = std::move(*pr1);
+    }
+    EXPECT_EQ(sem2.value(), 10);
+  }
 }
 
 TEST(SemaphoreTest, ConcurrentTest) {
@@ -79,6 +102,8 @@ TEST(SemaphoreTest, ConcurrentTest) {
   semaphore.Release(1);
   a_done.WaitForNotification();
 }
+
+
 
 }  // namespace
 }  // namespace xla
