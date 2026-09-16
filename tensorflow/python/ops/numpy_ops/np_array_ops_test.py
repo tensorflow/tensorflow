@@ -1387,6 +1387,13 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, axis=[0, 2])
     _test(a, axis=(0, 1, 2))
     _test(a, axis=range(3))
+    # Out-of-bounds axes raise, matching np.flip's AxisError.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.flip(a, axis=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.flip(a, axis=-4)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.flip(a, axis=(0, 3))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
