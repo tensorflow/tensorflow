@@ -599,10 +599,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def testClipBothBoundsNone(self):
     # NumPy (>= 2.0) returns the input unchanged when both bounds are None.
+    # Compare against a static expected value rather than calling
+    # np.clip(..., None, None), which raises on NumPy < 2.0.
     a = np_array_ops.array([1, -2, 3])
     self.match(
         np_math_ops.clip(a, None, None),
-        np.clip(np.array([1, -2, 3]), None, None),
+        np.array([1, -2, 3]),
         check_dtype=False)
 
   def testPtp(self):
