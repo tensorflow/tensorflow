@@ -66,6 +66,9 @@ jobs:
       - name: "Check for Abseil compatibility API"
         if: always() # We want to run all checks, not just til first failure
         run: "python3 build_tools/lint/check_contents.py --path_regex_exclusion '.github/workflows/check_contents\\.yml' --prohibited_regex '\\b(absl::(any|get|get_if|make_any|make_unique|nullopt|nullopt_t|MakeUnique|make_optional|optional|underlying_type_t|variant|visit))\\b' --suppression_regex '(?i)non-std ok' --failure_message 'Use standard library version instead of the Abseil compatibility API.'"
+      - name: "Check for std::string_view"
+        if: always() # We want to run all checks, not just til first failure
+        run: "python3 build_tools/lint/check_contents.py --path_regex_exclusion '.github/workflows/check_contents\\.yml' 'xla/ffi/api/.*' --path_regex '.*\\.(h|cc|cpp)' --prohibited_regex '\\bstd::string_view\\b' --suppression_regex '(?i)non-absl ok' --failure_message 'Use the Abseil compatibility API (absl::string_view) instead of the standard library version.'"
       - name: "Use absl instead of Tensorflow/TSL functions/types"
 
         if: always() # We want to run all checks, not just til first failure
@@ -84,57 +87,3 @@ jobs:
       - name: "Check for mock.patch"
         if: always() # We want to run all checks, not just til first failure
         run: "python3 build_tools/lint/check_contents.py --path_regex '.*\\.py' --prohibited_regex 'mock\\.patch\\(' --failure_message 'Please use match.patch.object instead of mock.patch.'"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

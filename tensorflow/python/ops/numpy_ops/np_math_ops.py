@@ -1610,6 +1610,20 @@ def _argminmax(fn, a, axis=None):
     a_t = array_ops.reshape(a, [-1])
   else:
     a_t = np_array_ops.atleast_1d(a)
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a_t.shape.rank
+    if (
+        maybe_rank is not None
+        and isinstance(axis, (int, np.integer))
+        and not bool(isinstance(axis, (bool, np.bool_)))
+    ):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
   return fn(input=a_t, axis=axis)
 
 
