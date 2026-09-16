@@ -28,7 +28,9 @@ namespace xla {
 absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
     std::vector<ConfigRunner::ConfigProfile>& results,
     int scratch_bytes_window_size_us,
-    absl::Span<const autotuner::Backend> excluded_backends = {});
+    absl::Span<const autotuner::Backend> excluded_backends = {},
+    autotuner::Backend preferred_backend =
+        autotuner::Backend::UNSPECIFIED_BACKEND);
 
 }  // namespace xla
 
