@@ -380,6 +380,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Testing wrapper for FindAliases.
+  static void FindAliasesForTesting(
+      std::vector<AllocationValue>* allocation_values,
+      bool has_async_pipelined_while_loops = false);
+
   // Block prefetching is an MSA feature that allows processing all prefetches
   // in one pass within a block of memory space in the alternate memory. This
   // guarantees FIFO ordering of all prefetches and allows for more aggressive
@@ -459,6 +464,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const absl::flat_hash_map<const HloInstruction*, int64_t>&
           instruction_schedule) const;
 
+  // Testing wrapper for FindBestChunkCandidates.
+  std::vector<Chunk> FindBestChunkCandidatesForTesting(
+      const AllocationRequest& request, const AliasedOffset* preferred_offset,
+      SlicedBufferInterval* alternate_mem_interval) const {
+    return FindBestChunkCandidates(request, preferred_offset,
+                                   alternate_mem_interval);
+  }
+
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
@@ -478,10 +491,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   virtual void CreateAllocationValuesFromColocatedIntervals(
       absl::Span<const MsaBufferInterval* const> colocated_intervals,
       std::vector<AllocationValue>& allocation_values);
-
-  // Go through all the uses in the AllocationValues and find the aliasing
-  // positions.
-  void FindAliases(std::vector<AllocationValue>* allocation_values) const;
 
   AllocationSequence* allocations() { return allocations_; }
   const Options& options() const { return options_; }
@@ -1315,6 +1324,19 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       SlicedBufferInterval* alternate_mem_interval) const;
 
+  // Virtual wrapper for FindChunkCandidates to allow testing subclasses to
+  // simulate candidate placement results.
+  virtual std::vector<Chunk> FindChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t preferred_offset) const {
+    return GlobalDecreasingSizeBestFitHeap<HloValue>::FindChunkCandidates(
+        sliced_buffer_interval, preferred_offset);
+  }
+  std::vector<Chunk> FindChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval) const {
+    return FindChunkCandidates(sliced_buffer_interval, -1);
+  }
+
   // Returns the corrected schedule time of an HloUse. The corrected time is
   // equivalent to the actual time of the use instructions for all instructions
   // except for while and conditional instructions. For while instructions, the
@@ -1894,6 +1916,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // allocation attempt.
   absl::flat_hash_map<int64_t, AliasedOffset*>
       pipelined_while_buffer_id_to_aliased_offset_;
+
+  // Mapping from HloBuffer ID to assigned alternate memory offset to ensure
+  // exact offset colocation across aliased positions of the same buffer.
+  // Maintained only during the current allocation attempt.
+  absl::flat_hash_map<int64_t, AliasedOffset*> buffer_id_to_aliased_offset_;
 
   // We have released the chunks corresponding to the allocations in the list.
   // When we uncommit the current pending state following a

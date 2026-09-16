@@ -43,6 +43,8 @@ limitations under the License.
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
@@ -470,6 +472,16 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
         module, [&](auto n) { return intrinsic_lib.IsIntrinsicFunction(n); });
     codegen::intrinsic::RunInlineAndOptPasses(module);
   }
+
+  // Must stay last: middle-end passes behave differently on instructions that
+  // already carry `contract`.
+  //
+  // TODO(b/560320144): `AllowFPOpFusion = Fast` is deliberately still set in
+  // service/cpu/cpu_aot_loader.cc:53, tools/hlo_opt/cpu_opt.cc:217,
+  // backends/cpu/testlib/kernel_runner.cc:132 and
+  // service/cpu/ir_emitter_test.cc:258. Drop those once the upstream change
+  // has landed.
+  llvm_ir::SetAllowContractOnFpArithmetic(module);
 
   return llvm::Error::success();
 }
