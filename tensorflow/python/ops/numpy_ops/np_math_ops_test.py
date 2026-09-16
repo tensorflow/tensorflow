@@ -19,12 +19,14 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -160,6 +162,29 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def testSqrt(self):
     self._testUnaryOp(np_math_ops.sqrt, np.sqrt, 'sqrt')
+
+  def testSinc(self):
+    for x in [0.0, -0.5, 0.5, [-1.5, -0.5, 0.0, 0.5, 1.5], [0, 1, 2]]:
+      self.assertAllClose(np_math_ops.sinc(x), np.sinc(x), atol=1e-6)
+
+  def testSincGradient(self):
+    # Regression test for GitHub issue #127226: sinc(2 * t + 1) at t = -0.5
+    t = ops.convert_to_tensor(-0.5, dtype=np.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(t)
+      y = np_math_ops.sinc(2.0 * t + 1.0)
+    grad = tape.gradient(y, t)
+    self.assertAllClose(y, 1.0)
+    self.assertAllClose(grad, 0.0)
+
+    # Verify gradients across an array containing both 0.0 and non-zero values
+    x = ops.convert_to_tensor([-0.7, 0.0, 0.3, 1.2], dtype=np.float64)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        np_math_ops.sinc, [x], delta=1e-6
+    )
+    self.assertLess(
+        gradient_checker_v2.max_error(theoretical, numerical), 1e-8
+    )
 
   def testAngle(self):
     # The result must keep the dtype of the argument. Building the real-input

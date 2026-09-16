@@ -1176,8 +1176,11 @@ def positive(x):
 def sinc(x):
   def f(x):
     pi_x = x * np.pi
+    safe_pi_x = array_ops.where_v2(
+        x == 0, array_ops.ones_like(pi_x), pi_x
+    )
     return array_ops.where_v2(
-        x == 0, array_ops.ones_like(x), math_ops.sin(pi_x) / pi_x
+        x == 0, array_ops.ones_like(x), math_ops.sin(safe_pi_x) / safe_pi_x
     )
 
   return _scalar(f, x, True)
